@@ -6,24 +6,24 @@ Status legend:
 - [x] done
 - [!] blocked / decision needed
 
-Last updated: 2026-07-02 — UX/UI layout pass
+Last updated: 2026-07-02 — embedded Nextcloud sync pass
 Mode: Ponytail full — smallest useful app, file-first, no speculative platform.
 
 ## Current build status
 
 - [x] Phase 0 — repo setup: Flutter app created, TyLog app labels set, macOS debug build produced.
 - [x] Phase 1 — local vault creation: app-owned vault, `.tylog/`, helper Typst file, today note creation implemented and tested.
-- [x] Phase 2 — plain editor: source editor, save, dirty state, safe temp-file write implemented and tested.
+- [x] Phase 2 — clean journal editor: autosave, dirty state, safe temp-file write implemented and tested.
 - [x] Phase 3 — scanner and index: regex scanner, backlinks, index JSON implemented and tested.
 - [x] Phase 4 — navigation and page creation: outgoing links open existing notes or create missing pages; manual index rebuild added.
 - [x] Phase 5 — Typst preview
 - [x] Phase 6 — graph
-- [x] Phase 6.5 — UX/UI layout pass: daily-first Material shell, mobile drawers, desktop collapsible side panels
-- [ ] Phase 7 — Android/desktop hardening
+- [x] Phase 6.5 — UX/UI layout pass: daily-first Material shell, mobile drawers, desktop collapsible side panels, clean journal/source/preview modes
+- [~] Phase 7 — Android/desktop hardening: release signing and embedded Nextcloud WebDAV sync added
 - [x] Phase 8 — Nextcloud workflow doc
 - [ ] Phase 9 — MVP cut
 
-Evidence: `dart format lib/main.dart`, `flutter analyze` no issues, `flutter test` 10 tests passed. Previous MVP evidence: `flutter build apk --release` built `build/app/outputs/flutter-apk/app-release.apk` (134.4MB). Added `sample_vault/` and automated MVP smoke test for today note, wikilink, PKM page, backlink persistence, index deletion, and rebuild.
+Evidence: `dart format lib/nextcloud_sync.dart lib/app_mobile.dart test/nextcloud_sync_test.dart`, `flutter analyze` no issues, `flutter test` 16 tests passed, `flutter build apk --debug` passed, Nextcloud WebDAV `PROPFIND` returned 207. Previous MVP evidence: `flutter build apk --release` built `build/app/outputs/flutter-apk/app-release.apk` (134.4MB). Added `sample_vault/` and automated MVP smoke test for today note, wikilink, PKM page, backlink persistence, index deletion, and rebuild.
 
 
 ## 0. Product thesis

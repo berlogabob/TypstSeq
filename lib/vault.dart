@@ -21,7 +21,7 @@ class Vault {
 
   static Future<Vault> openDefault() async {
     final base = await getApplicationDocumentsDirectory();
-    final vault = Vault(Directory('${base.path}/TyLogVault'));
+    final vault = Vault(defaultVaultDirectory(base));
     await vault.ensureCreated();
     return vault;
   }
@@ -80,6 +80,34 @@ class Vault {
         .substring(rootPath.length)
         .replaceAll(Platform.pathSeparator, '/');
   }
+}
+
+Directory defaultVaultDirectory(
+  Directory appDocuments, {
+  Map<String, String>? environment,
+  bool? desktop,
+}) {
+  final env = environment ?? Platform.environment;
+  final configured = env['TYLOG_VAULT_DIR']?.trim();
+  if (configured != null && configured.isNotEmpty) return Directory(configured);
+
+  final home = env['HOME'];
+  if ((desktop ?? (Platform.isMacOS || Platform.isLinux)) && home != null) {
+    final direct = Directory('$home/Nextcloud');
+    if (direct.existsSync()) return Directory('${direct.path}/TyLogVault');
+
+    final cloudStorage = Directory('$home/Library/CloudStorage');
+    if (cloudStorage.existsSync()) {
+      for (final entry in cloudStorage.listSync()) {
+        if (entry is Directory &&
+            entry.path.split('/').last.toLowerCase().contains('nextcloud')) {
+          return Directory('${entry.path}/TyLogVault');
+        }
+      }
+    }
+  }
+
+  return Directory('${appDocuments.path}/TyLogVault');
 }
 
 Future<void> _writeFile(Object a, Object b) async {

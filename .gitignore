@@ -50,3 +50,6 @@ app.*.map.json
 # Android release signing secrets
 android/key.properties
 android/app/*.jks
+
+# Local test/debug secrets
+.secrets/

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -7,6 +8,7 @@ import 'package:typst_flutter/typst_flutter.dart';
 
 import 'graph.dart';
 import 'models.dart';
+import 'nextcloud_sync.dart';
 import 'scanner.dart';
 import 'vault.dart';
 
@@ -39,10 +41,15 @@ class _HomeScreenState extends State<HomeScreen> {
   VaultIndex? index;
   File? note;
   final controller = TextEditingController();
+  final sourceController = TextEditingController();
+  Timer? autosave;
   String status = 'Opening vault...';
   bool dirty = false;
-  String mode = 'editor';
+  String mode = 'journal';
   String previewSource = '';
+  String hiddenSystemPrefix = '';
+  NextcloudConfig? cloud;
+  bool syncing = false;
   bool leftPanelOpen = true;
   bool rightPanelOpen = true;
 
@@ -50,10 +57,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _open();
+    _loadCloud();
   }
 
   @override
   void dispose() {
+    autosave?.cancel();
+    sourceController.dispose();
     controller.dispose();
     super.dispose();
   }
@@ -63,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final v = await Vault.openDefault();
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
-      controller.text = await today.readAsString();
+      _loadSource(await today.readAsString());
       setState(() {
         vault = v;
         note = today;
@@ -75,12 +85,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadCloud() async {
+    cloud = await NextcloudConfig.load();
+  }
+
   Future<void> _save() async {
+    autosave?.cancel();
     final v = vault;
     final n = note;
     if (v == null || n == null) return;
     try {
-      await v.saveNote(n, controller.text);
+      await v.saveNote(n, _currentSource());
       final ix = await v.rebuildIndex();
       setState(() {
         index = ix;
@@ -92,14 +107,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _queueAutosave() {
+    setState(() {
+      dirty = true;
+      status = 'Autosave pending...';
+    });
+    autosave?.cancel();
+    autosave = Timer(const Duration(milliseconds: 700), _save);
+  }
+
+  String _currentSource() => mode == 'source'
+      ? sourceController.text
+      : '$hiddenSystemPrefix${controller.text}';
+
+  void _loadSource(String source) {
+    final clean = _splitCleanSource(source);
+    hiddenSystemPrefix = clean.hiddenPrefix;
+    controller.text = clean.body;
+    sourceController.text = source;
+  }
+
   Future<void> _openNote(File file) async {
     final v = vault;
     if (v == null) return;
-    controller.text = await file.readAsString();
+    if (dirty) await _save();
+    _loadSource(await file.readAsString());
     setState(() {
       note = file;
       dirty = false;
-      mode = 'editor';
+      mode = 'journal';
       status = 'Opened ${v.relativePath(file)}';
     });
   }
@@ -138,6 +174,88 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _syncNow() async {
+    final v = vault;
+    final cfg = cloud;
+    if (v == null) return;
+    if (cfg == null || !cfg.isReady) {
+      await _showSyncSettings();
+      return;
+    }
+    if (dirty) await _save();
+    setState(() {
+      syncing = true;
+      status = 'Syncing Nextcloud...';
+    });
+    try {
+      final result = await NextcloudSync(cfg).sync(v);
+      if (note != null) _loadSource(await note!.readAsString());
+      final ix = await v.rebuildIndex();
+      setState(() {
+        index = ix;
+        status = result;
+      });
+    } catch (e) {
+      setState(() => status = 'Sync failed: $e');
+    } finally {
+      setState(() => syncing = false);
+    }
+  }
+
+  Future<void> _showSyncSettings() async {
+    final cfg = cloud;
+    final url = TextEditingController(text: cfg?.serverUrl ?? '');
+    final user = TextEditingController(text: cfg?.username ?? '');
+    final pass = TextEditingController(text: cfg?.password ?? '');
+    final saved = await showDialog<NextcloudConfig>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nextcloud'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: url,
+              decoration: const InputDecoration(labelText: 'Server URL'),
+            ),
+            TextField(
+              controller: user,
+              decoration: const InputDecoration(labelText: 'Login'),
+            ),
+            TextField(
+              controller: pass,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Password'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              NextcloudConfig(
+                serverUrl: url.text,
+                username: user.text,
+                password: pass.text,
+              ),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved == null) return;
+    await saved.save();
+    setState(() {
+      cloud = saved;
+      status = 'Nextcloud saved';
+    });
+  }
+
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
@@ -146,9 +264,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showPreview() {
     setState(() {
-      previewSource = controller.text;
+      previewSource = _currentSource();
       mode = 'preview';
     });
+  }
+
+  void _showJournal() {
+    if (mode == 'source') _loadSource(sourceController.text);
+    setState(() => mode = 'journal');
+  }
+
+  void _showSource() {
+    sourceController.text = _currentSource();
+    setState(() => mode = 'source');
   }
 
   @override
@@ -167,9 +295,10 @@ class _HomeScreenState extends State<HomeScreen> {
       status: status,
       current: current,
       index: index,
-      onSave: _save,
       onOpenToday: _openToday,
       onRebuildIndex: _rebuildIndex,
+      onSync: syncing ? null : _syncNow,
+      onSyncSettings: _showSyncSettings,
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
     );
@@ -192,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenPath: _openPath,
         ),
         'preview' => TypstDocumentViewer(
-          source: previewSource.isEmpty ? controller.text : previewSource,
+          source: previewSource.isEmpty ? _currentSource() : previewSource,
           files: FileSource.bytes({
             '.tylog/tylog.typ': Uint8List.fromList(
               utf8.encode(tylogHelperSource),
@@ -208,10 +337,12 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SelectableText('Typst error:\n$error'),
           ),
         ),
-        _ => _Editor(
-          controller: controller,
-          onChanged: () => setState(() => dirty = true),
+        'source' => _Editor(
+          controller: sourceController,
+          onChanged: _queueAutosave,
+          monospace: true,
         ),
+        _ => _Editor(controller: controller, onChanged: _queueAutosave),
       },
     );
 
@@ -253,10 +384,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _ModeButton(
                   mode: mode,
-                  value: 'editor',
+                  value: 'journal',
                   icon: Icons.edit_note,
-                  tooltip: 'Editor',
-                  onPressed: () => setState(() => mode = 'editor'),
+                  tooltip: 'Journal',
+                  onPressed: _showJournal,
+                ),
+                _ModeButton(
+                  mode: mode,
+                  value: 'source',
+                  icon: Icons.code,
+                  tooltip: 'Source',
+                  onPressed: _showSource,
                 ),
                 _ModeButton(
                   mode: mode,
@@ -272,12 +410,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   tooltip: 'Graph',
                   onPressed: () => setState(() => mode = 'graph'),
                 ),
+                IconButton(
+                  onPressed: syncing ? null : _syncNow,
+                  icon: const Icon(Icons.sync),
+                  tooltip: 'Sync',
+                ),
               ],
-              IconButton(
-                onPressed: _save,
-                icon: const Icon(Icons.save),
-                tooltip: 'Save',
-              ),
+              if (compact)
+                IconButton(
+                  onPressed: _showSource,
+                  icon: const Icon(Icons.code),
+                  tooltip: 'Source',
+                ),
               if (compact)
                 Builder(
                   builder: (context) => IconButton(
@@ -303,8 +447,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   onDestinationSelected: (value) {
                     if (value == 1) {
                       _showPreview();
+                    } else if (value == 0) {
+                      _showJournal();
                     } else {
-                      setState(() => mode = value == 2 ? 'graph' : 'editor');
+                      setState(() => mode = 'graph');
                     }
                   },
                   destinations: const [
@@ -345,23 +491,64 @@ class _HomeScreenState extends State<HomeScreen> {
   };
 }
 
+class _CleanSource {
+  const _CleanSource(this.hiddenPrefix, this.body);
+
+  final String hiddenPrefix;
+  final String body;
+}
+
+_CleanSource _splitCleanSource(String source) {
+  final lines = source.split('\n');
+  var index = 0;
+  while (index < lines.length) {
+    final trimmed = lines[index].trimLeft();
+    if (trimmed.isEmpty) {
+      index++;
+      continue;
+    }
+    if (!_isSystemLine(trimmed)) break;
+
+    var depth =
+        '('.allMatches(lines[index]).length -
+        ')'.allMatches(lines[index]).length;
+    index++;
+    while (depth > 0 && index < lines.length) {
+      depth +=
+          '('.allMatches(lines[index]).length -
+          ')'.allMatches(lines[index]).length;
+      index++;
+    }
+  }
+  while (index < lines.length && lines[index].trim().isEmpty) {
+    index++;
+  }
+  final prefix = index == 0 ? '' : '${lines.take(index).join('\n')}\n';
+  return _CleanSource(prefix, lines.skip(index).join('\n'));
+}
+
+bool _isSystemLine(String line) =>
+    RegExp(r'^#(import|include|show|set|let|note)\b').hasMatch(line);
+
 class _PagesPanel extends StatelessWidget {
   const _PagesPanel({
     required this.status,
     required this.current,
     required this.index,
-    required this.onSave,
     required this.onOpenToday,
     required this.onRebuildIndex,
+    required this.onSync,
+    required this.onSyncSettings,
     required this.onOpenNote,
   });
 
   final String status;
   final String? current;
   final VaultIndex? index;
-  final VoidCallback onSave;
   final VoidCallback onOpenToday;
   final VoidCallback onRebuildIndex;
+  final VoidCallback? onSync;
+  final VoidCallback onSyncSettings;
   final ValueChanged<NoteRef> onOpenNote;
 
   @override
@@ -379,10 +566,15 @@ class _PagesPanel extends StatelessWidget {
           icon: const Icon(Icons.today),
           label: const Text('Today'),
         ),
-        OutlinedButton.icon(
-          onPressed: onSave,
-          icon: const Icon(Icons.save),
-          label: const Text('Save'),
+        TextButton.icon(
+          onPressed: onSync,
+          icon: const Icon(Icons.sync),
+          label: const Text('Sync'),
+        ),
+        TextButton.icon(
+          onPressed: onSyncSettings,
+          icon: const Icon(Icons.cloud),
+          label: const Text('Nextcloud'),
         ),
         TextButton.icon(
           onPressed: onRebuildIndex,
@@ -526,10 +718,15 @@ class _WorkSurface extends StatelessWidget {
 }
 
 class _Editor extends StatelessWidget {
-  const _Editor({required this.controller, required this.onChanged});
+  const _Editor({
+    required this.controller,
+    required this.onChanged,
+    this.monospace = false,
+  });
 
   final TextEditingController controller;
   final VoidCallback onChanged;
+  final bool monospace;
 
   @override
   Widget build(BuildContext context) => TextField(
@@ -538,7 +735,10 @@ class _Editor extends StatelessWidget {
     maxLines: null,
     minLines: null,
     textAlignVertical: TextAlignVertical.top,
-    style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45),
+    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+      height: 1.45,
+      fontFamily: monospace ? 'monospace' : null,
+    ),
     decoration: const InputDecoration(contentPadding: EdgeInsets.all(18)),
     onChanged: (_) => onChanged(),
   );

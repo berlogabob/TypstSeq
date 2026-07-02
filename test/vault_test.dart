@@ -4,6 +4,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault.dart';
 
 void main() {
+  test('default vault prefers Nextcloud on desktop', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_nextcloud_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/Nextcloud').create();
+
+    final selected = defaultVaultDirectory(
+      Directory('${dir.path}/app_docs'),
+      environment: {'HOME': dir.path},
+      desktop: true,
+    );
+
+    expect(selected.path, '${dir.path}/Nextcloud/TyLogVault');
+  });
+
+  test('TYLOG_VAULT_DIR overrides default vault', () {
+    final selected = defaultVaultDirectory(
+      Directory('/app/docs'),
+      environment: {'TYLOG_VAULT_DIR': '/sync/TyLogVault'},
+      desktop: false,
+    );
+
+    expect(selected.path, '/sync/TyLogVault');
+  });
+
   test('vault creates today note and saves safely', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_vault_');
     addTearDown(() => dir.delete(recursive: true));
