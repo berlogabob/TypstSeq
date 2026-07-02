@@ -12,6 +12,22 @@ void main() {
     expect(find.byTooltip('Source'), findsOneWidget);
     expect(find.byTooltip('Preview'), findsOneWidget);
     expect(find.byTooltip('Graph'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
+  });
+
+  testWidgets('settings menu shows real app data', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Local folder'), findsOneWidget);
+    expect(find.text('Nextcloud settings'), findsOneWidget);
+    expect(find.text('Sync server status'), findsOneWidget);
+    expect(find.text('App version'), findsOneWidget);
+    expect(find.text('1.0.0+6'), findsOneWidget);
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {

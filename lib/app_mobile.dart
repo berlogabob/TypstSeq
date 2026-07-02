@@ -12,6 +12,8 @@ import 'nextcloud_sync.dart';
 import 'scanner.dart';
 import 'vault.dart';
 
+const appVersion = '1.0.0+6';
+
 class TyLogApp extends StatelessWidget {
   const TyLogApp({super.key});
 
@@ -286,6 +288,23 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_syncNow());
   }
 
+  void _showSettings() {
+    final v = vault;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _SettingsSheet(
+        vaultPath: v?.root.path ?? 'Opening vault...',
+        cloud: cloud,
+        syncing: syncing,
+        onNextcloud: () {
+          Navigator.pop(context);
+          unawaited(_showSyncSettings());
+        },
+      ),
+    );
+  }
+
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
@@ -328,7 +347,6 @@ class _HomeScreenState extends State<HomeScreen> {
       onOpenToday: _openToday,
       onRebuildIndex: _rebuildIndex,
       onSync: syncing ? null : _syncNow,
-      onSyncSettings: _showSyncSettings,
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
     );
@@ -445,7 +463,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: const Icon(Icons.sync),
                   tooltip: 'Sync',
                 ),
+                IconButton(
+                  onPressed: _showSettings,
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                ),
               ],
+              if (compact)
+                IconButton(
+                  onPressed: _showSettings,
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                ),
               if (compact)
                 IconButton(
                   onPressed: _showSource,
@@ -568,7 +597,6 @@ class _PagesPanel extends StatelessWidget {
     required this.onOpenToday,
     required this.onRebuildIndex,
     required this.onSync,
-    required this.onSyncSettings,
     required this.onOpenNote,
   });
 
@@ -578,7 +606,6 @@ class _PagesPanel extends StatelessWidget {
   final VoidCallback onOpenToday;
   final VoidCallback onRebuildIndex;
   final VoidCallback? onSync;
-  final VoidCallback onSyncSettings;
   final ValueChanged<NoteRef> onOpenNote;
 
   @override
@@ -600,11 +627,6 @@ class _PagesPanel extends StatelessWidget {
           onPressed: onSync,
           icon: const Icon(Icons.sync),
           label: const Text('Sync'),
-        ),
-        TextButton.icon(
-          onPressed: onSyncSettings,
-          icon: const Icon(Icons.cloud),
-          label: const Text('Nextcloud'),
         ),
         TextButton.icon(
           onPressed: onRebuildIndex,
@@ -707,6 +729,89 @@ class _LinksPanel extends StatelessWidget {
             onTap: () => onOpenPath(path),
           ),
       ],
+    ),
+  );
+}
+
+class _SettingsSheet extends StatelessWidget {
+  const _SettingsSheet({
+    required this.vaultPath,
+    required this.cloud,
+    required this.syncing,
+    required this.onNextcloud,
+  });
+
+  final String vaultPath;
+  final NextcloudConfig? cloud;
+  final bool syncing;
+  final VoidCallback onNextcloud;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = cloud?.isReady ?? false;
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        shrinkWrap: true,
+        children: [
+          Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 12),
+          _SettingsTile(
+            icon: Icons.folder_open,
+            title: 'Local folder',
+            subtitle: vaultPath,
+          ),
+          _SettingsTile(
+            icon: Icons.cloud,
+            title: 'Nextcloud settings',
+            subtitle: ready ? cloud!.serverUrl : 'Local folder only',
+            onTap: onNextcloud,
+          ),
+          _SettingsTile(
+            icon: Icons.sync,
+            title: 'Sync server status',
+            subtitle: syncing
+                ? 'Syncing...'
+                : (ready ? 'Ready' : 'Not configured'),
+          ),
+          const _SettingsTile(
+            icon: Icons.info_outline,
+            title: 'App version',
+            subtitle: appVersion,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 0,
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+        child: Icon(icon),
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+      onTap: onTap,
     ),
   );
 }
