@@ -16,7 +16,8 @@ Implemented:
 - wikilinks/backlinks
 - graph view
 - Typst preview via `typst_flutter`
-- Android + macOS debug builds
+- embedded Nextcloud WebDAV sync
+- Android release APK + macOS debug build
 
 Sample vault: `sample_vault/`
 
@@ -60,6 +61,12 @@ Do not delete unless you know why:
 - `.tylog/tylog.typ` — helper macros for preview
 - `journal/`, `pages/`, `assets/` — user data
 
+## Release
+
+- APK: https://github.com/berlogabob/TypstSeq/releases/download/v1.0.0%2B6/app-release.apk
+- Release: https://github.com/berlogabob/TypstSeq/releases/tag/v1.0.0%2B6
+- Pages: https://berlogabob.github.io/TypstSeq/
+
 ## Ponytail limits
 
-Skipped direct WebDAV and Android folder picker. Add only when Android must edit the same Nextcloud vault inside TyLog.
+Skipped Android folder picker and conflict UI. Add when app-owned WebDAV sync is not enough.

@@ -6,7 +6,7 @@ Status legend:
 - [x] done
 - [!] blocked / decision needed
 
-Last updated: 2026-07-02 — embedded Nextcloud sync pass
+Last updated: 2026-07-02 — MVP release v1.0.0+6
 Mode: Ponytail full — smallest useful app, file-first, no speculative platform.
 
 ## Current build status
@@ -19,11 +19,11 @@ Mode: Ponytail full — smallest useful app, file-first, no speculative platform
 - [x] Phase 5 — Typst preview
 - [x] Phase 6 — graph
 - [x] Phase 6.5 — UX/UI layout pass: daily-first Material shell, mobile drawers, desktop collapsible side panels, clean journal/source/preview modes
-- [~] Phase 7 — Android/desktop hardening: release signing and embedded Nextcloud WebDAV sync added
+- [x] Phase 7 — Android/desktop hardening: release signing and embedded Nextcloud WebDAV sync added
 - [x] Phase 8 — Nextcloud workflow doc
-- [ ] Phase 9 — MVP cut
+- [x] Phase 9 — MVP cut
 
-Evidence: `dart format lib/nextcloud_sync.dart lib/app_mobile.dart test/nextcloud_sync_test.dart`, `flutter analyze` no issues, `flutter test` 16 tests passed, `flutter build apk --debug` passed, Nextcloud WebDAV `PROPFIND` returned 207. Previous MVP evidence: `flutter build apk --release` built `build/app/outputs/flutter-apk/app-release.apk` (134.4MB). Added `sample_vault/` and automated MVP smoke test for today note, wikilink, PKM page, backlink persistence, index deletion, and rebuild.
+Evidence: `flutter analyze` no issues, `flutter test` 17 tests passed, `make release` produced GitHub release `v1.0.0+6` with APK asset `app-release.apk`. Nextcloud WebDAV write/read/delete was verified (`put 201`, `get_ok True`, `delete 204`). Previous MVP evidence: release APK built, `sample_vault/` added, and automated MVP smoke test covers today note, wikilink, PKM page, backlink persistence, index deletion, and rebuild.
 
 
 ## 0. Product thesis
@@ -609,7 +609,7 @@ Checklist:
 - [x] run full smoke test
 - [x] ensure no test notes in app data
 - [x] update README
-- [ ] tag MVP build — skipped until user asks for git commit/tag
+- [x] tag MVP build — `v1.0.0+6`
 
 Manual smoke test:
 - [x] create vault
@@ -744,7 +744,43 @@ Default answers until proven wrong:
 - preserve spaces in filenames, sanitize only path separators
 - only parse explicit `#tag("x")` first
 
-## 19. Build order snapshot
+## 19. Fast-win backlog
+
+### #20 — `<>` raw/preview loop
+
+Goal: one obvious editor control for source/preview without a new editor model.
+
+Checklist:
+- [ ] Replace separate Source + Preview desktop actions with one `<>` action cycling `journal -> preview -> source -> journal`.
+- [ ] Keep Graph as separate mode; graph is navigation, not editor loop.
+- [ ] In preview mode, show current note source in the editor area until inline preview is actually cheap; current line raw+styled preview is deferred.
+- [ ] Add one widget test that taps `<>` and verifies source/preview/source loop.
+
+Done when:
+- [ ] Phone and desktop expose the same `<>` loop affordance.
+- [ ] `flutter test` passes.
+
+Skipped for fast win: per-line mixed raw+render preview. Add when the simple mode loop is useful and line mapping is worth the complexity.
+
+### #21 — New note/page
+
+Goal: create a non-journal page directly.
+
+Checklist:
+- [ ] Add `New page` button in the pages panel/FAB menu.
+- [ ] Prompt for title with a plain `AlertDialog` + `TextField`.
+- [ ] Reuse `Vault.page(title)` and `_openNote(file)`; no new note type.
+- [ ] Rebuild index after create and show created path in status.
+- [ ] Add one vault/widget check for direct page creation path.
+
+Done when:
+- [ ] User can create `pages/Title.typ` without writing a wikilink first.
+- [ ] Duplicate existing title opens existing page, does not overwrite content.
+- [ ] `flutter test` passes.
+
+Skipped for fast win: templates, note/page taxonomy, folder picker. Add when direct pages are used enough to need choices.
+
+## 20. Build order snapshot
 
 Current progress:
 
@@ -755,9 +791,10 @@ Current progress:
 - [x] Phase 4 — navigation and page creation
 - [x] Phase 5 — Typst preview
 - [x] Phase 6 — graph
-- [ ] Phase 7 — Android/desktop hardening
+- [x] Phase 7 — Android/desktop hardening
 - [x] Phase 8 — Nextcloud workflow doc
-- [ ] Phase 9 — MVP cut
+- [x] Phase 9 — MVP cut
 
 Next action:
-- [x] create Flutter app `tylog` in current working folder or chosen repo folder
+- [x] release MVP `v1.0.0+6`
+- [ ] collect real-device feedback before adding more features
