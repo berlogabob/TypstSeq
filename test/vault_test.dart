@@ -44,6 +44,19 @@ void main() {
     expect(index.notesByPath['journal/2026-07-01.typ']!.outgoingLinks, ['PKM']);
   });
 
+  test('page creates once and preserves existing content', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_page_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    final page = await vault.page('Fast Win');
+    await vault.saveNote(page, 'keep me');
+
+    expect((await vault.page('Fast Win')).path, page.path);
+    expect(await page.readAsString(), 'keep me');
+  });
+
   test(
     'vault handles spaces, non-ascii, external edits, and 100 notes',
     () async {

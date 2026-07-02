@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'graph.dart';
@@ -12,7 +12,12 @@ import 'nextcloud_sync.dart';
 import 'scanner.dart';
 import 'vault.dart';
 
-const appVersion = '1.0.0+6';
+Future<String> appVersion() async =>
+    RegExp(r'^version:\s*(.+)$', multiLine: true)
+        .firstMatch(await rootBundle.loadString('pubspec.yaml'))
+        ?.group(1)
+        ?.trim() ??
+    'unknown';
 
 class TyLogApp extends StatelessWidget {
   const TyLogApp({super.key});
@@ -187,6 +192,47 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => status = 'Created ${v.relativePath(file)}');
   }
 
+  Future<void> _newPage() async {
+    final v = vault;
+    if (v == null) return;
+    final title = await _askPageTitle();
+    if (title == null || title.trim().isEmpty) return;
+    if (dirty) await _save();
+    final file = await v.page(title);
+    final ix = await v.rebuildIndex();
+    await _openNote(file);
+    setState(() {
+      index = ix;
+      status = 'Created ${v.relativePath(file)}';
+    });
+  }
+
+  Future<String?> _askPageTitle() {
+    final title = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New page'),
+        content: TextField(
+          controller: title,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, title.text),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String? _pathForLink(String title) {
     final ix = index;
     return ix == null ? null : resolveLinkPath(ix, title);
@@ -345,6 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
       current: current,
       index: index,
       onOpenToday: _openToday,
+      onNewPage: _newPage,
       onRebuildIndex: _rebuildIndex,
       onSync: syncing ? null : _syncNow,
       onOpenNote: (item) =>
@@ -529,9 +576,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 )
               : null,
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: _openToday,
-            icon: const Icon(Icons.today),
-            label: const Text('Today'),
+            onPressed: _newPage,
+            icon: const Icon(Icons.add),
+            label: const Text('New page'),
+            tooltip: 'New page',
           ),
         );
       },
@@ -595,6 +643,7 @@ class _PagesPanel extends StatelessWidget {
     required this.current,
     required this.index,
     required this.onOpenToday,
+    required this.onNewPage,
     required this.onRebuildIndex,
     required this.onSync,
     required this.onOpenNote,
@@ -604,6 +653,7 @@ class _PagesPanel extends StatelessWidget {
   final String? current;
   final VaultIndex? index;
   final VoidCallback onOpenToday;
+  final VoidCallback onNewPage;
   final VoidCallback onRebuildIndex;
   final VoidCallback? onSync;
   final ValueChanged<NoteRef> onOpenNote;
@@ -622,6 +672,11 @@ class _PagesPanel extends StatelessWidget {
           onPressed: onOpenToday,
           icon: const Icon(Icons.today),
           label: const Text('Today'),
+        ),
+        FilledButton.tonalIcon(
+          onPressed: onNewPage,
+          icon: const Icon(Icons.add),
+          label: const Text('New page'),
         ),
         TextButton.icon(
           onPressed: onSync,
@@ -774,10 +829,13 @@ class _SettingsSheet extends StatelessWidget {
                 ? 'Syncing...'
                 : (ready ? 'Ready' : 'Not configured'),
           ),
-          const _SettingsTile(
-            icon: Icons.info_outline,
-            title: 'App version',
-            subtitle: appVersion,
+          FutureBuilder<String>(
+            future: appVersion(),
+            builder: (context, snapshot) => _SettingsTile(
+              icon: Icons.info_outline,
+              title: 'App version',
+              subtitle: snapshot.data ?? '...',
+            ),
           ),
         ],
       ),
