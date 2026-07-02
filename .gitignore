@@ -46,3 +46,7 @@ app.*.map.json
 
 # Local reference screenshots / prompts
 .ref/
+
+# Android release signing secrets
+android/key.properties
+android/app/*.jks
