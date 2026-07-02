@@ -41,7 +41,7 @@ class NextcloudConfig {
   };
 
   static NextcloudConfig fromJson(Map<String, Object?> json) => NextcloudConfig(
-    serverUrl: json['serverUrl'] as String? ?? '',
+    serverUrl: json['serverUrl'] as String? ?? json['url'] as String? ?? '',
     username: json['username'] as String? ?? '',
     password: json['password'] as String? ?? '',
   );
@@ -69,40 +69,44 @@ class NextcloudSync {
   NextcloudSync(this.config);
 
   final NextcloudConfig config;
-  final _client = HttpClient();
+  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   Future<String> sync(Vault vault) async {
-    if (!config.isReady) throw StateError('Nextcloud settings are empty');
-    await _mkcol(config.rootUri);
-    final remote = await _remoteFiles();
-    final downloaded = <String>{};
-    var up = 0;
-    var down = 0;
+    try {
+      if (!config.isReady) throw StateError('Nextcloud settings are empty');
+      await _mkcol(config.rootUri);
+      final remote = await _remoteFiles();
+      final downloaded = <String>{};
+      var up = 0;
+      var down = 0;
 
-    for (final entry in remote.entries) {
-      final local = File('${vault.root.path}/${entry.key}');
-      if (!await local.exists() ||
-          entry.value.isAfter(await local.lastModified())) {
-        await local.parent.create(recursive: true);
-        await _download(entry.key, local);
-        downloaded.add(entry.key);
-        down++;
+      for (final entry in remote.entries) {
+        final local = File('${vault.root.path}/${entry.key}');
+        if (!await local.exists() ||
+            entry.value.isAfter(await local.lastModified())) {
+          await local.parent.create(recursive: true);
+          await _download(entry.key, local);
+          downloaded.add(entry.key);
+          down++;
+        }
       }
-    }
 
-    for (final file in await _localFiles(vault.root)) {
-      final path = vault.relativePath(file);
-      if (downloaded.contains(path)) continue;
-      final localTime = await file.lastModified();
-      final remoteTime = remote[path];
-      if (remoteTime == null || localTime.isAfter(remoteTime)) {
-        await _upload(path, file);
-        up++;
+      for (final file in await _localFiles(vault.root)) {
+        final path = vault.relativePath(file);
+        if (downloaded.contains(path)) continue;
+        final localTime = await file.lastModified();
+        final remoteTime = remote[path];
+        if (remoteTime == null || localTime.isAfter(remoteTime)) {
+          await _upload(path, file);
+          up++;
+        }
       }
-    }
 
-    await vault.rebuildIndex();
-    return 'Sync: ↑$up ↓$down';
+      await vault.rebuildIndex();
+      return 'Sync: ↑$up ↓$down, remote ${remote.length}';
+    } finally {
+      _client.close(force: true);
+    }
   }
 
   Future<List<File>> _localFiles(Directory root) async {
@@ -119,7 +123,7 @@ class NextcloudSync {
     request.write(
       '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/></d:prop></d:propfind>''',
     );
-    final response = await request.close();
+    final response = await request.close().timeout(const Duration(seconds: 60));
     final body = await response.transform(utf8.decoder).join();
     if (response.statusCode >= 400) {
       throw HttpException('PROPFIND ${response.statusCode}');
@@ -150,14 +154,17 @@ class NextcloudSync {
     await _ensureParents(path);
     final request = await _open('PUT', _remoteUri(path));
     await request.addStream(file.openRead());
-    final response = await request.close();
+    final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
       throw HttpException('PUT $path ${response.statusCode}');
     }
   }
 
   Future<void> _download(String path, File file) async {
-    final response = await (await _open('GET', _remoteUri(path))).close();
+    final response = await (await _open(
+      'GET',
+      _remoteUri(path),
+    )).close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
       throw HttpException('GET $path ${response.statusCode}');
     }
@@ -177,7 +184,10 @@ class NextcloudSync {
       config.rootUri.resolveUri(Uri(pathSegments: path.split('/')));
 
   Future<void> _mkcol(Uri uri) async {
-    final response = await (await _open('MKCOL', uri)).close();
+    final response = await (await _open(
+      'MKCOL',
+      uri,
+    )).close().timeout(const Duration(seconds: 20));
     if (response.statusCode >= 400 && response.statusCode != 405) {
       throw HttpException('MKCOL ${response.statusCode}');
     }
@@ -189,6 +199,7 @@ class NextcloudSync {
       HttpHeaders.authorizationHeader,
       'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}',
     );
+    request.headers.set(HttpHeaders.userAgentHeader, 'TyLog WebDAV sync');
     return request;
   }
 }

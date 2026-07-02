@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final controller = TextEditingController();
   final sourceController = TextEditingController();
   Timer? autosave;
+  Timer? cloudAutosave;
   String status = 'Opening vault...';
   bool dirty = false;
   String mode = 'journal';
@@ -57,12 +58,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _open();
-    _loadCloud();
   }
 
   @override
   void dispose() {
     autosave?.cancel();
+    cloudAutosave?.cancel();
     sourceController.dispose();
     controller.dispose();
     super.dispose();
@@ -70,7 +71,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _open() async {
     try {
+      final cfg = await NextcloudConfig.load();
       final v = await Vault.openDefault();
+      var openStatus = 'Vault: ${v.root.path}';
+      if (cfg != null && cfg.isReady) {
+        setState(() {
+          vault = v;
+          cloud = cfg;
+          syncing = true;
+          status = 'Syncing Nextcloud...';
+        });
+        try {
+          openStatus = await NextcloudSync(cfg).sync(v);
+        } catch (e) {
+          openStatus = 'Sync failed: $e';
+        } finally {
+          syncing = false;
+        }
+      }
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
       _loadSource(await today.readAsString());
@@ -78,18 +96,16 @@ class _HomeScreenState extends State<HomeScreen> {
         vault = v;
         note = today;
         index = ix;
-        status = 'Vault: ${v.root.path}';
+        cloud = cfg;
+        status = openStatus;
       });
+      if (cfg != null && cfg.isReady) _queueCloudSync();
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
   }
 
-  Future<void> _loadCloud() async {
-    cloud = await NextcloudConfig.load();
-  }
-
-  Future<void> _save() async {
+  Future<void> _save({bool syncAfter = true}) async {
     autosave?.cancel();
     final v = vault;
     final n = note;
@@ -102,9 +118,19 @@ class _HomeScreenState extends State<HomeScreen> {
         dirty = false;
         status = 'Saved ${v.relativePath(n)}';
       });
+      if (syncAfter) _queueCloudSync();
     } catch (e) {
       setState(() => status = 'Save failed: $e');
     }
+  }
+
+  void _queueCloudSync() {
+    final cfg = cloud;
+    if (cfg == null || !cfg.isReady || syncing) return;
+    cloudAutosave?.cancel();
+    cloudAutosave = Timer(const Duration(seconds: 2), () {
+      if (!syncing && !dirty) unawaited(_syncNow());
+    });
   }
 
   void _queueAutosave() {
@@ -182,14 +208,17 @@ class _HomeScreenState extends State<HomeScreen> {
       await _showSyncSettings();
       return;
     }
-    if (dirty) await _save();
+    cloudAutosave?.cancel();
+    if (dirty) await _save(syncAfter: false);
     setState(() {
       syncing = true;
       status = 'Syncing Nextcloud...';
     });
     try {
       final result = await NextcloudSync(cfg).sync(v);
-      if (note != null) _loadSource(await note!.readAsString());
+      if (note != null && await note!.exists()) {
+        _loadSource(await note!.readAsString());
+      }
       final ix = await v.rebuildIndex();
       setState(() {
         index = ix;
@@ -254,6 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
       cloud = saved;
       status = 'Nextcloud saved';
     });
+    unawaited(_syncNow());
   }
 
   Future<void> _openPath(String path) async {
