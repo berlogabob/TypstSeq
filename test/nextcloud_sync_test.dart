@@ -38,4 +38,46 @@ void main() {
       'https://cloud.example/remote.php/dav/files/alice/TyLogVault/',
     );
   });
+
+  test('sync action prefers conflict when both changed', () {
+    expect(
+      decideSyncAction(
+        localExists: true,
+        remoteExists: true,
+        localChanged: true,
+        remoteChanged: true,
+      ),
+      SyncAction.conflict,
+    );
+  });
+
+  test('sync action covers one-sided updates and missing files', () {
+    expect(
+      decideSyncAction(
+        localExists: false,
+        remoteExists: true,
+        localChanged: false,
+        remoteChanged: true,
+      ),
+      SyncAction.download,
+    );
+    expect(
+      decideSyncAction(
+        localExists: true,
+        remoteExists: false,
+        localChanged: true,
+        remoteChanged: false,
+      ),
+      SyncAction.upload,
+    );
+    expect(
+      decideSyncAction(
+        localExists: true,
+        remoteExists: true,
+        localChanged: false,
+        remoteChanged: false,
+      ),
+      SyncAction.skip,
+    );
+  });
 }

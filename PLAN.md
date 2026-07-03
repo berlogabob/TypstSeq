@@ -899,3 +899,25 @@ Release gate is pass/fail, not "looks fine":
 Current measurable threshold:
 - Scale sanity: rebuild on 160 generated notes within 5 seconds in test environment.
 - Determinism: two consecutive rebuilds must produce byte-identical `index.json`.
+
+## 23. Android two-way sync contract (issue #24 / #23)
+
+Near-realtime means "open-app near-realtime", not CRDT live editing.
+
+Sync triggers:
+- app startup
+- app resume
+- manual Sync button
+- local-save debounce
+- open-app polling (conservative interval)
+
+Per-file decision states:
+- `upload` (local changed, remote not changed/missing)
+- `download` (remote changed, local not changed/missing)
+- `conflict` (both changed since last cursor)
+- `skip` (no relevant changes)
+
+Safety rules:
+- no silent overwrite on both-changed: store remote conflict copy locally.
+- keep plain files as source of truth.
+- keep sync cursor in `.tylog/sync_state.json` and diagnostics in `.tylog/sync_trace.jsonl`.

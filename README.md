@@ -33,6 +33,8 @@ flutter run -d XPH0219904001750
 
 ## Sync / Nextcloud workflow
 
+Troubleshooting guide (wiki seed): `docs/wiki/Android-Near-Realtime-Sync-Troubleshooting.md`
+
 On desktop TyLog now prefers a working Nextcloud folder:
 
 1. `TYLOG_VAULT_DIR` when set.

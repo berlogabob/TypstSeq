@@ -71,39 +71,98 @@ class NextcloudSync {
   final NextcloudConfig config;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
-  Future<String> sync(Vault vault) async {
+  Future<String> sync(Vault vault, {String trigger = 'manual'}) async {
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
       await _mkcol(config.rootUri);
+      final syncState = await _loadSyncState(vault);
       final remote = await _remoteFiles();
-      final downloaded = <String>{};
       var up = 0;
       var down = 0;
+      var skip = 0;
+      var conflict = 0;
+      final decisions = <SyncDecision>[];
+      final localFiles = await _localFiles(vault.root);
+      final localByPath = {
+        for (final file in localFiles) vault.relativePath(file): file,
+      };
+      final allPaths = <String>{...localByPath.keys, ...remote.keys}.toList()
+        ..sort();
 
-      for (final entry in remote.entries) {
-        final local = File('${vault.root.path}/${entry.key}');
-        if (!await local.exists() ||
-            entry.value.isAfter(await local.lastModified())) {
-          await local.parent.create(recursive: true);
-          await _download(entry.key, local);
-          downloaded.add(entry.key);
-          down++;
-        }
-      }
-
-      for (final file in await _localFiles(vault.root)) {
-        final path = vault.relativePath(file);
-        if (downloaded.contains(path)) continue;
-        final localTime = await file.lastModified();
+      for (final path in allPaths) {
+        final local = localByPath[path] ?? File('${vault.root.path}/$path');
+        final localExists = await local.exists();
         final remoteTime = remote[path];
-        if (remoteTime == null || localTime.isAfter(remoteTime)) {
-          await _upload(path, file);
+        final localTime = localExists ? await local.lastModified() : null;
+        final prev = syncState[path];
+        final localChanged = _isChanged(localTime, prev?.localMillis);
+        final remoteChanged = _isChanged(remoteTime, prev?.remoteMillis);
+        final action = decideSyncAction(
+          localExists: localExists,
+          remoteExists: remoteTime != null,
+          localChanged: localChanged,
+          remoteChanged: remoteChanged,
+          hasSyncCursor: prev != null,
+          localMillis: localTime?.millisecondsSinceEpoch,
+          remoteMillis: remoteTime?.millisecondsSinceEpoch,
+        );
+        DateTime? uploadedRemoteTime;
+        var reason = '';
+        if (action == SyncAction.download) {
+          await local.parent.create(recursive: true);
+          await _download(path, local);
+          down++;
+          reason = localTime == null ? 'local-missing' : 'remote-newer';
+        } else if (action == SyncAction.upload) {
+          await _upload(path, local);
+          uploadedRemoteTime = DateTime.now().toUtc();
           up++;
+          reason = remoteTime == null ? 'remote-missing' : 'local-newer';
+        } else if (action == SyncAction.conflict) {
+          await _saveRemoteConflictCopy(vault, path);
+          conflict++;
+          reason = 'both-changed';
+        } else {
+          skip++;
+          reason = 'no-change';
+        }
+        final nextLocalExists = await local.exists();
+        final nextLocal = nextLocalExists ? await local.lastModified() : null;
+        final nextRemote = uploadedRemoteTime ?? remoteTime;
+        syncState[path] = SyncCursor(
+          localMillis: nextLocal?.millisecondsSinceEpoch,
+          remoteMillis: nextRemote?.millisecondsSinceEpoch,
+        );
+        decisions.add(
+          SyncDecision(
+            path: path,
+            action: action,
+            reason: reason,
+            localMillis: nextLocal?.millisecondsSinceEpoch,
+            remoteMillis: nextRemote?.millisecondsSinceEpoch,
+          ),
+        );
+        if (action == SyncAction.download && path == '.tylog/index.json') {
+          await vault.rebuildIndex();
         }
       }
 
+      await _saveSyncState(vault, syncState);
+      await _appendTrace(
+        vault,
+        SyncTrace(
+          timestamp: DateTime.now().toUtc().toIso8601String(),
+          trigger: trigger,
+          uploaded: up,
+          downloaded: down,
+          skipped: skip,
+          conflicts: conflict,
+          remoteCount: remote.length,
+          decisions: decisions,
+        ),
+      );
       await vault.rebuildIndex();
-      return 'Sync: ↑$up ↓$down, remote ${remote.length}';
+      return 'Sync($trigger): ↑$up ↓$down =$skip !$conflict, remote ${remote.length}';
     } finally {
       _client.close(force: true);
     }
@@ -112,7 +171,10 @@ class NextcloudSync {
   Future<List<File>> _localFiles(Directory root) async {
     final out = <File>[];
     await for (final entity in root.list(recursive: true)) {
-      if (entity is File && !entity.path.endsWith('.tmp')) out.add(entity);
+      if (entity is! File || entity.path.endsWith('.tmp')) continue;
+      final path = _relativePath(root, entity);
+      if (_isSyncInternal(path)) continue;
+      out.add(entity);
     }
     return out;
   }
@@ -137,7 +199,9 @@ class NextcloudSync {
       final href = Uri.decodeComponent(match.group(1)!);
       if (href.endsWith('/')) continue;
       final path = _relativeRemotePath(href);
-      if (path != null) files[path] = HttpDate.parse(match.group(2)!);
+      if (path != null && !_isSyncInternal(path)) {
+        files[path] = HttpDate.parse(match.group(2)!);
+      }
     }
     return files;
   }
@@ -171,6 +235,14 @@ class NextcloudSync {
     await response.pipe(file.openWrite());
   }
 
+  Future<void> _saveRemoteConflictCopy(Vault vault, String path) async {
+    final conflict = File(
+      '${vault.root.path}/$path.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
+    );
+    await conflict.parent.create(recursive: true);
+    await _download(path, conflict);
+  }
+
   Future<void> _ensureParents(String path) async {
     final parts = path.split('/')..removeLast();
     var uri = config.rootUri;
@@ -202,4 +274,158 @@ class NextcloudSync {
     request.headers.set(HttpHeaders.userAgentHeader, 'TyLog WebDAV sync');
     return request;
   }
+
+  bool _isChanged(DateTime? now, int? previousMillis) {
+    if (now == null) return false;
+    if (previousMillis == null) return true;
+    return now.millisecondsSinceEpoch > previousMillis;
+  }
+
+  bool _isSyncInternal(String path) =>
+      path == '.tylog/sync_state.json' || path == '.tylog/sync_trace.jsonl';
+
+  String _relativePath(Directory root, File file) {
+    final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
+        ? root.absolute.path
+        : '${root.absolute.path}${Platform.pathSeparator}';
+    return file.absolute.path
+        .substring(rootPath.length)
+        .replaceAll(Platform.pathSeparator, '/');
+  }
+
+  Future<Map<String, SyncCursor>> _loadSyncState(Vault vault) async {
+    final file = File('${vault.meta.path}/sync_state.json');
+    if (!await file.exists()) return {};
+    final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
+    return (json['cursors'] as Map? ?? const {}).map<String, SyncCursor>(
+      (key, value) => MapEntry(
+        key.toString(),
+        SyncCursor.fromJson((value as Map).cast<String, Object?>()),
+      ),
+    );
+  }
+
+  Future<void> _saveSyncState(
+    Vault vault,
+    Map<String, SyncCursor> state,
+  ) async {
+    final file = File('${vault.meta.path}/sync_state.json');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
+      }),
+      flush: true,
+    );
+  }
+
+  Future<void> _appendTrace(Vault vault, SyncTrace trace) async {
+    final file = File('${vault.meta.path}/sync_trace.jsonl');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      '${jsonEncode(trace.toJson())}\n',
+      mode: FileMode.append,
+      flush: true,
+    );
+  }
+}
+
+enum SyncAction { upload, download, skip, conflict }
+
+SyncAction decideSyncAction({
+  required bool localExists,
+  required bool remoteExists,
+  required bool localChanged,
+  required bool remoteChanged,
+  bool hasSyncCursor = true,
+  int? localMillis,
+  int? remoteMillis,
+}) {
+  if (localExists && !remoteExists) return SyncAction.upload;
+  if (!localExists && remoteExists) return SyncAction.download;
+  if (!localExists && !remoteExists) return SyncAction.skip;
+  if (localChanged && remoteChanged) {
+    if (!hasSyncCursor && localMillis != null && remoteMillis != null) {
+      if (localMillis > remoteMillis) return SyncAction.upload;
+      if (remoteMillis > localMillis) return SyncAction.download;
+    }
+    return SyncAction.conflict;
+  }
+  if (remoteChanged) return SyncAction.download;
+  if (localChanged) return SyncAction.upload;
+  return SyncAction.skip;
+}
+
+class SyncCursor {
+  const SyncCursor({this.localMillis, this.remoteMillis});
+
+  final int? localMillis;
+  final int? remoteMillis;
+
+  factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
+    localMillis: (json['localMillis'] as num?)?.toInt(),
+    remoteMillis: (json['remoteMillis'] as num?)?.toInt(),
+  );
+
+  Map<String, Object?> toJson() => {
+    'localMillis': localMillis,
+    'remoteMillis': remoteMillis,
+  };
+}
+
+class SyncDecision {
+  const SyncDecision({
+    required this.path,
+    required this.action,
+    required this.reason,
+    this.localMillis,
+    this.remoteMillis,
+  });
+
+  final String path;
+  final SyncAction action;
+  final String reason;
+  final int? localMillis;
+  final int? remoteMillis;
+
+  Map<String, Object?> toJson() => {
+    'path': path,
+    'action': action.name,
+    'reason': reason,
+    'localMillis': localMillis,
+    'remoteMillis': remoteMillis,
+  };
+}
+
+class SyncTrace {
+  const SyncTrace({
+    required this.timestamp,
+    required this.trigger,
+    required this.uploaded,
+    required this.downloaded,
+    required this.skipped,
+    required this.conflicts,
+    required this.remoteCount,
+    required this.decisions,
+  });
+
+  final String timestamp;
+  final String trigger;
+  final int uploaded;
+  final int downloaded;
+  final int skipped;
+  final int conflicts;
+  final int remoteCount;
+  final List<SyncDecision> decisions;
+
+  Map<String, Object?> toJson() => {
+    'timestamp': timestamp,
+    'trigger': trigger,
+    'uploaded': uploaded,
+    'downloaded': downloaded,
+    'skipped': skipped,
+    'conflicts': conflicts,
+    'remoteCount': remoteCount,
+    'decisions': decisions.map((d) => d.toJson()).toList(),
+  };
 }

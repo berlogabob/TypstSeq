@@ -44,7 +44,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Vault? vault;
   VaultIndex? index;
   File? note;
@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final sourceController = TextEditingController();
   Timer? autosave;
   Timer? cloudAutosave;
+  Timer? cloudPoll;
   String status = 'Opening vault...';
   bool dirty = false;
   String mode = 'journal';
@@ -69,13 +70,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _open();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     autosave?.cancel();
     cloudAutosave?.cancel();
+    cloudPoll?.cancel();
     sourceController.dispose();
     controller.dispose();
     super.dispose();
@@ -94,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
           status = 'Syncing Nextcloud...';
         });
         try {
-          openStatus = await NextcloudSync(cfg).sync(v);
+          openStatus = await NextcloudSync(cfg).sync(v, trigger: 'startup');
         } catch (e) {
           openStatus = 'Sync failed: $e';
         } finally {
@@ -117,7 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
         cloud = cfg;
         status = '$openStatus · ${report.summary()}';
       });
-      if (cfg != null && cfg.isReady) _queueCloudSync();
+      if (cfg != null && cfg.isReady) {
+        _queueCloudSync();
+        _startCloudPolling();
+      }
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
@@ -153,7 +160,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (cfg == null || !cfg.isReady || syncing) return;
     cloudAutosave?.cancel();
     cloudAutosave = Timer(const Duration(seconds: 2), () {
-      if (!syncing && !dirty) unawaited(_syncNow());
+      if (!syncing && !dirty) unawaited(_syncNow(trigger: 'autosave'));
+    });
+  }
+
+  void _startCloudPolling() {
+    cloudPoll?.cancel();
+    final cfg = cloud;
+    if (cfg == null || !cfg.isReady) return;
+    cloudPoll = Timer.periodic(const Duration(seconds: 25), (_) {
+      if (!syncing && !dirty && mounted) unawaited(_syncNow(trigger: 'poll'));
     });
   }
 
@@ -278,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _syncNow() async {
+  Future<void> _syncNow({String trigger = 'manual'}) async {
     final v = vault;
     final cfg = cloud;
     if (v == null) return;
@@ -293,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
       status = 'Syncing Nextcloud...';
     });
     try {
-      final result = await NextcloudSync(cfg).sync(v);
+      final result = await NextcloudSync(cfg).sync(v, trigger: trigger);
       if (note != null && await note!.exists()) {
         _loadSource(await note!.readAsString());
       }
@@ -367,7 +383,15 @@ class _HomeScreenState extends State<HomeScreen> {
       cloud = saved;
       status = 'Nextcloud saved';
     });
-    unawaited(_syncNow());
+    _startCloudPolling();
+    unawaited(_syncNow(trigger: 'settings'));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncNow(trigger: 'resume'));
+    }
   }
 
   void _showSettings() {
