@@ -1,0 +1,13 @@
+{
+  "tags": {
+    "pkms": {
+      "title": "PKMS",
+      "type": "topic",
+      "aliases": ["knowledge-system"]
+    },
+    "manual": {
+      "title": "Manual",
+      "type": "file-kind"
+    }
+  }
+}

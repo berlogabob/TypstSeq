@@ -8,11 +8,13 @@ void main() {
     final index = VaultIndex(
       notesByPath: {
         'journal/2026-07-01.typ': const NoteRef(
+          id: '2026-07-01',
           path: 'journal/2026-07-01.typ',
           title: 'Today',
           outgoingLinks: ['PKM', 'Missing'],
         ),
         'pages/PKM.typ': const NoteRef(
+          id: 'pkm',
           path: 'pages/PKM.typ',
           title: 'PKM',
           outgoingLinks: ['Today'],

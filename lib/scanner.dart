@@ -7,18 +7,40 @@ final _wikilink = RegExp(r'#wikilink\(\s*"([^"]+)"');
 final _tag = RegExp(r'#tag\(\s*"([^"]+)"\s*\)');
 final _title = RegExp(r'title:\s*"([^"]+)"');
 final _date = RegExp(r'date:\s*"([^"]+)"');
+final _id = RegExp(r'id:\s*"([^"]+)"');
+final _quoted = RegExp(r'"([^"]+)"');
+
+enum LinkResolutionStatus { resolved, unresolved, ambiguous }
+
+class LinkResolution {
+  const LinkResolution({required this.target, required this.status, this.path});
+
+  final String target;
+  final LinkResolutionStatus status;
+  final String? path;
+}
 
 NoteRef scanNote(String relativePath, String source) {
   final stem = relativePath.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+  final tags = <String>{
+    ..._parseList(source, 'tags'),
+    ..._tag.allMatches(source).map((m) => m.group(1)!),
+  }.toList()..sort();
+  final links = <String>{
+    ..._parseList(source, 'links'),
+    ..._wikilink.allMatches(source).map((m) => m.group(1)!),
+  }.toList()..sort();
+  final aliases = [..._parseList(source, 'aliases')]..sort();
+  final fileRefs = [..._parseList(source, 'files')]..sort();
   return NoteRef(
+    id: _id.firstMatch(source)?.group(1) ?? stem,
     path: relativePath,
     title: _title.firstMatch(source)?.group(1) ?? stem,
     date: _date.firstMatch(source)?.group(1),
-    tags: _tag.allMatches(source).map((m) => m.group(1)!).toSet().toList()
-      ..sort(),
-    outgoingLinks:
-        _wikilink.allMatches(source).map((m) => m.group(1)!).toSet().toList()
-          ..sort(),
+    tags: tags,
+    aliases: aliases,
+    outgoingLinks: links,
+    fileRefs: fileRefs,
   );
 }
 
@@ -34,36 +56,90 @@ Future<VaultIndex> scanVault(Directory root) async {
 }
 
 Map<String, List<String>> _backlinks(Map<String, NoteRef> notes) {
-  final byTitle = <String, String>{};
-  for (final note in notes.values) {
-    byTitle[note.title] = note.path;
-    byTitle[note.path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '')] =
-        note.path;
-  }
-
   final backlinks = <String, Set<String>>{};
+  final index = VaultIndex(notesByPath: notes, backlinksByTarget: const {});
   for (final source in notes.values) {
     for (final target in source.outgoingLinks) {
-      final targetPath = byTitle[target] ?? target;
-      backlinks.putIfAbsent(targetPath, () => <String>{}).add(source.path);
+      final resolved = resolveLink(index, target);
+      if (resolved.status == LinkResolutionStatus.resolved &&
+          resolved.path != null) {
+        backlinks
+            .putIfAbsent(resolved.path!, () => <String>{})
+            .add(source.path);
+      }
     }
   }
   return {for (final e in backlinks.entries) e.key: (e.value.toList()..sort())};
 }
 
 String? resolveLinkPath(VaultIndex index, String title) {
-  final notes = index.notes;
-  for (final note in notes) {
-    if (note.title == title) return note.path;
+  final resolved = resolveLink(index, title);
+  return resolved.status == LinkResolutionStatus.resolved
+      ? resolved.path
+      : null;
+}
+
+LinkResolution resolveLink(VaultIndex index, String target) {
+  final lookup = _buildLookup(index.notes);
+  final byId = lookup['id']![target];
+  if (byId != null) return _resolveCandidates(target, byId);
+  final byAlias = lookup['alias']![target];
+  if (byAlias != null) return _resolveCandidates(target, byAlias);
+  final byTitle = lookup['title']![target];
+  if (byTitle != null) return _resolveCandidates(target, byTitle);
+  final byStem = lookup['stem']![target];
+  if (byStem != null) return _resolveCandidates(target, byStem);
+  return LinkResolution(
+    target: target,
+    status: LinkResolutionStatus.unresolved,
+  );
+}
+
+LinkResolution _resolveCandidates(String target, Set<String> candidates) {
+  if (candidates.length == 1) {
+    return LinkResolution(
+      target: target,
+      status: LinkResolutionStatus.resolved,
+      path: candidates.first,
+    );
   }
+  return LinkResolution(target: target, status: LinkResolutionStatus.ambiguous);
+}
+
+Map<String, Map<String, Set<String>>> _buildLookup(List<NoteRef> notes) {
+  final lookup = {
+    'id': <String, Set<String>>{},
+    'alias': <String, Set<String>>{},
+    'title': <String, Set<String>>{},
+    'stem': <String, Set<String>>{},
+  };
   for (final note in notes) {
+    _addLookup(lookup['id']!, note.id, note.path);
+    _addLookup(lookup['title']!, note.title, note.path);
     final stem = note.path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
-    if (stem == title) return note.path;
+    _addLookup(lookup['stem']!, stem, note.path);
+    for (final alias in note.aliases) {
+      _addLookup(lookup['alias']!, alias, note.path);
+    }
   }
-  for (final note in notes) {
-    if (note.aliases.contains(title)) return note.path;
-  }
-  return null;
+  return lookup;
+}
+
+void _addLookup(Map<String, Set<String>> map, String key, String path) {
+  map.putIfAbsent(key, () => <String>{}).add(path);
+}
+
+List<String> _parseList(String source, String field) {
+  final match = RegExp(
+    '$field\\s*:\\s*\\(([^)]*)\\)',
+    dotAll: true,
+  ).firstMatch(source);
+  if (match == null) return const [];
+  return _quoted
+      .allMatches(match.group(1)!)
+      .map((m) => m.group(1)!)
+      .toSet()
+      .toList();
 }
 
 String _relativePath(Directory root, File file) {

@@ -20,6 +20,7 @@ Implemented:
 - Android release APK + macOS debug build
 
 Sample vault: `sample_vault/`
+PKMS smoke fixture: `sample_vault/pkms_fixture/` (uses `.tylog/tags.json` + `.tylog/files.json`)
 
 ## Run
 

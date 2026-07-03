@@ -58,7 +58,7 @@ void main() {
   });
 
   test(
-    'vault handles spaces, non-ascii, external edits, and 100 notes',
+    'vault handles spaces, non-ascii, external edits, and deterministic rebuild',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_hardening_');
       addTearDown(() => dir.delete(recursive: true));
@@ -73,10 +73,10 @@ void main() {
         await vault.page('page with spaces'),
         '#note(title: "page with spaces")',
       );
-      for (var i = 0; i < 100; i++) {
+      for (var i = 0; i < 160; i++) {
         await vault.saveNote(
           await vault.page('n$i'),
-          '#note(title: "n$i")\n#wikilink("n${(i + 1) % 100}")',
+          '#note(id: "n$i", title: "n$i", tags: ("pkms",), links: ("n${(i + 1) % 160}",))\n#wikilink("n${(i + 1) % 160}")',
         );
       }
 
@@ -85,6 +85,9 @@ void main() {
       ).writeAsString('#note(title: "external")\n#wikilink("Моя заметка")');
       final stopwatch = Stopwatch()..start();
       final index = await vault.rebuildIndex();
+      final firstJson = vault.indexFile.readAsStringSync();
+      await vault.rebuildIndex();
+      final secondJson = vault.indexFile.readAsStringSync();
       stopwatch.stop();
 
       expect(index.notesByPath, contains('pages/Моя заметка.typ'));
@@ -94,6 +97,7 @@ void main() {
         index.backlinksByTarget['pages/Моя заметка.typ'],
         contains('pages/external.typ'),
       );
+      expect(firstJson, secondJson);
       expect(stopwatch.elapsedMilliseconds, lessThan(5000));
     },
   );
@@ -130,6 +134,54 @@ void main() {
         contains('journal/2026-07-02.typ'),
       );
       expect(await today.readAsString(), contains('привет!'));
+    },
+  );
+
+  test(
+    'pkms smoke gate: note->tag->file->backlink flow remains rebuildable',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_pkms_smoke_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await Directory('${dir.path}/assets').create();
+      await File('${dir.path}/assets/manual.pdf').writeAsString('pdf');
+      await File('${dir.path}/.tylog/tags.json').writeAsString('''
+{
+  "tags": {
+    "pkms": {"title": "PKMS", "type": "topic"},
+    "manual": {"title": "Manual", "type": "file-kind"}
+  }
+}
+''');
+      await File('${dir.path}/.tylog/files.json').writeAsString('''
+{
+  "files": {
+    "manual-doc": {
+      "path": "assets/manual.pdf",
+      "kind": "pdf",
+      "status": "reference",
+      "tags": ["pkms", "manual"]
+    }
+  }
+}
+''');
+
+      final source =
+          '#note(id: "root", title: "Root", tags: ("pkms",), links: ("child",), files: ("manual-doc",))\n#wikilink("child")';
+      final child = '#note(id: "child", title: "Child", tags: ("pkms",))';
+      await vault.saveNote(await vault.page('Root'), source);
+      await vault.saveNote(await vault.page('Child'), child);
+
+      final first = await vault.rebuildIndex();
+      final firstJson = await vault.indexFile.readAsString();
+      await vault.indexFile.delete();
+      final second = await vault.rebuildIndex();
+      final secondJson = await vault.indexFile.readAsString();
+
+      expect(first.notesByPath['pages/Root.typ']!.fileRefs, ['manual-doc']);
+      expect(second.backlinksByTarget['pages/Child.typ'], ['pages/Root.typ']);
+      expect(firstJson, secondJson);
     },
   );
 }

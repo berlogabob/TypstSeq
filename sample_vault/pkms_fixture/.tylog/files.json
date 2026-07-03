@@ -1,0 +1,12 @@
+{
+  "files": {
+    "manual-doc": {
+      "title": "Typst PKMS Manual",
+      "path": "assets/manual.pdf",
+      "kind": "pdf",
+      "status": "reference",
+      "tags": ["pkms", "manual"],
+      "notes": ["root-note"]
+    }
+  }
+}

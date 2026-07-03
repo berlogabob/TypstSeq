@@ -9,6 +9,7 @@ import 'package:typst_flutter/typst_flutter.dart';
 import 'graph.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
+import 'pkms_registry.dart';
 import 'scanner.dart';
 import 'vault.dart';
 
@@ -57,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String previewSource = '';
   String hiddenSystemPrefix = '';
   NextcloudConfig? cloud;
+  PkmsTagRegistry tags = PkmsTagRegistry.empty;
+  PkmsFileRegistry files = PkmsFileRegistry.empty;
+  PkmsValidationReport? validation;
+  String? selectedTag;
   bool syncing = false;
   bool leftPanelOpen = true;
   bool rightPanelOpen = true;
@@ -98,13 +103,19 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
+      final loadedTags = await loadTagRegistry(v.root);
+      final loadedFiles = await loadFileRegistry(v.root);
+      final report = await validatePkms(v.root, ix);
       _loadSource(await today.readAsString());
       setState(() {
         vault = v;
         note = today;
         index = ix;
+        tags = loadedTags;
+        files = loadedFiles;
+        validation = report;
         cloud = cfg;
-        status = openStatus;
+        status = '$openStatus · ${report.summary()}';
       });
       if (cfg != null && cfg.isReady) _queueCloudSync();
     } catch (e) {
@@ -120,10 +131,16 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await v.saveNote(n, _currentSource());
       final ix = await v.rebuildIndex();
+      final loadedTags = await loadTagRegistry(v.root);
+      final loadedFiles = await loadFileRegistry(v.root);
+      final report = await validatePkms(v.root, ix);
       setState(() {
         index = ix;
+        tags = loadedTags;
+        files = loadedFiles;
+        validation = report;
         dirty = false;
-        status = 'Saved ${v.relativePath(n)}';
+        status = 'Saved ${v.relativePath(n)} · ${report.summary()}';
       });
       if (syncAfter) _queueCloudSync();
     } catch (e) {
@@ -238,13 +255,26 @@ class _HomeScreenState extends State<HomeScreen> {
     return ix == null ? null : resolveLinkPath(ix, title);
   }
 
+  LinkResolution _resolveLink(String title) {
+    final ix = index;
+    return ix == null
+        ? LinkResolution(target: title, status: LinkResolutionStatus.unresolved)
+        : resolveLink(ix, title);
+  }
+
   Future<void> _rebuildIndex() async {
     final v = vault;
     if (v == null) return;
     final ix = await v.rebuildIndex();
+    final loadedTags = await loadTagRegistry(v.root);
+    final loadedFiles = await loadFileRegistry(v.root);
+    final report = await validatePkms(v.root, ix);
     setState(() {
       index = ix;
-      status = 'Index rebuilt';
+      tags = loadedTags;
+      files = loadedFiles;
+      validation = report;
+      status = 'Index rebuilt · ${report.summary()}';
     });
   }
 
@@ -268,9 +298,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadSource(await note!.readAsString());
       }
       final ix = await v.rebuildIndex();
+      final loadedTags = await loadTagRegistry(v.root);
+      final loadedFiles = await loadFileRegistry(v.root);
+      final report = await validatePkms(v.root, ix);
       setState(() {
         index = ix;
-        status = result;
+        tags = loadedTags;
+        files = loadedFiles;
+        validation = report;
+        status = '$result · ${report.summary()}';
       });
     } catch (e) {
       setState(() => status = 'Sync failed: $e');
@@ -428,11 +464,13 @@ class _HomeScreenState extends State<HomeScreen> {
       status: status,
       current: current,
       index: index,
+      selectedTag: selectedTag,
       onOpenToday: _openToday,
       onNewPage: _newPage,
       onRebuildIndex: _rebuildIndex,
       onSync: syncing ? null : _syncNow,
       onSettings: _showSettings,
+      onSelectTag: (value) => setState(() => selectedTag = value),
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
     );
@@ -440,8 +478,12 @@ class _HomeScreenState extends State<HomeScreen> {
       current: current,
       outgoing: outgoing,
       backlinks: backlinks,
+      fileRefs: current == null
+          ? const <String>[]
+          : index?.notesByPath[current]?.fileRefs ?? const <String>[],
       index: index,
-      pathForLink: _pathForLink,
+      files: files,
+      resolveLink: _resolveLink,
       onOpenLink: _openLink,
       onOpenPath: _openPath,
     );
@@ -669,88 +711,125 @@ class _PagesPanel extends StatelessWidget {
     required this.status,
     required this.current,
     required this.index,
+    required this.selectedTag,
     required this.onOpenToday,
     required this.onNewPage,
     required this.onRebuildIndex,
     required this.onSync,
     required this.onSettings,
+    required this.onSelectTag,
     required this.onOpenNote,
   });
 
   final String status;
   final String? current;
   final VaultIndex? index;
+  final String? selectedTag;
   final VoidCallback onOpenToday;
   final VoidCallback onNewPage;
   final VoidCallback onRebuildIndex;
   final VoidCallback? onSync;
   final VoidCallback onSettings;
+  final ValueChanged<String?> onSelectTag;
   final ValueChanged<NoteRef> onOpenNote;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.surfaceContainer,
-    child: ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Text('Journal', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text(status, maxLines: 2, overflow: TextOverflow.ellipsis),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: onOpenToday,
-          icon: const Icon(Icons.today),
-          label: const Text('Today'),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: onNewPage,
-          icon: const Icon(Icons.add),
-          label: const Text('New page'),
-        ),
-        TextButton.icon(
-          onPressed: onSync,
-          icon: const Icon(Icons.sync),
-          label: const Text('Sync'),
-        ),
-        TextButton.icon(
-          onPressed: onRebuildIndex,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Rebuild index'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.settings),
-          title: const Text('Settings'),
-          onTap: onSettings,
-        ),
-        const Divider(height: 28),
-        Text('Pages', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 4),
-        for (final item in index?.notes ?? const <NoteRef>[])
-          ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            leading: Icon(
-              item.path.startsWith('journal/') ? Icons.today : Icons.notes,
-            ),
-            title: Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              item.path,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            selected: item.path == current,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            onTap: () => onOpenNote(item),
+  Widget build(BuildContext context) {
+    final tags = <String>{
+      for (final note in index?.notes ?? const <NoteRef>[]) ...note.tags,
+    }.toList()..sort();
+    final notes = (index?.notes ?? const <NoteRef>[])
+        .where(
+          (note) =>
+              selectedTag == null ||
+              selectedTag!.isEmpty ||
+              note.tags.contains(selectedTag),
+        )
+        .toList();
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Text('Journal', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(status, maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: onOpenToday,
+            icon: const Icon(Icons.today),
+            label: const Text('Today'),
           ),
-      ],
-    ),
-  );
+          FilledButton.tonalIcon(
+            onPressed: onNewPage,
+            icon: const Icon(Icons.add),
+            label: const Text('New page'),
+          ),
+          TextButton.icon(
+            onPressed: onSync,
+            icon: const Icon(Icons.sync),
+            label: const Text('Sync'),
+          ),
+          TextButton.icon(
+            onPressed: onRebuildIndex,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Rebuild index'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Settings'),
+            onTap: onSettings,
+          ),
+          const Divider(height: 28),
+          Text('Pages', style: Theme.of(context).textTheme.labelLarge),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: selectedTag == null,
+                  onSelected: (_) => onSelectTag(null),
+                ),
+                for (final tag in tags)
+                  ChoiceChip(
+                    label: Text('#$tag'),
+                    selected: selectedTag == tag,
+                    onSelected: (_) => onSelectTag(tag),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 4),
+          for (final item in notes)
+            ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              leading: Icon(
+                item.path.startsWith('journal/') ? Icons.today : Icons.notes,
+              ),
+              title: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                item.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected: item.path == current,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              onTap: () => onOpenNote(item),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _LinksPanel extends StatelessWidget {
@@ -758,8 +837,10 @@ class _LinksPanel extends StatelessWidget {
     required this.current,
     required this.outgoing,
     required this.backlinks,
+    required this.fileRefs,
     required this.index,
-    required this.pathForLink,
+    required this.files,
+    required this.resolveLink,
     required this.onOpenLink,
     required this.onOpenPath,
   });
@@ -767,8 +848,10 @@ class _LinksPanel extends StatelessWidget {
   final String? current;
   final List<String> outgoing;
   final List<String> backlinks;
+  final List<String> fileRefs;
   final VaultIndex? index;
-  final String? Function(String title) pathForLink;
+  final PkmsFileRegistry files;
+  final LinkResolution Function(String title) resolveLink;
   final ValueChanged<String> onOpenLink;
   final ValueChanged<String> onOpenPath;
 
@@ -785,17 +868,47 @@ class _LinksPanel extends StatelessWidget {
         _SectionTitle('Outgoing'),
         if (outgoing.isEmpty) const _EmptyHint('No links from this page yet.'),
         for (final link in outgoing)
+          Builder(
+            builder: (context) {
+              final resolved = resolveLink(link);
+              final icon = switch (resolved.status) {
+                LinkResolutionStatus.resolved => Icons.open_in_new,
+                LinkResolutionStatus.ambiguous => Icons.error_outline,
+                LinkResolutionStatus.unresolved => Icons.add,
+              };
+              final subtitle = switch (resolved.status) {
+                LinkResolutionStatus.resolved => resolved.path!,
+                LinkResolutionStatus.ambiguous => 'Ambiguous target',
+                LinkResolutionStatus.unresolved => 'Unresolved',
+              };
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                title: Text(link),
+                subtitle: Text(subtitle),
+                trailing: Icon(icon),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: resolved.status == LinkResolutionStatus.ambiguous
+                    ? null
+                    : () => onOpenLink(link),
+              );
+            },
+          ),
+        const Divider(height: 28),
+        _SectionTitle('Linked files'),
+        if (fileRefs.isEmpty) const _EmptyHint('No linked files on this note.'),
+        for (final id in fileRefs)
           ListTile(
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            title: Text(link),
-            trailing: Icon(
-              pathForLink(link) == null ? Icons.add : Icons.open_in_new,
-            ),
+            leading: const Icon(Icons.attach_file),
+            title: Text(files.files[id]?.displayTitle ?? id),
+            subtitle: Text(files.files[id]?.path ?? 'Unknown file id'),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            onTap: () => onOpenLink(link),
           ),
         const Divider(height: 28),
         _SectionTitle('Backlinks'),

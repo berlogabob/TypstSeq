@@ -798,3 +798,104 @@ Current progress:
 Next action:
 - [x] release MVP `v1.0.0+6`
 - [ ] collect real-device feedback before adding more features
+
+## 21. PKMS v2 schema contract (issue #28)
+
+This is the canonical contract for PKMS work tracked by #22.
+
+### 21.1 Note metadata
+
+Required:
+- `id` (stable string id, unique in vault)
+- `title` (human readable)
+- `tags` (list of canonical tag slugs)
+- `links` (list of note targets by id/alias/title token)
+
+Optional:
+- `aliases` (list of alternate lookup strings)
+- `files` (list of file registry ids)
+
+Example:
+
+```typst
+#note(
+  id: "20260703-pkms-schema",
+  title: "PKMS schema contract",
+  tags: ("pkms", "architecture"),
+  aliases: ("pkms-contract",),
+  links: ("20260703-link-resolution",),
+  files: ("typst-docs-ref",),
+)
+```
+
+### 21.2 File registry metadata
+
+Required:
+- `id` (stable key)
+- `path` (vault-relative file path)
+- `kind` (file kind, e.g. `pdf`, `image`, `audio`)
+- `status` (lifecycle, e.g. `raw`, `reference`, `archived`)
+- `tags` (list of canonical tag slugs)
+
+Optional:
+- `notes` (list of note ids that reference this file)
+
+Example:
+
+```yaml
+files:
+  typst-docs-ref:
+    path: assets/references/typst-reference.pdf
+    kind: pdf
+    status: reference
+    tags: [pkms, typst]
+    notes: [20260703-pkms-schema]
+```
+
+### 21.3 Tag registry metadata
+
+Required:
+- `slug` (canonical tag key)
+- `title` (display name)
+- `type` (classification: `topic`, `status`, `project`, `file-kind`)
+
+Optional:
+- `aliases` (alternate forms)
+
+Example:
+
+```yaml
+tags:
+  pkms:
+    title: PKMS
+    type: topic
+    aliases: [knowledge-system]
+```
+
+### 21.4 Link resolution order
+
+Resolution order (first match wins):
+1. exact note `id`
+2. exact note alias
+3. exact note title
+4. exact filename stem
+5. unresolved
+
+Examples:
+- `#wikilink("20260703-pkms-schema")` -> resolves by exact id.
+- `#wikilink("pkms-contract")` -> resolves by alias to `20260703-pkms-schema`.
+- `#wikilink("Overview")` where multiple notes share title -> unresolved as ambiguous, no implicit pick.
+
+## 22. PKMS smoke/release gate (issue #32)
+
+Release gate is pass/fail, not "looks fine":
+
+1. Create/open a root note with `id`, `tags`, `links`, and `files`.
+2. Resolve link to child note by id/alias path.
+3. Rebuild index twice; resulting `.tylog/index.json` must be deterministic.
+4. Backlink map must include `child <- root`.
+5. Validator summary must report counts for unknown tags, duplicate aliases, missing files.
+
+Current measurable threshold:
+- Scale sanity: rebuild on 160 generated notes within 5 seconds in test environment.
+- Determinism: two consecutive rebuilds must produce byte-identical `index.json`.

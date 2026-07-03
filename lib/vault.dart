@@ -47,7 +47,7 @@ class Vault {
     if (!await file.exists()) {
       await _writeFile(
         file,
-        _noteSource(title: day, date: day, tag: 'journal'),
+        _noteSource(id: day, title: day, date: day, tag: 'journal'),
       );
     }
     return file;
@@ -57,7 +57,9 @@ class Vault {
     final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
     if (safe.isEmpty) throw ArgumentError('Page title is empty');
     final file = File('${pages.path}/$safe.typ');
-    if (!await file.exists()) await _writeFile(file, _noteSource(title: safe));
+    if (!await file.exists()) {
+      await _writeFile(file, _noteSource(id: safe, title: safe));
+    }
     return file;
   }
 
@@ -122,10 +124,16 @@ Future<void> _writeFile(Object a, Object b) async {
 String _day(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-String _noteSource({required String title, String? date, String? tag}) =>
+String _noteSource({
+  required String id,
+  required String title,
+  String? date,
+  String? tag,
+}) =>
     '''#import "/.tylog/tylog.typ": *
 
 #note(
+  id: "$id",
   title: "$title",${date == null ? '' : '\n  date: "$date",'}${tag == null ? '' : '\n  tags: ("$tag",),'}
 )
 
@@ -133,8 +141,15 @@ String _noteSource({required String title, String? date, String? tag}) =>
 
 ''';
 
-const tylogHelperSource =
-    '''#let note(title: none, date: none, tags: (), aliases: ()) = none
+const tylogHelperSource = '''#let note(
+  id: none,
+  title: none,
+  date: none,
+  tags: (),
+  aliases: (),
+  links: (),
+  files: (),
+) = none
 
 #let wikilink(target, display: none) = {
   if display == none { target } else { display }
