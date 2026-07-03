@@ -89,22 +89,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final cfg = await NextcloudConfig.load();
       final v = await Vault.openDefault();
-      var openStatus = 'Vault: ${v.root.path}';
-      if (cfg != null && cfg.isReady) {
-        setState(() {
-          vault = v;
-          cloud = cfg;
-          syncing = true;
-          status = 'Syncing Nextcloud...';
-        });
-        try {
-          openStatus = await NextcloudSync(cfg).sync(v, trigger: 'startup');
-        } catch (e) {
-          openStatus = 'Sync failed: $e';
-        } finally {
-          syncing = false;
-        }
-      }
+      // ponytail: offline-first — render local vault immediately, sync in background
+      final openStatus = 'Vault: ${v.root.path}';
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
       final loadedTags = await loadTagRegistry(v.root);
@@ -122,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         status = '$openStatus · ${report.summary()}';
       });
       if (cfg != null && cfg.isReady) {
-        _queueCloudSync();
+        unawaited(_syncNow(trigger: 'startup'));
         _startCloudPolling();
       }
     } catch (e) {
