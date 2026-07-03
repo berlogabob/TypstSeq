@@ -12,8 +12,9 @@ void main() {
     expect(find.byTooltip('Source'), findsOneWidget);
     expect(find.byTooltip('Preview'), findsOneWidget);
     expect(find.byTooltip('Graph'), findsOneWidget);
-    expect(find.byTooltip('Settings'), findsOneWidget);
-    expect(find.byTooltip('New page'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsNothing);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.byTooltip('Quick actions'), findsOneWidget);
   });
 
   testWidgets('settings menu shows real app data', (tester) async {
@@ -22,16 +23,28 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Settings'));
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Settings'), findsWidgets);
     expect(find.text('Local folder'), findsOneWidget);
     expect(find.text('Nextcloud settings'), findsOneWidget);
     expect(find.text('Sync server status'), findsOneWidget);
     expect(find.text('App version'), findsOneWidget);
     await tester.pump();
     expect(find.text(version), findsOneWidget);
+  });
+
+  testWidgets('source preview actions toggle both ways', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Source'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Preview'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {

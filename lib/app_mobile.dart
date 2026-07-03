@@ -351,6 +351,44 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showQuickActions() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.today),
+              title: const Text('Today'),
+              onTap: () {
+                Navigator.pop(context);
+                _openToday();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('New page'),
+              onTap: () {
+                Navigator.pop(context);
+                _newPage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _showSettings();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
@@ -394,6 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onNewPage: _newPage,
       onRebuildIndex: _rebuildIndex,
       onSync: syncing ? null : _syncNow,
+      onSettings: _showSettings,
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
     );
@@ -510,18 +549,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: const Icon(Icons.sync),
                   tooltip: 'Sync',
                 ),
-                IconButton(
-                  onPressed: _showSettings,
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'Settings',
-                ),
               ],
-              if (compact)
-                IconButton(
-                  onPressed: _showSettings,
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'Settings',
-                ),
               if (compact)
                 IconButton(
                   onPressed: _showSource,
@@ -575,11 +603,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 )
               : null,
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: _newPage,
-            icon: const Icon(Icons.add),
-            label: const Text('New page'),
-            tooltip: 'New page',
+          floatingActionButton: FloatingActionButton(
+            onPressed: _showQuickActions,
+            tooltip: 'Quick actions',
+            child: const Icon(Icons.add),
           ),
         );
       },
@@ -646,6 +673,7 @@ class _PagesPanel extends StatelessWidget {
     required this.onNewPage,
     required this.onRebuildIndex,
     required this.onSync,
+    required this.onSettings,
     required this.onOpenNote,
   });
 
@@ -656,6 +684,7 @@ class _PagesPanel extends StatelessWidget {
   final VoidCallback onNewPage;
   final VoidCallback onRebuildIndex;
   final VoidCallback? onSync;
+  final VoidCallback onSettings;
   final ValueChanged<NoteRef> onOpenNote;
 
   @override
@@ -687,6 +716,11 @@ class _PagesPanel extends StatelessWidget {
           onPressed: onRebuildIndex,
           icon: const Icon(Icons.refresh),
           label: const Text('Rebuild index'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings),
+          title: const Text('Settings'),
+          onTap: onSettings,
         ),
         const Divider(height: 28),
         Text('Pages', style: Theme.of(context).textTheme.labelLarge),
