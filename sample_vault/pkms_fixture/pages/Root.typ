@@ -1,3 +1,5 @@
+#import "/.tylog/tylog.typ": *
+
 #note(
   id: "root-note",
   title: "Root note",

@@ -80,4 +80,15 @@ void main() {
       SyncAction.skip,
     );
   });
+
+  test('sync excludes derived caches but keeps durable PKMS registries', () {
+    expect(isSyncInternalPath('.tylog/index.json'), isTrue);
+    expect(isSyncInternalPath('.tylog/search-index.json.gz'), isTrue);
+    expect(isSyncInternalPath('.tylog/tylog.typ'), isTrue);
+    expect(isSyncInternalPath('.tylog/backups/123/pages/a.typ'), isTrue);
+    expect(isSyncInternalPath('.tylog/tags.json'), isFalse);
+    expect(isSyncInternalPath('.tylog/files.json'), isFalse);
+    expect(isSyncInternalPath('.tylog/collections.json'), isFalse);
+    expect(isSyncInternalPath('.tylog/templates/article.typ'), isFalse);
+  });
 }

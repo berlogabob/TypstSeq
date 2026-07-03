@@ -5,13 +5,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'graph.dart';
+import 'knowledge_screen.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
+import 'pkms_publisher.dart';
 import 'pkms_registry.dart';
 import 'scanner.dart';
+import 'search_index.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 
@@ -60,12 +64,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String mode = 'journal';
   String previewSource = '';
   String hiddenSystemPrefix = '';
+  String helperSource = tylogHelperSource;
   NextcloudConfig? cloud;
   PkmsTagRegistry tags = PkmsTagRegistry.empty;
   PkmsFileRegistry files = PkmsFileRegistry.empty;
+  PkmsCollectionRegistry collections = PkmsCollectionRegistry.empty;
+  PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
   String? selectedTag;
   bool syncing = false;
+  bool rebuilding = false;
+  bool cancelRebuild = false;
+  double? rebuildProgress;
   bool leftPanelOpen = true;
   bool rightPanelOpen = true;
   VaultRegistry? vaultRegistry;
@@ -109,20 +119,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final openStatus = 'Vault: ${v.root.path}';
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
-      final loadedTags = await loadTagRegistry(v.root);
-      final loadedFiles = await loadFileRegistry(v.root);
-      final report = await validatePkms(v.root, ix);
+      final pkms = await _readPkms(v, ix);
+      final loadedHelper = await v.helperFile.readAsString();
       _loadSource(await today.readAsString());
       setState(() {
         vault = v;
         note = today;
-        index = ix;
-        tags = loadedTags;
-        files = loadedFiles;
-        validation = report;
+        index = _retainIndex(ix);
+        tags = pkms.data.tags;
+        files = pkms.data.files;
+        collections = pkms.data.collections;
+        validation = _retainValidation(pkms.report);
+        searchIndex = pkms.search;
+        helperSource = loadedHelper;
         cloud = entry.cloud;
         selectedTag = null;
-        status = '$openStatus · ${report.summary()}';
+        status = '$openStatus · ${pkms.report.summary()}';
       });
       if (entry.cloud != null && entry.cloud!.isReady) {
         if (trigger != null) unawaited(_syncNow(trigger: trigger));
@@ -131,6 +143,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
+  }
+
+  Future<({PkmsData data, PkmsValidationReport report, PkmsSearchIndex search})>
+  _readPkms(Vault v, VaultIndex ix) async {
+    final data = await loadPkmsData(v.root);
+    final report = await validatePkms(v.root, ix, data: data);
+    final cached = await PkmsSearchIndex.load(v.searchIndexFile);
+    final search = await PkmsSearchIndex.build(
+      v.root,
+      ix,
+      data.files,
+      previous: cached,
+    );
+    await search.save(v.searchIndexFile);
+    return (data: data, report: report, search: search);
   }
 
   Future<void> _switchVault(VaultEntry entry) async {
@@ -277,16 +304,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await v.saveNote(n, _currentSource());
       final ix = await v.rebuildIndex();
-      final loadedTags = await loadTagRegistry(v.root);
-      final loadedFiles = await loadFileRegistry(v.root);
-      final report = await validatePkms(v.root, ix);
+      final pkms = await _readPkms(v, ix);
       setState(() {
-        index = ix;
-        tags = loadedTags;
-        files = loadedFiles;
-        validation = report;
+        index = _retainIndex(ix);
+        tags.tags
+          ..clear()
+          ..addAll(pkms.data.tags.tags);
+        files.files
+          ..clear()
+          ..addAll(pkms.data.files.files);
+        collections.collections
+          ..clear()
+          ..addAll(pkms.data.collections.collections);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
         dirty = false;
-        status = 'Saved ${v.relativePath(n)} · ${report.summary()}';
+        status = 'Saved ${v.relativePath(n)} · ${pkms.report.summary()}';
       });
       if (syncAfter) _queueCloudSync();
     } catch (e) {
@@ -369,14 +402,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final title = await _askPageTitle();
     if (title == null || title.trim().isEmpty) return;
+    final template = await _chooseTemplate(v);
     if (dirty) await _save();
-    final file = await v.page(title);
+    final file = await v.page(title, template: template);
     final ix = await v.rebuildIndex();
     await _openNote(file);
     setState(() {
       index = ix;
       status = 'Created ${v.relativePath(file)}';
     });
+  }
+
+  Future<File?> _chooseTemplate(Vault v) async {
+    final templates = await v.templates
+        .list()
+        .where((entity) => entity is File && entity.path.endsWith('.typ'))
+        .cast<File>()
+        .toList();
+    templates.sort((a, b) => a.path.compareTo(b.path));
+    if (templates.isEmpty) return null;
+    if (!mounted) return null;
+    return showDialog<File?>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose template'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Blank note'),
+          ),
+          for (final file in templates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, file),
+              child: Text(file.path.split(Platform.pathSeparator).last),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _askPageTitle() {
@@ -405,6 +467,485 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _editCurrentMetadata() async {
+    final v = vault;
+    final ix = index;
+    final n = note;
+    if (v == null || ix == null || n == null) return;
+    final path = v.relativePath(n);
+    final current = ix.notesByPath[path];
+    if (current == null) return;
+    if (current.metadataSource != 'typst-query') {
+      final convert = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Convert metadata header?'),
+          content: const Text(
+            'This legacy or dynamic header could not be verified by Typst. Saving will replace only the metadata call with a canonical literal header; the note body is preserved.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Convert'),
+            ),
+          ],
+        ),
+      );
+      if (convert != true) return;
+      if (!mounted) return;
+    }
+    final title = TextEditingController(text: current.title);
+    final tagsText = TextEditingController(text: current.tags.join(', '));
+    final aliases = TextEditingController(text: current.aliases.join(', '));
+    final links = TextEditingController(text: current.outgoingLinks.join(', '));
+    final fileRefs = TextEditingController(text: current.fileRefs.join(', '));
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit note metadata'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText('ID: ${current.id}'),
+              TextField(
+                controller: title,
+                decoration: const InputDecoration(labelText: 'Title'),
+              ),
+              TextField(
+                controller: tagsText,
+                decoration: const InputDecoration(
+                  labelText: 'Tags, comma-separated',
+                ),
+              ),
+              TextField(
+                controller: aliases,
+                decoration: const InputDecoration(
+                  labelText: 'Aliases, comma-separated',
+                ),
+              ),
+              TextField(
+                controller: links,
+                decoration: const InputDecoration(
+                  labelText: 'Linked note IDs, comma-separated',
+                ),
+              ),
+              TextField(
+                controller: fileRefs,
+                decoration: const InputDecoration(
+                  labelText: 'File IDs, comma-separated',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      final updated = replaceNoteHeader(
+        _currentSource(),
+        NoteMetadataDraft(
+          id: current.id,
+          title: title.text.trim(),
+          date: current.date,
+          tags: _csvValues(tagsText.text),
+          aliases: _csvValues(aliases.text),
+          links: _csvValues(links.text),
+          files: _csvValues(fileRefs.text),
+        ),
+      );
+      _loadSource(updated);
+      dirty = true;
+      await _save();
+    }
+    for (final value in [title, tagsText, aliases, links, fileRefs]) {
+      value.dispose();
+    }
+  }
+
+  Future<void> _showKnowledge() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => KnowledgeScreen(
+          index: ix,
+          search: searchIndex,
+          tags: tags,
+          files: files,
+          collections: collections,
+          problems: validation?.problems ?? ix.problems,
+          onOpenNote: _openPath,
+          onOpenFile: _openRegisteredFile,
+          onSaveTag: _saveTag,
+          onDeleteTag: _deleteTag,
+          onMergeTag: _mergeTag,
+          onImportFile: _importFile,
+          onSaveFile: _saveFile,
+          onDeleteFile: _deleteFile,
+          onSaveCollection: _saveCollection,
+          onExportCollection: _exportCollection,
+          onMigrateLegacy: _migrateLegacyNotes,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveTag(PkmsTagEntry entry) async {
+    final v = vault;
+    if (v == null) return;
+    if (_registryBlocked('tags-registry-invalid')) return;
+    tags.tags[entry.slug] = entry;
+    await saveTagRegistry(v.root, tags);
+    await _refreshPkms('Tag saved');
+  }
+
+  Future<void> _deleteTag(String slug) async {
+    if (_registryBlocked('tags-registry-invalid')) return;
+    final inUse =
+        (index?.notes.any((note) => note.tags.contains(slug)) ?? false) ||
+        files.files.values.any((file) => file.tags.contains(slug));
+    if (inUse) {
+      setState(() => status = 'Cannot delete #$slug while it is in use');
+      return;
+    }
+    final v = vault;
+    if (v == null) return;
+    tags.tags.remove(slug);
+    await saveTagRegistry(v.root, tags);
+    await _refreshPkms('Tag deleted');
+  }
+
+  Future<void> _mergeTag(String from, String to) async {
+    final v = vault;
+    final ix = index;
+    if (_registryBlocked('tags-registry-invalid') ||
+        _registryBlocked('files-registry-invalid')) {
+      return;
+    }
+    if (v == null || ix == null || from == to || !tags.tags.containsKey(to)) {
+      return;
+    }
+    final affected = ix.notes
+        .where((note) => note.tags.contains(from))
+        .toList();
+    final backup = Directory(
+      '${v.meta.path}/backups/${DateTime.now().millisecondsSinceEpoch}',
+    );
+    for (final noteRef in affected) {
+      final file = File('${v.root.path}/${noteRef.path}');
+      final original = await file.readAsString();
+      final backupFile = File('${backup.path}/${noteRef.path}');
+      await backupFile.parent.create(recursive: true);
+      await file.copy(backupFile.path);
+      var source = original;
+      final inline = locateTypstCalls(source, names: const {'tag'})
+          .where(
+            (call) => RegExp(
+              '#tag\\(\\s*"${RegExp.escape(from)}"',
+            ).hasMatch(call.source),
+          )
+          .toList()
+          .reversed;
+      for (final call in inline) {
+        source = source.replaceRange(call.start, call.end, '#tag("$to")');
+      }
+      final nextTags =
+          noteRef.tags.map((tag) => tag == from ? to : tag).toSet().toList()
+            ..sort();
+      await v.saveNote(
+        file,
+        replaceNoteHeader(
+          source,
+          NoteMetadataDraft(
+            id: noteRef.id,
+            title: noteRef.title,
+            date: noteRef.date,
+            tags: nextTags,
+            aliases: noteRef.aliases,
+            links: noteRef.outgoingLinks,
+            files: noteRef.fileRefs,
+          ),
+        ),
+      );
+    }
+    for (final entry in files.files.entries.toList()) {
+      if (!entry.value.tags.contains(from)) continue;
+      final nextTags =
+          entry.value.tags.map((tag) => tag == from ? to : tag).toSet().toList()
+            ..sort();
+      files.files[entry.key] = entry.value.copyWith(tags: nextTags);
+    }
+    tags.tags.remove(from);
+    await saveTagRegistry(v.root, tags);
+    await saveFileRegistry(v.root, files);
+    await _rebuildIndex();
+    if (mounted) {
+      setState(
+        () => status = 'Merged #$from into #$to; backup: ${backup.path}',
+      );
+    }
+  }
+
+  Future<void> _importFile() async {
+    final v = vault;
+    if (v == null) return;
+    if (_registryBlocked('files-registry-invalid')) return;
+    final picked = await FilePicker.platform.pickFiles();
+    final sourcePath = picked?.files.single.path;
+    if (sourcePath == null) return;
+    final source = File(sourcePath);
+    final original = source.path.split(Platform.pathSeparator).last;
+    var targetName = original;
+    var suffix = 2;
+    while (await File('${v.assets.path}/$targetName').exists()) {
+      final dot = original.lastIndexOf('.');
+      targetName = dot < 0
+          ? '$original-${suffix++}'
+          : '${original.substring(0, dot)}-${suffix++}${original.substring(dot)}';
+    }
+    await v.assets.create(recursive: true);
+    await source.copy('${v.assets.path}/$targetName');
+    var id = _slugValue(targetName.replaceFirst(RegExp(r'\.[^.]+$'), ''));
+    if (id.isEmpty) id = DateTime.now().millisecondsSinceEpoch.toString();
+    final base = id;
+    suffix = 2;
+    while (files.files.containsKey(id)) {
+      id = '$base-${suffix++}';
+    }
+    files.files[id] = PkmsFileEntry(
+      id: id,
+      path: 'assets/$targetName',
+      title: original,
+      kind: original.contains('.')
+          ? original.split('.').last.toLowerCase()
+          : 'file',
+      status: 'reference',
+    );
+    await saveFileRegistry(v.root, files);
+    await _refreshPkms('File imported');
+  }
+
+  Future<void> _saveFile(PkmsFileEntry entry) async {
+    final v = vault;
+    if (v == null || !isSafeVaultPath(entry.path)) return;
+    if (_registryBlocked('files-registry-invalid')) return;
+    files.files[entry.id] = entry;
+    await saveFileRegistry(v.root, files);
+    await _refreshPkms('File metadata saved');
+  }
+
+  Future<void> _deleteFile(String id) async {
+    final v = vault;
+    if (v == null) return;
+    if (_registryBlocked('files-registry-invalid')) return;
+    files.files.remove(id);
+    await saveFileRegistry(v.root, files);
+    await _refreshPkms('File registry entry removed; asset kept');
+  }
+
+  Future<void> _openRegisteredFile(PkmsFileEntry entry) async {
+    final v = vault;
+    if (v == null || !isSafeVaultPath(entry.path)) return;
+    final result = await OpenFile.open('${v.root.path}/${entry.path}');
+    if (result.type != ResultType.done && mounted) {
+      setState(() => status = 'Could not open file: ${result.message}');
+    }
+  }
+
+  Future<void> _saveCollection(PkmsCollectionEntry entry) async {
+    final v = vault;
+    if (v == null) return;
+    if (_registryBlocked('collections-registry-invalid')) return;
+    collections.collections[entry.id] = entry;
+    await saveCollectionRegistry(v.root, collections);
+    await _refreshPkms('Collection saved');
+  }
+
+  Future<void> _exportCollection(PkmsCollectionEntry entry) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    final output = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export collection PDF',
+      fileName: '${_slugValue(entry.title)}.pdf',
+    );
+    if (output == null) return;
+    setState(() => status = 'Exporting ${entry.title}...');
+    try {
+      await exportPkmsCollection(
+        root: v.root,
+        index: ix,
+        files: files,
+        collection: entry,
+        output: File(output),
+      );
+      if (mounted) setState(() => status = 'Exported $output');
+    } catch (error) {
+      if (mounted) setState(() => status = 'Export failed: $error');
+    }
+  }
+
+  Future<void> _migrateLegacyNotes() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    final candidates = <(NoteRef, File, String)>[];
+    for (final noteRef in ix.notes) {
+      final file = File('${v.root.path}/${noteRef.path}');
+      final source = await file.readAsString();
+      final header = locateTypstCalls(
+        source,
+        names: const {'note'},
+      ).firstOrNull?.source;
+      if (header == null || !RegExp(r'\bid\s*:').hasMatch(header)) {
+        candidates.add((noteRef, file, source));
+      }
+    }
+    if (candidates.isEmpty || !mounted) {
+      setState(() => status = 'No legacy note IDs need migration');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Migrate legacy notes?'),
+        content: Text(
+          'Add stable IDs to ${candidates.length} notes. Original files will be copied to a timestamped backup first.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Back up and migrate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final backup = Directory(
+      '${v.meta.path}/backups/${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final usedIds = ix.notes.map((note) => note.id).toSet();
+    for (final (noteRef, file, source) in candidates) {
+      final backupFile = File('${backup.path}/${noteRef.path}');
+      await backupFile.parent.create(recursive: true);
+      await file.copy(backupFile.path);
+      final generated = await v.nextNoteId(
+        noteRef.title,
+        now: await file.lastModified(),
+      );
+      var id = generated;
+      var suffix = 2;
+      while (usedIds.contains(id)) {
+        id = '$generated-${suffix++}';
+      }
+      usedIds.add(id);
+      await v.saveNote(
+        file,
+        replaceNoteHeader(
+          source,
+          NoteMetadataDraft(
+            id: id,
+            title: noteRef.title,
+            date: noteRef.date,
+            tags: noteRef.tags,
+            aliases: noteRef.aliases,
+            links: noteRef.outgoingLinks,
+            files: noteRef.fileRefs,
+          ),
+        ),
+      );
+    }
+    await _rebuildIndex();
+    if (mounted) {
+      setState(
+        () => status =
+            'Migrated ${candidates.length} notes; backup: ${backup.path}',
+      );
+    }
+  }
+
+  Future<void> _refreshPkms(String message) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    final pkms = await _readPkms(v, ix);
+    if (!mounted) return;
+    setState(() {
+      tags.tags
+        ..clear()
+        ..addAll(pkms.data.tags.tags);
+      files.files
+        ..clear()
+        ..addAll(pkms.data.files.files);
+      collections.collections
+        ..clear()
+        ..addAll(pkms.data.collections.collections);
+      validation = _retainValidation(pkms.report);
+      searchIndex.replaceWith(pkms.search);
+      status = '$message · ${pkms.report.summary()}';
+    });
+  }
+
+  bool _registryBlocked(String code) {
+    if (!(validation?.problems.any((problem) => problem.code == code) ??
+        false)) {
+      return false;
+    }
+    setState(
+      () =>
+          status = 'Registry is malformed; repair its JSON before editing it.',
+    );
+    return true;
+  }
+
+  PkmsValidationReport _retainValidation(PkmsValidationReport next) {
+    final current = validation;
+    if (current == null) return next;
+    current.problems
+      ..clear()
+      ..addAll(next.problems);
+    return current;
+  }
+
+  VaultIndex _retainIndex(VaultIndex next) {
+    final current = index;
+    if (current == null || current.version != next.version) return next;
+    current.notesByPath
+      ..clear()
+      ..addAll(next.notesByPath);
+    current.backlinksByTarget
+      ..clear()
+      ..addAll(next.backlinksByTarget);
+    current.fileBacklinksById
+      ..clear()
+      ..addAll(next.fileBacklinksById);
+    current.problems
+      ..clear()
+      ..addAll(next.problems);
+    return current;
+  }
+
   String? _pathForLink(String title) {
     final ix = index;
     return ix == null ? null : resolveLinkPath(ix, title);
@@ -420,17 +961,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _rebuildIndex() async {
     final v = vault;
     if (v == null) return;
-    final ix = await v.rebuildIndex();
-    final loadedTags = await loadTagRegistry(v.root);
-    final loadedFiles = await loadFileRegistry(v.root);
-    final report = await validatePkms(v.root, ix);
+    if (rebuilding) {
+      cancelRebuild = true;
+      return;
+    }
     setState(() {
-      index = ix;
-      tags = loadedTags;
-      files = loadedFiles;
-      validation = report;
-      status = 'Index rebuilt · ${report.summary()}';
+      rebuilding = true;
+      cancelRebuild = false;
+      rebuildProgress = 0;
+      status = 'Rebuilding index...';
     });
+    try {
+      final ix = await v.rebuildIndex(
+        force: true,
+        isCancelled: () => cancelRebuild,
+        onProgress: (complete, total) {
+          if (!mounted || (complete % 100 != 0 && complete != total)) return;
+          setState(() {
+            rebuildProgress = total == 0 ? 1 : complete / total;
+            status = 'Rebuilding index: $complete / $total';
+          });
+        },
+      );
+      final pkms = await _readPkms(v, ix);
+      if (!mounted) return;
+      setState(() {
+        index = _retainIndex(ix);
+        tags.tags
+          ..clear()
+          ..addAll(pkms.data.tags.tags);
+        files.files
+          ..clear()
+          ..addAll(pkms.data.files.files);
+        collections.collections
+          ..clear()
+          ..addAll(pkms.data.collections.collections);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
+        status = 'Index rebuilt · ${pkms.report.summary()}';
+      });
+    } on IndexBuildCancelled {
+      if (mounted) setState(() => status = 'Index rebuild cancelled');
+    } finally {
+      if (mounted) {
+        setState(() {
+          rebuilding = false;
+          rebuildProgress = null;
+        });
+      }
+    }
   }
 
   Future<void> _syncNow({String trigger = 'manual'}) async {
@@ -453,15 +1032,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _loadSource(await note!.readAsString());
       }
       final ix = await v.rebuildIndex();
-      final loadedTags = await loadTagRegistry(v.root);
-      final loadedFiles = await loadFileRegistry(v.root);
-      final report = await validatePkms(v.root, ix);
+      final pkms = await _readPkms(v, ix);
       setState(() {
-        index = ix;
-        tags = loadedTags;
-        files = loadedFiles;
-        validation = report;
-        status = '$result · ${report.summary()}';
+        index = _retainIndex(ix);
+        tags.tags
+          ..clear()
+          ..addAll(pkms.data.tags.tags);
+        files.files
+          ..clear()
+          ..addAll(pkms.data.files.files);
+        collections.collections
+          ..clear()
+          ..addAll(pkms.data.collections.collections);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
+        status = '$result · ${pkms.report.summary()}';
       });
     } catch (e) {
       setState(() => status = 'Sync failed: $e');
@@ -536,32 +1121,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showSettings() {
     final v = vault;
-    showModalBottomSheet<void>(
+    showDialog<void>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => _SettingsSheet(
-        vaultPath: v?.root.path ?? 'Opening vault...',
-        cloud: cloud,
-        syncing: syncing,
-        vaults: vaultRegistry?.entries ?? const [],
-        activeVaultId: vaultRegistry?.activeId,
-        onAddVault: _pickVault,
-        onSwitchVault: (entry) {
-          Navigator.pop(context);
-          unawaited(_switchVault(entry));
-        },
-        onForgetVault: (entry) {
-          Navigator.pop(context);
-          unawaited(_forgetVault(entry));
-        },
-        onDeleteVault: (entry) {
-          Navigator.pop(context);
-          unawaited(_deleteVault(entry));
-        },
-        onNextcloud: () {
-          Navigator.pop(context);
-          unawaited(_showSyncSettings());
-        },
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: _SettingsSheet(
+            vaultPath: v?.root.path ?? 'Opening vault...',
+            cloud: cloud,
+            syncing: syncing,
+            vaults: vaultRegistry?.entries ?? const [],
+            activeVaultId: vaultRegistry?.activeId,
+            onAddVault: _pickVault,
+            onSwitchVault: (entry) {
+              Navigator.pop(context);
+              unawaited(_switchVault(entry));
+            },
+            onForgetVault: (entry) {
+              Navigator.pop(context);
+              unawaited(_forgetVault(entry));
+            },
+            onDeleteVault: (entry) {
+              Navigator.pop(context);
+              unawaited(_deleteVault(entry));
+            },
+            onNextcloud: () {
+              Navigator.pop(context);
+              unawaited(_showSyncSettings());
+            },
+          ),
+        ),
       ),
     );
   }
@@ -588,6 +1177,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () {
                 Navigator.pop(context);
                 _newPage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.hub),
+              title: const Text('Knowledge'),
+              onTap: () {
+                Navigator.pop(context);
+                _showKnowledge();
               },
             ),
             ListTile(
@@ -641,7 +1238,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final outgoing = current == null
         ? const <String>[]
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
-    final graph = index == null ? null : buildNoteGraph(index!);
+    final resolver = index == null ? null : LinkResolver(index!.notes);
+    final graph = index == null ? null : buildLocalNoteGraph(index!, current);
     final pagesPanel = _PagesPanel(
       status: status,
       current: current,
@@ -650,8 +1248,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onOpenToday: _openToday,
       onNewPage: _newPage,
       onRebuildIndex: _rebuildIndex,
+      rebuilding: rebuilding,
+      rebuildProgress: rebuildProgress,
       onSync: syncing ? null : _syncNow,
       onSettings: _showSettings,
+      onKnowledge: _showKnowledge,
       onSelectTag: (value) => setState(() => selectedTag = value),
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
@@ -665,9 +1266,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : index?.notesByPath[current]?.fileRefs ?? const <String>[],
       index: index,
       files: files,
-      resolveLink: _resolveLink,
+      resolveLink: resolver?.resolve ?? _resolveLink,
       onOpenLink: _openLink,
       onOpenPath: _openPath,
+      onOpenFile: _openRegisteredFile,
+      onEditMetadata: _editCurrentMetadata,
     );
     final workArea = _WorkSurface(
       title: currentTitle,
@@ -681,12 +1284,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         'preview' => TypstDocumentViewer(
           source: previewSource.isEmpty ? _currentSource() : previewSource,
           files: FileSource.bytes({
-            '.tylog/tylog.typ': Uint8List.fromList(
-              utf8.encode(tylogHelperSource),
-            ),
-            '/.tylog/tylog.typ': Uint8List.fromList(
-              utf8.encode(tylogHelperSource),
-            ),
+            '.tylog/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
+            '/.tylog/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
           }),
           loadingBuilder: (_) =>
               const Center(child: CircularProgressIndicator()),
@@ -727,6 +1326,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
             actions: [
+              IconButton(
+                onPressed: _showKnowledge,
+                icon: const Icon(Icons.hub),
+                tooltip: 'Knowledge',
+              ),
               if (!compact) ...[
                 IconButton(
                   onPressed: () =>
@@ -890,8 +1494,11 @@ class _PagesPanel extends StatelessWidget {
     required this.onOpenToday,
     required this.onNewPage,
     required this.onRebuildIndex,
+    required this.rebuilding,
+    required this.rebuildProgress,
     required this.onSync,
     required this.onSettings,
+    required this.onKnowledge,
     required this.onSelectTag,
     required this.onOpenNote,
   });
@@ -903,8 +1510,11 @@ class _PagesPanel extends StatelessWidget {
   final VoidCallback onOpenToday;
   final VoidCallback onNewPage;
   final VoidCallback onRebuildIndex;
+  final bool rebuilding;
+  final double? rebuildProgress;
   final VoidCallback? onSync;
   final VoidCallback onSettings;
+  final VoidCallback onKnowledge;
   final ValueChanged<String?> onSelectTag;
   final ValueChanged<NoteRef> onOpenNote;
 
@@ -947,13 +1557,20 @@ class _PagesPanel extends StatelessWidget {
           ),
           TextButton.icon(
             onPressed: onRebuildIndex,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Rebuild index'),
+            icon: Icon(rebuilding ? Icons.close : Icons.refresh),
+            label: Text(rebuilding ? 'Cancel rebuild' : 'Rebuild index'),
           ),
+          if (rebuildProgress != null)
+            LinearProgressIndicator(value: rebuildProgress),
           ListTile(
             leading: const Icon(Icons.settings),
             title: const Text('Settings'),
             onTap: onSettings,
+          ),
+          ListTile(
+            leading: const Icon(Icons.hub),
+            title: const Text('Knowledge'),
+            onTap: onKnowledge,
           ),
           const Divider(height: 28),
           Text('Pages', style: Theme.of(context).textTheme.labelLarge),
@@ -1018,6 +1635,8 @@ class _LinksPanel extends StatelessWidget {
     required this.resolveLink,
     required this.onOpenLink,
     required this.onOpenPath,
+    required this.onOpenFile,
+    required this.onEditMetadata,
   });
 
   final String? current;
@@ -1029,6 +1648,8 @@ class _LinksPanel extends StatelessWidget {
   final LinkResolution Function(String title) resolveLink;
   final ValueChanged<String> onOpenLink;
   final ValueChanged<String> onOpenPath;
+  final ValueChanged<PkmsFileEntry> onOpenFile;
+  final VoidCallback onEditMetadata;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -1039,6 +1660,11 @@ class _LinksPanel extends StatelessWidget {
         Text('Context', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(current ?? '-', maxLines: 2, overflow: TextOverflow.ellipsis),
+        TextButton.icon(
+          onPressed: current == null ? null : onEditMetadata,
+          icon: const Icon(Icons.tune),
+          label: const Text('Edit metadata'),
+        ),
         const Divider(height: 28),
         _SectionTitle('Outgoing'),
         if (outgoing.isEmpty) const _EmptyHint('No links from this page yet.'),
@@ -1084,6 +1710,9 @@ class _LinksPanel extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
+            onTap: files.files[id] == null
+                ? null
+                : () => onOpenFile(files.files[id]!),
           ),
         const Divider(height: 28),
         _SectionTitle('Backlinks'),
@@ -1139,55 +1768,34 @@ class _SettingsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final ready = cloud?.isReady ?? false;
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _SettingsTile(
               icon: Icons.folder_open,
               title: 'Local folder',
               subtitle: vaultPath,
             ),
-            const SizedBox(height: 8),
-            Text('Vaults', style: Theme.of(context).textTheme.titleMedium),
-            for (final entry in vaults)
-              ListTile(
-                leading: Icon(
-                  entry.id == activeVaultId
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(entry.name),
-                subtitle: Text(
-                  entry.path,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: entry.id == activeVaultId
-                    ? null
-                    : () => onSwitchVault(entry),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (action) {
-                    if (action == 'forget') onForgetVault(entry);
-                    if (action == 'delete') onDeleteVault(entry);
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'forget', child: Text('Forget vault')),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete vault and files'),
-                    ),
-                  ],
-                ),
-              ),
             _SettingsTile(
               icon: Icons.create_new_folder,
-              title: 'Add or create vault',
-              subtitle: 'Choose an existing or empty folder',
-              onTap: onAddVault,
+              title: 'Vaults',
+              subtitle: '${vaults.length} vaults · manage and switch',
+              onTap: () => showModalBottomSheet<void>(
+                context: context,
+                showDragHandle: true,
+                builder: (context) => _VaultsSheet(
+                  vaults: vaults,
+                  activeVaultId: activeVaultId,
+                  onAddVault: onAddVault,
+                  onSwitchVault: onSwitchVault,
+                  onForgetVault: onForgetVault,
+                  onDeleteVault: onDeleteVault,
+                ),
+              ),
             ),
             _SettingsTile(
               icon: Icons.cloud,
@@ -1215,6 +1823,78 @@ class _SettingsSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+class _VaultsSheet extends StatelessWidget {
+  const _VaultsSheet({
+    required this.vaults,
+    required this.activeVaultId,
+    required this.onAddVault,
+    required this.onSwitchVault,
+    required this.onForgetVault,
+    required this.onDeleteVault,
+  });
+
+  final List<VaultEntry> vaults;
+  final String? activeVaultId;
+  final VoidCallback onAddVault;
+  final ValueChanged<VaultEntry> onSwitchVault;
+  final ValueChanged<VaultEntry> onForgetVault;
+  final ValueChanged<VaultEntry> onDeleteVault;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        Text('Vaults', style: Theme.of(context).textTheme.headlineSmall),
+        for (final entry in vaults)
+          ListTile(
+            leading: Icon(
+              entry.id == activeVaultId
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off,
+            ),
+            title: Text(entry.name),
+            subtitle: Text(
+              entry.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: entry.id == activeVaultId
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    onSwitchVault(entry);
+                  },
+            trailing: PopupMenuButton<String>(
+              onSelected: (action) {
+                Navigator.pop(context);
+                if (action == 'forget') onForgetVault(entry);
+                if (action == 'delete') onDeleteVault(entry);
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'forget', child: Text('Forget vault')),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete vault and files'),
+                ),
+              ],
+            ),
+          ),
+        _SettingsTile(
+          icon: Icons.create_new_folder,
+          title: 'Add or create vault',
+          subtitle: 'Choose an existing or empty folder',
+          onTap: () {
+            Navigator.pop(context);
+            onAddVault();
+          },
+        ),
+      ],
+    ),
+  );
 }
 
 class _SettingsTile extends StatelessWidget {
@@ -1334,6 +2014,21 @@ class _ModeButton extends StatelessWidget {
     tooltip: tooltip,
   );
 }
+
+List<String> _csvValues(String value) =>
+    value
+        .split(',')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+String _slugValue(String value) => value
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+    .replaceAll(RegExp(r'^-|-$'), '');
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);

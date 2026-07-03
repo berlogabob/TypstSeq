@@ -15,12 +15,20 @@ Implemented:
 - save/rebuild index
 - wikilinks/backlinks
 - graph view
+- Typst-query PKMS metadata with legacy-note recovery
+- full-text search, canonical tags, managed files, and validation problems
+- templates and ordered PDF collections with Typst citations
 - Typst preview via `typst_flutter`
 - embedded Nextcloud WebDAV sync
 - Android release APK + macOS debug build
 
 Sample vault: `sample_vault/`
-PKMS smoke fixture: `sample_vault/pkms_fixture/` (uses `.tylog/tags.json` + `.tylog/files.json`)
+PKMS smoke fixture: `sample_vault/pkms_fixture/` (uses versioned `.tylog/tags.json` + `.tylog/files.json`)
+
+PKMS metadata is edited from **Knowledge**. Notes remain plain `.typ` files;
+tags, managed file records, templates, and collections are inspectable JSON/Typst
+files. `.tylog/index.json` and `.tylog/search-index.json.gz` are disposable local
+caches and are intentionally excluded from Nextcloud sync.
 
 ## Run
 
@@ -59,6 +67,7 @@ Conflict behavior:
 
 Safe to delete/regenerate:
 - `.tylog/index.json` — safe, press `Rebuild index`
+- `.tylog/search-index.json.gz` — safe, rebuilt from notes and registries
 
 Do not delete unless you know why:
 - `.tylog/tylog.typ` — helper macros for preview

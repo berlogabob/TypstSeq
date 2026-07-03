@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "notes": [
+    {
+      "id": "2026-07-02",
+      "path": "journal/2026-07-02.typ",
+      "title": "2026-07-02",
+      "date": "2026-07-02",
+      "tags": [
+        "journal"
+      ],
+      "aliases": [],
+      "outgoingLinks": [
+        "PKM"
+      ],
+      "fileRefs": []
+    },
+    {
+      "id": "2026-07-03",
+      "path": "journal/2026-07-03.typ",
+      "title": "2026-07-03",
+      "date": "2026-07-03",
+      "tags": [
+        "journal"
+      ],
+      "aliases": [],
+      "outgoingLinks": [],
+      "fileRefs": []
+    },
+    {
+      "id": "PKM",
+      "path": "pages/PKM.typ",
+      "title": "PKM",
+      "date": null,
+      "tags": [],
+      "aliases": [],
+      "outgoingLinks": [],
+      "fileRefs": []
+    },
+    {
+      "id": "child-note",
+      "path": "pkms_fixture/pages/Child.typ",
+      "title": "Child note",
+      "date": null,
+      "tags": [
+        "pkms"
+      ],
+      "aliases": [],
+      "outgoingLinks": [],
+      "fileRefs": []
+    },
+    {
+      "id": "root-note",
+      "path": "pkms_fixture/pages/Root.typ",
+      "title": "Root note",
+      "date": null,
+      "tags": [
+        "pkms"
+      ],
+      "aliases": [
+        "root"
+      ],
+      "outgoingLinks": [
+        "child-note"
+      ],
+      "fileRefs": [
+        "manual-doc"
+      ]
+    }
+  ],
+  "backlinksByTarget": {
+    "pages/PKM.typ": [
+      "journal/2026-07-02.typ"
+    ],
+    "pkms_fixture/pages/Child.typ": [
+      "pkms_fixture/pages/Root.typ"
+    ]
+  }
+}

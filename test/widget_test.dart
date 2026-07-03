@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
+import 'package:tylog/models.dart';
+import 'package:tylog/pkms_registry.dart';
+import 'package:tylog/search_index.dart';
 
 void main() {
   testWidgets('TyLog shell renders', (tester) async {
@@ -82,5 +86,50 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('knowledge screen exposes all PKMS work areas', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: KnowledgeScreen(
+          index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+          search: PkmsSearchIndex.empty(),
+          tags: PkmsTagRegistry(
+            tags: {
+              'pkms': PkmsTagEntry(slug: 'pkms', title: 'PKMS', type: 'topic'),
+            },
+          ),
+          files: PkmsFileRegistry(
+            files: {
+              'manual': PkmsFileEntry(
+                id: 'manual',
+                path: 'assets/manual.pdf',
+                kind: 'pdf',
+                status: 'reference',
+              ),
+            },
+          ),
+          collections: PkmsCollectionRegistry.empty,
+          problems: const [],
+          onOpenNote: (_) {},
+          onOpenFile: (_) {},
+          onSaveTag: (_) async {},
+          onDeleteTag: (_) async {},
+          onMergeTag: (_, _) async {},
+          onImportFile: () async {},
+          onSaveFile: (_) async {},
+          onDeleteFile: (_) async {},
+          onSaveCollection: (_) async {},
+          onExportCollection: (_) async {},
+          onMigrateLegacy: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('Search'), findsOneWidget);
+    expect(find.text('Tags'), findsOneWidget);
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.text('Problems'), findsOneWidget);
+    expect(find.text('Collections'), findsOneWidget);
   });
 }

@@ -142,9 +142,6 @@ class NextcloudSync {
             remoteMillis: nextRemote?.millisecondsSinceEpoch,
           ),
         );
-        if (action == SyncAction.download && path == '.tylog/index.json') {
-          await vault.rebuildIndex();
-        }
       }
 
       await _saveSyncState(vault, syncState);
@@ -281,8 +278,7 @@ class NextcloudSync {
     return now.millisecondsSinceEpoch > previousMillis;
   }
 
-  bool _isSyncInternal(String path) =>
-      path == '.tylog/sync_state.json' || path == '.tylog/sync_trace.jsonl';
+  bool _isSyncInternal(String path) => isSyncInternalPath(path);
 
   String _relativePath(Directory root, File file) {
     final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
@@ -329,6 +325,16 @@ class NextcloudSync {
     );
   }
 }
+
+bool isSyncInternalPath(String path) =>
+    path == '.tylog/index.json' ||
+    path == '.tylog/search-index.json.gz' ||
+    path == '.tylog/tylog.typ' ||
+    path == '.tylog/sync_state.json' ||
+    path == '.tylog/sync_trace.jsonl' ||
+    path.startsWith('.tylog/backups/') ||
+    path.startsWith('.tylog/search-index.json.gz-') ||
+    path.endsWith('.tmp');
 
 enum SyncAction { upload, download, skip, conflict }
 

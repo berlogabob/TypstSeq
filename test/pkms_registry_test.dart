@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/models.dart';
 import 'package:tylog/pkms_registry.dart';
 import 'package:tylog/scanner.dart';
 
@@ -87,4 +88,33 @@ void main() {
     expect(report.duplicateAliases, 0);
     expect(report.missingFiles, 0);
   });
+
+  test(
+    'malformed registry and unsafe path are reported without throwing',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_pkms_safe_');
+      addTearDown(() => dir.delete(recursive: true));
+      await Directory('${dir.path}/.tylog').create();
+      await File('${dir.path}/.tylog/tags.json').writeAsString('{bad');
+      await File('${dir.path}/.tylog/files.json').writeAsString('''
+{"files":{"escape":{"path":"../secret","kind":"file","status":"reference"}}}
+''');
+      final data = await loadPkmsData(dir);
+      final report = await validatePkms(
+        dir,
+        const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+        data: data,
+      );
+
+      expect(
+        report.problems.map((problem) => problem.code),
+        contains('tags-registry-invalid'),
+      );
+      expect(
+        report.problems.map((problem) => problem.code),
+        contains('unsafe-file-path'),
+      );
+      expect(isSafeVaultPath('../secret'), isFalse);
+    },
+  );
 }

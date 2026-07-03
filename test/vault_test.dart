@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/scanner.dart';
 import 'package:tylog/vault.dart';
 
 void main() {
@@ -55,6 +56,46 @@ void main() {
 
     expect((await vault.page('Fast Win')).path, page.path);
     expect(await page.readAsString(), 'keep me');
+  });
+
+  test(
+    'vault upgrades generated helper and creates stable timestamp ids',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_v3_');
+      addTearDown(() => dir.delete(recursive: true));
+      await Directory('${dir.path}/.tylog').create(recursive: true);
+      await File(
+        '${dir.path}/.tylog/tylog.typ',
+      ).writeAsString(legacyTylogHelperSource);
+      final vault = Vault(dir);
+
+      await vault.ensureCreated();
+      final page = await vault.page(
+        'Readable ID',
+        now: DateTime(2026, 7, 3, 18, 42, 15),
+      );
+
+      expect(
+        await vault.helperFile.readAsString(),
+        contains('tylog-helper-version: 3'),
+      );
+      expect(
+        await page.readAsString(),
+        contains('id: "20260703-184215-readable-id"'),
+      );
+    },
+  );
+
+  test('vault preserves an unrecognized custom helper', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_custom_helper_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    const custom = '#let note(..args) = [custom]';
+    await File('${dir.path}/.tylog/tylog.typ').writeAsString(custom);
+
+    await Vault(dir).ensureCreated();
+
+    expect(await File('${dir.path}/.tylog/tylog.typ').readAsString(), custom);
   });
 
   test(

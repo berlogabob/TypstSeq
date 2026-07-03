@@ -921,3 +921,15 @@ Safety rules:
 - no silent overwrite on both-changed: store remote conflict copy locally.
 - keep plain files as source of truth.
 - keep sync cursor in `.tylog/sync_state.json` and diagnostics in `.tylog/sync_trace.jsonl`.
+
+## 24. PKMS v3 correction (issue #22)
+
+- [x] Typst helper v3 emits queryable note/link/tag/file metadata.
+- [x] Index v3 stores fingerprints, structured problems, note backlinks, and file backlinks.
+- [x] Link lookup is precomputed once per rebuild.
+- [x] Versioned JSON registries remain durable; search/index/helper files are local caches.
+- [x] Knowledge UI manages note metadata, tags, files, problems, search, and collections.
+- [x] Standard-library gzip search index; no database dependency.
+- [x] Templates, native citations, and ordered PDF collection export.
+- [x] Backed-up legacy ID migration and tag merge.
+- [x] Runnable 10,000-note benchmark via `TYLOG_RUN_10K_BENCHMARK=1 flutter test test/pkms_10k_benchmark_test.dart`.
