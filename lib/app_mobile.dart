@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'graph.dart';
@@ -12,6 +13,7 @@ import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
 import 'scanner.dart';
 import 'vault.dart';
+import 'vault_registry.dart';
 
 Future<String> appVersion() async =>
     RegExp(r'^version:\s*(.+)$', multiLine: true)
@@ -66,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool syncing = false;
   bool leftPanelOpen = true;
   bool rightPanelOpen = true;
+  VaultRegistry? vaultRegistry;
 
   @override
   void initState() {
@@ -87,8 +90,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _open() async {
     try {
-      final cfg = await NextcloudConfig.load();
-      final v = await Vault.openDefault();
+      final registry = await VaultRegistry.load();
+      vaultRegistry = registry;
+      await _openVault(registry.active, trigger: 'startup');
+    } catch (e) {
+      setState(() => status = 'Open failed: $e');
+    }
+  }
+
+  Future<void> _openVault(VaultEntry entry, {String? trigger}) async {
+    try {
+      autosave?.cancel();
+      cloudAutosave?.cancel();
+      cloudPoll?.cancel();
+      final v = Vault(Directory(entry.path));
+      await v.ensureCreated();
       // ponytail: offline-first — render local vault immediately, sync in background
       final openStatus = 'Vault: ${v.root.path}';
       final today = await v.todayNote();
@@ -104,15 +120,152 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         tags = loadedTags;
         files = loadedFiles;
         validation = report;
-        cloud = cfg;
+        cloud = entry.cloud;
+        selectedTag = null;
         status = '$openStatus · ${report.summary()}';
       });
-      if (cfg != null && cfg.isReady) {
-        unawaited(_syncNow(trigger: 'startup'));
+      if (entry.cloud != null && entry.cloud!.isReady) {
+        if (trigger != null) unawaited(_syncNow(trigger: trigger));
         _startCloudPolling();
       }
     } catch (e) {
       setState(() => status = 'Open failed: $e');
+    }
+  }
+
+  Future<void> _switchVault(VaultEntry entry) async {
+    final registry = vaultRegistry;
+    if (registry == null || registry.activeId == entry.id) return;
+    if (dirty) await _save(syncAfter: false);
+    await registry.select(entry);
+    await _openVault(entry);
+  }
+
+  Future<void> _pickVault() async {
+    Navigator.pop(context);
+    final path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose vault folder',
+    );
+    if (path == null) return;
+    try {
+      final probe = File('$path/.tylog-access-test.tmp');
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+    } catch (e) {
+      if (mounted) {
+        setState(() => status = 'Selected folder is not writable: $e');
+      }
+      return;
+    }
+    final registry = vaultRegistry!;
+    final entry = await registry.add(path);
+    await _switchVault(entry);
+    if (registry.activeId != entry.id) {
+      await registry.select(entry);
+      await _openVault(entry);
+    }
+  }
+
+  Future<void> _forgetVault(VaultEntry entry) async {
+    final registry = vaultRegistry!;
+    if (registry.entries.length == 1) {
+      setState(() => status = 'Cannot forget the only vault');
+      return;
+    }
+    if (entry.id == registry.activeId) {
+      await _switchVault(
+        registry.entries.firstWhere((item) => item.id != entry.id),
+      );
+    }
+    await registry.forget(entry);
+    if (mounted) setState(() => status = 'Forgot ${entry.name}; files kept');
+  }
+
+  Future<void> _deleteVault(VaultEntry entry) async {
+    final warned = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete vault and files?'),
+        content: Text(
+          'This permanently deletes all notes, pages, assets, metadata, and sync state in ${entry.name}. There is no recovery.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (warned != true || !mounted) return;
+    final typed = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Confirm permanent deletion'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Type ${entry.name} to delete this vault and every file in it.',
+              ),
+              TextField(
+                controller: typed,
+                autofocus: true,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: const InputDecoration(labelText: 'Vault name'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: typed.text == entry.name
+                  ? () => Navigator.pop(context, true)
+                  : null,
+              child: const Text('Delete permanently'),
+            ),
+          ],
+        ),
+      ),
+    );
+    typed.dispose();
+    if (confirmed != true) return;
+
+    autosave?.cancel();
+    cloudAutosave?.cancel();
+    cloudPoll?.cancel();
+    try {
+      final registry = vaultRegistry!;
+      final wasActive = registry.activeId == entry.id;
+      await registry.delete(entry);
+      if (registry.entries.isEmpty) {
+        final replacement = await Vault.openDefault();
+        final replacementEntry = await registry.add(replacement.root.path);
+        await registry.select(replacementEntry);
+      }
+      if (wasActive) {
+        await _openVault(registry.active);
+      }
+      if (mounted) {
+        setState(() => status = 'Deleted ${entry.name} and its files');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => status = 'Delete failed; vault kept: $e');
+      }
     }
   }
 
@@ -364,7 +517,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (saved == null) return;
-    await saved.save();
+    final registry = vaultRegistry!;
+    await registry.setCloud(registry.active, saved);
     setState(() {
       cloud = saved;
       status = 'Nextcloud saved';
@@ -389,6 +543,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         vaultPath: v?.root.path ?? 'Opening vault...',
         cloud: cloud,
         syncing: syncing,
+        vaults: vaultRegistry?.entries ?? const [],
+        activeVaultId: vaultRegistry?.activeId,
+        onAddVault: _pickVault,
+        onSwitchVault: (entry) {
+          Navigator.pop(context);
+          unawaited(_switchVault(entry));
+        },
+        onForgetVault: (entry) {
+          Navigator.pop(context);
+          unawaited(_forgetVault(entry));
+        },
+        onDeleteVault: (entry) {
+          Navigator.pop(context);
+          unawaited(_deleteVault(entry));
+        },
         onNextcloud: () {
           Navigator.pop(context);
           unawaited(_showSyncSettings());
@@ -457,6 +626,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     sourceController.text = _currentSource();
     setState(() => mode = 'source');
   }
+
+  void _toggleSourcePreview() =>
+      mode == 'source' ? _showPreview() : _showSource();
 
   @override
   Widget build(BuildContext context) {
@@ -577,17 +749,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 _ModeButton(
                   mode: mode,
-                  value: 'source',
+                  value: mode == 'preview' ? 'preview' : 'source',
                   icon: Icons.code,
-                  tooltip: 'Source',
-                  onPressed: _showSource,
-                ),
-                _ModeButton(
-                  mode: mode,
-                  value: 'preview',
-                  icon: Icons.preview,
-                  tooltip: 'Preview',
-                  onPressed: _showPreview,
+                  tooltip: mode == 'source' ? 'Preview' : 'Source',
+                  onPressed: _toggleSourcePreview,
                 ),
                 _ModeButton(
                   mode: mode,
@@ -604,9 +769,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
               if (compact)
                 IconButton(
-                  onPressed: _showSource,
+                  onPressed: _toggleSourcePreview,
                   icon: const Icon(Icons.code),
-                  tooltip: 'Source',
+                  tooltip: mode == 'source' ? 'Preview' : 'Source',
                 ),
               if (compact)
                 Builder(
@@ -951,50 +1116,102 @@ class _SettingsSheet extends StatelessWidget {
     required this.cloud,
     required this.syncing,
     required this.onNextcloud,
+    required this.vaults,
+    required this.activeVaultId,
+    required this.onAddVault,
+    required this.onSwitchVault,
+    required this.onForgetVault,
+    required this.onDeleteVault,
   });
 
   final String vaultPath;
   final NextcloudConfig? cloud;
   final bool syncing;
   final VoidCallback onNextcloud;
+  final List<VaultEntry> vaults;
+  final String? activeVaultId;
+  final VoidCallback onAddVault;
+  final ValueChanged<VaultEntry> onSwitchVault;
+  final ValueChanged<VaultEntry> onForgetVault;
+  final ValueChanged<VaultEntry> onDeleteVault;
 
   @override
   Widget build(BuildContext context) {
     final ready = cloud?.isReady ?? false;
     return SafeArea(
-      child: ListView(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        shrinkWrap: true,
-        children: [
-          Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 12),
-          _SettingsTile(
-            icon: Icons.folder_open,
-            title: 'Local folder',
-            subtitle: vaultPath,
-          ),
-          _SettingsTile(
-            icon: Icons.cloud,
-            title: 'Nextcloud settings',
-            subtitle: ready ? cloud!.serverUrl : 'Local folder only',
-            onTap: onNextcloud,
-          ),
-          _SettingsTile(
-            icon: Icons.sync,
-            title: 'Sync server status',
-            subtitle: syncing
-                ? 'Syncing...'
-                : (ready ? 'Ready' : 'Not configured'),
-          ),
-          FutureBuilder<String>(
-            future: appVersion(),
-            builder: (context, snapshot) => _SettingsTile(
-              icon: Icons.info_outline,
-              title: 'App version',
-              subtitle: snapshot.data ?? '...',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 12),
+            _SettingsTile(
+              icon: Icons.folder_open,
+              title: 'Local folder',
+              subtitle: vaultPath,
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text('Vaults', style: Theme.of(context).textTheme.titleMedium),
+            for (final entry in vaults)
+              ListTile(
+                leading: Icon(
+                  entry.id == activeVaultId
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: Text(entry.name),
+                subtitle: Text(
+                  entry.path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: entry.id == activeVaultId
+                    ? null
+                    : () => onSwitchVault(entry),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'forget') onForgetVault(entry);
+                    if (action == 'delete') onDeleteVault(entry);
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'forget', child: Text('Forget vault')),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete vault and files'),
+                    ),
+                  ],
+                ),
+              ),
+            _SettingsTile(
+              icon: Icons.create_new_folder,
+              title: 'Add or create vault',
+              subtitle: 'Choose an existing or empty folder',
+              onTap: onAddVault,
+            ),
+            _SettingsTile(
+              icon: Icons.cloud,
+              title: 'Nextcloud settings',
+              subtitle: ready ? cloud!.serverUrl : 'Local folder only',
+              onTap: onNextcloud,
+            ),
+            _SettingsTile(
+              icon: Icons.sync,
+              title: 'Sync server status',
+              subtitle: syncing
+                  ? 'Syncing...'
+                  : (ready ? 'Ready' : 'Not configured'),
+            ),
+            FutureBuilder<String>(
+              future: appVersion(),
+              builder: (context, snapshot) => _SettingsTile(
+                icon: Icons.info_outline,
+                title: 'App version',
+                subtitle: snapshot.data ?? '...',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

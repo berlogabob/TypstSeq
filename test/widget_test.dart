@@ -10,7 +10,7 @@ void main() {
     expect(find.byTooltip('Save'), findsNothing);
     expect(find.byTooltip('Journal'), findsOneWidget);
     expect(find.byTooltip('Source'), findsOneWidget);
-    expect(find.byTooltip('Preview'), findsOneWidget);
+    expect(find.byTooltip('Preview'), findsNothing);
     expect(find.byTooltip('Graph'), findsOneWidget);
     expect(find.byTooltip('Settings'), findsNothing);
     expect(find.text('Settings'), findsOneWidget);
@@ -39,11 +39,17 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Source'));
+    final sourceButton = find.byIcon(Icons.code).first;
+    await tester.tap(sourceButton);
     await tester.pump();
-    await tester.tap(find.byTooltip('Preview'));
+    expect(find.byTooltip('Preview'), findsOneWidget);
+    await tester.tap(sourceButton);
+    await tester.pump();
+    expect(find.byTooltip('Source'), findsOneWidget);
+    await tester.tap(sourceButton);
     await tester.pump();
 
+    expect(find.byTooltip('Preview'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
