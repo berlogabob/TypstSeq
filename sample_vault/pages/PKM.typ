@@ -1,6 +1,6 @@
-#import "/.tylog/tylog.typ": *
+#import "/.tylog/tylog.typ" as pkm
 
-#note(title: "PKM")
+#pkm.note(title: "PKM")
 
 = PKM
 

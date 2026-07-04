@@ -83,6 +83,24 @@ A normal note begins with:
 
 IDs identify notes even if titles change. Edit structured fields through **Context → Edit metadata** when possible.
 
+PKMS v4 uses a real Typst module namespace:
+
+```typst
+#import "/.tylog/tylog.typ" as pkm
+#pkm.link("note-id", display: "Linked note")
+#pkm.tag("topic")
+#pkm.property("status", "active")
+#pkm.task(
+  id: "task-id",
+  text: "Write the report",
+  priority: "high",
+  due: "2026-07-05T09:00:00Z",
+  recurrence: "RRULE:FREQ=WEEKLY;BYDAY=MO",
+)
+```
+
+Use **Knowledge → Problems → Migrate vault to PKMS v4** to back up and rewrite older global helper calls. **Knowledge → Tasks** lists indexed tasks. Enable operating-system reminders in Settings. On macOS/Linux, **Typst help** and **Explain error** query a local TypstRAG checkout discovered through `TYPST_RAG_DIR` or a sibling `TypstRAG` folder.
+
 ## 5. Link and organize knowledge
 
 ### Note links

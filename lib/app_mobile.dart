@@ -16,6 +16,8 @@ import 'pkms_publisher.dart';
 import 'pkms_registry.dart';
 import 'scanner.dart';
 import 'search_index.dart';
+import 'task_scheduler.dart';
+import 'typst_rag_client.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 
@@ -103,6 +105,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool cancelRebuild = false;
   double? rebuildProgress;
   VaultRegistry? vaultRegistry;
+  final taskScheduler = TaskScheduler();
+  final typstRag = TypstRagClient();
 
   @override
   void initState() {
@@ -125,6 +129,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _open() async {
     try {
+      try {
+        await taskScheduler.initialize((path) => unawaited(_openPath(path)));
+      } catch (_) {
+        // Notifications are optional on unsupported/test platforms.
+      }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
       await _openVault(registry.active, trigger: 'startup');
@@ -164,6 +173,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         syncError = null;
         status = '$openStatus · ${pkms.report.summary()}';
       });
+      unawaited(taskScheduler.reconcile(ix.tasks));
       if (entry.cloud != null && entry.cloud!.isReady) {
         if (trigger != null) unawaited(_syncNow(trigger: trigger));
         _startCloudPolling();
@@ -643,9 +653,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onMigrateLegacy: _migrateLegacyNotes,
           onResolveConflict: _resolveConflict,
           onCleanSyncCaches: _cleanSyncCaches,
+          onSetTaskStatus: _setTaskStatus,
         ),
       ),
     );
+  }
+
+  Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
+    final v = vault;
+    if (v == null) return;
+    final file = File('${v.root.path}/${task.notePath}');
+    final source = await file.readAsString();
+    await v.saveNote(
+      file,
+      task.recurrence != null && nextStatus == 'done'
+          ? completeTaskOccurrence(
+              source,
+              task.id,
+              DateTime.now().toUtc().toIso8601String(),
+            )
+          : replaceTaskStatus(source, task.id, nextStatus),
+    );
+    await _rebuildIndex();
   }
 
   Future<void> _saveTag(PkmsTagEntry entry) async {
@@ -847,28 +876,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
-    final candidates = <(NoteRef, File, String)>[];
+    final candidates = <(NoteRef, File, String, String)>[];
+    final usedIds = ix.notes.map((note) => note.id).toSet();
     for (final noteRef in ix.notes) {
       final file = File('${v.root.path}/${noteRef.path}');
       final source = await file.readAsString();
       final header = locateTypstCalls(
         source,
-        names: const {'note'},
+        names: const {'note', 'pkm.note'},
       ).firstOrNull?.source;
+      var migrated = migratePkmsV4Source(source);
       if (header == null || !RegExp(r'\bid\s*:').hasMatch(header)) {
-        candidates.add((noteRef, file, source));
+        final generated = await v.nextNoteId(
+          noteRef.title,
+          now: await file.lastModified(),
+        );
+        var id = generated;
+        var suffix = 2;
+        while (usedIds.contains(id)) {
+          id = '$generated-${suffix++}';
+        }
+        usedIds.add(id);
+        migrated = replaceNoteHeader(
+          migrated,
+          NoteMetadataDraft(
+            id: id,
+            title: noteRef.title,
+            date: noteRef.date,
+            tags: noteRef.tags,
+            aliases: noteRef.aliases,
+            links: noteRef.outgoingLinks,
+            files: noteRef.fileRefs,
+          ),
+        );
+      }
+      if (migrated != source) {
+        candidates.add((noteRef, file, source, migrated));
       }
     }
     if (candidates.isEmpty || !mounted) {
-      setState(() => status = 'No legacy note IDs need migration');
+      setState(() => status = 'Vault already uses PKMS v4 syntax');
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Migrate legacy notes?'),
+        title: const Text('Migrate vault to PKMS v4?'),
         content: Text(
-          'Add stable IDs to ${candidates.length} notes. Original files will be copied to a timestamped backup first.',
+          'Rewrite ${candidates.length} notes to the namespaced pkm syntax. Every original file is backed up first.',
         ),
         actions: [
           TextButton(
@@ -886,42 +941,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final backup = Directory(
       '${v.meta.path}/backups/${DateTime.now().millisecondsSinceEpoch}',
     );
-    final usedIds = ix.notes.map((note) => note.id).toSet();
-    for (final (noteRef, file, source) in candidates) {
+    final reader = await TypstMetadataReader.create();
+    try {
+      for (final candidate in candidates) {
+        await reader.read(candidate.$4);
+      }
+    } finally {
+      reader.dispose();
+    }
+    final helperBackup = File('${backup.path}/.tylog/tylog.typ');
+    await helperBackup.parent.create(recursive: true);
+    await v.helperFile.copy(helperBackup.path);
+    for (final (noteRef, file, _, migrated) in candidates) {
       final backupFile = File('${backup.path}/${noteRef.path}');
       await backupFile.parent.create(recursive: true);
       await file.copy(backupFile.path);
-      final generated = await v.nextNoteId(
-        noteRef.title,
-        now: await file.lastModified(),
-      );
-      var id = generated;
-      var suffix = 2;
-      while (usedIds.contains(id)) {
-        id = '$generated-${suffix++}';
-      }
-      usedIds.add(id);
-      await v.saveNote(
-        file,
-        replaceNoteHeader(
-          source,
-          NoteMetadataDraft(
-            id: id,
-            title: noteRef.title,
-            date: noteRef.date,
-            tags: noteRef.tags,
-            aliases: noteRef.aliases,
-            links: noteRef.outgoingLinks,
-            files: noteRef.fileRefs,
-          ),
-        ),
-      );
+      await v.saveNote(file, migrated);
     }
     await _rebuildIndex();
     if (mounted) {
       setState(
         () => status =
-            'Migrated ${candidates.length} notes; backup: ${backup.path}',
+            'Migrated ${candidates.length} notes to PKMS v4; backup: ${backup.path}',
       );
     }
   }
@@ -984,6 +1025,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     current.problems
       ..clear()
       ..addAll(next.problems);
+    current.tasks
+      ..clear()
+      ..addAll(next.tasks);
     return current;
   }
 
@@ -1041,6 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         searchIndex.replaceWith(pkms.search);
         status = 'Index rebuilt · ${pkms.report.summary()}';
       });
+      unawaited(taskScheduler.reconcile(ix.tasks));
     } on IndexBuildCancelled {
       if (mounted) setState(() => status = 'Index rebuild cancelled');
     } finally {
@@ -1386,10 +1431,113 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Navigator.pop(context);
               unawaited(_showSyncSettings());
             },
+            onEnableReminders: () async {
+              await taskScheduler.requestPermission();
+              await taskScheduler.reconcile(index?.tasks ?? const []);
+              if (mounted) setState(() => status = 'Task reminders enabled');
+            },
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showTypstHelp({String? error}) async {
+    final query = TextEditingController(text: error ?? 'Typst syntax help');
+    List<TypstDocResult>? results;
+    String? failure;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(error == null ? 'Typst help' : 'Explain Typst error'),
+          content: SizedBox(
+            width: 620,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (error != null) ...[
+                    SelectableText(error),
+                    if (deterministicTypstFix(error, _currentSource())
+                        case final fix?)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(fix),
+                      ),
+                  ],
+                  TextField(
+                    controller: query,
+                    decoration: const InputDecoration(
+                      labelText: 'Search local Typst documentation',
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final entry in const {
+                        'Heading': '= Heading',
+                        'Note link': '#pkm.link("note-id", display: "Title")',
+                        'Tag': '#pkm.tag("topic")',
+                        'Property': '#pkm.property("status", "active")',
+                        'Task':
+                            '#pkm.task(\n  id: "task-id",\n  text: "Task",\n  due: "2026-07-05T09:00:00",\n)',
+                      }.entries)
+                        ActionChip(
+                          label: Text(entry.key),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _insertTypstSnippet(entry.value);
+                          },
+                        ),
+                    ],
+                  ),
+                  if (failure != null) Text(failure!),
+                  for (final result in results ?? const <TypstDocResult>[])
+                    ListTile(
+                      title: Text(result.section),
+                      subtitle: SelectableText(
+                        '${result.excerpt}\n${result.url}',
+                        maxLines: 8,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  final found = await typstRag.search(query.text);
+                  setDialogState(() {
+                    results = found;
+                    failure = null;
+                  });
+                } catch (e) {
+                  setDialogState(() => failure = e.toString());
+                }
+              },
+              child: const Text('Search'),
+            ),
+          ],
+        ),
+      ),
+    );
+    query.dispose();
+  }
+
+  void _insertTypstSnippet(String snippet) {
+    final source = _currentSource();
+    _loadSource('${source.trimRight()}\n\n$snippet\n');
+    setState(() => mode = 'source');
+    _queueAutosave();
   }
 
   Future<void> _openPath(String path) async {
@@ -1573,7 +1721,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     const Center(child: CircularProgressIndicator()),
                 errorBuilder: (_, error) => Padding(
                   padding: const EdgeInsets.all(16),
-                  child: SelectableText('Typst error:\n$error'),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SelectableText('Typst error:\n$error'),
+                        FilledButton.tonalIcon(
+                          onPressed: () => unawaited(
+                            _showTypstHelp(error: error.toString()),
+                          ),
+                          icon: const Icon(Icons.help_outline),
+                          label: const Text('Explain error'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1756,6 +1918,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   unawaited(_syncNow());
                 case _ShellAction.settings:
                   _showSettings();
+                case _ShellAction.typstHelp:
+                  unawaited(_showTypstHelp());
               }
             },
             itemBuilder: (_) => [
@@ -1785,6 +1949,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: const Text('Sync'),
               ),
               const PopupMenuItem(
+                value: _ShellAction.typstHelp,
+                child: Text('Typst help'),
+              ),
+              const PopupMenuItem(
                 value: _ShellAction.settings,
                 child: Text('Settings'),
               ),
@@ -1802,7 +1970,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             current.split('/').last.replaceFirst('.typ', '');
 }
 
-enum _ShellAction { today, newPage, graph, backlinks, rebuild, sync, settings }
+enum _ShellAction {
+  today,
+  newPage,
+  graph,
+  backlinks,
+  rebuild,
+  sync,
+  typstHelp,
+  settings,
+}
 
 class _CleanSource {
   const _CleanSource(this.hiddenPrefix, this.body);
@@ -2573,6 +2750,7 @@ class _SettingsSheet extends StatelessWidget {
     required this.onSwitchVault,
     required this.onForgetVault,
     required this.onDeleteVault,
+    required this.onEnableReminders,
   });
 
   final String vaultPath;
@@ -2585,62 +2763,74 @@ class _SettingsSheet extends StatelessWidget {
   final ValueChanged<VaultEntry> onSwitchVault;
   final ValueChanged<VaultEntry> onForgetVault;
   final ValueChanged<VaultEntry> onDeleteVault;
+  final Future<void> Function() onEnableReminders;
 
   @override
   Widget build(BuildContext context) {
     final ready = cloud?.isReady ?? false;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            _SettingsTile(
-              icon: Icons.folder_open,
-              title: 'Local folder',
-              subtitle: vaultPath,
-            ),
-            _SettingsTile(
-              icon: Icons.create_new_folder,
-              title: 'Vaults',
-              subtitle: '${vaults.length} vaults · manage and switch',
-              onTap: () => showModalBottomSheet<void>(
-                context: context,
-                showDragHandle: true,
-                builder: (context) => _VaultsSheet(
-                  vaults: vaults,
-                  activeVaultId: activeVaultId,
-                  onAddVault: onAddVault,
-                  onSwitchVault: onSwitchVault,
-                  onForgetVault: onForgetVault,
-                  onDeleteVault: onDeleteVault,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Settings',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              _SettingsTile(
+                icon: Icons.folder_open,
+                title: 'Local folder',
+                subtitle: vaultPath,
+              ),
+              _SettingsTile(
+                icon: Icons.create_new_folder,
+                title: 'Vaults',
+                subtitle: '${vaults.length} vaults · manage and switch',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (context) => _VaultsSheet(
+                    vaults: vaults,
+                    activeVaultId: activeVaultId,
+                    onAddVault: onAddVault,
+                    onSwitchVault: onSwitchVault,
+                    onForgetVault: onForgetVault,
+                    onDeleteVault: onDeleteVault,
+                  ),
                 ),
               ),
-            ),
-            _SettingsTile(
-              icon: Icons.cloud,
-              title: 'Nextcloud settings',
-              subtitle: ready ? cloud!.serverUrl : 'Local folder only',
-              onTap: onNextcloud,
-            ),
-            _SettingsTile(
-              icon: Icons.sync,
-              title: 'Sync server status',
-              subtitle: syncing
-                  ? 'Syncing...'
-                  : (ready ? 'Ready' : 'Not configured'),
-            ),
-            FutureBuilder<String>(
-              future: appVersion(),
-              builder: (context, snapshot) => _SettingsTile(
-                icon: Icons.info_outline,
-                title: 'App version',
-                subtitle: snapshot.data ?? '...',
+              _SettingsTile(
+                icon: Icons.cloud,
+                title: 'Nextcloud settings',
+                subtitle: ready ? cloud!.serverUrl : 'Local folder only',
+                onTap: onNextcloud,
               ),
-            ),
-          ],
+              _SettingsTile(
+                icon: Icons.sync,
+                title: 'Sync server status',
+                subtitle: syncing
+                    ? 'Syncing...'
+                    : (ready ? 'Ready' : 'Not configured'),
+              ),
+              _SettingsTile(
+                icon: Icons.notifications_outlined,
+                title: 'Task reminders',
+                subtitle: 'Enable local scheduled notifications',
+                onTap: () => unawaited(onEnableReminders()),
+              ),
+              FutureBuilder<String>(
+                future: appVersion(),
+                builder: (context, snapshot) => _SettingsTile(
+                  icon: Icons.info_outline,
+                  title: 'App version',
+                  subtitle: snapshot.data ?? '...',
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

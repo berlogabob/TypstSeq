@@ -196,9 +196,9 @@ String _noteSource({
   String? date,
   String? tag,
 }) =>
-    '''#import "/.tylog/tylog.typ": *
+    '''#import "/.tylog/tylog.typ" as pkm
 
-#note(
+#pkm.note(
   id: "$id",
   title: "$title",${date == null ? '' : '\n  date: "$date",'}${tag == null ? '' : '\n  tags: ("$tag",),'}
 )

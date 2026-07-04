@@ -1,6 +1,6 @@
-#import "/.tylog/tylog.typ": *
+#import "/.tylog/tylog.typ" as pkm
 
-#note(
+#pkm.note(
   id: "child-note",
   title: "Child note",
   tags: ("pkms",),

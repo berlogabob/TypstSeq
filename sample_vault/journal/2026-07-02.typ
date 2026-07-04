@@ -1,9 +1,9 @@
-#import "/.tylog/tylog.typ": *
+#import "/.tylog/tylog.typ" as pkm
 
-#note(title: "2026-07-02", date: "2026-07-02", tags: ("journal",))
+#pkm.note(title: "2026-07-02", date: "2026-07-02", tags: ("journal",))
 
 = 2026-07-02
 
 привет!
 
-#wikilink("PKM")
+#pkm.link("PKM")

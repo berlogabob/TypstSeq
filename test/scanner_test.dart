@@ -5,6 +5,31 @@ import 'package:tylog/models.dart';
 import 'package:tylog/scanner.dart';
 
 void main() {
+  test('PKMS v4 migration namespaces every managed call', () {
+    final migrated = migratePkmsV4Source('''#import "/.tylog/tylog.typ": *
+#note(id: "n", title: "N")
+#wikilink("other") #tag("work") #filelink("manual")''');
+    expect(migrated, contains('#import "/.tylog/tylog.typ" as pkm'));
+    expect(migrated, contains('#pkm.note('));
+    expect(migrated, contains('#pkm.link('));
+    expect(migrated, contains('#pkm.tag('));
+    expect(migrated, contains('#pkm.file('));
+  });
+
+  test('PKMS v4 properties preserve unsupported Typst expressions', () {
+    final note = scanNote(
+      'n.typ',
+      '#pkm.note(id: "n", title: "N")\n'
+          '#pkm.property("status", "active")\n'
+          '#pkm.property("layout", context here())',
+    );
+    expect(note.properties['status'], 'active');
+    expect(note.properties['layout'], {
+      'raw': 'context here()',
+      'unsupported': true,
+    });
+  });
+
   test('scanner extracts links, tags, and backlinks', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_scanner_');
     addTearDown(() => dir.delete(recursive: true));

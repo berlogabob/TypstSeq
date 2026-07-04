@@ -90,7 +90,7 @@ void main() {
 
       expect(
         await vault.helperFile.readAsString(),
-        contains('tylog-helper-version: 3'),
+        contains('tylog-helper-version: 4'),
       );
       expect(
         await page.readAsString(),

@@ -1,6 +1,6 @@
-#import "/.tylog/tylog.typ": *
+#import "/.tylog/tylog.typ" as pkm
 
-#note(
+#pkm.note(
   id: "2026-07-03",
   title: "2026-07-03",
   date: "2026-07-03",
@@ -8,4 +8,3 @@
 )
 
 = 2026-07-03
-

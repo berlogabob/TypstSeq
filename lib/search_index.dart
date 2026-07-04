@@ -114,7 +114,7 @@ class PkmsSearchIndex {
     try {
       final bytes = gzip.decode(await file.readAsBytes());
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
-      if (json['version'] != 1) return empty();
+      if (json['version'] != 2) return empty();
       final documents = (json['documents'] as Map).map<String, _SearchDocument>(
         (key, value) => MapEntry(
           key.toString(),
@@ -149,10 +149,27 @@ class PkmsSearchIndex {
         tags: note.tags,
         aliases: note.aliases,
         terms: _frequencies(
-          '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} $source',
+          '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} ${jsonEncode(note.properties)} $source',
         ),
         fingerprint: note.fingerprint,
         snippet: _snippet(source),
+      );
+    }
+    for (final task in vault.tasks) {
+      documents['task:${task.id}'] = _SearchDocument(
+        id: task.id,
+        path: task.notePath,
+        title: task.text,
+        kind: 'task',
+        tags: task.tags,
+        aliases: task.assignees,
+        terms: _frequencies(
+          '${task.id} ${task.text} ${task.project ?? ''} ${task.status} '
+          '${task.priority} ${task.tags.join(' ')} ${task.assignees.join(' ')} '
+          '${jsonEncode(task.properties)}',
+        ),
+        status: task.status,
+        snippet: task.due ?? task.recurrence,
       );
     }
     for (final file in files.files.values) {
@@ -178,7 +195,7 @@ class PkmsSearchIndex {
     await file.parent.create(recursive: true);
     final data = utf8.encode(
       jsonEncode({
-        'version': 1,
+        'version': 2,
         'documents': {
           for (final path in (_documents.keys.toList()..sort()))
             path: _documents[path]!.toJson(),

@@ -4,7 +4,7 @@ import 'models.dart';
 import 'pkms_registry.dart';
 import 'search_index.dart';
 
-enum KnowledgeView { search, tags, files, problems, collections }
+enum KnowledgeView { search, tasks, tags, files, problems, collections }
 
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({
@@ -29,6 +29,7 @@ class KnowledgeScreen extends StatefulWidget {
     required this.onMigrateLegacy,
     required this.onResolveConflict,
     required this.onCleanSyncCaches,
+    required this.onSetTaskStatus,
   });
 
   final VaultIndex index;
@@ -51,6 +52,7 @@ class KnowledgeScreen extends StatefulWidget {
   final Future<void> Function() onMigrateLegacy;
   final Future<void> Function(PkmsProblem) onResolveConflict;
   final Future<void> Function() onCleanSyncCaches;
+  final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
 
   @override
   State<KnowledgeScreen> createState() => _KnowledgeScreenState();
@@ -68,6 +70,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     appBar: AppBar(
       title: Text(switch (view) {
         KnowledgeView.search => 'Knowledge',
+        KnowledgeView.tasks => 'Tasks',
         KnowledgeView.tags => 'Tags',
         KnowledgeView.files => 'Files',
         KnowledgeView.problems => 'Problems',
@@ -80,6 +83,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           onSelected: (value) => setState(() => view = value),
           itemBuilder: (_) => const [
             PopupMenuItem(value: KnowledgeView.search, child: Text('Search')),
+            PopupMenuItem(value: KnowledgeView.tasks, child: Text('Tasks')),
             PopupMenuItem(value: KnowledgeView.tags, child: Text('Tags')),
             PopupMenuItem(value: KnowledgeView.files, child: Text('Files')),
             PopupMenuItem(
@@ -96,12 +100,61 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     ),
     body: switch (view) {
       KnowledgeView.search => _searchTab(),
+      KnowledgeView.tasks => _tasksTab(),
       KnowledgeView.tags => _tagsTab(),
       KnowledgeView.files => _filesTab(),
       KnowledgeView.problems => _problemsTab(),
       KnowledgeView.collections => _collectionsTab(),
     },
   );
+
+  Widget _tasksTab() {
+    final byId = {for (final task in widget.index.tasks) task.id: task};
+    final tasks = widget.index.tasks.toList()
+      ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        if (tasks.isEmpty)
+          const ListTile(
+            leading: Icon(Icons.task_alt),
+            title: Text('No indexed tasks'),
+            subtitle: Text('Add a #pkm.task(...) call to a note.'),
+          ),
+        for (final task in tasks)
+          ListTile(
+            leading: Icon(
+              task.status == 'done'
+                  ? Icons.check_circle
+                  : task.dependencies.any((id) => byId[id]?.status != 'done')
+                  ? Icons.block
+                  : Icons.radio_button_unchecked,
+            ),
+            title: Text(task.text),
+            subtitle: Text(
+              [
+                task.status,
+                task.priority,
+                if (task.project != null) task.project!,
+                if (task.due != null) 'due ${task.due}',
+                if (task.recurrence != null) task.recurrence!,
+              ].join(' · '),
+            ),
+            onTap: () => widget.onOpenNote(task.notePath),
+            trailing: PopupMenuButton<String>(
+              tooltip: 'Task status',
+              onSelected: (status) => widget.onSetTaskStatus(task, status),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'todo', child: Text('To do')),
+                PopupMenuItem(value: 'doing', child: Text('Doing')),
+                PopupMenuItem(value: 'done', child: Text('Done')),
+                PopupMenuItem(value: 'cancelled', child: Text('Cancelled')),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _searchTab() {
     final results = widget.search.search(
@@ -200,7 +253,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         for (final result in results)
           ListTile(
             leading: Icon(
-              result.kind == 'note' ? Icons.description : Icons.attach_file,
+              result.kind == 'note'
+                  ? Icons.description
+                  : result.kind == 'task'
+                  ? Icons.task_alt
+                  : Icons.attach_file,
             ),
             title: Text(result.title),
             subtitle: Text(
@@ -212,7 +269,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             ),
             isThreeLine: result.snippet != null,
             onTap: () {
-              if (result.kind == 'note') {
+              if (result.kind == 'note' || result.kind == 'task') {
                 Navigator.pop(context);
                 widget.onOpenNote(result.path);
               } else {
@@ -312,17 +369,14 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   Widget _problemsTab() => ListView(
     padding: const EdgeInsets.all(12),
     children: [
-      if (widget.problems.any(
-        (problem) => problem.code == 'legacy-note-metadata',
-      ))
-        FilledButton.icon(
-          onPressed: () async {
-            await widget.onMigrateLegacy();
-            if (mounted) setState(() {});
-          },
-          icon: const Icon(Icons.upgrade),
-          label: const Text('Migrate legacy note headers'),
-        ),
+      FilledButton.icon(
+        onPressed: () async {
+          await widget.onMigrateLegacy();
+          if (mounted) setState(() {});
+        },
+        icon: const Icon(Icons.upgrade),
+        label: const Text('Migrate vault to PKMS v4'),
+      ),
       if (widget.problems.isEmpty)
         const ListTile(
           leading: Icon(Icons.check_circle_outline),

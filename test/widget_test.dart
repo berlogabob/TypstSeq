@@ -272,4 +272,5 @@ KnowledgeScreen _knowledgeScreen({
   onMigrateLegacy: () async {},
   onResolveConflict: (_) async {},
   onCleanSyncCaches: () async {},
+  onSetTaskStatus: (_, _) async {},
 );

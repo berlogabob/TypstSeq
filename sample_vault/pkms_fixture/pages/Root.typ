@@ -1,6 +1,6 @@
-#import "/.tylog/tylog.typ": *
+#import "/.tylog/tylog.typ" as pkm
 
-#note(
+#pkm.note(
   id: "root-note",
   title: "Root note",
   tags: ("pkms",),
@@ -11,4 +11,4 @@
 
 = Root note
 
-Link: #wikilink("child-note")
+Link: #pkm.link("child-note")

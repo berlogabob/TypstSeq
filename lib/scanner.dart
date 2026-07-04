@@ -6,7 +6,7 @@ import 'package:typst_flutter/typst_flutter.dart';
 
 import 'models.dart';
 
-const tylogHelperSource = '''// tylog-helper-version: 3
+const tylogHelperSource = '''// tylog-helper-version: 4
 #let note(
   id: none,
   title: none,
@@ -27,7 +27,7 @@ const tylogHelperSource = '''// tylog-helper-version: 3
   )) <tylog-note>
 ]
 
-#let wikilink(target, display: none) = [
+#let link(target, display: none) = [
   #metadata((target: target, display: display)) <tylog-link>
   #(if display == none { target } else { display })
 ]
@@ -37,10 +37,55 @@ const tylogHelperSource = '''// tylog-helper-version: 3
   #name
 ]
 
-#let filelink(id, display: none) = [
+#let file(id, display: none) = [
   #metadata(id) <tylog-file>
   #(if display == none { id } else { display })
 ]
+
+#let property(key, value) = [
+  #metadata((key: key, raw: repr(value))) <tylog-property>
+]
+
+#let task(
+  id: none,
+  text: none,
+  status: "todo",
+  priority: "normal",
+  project: none,
+  scheduled: none,
+  due: none,
+  remind: none,
+  timezone: none,
+  recurrence: none,
+  dependencies: (),
+  assignees: (),
+  tags: (),
+  completed: (),
+  properties: (:),
+) = [
+  #metadata((
+    id: id,
+    text: text,
+    status: status,
+    priority: priority,
+    project: project,
+    scheduled: scheduled,
+    due: due,
+    remind: remind,
+    timezone: timezone,
+    recurrence: recurrence,
+    dependencies: dependencies,
+    assignees: assignees,
+    tags: tags,
+    completed: completed,
+    properties: repr(properties),
+  )) <tylog-task>
+  #(if status == "done" { "☑ " } else { "☐ " })#text
+]
+
+// v3 read compatibility; v4 notes import only `pkm`.
+#let wikilink = link
+#let filelink = file
 ''';
 
 const originalTylogHelperSource =
@@ -81,7 +126,7 @@ TylogHelperKind classifyTylogHelper(String source) {
         ).firstMatch(normalized)?.group(1) ??
         '',
   );
-  if (version != null && version < 3) return TylogHelperKind.legacyStock;
+  if (version != null && version < 4) return TylogHelperKind.legacyStock;
   if (normalized == originalTylogHelperSource.trim() ||
       normalized == legacyTylogHelperSource.trim()) {
     return TylogHelperKind.legacyStock;
@@ -179,12 +224,14 @@ class QueriedMetadata {
     required this.links,
     required this.tags,
     required this.files,
+    required this.tasks,
   });
 
   final Map<String, Object?>? note;
   final List<String> links;
   final List<String> tags;
   final List<String> files;
+  final List<Map<String, Object?>> tasks;
 }
 
 class TypstMetadataReader {
@@ -198,11 +245,19 @@ class TypstMetadataReader {
   Future<QueriedMetadata> read(String source) async {
     final calls = locateTypstCalls(source);
     if (calls.isEmpty) {
-      return const QueriedMetadata(note: null, links: [], tags: [], files: []);
+      return const QueriedMetadata(
+        note: null,
+        links: [],
+        tags: [],
+        files: [],
+        tasks: [],
+      );
     }
     final document = await _compiler.compile(
       source:
-          '#import "/.tylog/tylog.typ": *\n${calls.map((call) => call.source).join('\n')}',
+          '#import "/.tylog/tylog.typ" as pkm\n'
+          '#import "/.tylog/tylog.typ": *\n'
+          '${calls.map((call) => call.source).join('\n')}',
       files: FileSource.bytes({
         '.tylog/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
         '/.tylog/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
@@ -230,6 +285,16 @@ class TypstMetadataReader {
             await _compiler.query(document: document, selector: '<tylog-file>'),
           ),
         ),
+        tasks:
+            decodeTypstMetadata(
+                  await _compiler.query(
+                    document: document,
+                    selector: '<tylog-task>',
+                  ),
+                )
+                .whereType<Map>()
+                .map((value) => value.cast<String, Object?>())
+                .toList(),
       );
     } finally {
       document.dispose();
@@ -249,7 +314,18 @@ List<Object?> decodeTypstMetadata(String json) {
 
 List<TypstCall> locateTypstCalls(
   String source, {
-  Set<String> names = const {'note', 'wikilink', 'tag', 'filelink'},
+  Set<String> names = const {
+    'note',
+    'wikilink',
+    'tag',
+    'filelink',
+    'pkm.note',
+    'pkm.link',
+    'pkm.tag',
+    'pkm.file',
+    'pkm.property',
+    'pkm.task',
+  },
 }) {
   final calls = <TypstCall>[];
   var i = 0;
@@ -280,7 +356,14 @@ List<TypstCall> locateTypstCalls(
     while (i < source.length && _identifier(source.codeUnitAt(i))) {
       i++;
     }
-    final name = source.substring(nameStart, i);
+    var name = source.substring(nameStart, i);
+    if (name == 'pkm' && i < source.length && source.codeUnitAt(i) == 46) {
+      final memberStart = ++i;
+      while (i < source.length && _identifier(source.codeUnitAt(i))) {
+        i++;
+      }
+      name = 'pkm.${source.substring(memberStart, i)}';
+    }
     while (i < source.length && _space(source.codeUnitAt(i))) {
       i++;
     }
@@ -324,6 +407,7 @@ Future<VaultIndex> scanVault(
   }
 
   final notes = <String, NoteRef>{};
+  final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
   try {
     for (var fileIndex = 0; fileIndex < files.length; fileIndex++) {
@@ -334,8 +418,14 @@ Future<VaultIndex> scanVault(
       final fingerprint =
           '${stat.modified.millisecondsSinceEpoch}:${stat.size}';
       final cached = previous?.notesByPath[relative];
-      if (!force && cached?.fingerprint == fingerprint) {
+      if (!force &&
+          previous?.version == 4 &&
+          cached?.fingerprint == fingerprint) {
         notes[relative] = cached!;
+        tasks.addAll(
+          previous?.tasks.where((task) => task.notePath == relative) ??
+              const [],
+        );
         if (cached.metadataSource != 'typst-query') {
           problems.add(_fallbackProblem(relative));
         }
@@ -343,11 +433,29 @@ Future<VaultIndex> scanVault(
         continue;
       }
       final source = await file.readAsString();
+      for (final entry in _properties(locateTypstCalls(source)).entries) {
+        if (entry.value is Map && (entry.value as Map)['unsupported'] == true) {
+          problems.add(
+            PkmsProblem(
+              code: 'property-not-indexed',
+              severity: PkmsSeverity.info,
+              subject: '$relative:${entry.key}',
+              message: 'A Typst property value is preserved but not indexable.',
+              fix: 'Use a JSON-compatible literal to filter this property.',
+            ),
+          );
+        }
+      }
       try {
         final queried = reader == null ? null : await reader.read(source);
         notes[relative] = queried?.note == null
             ? _fallbackNote(relative, source, fingerprint: fingerprint)
             : _queriedNote(relative, source, queried!, fingerprint);
+        tasks.addAll(
+          queried == null
+              ? _fallbackTasks(relative, locateTypstCalls(source))
+              : _taskRefs(relative, queried.tasks),
+        );
         if (queried?.note == null) {
           problems.add(_fallbackProblem(relative));
         }
@@ -359,6 +467,7 @@ Future<VaultIndex> scanVault(
         );
         notes[relative] =
             cached?.copyWith(fingerprint: fingerprint) ?? fallback;
+        tasks.addAll(_fallbackTasks(relative, locateTypstCalls(source)));
         problems.add(
           PkmsProblem(
             code: 'metadata-query-failed',
@@ -374,7 +483,7 @@ Future<VaultIndex> scanVault(
   } finally {
     reader?.dispose();
   }
-  return buildVaultIndex(notes, problems: problems);
+  return buildVaultIndex(notes, problems: problems, tasks: tasks);
 }
 
 PkmsProblem _fallbackProblem(String path) => PkmsProblem(
@@ -388,6 +497,7 @@ PkmsProblem _fallbackProblem(String path) => PkmsProblem(
 VaultIndex buildVaultIndex(
   Map<String, NoteRef> notes, {
   List<PkmsProblem> problems = const [],
+  List<TaskRef> tasks = const [],
 }) {
   final resolver = LinkResolver(notes.values);
   final backlinks = <String, Set<String>>{};
@@ -421,6 +531,7 @@ VaultIndex buildVaultIndex(
     backlinksByTarget: _setsToSortedLists(backlinks),
     fileBacklinksById: _setsToSortedLists(fileBacklinks),
     problems: allProblems,
+    tasks: tasks,
   );
 }
 
@@ -436,7 +547,7 @@ LinkResolution resolveLink(VaultIndex index, String target) =>
 
 String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   final header = serializeNoteHeader(draft);
-  final calls = locateTypstCalls(source, names: const {'note'});
+  final calls = locateTypstCalls(source, names: const {'note', 'pkm.note'});
   if (calls.isNotEmpty) {
     final call = calls.first;
     return source.replaceRange(call.start, call.end, header);
@@ -458,7 +569,68 @@ String serializeNoteHeader(NoteMetadataDraft draft) {
     '  links: ${_typstList(draft.links)},',
     '  files: ${_typstList(draft.files)},',
   ];
-  return '#note(\n${fields.join('\n')}\n)';
+  return '#pkm.note(\n${fields.join('\n')}\n)';
+}
+
+String migratePkmsV4Source(String source) {
+  var migrated = source.replaceFirst(
+    RegExp(r'#import\s+"/\.tylog/tylog\.typ"\s*:\s*\*'),
+    '#import "/.tylog/tylog.typ" as pkm',
+  );
+  const names = {'note', 'wikilink', 'tag', 'filelink'};
+  const replacements = {
+    'note': 'pkm.note',
+    'wikilink': 'pkm.link',
+    'tag': 'pkm.tag',
+    'filelink': 'pkm.file',
+  };
+  for (final call in locateTypstCalls(migrated, names: names).reversed) {
+    migrated = migrated.replaceRange(
+      call.start + 1,
+      call.start + 1 + call.name.length,
+      replacements[call.name]!,
+    );
+  }
+  return migrated;
+}
+
+String replaceTaskStatus(String source, String id, String status) {
+  final call = locateTypstCalls(
+    source,
+    names: const {'pkm.task'},
+  ).where((call) => _field(call.source, 'id') == id).firstOrNull;
+  if (call == null) throw StateError('Task $id not found');
+  final statusField = RegExp(r'status\s*:\s*"[^"]*"').firstMatch(call.source);
+  final replacement = statusField == null
+      ? call.source.replaceFirst(RegExp(r'\)\s*$'), '  status: "$status",\n)')
+      : call.source.replaceRange(
+          statusField.start,
+          statusField.end,
+          'status: "$status"',
+        );
+  return source.replaceRange(call.start, call.end, replacement);
+}
+
+String completeTaskOccurrence(String source, String id, String timestamp) {
+  final call = locateTypstCalls(
+    source,
+    names: const {'pkm.task'},
+  ).where((call) => _field(call.source, 'id') == id).firstOrNull;
+  if (call == null) throw StateError('Task $id not found');
+  final completed = RegExp(
+    r'completed\s*:\s*\(([^)]*)\)',
+  ).firstMatch(call.source);
+  final replacement = completed == null
+      ? call.source.replaceFirst(
+          RegExp(r'\)\s*$'),
+          '  completed: ("$timestamp",),\n)',
+        )
+      : call.source.replaceRange(
+          completed.start,
+          completed.end,
+          'completed: (${completed.group(1)}"$timestamp",)',
+        );
+  return source.replaceRange(call.start, call.end, replacement);
 }
 
 NoteRef _queriedNote(
@@ -479,6 +651,7 @@ NoteRef _queriedNote(
     outgoingLinks: _sorted({..._strings(note['links']), ...metadata.links}),
     fileRefs: _sorted({..._strings(note['files']), ...metadata.files}),
     citations: _citations(source),
+    properties: _properties(locateTypstCalls(source)),
     fingerprint: fingerprint,
     metadataSource: 'typst-query',
   );
@@ -488,7 +661,11 @@ NoteRef _fallbackNote(String path, String source, {String? fingerprint}) {
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
   final calls = locateTypstCalls(source);
   final header =
-      calls.where((call) => call.name == 'note').firstOrNull?.source ?? '';
+      calls
+          .where((call) => call.name == 'note' || call.name == 'pkm.note')
+          .firstOrNull
+          ?.source ??
+      '';
   return NoteRef(
     id: _field(header, 'id') ?? stem,
     path: path,
@@ -497,21 +674,100 @@ NoteRef _fallbackNote(String path, String source, {String? fingerprint}) {
     tags: _sorted({
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tag'),
+      ..._firstArguments(calls, 'pkm.tag'),
     }),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
     outgoingLinks: _sorted({
       ..._parseList(header, 'links'),
       ..._firstArguments(calls, 'wikilink'),
+      ..._firstArguments(calls, 'pkm.link'),
     }),
     fileRefs: _sorted({
       ..._parseList(header, 'files'),
       ..._firstArguments(calls, 'filelink'),
+      ..._firstArguments(calls, 'pkm.file'),
     }),
     citations: _citations(source),
+    properties: _properties(calls),
     fingerprint: fingerprint,
     metadataSource: 'fallback',
   );
 }
+
+Map<String, Object?> _properties(List<TypstCall> calls) {
+  final out = <String, Object?>{};
+  for (final call in calls.where((call) => call.name == 'pkm.property')) {
+    final strings = _quoted.allMatches(call.source).toList();
+    if (strings.isEmpty) continue;
+    final key = strings.first.group(1)!;
+    final comma = call.source.indexOf(',', strings.first.end);
+    if (comma < 0) continue;
+    final raw = call.source
+        .substring(comma + 1, call.source.lastIndexOf(')'))
+        .trim();
+    out[key] = _literalValue(raw) ?? {'raw': raw, 'unsupported': true};
+  }
+  return out;
+}
+
+Object? _literalValue(String raw) {
+  if (raw == 'true') return true;
+  if (raw == 'false') return false;
+  if (raw == 'none') return null;
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    return _quoted.firstMatch(raw)?.group(1)?.replaceAll(r'\"', '"');
+  }
+  return num.tryParse(raw);
+}
+
+List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
+    values
+        .where((value) => value['id'] != null && value['text'] != null)
+        .map(
+          (value) => TaskRef(
+            id: value['id'].toString(),
+            notePath: path,
+            text: value['text'].toString(),
+            status: value['status']?.toString() ?? 'todo',
+            priority: value['priority']?.toString() ?? 'normal',
+            project: _text(value['project']),
+            scheduled: _text(value['scheduled']),
+            due: _text(value['due']),
+            remind: _text(value['remind']),
+            timezone: _text(value['timezone']),
+            recurrence: _text(value['recurrence']),
+            dependencies: _strings(value['dependencies']),
+            assignees: _strings(value['assignees']),
+            tags: _strings(value['tags']),
+            completed: _strings(value['completed']),
+            properties: {'raw': value['properties']},
+          ),
+        )
+        .toList();
+
+List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
+    .where((call) => call.name == 'pkm.task')
+    .map(
+      (call) => TaskRef(
+        id: _field(call.source, 'id') ?? '',
+        notePath: path,
+        text: _field(call.source, 'text') ?? '',
+        status: _field(call.source, 'status') ?? 'todo',
+        priority: _field(call.source, 'priority') ?? 'normal',
+        project: _field(call.source, 'project'),
+        scheduled: _field(call.source, 'scheduled'),
+        due: _field(call.source, 'due'),
+        remind: _field(call.source, 'remind'),
+        timezone: _field(call.source, 'timezone'),
+        recurrence: _field(call.source, 'recurrence'),
+        dependencies: _parseList(call.source, 'dependencies'),
+        assignees: _parseList(call.source, 'assignees'),
+        tags: _parseList(call.source, 'tags'),
+        completed: _parseList(call.source, 'completed'),
+      ),
+    )
+    .where((task) => task.id.isNotEmpty && task.text.isNotEmpty)
+    .toList();
 
 String? _field(String source, String name) =>
     RegExp('$name\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"')

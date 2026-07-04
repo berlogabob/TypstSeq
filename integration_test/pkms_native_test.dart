@@ -21,11 +21,13 @@ void main() {
 #wikilink("child")
 #tag("pkms")
 #filelink("manual")
+#pkm.task(id: "task-1", text: "Write", due: "2026-07-05T09:00:00Z")
 ''');
       expect(metadata.note?['id'], 'root');
       expect(metadata.links, ['child']);
       expect(metadata.tags, ['pkms']);
       expect(metadata.files, ['manual']);
+      expect(metadata.tasks.single['id'], 'task-1');
     } finally {
       reader.dispose();
     }
