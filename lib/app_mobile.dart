@@ -19,6 +19,21 @@ import 'search_index.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 
+List<TextRange> _paragraphBlocks(String source) {
+  final blocks = <TextRange>[];
+  var start = 0;
+  for (final separator in RegExp(r'\n[ \t]*\n').allMatches(source)) {
+    if (separator.start > start) {
+      blocks.add(TextRange(start: start, end: separator.start));
+    }
+    start = separator.end;
+  }
+  if (start < source.length) {
+    blocks.add(TextRange(start: start, end: source.length));
+  }
+  return blocks.isEmpty ? [TextRange(start: 0, end: source.length)] : blocks;
+}
+
 Future<String> appVersion() async =>
     RegExp(r'^version:\s*(.+)$', multiLine: true)
         .firstMatch(await rootBundle.loadString('pubspec.yaml'))
@@ -61,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   File? note;
   final controller = TextEditingController();
   final sourceController = TextEditingController();
+  final previewBlockController = TextEditingController();
   Timer? autosave;
   Timer? cloudAutosave;
   Timer? cloudPoll;
@@ -69,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int editRevision = 0;
   String mode = 'journal';
   String previewSource = '';
+  int previewBlock = 0;
   String hiddenSystemPrefix = '';
   String helperSource = tylogHelperSource;
   NextcloudConfig? cloud;
@@ -100,6 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave?.cancel();
     cloudAutosave?.cancel();
     cloudPoll?.cancel();
+    previewBlockController.dispose();
     sourceController.dispose();
     controller.dispose();
     super.dispose();
@@ -372,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave = Timer(const Duration(milliseconds: 700), _save);
   }
 
-  String _currentSource() => mode == 'source'
+  String _currentSource() => mode == 'source' || mode == 'preview'
       ? sourceController.text
       : '$hiddenSystemPrefix${controller.text}';
 
@@ -1381,10 +1399,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showPreview() {
+    final source = sourceController.text;
+    final blocks = _paragraphBlocks(source);
+    final cursor = sourceController.selection.isValid
+        ? sourceController.selection.extentOffset
+        : source.length;
+    previewBlock = blocks.indexWhere((range) => cursor <= range.end);
+    if (previewBlock < 0) previewBlock = blocks.length - 1;
+    previewBlockController.text = source.substring(
+      blocks[previewBlock].start,
+      blocks[previewBlock].end,
+    );
     setState(() {
-      previewSource = _currentSource();
+      previewSource = source;
       mode = 'preview';
     });
+  }
+
+  void _movePreviewBlock(int delta) {
+    final blocks = _paragraphBlocks(sourceController.text);
+    previewBlock = (previewBlock + delta).clamp(0, blocks.length - 1);
+    final range = blocks[previewBlock];
+    previewBlockController.text = sourceController.text.substring(
+      range.start,
+      range.end,
+    );
+    setState(() {});
+  }
+
+  void _updatePreviewBlock() {
+    final blocks = _paragraphBlocks(sourceController.text);
+    final range = blocks[previewBlock.clamp(0, blocks.length - 1)];
+    final replacement = previewBlockController.text;
+    final source = sourceController.text.replaceRange(
+      range.start,
+      range.end,
+      replacement,
+    );
+    sourceController.value = TextEditingValue(
+      text: source,
+      selection: TextSelection.collapsed(
+        offset: range.start + replacement.length,
+      ),
+    );
+    previewSource = source;
+    _queueAutosave();
   }
 
   void _showJournal() {
@@ -1515,6 +1574,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 errorBuilder: (_, error) => Padding(
                   padding: const EdgeInsets.all(16),
                   child: SelectableText('Typst error:\n$error'),
+                ),
+              ),
+            ),
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(child: Text('Active source block')),
+                        IconButton(
+                          key: const Key('preview-block-previous'),
+                          tooltip: 'Previous block',
+                          onPressed: previewBlock == 0
+                              ? null
+                              : () => _movePreviewBlock(-1),
+                          icon: const Icon(Icons.keyboard_arrow_up),
+                        ),
+                        IconButton(
+                          key: const Key('preview-block-next'),
+                          tooltip: 'Next block',
+                          onPressed:
+                              previewBlock >=
+                                  _paragraphBlocks(
+                                        sourceController.text,
+                                      ).length -
+                                      1
+                              ? null
+                              : () => _movePreviewBlock(1),
+                          icon: const Icon(Icons.keyboard_arrow_down),
+                        ),
+                      ],
+                    ),
+                    TextField(
+                      key: const Key('preview-block-editor'),
+                      controller: previewBlockController,
+                      onChanged: (_) => _updatePreviewBlock(),
+                      minLines: 1,
+                      maxLines: 4,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ],
                 ),
               ),
             ),

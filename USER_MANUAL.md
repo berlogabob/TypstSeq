@@ -47,7 +47,7 @@ The main workspace has these views:
 - **Graph** — notes and resolved links around the current note.
 - **Knowledge** — search, tags, files, problems, and collections.
 
-All native layouts use the same workspace. Choose the folder button to switch or manage vaults, Search to open Knowledge, and Graph to toggle the graph. The overflow menu contains Today, New page, Source/Preview, backlinks, rebuild, sync, and Settings. The title gains `•` while unsaved edits exist; the status line reports saves, rebuilds, sync, and errors.
+All native layouts use the same workspace. Choose the folder button to switch or manage vaults, Search to open Knowledge, and the looped-arrow button to switch Source and Preview. Tap the cloud status icon for plain-language sync details and the latest transfer graph. The overflow menu contains Today, New page, Graph, backlinks, rebuild, direct sync, and Settings. The title gains `•` while unsaved edits exist; the status line reports saves, rebuilds, sync, and errors.
 
 ## 4. Write notes
 
@@ -187,6 +187,14 @@ Do not edit the same note on two offline devices if you can avoid it. TyLog reso
 ## 11. External editing and backups
 
 You may edit `.typ` files with any text editor. Keep paths under `journal/` or `pages/`, retain unique note IDs, and use **Rebuild index** after external changes.
+
+### Import an existing Typst folder
+
+1. Put page notes in `pages/` and dated notes in `journal/`; keep referenced files in `assets/`.
+2. Open **Settings → Vaults → Add or create vault** and choose that folder.
+3. Choose **Rebuild index**, then inspect **Knowledge → Problems** for duplicate IDs, aliases, or missing files.
+
+TyLog reads the original `.typ` files directly. No conversion or import copy is required.
 
 Recommended backup:
 

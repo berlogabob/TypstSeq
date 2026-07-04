@@ -42,16 +42,45 @@ void main() {
     expect(find.text(version), findsOneWidget);
   });
 
-  testWidgets('source preview actions toggle both ways', (tester) async {
+  testWidgets('preview edits the cursor block and navigates adjacent blocks', (
+    tester,
+  ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
     await tester.tap(find.byTooltip('Source'));
     await tester.pump();
     expect(find.byTooltip('Preview'), findsOneWidget);
+    final source = tester.widget<TextField>(find.byType(TextField));
+    source.controller!.value = const TextEditingValue(
+      text: '= One\n\nSecond\n\nThird',
+      selection: TextSelection.collapsed(offset: 10),
+    );
     await tester.tap(find.byTooltip('Preview'));
     await tester.pump();
+
+    TextField block() =>
+        tester.widget<TextField>(find.byKey(const Key('preview-block-editor')));
+    expect(block().controller!.text, 'Second');
+    await tester.tap(find.byKey(const Key('preview-block-previous')));
+    await tester.pump();
+    expect(block().controller!.text, '= One');
+    await tester.tap(find.byKey(const Key('preview-block-next')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('preview-block-editor')),
+      'Second changed',
+    );
+    await tester.pump();
+
     expect(find.text('Edit source'), findsOneWidget);
+    await tester.tap(find.text('Edit source'));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '= One\n\nSecond changed\n\nThird',
+    );
+    expect(find.byTooltip('Preview'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
