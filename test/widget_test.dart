@@ -12,8 +12,9 @@ void main() {
     expect(find.text('TyLog'), findsOneWidget);
     expect(find.text('Save'), findsNothing);
     expect(find.byTooltip('Save'), findsNothing);
-    expect(find.byTooltip('Graph'), findsOneWidget);
+    expect(find.byTooltip('Graph'), findsNothing);
     expect(find.byTooltip('Search knowledge'), findsOneWidget);
+    expect(find.byIcon(Icons.sync_alt), findsOneWidget);
     expect(find.byTooltip('Vaults'), findsOneWidget);
     expect(find.byTooltip('More actions'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
@@ -45,17 +46,52 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('More actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Source'));
+    await tester.tap(find.byTooltip('Source'));
     await tester.pump();
-    await tester.tap(find.byTooltip('More actions'));
-    await tester.pumpAndSettle();
-    expect(find.text('Preview'), findsOneWidget);
-    await tester.tap(find.text('Preview'));
+    expect(find.byTooltip('Preview'), findsOneWidget);
+    await tester.tap(find.byTooltip('Preview'));
     await tester.pump();
     expect(find.text('Edit source'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('graph remains available from overflow', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    expect(find.byTooltip('Graph'), findsNothing);
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Graph'), findsOneWidget);
+  });
+
+  testWidgets('sync status opens details without raw telemetry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    final syncButton = find.byWidgetPredicate(
+      (widget) =>
+          widget is IconButton &&
+          const {
+            'Nextcloud Desktop',
+            'Sync not connected',
+            'Syncing…',
+            'Sync paused',
+            'Needs attention',
+            'Ready to sync',
+            'Up to date',
+          }.contains(widget.tooltip),
+    );
+    expect(syncButton, findsOneWidget);
+    await tester.tap(syncButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nextcloud sync'), findsOneWidget);
+    expect(find.textContaining('Sync('), findsNothing);
+    expect(find.textContaining('↑'), findsNothing);
+    expect(find.textContaining('↓'), findsNothing);
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {
@@ -75,6 +111,23 @@ void main() {
     await tester.pump();
 
     expect(find.text('Autosave pending...'), findsOneWidget);
+  });
+
+  testWidgets('typing during autosave keeps the newer editor text dirty', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'first draft');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.enterText(find.byType(TextField), 'newer draft');
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, 'newer draft');
+    expect(find.text('Autosave pending...'), findsOneWidget);
+    expect(find.text('TyLog •'), findsOneWidget);
   });
 
   testWidgets('editor dock wraps selections and inserts headings', (

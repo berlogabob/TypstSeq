@@ -66,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? cloudPoll;
   String status = 'Opening vault...';
   bool dirty = false;
+  int editRevision = 0;
   String mode = 'journal';
   String previewSource = '';
   String hiddenSystemPrefix = '';
@@ -310,10 +311,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final n = note;
     if (v == null || n == null) return;
+    final revision = editRevision;
+    final source = _currentSource();
     try {
-      await v.saveNote(n, _currentSource());
+      await v.saveNote(n, source);
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
+      final editorUnchanged = revision == editRevision && identical(n, note);
       setState(() {
         index = _retainIndex(ix);
         tags.tags
@@ -327,12 +331,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ..addAll(pkms.data.collections.collections);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
-        dirty = false;
-        status = 'Saved ${v.relativePath(n)} · ${pkms.report.summary()}';
+        if (editorUnchanged) {
+          dirty = false;
+          status = 'Saved ${v.relativePath(n)} · ${pkms.report.summary()}';
+        }
       });
-      if (syncAfter) _queueCloudSync();
+      if (syncAfter && editorUnchanged) _queueCloudSync();
     } catch (e) {
-      setState(() => status = 'Save failed: $e');
+      if (revision == editRevision && identical(n, note)) {
+        setState(() => status = 'Save failed: $e');
+      }
     }
   }
 
@@ -356,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _queueAutosave() {
     setState(() {
+      editRevision++;
       dirty = true;
       status = 'Autosave pending...';
     });
@@ -1042,15 +1051,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       syncing = true;
       syncError = null;
-      status = 'Syncing Nextcloud...';
+      status = 'Syncing…';
     });
     try {
       cloudAutosave?.cancel();
       if (dirty) await _save(syncAfter: false);
       final result = await NextcloudSync(cfg).sync(v, trigger: trigger);
-      if (note != null && await note!.exists()) {
-        _loadSource(await note!.readAsString());
-      }
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
       setState(() {
@@ -1068,12 +1074,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         searchIndex.replaceWith(pkms.search);
         lastSync = result;
         lastSyncAt = DateTime.now();
-        status = '$result · ${pkms.report.summary()}';
+        final changed = result.uploaded + result.downloaded + result.repaired;
+        status = result.conflicts > 0
+            ? 'Needs attention'
+            : changed == 0
+            ? 'Up to date'
+            : 'Synced';
       });
     } catch (e) {
       setState(() {
         syncError = _friendlySyncError(e);
-        status = 'Sync failed: $e';
+        status = syncError!;
       });
     } finally {
       setState(() => syncing = false);
@@ -1389,6 +1400,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _toggleSourcePreview() =>
       mode == 'source' ? _showPreview() : _showSource();
 
+  void _showSyncDetails(int conflicts) {
+    final v = vault;
+    final desktopManaged = v != null && isNextcloudManagedVault(v.root);
+    void closeThen(VoidCallback action) {
+      Navigator.pop(context);
+      action();
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Nextcloud sync',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 12),
+              _SyncStatusCard(
+                syncing: syncing,
+                cloudConfigured: cloud?.isReady ?? false,
+                desktopManaged: desktopManaged,
+                result: lastSync,
+                lastSyncAt: lastSyncAt,
+                error: syncError,
+                conflicts: conflicts,
+                onSync: syncing
+                    ? null
+                    : () => closeThen(() => unawaited(_syncNow())),
+                onReview: () => closeThen(
+                  () => unawaited(
+                    _showKnowledge(initialView: KnowledgeView.problems),
+                  ),
+                ),
+                onSetup: () => closeThen(() => unawaited(_showSyncSettings())),
+              ),
+              if (lastSync != null) ...[
+                const SizedBox(height: 16),
+                _SyncDistribution(result: lastSync!),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = vault;
@@ -1402,6 +1465,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
+    final syncConflicts =
+        validation?.count('sync-conflict') ??
+        index?.problems.where((p) => p.code == 'sync-conflict').length ??
+        0;
+    final desktopManaged = v != null && isNextcloudManagedVault(v.root);
     final linksPanel = _LinksPanel(
       current: current,
       outgoing: outgoing,
@@ -1543,12 +1611,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: 'Search knowledge',
           ),
           IconButton(
-            isSelected: mode == 'graph',
-            onPressed: mode == 'graph'
-                ? _showJournal
-                : () => setState(() => mode = 'graph'),
-            icon: const Icon(Icons.account_tree),
-            tooltip: mode == 'graph' ? 'Journal' : 'Graph',
+            isSelected: mode == 'source',
+            onPressed: _toggleSourcePreview,
+            icon: const Icon(Icons.sync_alt),
+            tooltip: mode == 'source' ? 'Preview' : 'Source',
+          ),
+          _SyncIconButton(
+            syncing: syncing,
+            configured: cloud?.isReady ?? false,
+            desktopManaged: desktopManaged,
+            error: syncError,
+            conflicts: syncConflicts,
+            result: lastSync,
+            onPressed: () => _showSyncDetails(syncConflicts),
           ),
           PopupMenuButton<_ShellAction>(
             tooltip: 'More actions',
@@ -1558,8 +1633,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   unawaited(_openToday());
                 case _ShellAction.newPage:
                   unawaited(_newPage());
-                case _ShellAction.sourcePreview:
-                  _toggleSourcePreview();
+                case _ShellAction.graph:
+                  mode == 'graph'
+                      ? _showJournal()
+                      : setState(() => mode = 'graph');
                 case _ShellAction.backlinks:
                   showDialog<void>(
                     context: context,
@@ -1588,8 +1665,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Text('New page'),
               ),
               PopupMenuItem(
-                value: _ShellAction.sourcePreview,
-                child: Text(mode == 'source' ? 'Preview' : 'Source'),
+                value: _ShellAction.graph,
+                child: Text(mode == 'graph' ? 'Journal' : 'Graph'),
               ),
               const PopupMenuItem(
                 value: _ShellAction.backlinks,
@@ -1622,15 +1699,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             current.split('/').last.replaceFirst('.typ', '');
 }
 
-enum _ShellAction {
-  today,
-  newPage,
-  sourcePreview,
-  backlinks,
-  rebuild,
-  sync,
-  settings,
-}
+enum _ShellAction { today, newPage, graph, backlinks, rebuild, sync, settings }
 
 class _CleanSource {
   const _CleanSource(this.hiddenPrefix, this.body);
@@ -1825,6 +1894,137 @@ String _relativeTime(DateTime value) {
   if (difference.inHours < 1) return '${difference.inMinutes}m ago';
   if (difference.inDays < 1) return '${difference.inHours}h ago';
   return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+}
+
+class _SyncIconButton extends StatelessWidget {
+  const _SyncIconButton({
+    required this.syncing,
+    required this.configured,
+    required this.desktopManaged,
+    required this.error,
+    required this.conflicts,
+    required this.result,
+    required this.onPressed,
+  });
+
+  final bool syncing;
+  final bool configured;
+  final bool desktopManaged;
+  final String? error;
+  final int conflicts;
+  final SyncResult? result;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon) = desktopManaged
+        ? ('Nextcloud Desktop', Icons.cloud_done_outlined)
+        : !configured
+        ? ('Sync not connected', Icons.cloud_off_outlined)
+        : syncing
+        ? ('Syncing…', Icons.sync)
+        : error != null
+        ? ('Sync paused', Icons.cloud_off_outlined)
+        : conflicts > 0
+        ? ('Needs attention', Icons.warning_amber_rounded)
+        : result == null
+        ? ('Ready to sync', Icons.cloud_outlined)
+        : ('Up to date', Icons.cloud_done_outlined);
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: label,
+      icon: syncing
+          ? const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            )
+          : Icon(icon),
+    );
+  }
+}
+
+class _SyncDistribution extends StatelessWidget {
+  const _SyncDistribution({required this.result});
+
+  final SyncResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final values = [
+      ('Uploaded', result.uploaded, colors.primary),
+      ('Downloaded', result.downloaded, colors.tertiary),
+      ('Unchanged', result.skipped, colors.outlineVariant),
+      ('Repaired', result.repaired, colors.secondary),
+      ('Conflicts', result.conflicts, colors.error),
+    ];
+    final visible = values.where((item) => item.$2 > 0).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Latest sync', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 10),
+        if (visible.isEmpty)
+          const Text('No files needed changes.')
+        else
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              height: 12,
+              child: Row(
+                children: [
+                  for (final item in visible)
+                    Expanded(
+                      flex: item.$2,
+                      child: ColoredBox(color: item.$3),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 16,
+          runSpacing: 10,
+          children: [
+            for (final item in visible)
+              _SyncMetric(label: item.$1, value: item.$2, color: item.$3),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${result.remoteCount} files on Nextcloud',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+class _SyncMetric extends StatelessWidget {
+  const _SyncMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 6),
+      Text('$label $value'),
+    ],
+  );
 }
 
 class _SyncStatusCard extends StatelessWidget {
