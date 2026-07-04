@@ -47,13 +47,15 @@ The main workspace has these views:
 - **Graph** — notes and resolved links around the current note.
 - **Knowledge** — search, tags, files, problems, and collections.
 
-Desktop layouts show Pages and Context side panels. Compact layouts use the bottom navigation bar and the quick-actions button. The title gains `*` while unsaved edits exist; the status line reports saves, rebuilds, sync, and errors.
+All native layouts use the same workspace. Choose the folder button to switch or manage vaults, Search to open Knowledge, and Graph to toggle the graph. The overflow menu contains Today, New page, Source/Preview, backlinks, rebuild, sync, and Settings. The title gains `•` while unsaved edits exist; the status line reports saves, rebuilds, sync, and errors.
 
 ## 4. Write notes
 
 ### Daily journal
 
 Choose **Today** to create or open `journal/YYYY-MM-DD.typ`. Type in Journal or Source view. Editing schedules an autosave after 700 ms; a save also rebuilds the index and search cache.
+
+While the editor has focus, the formatting dock inserts headings, emphasis, math, links, functions/tags, and new blocks without switching keyboard layouts.
 
 ### Pages
 
@@ -107,7 +109,7 @@ Inline tags use `#tag("slug")`. Canonical tags are managed in **Knowledge → Ta
 
 ### Search
 
-Open **Knowledge → Search**. Search covers note IDs, titles, aliases, tags, source text, and managed-file metadata. Filters can restrict results by tag, file kind, or file status. Exact IDs and titles rank first.
+Open **Search** in the workspace app bar. Search covers note IDs, titles, aliases, tags, source text, and managed-file metadata. Filters can restrict results by tag, file kind, or file status. Exact IDs and titles rank first. Use the Knowledge overflow menu for Tags, Files, Problems, and Collections; active sync conflicts appear as the first filter.
 
 ### Graph
 
