@@ -1,0 +1,139 @@
+╭─── Claude Code v2.1.199 ─────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                 Welcome back Andre!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ What's new              │
+│                        ▘▘ ▝▝                       │ Stacked slash-skill in… │
+│  Fable 5 · Claude Pro · andre.berloga@gmail.com's  │ Fixed SSL certificate … │
+│  Organization                                      │ Fixed streaming respon… │
+│             ~/Documents/GitHub/TypstSeq            │ /release-notes for more │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+ ▎ Fable 5 is back.
+ ▎ Until July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue on Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more
+
+❯ /ponytail:ponytail ok sync working. but on app start there are no content     
+untill it synced again. we have cache from the beggining, why we lost it? it    
+must be offline app + sync                                                      
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+⏺ I'll investigate why the local cache isn't shown at startup before sync
+  completes. Launching an Explore agent to trace the startup/load path.
+
+⏺ Explore(Trace app startup content load)
+  ⎿  Done (7 tool uses · 43.3k tokens · 1m 2s)
+  (ctrl+o to expand)
+
+⏺ Root cause found: _open() awaits the Nextcloud sync before scanning local
+  files and populating the UI. Let me verify the exact code before writing the
+  plan.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/logical-mixing-wirth.md · /plan to edit
+     Offline-first startup: show local vault before sync
+
+     Context
+
+     Sync works, but on app start the UI is empty until the startup Nextcloud
+     sync finishes. The local vault files are on disk the whole time — nothing
+     is lost. The bug is ordering in _open() (lib/app_mobile.dart:88-131): when
+     cloud is configured, it awaits NextcloudSync(cfg).sync(v, trigger: 
+     'startup') at line 101 before the local scan (todayNote, rebuildIndex,
+     _loadSource) and the populating setState at lines 108–123. index and note
+     stay null for the whole sync, so the list and editor render empty. Sync
+     does not wipe anything; there is no cache-dir mismatch.
+
+     Fix (one function, lib/app_mobile.dart _open())
+
+     Reorder _open() to be offline-first:
+
+     1. NextcloudConfig.load() + Vault.openDefault() (unchanged).
+     2. Immediately run the local load: todayNote, rebuildIndex,
+     loadTagRegistry, loadFileRegistry, validatePkms, _loadSource, then the
+     populating setState (also sets vault, cloud so the sync helpers can see
+     them). Status: 'Vault: ${v.root.path} · ${report.summary()}'.
+     3. If cfg != null && cfg.isReady: unawaited(_syncNow(trigger: 'startup'))
+     and _startCloudPolling().
+
+     Delete the inline awaited sync block (old lines 93–107) and the
+     _queueCloudSync() call at startup — _syncNow already sets the syncing
+     flag/status, re-reads the current note after sync, rebuilds the index, and
+     setStates (lib/app_mobile.dart:297-332), so the UI updates itself when sync
+     lands. Calling _syncNow directly also removes the old double-sync (awaited
+     startup sync followed 2s later by _queueCloudSync's autosave-trigger
+     sync).
+
+     Verification
+
+     - flutter analyze clean.
+     - Run the app with Nextcloud configured but network slow/off: pages list
+     and today's note appear immediately from local disk, status shows the vault
+     path, sync runs in background and updates status when done (or shows 'Sync
+     failed: …' without blanking content).
+     - Run once with no cloud config: unchanged behavior.
+
+⏺ Update(lib/app_mobile.dart)
+  ⎿  Added 2 lines, removed 16 lines
+       89      try {
+       90        final cfg = await NextcloudConfig.load();
+       91        final v = await Vault.openDefault();
+       92 -      var openStatus = 'Vault: ${v.root.path}';               
+       93 -      if (cfg != null && cfg.isReady) {                       
+       94 -        setState(() {                                         
+       95 -          vault = v;                                          
+       96 -          cloud = cfg;                                        
+       97 -          syncing = true;                                     
+       98 -          status = 'Syncing Nextcloud...';                    
+       99 -        });                                                   
+      100 -        try {                                                 
+      101 -          openStatus = await NextcloudSync(cfg).sync(v, trigge
+          -r: 'startup');                                                
+      102 -        } catch (e) {                                         
+      103 -          openStatus = 'Sync failed: $e';                     
+      104 -        } finally {                                           
+      105 -          syncing = false;                                    
+      106 -        }                                                     
+      107 -      }                                                       
+       92 +      // ponytail: offline-first — render local vault immediat
+          +ely, sync in background                                       
+       93 +      final openStatus = 'Vault: ${v.root.path}';             
+       94        final today = await v.todayNote();
+       95        final ix = await v.rebuildIndex();
+       96        final loadedTags = await loadTagRegistry(v.root);
+
+⏺ Update(lib/app_mobile.dart)
+  ⎿  Added 1 line, removed 1 line
+      108          status = '$openStatus · ${report.summary()}';
+      109        });
+      110        if (cfg != null && cfg.isReady) {
+      111 -        _queueCloudSync();                                    
+      111 +        unawaited(_syncNow(trigger: 'startup'));              
+      112          _startCloudPolling();
+      113        }
+      114      } catch (e) {
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Fixed. The cache was never lost — _open() just blocked on the startup
+  Nextcloud sync before ever reading local disk, so index/note stayed null and
+  the UI rendered empty until sync returned.
+
+  The fix in lib/app_mobile.dart _open(): local vault now loads and renders
+  immediately (today's note, index, registries), then sync fires in the
+  background via unawaited(_syncNow(trigger: 'startup')) — which already
+  re-reads the note, rebuilds the index, and updates the UI when it lands. Also
+  dropped the old _queueCloudSync() at startup, which was scheduling a redundant
+  second sync 2 seconds after the first.
+
+  flutter analyze clean, all 26 tests pass. Offline start now shows content
+  instantly; a failed sync just sets the status line instead of blanking the
+  app.
+
+✻ Churned for 3m 13s
