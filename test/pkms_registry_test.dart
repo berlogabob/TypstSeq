@@ -6,6 +6,22 @@ import 'package:tylog/pkms_registry.dart';
 import 'package:tylog/scanner.dart';
 
 void main() {
+  test('pkms validator warns without replacing a custom helper', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_custom_helper_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    const custom = '#let note(..args) = [custom]';
+    await File('${dir.path}/.tylog/tylog.typ').writeAsString(custom);
+
+    final report = await validatePkms(
+      dir,
+      const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+    );
+
+    expect(report.count('custom-typst-helper'), 1);
+    expect(await File('${dir.path}/.tylog/tylog.typ').readAsString(), custom);
+  });
+
   test(
     'pkms validator reports unknown tags, duplicate aliases, and missing files',
     () async {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'scanner.dart';
 
 class PkmsTagEntry {
   const PkmsTagEntry({
@@ -311,6 +312,21 @@ Future<PkmsValidationReport> validatePkms(
   final pkms = data ?? await loadPkmsData(root);
   final problems = <PkmsProblem>[...index.problems, ...pkms.problems];
   final knownTags = {...pkms.tags.tags.keys, 'journal'};
+  final helper = File('${root.path}/.tylog/tylog.typ');
+  if (await helper.exists() &&
+      classifyTylogHelper(await helper.readAsString()) ==
+          TylogHelperKind.custom) {
+    problems.add(
+      const PkmsProblem(
+        code: 'custom-typst-helper',
+        severity: PkmsSeverity.warning,
+        subject: '.tylog/tylog.typ',
+        message: 'Custom Typst helper compatibility cannot be verified.',
+        fix:
+            'Ensure note, wikilink, tag, and filelink accept the current PKMS arguments.',
+      ),
+    );
+  }
 
   for (final note in index.notes) {
     if (note.metadataSource != 'typst-query') {

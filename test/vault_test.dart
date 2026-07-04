@@ -99,6 +99,52 @@ void main() {
     },
   );
 
+  test('vault upgrades the original helper that rejected note id', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_original_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    await File(
+      '${dir.path}/.tylog/tylog.typ',
+    ).writeAsString(originalTylogHelperSource);
+
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = await vault.todayNote(DateTime(2026, 7, 4));
+
+    expect(await vault.helperFile.readAsString(), tylogHelperSource);
+    expect(await note.readAsString(), contains('id: "2026-07-04"'));
+  });
+
+  test('vault upgrades any older versioned stock helper', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_v2_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    await File('${dir.path}/.tylog/tylog.typ').writeAsString(
+      '// tylog-helper-version: 2\n#let note(title: none) = none',
+    );
+
+    await Vault(dir).ensureCreated();
+
+    expect(
+      await File('${dir.path}/.tylog/tylog.typ').readAsString(),
+      tylogHelperSource,
+    );
+  });
+
+  test('vault leaves the current helper unchanged', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_current_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    await File('${dir.path}/.tylog/tylog.typ').writeAsString(tylogHelperSource);
+
+    await Vault(dir).ensureCreated();
+
+    expect(
+      await File('${dir.path}/.tylog/tylog.typ').readAsString(),
+      tylogHelperSource,
+    );
+  });
+
   test('vault preserves an unrecognized custom helper', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_custom_helper_');
     addTearDown(() => dir.delete(recursive: true));

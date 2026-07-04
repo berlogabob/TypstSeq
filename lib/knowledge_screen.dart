@@ -68,7 +68,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       appBar: AppBar(
         title: const Text('Knowledge'),
         bottom: const TabBar(
-          isScrollable: true,
+          isScrollable: false,
+          labelStyle: TextStyle(fontSize: 11),
           tabs: [
             Tab(icon: Icon(Icons.search), text: 'Search'),
             Tab(icon: Icon(Icons.sell), text: 'Tags'),

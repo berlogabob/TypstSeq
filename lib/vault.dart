@@ -42,8 +42,7 @@ class Vault {
       await _writeFile(helperFile, tylogHelperSource);
     } else {
       final helper = await helperFile.readAsString();
-      if (helper == legacyTylogHelperSource ||
-          helper.contains('// tylog-helper-version: 2')) {
+      if (classifyTylogHelper(helper) == TylogHelperKind.legacyStock) {
         await _writeFile(helperFile, tylogHelperSource);
       }
     }

@@ -43,6 +43,16 @@ const tylogHelperSource = '''// tylog-helper-version: 3
 ]
 ''';
 
+const originalTylogHelperSource =
+    '''#let note(title: none, date: none, tags: (), aliases: ()) = none
+
+#let wikilink(target, display: none) = {
+  if display == none { target } else { display }
+}
+
+#let tag(name) = [#name]
+''';
+
 const legacyTylogHelperSource = '''#let note(
   id: none,
   title: none,
@@ -59,6 +69,25 @@ const legacyTylogHelperSource = '''#let note(
 
 #let tag(name) = [#name]
 ''';
+
+enum TylogHelperKind { current, legacyStock, custom }
+
+TylogHelperKind classifyTylogHelper(String source) {
+  final normalized = source.replaceAll('\r\n', '\n').trim();
+  if (normalized == tylogHelperSource.trim()) return TylogHelperKind.current;
+  final version = int.tryParse(
+    RegExp(
+          r'//\s*tylog-helper-version:\s*(\d+)',
+        ).firstMatch(normalized)?.group(1) ??
+        '',
+  );
+  if (version != null && version < 3) return TylogHelperKind.legacyStock;
+  if (normalized == originalTylogHelperSource.trim() ||
+      normalized == legacyTylogHelperSource.trim()) {
+    return TylogHelperKind.legacyStock;
+  }
+  return TylogHelperKind.custom;
+}
 
 final _quoted = RegExp(r'"((?:\\.|[^"\\])*)"');
 

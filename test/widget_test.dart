@@ -99,6 +99,23 @@ void main() {
     expect(find.text('Search notes and files'), findsOneWidget);
   });
 
+  testWidgets('knowledge tabs fit a phone-width screen', (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
+
+    expect(tester.widget<TabBar>(find.byType(TabBar)).isScrollable, isFalse);
+    expect(find.text('Search'), findsOneWidget);
+    expect(find.text('Tags'), findsOneWidget);
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.text('Problems'), findsOneWidget);
+    expect(find.text('Collections'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('knowledge screen can open directly on Problems', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _knowledgeScreen(initialTab: 3)));
 

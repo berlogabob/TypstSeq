@@ -40,6 +40,21 @@ void main() {
     expect(note.outgoingLinks, isEmpty);
   });
 
+  test('broken Typst body does not block backlinks', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_broken_body_');
+    addTearDown(() => dir.delete(recursive: true));
+    await File('${dir.path}/A.typ').writeAsString('''
+#note(id: "a", title: "A")
+#wikilink("b")
+#this-function-does-not-exist()
+''');
+    await File('${dir.path}/B.typ').writeAsString('#note(id: "b", title: "B")');
+
+    final index = await scanVault(dir, force: true);
+
+    expect(index.backlinksByTarget['B.typ'], ['A.typ']);
+  });
+
   test('link resolver prefers id then alias then title then filename stem', () {
     final index = VaultIndex(
       notesByPath: {
