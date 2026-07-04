@@ -71,6 +71,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   PkmsCollectionRegistry collections = PkmsCollectionRegistry.empty;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
+  SyncResult? lastSync;
+  DateTime? lastSyncAt;
+  String? syncError;
   String? selectedTag;
   bool syncing = false;
   bool rebuilding = false;
@@ -134,6 +137,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         helperSource = loadedHelper;
         cloud = entry.cloud;
         selectedTag = null;
+        lastSync = null;
+        lastSyncAt = null;
+        syncError = null;
         status = '$openStatus · ${pkms.report.summary()}';
       });
       if (entry.cloud != null && entry.cloud!.isReady) {
@@ -603,6 +609,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onExportCollection: _exportCollection,
           onMigrateLegacy: _migrateLegacyNotes,
           onResolveConflict: _resolveConflict,
+          onCleanSyncCaches: _cleanSyncCaches,
         ),
       ),
     );
@@ -1028,6 +1035,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     setState(() {
       syncing = true;
+      syncError = null;
       status = 'Syncing Nextcloud...';
     });
     try {
@@ -1052,10 +1060,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ..addAll(pkms.data.collections.collections);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
+        lastSync = result;
+        lastSyncAt = DateTime.now();
         status = '$result · ${pkms.report.summary()}';
       });
     } catch (e) {
-      setState(() => status = 'Sync failed: $e');
+      setState(() {
+        syncError = _friendlySyncError(e);
+        status = 'Sync failed: $e';
+      });
     } finally {
       setState(() => syncing = false);
     }
@@ -1075,51 +1088,119 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? await original.readAsString()
         : '';
     final remoteText = await conflict.readAsString();
+    final localModified = await original.exists()
+        ? await original.lastModified()
+        : null;
+    final remoteModified = await conflict.lastModified();
     if (!mounted) return;
     final merged = TextEditingController(text: localText);
     final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Resolve ${v.relativePath(original)}'),
-        content: SizedBox(
-          width: 700,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ExpansionTile(
-                  title: const Text('Local version'),
-                  children: [SelectableText(localText)],
+      builder: (context) => Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Resolve sync conflict'),
+            leading: IconButton(
+              tooltip: 'Cancel',
+              onPressed: () => Navigator.pop(context, false),
+              icon: const Icon(Icons.close),
+            ),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                v.relativePath(original),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Both copies changed. Compare the highlighted sections, choose a version, or edit the final result.',
+              ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cards = [
+                    _ConflictVersionCard(
+                      title: 'This device',
+                      text: localText,
+                      otherText: remoteText,
+                      modified: localModified,
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      onUse: () => merged.text = localText,
+                    ),
+                    _ConflictVersionCard(
+                      title: 'Nextcloud copy',
+                      text: remoteText,
+                      otherText: localText,
+                      modified: remoteModified,
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      onUse: () => merged.text = remoteText,
+                    ),
+                  ];
+                  if (constraints.maxWidth < 700) {
+                    return Column(
+                      children: [
+                        cards.first,
+                        const SizedBox(height: 12),
+                        cards.last,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: cards.first),
+                      const SizedBox(width: 12),
+                      Expanded(child: cards.last),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Final version',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'This is what will be saved and synced to your other devices.',
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: merged,
+                minLines: 12,
+                maxLines: null,
+                style: const TextStyle(fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                  labelText: 'Edit final version',
                 ),
-                ExpansionTile(
-                  title: const Text('Remote version'),
-                  children: [SelectableText(remoteText)],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: merged,
-                  minLines: 8,
-                  maxLines: 16,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Merged result',
+              ),
+            ],
+          ),
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.pop(context, true),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Save resolution'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save merged'),
-          ),
-        ],
       ),
     );
     if (save == true) {
@@ -1128,6 +1209,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _refreshPkms('Conflict resolved');
     }
     merged.dispose();
+  }
+
+  Future<void> _cleanSyncCaches() async {
+    final v = vault;
+    if (v == null) return;
+    await for (final entity in v.root.list(recursive: true)) {
+      if (entity is! File) continue;
+      final path = v.relativePath(entity);
+      final marker = path.indexOf('.remote-conflict-');
+      if (marker < 0) continue;
+      final original = path.substring(0, marker);
+      if (original == '.tylog/index.json' ||
+          original == '.tylog/search-index.json.gz') {
+        await entity.delete();
+      }
+    }
+    await _refreshPkms('Old sync caches removed');
   }
 
   Future<void> _showSyncSettings() async {
@@ -1315,8 +1413,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
+    final syncConflicts =
+        validation?.count('sync-conflict') ??
+        index?.problems.where((p) => p.code == 'sync-conflict').length ??
+        0;
     final pagesPanel = _PagesPanel(
-      status: status,
+      activity: _panelActivity(status),
       current: current,
       index: index,
       selectedTag: selectedTag,
@@ -1326,6 +1428,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       rebuilding: rebuilding,
       rebuildProgress: rebuildProgress,
       onSync: syncing ? null : _syncNow,
+      syncing: syncing,
+      cloudConfigured: cloud?.isReady ?? false,
+      desktopManaged: v != null && isNextcloudManagedVault(v.root),
+      syncResult: lastSync,
+      lastSyncAt: lastSyncAt,
+      syncError: syncError,
+      syncConflicts: syncConflicts,
       onSettings: _showSettings,
       onKnowledge: _showKnowledge,
       onSelectTag: (value) => setState(() => selectedTag = value),
@@ -1560,9 +1669,273 @@ _CleanSource _splitCleanSource(String source) {
 bool _isSystemLine(String line) =>
     RegExp(r'^#(import|include|show|set|let|note)\b').hasMatch(line);
 
+String? _panelActivity(String status) {
+  if (status.startsWith('Sync') || status.startsWith('Vault:')) return null;
+  return status.split(' · validation ').first;
+}
+
+String _friendlySyncError(Object error) {
+  if (error is SocketException || error is TimeoutException) {
+    return 'Nextcloud is unreachable. Your changes are safe on this device.';
+  }
+  final text = error.toString();
+  if (text.contains('401') || text.contains('403')) {
+    return 'Nextcloud rejected the login. Check Sync settings.';
+  }
+  if (text.contains('507')) return 'Nextcloud is out of storage space.';
+  return 'Sync stopped before completion. Your local files were not removed.';
+}
+
+class _ConflictVersionCard extends StatelessWidget {
+  const _ConflictVersionCard({
+    required this.title,
+    required this.text,
+    required this.otherText,
+    required this.modified,
+    required this.color,
+    required this.onUse,
+  });
+
+  final String title;
+  final String text;
+  final String otherText;
+  final DateTime? modified;
+  final Color color;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: color,
+    margin: EdgeInsets.zero,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            '${text.length} characters${modified == null ? '' : ' · ${_shortTime(modified!)}'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Changed section',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 4),
+          Container(
+            constraints: const BoxConstraints(minHeight: 80, maxHeight: 220),
+            padding: const EdgeInsets.all(10),
+            color: Theme.of(
+              context,
+            ).colorScheme.surface.withValues(alpha: 0.75),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                _changedExcerpt(text, otherText),
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('View full version'),
+            children: [
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                alignment: Alignment.topLeft,
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    text.isEmpty ? '(Empty file)' : text,
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          OutlinedButton(onPressed: onUse, child: Text('Use $title')),
+        ],
+      ),
+    ),
+  );
+}
+
+String _changedExcerpt(String text, String other) {
+  if (text == other) return '(No text differences)';
+  final lines = text.split('\n');
+  final otherLines = other.split('\n');
+  var start = 0;
+  while (start < lines.length &&
+      start < otherLines.length &&
+      lines[start] == otherLines[start]) {
+    start++;
+  }
+  var end = 0;
+  while (end < lines.length - start &&
+      end < otherLines.length - start &&
+      lines[lines.length - 1 - end] ==
+          otherLines[otherLines.length - 1 - end]) {
+    end++;
+  }
+  final changed = lines.sublist(start, lines.length - end);
+  if (changed.isEmpty || (changed.length == 1 && changed.first.isEmpty)) {
+    return '(Nothing in this version)';
+  }
+  final excerpt = changed.take(40).join('\n');
+  return changed.length > 40
+      ? '$excerpt\n… ${changed.length - 40} more lines'
+      : excerpt;
+}
+
+String _shortTime(DateTime value) =>
+    '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
+    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+class _SyncStatusCard extends StatelessWidget {
+  const _SyncStatusCard({
+    required this.syncing,
+    required this.cloudConfigured,
+    required this.desktopManaged,
+    required this.result,
+    required this.lastSyncAt,
+    required this.error,
+    required this.conflicts,
+    required this.onSync,
+    required this.onReview,
+    required this.onSetup,
+  });
+
+  final bool syncing;
+  final bool cloudConfigured;
+  final bool desktopManaged;
+  final SyncResult? result;
+  final DateTime? lastSyncAt;
+  final String? error;
+  final int conflicts;
+  final VoidCallback? onSync;
+  final VoidCallback onReview;
+  final VoidCallback onSetup;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    late final IconData icon;
+    late final String title;
+    late final String subtitle;
+    late final Color color;
+    String? action;
+    VoidCallback? onAction;
+
+    if (desktopManaged) {
+      icon = Icons.cloud_done_outlined;
+      title = 'Nextcloud Desktop';
+      subtitle = 'This folder syncs through the system.';
+      color = colors.surfaceContainerHighest;
+    } else if (!cloudConfigured) {
+      icon = Icons.cloud_off_outlined;
+      title = 'Sync not connected';
+      subtitle = 'Connect Nextcloud to sync this vault.';
+      color = colors.surfaceContainerHighest;
+      action = 'Set up';
+      onAction = onSetup;
+    } else if (syncing) {
+      icon = Icons.sync;
+      title = 'Syncing…';
+      subtitle = 'Checking this device and Nextcloud.';
+      color = colors.secondaryContainer;
+    } else if (error != null) {
+      icon = Icons.cloud_off_outlined;
+      title = 'Sync paused';
+      subtitle = error!;
+      color = colors.errorContainer;
+      action = 'Retry';
+      onAction = onSync;
+    } else if (conflicts > 0) {
+      icon = Icons.warning_amber_rounded;
+      title =
+          '$conflicts ${conflicts == 1 ? 'conflict needs' : 'conflicts need'} review';
+      subtitle = 'Your files are safe. Choose which changes to keep.';
+      color = colors.tertiaryContainer;
+      action = 'Review';
+      onAction = onReview;
+    } else {
+      icon = Icons.cloud_done_outlined;
+      final changed = (result?.uploaded ?? 0) + (result?.downloaded ?? 0);
+      title = result == null
+          ? 'Ready to sync'
+          : (changed == 0 ? 'Up to date' : 'Synced');
+      subtitle = result == null
+          ? 'No sync has completed in this session.'
+          : changed == 0
+          ? _lastChecked(lastSyncAt)
+          : '${result!.uploaded} uploaded · ${result!.downloaded} downloaded · ${_lastChecked(lastSyncAt).toLowerCase()}';
+      color = colors.primaryContainer;
+      action = 'Sync now';
+      onAction = onSync;
+    }
+
+    return Semantics(
+      liveRegion: true,
+      label: '$title. $subtitle',
+      child: Card(
+        color: color,
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 8, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  syncing
+                      ? const SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        )
+                      : Icon(icon, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (action != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(onPressed: onAction, child: Text(action)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _lastChecked(DateTime? value) {
+    if (value == null) return 'Ready to sync';
+    final minutes = DateTime.now().difference(value).inMinutes;
+    if (minutes < 1) return 'Checked just now';
+    if (minutes == 1) return 'Checked 1 minute ago';
+    return 'Checked $minutes minutes ago';
+  }
+}
+
 class _PagesPanel extends StatelessWidget {
   const _PagesPanel({
-    required this.status,
+    required this.activity,
     required this.current,
     required this.index,
     required this.selectedTag,
@@ -1572,13 +1945,20 @@ class _PagesPanel extends StatelessWidget {
     required this.rebuilding,
     required this.rebuildProgress,
     required this.onSync,
+    required this.syncing,
+    required this.cloudConfigured,
+    required this.desktopManaged,
+    required this.syncResult,
+    required this.lastSyncAt,
+    required this.syncError,
+    required this.syncConflicts,
     required this.onSettings,
     required this.onKnowledge,
     required this.onSelectTag,
     required this.onOpenNote,
   });
 
-  final String status;
+  final String? activity;
   final String? current;
   final VaultIndex? index;
   final String? selectedTag;
@@ -1588,6 +1968,13 @@ class _PagesPanel extends StatelessWidget {
   final bool rebuilding;
   final double? rebuildProgress;
   final VoidCallback? onSync;
+  final bool syncing;
+  final bool cloudConfigured;
+  final bool desktopManaged;
+  final SyncResult? syncResult;
+  final DateTime? lastSyncAt;
+  final String? syncError;
+  final int syncConflicts;
   final VoidCallback onSettings;
   final VoidCallback onKnowledge;
   final ValueChanged<String?> onSelectTag;
@@ -1613,7 +2000,18 @@ class _PagesPanel extends StatelessWidget {
         children: [
           Text('Journal', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(status, maxLines: 2, overflow: TextOverflow.ellipsis),
+          _SyncStatusCard(
+            syncing: syncing,
+            cloudConfigured: cloudConfigured,
+            desktopManaged: desktopManaged,
+            result: syncResult,
+            lastSyncAt: lastSyncAt,
+            error: syncError,
+            conflicts: syncConflicts,
+            onSync: onSync,
+            onReview: onKnowledge,
+            onSetup: onSettings,
+          ),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: onOpenToday,
@@ -1625,11 +2023,16 @@ class _PagesPanel extends StatelessWidget {
             icon: const Icon(Icons.add),
             label: const Text('New page'),
           ),
-          TextButton.icon(
-            onPressed: onSync,
-            icon: const Icon(Icons.sync),
-            label: const Text('Sync'),
-          ),
+          if (activity != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                activity!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
           TextButton.icon(
             onPressed: onRebuildIndex,
             icon: Icon(rebuilding ? Icons.close : Icons.refresh),

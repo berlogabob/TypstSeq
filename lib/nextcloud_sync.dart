@@ -71,7 +71,7 @@ class NextcloudSync {
   final NextcloudConfig config;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
-  Future<String> sync(Vault vault, {String trigger = 'manual'}) async {
+  Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
       await _mkcol(config.rootUri);
@@ -165,7 +165,14 @@ class NextcloudSync {
         ),
       );
       await vault.rebuildIndex();
-      return 'Sync($trigger): ↑$up ↓$down =$skip !$conflict, remote ${remote.length}';
+      return SyncResult(
+        trigger: trigger,
+        uploaded: up,
+        downloaded: down,
+        skipped: skip,
+        conflicts: conflict,
+        remoteCount: remote.length,
+      );
     } finally {
       _client.close(force: true);
     }
@@ -387,6 +394,28 @@ bool isNextcloudManagedVault(
 }
 
 enum SyncAction { upload, download, skip, conflict }
+
+class SyncResult {
+  const SyncResult({
+    required this.trigger,
+    required this.uploaded,
+    required this.downloaded,
+    required this.skipped,
+    required this.conflicts,
+    required this.remoteCount,
+  });
+
+  final String trigger;
+  final int uploaded;
+  final int downloaded;
+  final int skipped;
+  final int conflicts;
+  final int remoteCount;
+
+  @override
+  String toString() =>
+      'Sync($trigger): ↑$uploaded ↓$downloaded =$skipped !$conflicts, remote $remoteCount';
+}
 
 SyncAction decideSyncAction({
   required bool localExists,

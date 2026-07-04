@@ -123,6 +123,7 @@ void main() {
           onExportCollection: (_) async {},
           onMigrateLegacy: () async {},
           onResolveConflict: (_) async {},
+          onCleanSyncCaches: () async {},
         ),
       ),
     );

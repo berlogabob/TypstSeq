@@ -205,6 +205,7 @@ class PkmsValidationReport {
 
 Future<PkmsData> loadPkmsData(Directory root) async {
   final problems = <PkmsProblem>[];
+  var cacheConflicts = 0;
   final tags = await _load(
     File('${root.path}/.tylog/tags.json'),
     PkmsTagRegistry.empty,
@@ -241,6 +242,15 @@ Future<PkmsData> loadPkmsData(Directory root) async {
         final subject = entity.path
             .substring(root.absolute.path.length + 1)
             .replaceAll(Platform.pathSeparator, '/');
+        final original = subject.substring(
+          0,
+          subject.indexOf('.remote-conflict-'),
+        );
+        if (original == '.tylog/index.json' ||
+            original == '.tylog/search-index.json.gz') {
+          cacheConflicts++;
+          continue;
+        }
         problems.add(
           PkmsProblem(
             code: 'sync-conflict',
@@ -252,6 +262,17 @@ Future<PkmsData> loadPkmsData(Directory root) async {
         );
       }
     }
+  }
+  if (cacheConflicts > 0) {
+    problems.add(
+      PkmsProblem(
+        code: 'sync-cache-conflicts',
+        severity: PkmsSeverity.info,
+        subject: '$cacheConflicts disposable cache copies',
+        message: 'Old sync cache copies can be removed.',
+        fix: 'These files contain no notes. Tap to clean them up.',
+      ),
+    );
   }
   return PkmsData(
     tags: tags,

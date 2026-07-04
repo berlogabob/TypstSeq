@@ -105,6 +105,25 @@ void main() {
     expect(conflict.subject, 'journal/2026-07-03.typ.remote-conflict-1');
   });
 
+  test('disposable cache conflicts are grouped as one cleanup item', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_cache_conflicts_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    for (var i = 0; i < 3; i++) {
+      await File(
+        '${dir.path}/.tylog/index.json.remote-conflict-$i',
+      ).writeAsString('{}');
+    }
+
+    final data = await loadPkmsData(dir);
+
+    expect(data.problems.where((p) => p.code == 'sync-conflict'), isEmpty);
+    final cleanup = data.problems.singleWhere(
+      (problem) => problem.code == 'sync-cache-conflicts',
+    );
+    expect(cleanup.subject, '3 disposable cache copies');
+  });
+
   test(
     'malformed registry and unsafe path are reported without throwing',
     () async {

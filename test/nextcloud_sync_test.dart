@@ -150,7 +150,7 @@ void main() {
       ).sync(vault, trigger: 'test');
 
       expect(await note.readAsString(), 'keep local');
-      expect(result, contains('!1'));
+      expect(result.conflicts, 1);
       expect(
         await note.parent
             .list()

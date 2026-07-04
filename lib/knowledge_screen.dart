@@ -25,6 +25,7 @@ class KnowledgeScreen extends StatefulWidget {
     required this.onExportCollection,
     required this.onMigrateLegacy,
     required this.onResolveConflict,
+    required this.onCleanSyncCaches,
   });
 
   final VaultIndex index;
@@ -45,6 +46,7 @@ class KnowledgeScreen extends StatefulWidget {
   final Future<void> Function(PkmsCollectionEntry) onExportCollection;
   final Future<void> Function() onMigrateLegacy;
   final Future<void> Function(PkmsProblem) onResolveConflict;
+  final Future<void> Function() onCleanSyncCaches;
 
   @override
   State<KnowledgeScreen> createState() => _KnowledgeScreenState();
@@ -303,6 +305,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           onTap: problem.code == 'sync-conflict'
               ? () async {
                   await widget.onResolveConflict(problem);
+                  if (mounted) setState(() {});
+                }
+              : problem.code == 'sync-cache-conflicts'
+              ? () async {
+                  await widget.onCleanSyncCaches();
                   if (mounted) setState(() {});
                 }
               : null,
