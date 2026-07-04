@@ -89,49 +89,43 @@ void main() {
   });
 
   testWidgets('knowledge screen exposes all PKMS work areas', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: KnowledgeScreen(
-          index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
-          search: PkmsSearchIndex.empty(),
-          tags: PkmsTagRegistry(
-            tags: {
-              'pkms': PkmsTagEntry(slug: 'pkms', title: 'PKMS', type: 'topic'),
-            },
-          ),
-          files: PkmsFileRegistry(
-            files: {
-              'manual': PkmsFileEntry(
-                id: 'manual',
-                path: 'assets/manual.pdf',
-                kind: 'pdf',
-                status: 'reference',
-              ),
-            },
-          ),
-          collections: PkmsCollectionRegistry.empty,
-          problems: const [],
-          onOpenNote: (_) {},
-          onOpenFile: (_) {},
-          onSaveTag: (_) async {},
-          onDeleteTag: (_) async {},
-          onMergeTag: (_, _) async {},
-          onImportFile: () async {},
-          onSaveFile: (_) async {},
-          onDeleteFile: (_) async {},
-          onSaveCollection: (_) async {},
-          onExportCollection: (_) async {},
-          onMigrateLegacy: () async {},
-          onResolveConflict: (_) async {},
-          onCleanSyncCaches: () async {},
-        ),
-      ),
-    );
+    await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
 
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('Tags'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
     expect(find.text('Problems'), findsOneWidget);
     expect(find.text('Collections'), findsOneWidget);
+    expect(find.text('Search notes and files'), findsOneWidget);
+  });
+
+  testWidgets('knowledge screen can open directly on Problems', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: _knowledgeScreen(initialTab: 3)));
+
+    expect(find.text('No PKMS problems'), findsOneWidget);
+    expect(find.text('Search notes and files'), findsNothing);
   });
 }
+
+KnowledgeScreen _knowledgeScreen({int initialTab = 0}) => KnowledgeScreen(
+  initialTab: initialTab,
+  index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+  search: PkmsSearchIndex.empty(),
+  tags: PkmsTagRegistry.empty,
+  files: PkmsFileRegistry.empty,
+  collections: PkmsCollectionRegistry.empty,
+  problems: const [],
+  onOpenNote: (_) {},
+  onOpenFile: (_) {},
+  onSaveTag: (_) async {},
+  onDeleteTag: (_) async {},
+  onMergeTag: (_, _) async {},
+  onImportFile: () async {},
+  onSaveFile: (_) async {},
+  onDeleteFile: (_) async {},
+  onSaveCollection: (_) async {},
+  onExportCollection: (_) async {},
+  onMigrateLegacy: () async {},
+  onResolveConflict: (_) async {},
+  onCleanSyncCaches: () async {},
+);

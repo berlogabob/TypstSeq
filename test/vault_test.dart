@@ -58,6 +58,19 @@ void main() {
     expect(await page.readAsString(), 'keep me');
   });
 
+  test('vault refuses to replace a Typst note with empty content', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_empty_note_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = await vault.todayNote(DateTime(2026, 7, 4));
+    final original = await note.readAsString();
+
+    await expectLater(vault.saveNote(note, '  \n'), throwsArgumentError);
+
+    expect(await note.readAsString(), original);
+  });
+
   test(
     'vault upgrades generated helper and creates stable timestamp ids',
     () async {

@@ -583,7 +583,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showKnowledge() async {
+  Future<void> _showKnowledge({int initialTab = 0}) async {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
@@ -591,6 +591,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
       MaterialPageRoute(
         builder: (_) => KnowledgeScreen(
+          initialTab: initialTab,
           index: ix,
           search: searchIndex,
           tags: tags,
@@ -1088,6 +1089,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? await original.readAsString()
         : '';
     final remoteText = await conflict.readAsString();
+    if (localText == remoteText ||
+        (localText.trim().isNotEmpty && remoteText.trim().isEmpty)) {
+      await conflict.delete();
+      await _refreshPkms(
+        localText == remoteText
+            ? 'Identical conflict copy removed'
+            : 'Empty conflict copy removed; local note kept',
+      );
+      return;
+    }
     final localModified = await original.exists()
         ? await original.lastModified()
         : null;
@@ -1437,6 +1448,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       syncConflicts: syncConflicts,
       onSettings: _showSettings,
       onKnowledge: _showKnowledge,
+      onReviewSync: () => _showKnowledge(initialTab: 3),
       onSelectTag: (value) => setState(() => selectedTag = value),
       onOpenNote: (item) =>
           v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
@@ -1954,6 +1966,7 @@ class _PagesPanel extends StatelessWidget {
     required this.syncConflicts,
     required this.onSettings,
     required this.onKnowledge,
+    required this.onReviewSync,
     required this.onSelectTag,
     required this.onOpenNote,
   });
@@ -1977,6 +1990,7 @@ class _PagesPanel extends StatelessWidget {
   final int syncConflicts;
   final VoidCallback onSettings;
   final VoidCallback onKnowledge;
+  final VoidCallback onReviewSync;
   final ValueChanged<String?> onSelectTag;
   final ValueChanged<NoteRef> onOpenNote;
 
@@ -2009,7 +2023,7 @@ class _PagesPanel extends StatelessWidget {
             error: syncError,
             conflicts: syncConflicts,
             onSync: onSync,
-            onReview: onKnowledge,
+            onReview: onReviewSync,
             onSetup: onSettings,
           ),
           const SizedBox(height: 12),

@@ -7,6 +7,7 @@ import 'search_index.dart';
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({
     super.key,
+    this.initialTab = 0,
     required this.index,
     required this.search,
     required this.tags,
@@ -29,6 +30,7 @@ class KnowledgeScreen extends StatefulWidget {
   });
 
   final VaultIndex index;
+  final int initialTab;
   final PkmsSearchIndex search;
   final PkmsTagRegistry tags;
   final PkmsFileRegistry files;
@@ -61,6 +63,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   @override
   Widget build(BuildContext context) => DefaultTabController(
     length: 5,
+    initialIndex: widget.initialTab,
     child: Scaffold(
       appBar: AppBar(
         title: const Text('Knowledge'),

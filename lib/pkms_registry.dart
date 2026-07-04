@@ -310,7 +310,7 @@ Future<PkmsValidationReport> validatePkms(
 }) async {
   final pkms = data ?? await loadPkmsData(root);
   final problems = <PkmsProblem>[...index.problems, ...pkms.problems];
-  final knownTags = pkms.tags.tags.keys.toSet();
+  final knownTags = {...pkms.tags.tags.keys, 'journal'};
 
   for (final note in index.notes) {
     if (note.metadataSource != 'typst-query') {

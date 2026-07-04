@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'vault.dart';
@@ -81,6 +82,7 @@ class NextcloudSync {
       var down = 0;
       var skip = 0;
       var conflict = 0;
+      var repaired = await _cleanResolvedConflictCopies(vault);
       final decisions = <SyncDecision>[];
       final localFiles = await _localFiles(vault.root);
       final localByPath = {
@@ -92,14 +94,21 @@ class NextcloudSync {
       for (final path in allPaths) {
         final local = localByPath[path] ?? File('${vault.root.path}/$path');
         final localExists = await local.exists();
-        final remoteTime = remote[path];
+        final remoteFile = remote[path];
+        final remoteTime = remoteFile?.modified;
         final localTime = localExists ? await local.lastModified() : null;
+        final localHash = localExists ? await _sha256(local) : null;
         final prev = syncState[path];
-        final localChanged = _isChanged(localTime, prev?.localMillis);
-        final remoteChanged = _isChanged(remoteTime, prev?.remoteMillis);
+        final localChanged = prev?.localSha256 != null
+            ? localHash != prev!.localSha256
+            : _isChanged(localTime, prev?.localMillis);
+        final remoteChanged =
+            prev?.remoteEtag != null && remoteFile?.etag != null
+            ? remoteFile!.etag != prev!.remoteEtag
+            : _isChanged(remoteTime, prev?.remoteMillis);
         var action = decideSyncAction(
           localExists: localExists,
-          remoteExists: remoteTime != null,
+          remoteExists: remoteFile != null,
           localChanged: localChanged,
           remoteChanged: remoteChanged,
           hasSyncCursor: prev != null,
@@ -107,27 +116,91 @@ class NextcloudSync {
           remoteMillis: remoteTime?.millisecondsSinceEpoch,
         );
         DateTime? uploadedRemoteTime;
+        String? uploadedRemoteEtag;
+        String? observedRemoteEtag;
         var reason = '';
         if (action == SyncAction.download) {
           await local.parent.create(recursive: true);
-          final protected = await _download(path, local, protectNonEmpty: true);
-          if (protected) {
-            action = SyncAction.conflict;
-            conflict++;
-            reason = 'remote-empty';
+          final download =
+              remoteFile?.length == 0 &&
+                  _protectFromEmpty(path) &&
+                  localExists &&
+                  await local.length() > 0
+              ? _DownloadResult(protected: true, etag: remoteFile?.etag)
+              : await _download(path, local, protectNonEmpty: true);
+          observedRemoteEtag = download.etag;
+          if (download.protected) {
+            uploadedRemoteEtag = await _upload(
+              path,
+              local,
+              localHash: localHash!,
+              remote: remoteFile,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            action = SyncAction.upload;
+            up++;
+            repaired++;
+            reason = 'remote-empty-repaired';
           } else {
             down++;
             reason = localTime == null ? 'local-missing' : 'remote-newer';
           }
         } else if (action == SyncAction.upload) {
-          await _upload(path, local);
-          uploadedRemoteTime = DateTime.now().toUtc();
-          up++;
-          reason = remoteTime == null ? 'remote-missing' : 'local-newer';
+          try {
+            uploadedRemoteEtag = await _upload(
+              path,
+              local,
+              localHash: localHash!,
+              remote: remoteFile,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            up++;
+            reason = remoteTime == null ? 'remote-missing' : 'local-newer';
+          } on _RemoteChanged {
+            final captured = await _saveRemoteConflictCopy(vault, path);
+            observedRemoteEtag = captured.etag;
+            if (await _sha256(captured.file) == localHash) {
+              await captured.file.delete();
+              action = SyncAction.skip;
+              skip++;
+              repaired++;
+              reason = 'same-content';
+            } else {
+              action = SyncAction.conflict;
+              conflict++;
+              reason = 'remote-changed-during-upload';
+            }
+          }
         } else if (action == SyncAction.conflict) {
-          await _saveRemoteConflictCopy(vault, path);
-          conflict++;
-          reason = 'both-changed';
+          final captured = await _saveRemoteConflictCopy(vault, path);
+          final copy = captured.file;
+          observedRemoteEtag = captured.etag;
+          final remoteHash = await _sha256(copy);
+          if (remoteHash == localHash) {
+            await copy.delete();
+            action = SyncAction.skip;
+            skip++;
+            repaired++;
+            reason = 'same-content';
+          } else if (_protectFromEmpty(path) &&
+              await copy.length() == 0 &&
+              await local.length() > 0) {
+            await copy.delete();
+            uploadedRemoteEtag = await _upload(
+              path,
+              local,
+              localHash: localHash!,
+              remote: remoteFile,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            action = SyncAction.upload;
+            up++;
+            repaired++;
+            reason = 'remote-empty-repaired';
+          } else {
+            conflict++;
+            reason = 'both-changed';
+          }
         } else {
           skip++;
           reason = 'no-change';
@@ -138,6 +211,9 @@ class NextcloudSync {
         syncState[path] = SyncCursor(
           localMillis: nextLocal?.millisecondsSinceEpoch,
           remoteMillis: nextRemote?.millisecondsSinceEpoch,
+          localSha256: nextLocalExists ? await _sha256(local) : null,
+          remoteEtag:
+              uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
         );
         decisions.add(
           SyncDecision(
@@ -172,6 +248,7 @@ class NextcloudSync {
         skipped: skip,
         conflicts: conflict,
         remoteCount: remote.length,
+        repaired: repaired,
       );
     } finally {
       _client.close(force: true);
@@ -189,11 +266,11 @@ class NextcloudSync {
     return out;
   }
 
-  Future<Map<String, DateTime>> _remoteFiles() async {
+  Future<Map<String, _RemoteFile>> _remoteFiles() async {
     final request = await _open('PROPFIND', config.rootUri);
     request.headers.set('Depth', 'infinity');
     request.write(
-      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/></d:prop></d:propfind>''',
+      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getetag/><d:getcontentlength/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
     final body = await response.transform(utf8.decoder).join();
@@ -201,16 +278,24 @@ class NextcloudSync {
       throw HttpException('PROPFIND ${response.statusCode}');
     }
 
-    final files = <String, DateTime>{};
+    final files = <String, _RemoteFile>{};
     for (final match in RegExp(
-      r'<[^:>]*:?response[^>]*>.*?<[^:>]*:?href[^>]*>(.*?)</[^:>]*:?href>.*?<[^:>]*:?getlastmodified[^>]*>(.*?)</[^:>]*:?getlastmodified>.*?</[^:>]*:?response>',
+      r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
       dotAll: true,
     ).allMatches(body)) {
-      final href = Uri.decodeComponent(match.group(1)!);
+      final block = match.group(1)!;
+      final hrefValue = _xmlValue(block, 'href');
+      final modifiedValue = _xmlValue(block, 'getlastmodified');
+      if (hrefValue == null || modifiedValue == null) continue;
+      final href = Uri.decodeComponent(hrefValue);
       if (href.endsWith('/')) continue;
       final path = _relativeRemotePath(href);
       if (path != null && !_isSyncInternal(path)) {
-        files[path] = HttpDate.parse(match.group(2)!);
+        files[path] = _RemoteFile(
+          modified: HttpDate.parse(modifiedValue),
+          etag: _xmlValue(block, 'getetag'),
+          length: int.tryParse(_xmlValue(block, 'getcontentlength') ?? ''),
+        );
       }
     }
     return files;
@@ -224,17 +309,38 @@ class NextcloudSync {
     return path.isEmpty ? null : path;
   }
 
-  Future<void> _upload(String path, File file) async {
+  Future<String?> _upload(
+    String path,
+    File file, {
+    required String localHash,
+    required _RemoteFile? remote,
+  }) async {
     await _ensureParents(path);
     final request = await _open('PUT', _remoteUri(path));
+    request.contentLength = await file.length();
+    request.headers.set('X-Hash', 'sha256');
+    if (remote?.etag != null) {
+      request.headers.set(HttpHeaders.ifMatchHeader, remote!.etag!);
+    } else if (remote == null) {
+      request.headers.set(HttpHeaders.ifNoneMatchHeader, '*');
+    }
     await request.addStream(file.openRead());
     final response = await request.close().timeout(const Duration(seconds: 60));
+    if (response.statusCode == HttpStatus.preconditionFailed) {
+      throw const _RemoteChanged();
+    }
     if (response.statusCode >= 400) {
       throw HttpException('PUT $path ${response.statusCode}');
     }
+    final remoteHash = response.headers.value('x-hash-sha256');
+    if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
+      throw HttpException('PUT $path checksum mismatch');
+    }
+    return response.headers.value('oc-etag') ??
+        response.headers.value(HttpHeaders.etagHeader);
   }
 
-  Future<bool> _download(
+  Future<_DownloadResult> _download(
     String path,
     File file, {
     bool protectNonEmpty = false,
@@ -249,31 +355,61 @@ class NextcloudSync {
     if (response.statusCode >= 400) {
       throw HttpException('GET $path ${response.statusCode}');
     }
+    final etag =
+        response.headers.value(HttpHeaders.etagHeader) ??
+        response.headers.value('oc-etag');
     try {
       await response.pipe(tmp.openWrite());
       if (protectNonEmpty &&
+          _protectFromEmpty(path) &&
           await file.exists() &&
           await file.length() > 0 &&
           await tmp.length() == 0) {
-        await tmp.rename(
-          '${file.path}.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
-        );
-        return true;
+        await tmp.delete();
+        return _DownloadResult(protected: true, etag: etag);
       }
       await tmp.rename(file.path);
-      return false;
+      return _DownloadResult(protected: false, etag: etag);
     } catch (_) {
       if (await tmp.exists()) await tmp.delete();
       rethrow;
     }
   }
 
-  Future<void> _saveRemoteConflictCopy(Vault vault, String path) async {
+  Future<({File file, String? etag})> _saveRemoteConflictCopy(
+    Vault vault,
+    String path,
+  ) async {
     final conflict = File(
       '${vault.root.path}/$path.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
     );
     await conflict.parent.create(recursive: true);
-    await _download(path, conflict);
+    final result = await _download(path, conflict);
+    return (file: conflict, etag: result.etag);
+  }
+
+  Future<int> _cleanResolvedConflictCopies(Vault vault) async {
+    var cleaned = 0;
+    await for (final entity in vault.root.list(recursive: true)) {
+      if (entity is! File || !entity.path.contains('.remote-conflict-')) {
+        continue;
+      }
+      final relative = vault.relativePath(entity);
+      final original = File(
+        '${vault.root.path}/${relative.substring(0, relative.indexOf('.remote-conflict-'))}',
+      );
+      if (!await original.exists()) continue;
+      final duplicate =
+          await entity.length() == 0 &&
+              _protectFromEmpty(vault.relativePath(original)) &&
+              await original.length() > 0 ||
+          await _sha256(entity) == await _sha256(original);
+      if (duplicate) {
+        await entity.delete();
+        cleaned++;
+      }
+    }
+    return cleaned;
   }
 
   Future<void> _ensureParents(String path) async {
@@ -362,6 +498,46 @@ class NextcloudSync {
   }
 }
 
+bool _protectFromEmpty(String path) =>
+    path.endsWith('.typ') ||
+    path == '.tylog/tags.json' ||
+    path == '.tylog/files.json' ||
+    path == '.tylog/collections.json';
+
+Future<String> _sha256(File file) async =>
+    (await sha256.bind(file.openRead()).first).toString();
+
+String? _xmlValue(String xml, String name) {
+  final match = RegExp(
+    '<[^:>]*:?$name[^>]*>(.*?)</[^:>]*:?$name>',
+    dotAll: true,
+  ).firstMatch(xml);
+  return match
+      ?.group(1)
+      ?.replaceAll('&quot;', '"')
+      .replaceAll('&amp;', '&')
+      .trim();
+}
+
+class _RemoteFile {
+  const _RemoteFile({required this.modified, this.etag, this.length});
+
+  final DateTime modified;
+  final String? etag;
+  final int? length;
+}
+
+class _DownloadResult {
+  const _DownloadResult({required this.protected, this.etag});
+
+  final bool protected;
+  final String? etag;
+}
+
+class _RemoteChanged implements Exception {
+  const _RemoteChanged();
+}
+
 bool isSyncInternalPath(String path) =>
     path == '.tylog/index.json' ||
     path == '.tylog/search-index.json.gz' ||
@@ -403,6 +579,7 @@ class SyncResult {
     required this.skipped,
     required this.conflicts,
     required this.remoteCount,
+    this.repaired = 0,
   });
 
   final String trigger;
@@ -411,6 +588,7 @@ class SyncResult {
   final int skipped;
   final int conflicts;
   final int remoteCount;
+  final int repaired;
 
   @override
   String toString() =>
@@ -442,19 +620,30 @@ SyncAction decideSyncAction({
 }
 
 class SyncCursor {
-  const SyncCursor({this.localMillis, this.remoteMillis});
+  const SyncCursor({
+    this.localMillis,
+    this.remoteMillis,
+    this.localSha256,
+    this.remoteEtag,
+  });
 
   final int? localMillis;
   final int? remoteMillis;
+  final String? localSha256;
+  final String? remoteEtag;
 
   factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
     localMillis: (json['localMillis'] as num?)?.toInt(),
     remoteMillis: (json['remoteMillis'] as num?)?.toInt(),
+    localSha256: json['localSha256'] as String?,
+    remoteEtag: json['remoteEtag'] as String?,
   );
 
   Map<String, Object?> toJson() => {
     'localMillis': localMillis,
     'remoteMillis': remoteMillis,
+    if (localSha256 != null) 'localSha256': localSha256,
+    if (remoteEtag != null) 'remoteEtag': remoteEtag,
   };
 }
 

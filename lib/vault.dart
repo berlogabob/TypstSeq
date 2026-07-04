@@ -134,7 +134,12 @@ class Vault {
     return id;
   }
 
-  Future<void> saveNote(File file, String text) => _writeFile(file, text);
+  Future<void> saveNote(File file, String text) async {
+    if (file.path.endsWith('.typ') && text.trim().isEmpty) {
+      throw ArgumentError('A TyLog note cannot be empty');
+    }
+    await _writeFile(file, text);
+  }
 
   String relativePath(File file) {
     final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)

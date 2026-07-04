@@ -89,6 +89,22 @@ void main() {
     expect(report.missingFiles, 0);
   });
 
+  test('journal is a built-in tag and needs no registry entry', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_journal_tag_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/journal').create(recursive: true);
+    await File('${dir.path}/journal/2026-07-04.typ').writeAsString('''#note(
+  id: "2026-07-04",
+  title: "2026-07-04",
+  tags: ("journal",),
+)''');
+
+    final index = await scanVault(dir);
+    final report = await validatePkms(dir, index);
+
+    expect(report.problems.where((p) => p.code == 'unknown-tag'), isEmpty);
+  });
+
   test('conflicts are discovered outside the metadata directory', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_conflicts_');
     addTearDown(() => dir.delete(recursive: true));
