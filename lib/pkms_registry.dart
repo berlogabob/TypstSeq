@@ -235,17 +235,19 @@ Future<PkmsData> loadPkmsData(Directory root) async {
     problems,
     'collections-registry-invalid',
   );
-  final meta = Directory('${root.path}/.tylog');
-  if (await meta.exists()) {
-    await for (final entity in meta.list(recursive: true)) {
+  if (await root.exists()) {
+    await for (final entity in root.list(recursive: true)) {
       if (entity is File && entity.path.contains('.remote-conflict-')) {
+        final subject = entity.path
+            .substring(root.absolute.path.length + 1)
+            .replaceAll(Platform.pathSeparator, '/');
         problems.add(
           PkmsProblem(
-            code: 'registry-sync-conflict',
+            code: 'sync-conflict',
             severity: PkmsSeverity.error,
-            subject: entity.path,
-            message: 'A synced PKMS registry has a conflict copy.',
-            fix: 'Compare the conflict copy before deleting either version.',
+            subject: subject,
+            message: 'A synced file has a conflict copy.',
+            fix: 'Tap to compare and merge the versions.',
           ),
         );
       }

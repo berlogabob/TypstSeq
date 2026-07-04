@@ -97,7 +97,7 @@ class NextcloudSync {
         final prev = syncState[path];
         final localChanged = _isChanged(localTime, prev?.localMillis);
         final remoteChanged = _isChanged(remoteTime, prev?.remoteMillis);
-        final action = decideSyncAction(
+        var action = decideSyncAction(
           localExists: localExists,
           remoteExists: remoteTime != null,
           localChanged: localChanged,
@@ -110,9 +110,15 @@ class NextcloudSync {
         var reason = '';
         if (action == SyncAction.download) {
           await local.parent.create(recursive: true);
-          await _download(path, local);
-          down++;
-          reason = localTime == null ? 'local-missing' : 'remote-newer';
+          final protected = await _download(path, local, protectNonEmpty: true);
+          if (protected) {
+            action = SyncAction.conflict;
+            conflict++;
+            reason = 'remote-empty';
+          } else {
+            down++;
+            reason = localTime == null ? 'local-missing' : 'remote-newer';
+          }
         } else if (action == SyncAction.upload) {
           await _upload(path, local);
           uploadedRemoteTime = DateTime.now().toUtc();
@@ -221,7 +227,14 @@ class NextcloudSync {
     }
   }
 
-  Future<void> _download(String path, File file) async {
+  Future<bool> _download(
+    String path,
+    File file, {
+    bool protectNonEmpty = false,
+  }) async {
+    final tmp = File(
+      '${file.path}.download-${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
     final response = await (await _open(
       'GET',
       _remoteUri(path),
@@ -229,7 +242,23 @@ class NextcloudSync {
     if (response.statusCode >= 400) {
       throw HttpException('GET $path ${response.statusCode}');
     }
-    await response.pipe(file.openWrite());
+    try {
+      await response.pipe(tmp.openWrite());
+      if (protectNonEmpty &&
+          await file.exists() &&
+          await file.length() > 0 &&
+          await tmp.length() == 0) {
+        await tmp.rename(
+          '${file.path}.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
+        );
+        return true;
+      }
+      await tmp.rename(file.path);
+      return false;
+    } catch (_) {
+      if (await tmp.exists()) await tmp.delete();
+      rethrow;
+    }
   }
 
   Future<void> _saveRemoteConflictCopy(Vault vault, String path) async {
@@ -334,7 +363,28 @@ bool isSyncInternalPath(String path) =>
     path == '.tylog/sync_trace.jsonl' ||
     path.startsWith('.tylog/backups/') ||
     path.startsWith('.tylog/search-index.json.gz-') ||
+    path.contains('.remote-conflict-') ||
     path.endsWith('.tmp');
+
+bool isNextcloudManagedVault(
+  Directory vault, {
+  Map<String, String>? environment,
+  bool? desktop,
+}) {
+  if (!(desktop ?? (Platform.isMacOS || Platform.isLinux))) return false;
+  final home = (environment ?? Platform.environment)['HOME'];
+  if (home == null) return false;
+  final path = vault.absolute.path;
+  return path == '$home/Nextcloud' ||
+      path.startsWith('$home/Nextcloud${Platform.pathSeparator}') ||
+      (path.startsWith('$home/Library/CloudStorage${Platform.pathSeparator}') &&
+          path
+              .substring('$home/Library/CloudStorage/'.length)
+              .split(Platform.pathSeparator)
+              .first
+              .toLowerCase()
+              .contains('nextcloud'));
+}
 
 enum SyncAction { upload, download, skip, conflict }
 

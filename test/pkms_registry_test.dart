@@ -89,6 +89,22 @@ void main() {
     expect(report.missingFiles, 0);
   });
 
+  test('conflicts are discovered outside the metadata directory', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_conflicts_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/journal').create(recursive: true);
+    await File(
+      '${dir.path}/journal/2026-07-03.typ.remote-conflict-1',
+    ).writeAsString('remote');
+
+    final data = await loadPkmsData(dir);
+    final conflict = data.problems.singleWhere(
+      (problem) => problem.code == 'sync-conflict',
+    );
+
+    expect(conflict.subject, 'journal/2026-07-03.typ.remote-conflict-1');
+  });
+
   test(
     'malformed registry and unsafe path are reported without throwing',
     () async {

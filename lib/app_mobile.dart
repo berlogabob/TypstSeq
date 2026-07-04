@@ -602,6 +602,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onSaveCollection: _saveCollection,
           onExportCollection: _exportCollection,
           onMigrateLegacy: _migrateLegacyNotes,
+          onResolveConflict: _resolveConflict,
         ),
       ),
     );
@@ -1020,13 +1021,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _showSyncSettings();
       return;
     }
-    cloudAutosave?.cancel();
-    if (dirty) await _save(syncAfter: false);
+    if (syncing) return;
+    if (isNextcloudManagedVault(v.root)) {
+      setState(() => status = 'Sync handled by Nextcloud Desktop');
+      return;
+    }
     setState(() {
       syncing = true;
       status = 'Syncing Nextcloud...';
     });
     try {
+      cloudAutosave?.cancel();
+      if (dirty) await _save(syncAfter: false);
       final result = await NextcloudSync(cfg).sync(v, trigger: trigger);
       if (note != null && await note!.exists()) {
         _loadSource(await note!.readAsString());
@@ -1053,6 +1059,75 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       setState(() => syncing = false);
     }
+  }
+
+  Future<void> _resolveConflict(PkmsProblem problem) async {
+    final v = vault;
+    if (v == null) return;
+    final marker = problem.subject.indexOf('.remote-conflict-');
+    if (marker < 0) return;
+    final conflict = File('${v.root.path}/${problem.subject}');
+    final original = File(
+      '${v.root.path}/${problem.subject.substring(0, marker)}',
+    );
+    if (!await conflict.exists()) return;
+    final localText = await original.exists()
+        ? await original.readAsString()
+        : '';
+    final remoteText = await conflict.readAsString();
+    if (!mounted) return;
+    final merged = TextEditingController(text: localText);
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Resolve ${v.relativePath(original)}'),
+        content: SizedBox(
+          width: 700,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ExpansionTile(
+                  title: const Text('Local version'),
+                  children: [SelectableText(localText)],
+                ),
+                ExpansionTile(
+                  title: const Text('Remote version'),
+                  children: [SelectableText(remoteText)],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: merged,
+                  minLines: 8,
+                  maxLines: 16,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Merged result',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save merged'),
+          ),
+        ],
+      ),
+    );
+    if (save == true) {
+      await v.saveNote(original, merged.text);
+      await conflict.delete();
+      await _refreshPkms('Conflict resolved');
+    }
+    merged.dispose();
   }
 
   Future<void> _showSyncSettings() async {

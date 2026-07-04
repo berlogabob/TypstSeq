@@ -122,6 +122,7 @@ void main() {
           onSaveCollection: (_) async {},
           onExportCollection: (_) async {},
           onMigrateLegacy: () async {},
+          onResolveConflict: (_) async {},
         ),
       ),
     );
