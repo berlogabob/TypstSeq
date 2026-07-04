@@ -12,6 +12,7 @@ class PkmsSearchResult {
     required this.kind,
     required this.tags,
     required this.score,
+    this.snippet,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class PkmsSearchResult {
   final String kind;
   final List<String> tags;
   final int score;
+  final String? snippet;
 }
 
 class _SearchDocument {
@@ -34,6 +36,7 @@ class _SearchDocument {
     this.fingerprint,
     this.fileKind,
     this.status,
+    this.snippet,
   });
 
   final String id;
@@ -46,6 +49,7 @@ class _SearchDocument {
   final String? fingerprint;
   final String? fileKind;
   final String? status;
+  final String? snippet;
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -58,6 +62,7 @@ class _SearchDocument {
     'fingerprint': fingerprint,
     if (fileKind != null) 'fileKind': fileKind,
     if (status != null) 'status': status,
+    if (snippet != null) 'snippet': snippet,
   };
 
   factory _SearchDocument.fromJson(Map<String, Object?> json) =>
@@ -74,6 +79,7 @@ class _SearchDocument {
         fingerprint: json['fingerprint'] as String?,
         fileKind: json['fileKind'] as String?,
         status: json['status'] as String?,
+        snippet: json['snippet'] as String?,
       );
 }
 
@@ -146,6 +152,7 @@ class PkmsSearchIndex {
           '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} $source',
         ),
         fingerprint: note.fingerprint,
+        snippet: _snippet(source),
       );
     }
     for (final file in files.files.values) {
@@ -161,6 +168,7 @@ class PkmsSearchIndex {
         ),
         fileKind: file.kind,
         status: file.status,
+        snippet: file.path,
       );
     }
     return PkmsSearchIndex._(documents);
@@ -227,6 +235,7 @@ class PkmsSearchIndex {
           kind: document.kind,
           tags: document.tags,
           score: score,
+          snippet: document.snippet,
         ),
       );
     }
@@ -236,6 +245,17 @@ class PkmsSearchIndex {
     });
     return results.take(limit).toList();
   }
+}
+
+String? _snippet(String source) {
+  for (final line in source.split('\n')) {
+    final value = line.trim();
+    if (value.isEmpty || value.startsWith('#') || value.startsWith('=')) {
+      continue;
+    }
+    return value.length > 120 ? '${value.substring(0, 120)}…' : value;
+  }
+  return null;
 }
 
 Map<String, int> _frequencies(String text) {

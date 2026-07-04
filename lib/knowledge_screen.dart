@@ -4,10 +4,12 @@ import 'models.dart';
 import 'pkms_registry.dart';
 import 'search_index.dart';
 
+enum KnowledgeView { search, tags, files, problems, collections }
+
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({
     super.key,
-    this.initialTab = 0,
+    this.initialView = KnowledgeView.search,
     required this.index,
     required this.search,
     required this.tags,
@@ -30,7 +32,7 @@ class KnowledgeScreen extends StatefulWidget {
   });
 
   final VaultIndex index;
-  final int initialTab;
+  final KnowledgeView initialView;
   final PkmsSearchIndex search;
   final PkmsTagRegistry tags;
   final PkmsFileRegistry files;
@@ -55,40 +57,50 @@ class KnowledgeScreen extends StatefulWidget {
 }
 
 class _KnowledgeScreenState extends State<KnowledgeScreen> {
+  late KnowledgeView view = widget.initialView;
   String query = '';
   String? selectedTag;
   String? selectedFileKind;
   String? selectedStatus;
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-    length: 5,
-    initialIndex: widget.initialTab,
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Knowledge'),
-        bottom: const TabBar(
-          isScrollable: false,
-          labelStyle: TextStyle(fontSize: 11),
-          tabs: [
-            Tab(icon: Icon(Icons.search), text: 'Search'),
-            Tab(icon: Icon(Icons.sell), text: 'Tags'),
-            Tab(icon: Icon(Icons.attach_file), text: 'Files'),
-            Tab(icon: Icon(Icons.rule), text: 'Problems'),
-            Tab(icon: Icon(Icons.collections_bookmark), text: 'Collections'),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(switch (view) {
+        KnowledgeView.search => 'Knowledge',
+        KnowledgeView.tags => 'Tags',
+        KnowledgeView.files => 'Files',
+        KnowledgeView.problems => 'Problems',
+        KnowledgeView.collections => 'Collections',
+      }),
+      actions: [
+        PopupMenuButton<KnowledgeView>(
+          tooltip: 'Knowledge sections',
+          initialValue: view,
+          onSelected: (value) => setState(() => view = value),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: KnowledgeView.search, child: Text('Search')),
+            PopupMenuItem(value: KnowledgeView.tags, child: Text('Tags')),
+            PopupMenuItem(value: KnowledgeView.files, child: Text('Files')),
+            PopupMenuItem(
+              value: KnowledgeView.problems,
+              child: Text('Problems'),
+            ),
+            PopupMenuItem(
+              value: KnowledgeView.collections,
+              child: Text('Collections'),
+            ),
           ],
         ),
-      ),
-      body: TabBarView(
-        children: [
-          _searchTab(),
-          _tagsTab(),
-          _filesTab(),
-          _problemsTab(),
-          _collectionsTab(),
-        ],
-      ),
+      ],
     ),
+    body: switch (view) {
+      KnowledgeView.search => _searchTab(),
+      KnowledgeView.tags => _tagsTab(),
+      KnowledgeView.files => _filesTab(),
+      KnowledgeView.problems => _problemsTab(),
+      KnowledgeView.collections => _collectionsTab(),
+    },
   );
 
   Widget _searchTab() {
@@ -117,25 +129,40 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           ),
           onChanged: (value) => setState(() => query = value),
         ),
-        if (tags.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
             children: [
+              if (widget.problems.any((p) => p.code == 'sync-conflict')) ...[
+                ActionChip(
+                  avatar: const Icon(Icons.warning_amber, size: 18),
+                  label: Text(
+                    'Conflicts: ${widget.problems.where((p) => p.code == 'sync-conflict').length}',
+                  ),
+                  onPressed: () =>
+                      setState(() => view = KnowledgeView.problems),
+                ),
+                const SizedBox(width: 6),
+              ],
               ChoiceChip(
                 label: const Text('All'),
                 selected: selectedTag == null,
                 onSelected: (_) => setState(() => selectedTag = null),
               ),
               for (final tag in tags)
-                ChoiceChip(
-                  label: Text('#$tag'),
-                  selected: selectedTag == tag,
-                  onSelected: (_) => setState(() => selectedTag = tag),
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: ChoiceChip(
+                    label: Text('#$tag'),
+                    selected: selectedTag == tag,
+                    onSelected: (_) => setState(() => selectedTag = tag),
+                  ),
                 ),
             ],
           ),
-        ],
+        ),
         if (kinds.isNotEmpty || statuses.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(
@@ -176,7 +203,14 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               result.kind == 'note' ? Icons.description : Icons.attach_file,
             ),
             title: Text(result.title),
-            subtitle: Text(result.path),
+            subtitle: Text(
+              result.snippet == null
+                  ? result.path
+                  : '${result.path}\n${result.snippet}',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            isThreeLine: result.snippet != null,
             onTap: () {
               if (result.kind == 'note') {
                 Navigator.pop(context);

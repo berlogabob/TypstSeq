@@ -12,13 +12,13 @@ void main() {
     expect(find.text('TyLog'), findsOneWidget);
     expect(find.text('Save'), findsNothing);
     expect(find.byTooltip('Save'), findsNothing);
-    expect(find.byTooltip('Journal'), findsOneWidget);
-    expect(find.byTooltip('Source'), findsOneWidget);
-    expect(find.byTooltip('Preview'), findsNothing);
     expect(find.byTooltip('Graph'), findsOneWidget);
-    expect(find.byTooltip('Settings'), findsNothing);
-    expect(find.text('Settings'), findsOneWidget);
-    expect(find.byTooltip('Quick actions'), findsOneWidget);
+    expect(find.byTooltip('Search knowledge'), findsOneWidget);
+    expect(find.byTooltip('Vaults'), findsOneWidget);
+    expect(find.byTooltip('More actions'), findsOneWidget);
+    expect(find.byType(Drawer), findsNothing);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byTooltip('Quick actions'), findsNothing);
   });
 
   testWidgets('settings menu shows real app data', (tester) async {
@@ -27,6 +27,8 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
@@ -43,17 +45,16 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
-    final sourceButton = find.byIcon(Icons.code).first;
-    await tester.tap(sourceButton);
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Source'));
     await tester.pump();
-    expect(find.byTooltip('Preview'), findsOneWidget);
-    await tester.tap(sourceButton);
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Preview'), findsOneWidget);
+    await tester.tap(find.text('Preview'));
     await tester.pump();
-    expect(find.byTooltip('Source'), findsOneWidget);
-    await tester.tap(sourceButton);
-    await tester.pump();
-
-    expect(find.byTooltip('Preview'), findsOneWidget);
+    expect(find.text('Edit source'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -76,6 +77,31 @@ void main() {
     expect(find.text('Autosave pending...'), findsOneWidget);
   });
 
+  testWidgets('editor dock wraps selections and inserts headings', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    field.controller!.text = 'hello';
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    field.controller!.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: 5,
+    );
+    await tester.tap(find.byTooltip('Bold'));
+    await tester.pump();
+    expect(field.controller!.text, '*hello*');
+
+    field.controller!.selection = const TextSelection.collapsed(offset: 0);
+    await tester.tap(find.byTooltip('Heading'));
+    await tester.pump();
+    expect(field.controller!.text, '= *hello*');
+    expect(find.text('Autosave pending...'), findsOneWidget);
+  });
+
   testWidgets('TyLog fits a phone-width screen', (tester) async {
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1;
@@ -91,15 +117,11 @@ void main() {
   testWidgets('knowledge screen exposes all PKMS work areas', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
 
-    expect(find.text('Search'), findsOneWidget);
-    expect(find.text('Tags'), findsOneWidget);
-    expect(find.text('Files'), findsOneWidget);
-    expect(find.text('Problems'), findsOneWidget);
-    expect(find.text('Collections'), findsOneWidget);
     expect(find.text('Search notes and files'), findsOneWidget);
+    expect(find.byTooltip('Knowledge sections'), findsOneWidget);
   });
 
-  testWidgets('knowledge tabs fit a phone-width screen', (tester) async {
+  testWidgets('knowledge search fits a phone-width screen', (tester) async {
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -107,31 +129,54 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
 
-    expect(tester.widget<TabBar>(find.byType(TabBar)).isScrollable, isFalse);
-    expect(find.text('Search'), findsOneWidget);
-    expect(find.text('Tags'), findsOneWidget);
-    expect(find.text('Files'), findsOneWidget);
-    expect(find.text('Problems'), findsOneWidget);
-    expect(find.text('Collections'), findsOneWidget);
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.text('Search notes and files'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('knowledge screen can open directly on Problems', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: _knowledgeScreen(initialTab: 3)));
+    await tester.pumpWidget(
+      MaterialApp(home: _knowledgeScreen(initialView: KnowledgeView.problems)),
+    );
 
     expect(find.text('No PKMS problems'), findsOneWidget);
     expect(find.text('Search notes and files'), findsNothing);
   });
+
+  testWidgets('knowledge gives sync conflicts the first filter position', (
+    tester,
+  ) async {
+    const conflict = PkmsProblem(
+      code: 'sync-conflict',
+      severity: PkmsSeverity.warning,
+      subject: 'journal/today.typ.remote-conflict-1',
+      message: 'Both copies changed.',
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: _knowledgeScreen(problems: const [conflict])),
+    );
+
+    expect(
+      tester.getTopLeft(find.text('Conflicts: 1')).dx,
+      lessThan(tester.getTopLeft(find.text('All')).dx),
+    );
+    await tester.tap(find.text('Conflicts: 1'));
+    await tester.pump();
+    expect(find.text('Both copies changed.'), findsOneWidget);
+  });
 }
 
-KnowledgeScreen _knowledgeScreen({int initialTab = 0}) => KnowledgeScreen(
-  initialTab: initialTab,
+KnowledgeScreen _knowledgeScreen({
+  KnowledgeView initialView = KnowledgeView.search,
+  List<PkmsProblem> problems = const [],
+}) => KnowledgeScreen(
+  initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
   tags: PkmsTagRegistry.empty,
   files: PkmsFileRegistry.empty,
   collections: PkmsCollectionRegistry.empty,
-  problems: const [],
+  problems: problems,
   onOpenNote: (_) {},
   onOpenFile: (_) {},
   onSaveTag: (_) async {},

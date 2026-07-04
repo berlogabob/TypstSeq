@@ -34,7 +34,12 @@ class TyLogApp extends StatelessWidget {
     title: 'TyLog',
     theme: ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3F6F68)),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF0F172A),
+        brightness: Brightness.light,
+        surface: const Color(0xFFF8FAFC),
+      ),
+      scaffoldBackgroundColor: const Color(0xFFF8FAFC),
       inputDecorationTheme: const InputDecorationTheme(
         border: InputBorder.none,
       ),
@@ -79,8 +84,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool rebuilding = false;
   bool cancelRebuild = false;
   double? rebuildProgress;
-  bool leftPanelOpen = true;
-  bool rightPanelOpen = true;
   VaultRegistry? vaultRegistry;
 
   @override
@@ -583,7 +586,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showKnowledge({int initialTab = 0}) async {
+  Future<void> _showKnowledge({
+    KnowledgeView initialView = KnowledgeView.search,
+  }) async {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
@@ -591,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
       MaterialPageRoute(
         builder: (_) => KnowledgeScreen(
-          initialTab: initialTab,
+          initialView: initialView,
           index: ix,
           search: searchIndex,
           tags: tags,
@@ -1105,6 +1110,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final remoteModified = await conflict.lastModified();
     if (!mounted) return;
     final merged = TextEditingController(text: localText);
+    final selectedVersion = ValueNotifier<String?>('local');
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => Dialog.fullscreen(
@@ -1129,44 +1135,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'Both copies changed. Compare the highlighted sections, choose a version, or edit the final result.',
               ),
               const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final cards = [
-                    _ConflictVersionCard(
-                      title: 'This device',
-                      text: localText,
-                      otherText: remoteText,
-                      modified: localModified,
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      onUse: () => merged.text = localText,
-                    ),
-                    _ConflictVersionCard(
-                      title: 'Nextcloud copy',
-                      text: remoteText,
-                      otherText: localText,
-                      modified: remoteModified,
-                      color: Theme.of(context).colorScheme.tertiaryContainer,
-                      onUse: () => merged.text = remoteText,
-                    ),
-                  ];
-                  if (constraints.maxWidth < 700) {
-                    return Column(
+              ValueListenableBuilder<String?>(
+                valueListenable: selectedVersion,
+                builder: (context, selected, _) => LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cards = [
+                      _ConflictVersionCard(
+                        title: 'This device',
+                        text: localText,
+                        otherText: remoteText,
+                        modified: localModified,
+                        newer:
+                            localModified != null &&
+                            localModified.isAfter(remoteModified),
+                        selected: selected == 'local',
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        onUse: () {
+                          selectedVersion.value = 'local';
+                          merged.text = localText;
+                        },
+                      ),
+                      _ConflictVersionCard(
+                        title: 'Nextcloud copy',
+                        text: remoteText,
+                        otherText: localText,
+                        modified: remoteModified,
+                        newer:
+                            localModified == null ||
+                            remoteModified.isAfter(localModified),
+                        selected: selected == 'remote',
+                        color: Theme.of(context).colorScheme.tertiaryContainer,
+                        onUse: () {
+                          selectedVersion.value = 'remote';
+                          merged.text = remoteText;
+                        },
+                      ),
+                    ];
+                    if (constraints.maxWidth < 700) {
+                      return Column(
+                        children: [
+                          cards.first,
+                          const SizedBox(height: 12),
+                          cards.last,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        cards.first,
-                        const SizedBox(height: 12),
-                        cards.last,
+                        Expanded(child: cards.first),
+                        const SizedBox(width: 12),
+                        Expanded(child: cards.last),
                       ],
                     );
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: cards.first),
-                      const SizedBox(width: 12),
-                      Expanded(child: cards.last),
-                    ],
-                  );
-                },
+                  },
+                ),
               ),
               const SizedBox(height: 20),
               Text(
@@ -1219,6 +1242,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await conflict.delete();
       await _refreshPkms('Conflict resolved');
     }
+    selectedVersion.dispose();
     merged.dispose();
   }
 
@@ -1339,52 +1363,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showQuickActions() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.today),
-              title: const Text('Today'),
-              onTap: () {
-                Navigator.pop(context);
-                _openToday();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('New page'),
-              onTap: () {
-                Navigator.pop(context);
-                _newPage();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.hub),
-              title: const Text('Knowledge'),
-              onTap: () {
-                Navigator.pop(context);
-                _showKnowledge();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSettings();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
@@ -1424,35 +1402,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
-    final syncConflicts =
-        validation?.count('sync-conflict') ??
-        index?.problems.where((p) => p.code == 'sync-conflict').length ??
-        0;
-    final pagesPanel = _PagesPanel(
-      activity: _panelActivity(status),
-      current: current,
-      index: index,
-      selectedTag: selectedTag,
-      onOpenToday: _openToday,
-      onNewPage: _newPage,
-      onRebuildIndex: _rebuildIndex,
-      rebuilding: rebuilding,
-      rebuildProgress: rebuildProgress,
-      onSync: syncing ? null : _syncNow,
-      syncing: syncing,
-      cloudConfigured: cloud?.isReady ?? false,
-      desktopManaged: v != null && isNextcloudManagedVault(v.root),
-      syncResult: lastSync,
-      lastSyncAt: lastSyncAt,
-      syncError: syncError,
-      syncConflicts: syncConflicts,
-      onSettings: _showSettings,
-      onKnowledge: _showKnowledge,
-      onReviewSync: () => _showKnowledge(initialTab: 3),
-      onSelectTag: (value) => setState(() => selectedTag = value),
-      onOpenNote: (item) =>
-          v == null ? null : _openNote(File('${v.root.path}/${item.path}')),
-    );
     final linksPanel = _LinksPanel(
       current: current,
       outgoing: outgoing,
@@ -1471,24 +1420,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final workArea = _WorkSurface(
       title: currentTitle,
       subtitle: current ?? 'daily journal',
+      status: status,
       child: switch (mode) {
         'graph' => GraphView(
           graph: graph ?? const NoteGraph(nodes: [], edges: []),
           currentPath: current,
           onOpenPath: _openPath,
         ),
-        'preview' => TypstDocumentViewer(
-          source: previewSource.isEmpty ? _currentSource() : previewSource,
-          files: FileSource.bytes({
-            '.tylog/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
-            '/.tylog/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
-          }),
-          loadingBuilder: (_) =>
-              const Center(child: CircularProgressIndicator()),
-          errorBuilder: (_, error) => Padding(
-            padding: const EdgeInsets.all(16),
-            child: SelectableText('Typst error:\n$error'),
-          ),
+        'preview' => Column(
+          children: [
+            Expanded(
+              child: TypstDocumentViewer(
+                source: previewSource.isEmpty
+                    ? _currentSource()
+                    : previewSource,
+                files: FileSource.bytes({
+                  '.tylog/tylog.typ': Uint8List.fromList(
+                    utf8.encode(helperSource),
+                  ),
+                  '/.tylog/tylog.typ': Uint8List.fromList(
+                    utf8.encode(helperSource),
+                  ),
+                }),
+                loadingBuilder: (_) =>
+                    const Center(child: CircularProgressIndicator()),
+                errorBuilder: (_, error) => Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText('Typst error:\n$error'),
+                ),
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _showSource,
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Edit source'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _showPreview,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         'source' => _Editor(
           controller: sourceController,
@@ -1499,134 +1486,133 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       },
     );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 800;
-        return Scaffold(
-          drawer: compact ? Drawer(child: SafeArea(child: pagesPanel)) : null,
-          endDrawer: compact
-              ? Drawer(child: SafeArea(child: linksPanel))
-              : null,
-          appBar: AppBar(
-            centerTitle: false,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(dirty ? 'TyLog *' : 'TyLog'),
-                Text(
-                  currentTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall,
+    return Scaffold(
+      appBar: AppBar(
+        leading: PopupMenuButton<String>(
+          tooltip: 'Vaults',
+          icon: const Icon(Icons.folder_outlined),
+          onSelected: (id) {
+            if (id == 'settings') {
+              _showSettings();
+              return;
+            }
+            final entries = vaultRegistry?.entries ?? const <VaultEntry>[];
+            for (final entry in entries) {
+              if (entry.id == id) unawaited(_switchVault(entry));
+            }
+          },
+          itemBuilder: (_) => [
+            for (final entry in vaultRegistry?.entries ?? const <VaultEntry>[])
+              PopupMenuItem(
+                value: entry.id,
+                child: Row(
+                  children: [
+                    Icon(
+                      entry.id == vaultRegistry?.activeId
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(entry.name)),
+                  ],
                 ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                onPressed: _showKnowledge,
-                icon: const Icon(Icons.hub),
-                tooltip: 'Knowledge',
               ),
-              if (!compact) ...[
-                IconButton(
-                  onPressed: () =>
-                      setState(() => leftPanelOpen = !leftPanelOpen),
-                  icon: const Icon(Icons.view_sidebar),
-                  tooltip: 'Pages',
-                ),
-                IconButton(
-                  onPressed: () =>
-                      setState(() => rightPanelOpen = !rightPanelOpen),
-                  icon: const Icon(Icons.notes),
-                  tooltip: 'Backlinks',
-                ),
-                _ModeButton(
-                  mode: mode,
-                  value: 'journal',
-                  icon: Icons.edit_note,
-                  tooltip: 'Journal',
-                  onPressed: _showJournal,
-                ),
-                _ModeButton(
-                  mode: mode,
-                  value: mode == 'preview' ? 'preview' : 'source',
-                  icon: Icons.code,
-                  tooltip: mode == 'source' ? 'Preview' : 'Source',
-                  onPressed: _toggleSourcePreview,
-                ),
-                _ModeButton(
-                  mode: mode,
-                  value: 'graph',
-                  icon: Icons.account_tree,
-                  tooltip: 'Graph',
-                  onPressed: () => setState(() => mode = 'graph'),
-                ),
-                IconButton(
-                  onPressed: syncing ? null : _syncNow,
-                  icon: const Icon(Icons.sync),
-                  tooltip: 'Sync',
-                ),
-              ],
-              if (compact)
-                IconButton(
-                  onPressed: _toggleSourcePreview,
-                  icon: const Icon(Icons.code),
-                  tooltip: mode == 'source' ? 'Preview' : 'Source',
-                ),
-              if (compact)
-                Builder(
-                  builder: (context) => IconButton(
-                    onPressed: () => Scaffold.of(context).openEndDrawer(),
-                    icon: const Icon(Icons.link),
-                    tooltip: 'Backlinks',
-                  ),
-                ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'settings',
+              child: Text('Manage vaults'),
+            ),
+          ],
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(dirty ? 'TyLog •' : 'TyLog'),
+            Text(
+              currentTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: _showKnowledge,
+            icon: const Icon(Icons.search),
+            tooltip: 'Search knowledge',
+          ),
+          IconButton(
+            isSelected: mode == 'graph',
+            onPressed: mode == 'graph'
+                ? _showJournal
+                : () => setState(() => mode = 'graph'),
+            icon: const Icon(Icons.account_tree),
+            tooltip: mode == 'graph' ? 'Journal' : 'Graph',
+          ),
+          PopupMenuButton<_ShellAction>(
+            tooltip: 'More actions',
+            onSelected: (action) {
+              switch (action) {
+                case _ShellAction.today:
+                  unawaited(_openToday());
+                case _ShellAction.newPage:
+                  unawaited(_newPage());
+                case _ShellAction.sourcePreview:
+                  _toggleSourcePreview();
+                case _ShellAction.backlinks:
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => Dialog.fullscreen(
+                      child: Scaffold(
+                        appBar: AppBar(title: const Text('Context')),
+                        body: SafeArea(child: linksPanel),
+                      ),
+                    ),
+                  );
+                case _ShellAction.rebuild:
+                  unawaited(_rebuildIndex());
+                case _ShellAction.sync:
+                  unawaited(_syncNow());
+                case _ShellAction.settings:
+                  _showSettings();
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: _ShellAction.today,
+                child: Text('Today'),
+              ),
+              const PopupMenuItem(
+                value: _ShellAction.newPage,
+                child: Text('New page'),
+              ),
+              PopupMenuItem(
+                value: _ShellAction.sourcePreview,
+                child: Text(mode == 'source' ? 'Preview' : 'Source'),
+              ),
+              const PopupMenuItem(
+                value: _ShellAction.backlinks,
+                child: Text('Backlinks and files'),
+              ),
+              const PopupMenuItem(
+                value: _ShellAction.rebuild,
+                child: Text('Rebuild index'),
+              ),
+              PopupMenuItem(
+                value: _ShellAction.sync,
+                enabled: !syncing,
+                child: const Text('Sync'),
+              ),
+              const PopupMenuItem(
+                value: _ShellAction.settings,
+                child: Text('Settings'),
+              ),
             ],
           ),
-          body: compact
-              ? workArea
-              : Row(
-                  children: [
-                    if (leftPanelOpen) SizedBox(width: 280, child: pagesPanel),
-                    Expanded(child: workArea),
-                    if (rightPanelOpen) SizedBox(width: 300, child: linksPanel),
-                  ],
-                ),
-          bottomNavigationBar: compact
-              ? NavigationBar(
-                  selectedIndex: _modeIndex(mode),
-                  onDestinationSelected: (value) {
-                    if (value == 1) {
-                      _showPreview();
-                    } else if (value == 0) {
-                      _showJournal();
-                    } else {
-                      setState(() => mode = 'graph');
-                    }
-                  },
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.today),
-                      label: 'Journal',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.preview),
-                      label: 'Preview',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.account_tree),
-                      label: 'Graph',
-                    ),
-                  ],
-                )
-              : null,
-          floatingActionButton: FloatingActionButton(
-            onPressed: _showQuickActions,
-            tooltip: 'Quick actions',
-            child: const Icon(Icons.add),
-          ),
-        );
-      },
+        ],
+      ),
+      body: workArea,
     );
   }
 
@@ -1634,12 +1620,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ? 'Today'
       : index?.notesByPath[current]?.title ??
             current.split('/').last.replaceFirst('.typ', '');
+}
 
-  int _modeIndex(String value) => switch (value) {
-    'preview' => 1,
-    'graph' => 2,
-    _ => 0,
-  };
+enum _ShellAction {
+  today,
+  newPage,
+  sourcePreview,
+  backlinks,
+  rebuild,
+  sync,
+  settings,
 }
 
 class _CleanSource {
@@ -1681,6 +1671,7 @@ _CleanSource _splitCleanSource(String source) {
 bool _isSystemLine(String line) =>
     RegExp(r'^#(import|include|show|set|let|note)\b').hasMatch(line);
 
+// ignore: unused_element
 String? _panelActivity(String status) {
   if (status.startsWith('Sync') || status.startsWith('Vault:')) return null;
   return status.split(' · validation ').first;
@@ -1704,6 +1695,8 @@ class _ConflictVersionCard extends StatelessWidget {
     required this.text,
     required this.otherText,
     required this.modified,
+    required this.newer,
+    required this.selected,
     required this.color,
     required this.onUse,
   });
@@ -1712,60 +1705,88 @@ class _ConflictVersionCard extends StatelessWidget {
   final String text;
   final String otherText;
   final DateTime? modified;
+  final bool newer;
+  final bool selected;
   final Color color;
   final VoidCallback onUse;
 
   @override
   Widget build(BuildContext context) => Card(
     color: color,
+    shape: RoundedRectangleBorder(
+      side: selected
+          ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+          : BorderSide.none,
+      borderRadius: BorderRadius.circular(12),
+    ),
     margin: EdgeInsets.zero,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          Text(
-            '${text.length} characters${modified == null ? '' : ' · ${_shortTime(modified!)}'}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Changed section',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: 4),
-          Container(
-            constraints: const BoxConstraints(minHeight: 80, maxHeight: 220),
-            padding: const EdgeInsets.all(10),
-            color: Theme.of(
-              context,
-            ).colorScheme.surface.withValues(alpha: 0.75),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                _changedExcerpt(text, otherText),
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-            ),
-          ),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text('View full version'),
-            children: [
-              Container(
-                constraints: const BoxConstraints(maxHeight: 300),
-                alignment: Alignment.topLeft,
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    text.isEmpty ? '(Empty file)' : text,
-                    style: const TextStyle(fontFamily: 'monospace'),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onUse,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+              ],
+            ),
+            Text(
+              modified == null
+                  ? 'Not present on this device'
+                  : 'Modified ${_relativeTime(modified!)}${newer ? ' · Newer' : ''}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Changed section',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 4),
+            Container(
+              constraints: const BoxConstraints(minHeight: 80, maxHeight: 220),
+              padding: const EdgeInsets.all(10),
+              color: Theme.of(
+                context,
+              ).colorScheme.surface.withValues(alpha: 0.75),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  _changedExcerpt(text, otherText),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
               ),
-            ],
-          ),
-          OutlinedButton(onPressed: onUse, child: Text('Use $title')),
-        ],
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('View full version'),
+              children: [
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  alignment: Alignment.topLeft,
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      text.isEmpty ? '(Empty file)' : text,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -1798,9 +1819,13 @@ String _changedExcerpt(String text, String other) {
       : excerpt;
 }
 
-String _shortTime(DateTime value) =>
-    '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
-    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+String _relativeTime(DateTime value) {
+  final difference = DateTime.now().difference(value);
+  if (difference.inMinutes < 1) return 'just now';
+  if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+  if (difference.inDays < 1) return '${difference.inHours}h ago';
+  return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+}
 
 class _SyncStatusCard extends StatelessWidget {
   const _SyncStatusCard({
@@ -1945,6 +1970,8 @@ class _SyncStatusCard extends StatelessWidget {
   }
 }
 
+// Kept as the settings summary content; the unified shell no longer mounts it.
+// ignore: unused_element
 class _PagesPanel extends StatelessWidget {
   const _PagesPanel({
     required this.activity,
@@ -2424,11 +2451,13 @@ class _WorkSurface extends StatelessWidget {
   const _WorkSurface({
     required this.title,
     required this.subtitle,
+    required this.status,
     required this.child,
   });
 
   final String title;
   final String subtitle;
+  final String status;
   final Widget child;
 
   @override
@@ -2440,23 +2469,34 @@ class _WorkSurface extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Card(
-              elevation: 0,
-              clipBehavior: Clip.antiAlias,
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
-              child: child,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  status,
+                  style: Theme.of(context).textTheme.labelSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          Expanded(child: child),
         ],
       ),
     ),
   );
 }
 
-class _Editor extends StatelessWidget {
+class _Editor extends StatefulWidget {
   const _Editor({
     required this.controller,
     required this.onChanged,
@@ -2468,21 +2508,121 @@ class _Editor extends StatelessWidget {
   final bool monospace;
 
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: controller,
-    expands: true,
-    maxLines: null,
-    minLines: null,
-    textAlignVertical: TextAlignVertical.top,
-    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-      height: 1.45,
-      fontFamily: monospace ? 'monospace' : null,
-    ),
-    decoration: const InputDecoration(contentPadding: EdgeInsets.all(18)),
-    onChanged: (_) => onChanged(),
+  State<_Editor> createState() => _EditorState();
+}
+
+class _EditorState extends State<_Editor> {
+  final focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    focusNode.dispose();
+    super.dispose();
+  }
+
+  void _replace(String before, String after) {
+    final controller = widget.controller;
+    final selection = controller.selection;
+    final start = selection.isValid ? selection.start : controller.text.length;
+    final end = selection.isValid ? selection.end : controller.text.length;
+    final selected = controller.text.substring(start, end);
+    controller.value = controller.value.copyWith(
+      text: controller.text.replaceRange(start, end, '$before$selected$after'),
+      selection: TextSelection.collapsed(
+        offset: start + before.length + selected.length,
+      ),
+      composing: TextRange.empty,
+    );
+    widget.onChanged();
+    focusNode.requestFocus();
+  }
+
+  void _linePrefix(String prefix) {
+    final controller = widget.controller;
+    final selection = controller.selection;
+    final cursor = selection.isValid ? selection.start : controller.text.length;
+    final lineStart = cursor == 0
+        ? 0
+        : controller.text.lastIndexOf('\n', cursor - 1) + 1;
+    controller.value = controller.value.copyWith(
+      text: controller.text.replaceRange(lineStart, lineStart, prefix),
+      selection: TextSelection.collapsed(offset: cursor + prefix.length),
+      composing: TextRange.empty,
+    );
+    widget.onChanged();
+    focusNode.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Expanded(
+        child: TextField(
+          controller: widget.controller,
+          focusNode: focusNode,
+          expands: true,
+          maxLines: null,
+          minLines: null,
+          textAlignVertical: TextAlignVertical.top,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            height: 1.45,
+            fontFamily: widget.monospace ? 'monospace' : null,
+          ),
+          decoration: const InputDecoration(contentPadding: EdgeInsets.all(18)),
+          onChanged: (_) => widget.onChanged(),
+        ),
+      ),
+      ListenableBuilder(
+        listenable: focusNode,
+        builder: (context, _) => focusNode.hasFocus
+            ? SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 48,
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      _DockButton('=', 'Heading', () => _linePrefix('= ')),
+                      _DockButton('*', 'Bold', () => _replace('*', '*')),
+                      _DockButton('_', 'Emphasis', () => _replace('_', '_')),
+                      _DockButton(r'$', 'Math', () => _replace(r'$', r'$')),
+                      _DockButton('[[ ]]', 'Link', () => _replace('[[', ']]')),
+                      _DockButton(
+                        '#',
+                        'Function or tag',
+                        () => _replace('#', ''),
+                      ),
+                      _DockButton('+', 'New block', () => _replace('\n- ', '')),
+                    ],
+                  ),
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+    ],
   );
 }
 
+class _DockButton extends StatelessWidget {
+  const _DockButton(this.label, this.tooltip, this.onPressed);
+
+  final String label;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 2),
+    child: IconButton.outlined(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Text(label),
+    ),
+  );
+}
+
+// ignore: unused_element
 class _ModeButton extends StatelessWidget {
   const _ModeButton({
     required this.mode,
