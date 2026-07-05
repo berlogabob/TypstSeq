@@ -86,19 +86,19 @@ void main() {
     );
   });
 
-  test('sync excludes derived caches but keeps durable PKMS registries', () {
-    expect(isSyncInternalPath('.tylog/index.json'), isTrue);
-    expect(isSyncInternalPath('.tylog/search-index.json.gz'), isTrue);
-    expect(isSyncInternalPath('.tylog/tylog.typ'), isTrue);
-    expect(isSyncInternalPath('.tylog/backups/123/pages/a.typ'), isTrue);
-    expect(isSyncInternalPath('.tylog/tags.json'), isFalse);
-    expect(isSyncInternalPath('.tylog/files.json'), isFalse);
-    expect(isSyncInternalPath('.tylog/collections.json'), isFalse);
-    expect(isSyncInternalPath('.tylog/templates/article.typ'), isFalse);
-    expect(isSyncInternalPath('pages/a.typ.remote-conflict-1'), isTrue);
+  test('sync excludes operational state and keeps durable v5 roots', () {
+    expect(isSyncInternalPath('_index/index.json'), isTrue);
+    expect(isSyncInternalPath('_index/search-index.json.gz'), isTrue);
+    expect(isSyncInternalPath('.tylog/settings.json'), isTrue);
+    expect(isSyncInternalPath('.tylog/backups/123/notes/a.typ'), isTrue);
+    expect(isSyncableVaultPath('_system/tylog.typ'), isTrue);
+    expect(isSyncableVaultPath('daily/2026/07/a.typ'), isTrue);
+    expect(isSyncableVaultPath('notes/a.typ'), isTrue);
+    expect(isSyncableVaultPath('journal/a.typ'), isFalse);
+    expect(isSyncInternalPath('notes/a.typ.remote-conflict-1'), isTrue);
     expect(
       isSyncInternalPath(
-        '.tylog/index.json.remote-conflict-1.remote-conflict-2',
+        '_index/index.json.remote-conflict-1.remote-conflict-2',
       ),
       isTrue,
     );
@@ -141,7 +141,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('keep local');
     await note.setLastModified(DateTime.utc(2020));
@@ -181,7 +181,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('same note');
     await note.setLastModified(DateTime.utc(2025));
@@ -208,7 +208,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('keep note');
     await File('${note.path}.remote-conflict-1').writeAsString('keep note');
@@ -239,7 +239,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('local note');
     await note.setLastModified(DateTime.utc(2030));
@@ -285,7 +285,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('same note');
     await _seedCursor(vault, note, '"remote-1"');
@@ -311,7 +311,7 @@ void main() {
       });
       final vault = Vault(dir);
       await vault.ensureCreated();
-      final note = File('${dir.path}/journal/note.typ');
+      final note = File('${dir.path}/daily/2026/07/note.typ');
       await note.parent.create(recursive: true);
       await note.writeAsString('local old');
       await _seedCursor(vault, note, '"remote-1"');
@@ -335,7 +335,7 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final note = File('${dir.path}/journal/note.typ');
+    final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('keep local');
     await note.setLastModified(DateTime.utc(2020));
@@ -395,7 +395,7 @@ Future<HttpServer> _webDavServer({
       request.response.statusCode = 207;
       request.response.write(
         '<d:multistatus xmlns:d="DAV:"><d:response>'
-        '<d:href>/remote.php/dav/files/alice/TyLogVault/journal/note.typ</d:href>'
+        '<d:href>/remote.php/dav/files/alice/TyLogVault/daily/2026/07/note.typ</d:href>'
         '<d:propstat><d:prop><d:getlastmodified>'
         '${HttpDate.format(remoteModified ?? DateTime.utc(2030))}'
         '</d:getlastmodified><d:getetag>$etag</d:getetag>'
@@ -426,7 +426,7 @@ Future<HttpServer> _webDavServer({
         'ifNoneMatch': request.headers.value(HttpHeaders.ifNoneMatchHeader),
         'xHash': request.headers.value('x-hash'),
       });
-      final status = request.uri.path.endsWith('/journal/note.typ')
+      final status = request.uri.path.endsWith('/daily/2026/07/note.typ')
           ? putStatus
           : HttpStatus.created;
       request.response.statusCode = status;

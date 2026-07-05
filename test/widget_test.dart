@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
-import 'package:tylog/pkms_registry.dart';
 import 'package:tylog/search_index.dart';
 
 void main() {
@@ -18,7 +17,8 @@ void main() {
     expect(find.byTooltip('Vaults'), findsOneWidget);
     expect(find.byTooltip('More actions'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
-    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byKey(const Key('quick-capture')), findsOneWidget);
     expect(find.byTooltip('Quick actions'), findsNothing);
   });
 
@@ -46,6 +46,9 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+
+    await tester.tap(find.text('Journal').last);
     await tester.pump();
 
     await tester.tap(find.byTooltip('Source'));
@@ -125,15 +128,22 @@ void main() {
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {
     await tester.pumpWidget(const TyLogApp());
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.controller?.text, isNot(contains('#import')));
-    expect(field.controller?.text, isNot(contains('#note')));
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('#import'), findsNothing);
+    expect(find.textContaining('#show:'), findsNothing);
   });
 
   testWidgets('editor changes are autosaved', (tester) async {
     await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Source'));
     await tester.pump();
 
     await tester.enterText(find.byType(TextField), 'autosave text');
@@ -146,6 +156,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Source'));
     await tester.pump();
 
     await tester.enterText(find.byType(TextField), 'first draft');
@@ -159,29 +174,37 @@ void main() {
     expect(find.text('TyLog •'), findsOneWidget);
   });
 
-  testWidgets('editor dock wraps selections and inserts headings', (
-    tester,
-  ) async {
+  testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    final field = tester.widget<TextField>(find.byType(TextField));
-    field.controller!.text = 'hello';
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
-    field.controller!.selection = const TextSelection(
-      baseOffset: 0,
-      extentOffset: 5,
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    for (final label in const [
+      'Note link',
+      'Tag',
+      'Task',
+      'Date',
+      'Project',
+      'Citation',
+      'Attachment',
+      'Heading',
+      'Bold',
+      'Italic',
+      'Table',
+      'Equation',
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
+    await tester.scrollUntilVisible(
+      find.text('Report'),
+      100,
+      scrollable: find.byType(Scrollable).last,
     );
-    await tester.tap(find.byTooltip('Bold'));
-    await tester.pump();
-    expect(field.controller!.text, '*hello*');
-
-    field.controller!.selection = const TextSelection.collapsed(offset: 0);
-    await tester.tap(find.byTooltip('Heading'));
-    await tester.pump();
-    expect(field.controller!.text, '= *hello*');
-    expect(find.text('Autosave pending...'), findsOneWidget);
+    expect(find.text('Report'), findsOneWidget);
   });
 
   testWidgets('TyLog fits a phone-width screen', (tester) async {
@@ -199,7 +222,7 @@ void main() {
   testWidgets('knowledge screen exposes all PKMS work areas', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
 
-    expect(find.text('Search notes and files'), findsOneWidget);
+    expect(find.text('Search notes, tasks, and attachments'), findsOneWidget);
     expect(find.byTooltip('Knowledge sections'), findsOneWidget);
   });
 
@@ -212,7 +235,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: _knowledgeScreen()));
 
     expect(find.byType(TabBar), findsNothing);
-    expect(find.text('Search notes and files'), findsOneWidget);
+    expect(find.text('Search notes, tasks, and attachments'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -221,29 +244,25 @@ void main() {
       MaterialApp(home: _knowledgeScreen(initialView: KnowledgeView.problems)),
     );
 
-    expect(find.text('No PKMS problems'), findsOneWidget);
-    expect(find.text('Search notes and files'), findsNothing);
+    expect(find.text('No vault problems'), findsOneWidget);
+    expect(find.text('Search notes, tasks, and attachments'), findsNothing);
   });
 
-  testWidgets('knowledge gives sync conflicts the first filter position', (
-    tester,
-  ) async {
+  testWidgets('knowledge problems opens sync conflicts', (tester) async {
     const conflict = PkmsProblem(
       code: 'sync-conflict',
       severity: PkmsSeverity.warning,
-      subject: 'journal/today.typ.remote-conflict-1',
+      subject: 'daily/2026/07/today.typ.remote-conflict-1',
       message: 'Both copies changed.',
     );
     await tester.pumpWidget(
-      MaterialApp(home: _knowledgeScreen(problems: const [conflict])),
+      MaterialApp(
+        home: _knowledgeScreen(
+          initialView: KnowledgeView.problems,
+          problems: const [conflict],
+        ),
+      ),
     );
-
-    expect(
-      tester.getTopLeft(find.text('Conflicts: 1')).dx,
-      lessThan(tester.getTopLeft(find.text('All')).dx),
-    );
-    await tester.tap(find.text('Conflicts: 1'));
-    await tester.pump();
     expect(find.text('Both copies changed.'), findsOneWidget);
   });
 }
@@ -255,21 +274,8 @@ KnowledgeScreen _knowledgeScreen({
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
-  tags: PkmsTagRegistry.empty,
-  files: PkmsFileRegistry.empty,
-  collections: PkmsCollectionRegistry.empty,
   problems: problems,
   onOpenNote: (_) {},
-  onOpenFile: (_) {},
-  onSaveTag: (_) async {},
-  onDeleteTag: (_) async {},
-  onMergeTag: (_, _) async {},
-  onImportFile: () async {},
-  onSaveFile: (_) async {},
-  onDeleteFile: (_) async {},
-  onSaveCollection: (_) async {},
-  onExportCollection: (_) async {},
-  onMigrateLegacy: () async {},
   onResolveConflict: (_) async {},
   onCleanSyncCaches: () async {},
   onSetTaskStatus: (_, _) async {},

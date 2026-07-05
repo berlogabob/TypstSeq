@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tylog/pkms_registry.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/search_index.dart';
 
@@ -12,14 +11,14 @@ void main() {
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_10k_');
       addTearDown(() => dir.delete(recursive: true));
-      final pages = await Directory('${dir.path}/pages').create();
+      final pages = await Directory('${dir.path}/notes').create();
       for (var batch = 0; batch < 100; batch++) {
         await Future.wait([
           for (var offset = 0; offset < 100; offset++)
             () {
               final i = batch * 100 + offset;
               return File('${pages.path}/n$i.typ').writeAsString(
-                '#note(id: "n$i", title: "Note $i", tags: ("pkms",), links: ("n${(i + 1) % 10000}",))\nKnowledge body $i',
+                '#show: tylog.note.with(id: "n$i", title: "Note $i", tags: ("pkms",))\n#tylog.ref-note("n${(i + 1) % 10000}")[Next]\nKnowledge body $i',
               );
             }(),
         ]);
@@ -27,12 +26,8 @@ void main() {
 
       final full = Stopwatch()..start();
       final index = await scanVault(dir, force: true);
-      final search = await PkmsSearchIndex.build(
-        dir,
-        index,
-        PkmsFileRegistry.empty,
-      );
-      final searchFile = File('${dir.path}/.tylog/search-index.json.gz');
+      final search = await PkmsSearchIndex.build(dir, index);
+      final searchFile = File('${dir.path}/_index/search-index.json.gz');
       await search.save(searchFile);
       final firstSearchBytes = await searchFile.readAsBytes();
       full.stop();
@@ -43,7 +38,6 @@ void main() {
       final warmSearch = await PkmsSearchIndex.build(
         dir,
         second,
-        PkmsFileRegistry.empty,
         previous: loadedSearch,
       );
       await warmSearch.save(searchFile);

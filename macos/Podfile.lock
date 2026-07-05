@@ -39,8 +39,8 @@ SPEC CHECKSUMS:
   flutter_timezone: d272288c69082ad571630e0d17140b3d6b93dc0c
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   open_file_mac: 76f06c8597551249bdb5e8fd8827a98eae0f4585
-  typst_flutter: 94c8d3c2c100ad798cf12fa50b552ab106b0fb9e
+  typst_flutter: a85b5f6014f54a1f7eedda15caf33dbf9a719cdd
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 180da7a1dbc1d932db021ebc8007656e7c46dd99
 
 COCOAPODS: 1.16.2

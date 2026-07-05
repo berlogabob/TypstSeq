@@ -1,0 +1,108 @@
+// Android build for the typst_flutter FFI plugin.
+//
+// Flutter invokes this file because `ffiPlugin: true` is declared for the
+// android platform in pubspec.yaml.
+//
+// Pre-built binary path (preferred — no Rust required):
+//   Run `dart run typst_flutter:setup` once after `flutter pub get`.
+//   This downloads the pre-built .so files into .typst_flutter_prebuilt/android/
+//   inside the package root (resolved via Dart's package URI), and this build
+//   file packages them directly.
+//
+// Cargokit fallback (requires Rust + cargo installed):
+//   If pre-built binaries are absent, Cargokit compiles the Rust crate from
+//   source using the NDK.
+
+group 'com.ajmalbuv.typst_flutter'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+// ── Pre-built binary detection ────────────────────────────────────────────────
+//
+// pluginRoot is the directory containing pubspec.yaml for typst_flutter.
+// For local path-dependency development this is the repo root.
+// For published packages this is inside the pub cache (e.g. D:\.pub-cache\...).
+//
+// The `dart run typst_flutter:setup` command MUST be run from the consumer
+// app's root (where its pubspec.yaml lives). It resolves the package URI
+// internally, so it always places the binaries in the correct pluginRoot
+// regardless of whether this is a local or cached package.
+
+def pluginRoot = project.projectDir.parentFile
+def prebuiltDir = new File(pluginRoot, '.typst_flutter_prebuilt/android')
+def localJniLibsDir = new File(project.projectDir, 'src/main/jniLibs/arm64-v8a')
+
+def hasLocalBinaries = localJniLibsDir.exists()
+def hasPrebuiltBinaries = prebuiltDir.exists()
+def usePrebuilt = hasLocalBinaries || hasPrebuiltBinaries
+
+android {
+    if (project.android.hasProperty('namespace')) {
+        namespace 'com.ajmalbuv.typst_flutter'
+    }
+
+    compileSdkVersion 34
+    ndkVersion android.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+
+    if (!hasLocalBinaries && hasPrebuiltBinaries) {
+        sourceSets {
+            main {
+                jniLibs.srcDirs += [prebuiltDir.absolutePath]
+            }
+        }
+    }
+}
+
+if (!usePrebuilt) {
+    logger.lifecycle('''
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  typst_flutter: pre-built binaries not found.                    │
+    │  Falling back to Cargokit (requires Rust on build machine).      │
+    │                                                                  │
+    │  To avoid compiling from source, run once from your app root:    │
+    │    dart run typst_flutter:setup                                  │
+    └──────────────────────────────────────────────────────────────────┘
+    ''')
+    def cargokitScript = new File(project.projectDir, '../rust_builder/cargokit/gradle/plugin.gradle')
+    if (cargokitScript.exists()) {
+        apply from: cargokitScript.absolutePath
+        cargokit {
+            manifestDir = '../rust'
+            libname = 'typst_flutter'
+        }
+    } else {
+        throw new GradleException(
+            'typst_flutter: Prebuilt binaries are missing, auto-download failed, '
+            + 'AND Cargokit is missing from rust_builder. '
+            + 'Run `./tool/setup_typst_native.sh` from your app root, or '
+            + 'run `flutter_rust_bridge_codegen integrate` to restore Cargokit.'
+        )
+    }
+}

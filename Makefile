@@ -4,14 +4,16 @@ APP_NAME := tylog
 REPO_NAME ?= $(notdir $(CURDIR))
 BRANCH := $(shell git branch --show-current)
 GITHUB_PAGES_BASE_HREF ?= /$(REPO_NAME)/
-RELEASE_GIT_PATHS ?= .gitignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test lib linux macos web docs sample_vault test
+RELEASE_GIT_PATHS ?= .gitignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test lib linux macos packages tool web docs sample_vault test
 VERSION := $(shell grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d '[:space:]')
 OWNER_REPO ?= berlogabob/TypstSeq
 
-.PHONY: help bump-version test build-web package-pages deploy-pages build-android release clean
+.PHONY: help setup-native test verify build-web package-pages deploy-pages build-android release clean
 
 help:
 	@echo "TyLog release commands"
+	@echo "  make setup-native  # explicitly prepare typst_flutter native libraries"
+	@echo "  make verify        # run analysis, tests, native integration, and release builds"
 	@echo "  make bump-version   # 1.0.0+1 -> 1.0.0+2"
 	@echo "  make package-pages  # build Flutter web into docs/ for GitHub Pages"
 	@echo "  make deploy-pages   # package docs/, commit, push, enable GitHub Pages"
@@ -21,9 +23,18 @@ help:
 bump-version:
 	@python3 -c 'from pathlib import Path; import re; p=Path("pubspec.yaml"); s=p.read_text(); m=re.search(r"^(version:\s*)(\d+)\.(\d+)\.(\d+)\+(\d+)\s*$$", s, re.M); assert m, "version must look like: version: 1.0.0+1"; new=f"{m.group(1)}{m.group(2)}.{m.group(3)}.{m.group(4)}+{int(m.group(5))+1}"; p.write_text(s[:m.start()]+new+s[m.end():]); print(new.replace("version: ", ""))'
 
+setup-native:
+	@./tool/setup_typst_native.sh
+
 test:
 	@flutter analyze
 	@flutter test
+
+verify: test
+	@flutter test integration_test/pkms_native_test.dart -d macos
+	@flutter build apk --release
+	@flutter build macos --release
+	@flutter build linux
 
 build-web:
 	@flutter build web --release --base-href "$(GITHUB_PAGES_BASE_HREF)"

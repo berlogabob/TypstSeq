@@ -6,44 +6,51 @@ import 'package:typst_flutter/typst_flutter.dart';
 
 import 'models.dart';
 
-const tylogHelperSource = '''// tylog-helper-version: 4
+const tylogHelperSource = '''// tylog-helper-version: 5
+#import "theme.typ" as theme
+
 #let note(
   id: none,
   title: none,
+  kind: "note",
   date: none,
   tags: (),
   aliases: (),
-  links: (),
-  files: (),
+  project: none,
+  properties: (:),
+  body,
 ) = [
   #metadata((
     id: id,
     title: title,
+    kind: kind,
     date: date,
     tags: tags,
     aliases: aliases,
-    links: links,
-    files: files,
+    project: project,
+    properties: properties,
   )) <tylog-note>
+  #theme.document(body)
 ]
 
-#let link(target, display: none) = [
-  #metadata((target: target, display: display)) <tylog-link>
-  #(if display == none { target } else { display })
+#let ref-note(target, body) = [
+  #metadata((target: target, text: repr(body))) <tylog-link>
+  #body
 ]
 
 #let tag(name) = [
   #metadata(name) <tylog-tag>
-  #name
+  #text(fill: gray)[#name]
 ]
 
-#let file(id, display: none) = [
-  #metadata(id) <tylog-file>
-  #(if display == none { id } else { display })
+#let date-ref(date, body) = [
+  #metadata((date: date, text: repr(body))) <tylog-date>
+  #body
 ]
 
-#let property(key, value) = [
-  #metadata((key: key, raw: repr(value))) <tylog-property>
+#let attachment(path, kind: "file", body) = [
+  #metadata((path: path, kind: kind, title: repr(body))) <tylog-attachment>
+  #body
 ]
 
 #let task(
@@ -78,59 +85,35 @@ const tylogHelperSource = '''// tylog-helper-version: 4
     assignees: assignees,
     tags: tags,
     completed: completed,
-    properties: repr(properties),
+    properties: properties,
   )) <tylog-task>
-  #(if status == "done" { "☑ " } else { "☐ " })#text
+  #if status == "done" { "☑ " } else { "☐ " }
+  #text
 ]
-
-// v3 read compatibility; v4 notes import only `pkm`.
-#let wikilink = link
-#let filelink = file
 ''';
 
-const originalTylogHelperSource =
-    '''#let note(title: none, date: none, tags: (), aliases: ()) = none
-
-#let wikilink(target, display: none) = {
-  if display == none { target } else { display }
+const tylogThemeSource = '''// tylog-theme-version: 1
+#let document(body) = {
+  set page(paper: "a4", margin: 2cm)
+  set text(font: "Libertinus Serif", size: 11pt)
+  set heading(numbering: "1.1")
+  body
 }
-
-#let tag(name) = [#name]
 ''';
 
-const legacyTylogHelperSource = '''#let note(
-  id: none,
-  title: none,
-  date: none,
-  tags: (),
-  aliases: (),
-  links: (),
-  files: (),
-) = none
-
-#let wikilink(target, display: none) = {
-  if display == none { target } else { display }
-}
-
-#let tag(name) = [#name]
+const tylogExportSource = '''// tylog-export-version: 1
+#import "theme.typ" as theme
+#let report(title, body) = theme.document([
+  #heading(level: 1, title)
+  #body
+])
 ''';
 
-enum TylogHelperKind { current, legacyStock, custom }
+enum TylogHelperKind { current, custom }
 
 TylogHelperKind classifyTylogHelper(String source) {
   final normalized = source.replaceAll('\r\n', '\n').trim();
   if (normalized == tylogHelperSource.trim()) return TylogHelperKind.current;
-  final version = int.tryParse(
-    RegExp(
-          r'//\s*tylog-helper-version:\s*(\d+)',
-        ).firstMatch(normalized)?.group(1) ??
-        '',
-  );
-  if (version != null && version < 4) return TylogHelperKind.legacyStock;
-  if (normalized == originalTylogHelperSource.trim() ||
-      normalized == legacyTylogHelperSource.trim()) {
-    return TylogHelperKind.legacyStock;
-  }
   return TylogHelperKind.custom;
 }
 
@@ -202,20 +185,22 @@ class NoteMetadataDraft {
   const NoteMetadataDraft({
     required this.id,
     required this.title,
+    this.kind = 'note',
+    this.project,
     this.date,
     this.tags = const [],
     this.aliases = const [],
-    this.links = const [],
-    this.files = const [],
+    this.properties = const {},
   });
 
   final String id;
   final String title;
+  final String kind;
+  final String? project;
   final String? date;
   final List<String> tags;
   final List<String> aliases;
-  final List<String> links;
-  final List<String> files;
+  final Map<String, Object?> properties;
 }
 
 class QueriedMetadata {
@@ -223,14 +208,16 @@ class QueriedMetadata {
     required this.note,
     required this.links,
     required this.tags,
-    required this.files,
+    required this.dates,
+    required this.attachments,
     required this.tasks,
   });
 
   final Map<String, Object?>? note;
   final List<String> links;
   final List<String> tags;
-  final List<String> files;
+  final List<Map<String, Object?>> dates;
+  final List<Map<String, Object?>> attachments;
   final List<Map<String, Object?>> tasks;
 }
 
@@ -244,23 +231,25 @@ class TypstMetadataReader {
 
   Future<QueriedMetadata> read(String source) async {
     final calls = locateTypstCalls(source);
-    if (calls.isEmpty) {
+    if (calls.isEmpty && _noteHeader(source) == null) {
       return const QueriedMetadata(
         note: null,
         links: [],
         tags: [],
-        files: [],
+        dates: [],
+        attachments: [],
         tasks: [],
       );
     }
     final document = await _compiler.compile(
-      source:
-          '#import "/.tylog/tylog.typ" as pkm\n'
-          '#import "/.tylog/tylog.typ": *\n'
-          '${calls.map((call) => call.source).join('\n')}',
+      source: source,
       files: FileSource.bytes({
-        '.tylog/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
-        '/.tylog/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
+        '_system/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
+        '/_system/tylog.typ': Uint8List.fromList(
+          utf8.encode(tylogHelperSource),
+        ),
+        '_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
+        '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
       }),
     );
     try {
@@ -280,9 +269,17 @@ class TypstMetadataReader {
             await _compiler.query(document: document, selector: '<tylog-tag>'),
           ),
         ),
-        files: _targets(
+        dates: _maps(
           decodeTypstMetadata(
-            await _compiler.query(document: document, selector: '<tylog-file>'),
+            await _compiler.query(document: document, selector: '<tylog-date>'),
+          ),
+        ),
+        attachments: _maps(
+          decodeTypstMetadata(
+            await _compiler.query(
+              document: document,
+              selector: '<tylog-attachment>',
+            ),
           ),
         ),
         tasks:
@@ -315,16 +312,11 @@ List<Object?> decodeTypstMetadata(String json) {
 List<TypstCall> locateTypstCalls(
   String source, {
   Set<String> names = const {
-    'note',
-    'wikilink',
-    'tag',
-    'filelink',
-    'pkm.note',
-    'pkm.link',
-    'pkm.tag',
-    'pkm.file',
-    'pkm.property',
-    'pkm.task',
+    'tylog.ref-note',
+    'tylog.tag',
+    'tylog.task',
+    'tylog.date-ref',
+    'tylog.attachment',
   },
 }) {
   final calls = <TypstCall>[];
@@ -357,12 +349,12 @@ List<TypstCall> locateTypstCalls(
       i++;
     }
     var name = source.substring(nameStart, i);
-    if (name == 'pkm' && i < source.length && source.codeUnitAt(i) == 46) {
+    if (i < source.length && source.codeUnitAt(i) == 46) {
       final memberStart = ++i;
       while (i < source.length && _identifier(source.codeUnitAt(i))) {
         i++;
       }
-      name = 'pkm.${source.substring(memberStart, i)}';
+      name = '$name.${source.substring(memberStart, i)}';
     }
     while (i < source.length && _space(source.codeUnitAt(i))) {
       i++;
@@ -374,10 +366,37 @@ List<TypstCall> locateTypstCalls(
     }
     final end = _balancedEnd(source, i);
     if (end == null) continue;
-    calls.add(TypstCall(name, start, end, source.substring(start, end)));
-    i = end;
+    var callEnd = end;
+    var contentStart = end;
+    while (contentStart < source.length &&
+        _space(source.codeUnitAt(contentStart))) {
+      contentStart++;
+    }
+    if (contentStart < source.length && source.codeUnitAt(contentStart) == 91) {
+      callEnd = _balancedContentEnd(source, contentStart) ?? end;
+    }
+    calls.add(
+      TypstCall(name, start, callEnd, source.substring(start, callEnd)),
+    );
+    i = callEnd;
   }
   return calls;
+}
+
+TypstCall? _noteHeader(String source) {
+  final match = RegExp(
+    r'#show\s*:\s*tylog\.note\.with\s*\(',
+  ).firstMatch(source);
+  if (match == null) return null;
+  final open = source.indexOf('(', match.start);
+  final end = _balancedEnd(source, open);
+  if (end == null) return null;
+  return TypstCall(
+    'tylog.note.with',
+    match.start,
+    end,
+    source.substring(match.start, end),
+  );
 }
 
 NoteRef scanNote(String relativePath, String source, {String? fingerprint}) =>
@@ -394,7 +413,14 @@ Future<VaultIndex> scanVault(
   await for (final entity in root.list(recursive: true, followLinks: false)) {
     if (entity is! File || !entity.path.endsWith('.typ')) continue;
     final relative = _relativePath(root, entity);
-    if (relative.startsWith('.tylog/')) continue;
+    if (!const [
+      'daily/',
+      'notes/',
+      'projects/',
+      'articles/',
+    ].any(relative.startsWith)) {
+      continue;
+    }
     files.add(entity);
   }
   files.sort((a, b) => a.path.compareTo(b.path));
@@ -419,7 +445,7 @@ Future<VaultIndex> scanVault(
           '${stat.modified.millisecondsSinceEpoch}:${stat.size}';
       final cached = previous?.notesByPath[relative];
       if (!force &&
-          previous?.version == 4 &&
+          previous?.version == 5 &&
           cached?.fingerprint == fingerprint) {
         notes[relative] = cached!;
         tasks.addAll(
@@ -433,24 +459,22 @@ Future<VaultIndex> scanVault(
         continue;
       }
       final source = await file.readAsString();
-      for (final entry in _properties(locateTypstCalls(source)).entries) {
-        if (entry.value is Map && (entry.value as Map)['unsupported'] == true) {
-          problems.add(
-            PkmsProblem(
-              code: 'property-not-indexed',
-              severity: PkmsSeverity.info,
-              subject: '$relative:${entry.key}',
-              message: 'A Typst property value is preserved but not indexable.',
-              fix: 'Use a JSON-compatible literal to filter this property.',
-            ),
-          );
-        }
-      }
       try {
         final queried = reader == null ? null : await reader.read(source);
         notes[relative] = queried?.note == null
-            ? _fallbackNote(relative, source, fingerprint: fingerprint)
-            : _queriedNote(relative, source, queried!, fingerprint);
+            ? _fallbackNote(
+                relative,
+                source,
+                fingerprint: fingerprint,
+                modifiedMillis: stat.modified.millisecondsSinceEpoch,
+              )
+            : _queriedNote(
+                relative,
+                source,
+                queried!,
+                fingerprint,
+                stat.modified.millisecondsSinceEpoch,
+              );
         tasks.addAll(
           queried == null
               ? _fallbackTasks(relative, locateTypstCalls(source))
@@ -464,6 +488,7 @@ Future<VaultIndex> scanVault(
           relative,
           source,
           fingerprint: fingerprint,
+          modifiedMillis: stat.modified.millisecondsSinceEpoch,
         );
         notes[relative] =
             cached?.copyWith(fingerprint: fingerprint) ?? fallback;
@@ -501,7 +526,7 @@ VaultIndex buildVaultIndex(
 }) {
   final resolver = LinkResolver(notes.values);
   final backlinks = <String, Set<String>>{};
-  final fileBacklinks = <String, Set<String>>{};
+  final attachmentBacklinks = <String, Set<String>>{};
   final allProblems = [...problems];
   for (final source in notes.values) {
     for (final target in source.outgoingLinks) {
@@ -522,14 +547,16 @@ VaultIndex buildVaultIndex(
         );
       }
     }
-    for (final id in source.fileRefs) {
-      fileBacklinks.putIfAbsent(id, () => {}).add(source.path);
+    for (final attachment in source.attachments) {
+      attachmentBacklinks
+          .putIfAbsent(attachment.path, () => {})
+          .add(source.path);
     }
   }
   return VaultIndex(
     notesByPath: notes,
     backlinksByTarget: _setsToSortedLists(backlinks),
-    fileBacklinksById: _setsToSortedLists(fileBacklinks),
+    attachmentBacklinksByPath: _setsToSortedLists(attachmentBacklinks),
     problems: allProblems,
     tasks: tasks,
   );
@@ -547,9 +574,8 @@ LinkResolution resolveLink(VaultIndex index, String target) =>
 
 String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   final header = serializeNoteHeader(draft);
-  final calls = locateTypstCalls(source, names: const {'note', 'pkm.note'});
-  if (calls.isNotEmpty) {
-    final call = calls.first;
+  final call = _noteHeader(source);
+  if (call != null) {
     return source.replaceRange(call.start, call.end, header);
   }
   final importEnd = source.startsWith('#import ')
@@ -562,42 +588,20 @@ String serializeNoteHeader(NoteMetadataDraft draft) {
   final fields = <String>[
     '  id: ${_typstString(draft.id)},',
     '  title: ${_typstString(draft.title)},',
-    if (draft.date != null && draft.date!.isNotEmpty)
-      '  date: ${_typstString(draft.date!)},',
+    '  kind: ${_typstString(draft.kind)},',
+    '  date: ${draft.date == null || draft.date!.isEmpty ? 'none' : _typstString(draft.date!)},',
     '  tags: ${_typstList(draft.tags)},',
     '  aliases: ${_typstList(draft.aliases)},',
-    '  links: ${_typstList(draft.links)},',
-    '  files: ${_typstList(draft.files)},',
+    '  project: ${draft.project == null || draft.project!.isEmpty ? 'none' : _typstString(draft.project!)},',
+    '  properties: ${_typstDictionary(draft.properties)},',
   ];
-  return '#pkm.note(\n${fields.join('\n')}\n)';
-}
-
-String migratePkmsV4Source(String source) {
-  var migrated = source.replaceFirst(
-    RegExp(r'#import\s+"/\.tylog/tylog\.typ"\s*:\s*\*'),
-    '#import "/.tylog/tylog.typ" as pkm',
-  );
-  const names = {'note', 'wikilink', 'tag', 'filelink'};
-  const replacements = {
-    'note': 'pkm.note',
-    'wikilink': 'pkm.link',
-    'tag': 'pkm.tag',
-    'filelink': 'pkm.file',
-  };
-  for (final call in locateTypstCalls(migrated, names: names).reversed) {
-    migrated = migrated.replaceRange(
-      call.start + 1,
-      call.start + 1 + call.name.length,
-      replacements[call.name]!,
-    );
-  }
-  return migrated;
+  return '#show: tylog.note.with(\n${fields.join('\n')}\n)';
 }
 
 String replaceTaskStatus(String source, String id, String status) {
   final call = locateTypstCalls(
     source,
-    names: const {'pkm.task'},
+    names: const {'tylog.task'},
   ).where((call) => _field(call.source, 'id') == id).firstOrNull;
   if (call == null) throw StateError('Task $id not found');
   final statusField = RegExp(r'status\s*:\s*"[^"]*"').firstMatch(call.source);
@@ -614,7 +618,7 @@ String replaceTaskStatus(String source, String id, String status) {
 String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = locateTypstCalls(
     source,
-    names: const {'pkm.task'},
+    names: const {'tylog.task'},
   ).where((call) => _field(call.source, 'id') == id).firstOrNull;
   if (call == null) throw StateError('Task $id not found');
   final completed = RegExp(
@@ -638,6 +642,7 @@ NoteRef _queriedNote(
   String source,
   QueriedMetadata metadata,
   String fingerprint,
+  int modifiedMillis,
 ) {
   final note = metadata.note!;
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
@@ -645,79 +650,96 @@ NoteRef _queriedNote(
     id: _text(note['id']) ?? stem,
     path: path,
     title: _text(note['title']) ?? stem,
+    kind: _text(note['kind']) ?? _kindFromPath(path),
+    project: _text(note['project']),
     date: _text(note['date']),
     tags: _sorted({..._strings(note['tags']), ...metadata.tags}),
     aliases: _sorted(_strings(note['aliases']).toSet()),
-    outgoingLinks: _sorted({..._strings(note['links']), ...metadata.links}),
-    fileRefs: _sorted({..._strings(note['files']), ...metadata.files}),
+    outgoingLinks: _sorted(metadata.links.toSet()),
+    fileRefs: _sorted(
+      metadata.attachments
+          .map((item) => item['path']?.toString() ?? '')
+          .where((path) => path.isNotEmpty)
+          .toSet(),
+    ),
     citations: _citations(source),
-    properties: _properties(locateTypstCalls(source)),
+    dateRefs: metadata.dates
+        .where((item) => item['date'] != null)
+        .map(
+          (item) => DateRef(
+            date: item['date'].toString(),
+            text: _cleanContentText(item['text']),
+          ),
+        )
+        .toList(),
+    attachments: [
+      for (final item in metadata.attachments)
+        if (item['path'] != null)
+          AttachmentRef(
+            path: item['path'].toString(),
+            kind: item['kind']?.toString() ?? 'file',
+            title: _cleanContentText(item['title']),
+          ),
+    ],
+    properties: (note['properties'] as Map? ?? const {})
+        .cast<String, Object?>(),
     fingerprint: fingerprint,
+    modifiedMillis: modifiedMillis,
     metadataSource: 'typst-query',
   );
 }
 
-NoteRef _fallbackNote(String path, String source, {String? fingerprint}) {
+NoteRef _fallbackNote(
+  String path,
+  String source, {
+  String? fingerprint,
+  int? modifiedMillis,
+}) {
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
   final calls = locateTypstCalls(source);
-  final header =
-      calls
-          .where((call) => call.name == 'note' || call.name == 'pkm.note')
-          .firstOrNull
-          ?.source ??
-      '';
+  final header = _noteHeader(source)?.source ?? '';
+  final dateCalls = calls.where((call) => call.name == 'tylog.date-ref');
+  final attachmentCalls = calls.where(
+    (call) => call.name == 'tylog.attachment',
+  );
   return NoteRef(
     id: _field(header, 'id') ?? stem,
     path: path,
     title: _field(header, 'title') ?? stem,
+    kind: _field(header, 'kind') ?? _kindFromPath(path),
+    project: _field(header, 'project'),
     date: _field(header, 'date'),
     tags: _sorted({
       ..._parseList(header, 'tags'),
-      ..._firstArguments(calls, 'tag'),
-      ..._firstArguments(calls, 'pkm.tag'),
+      ..._firstArguments(calls, 'tylog.tag'),
     }),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
-    outgoingLinks: _sorted({
-      ..._parseList(header, 'links'),
-      ..._firstArguments(calls, 'wikilink'),
-      ..._firstArguments(calls, 'pkm.link'),
-    }),
-    fileRefs: _sorted({
-      ..._parseList(header, 'files'),
-      ..._firstArguments(calls, 'filelink'),
-      ..._firstArguments(calls, 'pkm.file'),
-    }),
+    outgoingLinks: _sorted({..._firstArguments(calls, 'tylog.ref-note')}),
+    fileRefs: _sorted({..._firstArguments(calls, 'tylog.attachment')}),
     citations: _citations(source),
-    properties: _properties(calls),
+    dateRefs: dateCalls
+        .map(
+          (call) => DateRef(
+            date: _quoted.firstMatch(call.source)?.group(1) ?? '',
+            text: _bracketBody(call.source),
+          ),
+        )
+        .where((item) => item.date.isNotEmpty)
+        .toList(),
+    attachments: [
+      for (final call in attachmentCalls)
+        if (_quoted.firstMatch(call.source)?.group(1) case final path?)
+          AttachmentRef(
+            path: path,
+            kind: _field(call.source, 'kind') ?? 'file',
+            title: _bracketBody(call.source),
+          ),
+    ],
+    properties: const {},
     fingerprint: fingerprint,
+    modifiedMillis: modifiedMillis,
     metadataSource: 'fallback',
   );
-}
-
-Map<String, Object?> _properties(List<TypstCall> calls) {
-  final out = <String, Object?>{};
-  for (final call in calls.where((call) => call.name == 'pkm.property')) {
-    final strings = _quoted.allMatches(call.source).toList();
-    if (strings.isEmpty) continue;
-    final key = strings.first.group(1)!;
-    final comma = call.source.indexOf(',', strings.first.end);
-    if (comma < 0) continue;
-    final raw = call.source
-        .substring(comma + 1, call.source.lastIndexOf(')'))
-        .trim();
-    out[key] = _literalValue(raw) ?? {'raw': raw, 'unsupported': true};
-  }
-  return out;
-}
-
-Object? _literalValue(String raw) {
-  if (raw == 'true') return true;
-  if (raw == 'false') return false;
-  if (raw == 'none') return null;
-  if (raw.startsWith('"') && raw.endsWith('"')) {
-    return _quoted.firstMatch(raw)?.group(1)?.replaceAll(r'\"', '"');
-  }
-  return num.tryParse(raw);
 }
 
 List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
@@ -740,13 +762,14 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
             assignees: _strings(value['assignees']),
             tags: _strings(value['tags']),
             completed: _strings(value['completed']),
-            properties: {'raw': value['properties']},
+            properties: (value['properties'] as Map? ?? const {})
+                .cast<String, Object?>(),
           ),
         )
         .toList();
 
 List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
-    .where((call) => call.name == 'pkm.task')
+    .where((call) => call.name == 'tylog.task')
     .map(
       (call) => TaskRef(
         id: _field(call.source, 'id') ?? '',
@@ -840,6 +863,34 @@ List<String> _targets(List<Object?> values, [String? key]) => _sorted(
       .toSet(),
 );
 
+List<Map<String, Object?>> _maps(List<Object?> values) => values
+    .whereType<Map>()
+    .map((value) => value.cast<String, Object?>())
+    .toList();
+
+String _kindFromPath(String path) {
+  if (path.startsWith('daily/')) return 'daily';
+  if (path.startsWith('projects/')) return 'project';
+  if (path.startsWith('articles/')) return 'article';
+  return 'note';
+}
+
+String? _bracketBody(String source) {
+  final start = source.indexOf('[');
+  final end = source.lastIndexOf(']');
+  if (start < 0 || end <= start) return null;
+  return source.substring(start + 1, end).trim();
+}
+
+String? _cleanContentText(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  if (text.startsWith('[') && text.endsWith(']')) {
+    return text.substring(1, text.length - 1).trim();
+  }
+  return text;
+}
+
 List<String> _strings(Object? value) =>
     (value as List? ?? const []).map((item) => item.toString()).toList();
 
@@ -902,6 +953,30 @@ int? _balancedEnd(String source, int open) {
   return null;
 }
 
+int? _balancedContentEnd(String source, int open) {
+  var depth = 0;
+  var i = open;
+  while (i < source.length) {
+    if (_starts(source, i, '//')) {
+      i = source.indexOf('\n', i);
+      if (i < 0) return null;
+      continue;
+    }
+    if (_starts(source, i, '/*')) {
+      i = _skipBlockComment(source, i);
+      continue;
+    }
+    if (source.codeUnitAt(i) == 34) {
+      i = _skipString(source, i);
+      continue;
+    }
+    if (source.codeUnitAt(i) == 91) depth++;
+    if (source.codeUnitAt(i) == 93 && --depth == 0) return i + 1;
+    i++;
+  }
+  return null;
+}
+
 int _skipString(String source, int start) {
   var i = start + 1;
   while (i < source.length) {
@@ -959,6 +1034,19 @@ String _typstString(String value) =>
 
 String _typstList(List<String> values) =>
     values.isEmpty ? '()' : '(${values.map(_typstString).join(', ')},)';
+
+String _typstDictionary(Map<String, Object?> values) {
+  if (values.isEmpty) return '(:)';
+  return '(${values.entries.map((entry) => '${entry.key}: ${_typstValue(entry.value)}').join(', ')},)';
+}
+
+String _typstValue(Object? value) => switch (value) {
+  null => 'none',
+  bool() || num() => value.toString(),
+  String() => _typstString(value),
+  List() => '(${value.map(_typstValue).join(', ')},)',
+  _ => _typstString(value.toString()),
+};
 
 String _relativePath(Directory root, File file) {
   final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)

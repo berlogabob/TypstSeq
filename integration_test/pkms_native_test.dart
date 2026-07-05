@@ -1,104 +1,62 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:typst_flutter/typst_flutter.dart';
-import 'package:tylog/models.dart';
-import 'package:tylog/pkms_publisher.dart';
-import 'package:tylog/pkms_registry.dart';
+import 'package:tylog/report.dart';
 import 'package:tylog/scanner.dart';
+import 'package:tylog/vault.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('native Typst metadata query and PDF export', (_) async {
+  testWidgets('native v5 metadata query and report PDF export', (_) async {
     final reader = await TypstMetadataReader.create();
     try {
-      final metadata = await reader.read('''
-#note(id: "root", title: "Root", tags: ("pkms",), links: ("child",))
-#wikilink("child")
-#tag("pkms")
-#filelink("manual")
-#pkm.task(id: "task-1", text: "Write", due: "2026-07-05T09:00:00Z")
-''');
+      final metadata = await reader.read(
+        '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "root", title: "Root", kind: "project", tags: ("pkms",))
+#tylog.ref-note("child")[Child]
+#tylog.tag("pkms")
+#tylog.date-ref("2026-07-13")[Delivery]
+#tylog.attachment("assets/manual.pdf", kind: "pdf")[Manual]
+#tylog.task(id: "task-1", text: "Write", due: "2026-07-13")
+''',
+      );
       expect(metadata.note?['id'], 'root');
+      expect(metadata.note?['kind'], 'project');
       expect(metadata.links, ['child']);
       expect(metadata.tags, ['pkms']);
-      expect(metadata.files, ['manual']);
+      expect(metadata.dates.single['date'], '2026-07-13');
+      expect(metadata.attachments.single['path'], 'assets/manual.pdf');
       expect(metadata.tasks.single['id'], 'task-1');
     } finally {
       reader.dispose();
     }
 
-    final compiler = await TypstCompiler.create();
-    try {
-      final document = await compiler.compile(
-        source: '''
-#import "/.tylog/tylog.typ": *
-#note(id: "root", title: "Root", tags: ("pkms",), links: ("child",), files: ("manual",))
-Visible
-''',
-        files: FileSource.bytes({
-          '.tylog/tylog.typ': Uint8List.fromList(
-            utf8.encode(tylogHelperSource),
-          ),
-          '/.tylog/tylog.typ': Uint8List.fromList(
-            utf8.encode(tylogHelperSource),
-          ),
-        }),
-      );
-      try {
-        final baseline = await compiler.compile(source: 'Visible');
-        try {
-          final actual = await document.renderRaster(pageIndex: 0);
-          final expected = await baseline.renderRaster(pageIndex: 0);
-          expect(actual.width, expected.width);
-          expect(actual.height, expected.height);
-          expect(actual.bytes, expected.bytes);
-        } finally {
-          baseline.dispose();
-        }
-        final pdf = await document.exportPdf();
-        expect(String.fromCharCodes(pdf.take(4)), '%PDF');
-      } finally {
-        document.dispose();
-      }
-    } finally {
-      compiler.dispose();
-    }
-
     final root = await Directory.systemTemp.createTemp('tylog_export_');
     addTearDown(() => root.delete(recursive: true));
-    await Directory('${root.path}/pages').create();
-    await File('${root.path}/pages/root.typ').writeAsString('''
-#import "/.tylog/tylog.typ": *
-#note(id: "root", title: "Root")
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.saveNote(
+      await vault.page('Root'),
+      '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "root", title: "Root", kind: "note")
 = Root
-''');
-    final output = File('${root.path}/collection.pdf');
-    await exportPkmsCollection(
-      root: root,
-      index: const VaultIndex(
-        notesByPath: {
-          'pages/root.typ': NoteRef(
-            id: 'root',
-            path: 'pages/root.typ',
-            title: 'Root',
-            outgoingLinks: [],
-          ),
-        },
-        backlinksByTarget: {},
-      ),
-      files: PkmsFileRegistry.empty,
-      collection: const PkmsCollectionEntry(
-        id: 'book',
-        title: 'Book',
-        noteIds: ['root'],
-      ),
-      output: output,
+
+Visible report content.
+''',
     );
-    expect(await output.length(), greaterThan(100));
+    final index = await vault.rebuildIndex();
+    final report = await writeReport(
+      root,
+      'Book',
+      index,
+      const ReportFilter(kinds: {'note'}),
+    );
+    final pdf = await exportReportPdf(root, report);
+
+    expect(await report.readAsString(), contains('#include "/notes/Root.typ"'));
+    expect(await pdf.length(), greaterThan(100));
+    expect(String.fromCharCodes((await pdf.readAsBytes()).take(4)), '%PDF');
   });
 }

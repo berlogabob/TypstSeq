@@ -8,16 +8,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
+import 'bibliography.dart';
+import 'controlled_editor.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
-import 'pkms_publisher.dart';
 import 'pkms_registry.dart';
+import 'report.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'task_scheduler.dart';
-import 'typst_rag_client.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 
@@ -85,15 +86,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String status = 'Opening vault...';
   bool dirty = false;
   int editRevision = 0;
-  String mode = 'journal';
+  String mode = 'today';
   String previewSource = '';
   int previewBlock = 0;
   String hiddenSystemPrefix = '';
   String helperSource = tylogHelperSource;
   NextcloudConfig? cloud;
-  PkmsTagRegistry tags = PkmsTagRegistry.empty;
-  PkmsFileRegistry files = PkmsFileRegistry.empty;
-  PkmsCollectionRegistry collections = PkmsCollectionRegistry.empty;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
   SyncResult? lastSync;
@@ -106,7 +104,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double? rebuildProgress;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
-  final typstRag = TypstRagClient();
 
   @override
   void initState() {
@@ -136,7 +133,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
-      await _openVault(registry.active, trigger: 'startup');
+      var active = registry.active;
+      try {
+        await Vault(Directory(active.path)).ensureCreated();
+      } on StateError {
+        var path = '${active.path}-v5';
+        var suffix = 2;
+        while (await Directory(path).exists()) {
+          try {
+            await Vault(Directory(path)).ensureCreated();
+            break;
+          } on StateError {
+            path = '${active.path}-v5-${suffix++}';
+          }
+        }
+        active = await registry.add(path);
+        await registry.select(active);
+      }
+      await _openVault(active, trigger: 'startup');
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
@@ -160,9 +174,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         vault = v;
         note = today;
         index = _retainIndex(ix);
-        tags = pkms.data.tags;
-        files = pkms.data.files;
-        collections = pkms.data.collections;
         validation = _retainValidation(pkms.report);
         searchIndex = pkms.search;
         helperSource = loadedHelper;
@@ -183,19 +194,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<({PkmsData data, PkmsValidationReport report, PkmsSearchIndex search})>
-  _readPkms(Vault v, VaultIndex ix) async {
-    final data = await loadPkmsData(v.root);
-    final report = await validatePkms(v.root, ix, data: data);
+  Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(
+    Vault v,
+    VaultIndex ix,
+  ) async {
+    final report = await validatePkms(v.root, ix);
     final cached = await PkmsSearchIndex.load(v.searchIndexFile);
-    final search = await PkmsSearchIndex.build(
-      v.root,
-      ix,
-      data.files,
-      previous: cached,
-    );
+    final search = await PkmsSearchIndex.build(v.root, ix, previous: cached);
     await search.save(v.searchIndexFile);
-    return (data: data, report: report, search: search);
+    return (report: report, search: search);
   }
 
   Future<void> _switchVault(VaultEntry entry) async {
@@ -348,15 +355,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final editorUnchanged = revision == editRevision && identical(n, note);
       setState(() {
         index = _retainIndex(ix);
-        tags.tags
-          ..clear()
-          ..addAll(pkms.data.tags.tags);
-        files.files
-          ..clear()
-          ..addAll(pkms.data.files.files);
-        collections.collections
-          ..clear()
-          ..addAll(pkms.data.collections.collections);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         if (editorUnchanged) {
@@ -400,9 +398,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave = Timer(const Duration(milliseconds: 700), _save);
   }
 
-  String _currentSource() => mode == 'source' || mode == 'preview'
+  String _currentSource() =>
+      mode == 'source' || mode == 'preview' || mode == 'split'
       ? sourceController.text
       : '$hiddenSystemPrefix${controller.text}';
+
+  FileSource _typstFiles() => FileSource.bytes({
+    '_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
+    '/_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
+    '_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
+    '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
+  });
 
   void _loadSource(String source) {
     final clean = _splitCleanSource(source);
@@ -419,7 +425,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       note = file;
       dirty = false;
-      mode = 'journal';
+      mode = 'normal';
       status = 'Opened ${v.relativePath(file)}';
     });
   }
@@ -547,8 +553,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final title = TextEditingController(text: current.title);
     final tagsText = TextEditingController(text: current.tags.join(', '));
     final aliases = TextEditingController(text: current.aliases.join(', '));
-    final links = TextEditingController(text: current.outgoingLinks.join(', '));
-    final fileRefs = TextEditingController(text: current.fileRefs.join(', '));
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -574,18 +578,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   labelText: 'Aliases, comma-separated',
                 ),
               ),
-              TextField(
-                controller: links,
-                decoration: const InputDecoration(
-                  labelText: 'Linked note IDs, comma-separated',
-                ),
-              ),
-              TextField(
-                controller: fileRefs,
-                decoration: const InputDecoration(
-                  labelText: 'File IDs, comma-separated',
-                ),
-              ),
             ],
           ),
         ),
@@ -607,18 +599,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         NoteMetadataDraft(
           id: current.id,
           title: title.text.trim(),
+          kind: current.kind,
+          project: current.project,
           date: current.date,
           tags: _csvValues(tagsText.text),
           aliases: _csvValues(aliases.text),
-          links: _csvValues(links.text),
-          files: _csvValues(fileRefs.text),
+          properties: current.properties,
         ),
       );
       _loadSource(updated);
       dirty = true;
       await _save();
     }
-    for (final value in [title, tagsText, aliases, links, fileRefs]) {
+    for (final value in [title, tagsText, aliases]) {
       value.dispose();
     }
   }
@@ -636,21 +629,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialView: initialView,
           index: ix,
           search: searchIndex,
-          tags: tags,
-          files: files,
-          collections: collections,
           problems: validation?.problems ?? ix.problems,
           onOpenNote: _openPath,
-          onOpenFile: _openRegisteredFile,
-          onSaveTag: _saveTag,
-          onDeleteTag: _deleteTag,
-          onMergeTag: _mergeTag,
-          onImportFile: _importFile,
-          onSaveFile: _saveFile,
-          onDeleteFile: _deleteFile,
-          onSaveCollection: _saveCollection,
-          onExportCollection: _exportCollection,
-          onMigrateLegacy: _migrateLegacyNotes,
           onResolveConflict: _resolveConflict,
           onCleanSyncCaches: _cleanSyncCaches,
           onSetTaskStatus: _setTaskStatus,
@@ -677,296 +657,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _rebuildIndex();
   }
 
-  Future<void> _saveTag(PkmsTagEntry entry) async {
-    final v = vault;
-    if (v == null) return;
-    if (_registryBlocked('tags-registry-invalid')) return;
-    tags.tags[entry.slug] = entry;
-    await saveTagRegistry(v.root, tags);
-    await _refreshPkms('Tag saved');
-  }
-
-  Future<void> _deleteTag(String slug) async {
-    if (_registryBlocked('tags-registry-invalid')) return;
-    final inUse =
-        (index?.notes.any((note) => note.tags.contains(slug)) ?? false) ||
-        files.files.values.any((file) => file.tags.contains(slug));
-    if (inUse) {
-      setState(() => status = 'Cannot delete #$slug while it is in use');
-      return;
-    }
-    final v = vault;
-    if (v == null) return;
-    tags.tags.remove(slug);
-    await saveTagRegistry(v.root, tags);
-    await _refreshPkms('Tag deleted');
-  }
-
-  Future<void> _mergeTag(String from, String to) async {
-    final v = vault;
-    final ix = index;
-    if (_registryBlocked('tags-registry-invalid') ||
-        _registryBlocked('files-registry-invalid')) {
-      return;
-    }
-    if (v == null || ix == null || from == to || !tags.tags.containsKey(to)) {
-      return;
-    }
-    final affected = ix.notes
-        .where((note) => note.tags.contains(from))
-        .toList();
-    final backup = Directory(
-      '${v.meta.path}/backups/${DateTime.now().millisecondsSinceEpoch}',
-    );
-    for (final noteRef in affected) {
-      final file = File('${v.root.path}/${noteRef.path}');
-      final original = await file.readAsString();
-      final backupFile = File('${backup.path}/${noteRef.path}');
-      await backupFile.parent.create(recursive: true);
-      await file.copy(backupFile.path);
-      var source = original;
-      final inline = locateTypstCalls(source, names: const {'tag'})
-          .where(
-            (call) => RegExp(
-              '#tag\\(\\s*"${RegExp.escape(from)}"',
-            ).hasMatch(call.source),
-          )
-          .toList()
-          .reversed;
-      for (final call in inline) {
-        source = source.replaceRange(call.start, call.end, '#tag("$to")');
-      }
-      final nextTags =
-          noteRef.tags.map((tag) => tag == from ? to : tag).toSet().toList()
-            ..sort();
-      await v.saveNote(
-        file,
-        replaceNoteHeader(
-          source,
-          NoteMetadataDraft(
-            id: noteRef.id,
-            title: noteRef.title,
-            date: noteRef.date,
-            tags: nextTags,
-            aliases: noteRef.aliases,
-            links: noteRef.outgoingLinks,
-            files: noteRef.fileRefs,
-          ),
-        ),
-      );
-    }
-    for (final entry in files.files.entries.toList()) {
-      if (!entry.value.tags.contains(from)) continue;
-      final nextTags =
-          entry.value.tags.map((tag) => tag == from ? to : tag).toSet().toList()
-            ..sort();
-      files.files[entry.key] = entry.value.copyWith(tags: nextTags);
-    }
-    tags.tags.remove(from);
-    await saveTagRegistry(v.root, tags);
-    await saveFileRegistry(v.root, files);
-    await _rebuildIndex();
-    if (mounted) {
-      setState(
-        () => status = 'Merged #$from into #$to; backup: ${backup.path}',
-      );
-    }
-  }
-
-  Future<void> _importFile() async {
-    final v = vault;
-    if (v == null) return;
-    if (_registryBlocked('files-registry-invalid')) return;
-    final picked = await FilePicker.platform.pickFiles();
-    final sourcePath = picked?.files.single.path;
-    if (sourcePath == null) return;
-    final source = File(sourcePath);
-    final original = source.path.split(Platform.pathSeparator).last;
-    var targetName = original;
-    var suffix = 2;
-    while (await File('${v.assets.path}/$targetName').exists()) {
-      final dot = original.lastIndexOf('.');
-      targetName = dot < 0
-          ? '$original-${suffix++}'
-          : '${original.substring(0, dot)}-${suffix++}${original.substring(dot)}';
-    }
-    await v.assets.create(recursive: true);
-    await source.copy('${v.assets.path}/$targetName');
-    var id = _slugValue(targetName.replaceFirst(RegExp(r'\.[^.]+$'), ''));
-    if (id.isEmpty) id = DateTime.now().millisecondsSinceEpoch.toString();
-    final base = id;
-    suffix = 2;
-    while (files.files.containsKey(id)) {
-      id = '$base-${suffix++}';
-    }
-    files.files[id] = PkmsFileEntry(
-      id: id,
-      path: 'assets/$targetName',
-      title: original,
-      kind: original.contains('.')
-          ? original.split('.').last.toLowerCase()
-          : 'file',
-      status: 'reference',
-    );
-    await saveFileRegistry(v.root, files);
-    await _refreshPkms('File imported');
-  }
-
-  Future<void> _saveFile(PkmsFileEntry entry) async {
-    final v = vault;
-    if (v == null || !isSafeVaultPath(entry.path)) return;
-    if (_registryBlocked('files-registry-invalid')) return;
-    files.files[entry.id] = entry;
-    await saveFileRegistry(v.root, files);
-    await _refreshPkms('File metadata saved');
-  }
-
-  Future<void> _deleteFile(String id) async {
-    final v = vault;
-    if (v == null) return;
-    if (_registryBlocked('files-registry-invalid')) return;
-    files.files.remove(id);
-    await saveFileRegistry(v.root, files);
-    await _refreshPkms('File registry entry removed; asset kept');
-  }
-
-  Future<void> _openRegisteredFile(PkmsFileEntry entry) async {
-    final v = vault;
-    if (v == null || !isSafeVaultPath(entry.path)) return;
-    final result = await OpenFile.open('${v.root.path}/${entry.path}');
-    if (result.type != ResultType.done && mounted) {
-      setState(() => status = 'Could not open file: ${result.message}');
-    }
-  }
-
-  Future<void> _saveCollection(PkmsCollectionEntry entry) async {
-    final v = vault;
-    if (v == null) return;
-    if (_registryBlocked('collections-registry-invalid')) return;
-    collections.collections[entry.id] = entry;
-    await saveCollectionRegistry(v.root, collections);
-    await _refreshPkms('Collection saved');
-  }
-
-  Future<void> _exportCollection(PkmsCollectionEntry entry) async {
-    final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    final output = await FilePicker.platform.saveFile(
-      dialogTitle: 'Export collection PDF',
-      fileName: '${_slugValue(entry.title)}.pdf',
-    );
-    if (output == null) return;
-    setState(() => status = 'Exporting ${entry.title}...');
-    try {
-      await exportPkmsCollection(
-        root: v.root,
-        index: ix,
-        files: files,
-        collection: entry,
-        output: File(output),
-      );
-      if (mounted) setState(() => status = 'Exported $output');
-    } catch (error) {
-      if (mounted) setState(() => status = 'Export failed: $error');
-    }
-  }
-
-  Future<void> _migrateLegacyNotes() async {
-    final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    final candidates = <(NoteRef, File, String, String)>[];
-    final usedIds = ix.notes.map((note) => note.id).toSet();
-    for (final noteRef in ix.notes) {
-      final file = File('${v.root.path}/${noteRef.path}');
-      final source = await file.readAsString();
-      final header = locateTypstCalls(
-        source,
-        names: const {'note', 'pkm.note'},
-      ).firstOrNull?.source;
-      var migrated = migratePkmsV4Source(source);
-      if (header == null || !RegExp(r'\bid\s*:').hasMatch(header)) {
-        final generated = await v.nextNoteId(
-          noteRef.title,
-          now: await file.lastModified(),
-        );
-        var id = generated;
-        var suffix = 2;
-        while (usedIds.contains(id)) {
-          id = '$generated-${suffix++}';
-        }
-        usedIds.add(id);
-        migrated = replaceNoteHeader(
-          migrated,
-          NoteMetadataDraft(
-            id: id,
-            title: noteRef.title,
-            date: noteRef.date,
-            tags: noteRef.tags,
-            aliases: noteRef.aliases,
-            links: noteRef.outgoingLinks,
-            files: noteRef.fileRefs,
-          ),
-        );
-      }
-      if (migrated != source) {
-        candidates.add((noteRef, file, source, migrated));
-      }
-    }
-    if (candidates.isEmpty || !mounted) {
-      setState(() => status = 'Vault already uses PKMS v4 syntax');
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Migrate vault to PKMS v4?'),
-        content: Text(
-          'Rewrite ${candidates.length} notes to the namespaced pkm syntax. Every original file is backed up first.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Back up and migrate'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    final backup = Directory(
-      '${v.meta.path}/backups/${DateTime.now().millisecondsSinceEpoch}',
-    );
-    final reader = await TypstMetadataReader.create();
-    try {
-      for (final candidate in candidates) {
-        await reader.read(candidate.$4);
-      }
-    } finally {
-      reader.dispose();
-    }
-    final helperBackup = File('${backup.path}/.tylog/tylog.typ');
-    await helperBackup.parent.create(recursive: true);
-    await v.helperFile.copy(helperBackup.path);
-    for (final (noteRef, file, _, migrated) in candidates) {
-      final backupFile = File('${backup.path}/${noteRef.path}');
-      await backupFile.parent.create(recursive: true);
-      await file.copy(backupFile.path);
-      await v.saveNote(file, migrated);
-    }
-    await _rebuildIndex();
-    if (mounted) {
-      setState(
-        () => status =
-            'Migrated ${candidates.length} notes to PKMS v4; backup: ${backup.path}',
-      );
-    }
-  }
-
   Future<void> _refreshPkms(String message) async {
     final v = vault;
     final ix = index;
@@ -974,31 +664,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final pkms = await _readPkms(v, ix);
     if (!mounted) return;
     setState(() {
-      tags.tags
-        ..clear()
-        ..addAll(pkms.data.tags.tags);
-      files.files
-        ..clear()
-        ..addAll(pkms.data.files.files);
-      collections.collections
-        ..clear()
-        ..addAll(pkms.data.collections.collections);
       validation = _retainValidation(pkms.report);
       searchIndex.replaceWith(pkms.search);
       status = '$message · ${pkms.report.summary()}';
     });
-  }
-
-  bool _registryBlocked(String code) {
-    if (!(validation?.problems.any((problem) => problem.code == code) ??
-        false)) {
-      return false;
-    }
-    setState(
-      () =>
-          status = 'Registry is malformed; repair its JSON before editing it.',
-    );
-    return true;
   }
 
   PkmsValidationReport _retainValidation(PkmsValidationReport next) {
@@ -1019,9 +688,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     current.backlinksByTarget
       ..clear()
       ..addAll(next.backlinksByTarget);
-    current.fileBacklinksById
+    current.attachmentBacklinksByPath
       ..clear()
-      ..addAll(next.fileBacklinksById);
+      ..addAll(next.attachmentBacklinksByPath);
     current.problems
       ..clear()
       ..addAll(next.problems);
@@ -1072,15 +741,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         index = _retainIndex(ix);
-        tags.tags
-          ..clear()
-          ..addAll(pkms.data.tags.tags);
-        files.files
-          ..clear()
-          ..addAll(pkms.data.files.files);
-        collections.collections
-          ..clear()
-          ..addAll(pkms.data.collections.collections);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         status = 'Index rebuilt · ${pkms.report.summary()}';
@@ -1124,15 +784,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final pkms = await _readPkms(v, ix);
       setState(() {
         index = _retainIndex(ix);
-        tags.tags
-          ..clear()
-          ..addAll(pkms.data.tags.tags);
-        files.files
-          ..clear()
-          ..addAll(pkms.data.files.files);
-        collections.collections
-          ..clear()
-          ..addAll(pkms.data.collections.collections);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         lastSync = result;
@@ -1329,8 +980,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final marker = path.indexOf('.remote-conflict-');
       if (marker < 0) continue;
       final original = path.substring(0, marker);
-      if (original == '.tylog/index.json' ||
-          original == '.tylog/search-index.json.gz') {
+      if (original == '_index/index.json' ||
+          original == '_index/search-index.json.gz') {
         await entity.delete();
       }
     }
@@ -1443,94 +1094,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showTypstHelp({String? error}) async {
-    final query = TextEditingController(text: error ?? 'Typst syntax help');
-    List<TypstDocResult>? results;
-    String? failure;
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(error == null ? 'Typst help' : 'Explain Typst error'),
-          content: SizedBox(
-            width: 620,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (error != null) ...[
-                    SelectableText(error),
-                    if (deterministicTypstFix(error, _currentSource())
-                        case final fix?)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(fix),
-                      ),
-                  ],
-                  TextField(
-                    controller: query,
-                    decoration: const InputDecoration(
-                      labelText: 'Search local Typst documentation',
-                    ),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final entry in const {
-                        'Heading': '= Heading',
-                        'Note link': '#pkm.link("note-id", display: "Title")',
-                        'Tag': '#pkm.tag("topic")',
-                        'Property': '#pkm.property("status", "active")',
-                        'Task':
-                            '#pkm.task(\n  id: "task-id",\n  text: "Task",\n  due: "2026-07-05T09:00:00",\n)',
-                      }.entries)
-                        ActionChip(
-                          label: Text(entry.key),
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _insertTypstSnippet(entry.value);
-                          },
-                        ),
-                    ],
-                  ),
-                  if (failure != null) Text(failure!),
-                  for (final result in results ?? const <TypstDocResult>[])
-                    ListTile(
-                      title: Text(result.section),
-                      subtitle: SelectableText(
-                        '${result.excerpt}\n${result.url}',
-                        maxLines: 8,
-                      ),
+      builder: (context) => AlertDialog(
+        title: Text(error == null ? 'Typst help' : 'Explain Typst error'),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (error != null) ...[
+                  SelectableText(error),
+                  if (deterministicTypstFix(error, _currentSource())
+                      case final fix?)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(fix),
                     ),
                 ],
-              ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final entry in const {
+                      'Heading': '= Heading',
+                      'Note link': '#tylog.ref-note("note-id")[Title]',
+                      'Tag': '#tylog.tag("topic")',
+                      'Date': '#tylog.date-ref("2026-07-05")[5 July]',
+                      'Task':
+                          '#tylog.task(id: "task-id", text: "Task", due: none, project: none)',
+                    }.entries)
+                      ActionChip(
+                        label: Text(entry.key),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _insertTypstSnippet(entry.value);
+                        },
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  final found = await typstRag.search(query.text);
-                  setDialogState(() {
-                    results = found;
-                    failure = null;
-                  });
-                } catch (e) {
-                  setDialogState(() => failure = e.toString());
-                }
-              },
-              child: const Text('Search'),
-            ),
-          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
-    query.dispose();
+  }
+
+  Future<void> _openAttachment(String path) async {
+    final v = vault;
+    if (v == null || !isSafeVaultPath(path)) return;
+    final result = await OpenFile.open('${v.root.path}/$path');
+    if (result.type != ResultType.done && mounted) {
+      setState(() => status = 'Could not open file: ${result.message}');
+    }
   }
 
   void _insertTypstSnippet(String snippet) {
@@ -1596,8 +1221,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showJournal() {
     if (mode == 'source') _loadSource(sourceController.text);
-    setState(() => mode = 'journal');
+    setState(() => mode = 'normal');
   }
+
+  void _showToday() => setState(() => mode = 'today');
 
   void _showSource() {
     sourceController.text = _currentSource();
@@ -1659,6 +1286,402 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  TextEditingController get _activeEditorController =>
+      mode == 'source' || mode == 'preview' || mode == 'split'
+      ? sourceController
+      : controller;
+
+  Future<String?> _askText(String title, {String? initialValue}) async {
+    final input = TextEditingController(text: initialValue);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: input,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, input.text),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    input.dispose();
+    return value?.trim();
+  }
+
+  String _selectedText() {
+    final editor = _activeEditorController;
+    final selection = editor.selection;
+    if (!selection.isValid || selection.isCollapsed) return '';
+    return editor.text.substring(selection.start, selection.end);
+  }
+
+  void _applyMagic(MagicRequest request) {
+    final editor = _activeEditorController;
+    final edit = applyMagicEdit(editor.text, editor.selection, request);
+    editor.value = TextEditingValue(text: edit.text, selection: edit.selection);
+    _queueAutosave();
+  }
+
+  Future<NoteRef?> _chooseNote({String? kind, bool create = false}) async {
+    final notes = (index?.notes ?? const <NoteRef>[])
+        .where((note) => kind == null || note.kind == kind)
+        .toList();
+    final chosen = await showModalBottomSheet<NoteRef>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            if (create)
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: Text('Create ${kind ?? 'note'}'),
+                onTap: () => Navigator.pop(context),
+              ),
+            for (final item in notes)
+              ListTile(
+                leading: Icon(
+                  item.kind == 'project' ? Icons.work_outline : Icons.notes,
+                ),
+                title: Text(item.title),
+                subtitle: Text(item.id),
+                onTap: () => Navigator.pop(context, item),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null || !create) return chosen;
+    final title = await _askText(
+      'New ${kind ?? 'note'}',
+      initialValue: _selectedText(),
+    );
+    if (title == null || title.isEmpty || vault == null) return null;
+    final file = await vault!.page(title, kind: kind ?? 'note');
+    final rebuilt = await vault!.rebuildIndex();
+    setState(() => index = _retainIndex(rebuilt));
+    return rebuilt.notesByPath[vault!.relativePath(file)];
+  }
+
+  Future<void> _runMagic(MagicAction action) async {
+    switch (action) {
+      case MagicAction.bold:
+      case MagicAction.italic:
+      case MagicAction.heading:
+      case MagicAction.equation:
+        _applyMagic(MagicRequest(action: action));
+        return;
+      case MagicAction.table:
+        _applyMagic(const MagicRequest(action: MagicAction.table));
+        return;
+      case MagicAction.noteLink:
+        final target = await _chooseNote(create: true);
+        if (target != null) {
+          _applyMagic(
+            MagicRequest(action: action, id: target.id, value: target.title),
+          );
+        }
+        return;
+      case MagicAction.project:
+        final target = await _chooseNote(kind: 'project', create: true);
+        if (target == null) return;
+        if (_selectedText().isNotEmpty) {
+          _applyMagic(
+            MagicRequest(action: action, id: target.id, value: target.title),
+          );
+        } else {
+          final current = _currentNoteRef();
+          if (current == null) return;
+          _loadSource(
+            replaceNoteHeader(
+              _currentSource(),
+              NoteMetadataDraft(
+                id: current.id,
+                title: current.title,
+                kind: current.kind,
+                project: target.id,
+                date: current.date,
+                tags: current.tags,
+                aliases: current.aliases,
+                properties: current.properties,
+              ),
+            ),
+          );
+          _queueAutosave();
+        }
+        return;
+      case MagicAction.tag:
+        final value = await _askText('Tag', initialValue: _selectedText());
+        if (value != null && value.isNotEmpty) {
+          _applyMagic(MagicRequest(action: action, value: value));
+        }
+        return;
+      case MagicAction.task:
+        final text = await _askText('Task', initialValue: _selectedText());
+        if (text == null || text.isEmpty) return;
+        if (!mounted) return;
+        final due = await showDatePicker(
+          context: context,
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+          initialDate: DateTime.now(),
+        );
+        _applyMagic(
+          MagicRequest(
+            action: action,
+            id: 'task-${DateTime.now().microsecondsSinceEpoch}',
+            value: text,
+            due: due == null ? null : _isoDay(due),
+          ),
+        );
+        return;
+      case MagicAction.date:
+        final selected = _selectedText().replaceAll(RegExp(r'[^0-9-]'), '');
+        final parsed = _parseMagicDate(selected);
+        final date =
+            parsed ??
+            await showDatePicker(
+              context: context,
+              firstDate: DateTime(1900),
+              lastDate: DateTime(2200),
+              initialDate: DateTime.now(),
+            );
+        if (date != null) {
+          _applyMagic(MagicRequest(action: action, value: _isoDay(date)));
+        }
+        return;
+      case MagicAction.citation:
+        final key = await _chooseCitation();
+        if (key != null) {
+          _applyMagic(MagicRequest(action: action, value: key));
+        }
+        return;
+      case MagicAction.attachment:
+        await _insertAttachment();
+        return;
+      case MagicAction.report:
+        await _createReport();
+        return;
+    }
+  }
+
+  NoteRef? _currentNoteRef() {
+    final v = vault;
+    final file = note;
+    if (v == null || file == null) return null;
+    return index?.notesByPath[v.relativePath(file)];
+  }
+
+  DateTime? _parseMagicDate(String value) {
+    if (RegExp(r'^\d{8}$').hasMatch(value)) {
+      return DateTime(
+        int.parse(value.substring(0, 4)),
+        int.parse(value.substring(4, 6)),
+        int.parse(value.substring(6, 8)),
+      );
+    }
+    return DateTime.tryParse(value);
+  }
+
+  Future<String?> _chooseCitation() async {
+    final file = vault?.bibliographyFile;
+    if (file == null || !await file.exists()) return null;
+    final entries = parseHayagrivaBibliography(await file.readAsString());
+    if (!mounted) return null;
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            if (entries.isEmpty)
+              const ListTile(title: Text('No bibliography entries')),
+            for (final entry in entries)
+              ListTile(
+                leading: const Icon(Icons.format_quote),
+                title: Text(entry.title),
+                subtitle: Text('${entry.key} · ${entry.type}'),
+                onTap: () => Navigator.pop(context, entry.key),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _insertAttachment() async {
+    final v = vault;
+    if (v == null) return;
+    final picked = await FilePicker.platform.pickFiles();
+    final sourcePath = picked?.files.single.path;
+    if (sourcePath == null) return;
+    final source = File(sourcePath);
+    final base = source.path.split(Platform.pathSeparator).last;
+    var target = File('${v.assets.path}/$base');
+    var suffix = 2;
+    while (await target.exists()) {
+      final dot = base.lastIndexOf('.');
+      final stem = dot < 0 ? base : base.substring(0, dot);
+      final extension = dot < 0 ? '' : base.substring(dot);
+      target = File('${v.assets.path}/$stem-${suffix++}$extension');
+    }
+    await source.copy(target.path);
+    final relative = v.relativePath(target);
+    const imageExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'};
+    final lower = target.path.toLowerCase();
+    final image = imageExtensions.any(lower.endsWith);
+    _applyMagic(
+      MagicRequest(
+        action: MagicAction.attachment,
+        value: '/$relative',
+        kind: image ? 'image' : 'file',
+      ),
+    );
+  }
+
+  Future<void> _createReport() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    final title = await _askText('Report title');
+    if (title == null || title.isEmpty) return;
+    final project = await _chooseNote(kind: 'project');
+    if (!mounted) return;
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2200),
+    );
+    final report = await writeReport(
+      v.root,
+      title,
+      ix,
+      ReportFilter(
+        project: project?.id,
+        from: range == null ? null : _isoDay(range.start),
+        to: range == null ? null : _isoDay(range.end),
+      ),
+    );
+    final pdf = await exportReportPdf(v.root, report);
+    if (mounted) {
+      setState(
+        () => status =
+            'Created ${v.relativePath(report)} and ${v.relativePath(pdf)}',
+      );
+      _queueCloudSync();
+    }
+  }
+
+  Future<void> _showMagicMenu() async {
+    final action = await showModalBottomSheet<MagicAction>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.8,
+          child: GridView.count(
+            crossAxisCount: MediaQuery.sizeOf(context).width < 500 ? 3 : 4,
+            children: [
+              for (final entry in const <MagicAction, (IconData, String)>{
+                MagicAction.noteLink: (Icons.link, 'Note link'),
+                MagicAction.tag: (Icons.tag, 'Tag'),
+                MagicAction.task: (Icons.task_alt, 'Task'),
+                MagicAction.date: (Icons.event, 'Date'),
+                MagicAction.project: (Icons.work_outline, 'Project'),
+                MagicAction.citation: (Icons.format_quote, 'Citation'),
+                MagicAction.attachment: (Icons.attach_file, 'Attachment'),
+                MagicAction.heading: (Icons.title, 'Heading'),
+                MagicAction.bold: (Icons.format_bold, 'Bold'),
+                MagicAction.italic: (Icons.format_italic, 'Italic'),
+                MagicAction.table: (Icons.table_chart, 'Table'),
+                MagicAction.equation: (Icons.functions, 'Equation'),
+                MagicAction.report: (Icons.picture_as_pdf, 'Report'),
+              }.entries)
+                InkWell(
+                  onTap: () => Navigator.pop(context, entry.key),
+                  child: Semantics(
+                    button: true,
+                    label: entry.value.$2,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(entry.value.$1),
+                        const SizedBox(height: 6),
+                        Text(entry.value.$2, textAlign: TextAlign.center),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action != null) await _runMagic(action);
+  }
+
+  Future<void> _quickCapture(String text) async {
+    final v = vault;
+    if (v == null || text.trim().isEmpty) return;
+    final today = await v.todayNote();
+    final source = await today.readAsString();
+    await v.saveNote(today, '${source.trimRight()}\n\n${text.trim()}\n');
+    final rebuilt = await v.rebuildIndex();
+    final pkms = await _readPkms(v, rebuilt);
+    setState(() {
+      index = _retainIndex(rebuilt);
+      validation = _retainValidation(pkms.report);
+      searchIndex.replaceWith(pkms.search);
+      status = 'Captured in today\'s journal';
+    });
+    _queueCloudSync();
+  }
+
+  int get _destination => switch (mode) {
+    'today' => 0,
+    'tasks' => 2,
+    'library' => 3,
+    _ => 1,
+  };
+
+  void _selectDestination(int destination) {
+    switch (destination) {
+      case 0:
+        _showToday();
+        return;
+      case 1:
+        _showJournal();
+        return;
+      case 2:
+        setState(() => mode = 'tasks');
+        return;
+      case 3:
+        setState(() => mode = 'library');
+        return;
+    }
+  }
+
+  void _replaceControlledBlock(int index, String value) {
+    final document = parseControlledTypst(sourceController.text);
+    if (index >= document.blocks.length) return;
+    _loadSource(document.replaceBlock(index, value));
+    setState(() => mode = 'normal');
+    _queueAutosave();
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = vault;
@@ -1685,11 +1708,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? const <String>[]
           : index?.notesByPath[current]?.fileRefs ?? const <String>[],
       index: index,
-      files: files,
       resolveLink: resolver?.resolve ?? _resolveLink,
       onOpenLink: _openLink,
       onOpenPath: _openPath,
-      onOpenFile: _openRegisteredFile,
+      onOpenFile: _openAttachment,
       onEditMetadata: _editCurrentMetadata,
     );
     final workArea = _WorkSurface(
@@ -1697,6 +1719,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       subtitle: current ?? 'daily journal',
       status: status,
       child: switch (mode) {
+        'today' => _TodayView(
+          index: index,
+          onCapture: _quickCapture,
+          onOpenToday: _openToday,
+          onOpenPath: _openPath,
+        ),
+        'tasks' => _PrimaryTasksView(
+          tasks: index?.tasks ?? const [],
+          onOpenPath: _openPath,
+          onSetStatus: _setTaskStatus,
+        ),
+        'library' => _LibraryView(index: index, onOpenPath: _openPath),
         'graph' => GraphView(
           graph: graph ?? const NoteGraph(nodes: [], edges: []),
           currentPath: current,
@@ -1709,14 +1743,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 source: previewSource.isEmpty
                     ? _currentSource()
                     : previewSource,
-                files: FileSource.bytes({
-                  '.tylog/tylog.typ': Uint8List.fromList(
-                    utf8.encode(helperSource),
-                  ),
-                  '/.tylog/tylog.typ': Uint8List.fromList(
-                    utf8.encode(helperSource),
-                  ),
-                }),
+                files: _typstFiles(),
                 loadingBuilder: (_) =>
                     const Center(child: CircularProgressIndicator()),
                 errorBuilder: (_, error) => Padding(
@@ -1815,10 +1842,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onChanged: _queueAutosave,
           monospace: true,
         ),
+        'split' => Row(
+          children: [
+            Expanded(
+              child: _Editor(
+                controller: sourceController,
+                onChanged: _queueAutosave,
+                monospace: true,
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: TypstDocumentViewer(
+                source: sourceController.text,
+                files: _typstFiles(),
+              ),
+            ),
+          ],
+        ),
+        'normal' => _ControlledEditorView(
+          source: sourceController.text,
+          onChanged: _replaceControlledBlock,
+          onOpenSource: _showSource,
+        ),
         _ => _Editor(controller: controller, onChanged: _queueAutosave),
       },
     );
 
+    final wideNavigation = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       appBar: AppBar(
         leading: PopupMenuButton<String>(
@@ -1895,13 +1946,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onSelected: (action) {
               switch (action) {
                 case _ShellAction.today:
-                  unawaited(_openToday());
+                  _showToday();
                 case _ShellAction.newPage:
                   unawaited(_newPage());
                 case _ShellAction.graph:
                   mode == 'graph'
                       ? _showJournal()
                       : setState(() => mode = 'graph');
+                case _ShellAction.split:
+                  sourceController.text = _currentSource();
+                  setState(() => mode = 'split');
                 case _ShellAction.backlinks:
                   showDialog<void>(
                     context: context,
@@ -1936,6 +1990,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Text(mode == 'graph' ? 'Journal' : 'Graph'),
               ),
               const PopupMenuItem(
+                value: _ShellAction.split,
+                child: Text('Split editor'),
+              ),
+              const PopupMenuItem(
                 value: _ShellAction.backlinks,
                 child: Text('Backlinks and files'),
               ),
@@ -1960,7 +2018,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: workArea,
+      floatingActionButton: _destination == 1 && mode != 'graph'
+          ? FloatingActionButton.extended(
+              onPressed: _showMagicMenu,
+              icon: const Icon(Icons.auto_fix_high),
+              label: const Text('Magic'),
+            )
+          : null,
+      bottomNavigationBar: wideNavigation
+          ? null
+          : NavigationBar(
+              selectedIndex: _destination,
+              onDestinationSelected: _selectDestination,
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
+                NavigationDestination(
+                  icon: Icon(Icons.edit_note),
+                  label: 'Journal',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.task_alt),
+                  label: 'Tasks',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.library_books),
+                  label: 'Library',
+                ),
+              ],
+            ),
+      body: wideNavigation
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _destination,
+                  onDestinationSelected: _selectDestination,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.today),
+                      label: Text('Today'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.edit_note),
+                      label: Text('Journal'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.task_alt),
+                      label: Text('Tasks'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.library_books),
+                      label: Text('Library'),
+                    ),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: workArea),
+              ],
+            )
+          : workArea,
     );
   }
 
@@ -1974,6 +2090,7 @@ enum _ShellAction {
   today,
   newPage,
   graph,
+  split,
   backlinks,
   rebuild,
   sync,
@@ -2599,7 +2716,7 @@ class _PagesPanel extends StatelessWidget {
               dense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
               leading: Icon(
-                item.path.startsWith('journal/') ? Icons.today : Icons.notes,
+                item.path.startsWith('daily/') ? Icons.today : Icons.notes,
               ),
               title: Text(
                 item.title,
@@ -2630,7 +2747,6 @@ class _LinksPanel extends StatelessWidget {
     required this.backlinks,
     required this.fileRefs,
     required this.index,
-    required this.files,
     required this.resolveLink,
     required this.onOpenLink,
     required this.onOpenPath,
@@ -2643,11 +2759,10 @@ class _LinksPanel extends StatelessWidget {
   final List<String> backlinks;
   final List<String> fileRefs;
   final VaultIndex? index;
-  final PkmsFileRegistry files;
   final LinkResolution Function(String title) resolveLink;
   final ValueChanged<String> onOpenLink;
   final ValueChanged<String> onOpenPath;
-  final ValueChanged<PkmsFileEntry> onOpenFile;
+  final ValueChanged<String> onOpenFile;
   final VoidCallback onEditMetadata;
 
   @override
@@ -2699,19 +2814,17 @@ class _LinksPanel extends StatelessWidget {
         const Divider(height: 28),
         _SectionTitle('Linked files'),
         if (fileRefs.isEmpty) const _EmptyHint('No linked files on this note.'),
-        for (final id in fileRefs)
+        for (final path in fileRefs)
           ListTile(
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             leading: const Icon(Icons.attach_file),
-            title: Text(files.files[id]?.displayTitle ?? id),
-            subtitle: Text(files.files[id]?.path ?? 'Unknown file id'),
+            title: Text(path.split('/').last),
+            subtitle: Text(path),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            onTap: files.files[id] == null
-                ? null
-                : () => onOpenFile(files.files[id]!),
+            onTap: () => onOpenFile(path),
           ),
         const Divider(height: 28),
         _SectionTitle('Backlinks'),
@@ -2989,6 +3102,360 @@ class _WorkSurface extends StatelessWidget {
   );
 }
 
+class _TodayView extends StatefulWidget {
+  const _TodayView({
+    required this.index,
+    required this.onCapture,
+    required this.onOpenToday,
+    required this.onOpenPath,
+  });
+
+  final VaultIndex? index;
+  final Future<void> Function(String text) onCapture;
+  final Future<void> Function() onOpenToday;
+  final ValueChanged<String> onOpenPath;
+
+  @override
+  State<_TodayView> createState() => _TodayViewState();
+}
+
+class _TodayViewState extends State<_TodayView> {
+  final quick = TextEditingController();
+
+  @override
+  void dispose() {
+    quick.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _isoDay(DateTime.now());
+    final notes = widget.index?.notes ?? const <NoteRef>[];
+    final daily = notes
+        .where((note) => note.kind == 'daily' && note.date == today)
+        .firstOrNull;
+    final due = (widget.index?.tasks ?? const <TaskRef>[])
+        .where(
+          (task) =>
+              task.status != 'done' &&
+              task.due != null &&
+              task.due!.split('T').first.compareTo(today) <= 0,
+        )
+        .toList();
+    final recent = notes.where((note) => note.kind != 'daily').toList()
+      ..sort(
+        (a, b) => (b.modifiedMillis ?? 0).compareTo(a.modifiedMillis ?? 0),
+      );
+    final inbox = notes
+        .where(
+          (note) =>
+              note.kind == 'note' && note.project == null && note.tags.isEmpty,
+        )
+        .toList();
+    final backlinks = daily == null
+        ? const <String>[]
+        : widget.index?.backlinksByTarget[daily.path] ?? const <String>[];
+    final calendar =
+        widget.index?.calendar
+            .where((item) => item.date.compareTo(today) >= 0)
+            .take(7)
+            .toList() ??
+        const <CalendarItem>[];
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Today', style: Theme.of(context).textTheme.headlineMedium),
+        Text(today, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 16),
+        TextField(
+          key: const Key('quick-capture'),
+          controller: quick,
+          minLines: 2,
+          maxLines: 5,
+          decoration: InputDecoration(
+            hintText: 'Quick note…',
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              tooltip: 'Capture',
+              icon: const Icon(Icons.send),
+              onPressed: () async {
+                await widget.onCapture(quick.text);
+                quick.clear();
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: widget.onOpenToday,
+          icon: const Icon(Icons.edit_note),
+          label: const Text('Open today’s journal'),
+        ),
+        _DashboardSection(
+          title: 'Due and overdue',
+          empty: 'No due tasks',
+          children: [
+            for (final task in due)
+              ListTile(
+                leading: const Icon(Icons.task_alt),
+                title: Text(task.text),
+                subtitle: Text(task.due ?? ''),
+                onTap: () => widget.onOpenPath(task.notePath),
+              ),
+          ],
+        ),
+        _DashboardSection(
+          title: 'Next dates',
+          empty: 'No upcoming dates',
+          children: [
+            for (final item in calendar)
+              ListTile(
+                leading: const Icon(Icons.event),
+                title: Text(item.title),
+                subtitle: Text(item.date),
+                onTap: () => widget.onOpenPath(item.notePath),
+              ),
+          ],
+        ),
+        _DashboardSection(
+          title: 'Recent notes',
+          empty: 'No notes yet',
+          children: [
+            for (final item in recent.take(5))
+              ListTile(
+                leading: const Icon(Icons.notes),
+                title: Text(item.title),
+                subtitle: Text(item.path),
+                onTap: () => widget.onOpenPath(item.path),
+              ),
+          ],
+        ),
+        _DashboardSection(
+          title: 'Today’s mentions',
+          empty: 'No backlinks to today',
+          children: [
+            for (final path in backlinks)
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: Text(widget.index?.notesByPath[path]?.title ?? path),
+                onTap: () => widget.onOpenPath(path),
+              ),
+          ],
+        ),
+        _DashboardSection(
+          title: 'Inbox',
+          empty: 'No unclassified notes',
+          children: [
+            for (final item in inbox.take(5))
+              ListTile(
+                leading: const Icon(Icons.inbox_outlined),
+                title: Text(item.title),
+                onTap: () => widget.onOpenPath(item.path),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardSection extends StatelessWidget {
+  const _DashboardSection({
+    required this.title,
+    required this.empty,
+    required this.children,
+  });
+
+  final String title;
+  final String empty;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        if (children.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(empty),
+          )
+        else
+          ...children,
+      ],
+    ),
+  );
+}
+
+class _PrimaryTasksView extends StatelessWidget {
+  const _PrimaryTasksView({
+    required this.tasks,
+    required this.onOpenPath,
+    required this.onSetStatus,
+  });
+
+  final List<TaskRef> tasks;
+  final ValueChanged<String> onOpenPath;
+  final Future<void> Function(TaskRef task, String status) onSetStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = tasks.toList()
+      ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Tasks', style: Theme.of(context).textTheme.headlineMedium),
+        if (sorted.isEmpty) const ListTile(title: Text('No indexed tasks')),
+        for (final task in sorted)
+          CheckboxListTile(
+            value: task.status == 'done',
+            title: Text(task.text),
+            subtitle: Text(
+              [
+                if (task.project != null) task.project!,
+                if (task.due != null) 'due ${task.due}',
+              ].join(' · '),
+            ),
+            onChanged: (done) =>
+                onSetStatus(task, done == true ? 'done' : 'todo'),
+            secondary: IconButton(
+              tooltip: 'Open source note',
+              icon: const Icon(Icons.open_in_new),
+              onPressed: () => onOpenPath(task.notePath),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _LibraryView extends StatelessWidget {
+  const _LibraryView({required this.index, required this.onOpenPath});
+
+  final VaultIndex? index;
+  final ValueChanged<String> onOpenPath;
+
+  @override
+  Widget build(BuildContext context) => DefaultTabController(
+    length: 4,
+    child: Column(
+      children: [
+        const TabBar(
+          isScrollable: true,
+          tabs: [
+            Tab(text: 'Notes'),
+            Tab(text: 'Projects'),
+            Tab(text: 'Articles'),
+            Tab(text: 'Calendar'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              _notes('note'),
+              _notes('project'),
+              _notes('article'),
+              ListView(
+                children: [
+                  for (final item in index?.calendar ?? const <CalendarItem>[])
+                    ListTile(
+                      leading: const Icon(Icons.event),
+                      title: Text(item.title),
+                      subtitle: Text(item.date),
+                      onTap: () => onOpenPath(item.notePath),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _notes(String kind) => ListView(
+    children: [
+      for (final note in (index?.notes ?? const <NoteRef>[]).where(
+        (note) => note.kind == kind,
+      ))
+        ListTile(
+          leading: Icon(switch (kind) {
+            'project' => Icons.work_outline,
+            'article' => Icons.article_outlined,
+            _ => Icons.notes,
+          }),
+          title: Text(note.title),
+          subtitle: Text(note.path),
+          onTap: () => onOpenPath(note.path),
+        ),
+    ],
+  );
+}
+
+class _ControlledEditorView extends StatelessWidget {
+  const _ControlledEditorView({
+    required this.source,
+    required this.onChanged,
+    required this.onOpenSource,
+  });
+
+  final String source;
+  final void Function(int index, String value) onChanged;
+  final VoidCallback onOpenSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final document = parseControlledTypst(source);
+    return ListView.builder(
+      padding: const EdgeInsets.all(18),
+      itemCount: document.blocks.length,
+      itemBuilder: (context, index) {
+        final block = document.blocks[index];
+        if (!block.supported) {
+          return Card.outlined(
+            child: ListTile(
+              leading: const Icon(Icons.code),
+              title: const Text('Custom Typst block'),
+              subtitle: Text(
+                block.source,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.edit),
+              onTap: onOpenSource,
+            ),
+          );
+        }
+        final heading = block.kind == ControlledBlockKind.heading;
+        final marker = heading
+            ? RegExp(r'^=+\s').firstMatch(block.source)?.group(0) ?? '= '
+            : '';
+        final value = heading
+            ? block.source.substring(marker.length)
+            : block.source;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextFormField(
+            key: ValueKey('${block.start}:${block.source.hashCode}'),
+            initialValue: value,
+            minLines: 1,
+            maxLines: null,
+            style: heading
+                ? Theme.of(context).textTheme.headlineSmall
+                : Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45),
+            decoration: const InputDecoration(border: InputBorder.none),
+            onChanged: (value) => onChanged(index, '$marker$value'),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _Editor extends StatefulWidget {
   const _Editor({
     required this.controller,
@@ -3080,7 +3547,6 @@ class _EditorState extends State<_Editor> {
                       _DockButton('*', 'Bold', () => _replace('*', '*')),
                       _DockButton('_', 'Emphasis', () => _replace('_', '_')),
                       _DockButton(r'$', 'Math', () => _replace(r'$', r'$')),
-                      _DockButton('[[ ]]', 'Link', () => _replace('[[', ']]')),
                       _DockButton(
                         '#',
                         'Function or tag',
@@ -3149,11 +3615,8 @@ List<String> _csvValues(String value) =>
         .toList()
       ..sort();
 
-String _slugValue(String value) => value
-    .trim()
-    .toLowerCase()
-    .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-    .replaceAll(RegExp(r'^-|-$'), '');
+String _isoDay(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);

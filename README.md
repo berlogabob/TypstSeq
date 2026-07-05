@@ -1,33 +1,30 @@
 # TyLog
 
-TyLog is a local-first Typst journal and personal knowledge management app. Notes remain ordinary `.typ` files; search, backlinks, validation, and the graph are derived from the vault.
-
-Current version: `1.0.0+23`
-
-## Documentation
-
-- [User handbook](USER_MANUAL.md) — installation, daily use, PKMS features, Nextcloud, backups, and troubleshooting
-- [Project status](PLAN.md) — implemented scope, architecture, verification, and deferred work
-- [Application graph](graphify-out/GRAPH_REPORT.md) — generated structural audit
+TyLog is a local-first, Typst-first journal and research workspace for Android and macOS. Notes, projects, articles, tasks, dates, citations, attachments, and reports remain ordinary `.typ` files. JSON is limited to settings, sync state, and rebuildable indexes.
 
 ## Development
 
-Requirements: Flutter stable with Dart 3.12 or newer.
+Flutter stable with Dart 3.12 or newer is required. Native compiler setup is explicit and never runs as a build side effect:
 
 ```sh
-flutter pub get
+./tool/setup_typst_native.sh
 flutter analyze
 flutter test
 flutter run -d macos
 ```
 
-Useful release targets:
+The complete release gates are:
 
 ```sh
-make help
-make package-pages
-make build-android
+make verify
 ```
 
-The web build is a landing page. The full application runs on Android, macOS, and Linux because its Typst preview and filesystem workflow require native support.
+The web target is a landing page. Linux remains compile-tested.
 
+## Documentation
+
+- [User handbook](USER_MANUAL.md)
+- [Implementation status](PLAN.md)
+- [Application graph](graphify-out/GRAPH_REPORT.md)
+
+TyLog v5 intentionally does not migrate older vaults. Back up the old vault, create a clean v5 vault, and use a new empty Nextcloud remote folder.

@@ -1,33 +1,24 @@
-# TyLog project status
+# TyLog v5 implementation status
 
-Last reviewed: 2026-07-04 · app version `1.0.0+23`
+Last reviewed: 2026-07-05
 
 ## Implemented
 
-- Plain-file Typst vaults with daily notes, pages, templates, and assets
-- Safe temporary-file saves and 700 ms autosave
-- Multiple local vaults with switching, forgetting, and guarded permanent deletion
-- Typst source editing and native preview
-- Stable note IDs, metadata, wikilinks, aliases, tags, backlinks, and file references
-- Incremental index and compressed full-text search cache
-- Local graph with accessible selection and large-vault neighborhood limiting
-- Canonical tag and file registries, validation, legacy-header migration, and collection PDF export
-- Embedded Nextcloud WebDAV sync, background polling, sync traces, and interactive conflict resolution
-- Android release, macOS/Linux targets, and a lightweight web landing page
+- Clean schema-v5 vault with `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, `_system`, `_index`, and `.tylog`
+- Namespaced `tylog` Typst interface; no raw wikilinks or durable tag/file/collection registries
+- Rich note metadata, derived backlinks, tasks, dates, attachments, calendar entries, and compressed search index
+- Today-first mobile workspace with Journal, Tasks, Library, Calendar, Search, and secondary graph
+- Selection-aware Magic actions for links, tags, tasks, dates, projects, citations, attachments, formatting, tables, equations, and reports
+- Exact Preview, responsive split view, and controlled Normal blocks that preserve unsupported Typst byte-for-byte
+- Reproducible Typst reports and sibling PDF export
+- Existing atomic saves and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists
+- Focused local `typst_flutter` fork with explicit setup and no build-time downloads
 
-## Source-of-truth model
+## Deliberate limits
 
-User content is stored in `journal/`, `pages/`, `assets/`, and versioned registry files under `.tylog/`. The files `.tylog/index.json` and `.tylog/search-index.json.gz` are derived caches and may be rebuilt.
-
-## Deferred intentionally
-
-- Rich-text/WYSIWYG editing
-- Plugin and AI systems
-- Realtime collaboration or automatic text merging
-- A full browser application
-- Encrypted credential storage
-
-Add these only when a concrete user requirement justifies their maintenance cost.
+- Old-vault migration is unsupported
+- Normal mode edits only the documented controlled subset; arbitrary Typst remains exact in Preview/Source
+- No Markdown storage, HTML export, SQLite, AI/RAG, collaboration, plugin system, Kanban, or Zotero integration
 
 ## Verification
 
@@ -35,9 +26,7 @@ Add these only when a concrete user requirement justifies their maintenance cost
 flutter analyze
 flutter test
 flutter test integration_test/pkms_native_test.dart -d macos
+flutter build apk --release
+flutter build macos --release
+flutter build linux
 ```
-
-Release automation lives in `Makefile`. `make release` bumps the build number, runs analysis and tests, packages GitHub Pages, builds the Android APK, commits, tags, pushes, and creates a GitHub release when `gh` is authenticated.
-
-See [USER_MANUAL.md](USER_MANUAL.md) for the complete product handbook.
-

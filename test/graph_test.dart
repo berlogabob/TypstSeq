@@ -7,15 +7,15 @@ void main() {
   test('buildNoteGraph creates deterministic nodes and resolved edges', () {
     final index = VaultIndex(
       notesByPath: {
-        'journal/2026-07-01.typ': const NoteRef(
+        'daily/2026/07/2026-07-01.typ': const NoteRef(
           id: '2026-07-01',
-          path: 'journal/2026-07-01.typ',
+          path: 'daily/2026/07/2026-07-01.typ',
           title: 'Today',
           outgoingLinks: ['PKM', 'Missing'],
         ),
-        'pages/PKM.typ': const NoteRef(
+        'notes/PKM.typ': const NoteRef(
           id: 'pkm',
-          path: 'pages/PKM.typ',
+          path: 'notes/PKM.typ',
           title: 'PKM',
           outgoingLinks: ['Today'],
         ),
@@ -26,12 +26,12 @@ void main() {
     final graph = buildNoteGraph(index);
 
     expect(graph.nodes.map((node) => node.path), [
-      'journal/2026-07-01.typ',
-      'pages/PKM.typ',
+      'daily/2026/07/2026-07-01.typ',
+      'notes/PKM.typ',
     ]);
     expect(graph.edges.map((edge) => '${edge.from}->${edge.to}'), [
-      'journal/2026-07-01.typ->pages/PKM.typ',
-      'pages/PKM.typ->journal/2026-07-01.typ',
+      'daily/2026/07/2026-07-01.typ->notes/PKM.typ',
+      'notes/PKM.typ->daily/2026/07/2026-07-01.typ',
     ]);
   });
 

@@ -450,7 +450,8 @@ class NextcloudSync {
     return now.millisecondsSinceEpoch > previousMillis;
   }
 
-  bool _isSyncInternal(String path) => isSyncInternalPath(path);
+  bool _isSyncInternal(String path) =>
+      isSyncInternalPath(path) || !isSyncableVaultPath(path);
 
   String _relativePath(Directory root, File file) {
     final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
@@ -499,10 +500,7 @@ class NextcloudSync {
 }
 
 bool _protectFromEmpty(String path) =>
-    path.endsWith('.typ') ||
-    path == '.tylog/tags.json' ||
-    path == '.tylog/files.json' ||
-    path == '.tylog/collections.json';
+    path.endsWith('.typ') || path == '_system/bibliography.yml';
 
 Future<String> _sha256(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
@@ -539,15 +537,20 @@ class _RemoteChanged implements Exception {
 }
 
 bool isSyncInternalPath(String path) =>
-    path == '.tylog/index.json' ||
-    path == '.tylog/search-index.json.gz' ||
-    path == '.tylog/tylog.typ' ||
-    path == '.tylog/sync_state.json' ||
-    path == '.tylog/sync_trace.jsonl' ||
-    path.startsWith('.tylog/backups/') ||
-    path.startsWith('.tylog/search-index.json.gz-') ||
+    path.startsWith('.tylog/') ||
+    path.startsWith('_index/') ||
     path.contains('.remote-conflict-') ||
     path.endsWith('.tmp');
+
+bool isSyncableVaultPath(String path) => const [
+  'daily/',
+  'notes/',
+  'projects/',
+  'articles/',
+  'assets/',
+  'outputs/',
+  '_system/',
+].any((prefix) => path.startsWith(prefix));
 
 bool isNextcloudManagedVault(
   Directory vault, {

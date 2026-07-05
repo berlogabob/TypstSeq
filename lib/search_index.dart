@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
-import 'pkms_registry.dart';
 
 class PkmsSearchResult {
   const PkmsSearchResult({
@@ -129,8 +128,7 @@ class PkmsSearchIndex {
 
   static Future<PkmsSearchIndex> build(
     Directory root,
-    VaultIndex vault,
-    PkmsFileRegistry files, {
+    VaultIndex vault, {
     PkmsSearchIndex? previous,
   }) async {
     final documents = <String, _SearchDocument>{};
@@ -145,7 +143,7 @@ class PkmsSearchIndex {
         id: note.id,
         path: note.path,
         title: note.title,
-        kind: 'note',
+        kind: note.kind,
         tags: note.tags,
         aliases: note.aliases,
         terms: _frequencies(
@@ -172,21 +170,24 @@ class PkmsSearchIndex {
         snippet: task.due ?? task.recurrence,
       );
     }
-    for (final file in files.files.values) {
-      documents['file:${file.id}'] = _SearchDocument(
-        id: file.id,
-        path: file.path,
-        title: file.displayTitle,
-        kind: 'file',
-        tags: file.tags,
-        aliases: const [],
-        terms: _frequencies(
-          '${file.id} ${file.displayTitle} ${file.kind} ${file.status} ${file.tags.join(' ')} ${file.path}',
-        ),
-        fileKind: file.kind,
-        status: file.status,
-        snippet: file.path,
-      );
+    for (final note in vault.notes) {
+      for (final attachment in note.attachments) {
+        documents.putIfAbsent(
+          'attachment:${attachment.path}',
+          () => _SearchDocument(
+            id: attachment.path,
+            path: attachment.path,
+            title: attachment.title ?? attachment.path.split('/').last,
+            kind: 'file',
+            tags: note.tags,
+            aliases: const [],
+            terms: _frequencies(
+              '${attachment.path} ${attachment.title ?? ''} ${note.title}',
+            ),
+            fileKind: attachment.kind,
+          ),
+        );
+      }
     }
     return PkmsSearchIndex._(documents);
   }

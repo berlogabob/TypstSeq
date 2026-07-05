@@ -663,10 +663,9 @@ packages:
   typst_flutter:
     dependency: "direct main"
     description:
-      name: typst_flutter
-      sha256: dd036f898e3373de4235b08b403299361ffae6792a8cf8e848a56bc2f4f2c581
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/typst_flutter"
+      relative: true
+    source: path
     version: "2.2.1"
   vector_graphics:
     dependency: transitive
@@ -749,7 +748,7 @@ packages:
     source: hosted
     version: "7.0.1"
   yaml:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: yaml
       sha256: b9da305ac7c39faa3f030eccd175340f968459dae4af175130b3fc47e40d76ce
