@@ -11,16 +11,31 @@ class NextcloudConfig {
     required this.serverUrl,
     required this.username,
     required this.password,
+    this.remoteFolder = 'TyLogVault',
   });
 
   final String serverUrl;
   final String username;
   final String password;
+  final String remoteFolder;
 
-  bool get isReady =>
-      serverUrl.trim().isNotEmpty &&
-      username.trim().isNotEmpty &&
-      password.isNotEmpty;
+  bool get isReady {
+    final server = Uri.tryParse(serverUrl.trim());
+    final folders = _remoteFolders;
+    return server != null &&
+        (server.scheme == 'https' || server.scheme == 'http') &&
+        server.host.isNotEmpty &&
+        username.trim().isNotEmpty &&
+        password.isNotEmpty &&
+        folders.isNotEmpty &&
+        !folders.any((folder) => folder == '.' || folder == '..');
+  }
+
+  List<String> get _remoteFolders => remoteFolder
+      .trim()
+      .split('/')
+      .where((folder) => folder.isNotEmpty)
+      .toList();
 
   Uri get rootUri {
     final base = Uri.parse(serverUrl.trim().replaceFirst(RegExp(r'/+$'), ''));
@@ -31,7 +46,7 @@ class NextcloudConfig {
     }
     return base.replace(
       path:
-          '${base.path.replaceFirst(RegExp(r'/+$'), '')}/remote.php/dav/files/$username/TyLogVault/',
+          '${base.path.replaceFirst(RegExp(r'/+$'), '')}/remote.php/dav/files/${username.trim()}/${_remoteFolders.join('/')}/',
     );
   }
 
@@ -39,30 +54,38 @@ class NextcloudConfig {
     'serverUrl': serverUrl,
     'username': username,
     'password': password,
+    'remoteFolder': remoteFolder,
   };
 
   static NextcloudConfig fromJson(Map<String, Object?> json) => NextcloudConfig(
     serverUrl: json['serverUrl'] as String? ?? json['url'] as String? ?? '',
     username: json['username'] as String? ?? '',
     password: json['password'] as String? ?? '',
+    remoteFolder: json['remoteFolder'] as String? ?? 'TyLogVault',
   );
 
-  static Future<File> settingsFile() async {
+  static Future<File> settingsFile({String? vaultId}) async {
     final base = await getApplicationDocumentsDirectory();
-    return File('${base.path}/nextcloud.json');
+    final suffix = vaultId == null
+        ? ''
+        : '-${sha256.convert(utf8.encode(vaultId))}';
+    return File('${base.path}/nextcloud$suffix.json');
   }
 
-  static Future<NextcloudConfig?> load() async {
-    final file = await settingsFile();
+  static Future<NextcloudConfig?> load({String? vaultId}) async {
+    final file = await settingsFile(vaultId: vaultId);
     if (!await file.exists()) return null;
     return fromJson(
       jsonDecode(await file.readAsString()) as Map<String, Object?>,
     );
   }
 
-  Future<void> save() async {
-    final file = await settingsFile();
-    await file.writeAsString(jsonEncode(toJson()), flush: true);
+  Future<void> save({String? vaultId}) async {
+    final file = await settingsFile(vaultId: vaultId);
+    final temporary = File('${file.path}.tmp');
+    await temporary.writeAsString(jsonEncode(toJson()), flush: true);
+    if (await file.exists()) await file.delete();
+    await temporary.rename(file.path);
   }
 }
 

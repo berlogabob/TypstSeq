@@ -42,11 +42,17 @@ class VaultEntry {
 }
 
 class VaultRegistry {
-  VaultRegistry(this.file, this.entries, this.activeId);
+  VaultRegistry(
+    this.file,
+    this.entries,
+    this.activeId, {
+    this.onboardingComplete = true,
+  });
 
   final File file;
   final List<VaultEntry> entries;
   String activeId;
+  bool onboardingComplete;
 
   VaultEntry get active => entries.firstWhere((entry) => entry.id == activeId);
 
@@ -70,6 +76,7 @@ class VaultRegistry {
           entries.any((entry) => entry.id == active)
               ? active!
               : entries.first.id,
+          onboardingComplete: json['onboardingComplete'] as bool? ?? true,
         );
       }
     }
@@ -82,7 +89,12 @@ class VaultRegistry {
       path: root,
       cloud: legacyCloud,
     );
-    final registry = VaultRegistry(file, [entry], entry.id);
+    final registry = VaultRegistry(
+      file,
+      [entry],
+      entry.id,
+      onboardingComplete: false,
+    );
     await registry.save();
     return registry;
   }
@@ -105,6 +117,11 @@ class VaultRegistry {
 
   Future<void> select(VaultEntry entry) async {
     activeId = entry.id;
+    await save();
+  }
+
+  Future<void> completeOnboarding() async {
+    onboardingComplete = true;
     await save();
   }
 
@@ -131,6 +148,7 @@ class VaultRegistry {
   Future<void> save() => file.writeAsString(
     jsonEncode({
       'active': activeId,
+      'onboardingComplete': onboardingComplete,
       'vaults': entries.map((entry) => entry.toJson()).toList(),
     }),
     flush: true,

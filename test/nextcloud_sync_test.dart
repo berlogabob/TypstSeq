@@ -44,6 +44,22 @@ void main() {
     );
   });
 
+  test('Nextcloud remote folder is persisted and used', () {
+    const config = NextcloudConfig(
+      serverUrl: 'https://cloud.example/',
+      username: 'alice',
+      password: 'secret',
+      remoteFolder: 'Research/TyLog',
+    );
+
+    final restored = NextcloudConfig.fromJson(config.toJson());
+    expect(restored.remoteFolder, 'Research/TyLog');
+    expect(
+      restored.rootUri.toString(),
+      'https://cloud.example/remote.php/dav/files/alice/Research/TyLog/',
+    );
+  });
+
   test('sync action prefers conflict when both changed', () {
     expect(
       decideSyncAction(

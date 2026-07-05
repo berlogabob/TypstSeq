@@ -151,6 +151,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await registry.select(active);
       }
       await _openVault(active, trigger: 'startup');
+      if (Platform.isAndroid && !registry.onboardingComplete && mounted) {
+        await _showAndroidOnboarding(registry);
+      }
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
@@ -213,12 +216,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _openVault(entry);
   }
 
-  Future<void> _pickVault() async {
-    Navigator.pop(context);
+  Future<bool> _pickVault({bool closeCurrent = true}) async {
+    if (closeCurrent) Navigator.pop(context);
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Choose vault folder',
     );
-    if (path == null) return;
+    if (path == null) return false;
     try {
       final probe = File('$path/.tylog-access-test.tmp');
       await probe.writeAsString('ok', flush: true);
@@ -227,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() => status = 'Selected folder is not writable: $e');
       }
-      return;
+      return false;
     }
     final registry = vaultRegistry!;
     final entry = await registry.add(path);
@@ -236,6 +239,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await registry.select(entry);
       await _openVault(entry);
     }
+    return true;
+  }
+
+  Future<void> _showAndroidOnboarding(VaultRegistry registry) async {
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: SimpleDialog(
+          title: const Text('Where should TyLog store your vault?'),
+          children: [
+            ListTile(
+              leading: const Icon(Icons.phone_android),
+              title: const Text('Private app storage'),
+              subtitle: const Text('Keep the vault only inside TyLog.'),
+              onTap: () => Navigator.pop(context, 'app'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Choose a device folder'),
+              subtitle: const Text('Select an existing or empty folder.'),
+              onTap: () => Navigator.pop(context, 'folder'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text('Connect Nextcloud'),
+              subtitle: const Text(
+                'Keep a local copy and sync it to a remote folder.',
+              ),
+              onTap: () => Navigator.pop(context, 'nextcloud'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final complete = switch (choice) {
+      'app' => true,
+      'folder' => await _pickVault(closeCurrent: false),
+      'nextcloud' => await _showSyncSettings(),
+      _ => false,
+    };
+    if (complete) await registry.completeOnboarding();
   }
 
   Future<void> _forgetVault(VaultEntry entry) async {
@@ -988,53 +1035,112 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _refreshPkms('Old sync caches removed');
   }
 
-  Future<void> _showSyncSettings() async {
-    final cfg = cloud;
+  Future<bool> _showSyncSettings() async {
+    final vaultId = vaultRegistry!.activeId;
+    final cfg =
+        await NextcloudConfig.load(vaultId: vaultId) ??
+        cloud ??
+        await NextcloudConfig.load();
+    if (!mounted) return false;
     final url = TextEditingController(text: cfg?.serverUrl ?? '');
     final user = TextEditingController(text: cfg?.username ?? '');
     final pass = TextEditingController(text: cfg?.password ?? '');
+    final folder = TextEditingController(
+      text: cfg?.remoteFolder ?? 'TyLogVault',
+    );
+    var draftWrites = Future<void>.value();
+    NextcloudConfig draft() => NextcloudConfig(
+      serverUrl: url.text,
+      username: user.text,
+      password: pass.text,
+      remoteFolder: folder.text,
+    );
+
+    void remember(StateSetter refresh) {
+      refresh(() {});
+      final snapshot = draft();
+      draftWrites = draftWrites
+          .then((_) => snapshot.save(vaultId: vaultId))
+          .catchError((_) {});
+    }
+
     final saved = await showDialog<NextcloudConfig>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nextcloud'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: url,
-              decoration: const InputDecoration(labelText: 'Server URL'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Connect Nextcloud'),
+          content: SingleChildScrollView(
+            child: AutofillGroup(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: url,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.url],
+                    onChanged: (_) => remember(setDialogState),
+                    decoration: const InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'https://cloud.example.com',
+                    ),
+                  ),
+                  TextField(
+                    controller: user,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.username],
+                    onChanged: (_) => remember(setDialogState),
+                    decoration: const InputDecoration(labelText: 'Login'),
+                  ),
+                  TextField(
+                    controller: pass,
+                    obscureText: true,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.password],
+                    onChanged: (_) => remember(setDialogState),
+                    decoration: const InputDecoration(
+                      labelText: 'Password or app password',
+                    ),
+                  ),
+                  TextField(
+                    controller: folder,
+                    textInputAction: TextInputAction.done,
+                    onChanged: (_) => remember(setDialogState),
+                    decoration: const InputDecoration(
+                      labelText: 'Remote folder',
+                      helperText: 'Created inside your Nextcloud files.',
+                    ),
+                  ),
+                ],
+              ),
             ),
-            TextField(
-              controller: user,
-              decoration: const InputDecoration(labelText: 'Login'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-            TextField(
-              controller: pass,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+            FilledButton(
+              onPressed: draft().isReady
+                  ? () {
+                      TextInput.finishAutofillContext();
+                      Navigator.pop(context, draft());
+                    }
+                  : null,
+              child: const Text('Save and connect'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              context,
-              NextcloudConfig(
-                serverUrl: url.text,
-                username: user.text,
-                password: pass.text,
-              ),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
-    if (saved == null) return;
+    await draftWrites;
+    url.dispose();
+    user.dispose();
+    pass.dispose();
+    folder.dispose();
+    if (saved == null) return false;
+    if (!mounted) return false;
+    await saved.save(vaultId: vaultId);
     final registry = vaultRegistry!;
     await registry.setCloud(registry.active, saved);
     setState(() {
@@ -1043,11 +1149,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     _startCloudPolling();
     unawaited(_syncNow(trigger: 'settings'));
+    return true;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && (cloud?.isReady ?? false)) {
       unawaited(_syncNow(trigger: 'resume'));
     }
   }
@@ -1065,7 +1172,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             vaults: vaultRegistry?.entries ?? const [],
             activeVaultId: vaultRegistry?.activeId,
-            onAddVault: _pickVault,
+            onAddVault: () => unawaited(_pickVault()),
             onSwitchVault: (entry) {
               Navigator.pop(context);
               unawaited(_switchVault(entry));

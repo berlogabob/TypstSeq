@@ -75,6 +75,8 @@ Reports filter project, date range, kind, tags, article status, and task status.
 
 Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configured in Settings with server URL, login, and an app password.
 
+On first launch, Android asks whether to use private app storage, a chosen device folder, or Nextcloud. Nextcloud setup also asks for the remote folder; nested paths such as `Research/TyLog` are supported. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
+
 TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system`. It excludes `_index`, `.tylog` operational state, temporary files, and conflict caches. Autosave completes before sync. Checksums, atomic transfers, polling, repair, and conflict copies are retained.
 
 When both copies changed, open Problems, select the conflict, compare device and Nextcloud versions, edit the final text, and save the resolution.

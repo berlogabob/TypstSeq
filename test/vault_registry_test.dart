@@ -53,4 +53,16 @@ void main() {
     expect(await root.exists(), isFalse);
     expect(registry.entries, isEmpty);
   });
+
+  test('first-run onboarding completion is persisted', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_onboarding_');
+    addTearDown(() => base.delete(recursive: true));
+    final file = File('${base.path}/vaults.json');
+    final registry = VaultRegistry(file, [], '', onboardingComplete: false);
+
+    await registry.completeOnboarding();
+
+    expect(registry.onboardingComplete, isTrue);
+    expect(await file.readAsString(), contains('"onboardingComplete":true'));
+  });
 }
