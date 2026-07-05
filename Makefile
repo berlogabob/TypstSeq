@@ -4,7 +4,7 @@ APP_NAME := tylog
 REPO_NAME ?= $(notdir $(CURDIR))
 BRANCH := $(shell git branch --show-current)
 GITHUB_PAGES_BASE_HREF ?= /$(REPO_NAME)/
-RELEASE_GIT_PATHS ?= .gitignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test lib linux macos packages tool web docs sample_vault test
+RELEASE_GIT_PATHS ?= .gitignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test ios lib linux macos packages tool web docs sample_vault test
 VERSION := $(shell grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d '[:space:]')
 OWNER_REPO ?= berlogabob/TypstSeq
 

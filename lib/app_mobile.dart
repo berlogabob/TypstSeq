@@ -3067,7 +3067,7 @@ class _WorkSurface extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
+  Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
     child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),

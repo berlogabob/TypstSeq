@@ -31,6 +31,8 @@ packages/typst_flutter/.typst_flutter_prebuilt/
 packages/typst_flutter/rust/target/
 packages/typst_flutter/.native-build*/
 packages/typst_flutter/macos/typst_flutter/.build/
+packages/typst_flutter/ios/typst_flutter/Frameworks/
+packages/typst_flutter/ios/typst_flutter/.build/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/

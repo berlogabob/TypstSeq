@@ -54,6 +54,8 @@ TyLog opens on Today. Today contains quick capture, due tasks, referenced dates,
 
 Primary areas are Today, Journal, Tasks, and Library. Library contains Notes, Projects, Articles, Calendar, Search, and Graph. Android uses bottom navigation; macOS uses a navigation rail.
 
+Android and macOS are the release platforms. The included iOS host supports development checks on iPad. A physical iPad run requires selecting an Apple development team in `ios/Runner.xcworkspace`, allowing Xcode to register and provision the device, and trusting the development certificate on the iPad. An iPad simulator does not require signing.
+
 Edits autosave atomically. Source shows exact Typst. Preview renders exact output. Split mode places them together. Normal mode presents supported content as editable blocks; unsupported Typst is preserved in a source block and can be edited at its exact range.
 
 ## Magic
@@ -82,5 +84,9 @@ When both copies changed, open Problems, select the conflict, compare device and
 Back up the complete vault. The authoritative data is the Typst content, assets, system files, and output sources/PDFs. `_index` can be deleted and rebuilt.
 
 If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If sync fails, verify HTTPS, credentials, remote folder permissions, and that the remote folder was created for v5.
+
+If an iPad run reports that no development certificates are available, open `ios/Runner.xcworkspace`, select Runner > Signing & Capabilities, sign in to Xcode, and choose a team. Then rerun `flutter run -d <device-id>`. This is host signing configuration, not a vault or application-data error.
+
+Open implementation and device checks are recorded in [GitHub issue #42](https://github.com/berlogabob/TypstSeq/issues/42), labeled `status:check-needed`.
 
 TyLog deliberately has no arbitrary-Typst WYSIWYG, realtime collaboration, automatic conflict merging, AI/RAG, or plugin API.

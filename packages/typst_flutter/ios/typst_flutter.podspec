@@ -29,11 +29,9 @@ Pod::Spec.new do |s|
   # __dir__ is the directory containing this podspec (the ios/ directory),
   # so we navigate one level up to the package root.
 
-  prebuilt_xcframework = File.join(
-    __dir__, '../.typst_flutter_prebuilt/ios/typst_flutter.xcframework'
-  )
+  prebuilt_xcframework = '../.typst_flutter_prebuilt/ios/typst_flutter.xcframework'
 
-  if File.exist?(prebuilt_xcframework)
+  if File.exist?(File.expand_path(prebuilt_xcframework, __dir__))
     # ── Pre-built path ────────────────────────────────────────────────────────
     s.vendored_frameworks = prebuilt_xcframework
     s.pod_target_xcconfig = {

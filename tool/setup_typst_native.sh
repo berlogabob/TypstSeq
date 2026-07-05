@@ -12,6 +12,12 @@ flutter pub get
 dart run typst_flutter:setup
 
 if [ "$(uname -s)" = "Darwin" ]; then
+  ios_framework="$package/ios/typst_flutter/Frameworks/typst_flutter.xcframework"
+  rm -rf "$ios_framework"
+  mkdir -p "$(dirname "$ios_framework")"
+  cp -R "$package/.typst_flutter_prebuilt/ios/typst_flutter.xcframework" \
+    "$ios_framework"
+
   rustup=${RUSTUP:-$(command -v rustup || true)}
   if [ -z "$rustup" ] && [ -x /opt/homebrew/opt/rustup/bin/rustup ]; then
     rustup=/opt/homebrew/opt/rustup/bin/rustup
