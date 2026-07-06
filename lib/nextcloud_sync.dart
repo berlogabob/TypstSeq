@@ -263,7 +263,6 @@ class NextcloudSync {
           decisions: decisions,
         ),
       );
-      await vault.rebuildIndex();
       return SyncResult(
         trigger: trigger,
         uploaded: up,

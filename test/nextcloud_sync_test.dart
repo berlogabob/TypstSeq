@@ -371,6 +371,24 @@ void main() {
     expect(await note.readAsString(), 'android edit\nmac edit');
   });
 
+  test('sync does not depend on a local index cache', () async {
+    final server = await _webDavServer(remoteContent: 'remote note');
+    final dir = await Directory.systemTemp.createTemp('tylog_no_index_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    final vault = Vault(dir);
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.downloaded, 1);
+    expect(
+      await File('${dir.path}/daily/2026/07/note.typ').readAsString(),
+      'remote note',
+    );
+  });
+
   test('interrupted download leaves the original note untouched', () async {
     final server = await _webDavServer(
       interrupted: true,

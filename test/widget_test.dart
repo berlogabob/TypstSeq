@@ -323,6 +323,7 @@ void main() {
   });
 
   testWidgets('knowledge problems opens sync conflicts', (tester) async {
+    var opened = false;
     const conflict = PkmsProblem(
       code: 'sync-conflict',
       severity: PkmsSeverity.warning,
@@ -334,23 +335,28 @@ void main() {
         home: _knowledgeScreen(
           initialView: KnowledgeView.problems,
           problems: const [conflict],
+          onResolveConflict: (_) async => opened = true,
         ),
       ),
     );
     expect(find.text('Both copies changed.'), findsOneWidget);
+    await tester.tap(find.text('Both copies changed.'));
+    await tester.pump();
+    expect(opened, isTrue);
   });
 }
 
 KnowledgeScreen _knowledgeScreen({
   KnowledgeView initialView = KnowledgeView.search,
   List<PkmsProblem> problems = const [],
+  Future<void> Function(PkmsProblem)? onResolveConflict,
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
   problems: problems,
   onOpenNote: (_) {},
-  onResolveConflict: (_) async {},
+  onResolveConflict: onResolveConflict ?? (_) async {},
   onCleanSyncCaches: () async {},
   onSetTaskStatus: (_, _) async {},
 );

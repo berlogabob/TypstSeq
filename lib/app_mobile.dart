@@ -808,6 +808,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     syncCompletion = Completer<void>();
+    PkmsProblem? pendingConflict;
+    Object? failure;
     setState(() {
       syncing = true;
       syncError = null;
@@ -842,6 +844,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
+      for (final problem in pkms.report.problems) {
+        if (problem.code == 'sync-conflict') {
+          pendingConflict = problem;
+          break;
+        }
+      }
       setState(() {
         index = _retainIndex(ix);
         validation = _retainValidation(pkms.report);
@@ -855,15 +863,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? 'Up to date'
             : 'Synced';
       });
-    } catch (e) {
-      setState(() {
-        syncError = _friendlySyncError(e);
-        status = syncError!;
-      });
+    } catch (e, stack) {
+      failure = e;
+      debugPrintStack(label: 'Nextcloud sync failed: $e', stackTrace: stack);
+      try {
+        await for (final entity in v.root.list(recursive: true)) {
+          if (entity is File && entity.path.contains('.remote-conflict-')) {
+            pendingConflict = PkmsProblem(
+              code: 'sync-conflict',
+              severity: PkmsSeverity.error,
+              subject: v.relativePath(entity),
+              message: 'Both this device and Nextcloud changed the file.',
+            );
+            break;
+          }
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          syncError = pendingConflict == null ? _friendlySyncError(e) : null;
+          status = pendingConflict == null ? syncError! : 'Needs attention';
+        });
+      }
     } finally {
-      setState(() => syncing = false);
+      if (mounted) setState(() => syncing = false);
       syncCompletion?.complete();
       syncCompletion = null;
+    }
+    if (!mounted) return;
+    if (pendingConflict != null) {
+      await _resolveConflict(pendingConflict);
+    } else if (failure != null && trigger == 'manual') {
+      _showSyncDetails(0);
     }
   }
 
@@ -2104,12 +2135,24 @@ String _friendlySyncError(Object error) {
   if (error is SocketException || error is TimeoutException) {
     return 'Nextcloud is unreachable. Your changes are safe on this device.';
   }
+  if (error is HandshakeException) {
+    return 'Nextcloud security certificate could not be verified.';
+  }
+  if (error is FileSystemException) {
+    return 'TyLog could not update the local vault: ${error.osError?.message ?? error.message}';
+  }
+  if (error is FormatException) {
+    return 'Nextcloud returned an unreadable sync response.';
+  }
   final text = error.toString();
   if (text.contains('401') || text.contains('403')) {
     return 'Nextcloud rejected the login. Check Sync settings.';
   }
+  if (text.contains('404')) {
+    return 'The configured Nextcloud folder was not found.';
+  }
   if (text.contains('507')) return 'Nextcloud is out of storage space.';
-  return 'Sync stopped before completion. Your local files were not removed.';
+  return 'Sync stopped before completion: $text';
 }
 
 class _ConflictVersionCard extends StatelessWidget {
