@@ -1,7 +1,7 @@
-# Graph Report - typstseq-graphify.xW7q7L  (2026-07-06)
+# Graph Report - typstseq-graphify.wmhYQr  (2026-07-06)
 
 ## Corpus Check
-- 92 files · ~52,785 words
+- 92 files · ~52,956 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -119,7 +119,7 @@
   pubspec.yaml → packages/typst_flutter/pubspec.yaml
 
 ## Import Cycles
-- 1-file cycle: `packages/typst_flutter/rust/src/api/typst.rs -> packages/typst_flutter/rust/src/api/typst.rs`
+- None detected.
 
 ## Hyperedges (group relationships)
 - **TyLog v5 Vault Architecture** — plan_schema_v5_vault, readme_local_first_typst_first_workspace, user_manual_vault_format [INFERRED 0.85]
@@ -244,7 +244,7 @@ Nodes (21): HttpException, package:crypto/crypto.dart, String? remoteModifiedVal
 
 ### Community 28 - "Community 28"
 Cohesion: 0.15
-Nodes (10): IntoDart, IntoDartExceptPrimitive, crate::api::typst::TypstCompileError, crate::api::typst::TypstDiagnostic, crate::api::typst::TypstSourceLocation, FrbWrapper<CompiledDocument>, FrbWrapper<TypstEngine>, TypstSourceLocation (+2 more)
+Nodes (10): IntoDart, IntoDartExceptPrimitive, crate::api::typst::RenderResult, crate::api::typst::TypstDiagnostic, crate::api::typst::TypstSourceLocation, FrbWrapper<CompiledDocument>, FrbWrapper<TypstEngine>, TypstSourceLocation (+2 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.11
@@ -346,12 +346,12 @@ Nodes (3): TyLog Sample Bibliography, Research Journals as Scientific Infrastruc
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `result` connect `Community 5` to `Community 0`?**
-  _High betweenness centrality (0.214) - this node is a cross-community bridge._
 - **Why does `String` connect `Community 5` to `Community 10`, `Community 26`?**
-  _High betweenness centrality (0.148) - this node is a cross-community bridge._
+  _High betweenness centrality (0.102) - this node is a cross-community bridge._
+- **Why does `result` connect `Community 5` to `Community 0`?**
+  _High betweenness centrality (0.102) - this node is a cross-community bridge._
 - **Why does `bool` connect `Community 11` to `Community 10`, `Community 26`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **What connects `main`, `Intercept NOTIFY_DEBUGGER_ABOUT_RX_PAGES and touch the pages.`, `flutter_export_environment.sh script` to the rest of the system?**
   _1300 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**

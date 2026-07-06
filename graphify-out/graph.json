@@ -14940,7 +14940,7 @@
       "source_file": "packages/typst_flutter/lib/src/rust/frb_generated.web.dart",
       "source_location": null,
       "_origin": "ast",
-      "id": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_lib_src_rust_frb_generated_web",
+      "id": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_lib_src_rust_frb_generated_web",
       "community": 3,
       "norm_label": "_"
     },
@@ -17221,7 +17221,7 @@
       "source_location": "L819",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult",
-      "community": 48,
+      "community": 28,
       "norm_label": "crate::api::typst::renderresult"
     },
     {
@@ -17231,7 +17231,7 @@
       "source_location": "L821",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_sse_decode",
-      "community": 48,
+      "community": 28,
       "norm_label": ".sse_decode()"
     },
     {
@@ -17241,7 +17241,7 @@
       "source_location": "L833",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror",
-      "community": 28,
+      "community": 48,
       "norm_label": "crate::api::typst::typstcompileerror"
     },
     {
@@ -17251,7 +17251,7 @@
       "source_location": "L835",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_sse_decode",
-      "community": 28,
+      "community": 48,
       "norm_label": ".sse_decode()"
     },
     {
@@ -17360,7 +17360,7 @@
       "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
       "source_location": "L902",
       "_origin": "ast",
-      "id": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_rust_src_frb_generated",
+      "id": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_rust_src_frb_generated",
       "community": 26,
       "norm_label": "()"
     },
@@ -17611,7 +17611,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "renderresult",
-      "community": 48,
+      "community": 28,
       "norm_label": "renderresult"
     },
     {
@@ -17621,7 +17621,7 @@
       "source_location": "L1052",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_into_into_dart",
-      "community": 48,
+      "community": 28,
       "norm_label": ".into_into_dart()"
     },
     {
@@ -17641,7 +17641,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "typstcompileerror",
-      "community": 28,
+      "community": 48,
       "norm_label": "typstcompileerror"
     },
     {
@@ -17651,7 +17651,7 @@
       "source_location": "L1069",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_into_into_dart",
-      "community": 28,
+      "community": 48,
       "norm_label": ".into_into_dart()"
     },
     {
@@ -18011,7 +18011,7 @@
       "source_location": "L1347",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_sse_encode",
-      "community": 48,
+      "community": 28,
       "norm_label": ".sse_encode()"
     },
     {
@@ -18021,7 +18021,7 @@
       "source_location": "L1356",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_sse_encode",
-      "community": 28,
+      "community": 48,
       "norm_label": ".sse_encode()"
     },
     {
@@ -32702,6 +32702,28 @@
       "target": "packages_typst_flutter_lib_src_rust_api_typst_widthpt"
     },
     {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/typst_flutter/rust/src/api/typst.rs",
+      "source_location": "L9",
+      "weight": 1.0,
+      "context": "import",
+      "source": "packages_typst_flutter_rust_src_api_typst",
+      "target": "packages_typst_flutter_lib_src_rust_api_typst",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
+      "source_location": "L29",
+      "weight": 1.0,
+      "context": "import",
+      "source": "packages_typst_flutter_rust_src_frb_generated",
+      "target": "packages_typst_flutter_lib_src_rust_api_typst",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "implements",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -37020,7 +37042,7 @@
       "source_location": null,
       "weight": 1.0,
       "source": "packages_typst_flutter_lib_src_rust_frb_generated_web",
-      "target": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_lib_src_rust_frb_generated_web"
+      "target": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_lib_src_rust_frb_generated_web"
     },
     {
       "relation": "configures",
@@ -38292,28 +38314,6 @@
       "context": "import",
       "source": "packages_typst_flutter_rust_src_api_typst",
       "target": "pageddocument",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "confidence": "EXTRACTED",
-      "source_file": "packages/typst_flutter/rust/src/api/typst.rs",
-      "source_location": "L9",
-      "weight": 1.0,
-      "context": "import",
-      "source": "packages_typst_flutter_rust_src_api_typst",
-      "target": "packages_typst_flutter_rust_src_api_typst",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "confidence": "EXTRACTED",
-      "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
-      "source_location": "L29",
-      "weight": 1.0,
-      "context": "import",
-      "source": "packages_typst_flutter_rust_src_frb_generated",
-      "target": "packages_typst_flutter_rust_src_api_typst",
       "confidence_score": 1.0
     },
     {
@@ -41212,7 +41212,7 @@
       "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
       "source_location": "L902",
       "weight": 1.0,
-      "source": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_rust_src_frb_generated",
+      "source": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_rust_src_frb_generated",
       "target": "ssedecode",
       "confidence_score": 1.0
     },
@@ -43376,7 +43376,7 @@
       "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
       "source_location": "L904",
       "weight": 1.0,
-      "source": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_rust_src_frb_generated",
+      "source": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_rust_src_frb_generated",
       "target": "packages_typst_flutter_rust_src_frb_generated_sse_decode",
       "confidence_score": 1.0
     },
@@ -43386,7 +43386,7 @@
       "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
       "source_location": "L1412",
       "weight": 1.0,
-      "source": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_rust_src_frb_generated",
+      "source": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_rust_src_frb_generated",
       "target": "packages_typst_flutter_rust_src_frb_generated_sse_encode",
       "confidence_score": 1.0
     },
@@ -43396,7 +43396,7 @@
       "source_file": "packages/typst_flutter/rust/src/frb_generated.rs",
       "source_location": "L1410",
       "weight": 1.0,
-      "source": "private_tmp_typstseq_graphify_xw7q7l_packages_typst_flutter_rust_src_frb_generated",
+      "source": "private_tmp_typstseq_graphify_wmhyqr_packages_typst_flutter_rust_src_frb_generated",
       "target": "sseencode",
       "confidence_score": 1.0
     },

@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
-RELEASE_GIT_PATHS ?= .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test ios lib linux macos packages tool sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
+RELEASE_GIT_PATHS ?= .github .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test ios lib linux macos packages tool sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
 OWNER_REPO ?= berlogabob/TypstSeq
 
 .PHONY: help setup-native test verify build-android publish-release release clean
@@ -52,9 +52,8 @@ release:
 	git tag -a "$$TAG" -m "Release $$NEW_VERSION"; \
 	git push origin HEAD:$(BRANCH); \
 	git push origin "$$TAG"
-	@$(MAKE) publish-release
 	@NEW_VERSION="$$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d '[:space:]')"; TAG="v$$NEW_VERSION"; \
-	echo "Release: https://github.com/$(OWNER_REPO)/releases/tag/$$TAG"
+	echo "GitHub Actions is building and publishing $$TAG: https://github.com/$(OWNER_REPO)/actions"
 
 publish-release:
 	@set -e; \
