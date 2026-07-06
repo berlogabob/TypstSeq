@@ -9,7 +9,7 @@ Last reviewed: 2026-07-06
 - Rich note metadata, derived backlinks, tasks, dates, attachments, calendar entries, and compressed search index
 - Today-first mobile workspace with Journal, Tasks, Library, Calendar, Search, and secondary graph
 - Selection-aware Magic actions for links, tags, tasks, dates, projects, citations, attachments, formatting, tables, equations, and reports
-- Rendered Preview by default, with exact Source and responsive split views available explicitly
+- Styled, tappable blocks by default, with exact Preview, Source, and responsive split views available explicitly
 - Reproducible Typst reports and sibling PDF export
 - Existing atomic saves and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists
 - Focused local `typst_flutter` fork with explicit setup, CocoaPods/SwiftPM packaging, and no build-time downloads
@@ -18,7 +18,7 @@ Last reviewed: 2026-07-06
 ## Deliberate limits
 
 - Old-vault migration is unsupported
-- Editing is explicit in Source or split view; Preview never exposes raw Typst controls
+- Journal blocks hide Typst syntax until selected; arbitrary Typst stays exact and is edited one block at a time or in Source
 - No Markdown storage, HTML export, SQLite, AI/RAG, collaboration, plugin system, Kanban, or Zotero integration
 
 ## Verification

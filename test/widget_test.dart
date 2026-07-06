@@ -4,7 +4,6 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
-import 'package:typst_flutter/typst_flutter.dart';
 
 void main() {
   testWidgets('TyLog shell renders', (tester) async {
@@ -43,7 +42,7 @@ void main() {
     expect(find.text(version), findsOneWidget);
   });
 
-  testWidgets('journal renders by default and source remains explicit', (
+  testWidgets('journal edits a chosen block while hiding other source', (
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
@@ -51,27 +50,54 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pump();
-    expect(find.byType(TypstDocumentViewer), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
-    expect(find.text('Active source block'), findsNothing);
-
     await tester.tap(find.byTooltip('Source'));
     await tester.pump();
     expect(find.byTooltip('Preview'), findsOneWidget);
-    const raw = '#strong[Visible text]';
+    const raw = '= Heading\n\n#strong[Visible text]\n\n#custom()[Secret]';
     await tester.enterText(find.byType(TextField), raw);
 
-    await tester.tap(find.byTooltip('Preview'));
+    await tester.tap(find.text('Journal').last);
     await tester.pump();
-    expect(find.byType(TypstDocumentViewer), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+    expect(find.text('Heading'), findsOneWidget);
+    expect(find.text('Visible text'), findsOneWidget);
+    expect(find.text('Custom Typst block'), findsOneWidget);
+    expect(find.textContaining('#strong'), findsNothing);
+    expect(find.textContaining('#custom'), findsNothing);
+
+    await tester.tap(find.text('Visible text'));
+    await tester.pump();
+    final blockEditor = find.byKey(const Key('controlled-block-editor'));
+    expect(
+      tester.widget<TextField>(blockEditor).controller!.text,
+      '#strong[Visible text]',
+    );
+    expect(tester.widget<TextField>(blockEditor).focusNode!.hasFocus, isTrue);
+    for (final value in const [
+      '',
+      '#strong[C]',
+      '#strong[Ch]',
+      '#strong[Changed]',
+    ]) {
+      tester.testTextInput.updateEditingValue(
+        TextEditingValue(
+          text: value,
+          selection: TextSelection.collapsed(offset: value.length),
+        ),
+      );
+      await tester.pump();
+      expect(tester.widget<TextField>(blockEditor).focusNode!.hasFocus, isTrue);
+    }
+    await tester.tap(find.byTooltip('Done editing block'));
+    await tester.pump();
+    expect(find.text('Changed'), findsOneWidget);
     expect(find.textContaining('#strong'), findsNothing);
 
     await tester.tap(find.byTooltip('Source'));
     await tester.pump();
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      raw,
+      '= Heading\n\n#strong[Changed]\n\n#custom()[Secret]',
     );
     expect(find.byTooltip('Preview'), findsOneWidget);
     expect(tester.takeException(), isNull);

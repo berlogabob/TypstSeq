@@ -461,7 +461,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       note = file;
       dirty = false;
-      mode = 'preview';
+      mode = 'normal';
       status = 'Opened ${v.relativePath(file)}';
     });
   }
@@ -1299,7 +1299,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => mode = 'preview');
   }
 
-  void _showJournal() => _showPreview();
+  void _showJournal() => setState(() => mode = 'normal');
+
+  void _updateControlledSource(String source) {
+    sourceController.text = source;
+    _queueAutosave();
+  }
 
   void _showToday() => setState(() => mode = 'today');
 
@@ -1842,6 +1847,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ],
+        ),
+        'normal' => _ControlledEditorView(
+          source: sourceController.text,
+          onChanged: _updateControlledSource,
         ),
         _ => const SizedBox.shrink(),
       },
@@ -3333,6 +3342,157 @@ class _LibraryView extends StatelessWidget {
         ),
     ],
   );
+}
+
+class _ControlledEditorView extends StatefulWidget {
+  const _ControlledEditorView({required this.source, required this.onChanged});
+
+  final String source;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_ControlledEditorView> createState() => _ControlledEditorViewState();
+}
+
+class _ControlledEditorViewState extends State<_ControlledEditorView> {
+  final controller = TextEditingController();
+  final focusNode = FocusNode();
+  int? editingIndex;
+  String baseSource = '';
+  TextRange editRange = TextRange.empty;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    focusNode.dispose();
+    super.dispose();
+  }
+
+  void _edit(int index, ControlledBlock block) {
+    baseSource = widget.source;
+    editRange = TextRange(start: block.start, end: block.end);
+    controller.value = TextEditingValue(
+      text: block.source,
+      selection: TextSelection.collapsed(offset: block.source.length),
+    );
+    setState(() => editingIndex = index);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => focusNode.requestFocus(),
+    );
+  }
+
+  void _change(String value) => widget.onChanged(
+    baseSource.replaceRange(editRange.start, editRange.end, value),
+  );
+
+  void _done() {
+    focusNode.unfocus();
+    setState(() => editingIndex = null);
+  }
+
+  Widget _editor() => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            key: const Key('controlled-block-editor'),
+            controller: controller,
+            focusNode: focusNode,
+            minLines: 1,
+            maxLines: null,
+            style: const TextStyle(fontFamily: 'monospace'),
+            onChanged: _change,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Done editing block',
+          onPressed: _done,
+          icon: const Icon(Icons.check),
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final blocks = parseControlledTypst(widget.source).blocks;
+    if (blocks.isEmpty) {
+      if (editingIndex != null) {
+        return ListView(
+          padding: const EdgeInsets.all(18),
+          children: [_editor()],
+        );
+      }
+      return Center(
+        child: FilledButton.tonalIcon(
+          onPressed: () => _edit(
+            0,
+            ControlledBlock(
+              start: widget.source.length,
+              end: widget.source.length,
+              source: '',
+              kind: ControlledBlockKind.paragraph,
+              supported: true,
+            ),
+          ),
+          icon: const Icon(Icons.edit),
+          label: const Text('Start writing'),
+        ),
+      );
+    }
+    final itemCount = editingIndex != null && editingIndex! >= blocks.length
+        ? editingIndex! + 1
+        : blocks.length;
+    return ListView.builder(
+      padding: const EdgeInsets.all(18),
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        if (editingIndex == index) return _editor();
+        final block = blocks[index];
+        final raw = block.kind == ControlledBlockKind.raw;
+        final preview = controlledBlockPreview(block);
+        final style = block.kind == ControlledBlockKind.heading
+            ? Theme.of(context).textTheme.headlineSmall
+            : Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Material(
+            color: raw
+                ? Theme.of(context).colorScheme.surfaceContainerLow
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              key: ValueKey('controlled-block-$index'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _edit(index, block),
+              child: Padding(
+                padding: raw
+                    ? const EdgeInsets.all(12)
+                    : const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (raw) ...[
+                      const Icon(Icons.code, size: 20),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        preview.isEmpty ? 'Empty block' : preview,
+                        style: style,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _Editor extends StatefulWidget {
