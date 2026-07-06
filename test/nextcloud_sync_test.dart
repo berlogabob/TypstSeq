@@ -339,6 +339,38 @@ void main() {
     },
   );
 
+  test('fresh upload is followed by a remote edit download', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_two_way_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('android edit');
+
+    final first = await NextcloudSync(_config(server)).sync(vault);
+    expect(first.uploaded, greaterThan(0));
+    expect(
+      utf8.decode(remote['daily/2026/07/note.typ']!.bytes),
+      'android edit',
+    );
+
+    remote['daily/2026/07/note.typ'] = _MutableRemoteFile(
+      bytes: utf8.encode('android edit\nmac edit'),
+      etag: '"mac-edit"',
+      modified: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+    final second = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(second.downloaded, 1);
+    expect(await note.readAsString(), 'android edit\nmac edit');
+  });
+
   test('interrupted download leaves the original note untouched', () async {
     final server = await _webDavServer(
       interrupted: true,
@@ -450,6 +482,68 @@ Future<HttpServer> _webDavServer({
         request.response.headers.set('OC-Etag', '"uploaded-1"');
         request.response.headers.set('X-Hash-SHA256', sha256.convert(body));
       }
+    }
+    await request.response.close();
+  });
+  return server;
+}
+
+class _MutableRemoteFile {
+  const _MutableRemoteFile({
+    required this.bytes,
+    required this.etag,
+    required this.modified,
+  });
+
+  final List<int> bytes;
+  final String etag;
+  final DateTime modified;
+}
+
+Future<HttpServer> _mutableWebDavServer(
+  Map<String, _MutableRemoteFile> files,
+) async {
+  const root = '/remote.php/dav/files/alice/TyLogVault/';
+  var version = 0;
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  server.listen((request) async {
+    final path = request.uri.path.startsWith(root)
+        ? request.uri.path.substring(root.length)
+        : '';
+    if (request.method == 'MKCOL') {
+      request.response.statusCode = HttpStatus.methodNotAllowed;
+    } else if (request.method == 'PROPFIND') {
+      request.response.statusCode = 207;
+      request.response.write('<d:multistatus xmlns:d="DAV:">');
+      for (final entry in files.entries) {
+        request.response.write(
+          '<d:response><d:href>$root${entry.key}</d:href>'
+          '<d:propstat><d:prop><d:getlastmodified>'
+          '${HttpDate.format(entry.value.modified)}'
+          '</d:getlastmodified><d:getetag>${entry.value.etag}</d:getetag>'
+          '<d:getcontentlength>${entry.value.bytes.length}</d:getcontentlength>'
+          '</d:prop></d:propstat></d:response>',
+        );
+      }
+      request.response.write('</d:multistatus>');
+    } else if (request.method == 'GET') {
+      final file = files[path]!;
+      request.response.headers.set(HttpHeaders.etagHeader, file.etag);
+      request.response.add(file.bytes);
+    } else if (request.method == 'PUT') {
+      final bytes = await request.fold<List<int>>(
+        [],
+        (all, chunk) => all..addAll(chunk),
+      );
+      final etag = '"upload-${version++}"';
+      files[path] = _MutableRemoteFile(
+        bytes: bytes,
+        etag: etag,
+        modified: DateTime.now().toUtc(),
+      );
+      request.response.statusCode = HttpStatus.created;
+      request.response.headers.set('OC-Etag', etag);
+      request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
     }
     await request.response.close();
   });

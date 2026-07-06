@@ -99,6 +99,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? syncError;
   String? selectedTag;
   bool syncing = false;
+  bool autosaveDeferred = false;
+  Completer<void>? syncCompletion;
   bool rebuilding = false;
   bool cancelRebuild = false;
   double? rebuildProgress;
@@ -388,8 +390,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _save({bool syncAfter = true}) async {
+  Future<void> _save({
+    bool syncAfter = true,
+    bool allowWhileSyncing = false,
+  }) async {
     autosave?.cancel();
+    if (syncing && !allowWhileSyncing) {
+      autosaveDeferred = true;
+      await syncCompletion?.future;
+      if (!autosaveDeferred) return;
+      autosaveDeferred = false;
+    }
     final v = vault;
     final n = note;
     if (v == null || n == null) return;
@@ -419,10 +430,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _queueCloudSync() {
     final cfg = cloud;
-    if (cfg == null || !cfg.isReady || syncing) return;
+    if (cfg == null || !cfg.isReady || syncing || _hasSyncConflicts) return;
     cloudAutosave?.cancel();
     cloudAutosave = Timer(const Duration(seconds: 2), () {
-      if (!syncing && !dirty) unawaited(_syncNow(trigger: 'autosave'));
+      if (!syncing && !dirty && !_hasSyncConflicts) {
+        unawaited(_syncNow(trigger: 'autosave'));
+      }
     });
   }
 
@@ -431,9 +444,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cfg = cloud;
     if (cfg == null || !cfg.isReady) return;
     cloudPoll = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!syncing && !dirty && mounted) unawaited(_syncNow(trigger: 'poll'));
+      if (!syncing && !dirty && !_hasSyncConflicts && mounted) {
+        unawaited(_syncNow(trigger: 'poll'));
+      }
     });
   }
+
+  bool get _hasSyncConflicts => (validation?.count('sync-conflict') ?? 0) > 0;
 
   void _queueAutosave() {
     setState(() {
@@ -818,6 +835,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() => status = 'Sync handled by Nextcloud Desktop');
       return;
     }
+    syncCompletion = Completer<void>();
     setState(() {
       syncing = true;
       syncError = null;
@@ -825,8 +843,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     try {
       cloudAutosave?.cancel();
-      if (dirty) await _save(syncAfter: false);
+      if (dirty) {
+        await _save(syncAfter: false, allowWhileSyncing: true);
+        if (dirty) return;
+      }
+      final syncedNote = note;
+      final sourceBeforeSync = syncedNote == null ? null : _currentSource();
+      final revisionBeforeSync = editRevision;
       final result = await NextcloudSync(cfg).sync(v, trigger: trigger);
+      var concurrentConflict = false;
+      if (syncedNote != null &&
+          identical(syncedNote, note) &&
+          await syncedNote.exists()) {
+        final diskSource = await syncedNote.readAsString();
+        if (diskSource != sourceBeforeSync) {
+          if (revisionBeforeSync == editRevision && !dirty) {
+            _loadSource(diskSource);
+          } else {
+            final conflict = File(
+              '${syncedNote.path}.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
+            );
+            await conflict.writeAsString(diskSource, flush: true);
+            concurrentConflict = true;
+          }
+        }
+      }
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
       setState(() {
@@ -836,7 +877,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastSync = result;
         lastSyncAt = DateTime.now();
         final changed = result.uploaded + result.downloaded + result.repaired;
-        status = result.conflicts > 0
+        status = result.conflicts > 0 || concurrentConflict
             ? 'Needs attention'
             : changed == 0
             ? 'Up to date'
@@ -849,6 +890,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } finally {
       setState(() => syncing = false);
+      syncCompletion?.complete();
+      syncCompletion = null;
     }
   }
 
@@ -874,6 +917,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? 'Identical conflict copy removed'
             : 'Empty conflict copy removed; local note kept',
       );
+      _queueCloudSync();
       return;
     }
     final localModified = await original.exists()
@@ -1013,6 +1057,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await v.saveNote(original, merged.text);
       await conflict.delete();
       await _refreshPkms('Conflict resolved');
+      _queueCloudSync();
     }
     selectedVersion.dispose();
     merged.dispose();
@@ -1781,14 +1826,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _replaceControlledBlock(int index, String value) {
-    final document = parseControlledTypst(sourceController.text);
-    if (index >= document.blocks.length) return;
-    _loadSource(document.replaceBlock(index, value));
-    setState(() => mode = 'normal');
-    _queueAutosave();
-  }
-
   @override
   Widget build(BuildContext context) {
     final v = vault;
@@ -1967,11 +2004,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        'normal' => _ControlledEditorView(
-          source: sourceController.text,
-          onChanged: _replaceControlledBlock,
-          onOpenSource: _showSource,
-        ),
+        'normal' => _Editor(controller: controller, onChanged: _queueAutosave),
         _ => _Editor(controller: controller, onChanged: _queueAutosave),
       },
     );
@@ -3501,66 +3534,6 @@ class _LibraryView extends StatelessWidget {
         ),
     ],
   );
-}
-
-class _ControlledEditorView extends StatelessWidget {
-  const _ControlledEditorView({
-    required this.source,
-    required this.onChanged,
-    required this.onOpenSource,
-  });
-
-  final String source;
-  final void Function(int index, String value) onChanged;
-  final VoidCallback onOpenSource;
-
-  @override
-  Widget build(BuildContext context) {
-    final document = parseControlledTypst(source);
-    return ListView.builder(
-      padding: const EdgeInsets.all(18),
-      itemCount: document.blocks.length,
-      itemBuilder: (context, index) {
-        final block = document.blocks[index];
-        if (!block.supported) {
-          return Card.outlined(
-            child: ListTile(
-              leading: const Icon(Icons.code),
-              title: const Text('Custom Typst block'),
-              subtitle: Text(
-                block.source,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: const Icon(Icons.edit),
-              onTap: onOpenSource,
-            ),
-          );
-        }
-        final heading = block.kind == ControlledBlockKind.heading;
-        final marker = heading
-            ? RegExp(r'^=+\s').firstMatch(block.source)?.group(0) ?? '= '
-            : '';
-        final value = heading
-            ? block.source.substring(marker.length)
-            : block.source;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextFormField(
-            key: ValueKey('${block.start}:${block.source.hashCode}'),
-            initialValue: value,
-            minLines: 1,
-            maxLines: null,
-            style: heading
-                ? Theme.of(context).textTheme.headlineSmall
-                : Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45),
-            decoration: const InputDecoration(border: InputBorder.none),
-            onChanged: (value) => onChanged(index, '$marker$value'),
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _Editor extends StatefulWidget {

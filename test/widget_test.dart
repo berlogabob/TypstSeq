@@ -137,6 +137,33 @@ void main() {
     expect(find.textContaining('#show:'), findsNothing);
   });
 
+  testWidgets('journal keeps focus while typing consecutive characters', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+    final editor = find.byType(TextField);
+    await tester.tap(editor);
+    await tester.pump();
+
+    for (final value in const ['a', 'ab', 'abc']) {
+      tester.testTextInput.updateEditingValue(
+        TextEditingValue(
+          text: value,
+          selection: TextSelection.collapsed(offset: value.length),
+        ),
+      );
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(tester.widget<TextField>(editor).focusNode!.hasFocus, isTrue);
+    }
+
+    expect(tester.widget<TextField>(editor).controller!.text, 'abc');
+  });
+
   testWidgets('editor changes are autosaved', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
