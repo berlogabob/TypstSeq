@@ -1,7 +1,6 @@
 # rust/justfile
 
 set shell := ["sh", "-c"]
-set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
 
 # Build in release mode
 build:

@@ -43,14 +43,73 @@ ControlledDocument parseControlledTypst(String source) {
   final blocks = <ControlledBlock>[];
   var start = bodyStart;
   for (final separator in RegExp(r'\n[ \t]*\n').allMatches(source, bodyStart)) {
-    if (separator.start > start) {
-      blocks.add(_block(source, start, separator.start));
-    }
+    _addBlocks(source, start, separator.start, blocks);
     start = separator.end;
   }
-  if (start < source.length) blocks.add(_block(source, start, source.length));
+  _addBlocks(source, start, source.length, blocks);
   return ControlledDocument(source: source, blocks: blocks);
 }
+
+void _addBlocks(
+  String source,
+  int start,
+  int end,
+  List<ControlledBlock> blocks,
+) {
+  var cursor = start;
+  while (cursor < end) {
+    while (cursor < end && _isNewline(source.codeUnitAt(cursor))) {
+      cursor++;
+    }
+    if (cursor >= end) break;
+
+    final semanticEnd = _semanticBlockEnd(source, cursor, end);
+    if (semanticEnd != null) {
+      blocks.add(_block(source, cursor, semanticEnd));
+      cursor = semanticEnd;
+      continue;
+    }
+
+    var blockEnd = end;
+    var nextLine = source.indexOf('\n', cursor);
+    while (nextLine >= 0 && nextLine + 1 < end) {
+      nextLine++;
+      if (_semanticBlockEnd(source, nextLine, end) != null) {
+        blockEnd = nextLine - 1;
+        break;
+      }
+      nextLine = source.indexOf('\n', nextLine);
+    }
+    if (blockEnd > cursor) blocks.add(_block(source, cursor, blockEnd));
+    cursor = blockEnd;
+  }
+}
+
+int? _semanticBlockEnd(String source, int start, int limit) {
+  var contentStart = start;
+  while (contentStart < limit) {
+    final code = source.codeUnitAt(contentStart);
+    if (code != 32 && code != 9) break;
+    contentStart++;
+  }
+  final lineEnd = source.indexOf('\n', contentStart);
+  final boundedLineEnd = lineEnd < 0 || lineEnd > limit ? limit : lineEnd;
+  final line = source.substring(contentStart, boundedLineEnd);
+
+  if (RegExp(r'^=+\s').hasMatch(line) ||
+      (line.startsWith(r'$') && line.endsWith(r'$'))) {
+    return boundedLineEnd;
+  }
+  for (final prefix in const ['#tylog.task(', '#table(']) {
+    if (!source.startsWith(prefix, contentStart)) continue;
+    final open = source.indexOf('(', contentStart);
+    final close = _balancedParenEnd(source, open);
+    if (close != null && close <= limit) return close;
+  }
+  return null;
+}
+
+bool _isNewline(int code) => code == 10 || code == 13;
 
 String controlledBlockPreview(ControlledBlock block) {
   final source = block.source.trim();

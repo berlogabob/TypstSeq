@@ -1,7 +1,6 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart';
 import 'package:typst_flutter/src/exceptions.dart';
 import 'package:typst_flutter/src/rust/api/typst.dart' as api;
 

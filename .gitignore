@@ -53,6 +53,12 @@ app.*.map.json
 # Local reference screenshots / prompts
 .ref/
 
+# Rebuildable Graphify state; published graph outputs stay tracked.
+graphify-out/.graphify_*
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/manifest.json
+
 # Android release signing secrets
 android/key.properties
 android/app/*.jks

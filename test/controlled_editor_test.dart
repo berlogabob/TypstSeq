@@ -30,6 +30,32 @@ void main() {
     );
   });
 
+  test('adjacent heading and task remain separate styled blocks', () {
+    const source = '''== header from mac
+#tylog.task(
+  id: "task-1",
+  text: "Launch update",
+  due: "2026-07-06",
+  project: none,
+)
+= Next heading''';
+
+    final document = parseControlledTypst(source);
+
+    expect(document.blocks.map((block) => block.kind), [
+      ControlledBlockKind.heading,
+      ControlledBlockKind.task,
+      ControlledBlockKind.heading,
+    ]);
+    expect(document.blocks.map(controlledBlockPreview), [
+      'header from mac',
+      'Launch update',
+      'Next heading',
+    ]);
+    expect(document.blocks[1].source, startsWith('#tylog.task('));
+    expect(document.blocks[1].source, endsWith(')'));
+  });
+
   test('Magic actions emit escaped valid TyLog Typst', () {
     final linked = applyMagicEdit(
       'Amazon',

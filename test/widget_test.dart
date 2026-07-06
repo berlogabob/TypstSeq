@@ -5,6 +5,13 @@ import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
 
+Future<void> openSource(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Preview'));
+  await tester.pump();
+  await tester.tap(find.byTooltip('Source'));
+  await tester.pump();
+}
+
 void main() {
   testWidgets('TyLog shell renders', (tester) async {
     await tester.pumpWidget(const TyLogApp());
@@ -13,7 +20,7 @@ void main() {
     expect(find.byTooltip('Save'), findsNothing);
     expect(find.byTooltip('Graph'), findsNothing);
     expect(find.byTooltip('Search knowledge'), findsOneWidget);
-    expect(find.byIcon(Icons.sync_alt), findsOneWidget);
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
     expect(find.byTooltip('Vaults'), findsOneWidget);
     expect(find.byTooltip('More actions'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
@@ -50,9 +57,8 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pump();
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
-    expect(find.byTooltip('Preview'), findsOneWidget);
+    await openSource(tester);
+    expect(find.byTooltip('Editor'), findsOneWidget);
     const raw = '= Heading\n\n#strong[Visible text]\n\n#custom()[Secret]';
     await tester.enterText(find.byType(TextField), raw);
 
@@ -93,14 +99,40 @@ void main() {
     expect(find.text('Changed'), findsOneWidget);
     expect(find.textContaining('#strong'), findsNothing);
 
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
+    await openSource(tester);
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       '= Heading\n\n#strong[Changed]\n\n#custom()[Secret]',
     );
-    expect(find.byTooltip('Preview'), findsOneWidget);
+    expect(find.byTooltip('Editor'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('view control cycles editor preview source and editor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+    await tester.tap(find.text('Journal').last);
+    await tester.pump();
+
+    expect(find.byTooltip('Preview'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
+    await tester.tap(find.byTooltip('Preview'));
+    await tester.pump();
+
+    expect(find.byTooltip('Source'), findsOneWidget);
+    expect(find.byIcon(Icons.code), findsWidgets);
+    await tester.tap(find.byTooltip('Source'));
+    await tester.pump();
+
+    expect(find.byTooltip('Editor'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+    await tester.tap(find.byTooltip('Editor'));
+    await tester.pump();
+
+    expect(find.byTooltip('Preview'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
   });
 
   testWidgets('graph remains available from overflow', (tester) async {
@@ -161,8 +193,7 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
+    await openSource(tester);
     final editor = find.byType(TextField);
     await tester.tap(editor);
     await tester.pump();
@@ -188,8 +219,7 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
+    await openSource(tester);
 
     await tester.enterText(find.byType(TextField), 'autosave text');
     await tester.pump();
@@ -205,8 +235,7 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
+    await openSource(tester);
 
     await tester.enterText(find.byType(TextField), 'first draft');
     await tester.pump(const Duration(milliseconds: 700));

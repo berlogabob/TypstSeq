@@ -21,7 +21,7 @@ The complete release gates are:
 make verify
 ```
 
-The web target is a landing page. Linux remains compile-tested in CI. Current implementation and manual verification work is tracked in [issue #42](https://github.com/berlogabob/TypstSeq/issues/42) with status `check needed`.
+Linux remains compile-tested in CI. Current implementation and manual verification work is tracked in [issue #42](https://github.com/berlogabob/TypstSeq/issues/42) with status `check needed`.
 
 ## Documentation
 

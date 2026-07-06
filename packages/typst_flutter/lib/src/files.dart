@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
 /// Defines a set of files (images, data files, included `.typ` files) to
 /// make available to the Typst compiler's virtual file system.

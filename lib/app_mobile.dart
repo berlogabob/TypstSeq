@@ -1310,8 +1310,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showSource() => setState(() => mode = 'source');
 
-  void _toggleSourcePreview() =>
-      mode == 'source' ? _showPreview() : _showSource();
+  void _cycleEditorMode() {
+    switch (mode) {
+      case 'preview':
+        _showSource();
+      case 'source':
+        _showJournal();
+      default:
+        _showPreview();
+    }
+  }
 
   void _showSyncDetails(int conflicts) {
     final v = vault;
@@ -1914,10 +1922,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: 'Search knowledge',
           ),
           IconButton(
-            isSelected: mode == 'source',
-            onPressed: _toggleSourcePreview,
-            icon: const Icon(Icons.sync_alt),
-            tooltip: mode == 'source' ? 'Preview' : 'Source',
+            onPressed: _cycleEditorMode,
+            icon: Icon(switch (mode) {
+              'preview' => Icons.code,
+              'source' => Icons.visibility_off,
+              _ => Icons.visibility,
+            }),
+            tooltip: switch (mode) {
+              'preview' => 'Source',
+              'source' => 'Editor',
+              _ => 'Preview',
+            },
           ),
           _SyncIconButton(
             syncing: syncing,
@@ -2083,12 +2098,6 @@ enum _ShellAction {
   sync,
   typstHelp,
   settings,
-}
-
-// ignore: unused_element
-String? _panelActivity(String status) {
-  if (status.startsWith('Sync') || status.startsWith('Vault:')) return null;
-  return status.split(' · validation ').first;
 }
 
 String _friendlySyncError(Object error) {
@@ -2512,179 +2521,6 @@ class _SyncStatusCard extends StatelessWidget {
     if (minutes < 1) return 'Checked just now';
     if (minutes == 1) return 'Checked 1 minute ago';
     return 'Checked $minutes minutes ago';
-  }
-}
-
-// Kept as the settings summary content; the unified shell no longer mounts it.
-// ignore: unused_element
-class _PagesPanel extends StatelessWidget {
-  const _PagesPanel({
-    required this.activity,
-    required this.current,
-    required this.index,
-    required this.selectedTag,
-    required this.onOpenToday,
-    required this.onNewPage,
-    required this.onRebuildIndex,
-    required this.rebuilding,
-    required this.rebuildProgress,
-    required this.onSync,
-    required this.syncing,
-    required this.cloudConfigured,
-    required this.desktopManaged,
-    required this.syncResult,
-    required this.lastSyncAt,
-    required this.syncError,
-    required this.syncConflicts,
-    required this.onSettings,
-    required this.onKnowledge,
-    required this.onReviewSync,
-    required this.onSelectTag,
-    required this.onOpenNote,
-  });
-
-  final String? activity;
-  final String? current;
-  final VaultIndex? index;
-  final String? selectedTag;
-  final VoidCallback onOpenToday;
-  final VoidCallback onNewPage;
-  final VoidCallback onRebuildIndex;
-  final bool rebuilding;
-  final double? rebuildProgress;
-  final VoidCallback? onSync;
-  final bool syncing;
-  final bool cloudConfigured;
-  final bool desktopManaged;
-  final SyncResult? syncResult;
-  final DateTime? lastSyncAt;
-  final String? syncError;
-  final int syncConflicts;
-  final VoidCallback onSettings;
-  final VoidCallback onKnowledge;
-  final VoidCallback onReviewSync;
-  final ValueChanged<String?> onSelectTag;
-  final ValueChanged<NoteRef> onOpenNote;
-
-  @override
-  Widget build(BuildContext context) {
-    final tags = <String>{
-      for (final note in index?.notes ?? const <NoteRef>[]) ...note.tags,
-    }.toList()..sort();
-    final notes = (index?.notes ?? const <NoteRef>[])
-        .where(
-          (note) =>
-              selectedTag == null ||
-              selectedTag!.isEmpty ||
-              note.tags.contains(selectedTag),
-        )
-        .toList();
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      child: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          Text('Journal', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          _SyncStatusCard(
-            syncing: syncing,
-            cloudConfigured: cloudConfigured,
-            desktopManaged: desktopManaged,
-            result: syncResult,
-            lastSyncAt: lastSyncAt,
-            error: syncError,
-            conflicts: syncConflicts,
-            onSync: onSync,
-            onReview: onReviewSync,
-            onSetup: onSettings,
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onOpenToday,
-            icon: const Icon(Icons.today),
-            label: const Text('Today'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: onNewPage,
-            icon: const Icon(Icons.add),
-            label: const Text('New page'),
-          ),
-          if (activity != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(
-                activity!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          TextButton.icon(
-            onPressed: onRebuildIndex,
-            icon: Icon(rebuilding ? Icons.close : Icons.refresh),
-            label: Text(rebuilding ? 'Cancel rebuild' : 'Rebuild index'),
-          ),
-          if (rebuildProgress != null)
-            LinearProgressIndicator(value: rebuildProgress),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
-            onTap: onSettings,
-          ),
-          ListTile(
-            leading: const Icon(Icons.hub),
-            title: const Text('Knowledge'),
-            onTap: onKnowledge,
-          ),
-          const Divider(height: 28),
-          Text('Pages', style: Theme.of(context).textTheme.labelLarge),
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                ChoiceChip(
-                  label: const Text('All'),
-                  selected: selectedTag == null,
-                  onSelected: (_) => onSelectTag(null),
-                ),
-                for (final tag in tags)
-                  ChoiceChip(
-                    label: Text('#$tag'),
-                    selected: selectedTag == tag,
-                    onSelected: (_) => onSelectTag(tag),
-                  ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 4),
-          for (final item in notes)
-            ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-              leading: Icon(
-                item.path.startsWith('daily/') ? Icons.today : Icons.notes,
-              ),
-              title: Text(
-                item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                item.path,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              selected: item.path == current,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              onTap: () => onOpenNote(item),
-            ),
-        ],
-      ),
-    );
   }
 }
 
@@ -3617,31 +3453,6 @@ class _DockButton extends StatelessWidget {
       onPressed: onPressed,
       icon: Text(label),
     ),
-  );
-}
-
-// ignore: unused_element
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({
-    required this.mode,
-    required this.value,
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final String mode;
-  final String value;
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => IconButton.filledTonal(
-    isSelected: mode == value,
-    onPressed: onPressed,
-    icon: Icon(icon),
-    tooltip: tooltip,
   );
 }
 
