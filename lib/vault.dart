@@ -258,6 +258,7 @@ Directory defaultVaultDirectory(
 Future<void> _writeFile(Object a, Object b) async {
   final file = a is File ? a : b as File;
   final text = a is String ? a : b as String;
+  await file.parent.create(recursive: true);
   final tmp = File('${file.path}.tmp');
   await tmp.writeAsString(text, flush: true);
   if (await file.exists()) await file.delete();

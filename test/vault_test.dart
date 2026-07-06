@@ -133,7 +133,7 @@ void main() {
 
     final first = await vault.rebuildIndex();
     final firstJson = await vault.indexFile.readAsString();
-    await vault.indexFile.delete();
+    await vault.cache.delete(recursive: true);
     final second = await vault.rebuildIndex();
     final secondJson = await vault.indexFile.readAsString();
 
