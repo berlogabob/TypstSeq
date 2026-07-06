@@ -1,0 +1,10 @@
+# Generated dependencies and binary assets obscure the first-party call graph.
+ios/Pods/
+macos/Pods/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.pdf

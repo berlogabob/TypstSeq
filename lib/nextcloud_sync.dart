@@ -96,17 +96,42 @@ class NextcloudSync {
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
+    final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+    var stage = 'start';
+    String? currentPath;
+    var up = 0;
+    var down = 0;
+    var skip = 0;
+    var conflict = 0;
+    var repaired = 0;
+    var remoteCount = 0;
+    final decisions = <SyncDecision>[];
+    await _trace(vault, {
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'runId': runId,
+      'event': 'started',
+      'trigger': trigger,
+    });
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
+      stage = 'prepare-remote-folder';
       await _mkcol(config.rootUri);
-      final syncState = await _loadSyncState(vault);
+      stage = 'load-local-state';
+      final loadedState = await _loadSyncState(vault);
+      final syncState = loadedState.cursors;
+      if (loadedState.recovered) {
+        await _trace(vault, {
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'runId': runId,
+          'event': 'state-recovered',
+          'trigger': trigger,
+        });
+      }
+      stage = 'list-remote';
       final remote = await _remoteFiles();
-      var up = 0;
-      var down = 0;
-      var skip = 0;
-      var conflict = 0;
-      var repaired = await _cleanResolvedConflictCopies(vault);
-      final decisions = <SyncDecision>[];
+      remoteCount = remote.length;
+      stage = 'scan-local';
+      repaired = await _cleanResolvedConflictCopies(vault);
       final localFiles = await _localFiles(vault.root);
       final localByPath = {
         for (final file in localFiles) vault.relativePath(file): file,
@@ -115,6 +140,8 @@ class NextcloudSync {
         ..sort();
 
       for (final path in allPaths) {
+        stage = 'sync-file';
+        currentPath = path;
         final local = localByPath[path] ?? File('${vault.root.path}/$path');
         final localExists = await local.exists();
         final remoteFile = remote[path];
@@ -138,6 +165,9 @@ class NextcloudSync {
           localMillis: localTime?.millisecondsSinceEpoch,
           remoteMillis: remoteTime?.millisecondsSinceEpoch,
         );
+        if (loadedState.recovered && localExists && remoteFile != null) {
+          action = SyncAction.conflict;
+        }
         DateTime? uploadedRemoteTime;
         String? uploadedRemoteEtag;
         String? observedRemoteEtag;
@@ -249,29 +279,50 @@ class NextcloudSync {
         );
       }
 
+      stage = 'save-local-state';
+      currentPath = null;
       await _saveSyncState(vault, syncState);
-      await _appendTrace(
-        vault,
-        SyncTrace(
-          timestamp: DateTime.now().toUtc().toIso8601String(),
-          trigger: trigger,
-          uploaded: up,
-          downloaded: down,
-          skipped: skip,
-          conflicts: conflict,
-          remoteCount: remote.length,
-          decisions: decisions,
-        ),
-      );
+      await _trace(vault, {
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'runId': runId,
+        'event': 'completed',
+        'trigger': trigger,
+        'uploaded': up,
+        'downloaded': down,
+        'skipped': skip,
+        'conflicts': conflict,
+        'repaired': repaired,
+        'remoteCount': remoteCount,
+        'decisions': decisions.map((decision) => decision.toJson()).toList(),
+      });
       return SyncResult(
         trigger: trigger,
         uploaded: up,
         downloaded: down,
         skipped: skip,
         conflicts: conflict,
-        remoteCount: remote.length,
+        remoteCount: remoteCount,
         repaired: repaired,
       );
+    } catch (error) {
+      await _trace(vault, {
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'runId': runId,
+        'event': 'failed',
+        'trigger': trigger,
+        'stage': stage,
+        'path': ?currentPath,
+        'errorType': error.runtimeType.toString(),
+        'errorMessage': _safeErrorMessage(error),
+        'uploaded': up,
+        'downloaded': down,
+        'skipped': skip,
+        'conflicts': conflict,
+        'repaired': repaired,
+        'remoteCount': remoteCount,
+        'decisions': decisions.map((decision) => decision.toJson()).toList(),
+      });
+      rethrow;
     } finally {
       _client.close(force: true);
     }
@@ -296,8 +347,11 @@ class NextcloudSync {
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
     final body = await response.transform(utf8.decoder).join();
-    if (response.statusCode >= 400) {
-      throw HttpException('PROPFIND ${response.statusCode}');
+    if (response.statusCode != 207) {
+      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+    }
+    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+      throw const HttpException('PROPFIND invalid multistatus response');
     }
 
     final files = <String, _RemoteFile>{};
@@ -306,18 +360,39 @@ class NextcloudSync {
       dotAll: true,
     ).allMatches(body)) {
       final block = match.group(1)!;
-      final hrefValue = _xmlValue(block, 'href');
-      final modifiedValue = _xmlValue(block, 'getlastmodified');
-      if (hrefValue == null || modifiedValue == null) continue;
-      final href = Uri.decodeComponent(hrefValue);
-      if (href.endsWith('/')) continue;
-      final path = _relativeRemotePath(href);
-      if (path != null && !_isSyncInternal(path)) {
-        files[path] = _RemoteFile(
-          modified: HttpDate.parse(modifiedValue),
-          etag: _xmlValue(block, 'getetag'),
-          length: int.tryParse(_xmlValue(block, 'getcontentlength') ?? ''),
-        );
+      try {
+        final hrefValue = _xmlValue(block, 'href');
+        if (hrefValue == null) {
+          throw const FormatException('missing href');
+        }
+        final href = Uri.decodeComponent(hrefValue);
+        if (href.endsWith('/')) continue;
+        final modifiedValue = _xmlValue(block, 'getlastmodified');
+        if (modifiedValue == null) {
+          throw const FormatException('missing getlastmodified');
+        }
+        final path = _relativeRemotePath(href);
+        if (path == null) {
+          throw const FormatException('path is outside configured folder');
+        }
+        final lengthValue = _xmlValue(block, 'getcontentlength');
+        final length = lengthValue == null ? null : int.tryParse(lengthValue);
+        if (lengthValue != null && length == null) {
+          throw const FormatException('invalid getcontentlength');
+        }
+        if (!_isSyncInternal(path)) {
+          files[path] = _RemoteFile(
+            modified: HttpDate.parse(modifiedValue),
+            etag: _xmlValue(block, 'getetag'),
+            length: length,
+          );
+        }
+      } catch (error) {
+        if (error is! FormatException && error is! HttpException) rethrow;
+        final message = error is FormatException
+            ? error.message
+            : (error as HttpException).message;
+        throw HttpException('PROPFIND invalid file metadata: $message');
       }
     }
     return files;
@@ -484,16 +559,42 @@ class NextcloudSync {
         .replaceAll(Platform.pathSeparator, '/');
   }
 
-  Future<Map<String, SyncCursor>> _loadSyncState(Vault vault) async {
+  Future<({Map<String, SyncCursor> cursors, bool recovered})> _loadSyncState(
+    Vault vault,
+  ) async {
     final file = File('${vault.meta.path}/sync_state.json');
-    if (!await file.exists()) return {};
-    final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
-    return (json['cursors'] as Map? ?? const {}).map<String, SyncCursor>(
-      (key, value) => MapEntry(
-        key.toString(),
-        SyncCursor.fromJson((value as Map).cast<String, Object?>()),
-      ),
-    );
+    if (!await file.exists()) {
+      return (cursors: <String, SyncCursor>{}, recovered: false);
+    }
+    final source = await file.readAsString();
+    try {
+      final decoded = jsonDecode(source);
+      if (decoded is! Map || decoded['cursors'] is! Map) {
+        throw const FormatException('sync state requires a cursors map');
+      }
+      final cursors = <String, SyncCursor>{};
+      for (final entry in (decoded['cursors'] as Map).entries) {
+        if (entry.key is! String || entry.value is! Map) {
+          throw const FormatException('sync cursor must be a map');
+        }
+        final cursor = (entry.value as Map).cast<String, Object?>();
+        if (!_validSyncCursor(cursor)) {
+          throw const FormatException('sync cursor has invalid fields');
+        }
+        cursors[entry.key as String] = SyncCursor.fromJson(cursor);
+      }
+      return (cursors: cursors, recovered: false);
+    } catch (error) {
+      if (error is! FormatException && error is! TypeError) rethrow;
+      final modified = (await file.lastModified()).millisecondsSinceEpoch;
+      final archive = File(
+        '${vault.meta.path}/sync_state.corrupt-$modified.json',
+      );
+      if (!await archive.exists()) {
+        await archive.writeAsString(source, flush: true);
+      }
+      return (cursors: <String, SyncCursor>{}, recovered: true);
+    }
   }
 
   Future<void> _saveSyncState(
@@ -502,24 +603,62 @@ class NextcloudSync {
   ) async {
     final file = File('${vault.meta.path}/sync_state.json');
     await file.parent.create(recursive: true);
-    await file.writeAsString(
+    final temporary = File('${file.path}.tmp');
+    await temporary.writeAsString(
       const JsonEncoder.withIndent('  ').convert({
         'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
       }),
       flush: true,
     );
+    await temporary.rename(file.path);
   }
 
-  Future<void> _appendTrace(Vault vault, SyncTrace trace) async {
+  Future<void> _trace(Vault vault, Map<String, Object?> event) async {
+    try {
+      await _appendTrace(vault, event);
+    } catch (_) {
+      // Diagnostics must never stop file synchronization.
+    }
+  }
+
+  Future<void> _appendTrace(Vault vault, Map<String, Object?> event) async {
     final file = File('${vault.meta.path}/sync_trace.jsonl');
     await file.parent.create(recursive: true);
+    if (await file.exists() && await file.length() > 512 * 1024) {
+      final bytes = await file.readAsBytes();
+      var start = bytes.length - 256 * 1024;
+      while (start < bytes.length && bytes[start] != 10) {
+        start++;
+      }
+      final temporary = File('${file.path}.tmp');
+      await temporary.writeAsBytes(
+        bytes.sublist(start < bytes.length ? start + 1 : bytes.length),
+        flush: true,
+      );
+      await temporary.rename(file.path);
+    }
     await file.writeAsString(
-      '${jsonEncode(trace.toJson())}\n',
+      '${jsonEncode(event)}\n',
       mode: FileMode.append,
       flush: true,
     );
   }
 }
+
+bool _validSyncCursor(Map<String, Object?> json) =>
+    (json['localMillis'] == null || json['localMillis'] is num) &&
+    (json['remoteMillis'] == null || json['remoteMillis'] is num) &&
+    (json['localSha256'] == null || json['localSha256'] is String) &&
+    (json['remoteEtag'] == null || json['remoteEtag'] is String);
+
+String _safeErrorMessage(Object error) => switch (error) {
+  HttpException() => error.message,
+  FileSystemException() => error.message,
+  FormatException() => error.message,
+  SocketException() => error.message,
+  StateError() => error.message.toString(),
+  _ => error.runtimeType.toString(),
+};
 
 bool _protectFromEmpty(String path) =>
     path.endsWith('.typ') || path == '_system/bibliography.yml';

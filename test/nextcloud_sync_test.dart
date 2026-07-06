@@ -292,6 +292,262 @@ void main() {
     expect(current.toJson()['remoteEtag'], '"etag"');
   });
 
+  test(
+    'corrupt sync state preserves differing local and remote copies',
+    () async {
+      final server = await _webDavServer(remoteContent: 'remote note');
+      final dir = await Directory.systemTemp.createTemp('tylog_corrupt_state_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final note = File('${dir.path}/daily/2026/07/note.typ');
+      await note.parent.create(recursive: true);
+      await note.writeAsString('local note');
+      await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+
+      final result = await NextcloudSync(_config(server)).sync(vault);
+
+      expect(result.conflicts, 1);
+      expect(await note.readAsString(), 'local note');
+      final conflict =
+          await note.parent
+                  .list()
+                  .where((file) => file.path.contains('.remote-conflict-'))
+                  .single
+              as File;
+      expect(await conflict.readAsString(), 'remote note');
+      expect(
+        await vault.meta
+            .list()
+            .where((file) => file.path.contains('sync_state.corrupt-'))
+            .length,
+        1,
+      );
+      expect(
+        jsonDecode(
+          await File('${vault.meta.path}/sync_state.json').readAsString(),
+        ),
+        isA<Map>(),
+      );
+      expect(
+        await File('${vault.meta.path}/sync_state.json.tmp').exists(),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'corrupt sync state repairs identical copies without conflict',
+    () async {
+      final server = await _webDavServer(remoteContent: 'same note');
+      final dir = await Directory.systemTemp.createTemp('tylog_corrupt_same_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final note = File('${dir.path}/daily/2026/07/note.typ');
+      await note.parent.create(recursive: true);
+      await note.writeAsString('same note');
+      await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+
+      final result = await NextcloudSync(_config(server)).sync(vault);
+
+      expect(result.conflicts, 0);
+      expect(result.repaired, greaterThanOrEqualTo(1));
+      expect(
+        await note.parent
+            .list()
+            .where((file) => file.path.contains('.remote-conflict-'))
+            .isEmpty,
+        isTrue,
+      );
+    },
+  );
+
+  for (final state in {
+    'missing schema': '{}',
+    'wrong cursors type': '{"cursors":[]}',
+    'malformed cursor':
+        '{"cursors":{"daily/2026/07/note.typ":{"localMillis":"bad"}}}',
+  }.entries) {
+    test('invalid sync state (${state.key}) enters recovery', () async {
+      final server = await _webDavServer();
+      final dir = await Directory.systemTemp.createTemp('tylog_bad_schema_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await File(
+        '${vault.meta.path}/sync_state.json',
+      ).writeAsString(state.value);
+
+      await NextcloudSync(_config(server)).sync(vault);
+
+      expect(
+        await vault.meta
+            .list()
+            .where((file) => file.path.contains('sync_state.corrupt-'))
+            .length,
+        1,
+      );
+      final events = await _traceEvents(vault);
+      expect(
+        events.map((event) => event['event']),
+        contains('state-recovered'),
+      );
+    });
+  }
+
+  test('failed recovery keeps corrupt state for the next retry', () async {
+    final broken = await _webDavServer(
+      interrupted: true,
+      remoteContent: 'remote note',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_retry_recovery_');
+    HttpServer? healthy;
+    addTearDown(() async {
+      await broken.close(force: true);
+      await healthy?.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('local note');
+    final state = File('${vault.meta.path}/sync_state.json');
+    await state.writeAsString('{');
+
+    await expectLater(
+      NextcloudSync(_config(broken)).sync(vault),
+      throwsA(anything),
+    );
+    expect(await state.readAsString(), '{');
+    expect(
+      await vault.meta
+          .list()
+          .where((file) => file.path.contains('sync_state.corrupt-'))
+          .length,
+      1,
+    );
+
+    await broken.close(force: true);
+    healthy = await _webDavServer(remoteContent: 'remote note');
+    final result = await NextcloudSync(_config(healthy)).sync(vault);
+
+    expect(result.conflicts, 1);
+    expect(await note.readAsString(), 'local note');
+  });
+
+  test('recovery still transfers files that exist on only one side', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'daily/2026/07/remote.typ': _MutableRemoteFile(
+        bytes: utf8.encode('remote only'),
+        etag: '"remote"',
+        modified: DateTime.utc(2030),
+      ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_recovery_sides_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final local = File('${dir.path}/notes/local.typ');
+    await local.parent.create(recursive: true);
+    await local.writeAsString('local only');
+    await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.uploaded, greaterThan(0));
+    expect(result.downloaded, greaterThan(0));
+    expect(result.conflicts, 0);
+    expect(utf8.decode(remote['notes/local.typ']!.bytes), 'local only');
+  });
+
+  test('invalid remote metadata reports a WebDAV protocol error', () async {
+    final server = await _webDavServer(remoteModifiedValue: 'not-a-date');
+    final dir = await Directory.systemTemp.createTemp('tylog_bad_propfind_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(Vault(dir)),
+      throwsA(
+        isA<HttpException>().having(
+          (error) => error.message,
+          'message',
+          contains('PROPFIND invalid file metadata'),
+        ),
+      ),
+    );
+    final events = await _traceEvents(Vault(dir));
+    expect(events.last['event'], 'failed');
+    expect(events.last['stage'], 'list-remote');
+    expect(jsonEncode(events), isNot(contains('secret')));
+  });
+
+  test('HTTP 200 HTML is not accepted as an empty WebDAV folder', () async {
+    final server = await _webDavServer(
+      propfindStatus: HttpStatus.ok,
+      propfindBody: '<html>login</html>',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_html_propfind_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(Vault(dir)),
+      throwsA(
+        isA<HttpException>().having(
+          (error) => error.message,
+          'message',
+          contains('PROPFIND unexpected status 200'),
+        ),
+      ),
+    );
+  });
+
+  test('sync trace is bounded and never blocks synchronization', () async {
+    final server = await _webDavServer(remoteContent: 'remote note');
+    final dir = await Directory.systemTemp.createTemp('tylog_trace_limit_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final trace = File('${vault.meta.path}/sync_trace.jsonl');
+    final oldLine = '${jsonEncode({'old': List.filled(1024, 'x').join()})}\n';
+    await trace.writeAsString(List.filled(600, oldLine).join());
+
+    await NextcloudSync(_config(server)).sync(vault);
+
+    expect(await trace.length(), lessThan(512 * 1024));
+    for (final line in await trace.readAsLines()) {
+      expect(jsonDecode(line), isA<Map>());
+    }
+
+    await trace.delete();
+    await Directory(trace.path).create();
+    final retry = await NextcloudSync(_config(server)).sync(vault);
+    expect(retry.remoteCount, 1);
+  });
+
   test('touching unchanged content does not create a conflict', () async {
     final server = await _webDavServer(remoteContent: 'same note');
     final dir = await Directory.systemTemp.createTemp('tylog_touch_only_');
@@ -429,6 +685,11 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
   password: 'secret',
 );
 
+Future<List<Map<String, Object?>>> _traceEvents(Vault vault) async =>
+    (await File('${vault.meta.path}/sync_trace.jsonl').readAsLines())
+        .map((line) => (jsonDecode(line) as Map).cast<String, Object?>())
+        .toList();
+
 Future<void> _seedCursor(Vault vault, File note, String remoteEtag) async {
   final hash = sha256.convert(await note.readAsBytes()).toString();
   await File('${vault.meta.path}/sync_state.json').writeAsString(
@@ -449,25 +710,29 @@ Future<HttpServer> _webDavServer({
   bool interrupted = false,
   String remoteContent = '',
   DateTime? remoteModified,
+  String? remoteModifiedValue,
   String etag = '"remote-1"',
   int putStatus = HttpStatus.created,
   List<Map<String, Object?>>? uploads,
+  int propfindStatus = 207,
+  String? propfindBody,
 }) async {
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
     if (request.method == 'MKCOL') {
       request.response.statusCode = HttpStatus.methodNotAllowed;
     } else if (request.method == 'PROPFIND') {
-      request.response.statusCode = 207;
+      request.response.statusCode = propfindStatus;
       request.response.write(
-        '<d:multistatus xmlns:d="DAV:"><d:response>'
-        '<d:href>/remote.php/dav/files/alice/TyLogVault/daily/2026/07/note.typ</d:href>'
-        '<d:propstat><d:prop><d:getlastmodified>'
-        '${HttpDate.format(remoteModified ?? DateTime.utc(2030))}'
-        '</d:getlastmodified><d:getetag>$etag</d:getetag>'
-        '<d:getcontentlength>${utf8.encode(remoteContent).length}</d:getcontentlength>'
-        '</d:prop></d:propstat>'
-        '</d:response></d:multistatus>',
+        propfindBody ??
+            '<d:multistatus xmlns:d="DAV:"><d:response>'
+                '<d:href>/remote.php/dav/files/alice/TyLogVault/daily/2026/07/note.typ</d:href>'
+                '<d:propstat><d:prop><d:getlastmodified>'
+                '${remoteModifiedValue ?? HttpDate.format(remoteModified ?? DateTime.utc(2030))}'
+                '</d:getlastmodified><d:getetag>$etag</d:getetag>'
+                '<d:getcontentlength>${utf8.encode(remoteContent).length}</d:getcontentlength>'
+                '</d:prop></d:propstat>'
+                '</d:response></d:multistatus>',
       );
     } else if (request.method == 'GET') {
       request.response.headers.set(HttpHeaders.etagHeader, etag);

@@ -667,7 +667,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           search: searchIndex,
           problems: validation?.problems ?? ix.problems,
           onOpenNote: _openPath,
-          onResolveConflict: _resolveConflict,
+          onResolveConflict: (problem) async {
+            await _resolveConflict(problem);
+          },
           onCleanSyncCaches: _cleanSyncCaches,
           onSetTaskStatus: _setTaskStatus,
         ),
@@ -892,22 +894,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     if (pendingConflict != null) {
-      await _resolveConflict(pendingConflict);
+      PkmsProblem? next = pendingConflict;
+      while (next != null && await _resolveConflict(next)) {
+        next = _nextSyncConflict();
+      }
     } else if (failure != null && trigger == 'manual') {
       _showSyncDetails(0);
     }
   }
 
-  Future<void> _resolveConflict(PkmsProblem problem) async {
+  PkmsProblem? _nextSyncConflict() {
+    for (final problem in validation?.problems ?? const <PkmsProblem>[]) {
+      if (problem.code == 'sync-conflict') return problem;
+    }
+    return null;
+  }
+
+  Future<bool> _resolveConflict(PkmsProblem problem) async {
     final v = vault;
-    if (v == null) return;
+    if (v == null) return false;
     final marker = problem.subject.indexOf('.remote-conflict-');
-    if (marker < 0) return;
+    if (marker < 0) return false;
     final conflict = File('${v.root.path}/${problem.subject}');
     final original = File(
       '${v.root.path}/${problem.subject.substring(0, marker)}',
     );
-    if (!await conflict.exists()) return;
+    if (!await conflict.exists()) {
+      await _refreshPkms('Conflict no longer exists');
+      return true;
+    }
     final localText = await original.exists()
         ? await original.readAsString()
         : '';
@@ -921,13 +936,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : 'Empty conflict copy removed; local note kept',
       );
       _queueCloudSync();
-      return;
+      return true;
     }
     final localModified = await original.exists()
         ? await original.lastModified()
         : null;
     final remoteModified = await conflict.lastModified();
-    if (!mounted) return;
+    if (!mounted) return false;
     final merged = TextEditingController(text: localText);
     final selectedVersion = ValueNotifier<String?>('local');
     final save = await showDialog<bool>(
@@ -1064,6 +1079,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     selectedVersion.dispose();
     merged.dispose();
+    return save == true;
   }
 
   Future<void> _cleanSyncCaches() async {
@@ -1397,11 +1413,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 const SizedBox(height: 16),
                 _SyncDistribution(result: lastSync!),
               ],
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: v == null
+                    ? null
+                    : () => closeThen(() => unawaited(_copySyncDiagnostics())),
+                icon: const Icon(Icons.copy_all_outlined),
+                label: const Text('Copy diagnostics'),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _copySyncDiagnostics() async {
+    final v = vault;
+    if (v == null) return;
+    final file = File('${v.meta.path}/sync_trace.jsonl');
+    final trace = await file.exists()
+        ? await file.readAsString()
+        : 'No sync trace is available.\n';
+    await Clipboard.setData(
+      ClipboardData(
+        text:
+            'TyLog ${await appVersion()}\n'
+            'Platform: ${Platform.operatingSystem}\n'
+            '$trace',
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Sync diagnostics copied')));
   }
 
   Future<String?> _askText(String title, {String? initialValue}) async {
@@ -2142,7 +2187,7 @@ String _friendlySyncError(Object error) {
     return 'TyLog could not update the local vault: ${error.osError?.message ?? error.message}';
   }
   if (error is FormatException) {
-    return 'Nextcloud returned an unreadable sync response.';
+    return 'Sync data could not be read.';
   }
   final text = error.toString();
   if (text.contains('401') || text.contains('403')) {
@@ -2150,6 +2195,9 @@ String _friendlySyncError(Object error) {
   }
   if (text.contains('404')) {
     return 'The configured Nextcloud folder was not found.';
+  }
+  if (text.contains('PROPFIND invalid file metadata')) {
+    return 'Nextcloud returned invalid file metadata.';
   }
   if (text.contains('507')) return 'Nextcloud is out of storage space.';
   return 'Sync stopped before completion: $text';

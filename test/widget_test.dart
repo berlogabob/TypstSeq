@@ -172,6 +172,7 @@ void main() {
     expect(find.textContaining('Sync('), findsNothing);
     expect(find.textContaining('↑'), findsNothing);
     expect(find.textContaining('↓'), findsNothing);
+    expect(find.text('Copy diagnostics'), findsOneWidget);
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {
