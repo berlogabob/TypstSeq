@@ -4,6 +4,7 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
+import 'package:typst_flutter/typst_flutter.dart';
 
 void main() {
   testWidgets('TyLog shell renders', (tester) async {
@@ -42,7 +43,7 @@ void main() {
     expect(find.text(version), findsOneWidget);
   });
 
-  testWidgets('preview edits the cursor block and navigates adjacent blocks', (
+  testWidgets('journal renders by default and source remains explicit', (
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
@@ -50,38 +51,27 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pump();
+    expect(find.byType(TypstDocumentViewer), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Active source block'), findsNothing);
 
     await tester.tap(find.byTooltip('Source'));
     await tester.pump();
     expect(find.byTooltip('Preview'), findsOneWidget);
-    final source = tester.widget<TextField>(find.byType(TextField));
-    source.controller!.value = const TextEditingValue(
-      text: '= One\n\nSecond\n\nThird',
-      selection: TextSelection.collapsed(offset: 10),
-    );
+    const raw = '#strong[Visible text]';
+    await tester.enterText(find.byType(TextField), raw);
+
     await tester.tap(find.byTooltip('Preview'));
     await tester.pump();
+    expect(find.byType(TypstDocumentViewer), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.textContaining('#strong'), findsNothing);
 
-    TextField block() =>
-        tester.widget<TextField>(find.byKey(const Key('preview-block-editor')));
-    expect(block().controller!.text, 'Second');
-    await tester.tap(find.byKey(const Key('preview-block-previous')));
-    await tester.pump();
-    expect(block().controller!.text, '= One');
-    await tester.tap(find.byKey(const Key('preview-block-next')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const Key('preview-block-editor')),
-      'Second changed',
-    );
-    await tester.pump();
-
-    expect(find.text('Edit source'), findsOneWidget);
-    await tester.tap(find.text('Edit source'));
+    await tester.tap(find.byTooltip('Source'));
     await tester.pump();
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '= One\n\nSecond changed\n\nThird',
+      raw,
     );
     expect(find.byTooltip('Preview'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -137,7 +127,7 @@ void main() {
     expect(find.textContaining('#show:'), findsNothing);
   });
 
-  testWidgets('journal keeps focus while typing consecutive characters', (
+  testWidgets('source keeps focus while typing consecutive characters', (
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
@@ -145,6 +135,8 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Source'));
+    await tester.pump();
     final editor = find.byType(TextField);
     await tester.tap(editor);
     await tester.pump();

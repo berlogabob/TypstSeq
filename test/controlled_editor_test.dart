@@ -3,31 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 
 void main() {
-  test(
-    'controlled parser hides the header and preserves unsupported blocks',
-    () {
-      const source = '''#import "/_system/tylog.typ" as tylog
-#show: tylog.note.with(id: "a", title: "A", kind: "note")
-
-= Heading
-
-Plain paragraph.
-
-#custom-function()[Keep exactly]
-''';
-      final document = parseControlledTypst(source);
-      expect(document.blocks.map((block) => block.kind), [
-        ControlledBlockKind.heading,
-        ControlledBlockKind.paragraph,
-        ControlledBlockKind.raw,
-      ]);
-      expect(
-        document.replaceBlock(1, 'Changed'),
-        contains('#custom-function()[Keep exactly]'),
-      );
-    },
-  );
-
   test('Magic actions emit escaped valid TyLog Typst', () {
     final linked = applyMagicEdit(
       'Amazon',

@@ -37,7 +37,7 @@ verify: test
 	@flutter build linux
 
 build-web:
-	@flutter build web --release --base-href "$(GITHUB_PAGES_BASE_HREF)"
+	@flutter build web --release --no-wasm-dry-run --base-href "$(GITHUB_PAGES_BASE_HREF)"
 
 package-pages: build-web
 	@rm -rf docs

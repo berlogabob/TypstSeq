@@ -22,21 +22,6 @@ import 'task_scheduler.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 
-List<TextRange> _paragraphBlocks(String source) {
-  final blocks = <TextRange>[];
-  var start = 0;
-  for (final separator in RegExp(r'\n[ \t]*\n').allMatches(source)) {
-    if (separator.start > start) {
-      blocks.add(TextRange(start: start, end: separator.start));
-    }
-    start = separator.end;
-  }
-  if (start < source.length) {
-    blocks.add(TextRange(start: start, end: source.length));
-  }
-  return blocks.isEmpty ? [TextRange(start: 0, end: source.length)] : blocks;
-}
-
 Future<String> appVersion() async =>
     RegExp(r'^version:\s*(.+)$', multiLine: true)
         .firstMatch(await rootBundle.loadString('pubspec.yaml'))
@@ -77,9 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Vault? vault;
   VaultIndex? index;
   File? note;
-  final controller = TextEditingController();
   final sourceController = TextEditingController();
-  final previewBlockController = TextEditingController();
   Timer? autosave;
   Timer? cloudAutosave;
   Timer? cloudPoll;
@@ -87,9 +70,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool dirty = false;
   int editRevision = 0;
   String mode = 'today';
-  String previewSource = '';
-  int previewBlock = 0;
-  String hiddenSystemPrefix = '';
   String helperSource = tylogHelperSource;
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
@@ -120,9 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave?.cancel();
     cloudAutosave?.cancel();
     cloudPoll?.cancel();
-    previewBlockController.dispose();
     sourceController.dispose();
-    controller.dispose();
     super.dispose();
   }
 
@@ -187,6 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastSync = null;
         lastSyncAt = null;
         syncError = null;
+        if (trigger != 'startup') mode = 'today';
         status = '$openStatus · ${pkms.report.summary()}';
       });
       unawaited(taskScheduler.reconcile(ix.tasks));
@@ -462,10 +441,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave = Timer(const Duration(milliseconds: 700), _save);
   }
 
-  String _currentSource() =>
-      mode == 'source' || mode == 'preview' || mode == 'split'
-      ? sourceController.text
-      : '$hiddenSystemPrefix${controller.text}';
+  String _currentSource() => sourceController.text;
 
   FileSource _typstFiles() => FileSource.bytes({
     '_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
@@ -474,22 +450,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
   });
 
-  void _loadSource(String source) {
-    final clean = _splitCleanSource(source);
-    hiddenSystemPrefix = clean.hiddenPrefix;
-    controller.text = clean.body;
-    sourceController.text = source;
-  }
+  void _loadSource(String source) => sourceController.text = source;
 
   Future<void> _openNote(File file) async {
     final v = vault;
     if (v == null) return;
     if (dirty) await _save();
-    _loadSource(await file.readAsString());
+    final source = await file.readAsString();
+    _loadSource(source);
     setState(() {
       note = file;
       dirty = false;
-      mode = 'normal';
+      mode = 'preview';
       status = 'Opened ${v.relativePath(file)}';
     });
   }
@@ -1324,64 +1296,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showPreview() {
-    final source = sourceController.text;
-    final blocks = _paragraphBlocks(source);
-    final cursor = sourceController.selection.isValid
-        ? sourceController.selection.extentOffset
-        : source.length;
-    previewBlock = blocks.indexWhere((range) => cursor <= range.end);
-    if (previewBlock < 0) previewBlock = blocks.length - 1;
-    previewBlockController.text = source.substring(
-      blocks[previewBlock].start,
-      blocks[previewBlock].end,
-    );
-    setState(() {
-      previewSource = source;
-      mode = 'preview';
-    });
+    setState(() => mode = 'preview');
   }
 
-  void _movePreviewBlock(int delta) {
-    final blocks = _paragraphBlocks(sourceController.text);
-    previewBlock = (previewBlock + delta).clamp(0, blocks.length - 1);
-    final range = blocks[previewBlock];
-    previewBlockController.text = sourceController.text.substring(
-      range.start,
-      range.end,
-    );
-    setState(() {});
-  }
-
-  void _updatePreviewBlock() {
-    final blocks = _paragraphBlocks(sourceController.text);
-    final range = blocks[previewBlock.clamp(0, blocks.length - 1)];
-    final replacement = previewBlockController.text;
-    final source = sourceController.text.replaceRange(
-      range.start,
-      range.end,
-      replacement,
-    );
-    sourceController.value = TextEditingValue(
-      text: source,
-      selection: TextSelection.collapsed(
-        offset: range.start + replacement.length,
-      ),
-    );
-    previewSource = source;
-    _queueAutosave();
-  }
-
-  void _showJournal() {
-    if (mode == 'source') _loadSource(sourceController.text);
-    setState(() => mode = 'normal');
-  }
+  void _showJournal() => _showPreview();
 
   void _showToday() => setState(() => mode = 'today');
 
-  void _showSource() {
-    sourceController.text = _currentSource();
-    setState(() => mode = 'source');
-  }
+  void _showSource() => setState(() => mode = 'source');
 
   void _toggleSourcePreview() =>
       mode == 'source' ? _showPreview() : _showSource();
@@ -1438,11 +1360,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  TextEditingController get _activeEditorController =>
-      mode == 'source' || mode == 'preview' || mode == 'split'
-      ? sourceController
-      : controller;
-
   Future<String?> _askText(String title, {String? initialValue}) async {
     final input = TextEditingController(text: initialValue);
     final value = await showDialog<String>(
@@ -1471,14 +1388,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _selectedText() {
-    final editor = _activeEditorController;
+    final editor = sourceController;
     final selection = editor.selection;
     if (!selection.isValid || selection.isCollapsed) return '';
     return editor.text.substring(selection.start, selection.end);
   }
 
   void _applyMagic(MagicRequest request) {
-    final editor = _activeEditorController;
+    final editor = sourceController;
     final edit = applyMagicEdit(editor.text, editor.selection, request);
     editor.value = TextEditingValue(text: edit.text, selection: edit.selection);
     _queueAutosave();
@@ -1880,106 +1797,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           currentPath: current,
           onOpenPath: _openPath,
         ),
-        'preview' => Column(
-          children: [
-            Expanded(
-              child: TypstDocumentViewer(
-                source: previewSource.isEmpty
-                    ? _currentSource()
-                    : previewSource,
-                files: _typstFiles(),
-                loadingBuilder: (_) =>
-                    const Center(child: CircularProgressIndicator()),
-                errorBuilder: (_, error) => Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SelectableText('Typst error:\n$error'),
-                        FilledButton.tonalIcon(
-                          onPressed: () => unawaited(
-                            _showTypstHelp(error: error.toString()),
-                          ),
-                          icon: const Icon(Icons.help_outline),
-                          label: const Text('Explain error'),
-                        ),
-                      ],
-                    ),
+        'preview' => TypstDocumentViewer(
+          source: sourceController.text,
+          files: _typstFiles(),
+          loadingBuilder: (_) =>
+              const Center(child: CircularProgressIndicator()),
+          errorBuilder: (_, error) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SelectableText('Typst error:\n$error'),
+                  FilledButton.tonalIcon(
+                    onPressed: () =>
+                        unawaited(_showTypstHelp(error: error.toString())),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Explain error'),
                   ),
-                ),
+                ],
               ),
             ),
-            Material(
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Expanded(child: Text('Active source block')),
-                        IconButton(
-                          key: const Key('preview-block-previous'),
-                          tooltip: 'Previous block',
-                          onPressed: previewBlock == 0
-                              ? null
-                              : () => _movePreviewBlock(-1),
-                          icon: const Icon(Icons.keyboard_arrow_up),
-                        ),
-                        IconButton(
-                          key: const Key('preview-block-next'),
-                          tooltip: 'Next block',
-                          onPressed:
-                              previewBlock >=
-                                  _paragraphBlocks(
-                                        sourceController.text,
-                                      ).length -
-                                      1
-                              ? null
-                              : () => _movePreviewBlock(1),
-                          icon: const Icon(Icons.keyboard_arrow_down),
-                        ),
-                      ],
-                    ),
-                    TextField(
-                      key: const Key('preview-block-editor'),
-                      controller: previewBlockController,
-                      onChanged: (_) => _updatePreviewBlock(),
-                      minLines: 1,
-                      maxLines: 4,
-                      style: const TextStyle(fontFamily: 'monospace'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _showSource,
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Edit source'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _showPreview,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
         'source' => _Editor(
           controller: sourceController,
@@ -2004,8 +1843,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        'normal' => _Editor(controller: controller, onChanged: _queueAutosave),
-        _ => _Editor(controller: controller, onChanged: _queueAutosave),
+        _ => const SizedBox.shrink(),
       },
     );
 
@@ -2237,45 +2075,6 @@ enum _ShellAction {
   typstHelp,
   settings,
 }
-
-class _CleanSource {
-  const _CleanSource(this.hiddenPrefix, this.body);
-
-  final String hiddenPrefix;
-  final String body;
-}
-
-_CleanSource _splitCleanSource(String source) {
-  final lines = source.split('\n');
-  var index = 0;
-  while (index < lines.length) {
-    final trimmed = lines[index].trimLeft();
-    if (trimmed.isEmpty) {
-      index++;
-      continue;
-    }
-    if (!_isSystemLine(trimmed)) break;
-
-    var depth =
-        '('.allMatches(lines[index]).length -
-        ')'.allMatches(lines[index]).length;
-    index++;
-    while (depth > 0 && index < lines.length) {
-      depth +=
-          '('.allMatches(lines[index]).length -
-          ')'.allMatches(lines[index]).length;
-      index++;
-    }
-  }
-  while (index < lines.length && lines[index].trim().isEmpty) {
-    index++;
-  }
-  final prefix = index == 0 ? '' : '${lines.take(index).join('\n')}\n';
-  return _CleanSource(prefix, lines.skip(index).join('\n'));
-}
-
-bool _isSystemLine(String line) =>
-    RegExp(r'^#(import|include|show|set|let|note)\b').hasMatch(line);
 
 // ignore: unused_element
 String? _panelActivity(String status) {

@@ -12,6 +12,7 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - build/**
+    - docs/**
     - packages/typst_flutter/.native-build*/**
     - packages/typst_flutter/rust/target/**
 

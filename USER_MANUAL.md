@@ -56,7 +56,7 @@ Primary areas are Today, Journal, Tasks, and Library. Library contains Notes, Pr
 
 Android and macOS are the release platforms. The included iOS host supports development checks on iPad. A physical iPad run requires selecting an Apple development team in `ios/Runner.xcworkspace`, allowing Xcode to register and provision the device, and trusting the development certificate on the iPad. An iPad simulator does not require signing.
 
-Edits autosave atomically. Source shows exact Typst. Preview renders exact output. Split mode places them together. Normal mode presents supported content as editable blocks; unsupported Typst is preserved in a source block and can be edited at its exact range.
+Journal and opened notes show the rendered Typst document by default, without source controls. Press Source to edit the exact Typst file; edits autosave atomically. Preview returns to rendered output, and Split editor places source and output together.
 
 ## Magic
 
