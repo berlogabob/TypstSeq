@@ -190,7 +190,7 @@ class NextcloudSync {
             : _isChanged(localTime, prev?.localMillis);
         final remoteChanged =
             prev?.remoteEtag != null && remoteFile?.etag != null
-            ? remoteFile!.etag != prev!.remoteEtag
+            ? _normEtag(remoteFile!.etag) != _normEtag(prev!.remoteEtag)
             : _isChanged(remoteTime, prev?.remoteMillis);
         var action = decideSyncAction(
           localExists: localExists,
@@ -301,8 +301,9 @@ class NextcloudSync {
           localMillis: nextLocal?.millisecondsSinceEpoch,
           remoteMillis: nextRemote?.millisecondsSinceEpoch,
           localSha256: nextLocalExists ? await _sha256(local) : null,
-          remoteEtag:
-              uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
+          remoteEtag: _normEtag(
+            uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
+          ),
         );
         decisions.add(
           SyncDecision(
@@ -440,6 +441,18 @@ class NextcloudSync {
     if (start < 0) return null;
     final path = href.substring(start + root.length);
     return path.isEmpty ? null : path;
+  }
+
+  // Nextcloud quotes the etag in PROPFIND (getetag) but not in the PUT `oc-etag`
+  // header, so a stored upload etag never string-matches the next PROPFIND and
+  // every upload looks like a remote change → spurious download (ping-pong).
+  // Canonicalize (drop surrounding quotes and a weak `W/` prefix) for compares
+  // and cursor storage; the raw etag is still sent verbatim in If-Match.
+  static String? _normEtag(String? etag) {
+    if (etag == null) return null;
+    var value = etag.trim();
+    if (value.toLowerCase().startsWith('w/')) value = value.substring(2);
+    return value.replaceAll('"', '');
   }
 
   Future<String?> _upload(

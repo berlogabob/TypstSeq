@@ -627,6 +627,30 @@ void main() {
     expect(await note.readAsString(), 'android edit\nmac edit');
   });
 
+  test('unquoted PUT etag does not cause a ping-pong download', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote, unquotedPutEtag: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_pingpong_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('android edit');
+
+    final first = await NextcloudSync(_config(server)).sync(vault);
+    expect(first.uploaded, greaterThan(0));
+
+    // Nothing changed remotely. The second sync must settle — not re-download the
+    // file we just uploaded merely because the PUT etag was returned unquoted.
+    final second = await NextcloudSync(_config(server)).sync(vault);
+    expect(second.downloaded, 0);
+    expect(second.uploaded, 0);
+  });
+
   test('sync does not depend on a local index cache', () async {
     final server = await _webDavServer(remoteContent: 'remote note');
     final dir = await Directory.systemTemp.createTemp('tylog_no_index_');
@@ -784,8 +808,9 @@ class _MutableRemoteFile {
 }
 
 Future<HttpServer> _mutableWebDavServer(
-  Map<String, _MutableRemoteFile> files,
-) async {
+  Map<String, _MutableRemoteFile> files, {
+  bool unquotedPutEtag = false,
+}) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -825,7 +850,11 @@ Future<HttpServer> _mutableWebDavServer(
         modified: DateTime.now().toUtc(),
       );
       request.response.statusCode = HttpStatus.created;
-      request.response.headers.set('OC-Etag', etag);
+      // Real Nextcloud sends OC-Etag unquoted while PROPFIND getetag is quoted.
+      request.response.headers.set(
+        'OC-Etag',
+        unquotedPutEtag ? etag.replaceAll('"', '') : etag,
+      );
       request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
     }
     await request.response.close();
