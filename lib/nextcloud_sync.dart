@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'vault.dart';
+import 'vault_storage.dart';
 
 class NextcloudConfig {
   const NextcloudConfig({
@@ -55,6 +56,18 @@ class NextcloudConfig {
     return base.replace(
       path:
           '${base.path.replaceFirst(RegExp(r'/+$'), '')}/remote.php/dav/files/${username.trim()}/${_remoteFolders.join('/')}/',
+    );
+  }
+
+  bool get usesDirectWebDavUrl =>
+      Uri.parse(serverUrl.trim()).path.contains('/remote.php/dav/files/');
+
+  Uri get filesUri {
+    if (usesDirectWebDavUrl) return rootUri;
+    final base = Uri.parse(serverUrl.trim().replaceFirst(RegExp(r'/+$'), ''));
+    return base.replace(
+      path:
+          '${base.path.replaceFirst(RegExp(r'/+$'), '')}/remote.php/dav/files/${username.trim()}/',
     );
   }
 
@@ -126,9 +139,10 @@ class NextcloudConfig {
 }
 
 class NextcloudSync {
-  NextcloudSync(this.config);
+  NextcloudSync(this.config, {this.onProgress});
 
   final NextcloudConfig config;
+  final void Function(String stage, String? path)? onProgress;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
@@ -140,8 +154,17 @@ class NextcloudSync {
     var skip = 0;
     var conflict = 0;
     var repaired = 0;
+    var deletedLocal = 0;
+    var deletedRemote = 0;
     var remoteCount = 0;
     final decisions = <SyncDecision>[];
+    void progress(String next, [String? path]) {
+      stage = next;
+      currentPath = path;
+      onProgress?.call(next, path);
+    }
+
+    progress(stage);
     await _trace(vault, {
       'timestamp': DateTime.now().toUtc().toIso8601String(),
       'runId': runId,
@@ -150,9 +173,9 @@ class NextcloudSync {
     });
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
-      stage = 'prepare-remote-folder';
-      await _mkcol(config.rootUri);
-      stage = 'load-local-state';
+      progress('prepare-remote-folder');
+      await _ensureConfiguredFolder();
+      progress('load-local-state');
       final loadedState = await _loadSyncState(vault);
       final syncState = loadedState.cursors;
       if (loadedState.recovered) {
@@ -163,161 +186,231 @@ class NextcloudSync {
           'trigger': trigger,
         });
       }
-      stage = 'list-remote';
+      progress('list-remote');
       final remote = await _remoteFiles();
       remoteCount = remote.length;
-      stage = 'scan-local';
+      progress('scan-local');
       repaired = await _cleanResolvedConflictCopies(vault);
-      final localFiles = await _localFiles(vault.root);
-      final localByPath = {
-        for (final file in localFiles) vault.relativePath(file): file,
-      };
-      final allPaths = <String>{...localByPath.keys, ...remote.keys}.toList()
-        ..sort();
+      final localPaths = (await _localFiles(vault.storage)).toSet();
+      final unresolved = (await loadSyncConflicts(
+        vault,
+      )).map((conflict) => conflict.path).toSet();
+      final allPaths = <String>{
+        ...localPaths,
+        ...remote.keys,
+        ...syncState.keys,
+      }.toList()..sort();
 
       for (final path in allPaths) {
-        stage = 'sync-file';
-        currentPath = path;
-        final local = localByPath[path] ?? File('${vault.root.path}/$path');
-        final localExists = await local.exists();
+        progress('sync-file', path);
+        final localExists = await vault.storage.exists(path);
         final remoteFile = remote[path];
         final remoteTime = remoteFile?.modified;
-        final localTime = localExists ? await local.lastModified() : null;
-        final localHash = localExists ? await _sha256(local) : null;
+        final localStat = localExists ? await vault.storage.stat(path) : null;
+        final localHash = localExists ? await vault.storage.hash(path) : null;
         final prev = syncState[path];
-        final localChanged = prev?.localSha256 != null
-            ? localHash != prev!.localSha256
-            : _isChanged(localTime, prev?.localMillis);
-        final remoteChanged =
-            prev?.remoteEtag != null && remoteFile?.etag != null
-            ? _normEtag(remoteFile!.etag) != _normEtag(prev!.remoteEtag)
-            : _isChanged(remoteTime, prev?.remoteMillis);
-        var action = decideSyncAction(
-          localExists: localExists,
-          remoteExists: remoteFile != null,
-          localChanged: localChanged,
-          remoteChanged: remoteChanged,
-          hasSyncCursor: prev != null,
-          localMillis: localTime?.millisecondsSinceEpoch,
-          remoteMillis: remoteTime?.millisecondsSinceEpoch,
-        );
-        if (loadedState.recovered && localExists && remoteFile != null) {
-          action = SyncAction.conflict;
-        }
+        final remoteExists = remoteFile != null;
+        final localChanged = prev == null
+            ? localExists
+            : localHash != prev.localSha256;
+        final remoteChanged = prev == null
+            ? remoteExists
+            : !remoteExists ||
+                  (prev.remoteEtag != null && remoteFile.etag != null
+                      ? _normEtag(remoteFile.etag) != _normEtag(prev.remoteEtag)
+                      : _isChanged(remoteTime, prev.remoteMillis));
+        var action = SyncAction.skip;
         DateTime? uploadedRemoteTime;
         String? uploadedRemoteEtag;
         String? observedRemoteEtag;
         var reason = '';
-        if (action == SyncAction.download) {
-          await local.parent.create(recursive: true);
-          final download =
-              remoteFile?.length == 0 &&
-                  _protectFromEmpty(path) &&
-                  localExists &&
-                  await local.length() > 0
-              ? _DownloadResult(protected: true, etag: remoteFile?.etag)
-              : await _download(path, local, protectNonEmpty: true);
-          observedRemoteEtag = download.etag;
-          if (download.protected) {
-            uploadedRemoteEtag = await _upload(
-              path,
-              local,
-              localHash: localHash!,
-              remote: remoteFile,
-            );
-            uploadedRemoteTime = DateTime.now().toUtc();
-            action = SyncAction.upload;
-            up++;
-            repaired++;
-            reason = 'remote-empty-repaired';
-          } else {
-            down++;
-            reason = localTime == null ? 'local-missing' : 'remote-newer';
-          }
-        } else if (action == SyncAction.upload) {
-          try {
-            uploadedRemoteEtag = await _upload(
-              path,
-              local,
-              localHash: localHash!,
-              remote: remoteFile,
-            );
-            uploadedRemoteTime = DateTime.now().toUtc();
-            up++;
-            reason = remoteTime == null ? 'remote-missing' : 'local-newer';
-          } on _RemoteChanged {
-            final captured = await _saveRemoteConflictCopy(vault, path);
-            observedRemoteEtag = captured.etag;
-            if (await _sha256(captured.file) == localHash) {
-              await captured.file.delete();
-              action = SyncAction.skip;
-              skip++;
-              repaired++;
-              reason = 'same-content';
-            } else {
-              action = SyncAction.conflict;
-              conflict++;
-              reason = 'remote-changed-during-upload';
-            }
-          }
-        } else if (action == SyncAction.conflict) {
-          final captured = await _saveRemoteConflictCopy(vault, path);
-          final copy = captured.file;
+        if (unresolved.contains(path)) {
+          skip++;
+          reason = 'unresolved-conflict';
+        } else if ((prev == null && localExists && remoteExists) ||
+            (loadedState.recovered && localExists && remoteExists) ||
+            (prev != null &&
+                localChanged &&
+                remoteChanged &&
+                localExists &&
+                remoteExists)) {
+          final captured = await _captureRemote(path);
           observedRemoteEtag = captured.etag;
-          final remoteHash = await _sha256(copy);
-          if (remoteHash == localHash) {
-            await copy.delete();
+          if (await _sha256(captured.file) == localHash) {
+            await captured.file.delete();
             action = SyncAction.skip;
             skip++;
             repaired++;
             reason = 'same-content';
           } else if (_protectFromEmpty(path) &&
-              await copy.length() == 0 &&
-              await local.length() > 0) {
-            await copy.delete();
-            uploadedRemoteEtag = await _upload(
+              await captured.file.length() == 0 &&
+              (localStat?.size ?? 0) > 0) {
+            await captured.file.delete();
+            action = SyncAction.upload;
+            uploadedRemoteEtag = await _uploadStorage(
               path,
-              local,
+              vault.storage,
               localHash: localHash!,
               remote: remoteFile,
             );
             uploadedRemoteTime = DateTime.now().toUtc();
-            action = SyncAction.upload;
             up++;
             repaired++;
             reason = 'remote-empty-repaired';
           } else {
+            action = SyncAction.conflict;
+            await _storeConflict(
+              vault,
+              path,
+              localExists: true,
+              remoteExists: true,
+              remoteFile: remoteFile,
+              capturedRemote: captured.file,
+              observedRemoteEtag: observedRemoteEtag,
+            );
             conflict++;
-            reason = 'both-changed';
+            reason = prev == null ? 'first-sync-different' : 'both-changed';
+          }
+        } else if (prev != null && !localExists && remoteExists) {
+          if (remoteChanged || loadedState.recovered) {
+            action = SyncAction.conflict;
+            await _storeConflict(
+              vault,
+              path,
+              localExists: false,
+              remoteExists: true,
+              remoteFile: remoteFile,
+            );
+            conflict++;
+            reason = 'local-delete-remote-edit';
+          } else {
+            try {
+              action = SyncAction.deleteRemote;
+              await _deleteRemote(path, remoteFile.etag);
+              deletedRemote++;
+              reason = 'local-deleted';
+            } on _RemoteChanged {
+              action = SyncAction.conflict;
+              await _storeConflict(
+                vault,
+                path,
+                localExists: false,
+                remoteExists: true,
+                remoteFile: remoteFile,
+              );
+              conflict++;
+              reason = 'remote-changed-during-delete';
+            }
+          }
+        } else if (prev != null && localExists && !remoteExists) {
+          if (localChanged || loadedState.recovered) {
+            action = SyncAction.conflict;
+            await _storeConflict(
+              vault,
+              path,
+              localExists: true,
+              remoteExists: false,
+            );
+            conflict++;
+            reason = 'local-edit-remote-delete';
+          } else {
+            action = SyncAction.deleteLocal;
+            await vault.storage.delete(path);
+            deletedLocal++;
+            reason = 'remote-deleted';
+          }
+        } else if (!localExists && !remoteExists) {
+          syncState.remove(path);
+          skip++;
+          reason = 'both-missing';
+        } else if ((!localExists && remoteExists) ||
+            (remoteChanged && !localChanged)) {
+          action = SyncAction.download;
+          final download = await _downloadStorage(
+            path,
+            vault.storage,
+            protectNonEmpty: true,
+          );
+          observedRemoteEtag = download.etag;
+          if (download.protected) {
+            action = SyncAction.upload;
+            uploadedRemoteEtag = await _uploadStorage(
+              path,
+              vault.storage,
+              localHash: localHash!,
+              remote: remoteFile,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            up++;
+            repaired++;
+            reason = 'remote-empty-repaired';
+          } else {
+            down++;
+            reason = localExists ? 'remote-newer' : 'local-missing';
+          }
+        } else if ((localExists && !remoteExists) ||
+            (localChanged && !remoteChanged)) {
+          action = SyncAction.upload;
+          try {
+            uploadedRemoteEtag = await _uploadStorage(
+              path,
+              vault.storage,
+              localHash: localHash!,
+              remote: remoteFile,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            up++;
+            reason = remoteExists ? 'local-newer' : 'remote-missing';
+          } on _RemoteChanged {
+            action = SyncAction.conflict;
+            await _storeConflict(
+              vault,
+              path,
+              localExists: true,
+              remoteExists: true,
+              remoteFile: remoteFile,
+            );
+            conflict++;
+            reason = 'remote-changed-during-upload';
           }
         } else {
           skip++;
           reason = 'no-change';
         }
-        final nextLocalExists = await local.exists();
-        final nextLocal = nextLocalExists ? await local.lastModified() : null;
+        final nextLocalExists = await vault.storage.exists(path);
+        final nextLocal = nextLocalExists
+            ? await vault.storage.stat(path)
+            : null;
         final nextRemote = uploadedRemoteTime ?? remoteTime;
-        syncState[path] = SyncCursor(
-          localMillis: nextLocal?.millisecondsSinceEpoch,
-          remoteMillis: nextRemote?.millisecondsSinceEpoch,
-          localSha256: nextLocalExists ? await _sha256(local) : null,
-          remoteEtag: _normEtag(
-            uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
-          ),
-        );
+        if (action != SyncAction.conflict) {
+          final nextRemoteExists =
+              action != SyncAction.deleteRemote &&
+              (remoteExists || action == SyncAction.upload);
+          if (nextLocalExists && nextRemoteExists) {
+            syncState[path] = SyncCursor(
+              localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
+              remoteMillis: nextRemote?.millisecondsSinceEpoch,
+              localSha256: await vault.storage.hash(path),
+              remoteEtag: _normEtag(
+                uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
+              ),
+            );
+          } else if (!nextLocalExists && !nextRemoteExists) {
+            syncState.remove(path);
+          }
+        }
         decisions.add(
           SyncDecision(
             path: path,
             action: action,
             reason: reason,
-            localMillis: nextLocal?.millisecondsSinceEpoch,
+            localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
             remoteMillis: nextRemote?.millisecondsSinceEpoch,
           ),
         );
       }
 
-      stage = 'save-local-state';
-      currentPath = null;
+      progress('save-local-state');
       await _saveSyncState(vault, syncState);
       await _trace(vault, {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -329,6 +422,8 @@ class NextcloudSync {
         'skipped': skip,
         'conflicts': conflict,
         'repaired': repaired,
+        'deletedLocal': deletedLocal,
+        'deletedRemote': deletedRemote,
         'remoteCount': remoteCount,
         'decisions': decisions.map((decision) => decision.toJson()).toList(),
       });
@@ -340,6 +435,8 @@ class NextcloudSync {
         conflicts: conflict,
         remoteCount: remoteCount,
         repaired: repaired,
+        deletedLocal: deletedLocal,
+        deletedRemote: deletedRemote,
       );
     } catch (error) {
       await _trace(vault, {
@@ -356,22 +453,107 @@ class NextcloudSync {
         'skipped': skip,
         'conflicts': conflict,
         'repaired': repaired,
+        'deletedLocal': deletedLocal,
+        'deletedRemote': deletedRemote,
         'remoteCount': remoteCount,
         'decisions': decisions.map((decision) => decision.toJson()).toList(),
       });
       rethrow;
     } finally {
+      onProgress?.call('idle', null);
       _client.close(force: true);
     }
   }
 
-  Future<List<File>> _localFiles(Directory root) async {
-    final out = <File>[];
-    await for (final entity in root.list(recursive: true)) {
-      if (entity is! File || entity.path.endsWith('.tmp')) continue;
-      final path = _relativePath(root, entity);
+  Future<void> resolveConflict(
+    Vault vault,
+    SyncConflict conflict,
+    SyncConflictResolution resolution, {
+    String? mergedText,
+  }) async {
+    try {
+      final remote = await _remoteFiles();
+      final currentRemote = remote[conflict.path];
+      if (conflict.remoteExists != (currentRemote != null) ||
+          conflict.remoteEtag != null &&
+              _normEtag(currentRemote?.etag) !=
+                  _normEtag(conflict.remoteEtag)) {
+        throw StateError(
+          'Nextcloud changed again; run sync and review the new conflict',
+        );
+      }
+
+      String? remoteEtag;
+      if (resolution == SyncConflictResolution.keepRemote) {
+        if (conflict.remoteExists) {
+          await vault.storage.writeBytes(
+            conflict.path,
+            await vault.storage.readBytes(conflict.remoteSnapshot!),
+          );
+          remoteEtag = currentRemote?.etag;
+        } else {
+          await vault.storage.delete(conflict.path);
+        }
+      } else {
+        if (resolution == SyncConflictResolution.merge) {
+          if (mergedText == null || mergedText.trim().isEmpty) {
+            throw ArgumentError('Merged text cannot be empty');
+          }
+          await vault.storage.writeText(conflict.path, mergedText);
+        } else if (conflict.localExists) {
+          await vault.storage.writeBytes(
+            conflict.path,
+            await vault.storage.readBytes(conflict.localSnapshot!),
+          );
+        }
+        if (await vault.storage.exists(conflict.path)) {
+          remoteEtag = await _uploadStorage(
+            conflict.path,
+            vault.storage,
+            localHash: await vault.storage.hash(conflict.path),
+            remote: currentRemote,
+          );
+        } else if (currentRemote != null) {
+          await _deleteRemote(conflict.path, currentRemote.etag);
+        }
+      }
+
+      final state = await _loadSyncState(vault);
+      final localExists = await vault.storage.exists(conflict.path);
+      final remoteExists = resolution == SyncConflictResolution.keepRemote
+          ? conflict.remoteExists
+          : localExists;
+      if (localExists && remoteExists) {
+        final local = await vault.storage.stat(conflict.path);
+        state.cursors[conflict.path] = SyncCursor(
+          localMillis: local?.modified?.millisecondsSinceEpoch,
+          remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
+          localSha256: await vault.storage.hash(conflict.path),
+          remoteEtag: _normEtag(remoteEtag ?? currentRemote?.etag),
+        );
+      } else {
+        state.cursors.remove(conflict.path);
+      }
+      await _saveSyncState(vault, state.cursors);
+      for (final snapshot in [
+        conflict.localSnapshot,
+        conflict.remoteSnapshot,
+        conflict.recordPath,
+      ]) {
+        if (snapshot != null) await vault.storage.delete(snapshot);
+      }
+    } finally {
+      _client.close(force: true);
+    }
+  }
+
+  Future<List<String>> _localFiles(VaultStorage storage) async {
+    final out = <String>[];
+    for (final entity in await storage.list(recursive: true)) {
+      if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
+      final path = entity.path;
       if (_isSyncInternal(path)) continue;
-      out.add(entity);
+      out.add(path);
     }
     return out;
   }
@@ -486,6 +668,22 @@ class NextcloudSync {
         response.headers.value(HttpHeaders.etagHeader);
   }
 
+  Future<String?> _uploadStorage(
+    String path,
+    VaultStorage storage, {
+    required String localHash,
+    required _RemoteFile? remote,
+  }) async {
+    final file = await storage.materialize(path);
+    try {
+      return await _upload(path, file, localHash: localHash, remote: remote);
+    } finally {
+      if (storage.materializedFilesAreTemporary && await file.exists()) {
+        await file.delete();
+      }
+    }
+  }
+
   Future<_DownloadResult> _download(
     String path,
     File file, {
@@ -522,36 +720,111 @@ class NextcloudSync {
     }
   }
 
-  Future<({File file, String? etag})> _saveRemoteConflictCopy(
-    Vault vault,
+  Future<_DownloadResult> _downloadStorage(
     String path,
-  ) async {
-    final conflict = File(
-      '${vault.root.path}/$path.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
+    VaultStorage storage, {
+    bool protectNonEmpty = false,
+  }) async {
+    final temporary = await File(
+      '${Directory.systemTemp.path}/tylog-${DateTime.now().microsecondsSinceEpoch}.tmp',
+    ).create();
+    try {
+      final result = await _download(path, temporary);
+      if (protectNonEmpty &&
+          _protectFromEmpty(path) &&
+          await storage.exists(path) &&
+          (await storage.stat(path))!.size! > 0 &&
+          await temporary.length() == 0) {
+        return _DownloadResult(protected: true, etag: result.etag);
+      }
+      await storage.importFile(path, temporary);
+      return result;
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<({File file, String? etag})> _captureRemote(String path) async {
+    final file = await File(
+      '${Directory.systemTemp.path}/tylog-conflict-${DateTime.now().microsecondsSinceEpoch}.tmp',
+    ).create();
+    final result = await _download(path, file);
+    return (file: file, etag: result.etag);
+  }
+
+  Future<void> _storeConflict(
+    Vault vault,
+    String path, {
+    required bool localExists,
+    required bool remoteExists,
+    _RemoteFile? remoteFile,
+    File? capturedRemote,
+    String? observedRemoteEtag,
+  }) async {
+    final id = sha256
+        .convert(utf8.encode('$path:${DateTime.now().microsecondsSinceEpoch}'))
+        .toString()
+        .substring(0, 20);
+    final base = '.tylog/conflicts/$id';
+    if (localExists) {
+      await vault.storage.writeBytes(
+        '$base.local',
+        await vault.storage.readBytes(path),
+      );
+    }
+    File? temporary = capturedRemote;
+    if (remoteExists && temporary == null) {
+      final captured = await _captureRemote(path);
+      temporary = captured.file;
+      observedRemoteEtag ??= captured.etag;
+    }
+    try {
+      if (temporary != null) {
+        await vault.storage.importFile('$base.remote', temporary);
+      }
+    } finally {
+      if (temporary != null && await temporary.exists()) {
+        await temporary.delete();
+      }
+    }
+    final localStat = localExists ? await vault.storage.stat(path) : null;
+    await vault.storage.writeText(
+      '$base.json',
+      jsonEncode({
+        'id': id,
+        'path': path,
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+        'localExists': localExists,
+        'remoteExists': remoteExists,
+        'localModified': localStat?.modified?.millisecondsSinceEpoch,
+        'remoteModified': remoteFile?.modified.millisecondsSinceEpoch,
+        'remoteEtag': _normEtag(observedRemoteEtag ?? remoteFile?.etag),
+        if (localExists) 'localSnapshot': '$base.local',
+        if (remoteExists) 'remoteSnapshot': '$base.remote',
+      }),
     );
-    await conflict.parent.create(recursive: true);
-    final result = await _download(path, conflict);
-    return (file: conflict, etag: result.etag);
   }
 
   Future<int> _cleanResolvedConflictCopies(Vault vault) async {
     var cleaned = 0;
-    await for (final entity in vault.root.list(recursive: true)) {
-      if (entity is! File || !entity.path.contains('.remote-conflict-')) {
+    for (final entity in await vault.storage.list(recursive: true)) {
+      if (entity.isDirectory || !entity.path.contains('.remote-conflict-')) {
         continue;
       }
-      final relative = vault.relativePath(entity);
-      final original = File(
-        '${vault.root.path}/${relative.substring(0, relative.indexOf('.remote-conflict-'))}',
+      final relative = entity.path;
+      final original = relative.substring(
+        0,
+        relative.indexOf('.remote-conflict-'),
       );
-      if (!await original.exists()) continue;
+      if (!await vault.storage.exists(original)) continue;
       final duplicate =
-          await entity.length() == 0 &&
+          (entity.size ?? 0) == 0 &&
               _protectFromEmpty(vault.relativePath(original)) &&
-              await original.length() > 0 ||
-          await _sha256(entity) == await _sha256(original);
+              ((await vault.storage.stat(original))?.size ?? 0) > 0 ||
+          await vault.storage.hash(relative) ==
+              await vault.storage.hash(original);
       if (duplicate) {
-        await entity.delete();
+        await vault.storage.delete(relative);
         cleaned++;
       }
     }
@@ -567,6 +840,18 @@ class NextcloudSync {
     }
   }
 
+  Future<void> _ensureConfiguredFolder() async {
+    if (config.usesDirectWebDavUrl) {
+      await _mkcol(config.rootUri);
+      return;
+    }
+    var uri = config.filesUri;
+    for (final folder in config._remoteFolders) {
+      uri = uri.resolve('${Uri.encodeComponent(folder)}/');
+      await _mkcol(uri);
+    }
+  }
+
   Uri _remoteUri(String path) =>
       config.rootUri.resolveUri(Uri(pathSegments: path.split('/')));
 
@@ -577,6 +862,19 @@ class NextcloudSync {
     )).close().timeout(const Duration(seconds: 20));
     if (response.statusCode >= 400 && response.statusCode != 405) {
       throw HttpException('MKCOL ${response.statusCode}');
+    }
+  }
+
+  Future<void> _deleteRemote(String path, String? etag) async {
+    final request = await _open('DELETE', _remoteUri(path));
+    if (etag != null) request.headers.set(HttpHeaders.ifMatchHeader, etag);
+    final response = await request.close().timeout(const Duration(seconds: 60));
+    if (response.statusCode == HttpStatus.preconditionFailed) {
+      throw const _RemoteChanged();
+    }
+    if (response.statusCode >= 400 &&
+        response.statusCode != HttpStatus.notFound) {
+      throw HttpException('DELETE $path ${response.statusCode}');
     }
   }
 
@@ -599,23 +897,14 @@ class NextcloudSync {
   bool _isSyncInternal(String path) =>
       isSyncInternalPath(path) || !isSyncableVaultPath(path);
 
-  String _relativePath(Directory root, File file) {
-    final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
-        ? root.absolute.path
-        : '${root.absolute.path}${Platform.pathSeparator}';
-    return file.absolute.path
-        .substring(rootPath.length)
-        .replaceAll(Platform.pathSeparator, '/');
-  }
-
   Future<({Map<String, SyncCursor> cursors, bool recovered})> _loadSyncState(
     Vault vault,
   ) async {
-    final file = File('${vault.meta.path}/sync_state.json');
-    if (!await file.exists()) {
+    const path = '.tylog/sync_state.json';
+    if (!await vault.storage.exists(path)) {
       return (cursors: <String, SyncCursor>{}, recovered: false);
     }
-    final source = await file.readAsString();
+    final source = await vault.storage.readText(path);
     try {
       final decoded = jsonDecode(source);
       if (decoded is! Map || decoded['cursors'] is! Map) {
@@ -635,12 +924,12 @@ class NextcloudSync {
       return (cursors: cursors, recovered: false);
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
-      final modified = (await file.lastModified()).millisecondsSinceEpoch;
-      final archive = File(
-        '${vault.meta.path}/sync_state.corrupt-$modified.json',
-      );
-      if (!await archive.exists()) {
-        await archive.writeAsString(source, flush: true);
+      final modified =
+          (await vault.storage.stat(path))?.modified?.millisecondsSinceEpoch ??
+          DateTime.now().millisecondsSinceEpoch;
+      final archive = '.tylog/sync_state.corrupt-$modified.json';
+      if (!await vault.storage.exists(archive)) {
+        await vault.storage.writeText(archive, source);
       }
       return (cursors: <String, SyncCursor>{}, recovered: true);
     }
@@ -650,16 +939,12 @@ class NextcloudSync {
     Vault vault,
     Map<String, SyncCursor> state,
   ) async {
-    final file = File('${vault.meta.path}/sync_state.json');
-    await file.parent.create(recursive: true);
-    final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(
+    await vault.storage.writeText(
+      '.tylog/sync_state.json',
       const JsonEncoder.withIndent('  ').convert({
         'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
       }),
-      flush: true,
     );
-    await temporary.rename(file.path);
   }
 
   Future<void> _trace(Vault vault, Map<String, Object?> event) async {
@@ -671,26 +956,21 @@ class NextcloudSync {
   }
 
   Future<void> _appendTrace(Vault vault, Map<String, Object?> event) async {
-    final file = File('${vault.meta.path}/sync_trace.jsonl');
-    await file.parent.create(recursive: true);
-    if (await file.exists() && await file.length() > 512 * 1024) {
-      final bytes = await file.readAsBytes();
+    const path = '.tylog/sync_trace.jsonl';
+    var bytes = await vault.storage.exists(path)
+        ? await vault.storage.readBytes(path)
+        : <int>[];
+    if (bytes.length > 512 * 1024) {
       var start = bytes.length - 256 * 1024;
       while (start < bytes.length && bytes[start] != 10) {
         start++;
       }
-      final temporary = File('${file.path}.tmp');
-      await temporary.writeAsBytes(
-        bytes.sublist(start < bytes.length ? start + 1 : bytes.length),
-        flush: true,
-      );
-      await temporary.rename(file.path);
+      bytes = bytes.sublist(start < bytes.length ? start + 1 : bytes.length);
     }
-    await file.writeAsString(
-      '${jsonEncode(event)}\n',
-      mode: FileMode.append,
-      flush: true,
-    );
+    await vault.storage.writeBytes(path, [
+      ...bytes,
+      ...utf8.encode('${jsonEncode(event)}\n'),
+    ]);
   }
 }
 
@@ -782,7 +1062,112 @@ bool isNextcloudManagedVault(
               .contains('nextcloud'));
 }
 
-enum SyncAction { upload, download, skip, conflict }
+class SyncConflict {
+  const SyncConflict({
+    required this.id,
+    required this.path,
+    required this.recordPath,
+    required this.createdAt,
+    required this.localExists,
+    required this.remoteExists,
+    this.localSnapshot,
+    this.remoteSnapshot,
+    this.localModified,
+    this.remoteModified,
+    this.remoteEtag,
+  });
+
+  final String id;
+  final String path;
+  final String recordPath;
+  final DateTime createdAt;
+  final bool localExists;
+  final bool remoteExists;
+  final String? localSnapshot;
+  final String? remoteSnapshot;
+  final DateTime? localModified;
+  final DateTime? remoteModified;
+  final String? remoteEtag;
+
+  bool get isText => const {
+    '.typ',
+    '.yml',
+    '.yaml',
+    '.json',
+    '.txt',
+    '.md',
+    '.csv',
+  }.any(path.toLowerCase().endsWith);
+}
+
+Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
+  final conflicts = <SyncConflict>[];
+  for (final entry in await vault.storage.list(path: '.tylog/conflicts')) {
+    if (entry.isDirectory || !entry.path.endsWith('.json')) continue;
+    try {
+      final json = (jsonDecode(await vault.storage.readText(entry.path)) as Map)
+          .cast<String, Object?>();
+      conflicts.add(
+        SyncConflict(
+          id: json['id']! as String,
+          path: json['path']! as String,
+          recordPath: entry.path,
+          createdAt: DateTime.parse(json['createdAt']! as String),
+          localExists: json['localExists']! as bool,
+          remoteExists: json['remoteExists']! as bool,
+          localSnapshot: json['localSnapshot'] as String?,
+          remoteSnapshot: json['remoteSnapshot'] as String?,
+          localModified: json['localModified'] == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(
+                  (json['localModified'] as num).toInt(),
+                ),
+          remoteModified: json['remoteModified'] == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(
+                  (json['remoteModified'] as num).toInt(),
+                ),
+          remoteEtag: json['remoteEtag'] as String?,
+        ),
+      );
+    } catch (_) {
+      // A damaged record remains in diagnostics but cannot block every sync.
+    }
+  }
+  conflicts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return conflicts;
+}
+
+Future<void> createSyncConflict(
+  Vault vault,
+  String path, {
+  required List<int> localBytes,
+  required List<int> remoteBytes,
+}) async {
+  final id = sha256
+      .convert(utf8.encode('$path:${DateTime.now().microsecondsSinceEpoch}'))
+      .toString()
+      .substring(0, 20);
+  final base = '.tylog/conflicts/$id';
+  await vault.storage.writeBytes('$base.local', localBytes);
+  await vault.storage.writeBytes('$base.remote', remoteBytes);
+  await vault.storage.writeText(
+    '$base.json',
+    jsonEncode({
+      'id': id,
+      'path': path,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'localExists': true,
+      'remoteExists': true,
+      'localSnapshot': '$base.local',
+      'remoteSnapshot': '$base.remote',
+    }),
+  );
+}
+
+enum SyncConflictResolution { keepLocal, keepRemote, merge }
+
+enum SyncAction { upload, download, deleteLocal, deleteRemote, skip, conflict }
 
 class SyncResult {
   const SyncResult({
@@ -793,6 +1178,8 @@ class SyncResult {
     required this.conflicts,
     required this.remoteCount,
     this.repaired = 0,
+    this.deletedLocal = 0,
+    this.deletedRemote = 0,
   });
 
   final String trigger;
@@ -802,6 +1189,8 @@ class SyncResult {
   final int conflicts;
   final int remoteCount;
   final int repaired;
+  final int deletedLocal;
+  final int deletedRemote;
 
   @override
   String toString() =>

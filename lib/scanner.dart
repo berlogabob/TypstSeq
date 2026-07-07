@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'models.dart';
+import 'vault_storage.dart';
 
 const tylogHelperSource = '''// tylog-helper-version: 5
 #import "theme.typ" as theme
@@ -408,11 +409,25 @@ Future<VaultIndex> scanVault(
   bool force = false,
   void Function(int complete, int total)? onProgress,
   bool Function()? isCancelled,
+}) => scanVaultStorage(
+  LocalVaultStorage(root),
+  previous: previous,
+  force: force,
+  onProgress: onProgress,
+  isCancelled: isCancelled,
+);
+
+Future<VaultIndex> scanVaultStorage(
+  VaultStorage storage, {
+  VaultIndex? previous,
+  bool force = false,
+  void Function(int complete, int total)? onProgress,
+  bool Function()? isCancelled,
 }) async {
-  final files = <File>[];
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is! File || !entity.path.endsWith('.typ')) continue;
-    final relative = _relativePath(root, entity);
+  final files = <VaultStorageEntry>[];
+  for (final entity in await storage.list(recursive: true)) {
+    if (entity.isDirectory || !entity.path.endsWith('.typ')) continue;
+    final relative = entity.path;
     if (!const [
       'daily/',
       'notes/',
@@ -439,10 +454,9 @@ Future<VaultIndex> scanVault(
     for (var fileIndex = 0; fileIndex < files.length; fileIndex++) {
       if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
       final file = files[fileIndex];
-      final relative = _relativePath(root, file);
-      final stat = await file.stat();
+      final relative = file.path;
       final fingerprint =
-          '${stat.modified.millisecondsSinceEpoch}:${stat.size}';
+          '${file.modified?.millisecondsSinceEpoch ?? 0}:${file.size ?? 0}';
       final cached = previous?.notesByPath[relative];
       if (!force &&
           previous?.version == 5 &&
@@ -458,7 +472,7 @@ Future<VaultIndex> scanVault(
         onProgress?.call(fileIndex + 1, files.length);
         continue;
       }
-      final source = await file.readAsString();
+      final source = await storage.readText(relative);
       try {
         final queried = reader == null ? null : await reader.read(source);
         notes[relative] = queried?.note == null
@@ -466,14 +480,14 @@ Future<VaultIndex> scanVault(
                 relative,
                 source,
                 fingerprint: fingerprint,
-                modifiedMillis: stat.modified.millisecondsSinceEpoch,
+                modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
               )
             : _queriedNote(
                 relative,
                 source,
                 queried!,
                 fingerprint,
-                stat.modified.millisecondsSinceEpoch,
+                file.modified?.millisecondsSinceEpoch ?? 0,
               );
         tasks.addAll(
           queried == null
@@ -488,7 +502,7 @@ Future<VaultIndex> scanVault(
           relative,
           source,
           fingerprint: fingerprint,
-          modifiedMillis: stat.modified.millisecondsSinceEpoch,
+          modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
         );
         notes[relative] =
             cached?.copyWith(fingerprint: fingerprint) ?? fallback;
@@ -1047,12 +1061,3 @@ String _typstValue(Object? value) => switch (value) {
   List() => '(${value.map(_typstValue).join(', ')},)',
   _ => _typstString(value.toString()),
 };
-
-String _relativePath(Directory root, File file) {
-  final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
-      ? root.absolute.path
-      : '${root.absolute.path}${Platform.pathSeparator}';
-  return file.absolute.path
-      .substring(rootPath.length)
-      .replaceAll(Platform.pathSeparator, '/');
-}

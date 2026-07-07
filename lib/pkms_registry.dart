@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'models.dart';
 import 'scanner.dart';
+import 'vault_storage.dart';
 
 class PkmsValidationReport {
   const PkmsValidationReport({required this.problems});
@@ -16,14 +17,16 @@ class PkmsValidationReport {
       'warnings=${problems.where((p) => p.severity == PkmsSeverity.warning).length}';
 }
 
-Future<PkmsValidationReport> validatePkms(
-  Directory root,
+Future<PkmsValidationReport> validatePkms(Directory root, VaultIndex index) =>
+    validatePkmsStorage(LocalVaultStorage(root), index);
+
+Future<PkmsValidationReport> validatePkmsStorage(
+  VaultStorage storage,
   VaultIndex index,
 ) async {
   final problems = <PkmsProblem>[...index.problems];
-  final helper = File('${root.path}/_system/tylog.typ');
-  if (await helper.exists() &&
-      classifyTylogHelper(await helper.readAsString()) ==
+  if (await storage.exists('_system/tylog.typ') &&
+      classifyTylogHelper(await storage.readText('_system/tylog.typ')) ==
           TylogHelperKind.custom) {
     problems.add(
       const PkmsProblem(
@@ -60,7 +63,7 @@ Future<PkmsValidationReport> validatePkms(
             fix: 'Choose a path under assets/.',
           ),
         );
-      } else if (!await File('${root.path}/${attachment.path}').exists()) {
+      } else if (!await storage.exists(attachment.path)) {
         problems.add(
           PkmsProblem(
             code: 'missing-attachment',
@@ -74,24 +77,20 @@ Future<PkmsValidationReport> validatePkms(
     }
   }
 
-  if (await root.exists()) {
-    await for (final entity in root.list(recursive: true)) {
-      if (entity is! File || !entity.path.contains('.remote-conflict-')) {
-        continue;
-      }
-      final subject = entity.path
-          .substring(root.absolute.path.length + 1)
-          .replaceAll(Platform.pathSeparator, '/');
-      problems.add(
-        PkmsProblem(
-          code: 'sync-conflict',
-          severity: PkmsSeverity.error,
-          subject: subject,
-          message: 'A synced file has a conflict copy.',
-          fix: 'Tap to compare and merge the versions.',
-        ),
-      );
+  for (final entity in await storage.list(recursive: true)) {
+    if (entity.isDirectory || !entity.path.contains('.remote-conflict-')) {
+      continue;
     }
+    final subject = entity.path;
+    problems.add(
+      PkmsProblem(
+        code: 'sync-conflict',
+        severity: PkmsSeverity.error,
+        subject: subject,
+        message: 'A synced file has a conflict copy.',
+        fix: 'Tap to compare and merge the versions.',
+      ),
+    );
   }
 
   _duplicates(

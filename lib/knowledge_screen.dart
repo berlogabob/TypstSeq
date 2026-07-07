@@ -13,8 +13,6 @@ class KnowledgeScreen extends StatefulWidget {
     required this.search,
     required this.problems,
     required this.onOpenNote,
-    required this.onResolveConflict,
-    required this.onCleanSyncCaches,
     required this.onSetTaskStatus,
   });
 
@@ -23,8 +21,6 @@ class KnowledgeScreen extends StatefulWidget {
   final PkmsSearchIndex search;
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
-  final Future<void> Function(PkmsProblem) onResolveConflict;
-  final Future<void> Function() onCleanSyncCaches;
   final Future<void> Function(TaskRef, String) onSetTaskStatus;
 
   @override
@@ -195,17 +191,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
           ),
           isThreeLine: problem.fix != null,
-          onTap: problem.code == 'sync-conflict'
-              ? () async {
-                  await widget.onResolveConflict(problem);
-                  if (mounted) setState(() {});
-                }
-              : problem.code == 'sync-cache-conflicts'
-              ? () async {
-                  await widget.onCleanSyncCaches();
-                  if (mounted) setState(() {});
-                }
-              : null,
+          onTap: null,
         ),
     ],
   );

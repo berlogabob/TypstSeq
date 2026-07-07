@@ -33,7 +33,7 @@ void main() {
     final version = await appVersion();
 
     await tester.pumpWidget(const TyLogApp());
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('More actions'));
     await tester.pumpAndSettle();
@@ -42,8 +42,9 @@ void main() {
 
     expect(find.text('Settings'), findsWidgets);
     expect(find.text('Local folder'), findsOneWidget);
-    expect(find.text('Nextcloud settings'), findsOneWidget);
-    expect(find.text('Sync server status'), findsOneWidget);
+    expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Nextcloud settings'), findsNothing);
+    expect(find.text('Sync server status'), findsNothing);
     expect(find.text('App version'), findsOneWidget);
     await tester.pump();
     expect(find.text(version), findsOneWidget);
@@ -134,13 +135,12 @@ void main() {
     await tester.tap(find.byTooltip('More actions'));
     await tester.pumpAndSettle();
     expect(find.text('Graph'), findsOneWidget);
+    expect(find.text('Sync'), findsNothing);
   });
 
-  testWidgets('sync status opens details without raw telemetry', (
-    tester,
-  ) async {
+  testWidgets('sync status opens the full dashboard', (tester) async {
     await tester.pumpWidget(const TyLogApp());
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     final syncButton = find.byWidgetPredicate(
       (widget) =>
@@ -159,7 +159,13 @@ void main() {
     await tester.tap(syncButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Nextcloud sync'), findsOneWidget);
+    expect(find.text('Sync'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Diagnostics log'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Diagnostics log'), findsOneWidget);
     expect(find.textContaining('Sync('), findsNothing);
     expect(find.textContaining('↑'), findsNothing);
     expect(find.textContaining('↓'), findsNothing);
@@ -316,8 +322,9 @@ void main() {
     expect(find.text('Search notes, tasks, and attachments'), findsNothing);
   });
 
-  testWidgets('knowledge problems opens sync conflicts', (tester) async {
-    var opened = false;
+  testWidgets('knowledge problems does not resolve sync conflicts', (
+    tester,
+  ) async {
     const conflict = PkmsProblem(
       code: 'sync-conflict',
       severity: PkmsSeverity.warning,
@@ -329,28 +336,22 @@ void main() {
         home: _knowledgeScreen(
           initialView: KnowledgeView.problems,
           problems: const [conflict],
-          onResolveConflict: (_) async => opened = true,
         ),
       ),
     );
     expect(find.text('Both copies changed.'), findsOneWidget);
-    await tester.tap(find.text('Both copies changed.'));
-    await tester.pump();
-    expect(opened, isTrue);
+    expect(tester.widget<ListTile>(find.byType(ListTile).last).onTap, isNull);
   });
 }
 
 KnowledgeScreen _knowledgeScreen({
   KnowledgeView initialView = KnowledgeView.search,
   List<PkmsProblem> problems = const [],
-  Future<void> Function(PkmsProblem)? onResolveConflict,
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
   problems: problems,
   onOpenNote: (_) {},
-  onResolveConflict: onResolveConflict ?? (_) async {},
-  onCleanSyncCaches: () async {},
   onSetTaskStatus: (_, _) async {},
 );

@@ -1,6 +1,6 @@
 # TyLog
 
-TyLog is a local-first, Typst-first journal and research workspace for Android and macOS. Notes, projects, articles, tasks, dates, citations, attachments, and reports remain ordinary `.typ` files. JSON is limited to settings, sync state, and rebuildable indexes. An iOS host is included for iPad testing; iOS is not yet a release platform.
+TyLog is a local-first, Typst-first journal and research workspace for Android and macOS. Android vaults live in a user-selected folder with persisted Storage Access Framework permission; optional Nextcloud WebDAV sync remains available. Notes, projects, articles, tasks, dates, citations, attachments, and reports remain ordinary `.typ` files. JSON is limited to settings, sync state, conflict records, diagnostics, and rebuildable indexes. An iOS host is included for iPad testing; iOS is not yet a release platform.
 
 ## Development
 

@@ -73,19 +73,19 @@ Reports filter project, date range, kind, tags, article status, and task status.
 
 ## Nextcloud
 
-Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configured in Settings with server URL, login, and an app password.
+Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configured from Settings > Sync with server URL, login, and an app password.
 
-On first launch, Android asks whether to use private app storage, a chosen device folder, or Nextcloud. Nextcloud setup also asks for the remote folder; nested paths such as `Research/TyLog` are supported. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
+On first launch, Android requires a user-selected device folder and retains access through Android's Storage Access Framework. The selected folder is the authoritative vault and remains outside TyLog's private app container. Existing private vaults are copied and hash-verified before switching; the original is retained as a recovery backup. Nextcloud setup also asks for the remote folder, and nested paths such as `Research/TyLog` are created one segment at a time. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
 
-TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system`. It excludes `_index`, `.tylog` operational state, temporary files, and conflict caches. Autosave completes before sync. Checksums, atomic transfers, polling, repair, and conflict copies are retained.
+TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system`. It excludes `_index`, `.tylog` operational state, temporary files, and conflict snapshots. Autosave completes before sync. Checksums, conditional uploads/deletions, atomic transfers, polling, and repair are retained.
 
-When both copies changed, open Problems, select the conflict, compare device and Nextcloud versions, edit the final text, and save the resolution.
+The Sync dashboard shows the complete bounded diagnostic log, transfer/deletion totals, storage access, and unresolved conflicts. Text conflicts support editing a final version. Binary and delete-versus-edit conflicts offer explicit device/Nextcloud choices. Sync never overwrites a version whose remote ETag changed during resolution.
 
 ## Backup and troubleshooting
 
 Back up the complete vault. The authoritative data is the Typst content, assets, system files, and output sources/PDFs. `_index` can be deleted and rebuilt.
 
-If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If sync fails, verify HTTPS, credentials, remote folder permissions, and that the remote folder was created for v5.
+If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If folder permission is revoked, reselect the vault when prompted. If sync fails, open the Sync dashboard, inspect the failed stage, and verify HTTPS, credentials, and remote folder permissions.
 
 If an iPad run reports that no development certificates are available, open `ios/Runner.xcworkspace`, select Runner > Signing & Capabilities, sign in to Xcode, and choose a team. Then rerun `flutter run -d <device-id>`. This is host signing configuration, not a vault or application-data error.
 

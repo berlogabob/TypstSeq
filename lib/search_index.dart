@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'vault_storage.dart';
 
 class PkmsSearchResult {
   const PkmsSearchResult({
@@ -109,9 +110,20 @@ class PkmsSearchIndex {
   }
 
   static Future<PkmsSearchIndex> load(File file) async {
-    if (!await file.exists()) return empty();
+    final root = file.parent.parent;
+    final path = file.absolute.path
+        .substring(root.absolute.path.length + 1)
+        .replaceAll(Platform.pathSeparator, '/');
+    return loadStorage(LocalVaultStorage(root), path);
+  }
+
+  static Future<PkmsSearchIndex> loadStorage(
+    VaultStorage storage,
+    String path,
+  ) async {
+    if (!await storage.exists(path)) return empty();
     try {
-      final bytes = gzip.decode(await file.readAsBytes());
+      final bytes = gzip.decode(await storage.readBytes(path));
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
       if (json['version'] != 2) return empty();
       final documents = (json['documents'] as Map).map<String, _SearchDocument>(
@@ -130,6 +142,12 @@ class PkmsSearchIndex {
     Directory root,
     VaultIndex vault, {
     PkmsSearchIndex? previous,
+  }) => buildStorage(LocalVaultStorage(root), vault, previous: previous);
+
+  static Future<PkmsSearchIndex> buildStorage(
+    VaultStorage storage,
+    VaultIndex vault, {
+    PkmsSearchIndex? previous,
   }) async {
     final documents = <String, _SearchDocument>{};
     for (final note in vault.notes) {
@@ -138,7 +156,7 @@ class PkmsSearchIndex {
         documents[note.path] = cached!;
         continue;
       }
-      final source = await File('${root.path}/${note.path}').readAsString();
+      final source = await storage.readText(note.path);
       documents[note.path] = _SearchDocument(
         id: note.id,
         path: note.path,
@@ -193,7 +211,14 @@ class PkmsSearchIndex {
   }
 
   Future<void> save(File file) async {
-    await file.parent.create(recursive: true);
+    final root = file.parent.parent;
+    final path = file.absolute.path
+        .substring(root.absolute.path.length + 1)
+        .replaceAll(Platform.pathSeparator, '/');
+    await saveStorage(LocalVaultStorage(root), path);
+  }
+
+  Future<void> saveStorage(VaultStorage storage, String path) async {
     final data = utf8.encode(
       jsonEncode({
         'version': 2,
@@ -203,10 +228,7 @@ class PkmsSearchIndex {
         },
       }),
     );
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsBytes(gzip.encode(data), flush: true);
-    if (await file.exists()) await file.delete();
-    await tmp.rename(file.path);
+    await storage.writeBytes(path, gzip.encode(data));
   }
 
   List<PkmsSearchResult> search(

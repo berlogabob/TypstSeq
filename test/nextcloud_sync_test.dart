@@ -264,13 +264,11 @@ void main() {
 
     expect(await note.readAsString(), 'local note');
     expect(result.conflicts, 1);
-    final conflict =
-        await note.parent
-                .list()
-                .where((file) => file.path.contains('.remote-conflict-'))
-                .single
-            as File;
-    expect(await conflict.readAsString(), 'remote note');
+    final conflict = (await loadSyncConflicts(vault)).single;
+    expect(
+      await vault.storage.readText(conflict.remoteSnapshot!),
+      'remote note',
+    );
 
     final retry = await NextcloudSync(_config(server)).sync(vault);
     expect(retry.downloaded, 0);
@@ -312,13 +310,11 @@ void main() {
 
       expect(result.conflicts, 1);
       expect(await note.readAsString(), 'local note');
-      final conflict =
-          await note.parent
-                  .list()
-                  .where((file) => file.path.contains('.remote-conflict-'))
-                  .single
-              as File;
-      expect(await conflict.readAsString(), 'remote note');
+      final conflict = (await loadSyncConflicts(vault)).single;
+      expect(
+        await vault.storage.readText(conflict.remoteSnapshot!),
+        'remote note',
+      );
       expect(
         await vault.meta
             .list()
@@ -700,6 +696,167 @@ void main() {
       isTrue,
     );
   });
+
+  test('local deletion removes an unchanged remote file', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_delete_remote_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/delete.typ', 'delete me');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    await vault.storage.delete('notes/delete.typ');
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.deletedRemote, 1);
+    expect(remote.containsKey('notes/delete.typ'), isFalse);
+  });
+
+  test('remote deletion removes an unchanged local file', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_delete_local_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/delete.typ', 'delete me');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    remote.remove('notes/delete.typ');
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.deletedLocal, 1);
+    expect(await vault.storage.exists('notes/delete.typ'), isFalse);
+  });
+
+  test('delete versus edit creates a structured conflict', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_delete_conflict_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/delete.typ', 'original');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    await vault.storage.delete('notes/delete.typ');
+    remote['notes/delete.typ'] = _MutableRemoteFile(
+      bytes: utf8.encode('remote edit'),
+      etag: '"remote-edit"',
+      modified: DateTime.now().toUtc(),
+    );
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    final conflict = (await loadSyncConflicts(
+      vault,
+    )).singleWhere((item) => item.path == 'notes/delete.typ');
+
+    expect(result.conflicts, 1);
+    expect(conflict.localExists, isFalse);
+    expect(conflict.remoteExists, isTrue);
+    expect(
+      await vault.storage.readText(conflict.remoteSnapshot!),
+      'remote edit',
+    );
+  });
+
+  test('HTTP 412 during remote deletion becomes a conflict', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote, rejectDelete: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_delete_412_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/delete.typ', 'original');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    await vault.storage.delete('notes/delete.typ');
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.conflicts, 1);
+    expect(
+      (await loadSyncConflicts(
+        vault,
+      )).any((item) => item.path == 'notes/delete.typ'),
+      isTrue,
+    );
+  });
+
+  test('binary conflicts remain binary and preserve both snapshots', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'assets/data.bin': _MutableRemoteFile(
+        bytes: const [4, 5, 6],
+        etag: '"remote"',
+        modified: DateTime.now().toUtc(),
+      ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_binary_conflict_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeBytes('assets/data.bin', [1, 2, 3]);
+
+    await NextcloudSync(_config(server)).sync(vault);
+    final conflict = (await loadSyncConflicts(
+      vault,
+    )).singleWhere((item) => item.path == 'assets/data.bin');
+
+    expect(conflict.isText, isFalse);
+    expect(await vault.storage.readBytes(conflict.localSnapshot!), [1, 2, 3]);
+    expect(await vault.storage.readBytes(conflict.remoteSnapshot!), [4, 5, 6]);
+
+    await NextcloudSync(
+      _config(server),
+    ).resolveConflict(vault, conflict, SyncConflictResolution.keepRemote);
+    expect(await vault.storage.readBytes('assets/data.bin'), [4, 5, 6]);
+    expect(await loadSyncConflicts(vault), isEmpty);
+  });
+
+  test('nested configured folders are created one segment at a time', () async {
+    final created = <String>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      if (request.method == 'MKCOL') created.add(request.uri.path);
+      request.response.statusCode = request.method == 'PROPFIND' ? 207 : 201;
+      if (request.method == 'PROPFIND') {
+        request.response.write('<d:multistatus xmlns:d="DAV:"/>');
+      }
+      await request.response.close();
+    });
+    final dir = await Directory.systemTemp.createTemp('tylog_nested_remote_');
+    addTearDown(() => dir.delete(recursive: true));
+    final config = NextcloudConfig(
+      serverUrl: 'http://${server.address.address}:${server.port}',
+      username: 'alice',
+      password: 'secret',
+      remoteFolder: 'Research/TyLog',
+    );
+
+    await NextcloudSync(config).sync(Vault(dir));
+
+    expect(created.take(2), [
+      '/remote.php/dav/files/alice/Research/',
+      '/remote.php/dav/files/alice/Research/TyLog/',
+    ]);
+  });
 }
 
 NextcloudConfig _config(HttpServer server) => NextcloudConfig(
@@ -810,6 +967,7 @@ class _MutableRemoteFile {
 Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
   bool unquotedPutEtag = false,
+  bool rejectDelete = false,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
@@ -856,6 +1014,13 @@ Future<HttpServer> _mutableWebDavServer(
         unquotedPutEtag ? etag.replaceAll('"', '') : etag,
       );
       request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
+    } else if (request.method == 'DELETE') {
+      if (rejectDelete) {
+        request.response.statusCode = HttpStatus.preconditionFailed;
+      } else {
+        files.remove(path);
+        request.response.statusCode = HttpStatus.noContent;
+      }
     }
     await request.response.close();
   });

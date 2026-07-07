@@ -5,12 +5,16 @@ import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
 import 'scanner.dart';
+import 'vault_storage.dart';
 
 class Vault {
-  Vault(this.root);
+  Vault(Directory root) : storage = LocalVaultStorage(root);
+  Vault.withStorage(this.storage);
 
-  final Directory root;
+  final VaultStorage storage;
 
+  Directory get root => (storage as LocalVaultStorage).root;
+  Directory? get localRoot => storage is LocalVaultStorage ? root : null;
   Directory get daily => Directory('${root.path}/daily');
   Directory get notes => Directory('${root.path}/notes');
   Directory get projects => Directory('${root.path}/projects');
@@ -29,6 +33,14 @@ class Vault {
   File get bibliographyFile => File('${system.path}/bibliography.yml');
   File get settingsFile => File('${meta.path}/settings.json');
 
+  static const indexPath = '_index/index.json';
+  static const searchIndexPath = '_index/search-index.json.gz';
+  static const helperPath = '_system/tylog.typ';
+  static const themePath = '_system/theme.typ';
+  static const exportPath = '_system/export.typ';
+  static const bibliographyPath = '_system/bibliography.yml';
+  static const settingsPath = '.tylog/settings.json';
+
   static Future<Vault> openDefault() async {
     final base = await getApplicationDocumentsDirectory();
     final vault = Vault(defaultVaultDirectory(base));
@@ -37,64 +49,63 @@ class Vault {
   }
 
   Future<void> ensureCreated() async {
-    if (!await settingsFile.exists() && await _hasLegacyContent()) {
+    if (!await storage.exists(settingsPath) && await _hasLegacyContent()) {
       throw StateError(
         'This is not a TyLog v5 vault. Choose an empty folder; automatic migration is intentionally unsupported.',
       );
     }
-    for (final dir in [
-      root,
-      daily,
-      notes,
-      projects,
-      articles,
-      assets,
-      outputs,
-      system,
-      cache,
-      meta,
-      templates,
+    for (final path in [
+      'daily',
+      'notes',
+      'projects',
+      'articles',
+      'assets',
+      'outputs',
+      '_system',
+      '_index',
+      '.tylog',
+      '.tylog/conflicts',
+      '_system/templates',
     ]) {
-      if (!await dir.exists()) await dir.create(recursive: true);
+      await storage.createDirectory(path);
     }
-    if (!await settingsFile.exists()) {
-      await _writeFile(
-        settingsFile,
+    if (!await storage.exists(settingsPath)) {
+      await storage.writeText(
+        settingsPath,
         jsonEncode({'name': 'TyLogVault', 'version': 5}),
       );
     } else {
-      final settings = jsonDecode(await settingsFile.readAsString()) as Map;
+      final settings = jsonDecode(await storage.readText(settingsPath)) as Map;
       if (settings['version'] != 5) {
         throw StateError(
           'This vault uses schema ${settings['version']}; TyLog requires a new v5 vault.',
         );
       }
     }
-    if (!await helperFile.exists()) {
-      await _writeFile(helperFile, tylogHelperSource);
+    if (!await storage.exists(helperPath)) {
+      await storage.writeText(helperPath, tylogHelperSource);
     }
-    if (!await themeFile.exists()) {
-      await _writeFile(themeFile, tylogThemeSource);
+    if (!await storage.exists(themePath)) {
+      await storage.writeText(themePath, tylogThemeSource);
     }
-    if (!await exportFile.exists()) {
-      await _writeFile(exportFile, tylogExportSource);
+    if (!await storage.exists(exportPath)) {
+      await storage.writeText(exportPath, tylogExportSource);
     }
-    if (!await bibliographyFile.exists()) {
-      await _writeFile(bibliographyFile, '{}\n');
+    if (!await storage.exists(bibliographyPath)) {
+      await storage.writeText(bibliographyPath, '{}\n');
     }
   }
 
-  Future<File> todayNote([DateTime? now]) async {
+  Future<String> todayNote([DateTime? now]) async {
     final instant = now ?? DateTime.now();
     final day = _day(instant);
-    final month = Directory(
-      '${daily.path}/${instant.year.toString().padLeft(4, '0')}/${instant.month.toString().padLeft(2, '0')}',
-    );
-    if (!await month.exists()) await month.create(recursive: true);
-    final file = File('${month.path}/$day.typ');
-    if (!await file.exists()) {
-      await _writeFile(
-        file,
+    final month =
+        'daily/${instant.year.toString().padLeft(4, '0')}/${instant.month.toString().padLeft(2, '0')}';
+    await storage.createDirectory(month);
+    final path = '$month/$day.typ';
+    if (!await storage.exists(path)) {
+      await storage.writeText(
+        path,
         _noteSource(
           id: day,
           title: day,
@@ -104,40 +115,40 @@ class Vault {
         ),
       );
     }
-    return file;
+    return path;
   }
 
-  Future<File> page(
+  Future<String> page(
     String title, {
     String kind = 'note',
-    File? template,
+    String? template,
     DateTime? now,
   }) async {
     final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
     if (safe.isEmpty) throw ArgumentError('Page title is empty');
     final directory = switch (kind) {
-      'project' => projects,
-      'article' => articles,
-      _ => notes,
+      'project' => 'projects',
+      'article' => 'articles',
+      _ => 'notes',
     };
-    final file = File('${directory.path}/$safe.typ');
-    if (!await file.exists()) {
+    final path = '$directory/$safe.typ';
+    if (!await storage.exists(path)) {
       final id = await nextNoteId(title, now: now);
       final source = template == null
           ? _noteSource(id: id, title: title.trim(), kind: kind)
           : replaceNoteHeader(
-              await template.readAsString(),
+              await storage.readText(template),
               NoteMetadataDraft(id: id, title: title.trim(), kind: kind),
             );
-      await _writeFile(file, source);
+      await storage.writeText(path, source);
     }
-    return file;
+    return path;
   }
 
-  Future<File> project(String title, {DateTime? now}) =>
+  Future<String> project(String title, {DateTime? now}) =>
       page(title, kind: 'project', now: now);
 
-  Future<File> article(String title, {DateTime? now}) =>
+  Future<String> article(String title, {DateTime? now}) =>
       page(title, kind: 'article', now: now);
 
   Future<VaultIndex> rebuildIndex({
@@ -146,25 +157,25 @@ class Vault {
     bool Function()? isCancelled,
   }) async {
     final previous = await loadIndex();
-    final index = await scanVault(
-      root,
+    final index = await scanVaultStorage(
+      storage,
       previous: previous,
       force: force,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
-    await _writeFile(
+    await storage.writeText(
+      indexPath,
       const JsonEncoder.withIndent('  ').convert(index.toJson()),
-      indexFile,
     );
     return index;
   }
 
   Future<VaultIndex?> loadIndex() async {
-    if (!await indexFile.exists()) return null;
+    if (!await storage.exists(indexPath)) return null;
     try {
       return VaultIndex.fromJson(
-        (jsonDecode(await indexFile.readAsString()) as Map)
+        (jsonDecode(await storage.readText(indexPath)) as Map)
             .cast<String, Object?>(),
       );
     } catch (_) {
@@ -196,20 +207,19 @@ class Vault {
     return id;
   }
 
-  Future<void> saveNote(File file, String text) async {
-    if (file.path.endsWith('.typ') && text.trim().isEmpty) {
+  Future<void> saveNote(String path, String text) async {
+    if (path.endsWith('.typ') && text.trim().isEmpty) {
       throw ArgumentError('A TyLog note cannot be empty');
     }
-    await _writeFile(file, text);
+    await storage.writeText(path, text);
   }
 
   Future<bool> _hasLegacyContent() async {
-    if (!await root.exists()) return false;
-    await for (final entry in root.list()) {
-      final name = entry.path.split(Platform.pathSeparator).last;
+    for (final entry in await storage.list()) {
+      final name = entry.path.split('/').last;
       if (name == '.DS_Store') continue;
-      if (name == '.tylog' && entry is Directory) {
-        if (!await entry.list().isEmpty) return true;
+      if (name == '.tylog' && entry.isDirectory) {
+        if ((await storage.list(path: '.tylog')).isNotEmpty) return true;
         continue;
       }
       return true;
@@ -217,14 +227,23 @@ class Vault {
     return false;
   }
 
-  String relativePath(File file) {
+  String relativePath(Object value) {
+    if (value is String && !value.startsWith(storage.location)) {
+      return value.replaceAll('\\', '/');
+    }
+    final path = value is File ? value.absolute.path : value.toString();
+    if (storage is! LocalVaultStorage) return path.replaceAll('\\', '/');
     final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
         ? root.absolute.path
         : '${root.absolute.path}${Platform.pathSeparator}';
-    return file.absolute.path
+    return path
         .substring(rootPath.length)
         .replaceAll(Platform.pathSeparator, '/');
   }
+
+  Future<String> readText(String path) => storage.readText(path);
+  Future<List<int>> readBytes(String path) => storage.readBytes(path);
+  Future<bool> exists(String path) => storage.exists(path);
 }
 
 Directory defaultVaultDirectory(
@@ -253,16 +272,6 @@ Directory defaultVaultDirectory(
   }
 
   return Directory('${appDocuments.path}/TyLogVault');
-}
-
-Future<void> _writeFile(Object a, Object b) async {
-  final file = a is File ? a : b as File;
-  final text = a is String ? a : b as String;
-  await file.parent.create(recursive: true);
-  final tmp = File('${file.path}.tmp');
-  await tmp.writeAsString(text, flush: true);
-  if (await file.exists()) await file.delete();
-  await tmp.rename(file.path);
 }
 
 String _day(DateTime d) =>

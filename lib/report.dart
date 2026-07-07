@@ -5,6 +5,7 @@ import 'package:typst_flutter/typst_flutter.dart';
 
 import 'controlled_editor.dart';
 import 'models.dart';
+import 'vault_storage.dart';
 
 class ReportFilter {
   const ReportFilter({
@@ -81,48 +82,63 @@ Future<File> writeReport(
   VaultIndex index,
   ReportFilter filter,
 ) async {
+  final path = await writeReportStorage(
+    LocalVaultStorage(root),
+    title,
+    index,
+    filter,
+  );
+  return File('${root.path}/$path');
+}
+
+Future<String> writeReportStorage(
+  VaultStorage storage,
+  String title,
+  VaultIndex index,
+  ReportFilter filter,
+) async {
   final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
   if (safe.isEmpty) throw ArgumentError('Report title is empty');
-  final output = File('${root.path}/outputs/$safe.typ');
-  await output.parent.create(recursive: true);
-  final tmp = File('${output.path}.tmp');
-  await tmp.writeAsString(
+  final output = 'outputs/$safe.typ';
+  await storage.writeText(
+    output,
     generateReportSource(title, selectReportNotes(index, filter)),
-    flush: true,
   );
-  if (await output.exists()) await output.delete();
-  await tmp.rename(output.path);
   return output;
 }
 
 Future<File> exportReportPdf(Directory root, File report) async {
+  final path = report.absolute.path
+      .substring(root.absolute.path.length + 1)
+      .replaceAll(Platform.pathSeparator, '/');
+  final output = await exportReportPdfStorage(LocalVaultStorage(root), path);
+  return File('${root.path}/$output');
+}
+
+Future<String> exportReportPdfStorage(
+  VaultStorage storage,
+  String report,
+) async {
   final virtual = <String, Uint8List>{};
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is! File || entity.path.endsWith('.tmp')) continue;
-    final relative = entity.absolute.path
-        .substring(root.absolute.path.length + 1)
-        .replaceAll(Platform.pathSeparator, '/');
+  for (final entity in await storage.list(recursive: true)) {
+    if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
+    final relative = entity.path;
     if (relative.startsWith('_index/') || relative.startsWith('.tylog/')) {
       continue;
     }
-    final bytes = await entity.readAsBytes();
+    final bytes = await storage.readBytes(relative);
     virtual[relative] = bytes;
     virtual['/$relative'] = bytes;
   }
   final compiler = await TypstCompiler.create();
   try {
     final document = await compiler.compile(
-      source: await report.readAsString(),
+      source: await storage.readText(report),
       files: FileSource.bytes(virtual),
     );
     try {
-      final output = File(
-        '${report.path.substring(0, report.path.length - 4)}.pdf',
-      );
-      final tmp = File('${output.path}.tmp');
-      await tmp.writeAsBytes(await document.exportPdf(), flush: true);
-      if (await output.exists()) await output.delete();
-      await tmp.rename(output.path);
+      final output = '${report.substring(0, report.length - 4)}.pdf';
+      await storage.writeBytes(output, await document.exportPdf());
       return output;
     } finally {
       document.dispose();

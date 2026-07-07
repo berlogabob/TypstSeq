@@ -84,9 +84,9 @@ void main() {
     expect(vault.relativePath(note), 'notes/Моя заметка.typ');
     expect(vault.relativePath(project), 'projects/PhD Thesis.typ');
     expect(vault.relativePath(article), 'articles/Smith 2026.typ');
-    expect(await daily.readAsString(), contains('kind: "daily"'));
-    expect(await project.readAsString(), contains('kind: "project"'));
-    expect(await article.readAsString(), contains('kind: "article"'));
+    expect(await vault.readText(daily), contains('kind: "daily"'));
+    expect(await vault.readText(project), contains('kind: "project"'));
+    expect(await vault.readText(article), contains('kind: "article"'));
   });
 
   test(
@@ -98,9 +98,9 @@ void main() {
       await vault.ensureCreated();
       final page = await vault.page('Fast Win');
       await vault.saveNote(page, 'keep me');
-      expect((await vault.page('Fast Win')).path, page.path);
-      expect(await page.readAsString(), 'keep me');
-      expect(await File('${page.path}.tmp').exists(), isFalse);
+      expect(await vault.page('Fast Win'), page);
+      expect(await vault.readText(page), 'keep me');
+      expect(await File('${dir.path}/$page.tmp').exists(), isFalse);
     },
   );
 
@@ -110,9 +110,9 @@ void main() {
     final vault = Vault(dir);
     await vault.ensureCreated();
     final note = await vault.todayNote(DateTime(2026, 7, 4));
-    final original = await note.readAsString();
+    final original = await vault.readText(note);
     await expectLater(vault.saveNote(note, '  \n'), throwsArgumentError);
-    expect(await note.readAsString(), original);
+    expect(await vault.readText(note), original);
   });
 
   test('index is deterministic and rebuilds v5 backlinks', () async {

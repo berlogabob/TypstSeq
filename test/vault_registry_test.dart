@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,4 +99,32 @@ void main() {
     expect(registry.onboardingComplete, isTrue);
     expect(await file.readAsString(), contains('"onboardingComplete":true'));
   });
+
+  test(
+    'registry reads legacy paths and writes typed Android tree locations',
+    () {
+      final legacy = VaultEntry.fromJson({
+        'id': 'legacy',
+        'name': 'Legacy',
+        'path': '/old/vault',
+      });
+      expect(legacy.storageKind, 'local-path');
+      expect(legacy.path, '/old/vault');
+
+      const tree = VaultEntry(
+        id: 'tree',
+        name: 'TyLog',
+        path: '',
+        storageKind: 'android-tree',
+        treeUri: 'content://provider/tree/primary%3ADocuments%2FTyLog',
+        backupPath: '/private/TyLogVault',
+      );
+      final restored = VaultEntry.fromJson(
+        (jsonDecode(jsonEncode(tree.toJson())) as Map).cast<String, Object?>(),
+      );
+      expect(restored.storageKind, 'android-tree');
+      expect(restored.treeUri, tree.treeUri);
+      expect(restored.backupPath, '/private/TyLogVault');
+    },
+  );
 }

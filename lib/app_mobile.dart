@@ -22,6 +22,7 @@ import 'search_index.dart';
 import 'task_scheduler.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
+import 'vault_storage.dart';
 
 Future<String> appVersion() async =>
     RegExp(r'^version:\s*(.+)$', multiLine: true)
@@ -62,7 +63,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Vault? vault;
   VaultIndex? index;
-  File? note;
+  String? note;
   final sourceController = TextEditingController();
   late final TyLogEditingController richController;
   Timer? autosave;
@@ -77,10 +78,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
   SyncResult? lastSync;
+  List<SyncConflict> syncConflicts = const [];
   DateTime? lastSyncAt;
   String? syncError;
   String? selectedTag;
   bool syncing = false;
+  String? syncStage;
+  bool? storageHealthy;
   bool autosaveDeferred = false;
   Completer<void>? syncCompletion;
   bool rebuilding = false;
@@ -122,10 +126,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
+      if (Platform.isAndroid) {
+        if (registry.entries.isEmpty) {
+          if (!await _pickVault(closeCurrent: false)) {
+            if (mounted) {
+              setState(() => status = 'Choose a vault folder to continue');
+            }
+            return;
+          }
+        } else if (registry.active.storageKind != 'android-tree') {
+          if (!await _migrateAndroidVault(registry.active)) {
+            if (mounted) {
+              setState(() => status = 'Choose a vault folder to continue');
+            }
+            return;
+          }
+        }
+      }
       var active = registry.active;
       try {
-        await Vault(Directory(active.path)).ensureCreated();
+        await Vault.withStorage(active.storage).ensureCreated();
+      } on PlatformException {
+        if (active.storageKind != 'android-tree') rethrow;
+        final selection = await AndroidTreeVaultStorage.pick();
+        if (selection == null) {
+          setState(
+            () => status = 'Folder access is required to open this vault',
+          );
+          return;
+        }
+        active = await registry.rebindTree(active, selection);
+        await Vault.withStorage(active.storage).ensureCreated();
       } on StateError {
+        if (active.storageKind == 'android-tree') rethrow;
         var path = '${active.path}-v5';
         var suffix = 2;
         while (await Directory(path).exists()) {
@@ -140,9 +173,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await registry.select(active);
       }
       await _openVault(active, trigger: 'startup');
-      if (Platform.isAndroid && !registry.onboardingComplete && mounted) {
-        await _showAndroidOnboarding(registry);
-      }
+      if (!registry.onboardingComplete) await registry.completeOnboarding();
     } catch (e) {
       setState(() => status = 'Open failed: $e');
     }
@@ -153,15 +184,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       autosave?.cancel();
       cloudAutosave?.cancel();
       cloudPoll?.cancel();
-      final v = Vault(Directory(entry.path));
+      final v = Vault.withStorage(entry.storage);
       await v.ensureCreated();
       // ponytail: offline-first — render local vault immediately, sync in background
-      final openStatus = 'Vault: ${v.root.path}';
+      final openStatus = 'Vault: ${v.storage.displayName}';
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
-      final loadedHelper = await v.helperFile.readAsString();
-      _loadSource(await today.readAsString());
+      final loadedHelper = await v.storage.readText(Vault.helperPath);
+      final conflicts = await loadSyncConflicts(v);
+      _loadSource(await v.storage.readText(today));
       setState(() {
         vault = v;
         note = today;
@@ -172,8 +204,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         cloud = entry.cloud;
         selectedTag = null;
         lastSync = null;
+        syncConflicts = conflicts;
         lastSyncAt = null;
         syncError = null;
+        storageHealthy = null;
         if (trigger != 'startup') mode = 'today';
         status = '$openStatus · ${pkms.report.summary()}';
       });
@@ -191,10 +225,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Vault v,
     VaultIndex ix,
   ) async {
-    final report = await validatePkms(v.root, ix);
-    final cached = await PkmsSearchIndex.load(v.searchIndexFile);
-    final search = await PkmsSearchIndex.build(v.root, ix, previous: cached);
-    await search.save(v.searchIndexFile);
+    final report = await validatePkmsStorage(v.storage, ix);
+    final cached = await PkmsSearchIndex.loadStorage(
+      v.storage,
+      Vault.searchIndexPath,
+    );
+    final search = await PkmsSearchIndex.buildStorage(
+      v.storage,
+      ix,
+      previous: cached,
+    );
+    await search.saveStorage(v.storage, Vault.searchIndexPath);
     return (report: report, search: search);
   }
 
@@ -207,7 +248,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _pickVault({bool closeCurrent = true}) async {
-    if (closeCurrent) Navigator.pop(context);
+    if (closeCurrent && Navigator.canPop(context)) Navigator.pop(context);
+    if (Platform.isAndroid) {
+      final selection = await AndroidTreeVaultStorage.pick();
+      if (selection == null) return false;
+      final storage = AndroidTreeVaultStorage(
+        uri: selection.uri,
+        name: selection.name,
+      );
+      try {
+        final next = Vault.withStorage(storage);
+        await next.ensureCreated();
+        final registry = vaultRegistry!;
+        final entry = await registry.addTree(selection);
+        await registry.select(entry);
+        await _openVault(entry);
+        return true;
+      } catch (error) {
+        if (mounted) {
+          setState(() => status = 'Could not open selected folder: $error');
+        }
+        return false;
+      }
+    }
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Choose vault folder',
     );
@@ -232,47 +295,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> _showAndroidOnboarding(VaultRegistry registry) async {
-    final choice = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: SimpleDialog(
-          title: const Text('Where should TyLog store your vault?'),
-          children: [
-            ListTile(
-              leading: const Icon(Icons.phone_android),
-              title: const Text('Private app storage'),
-              subtitle: const Text('Keep the vault only inside TyLog.'),
-              onTap: () => Navigator.pop(context, 'app'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open),
-              title: const Text('Choose a device folder'),
-              subtitle: const Text('Select an existing or empty folder.'),
-              onTap: () => Navigator.pop(context, 'folder'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_outlined),
-              title: const Text('Connect Nextcloud'),
-              subtitle: const Text(
-                'Keep a local copy and sync it to a remote folder.',
-              ),
-              onTap: () => Navigator.pop(context, 'nextcloud'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    final complete = switch (choice) {
-      'app' => true,
-      'folder' => await _pickVault(closeCurrent: false),
-      'nextcloud' => await _showSyncSettings(),
-      _ => false,
-    };
-    if (complete) await registry.completeOnboarding();
+  Future<bool> _migrateAndroidVault(VaultEntry entry) async {
+    final selection = await AndroidTreeVaultStorage.pick();
+    if (selection == null) return false;
+    try {
+      final migrated = await vaultRegistry!.migrateToTree(entry, selection);
+      await vaultRegistry!.select(migrated);
+      return true;
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => status = 'Vault migration failed; original kept: $error',
+        );
+      }
+      return false;
+    }
   }
 
   Future<void> _forgetVault(VaultEntry entry) async {
@@ -398,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await v.saveNote(n, source);
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
-      final editorUnchanged = revision == editRevision && identical(n, note);
+      final editorUnchanged = revision == editRevision && n == note;
       setState(() {
         index = _retainIndex(ix);
         validation = _retainValidation(pkms.report);
@@ -410,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
       if (syncAfter && editorUnchanged) _queueCloudSync();
     } catch (e) {
-      if (revision == editRevision && identical(n, note)) {
+      if (revision == editRevision && n == note) {
         setState(() => status = 'Save failed: $e');
       }
     }
@@ -438,7 +475,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  bool get _hasSyncConflicts => (validation?.count('sync-conflict') ?? 0) > 0;
+  bool get _hasSyncConflicts => syncConflicts.isNotEmpty;
 
   void _queueAutosave() {
     setState(() {
@@ -509,17 +546,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (updated != null) richController.replaceProtected(id, updated);
   }
 
-  Future<void> _openNote(File file) async {
+  Future<void> _openNote(String path) async {
     final v = vault;
     if (v == null) return;
     if (dirty) await _save();
-    final source = await file.readAsString();
+    final source = await v.storage.readText(path);
     _loadSource(source);
     setState(() {
-      note = file;
+      note = path;
       dirty = false;
       mode = 'normal';
-      status = 'Opened ${v.relativePath(file)}';
+      status = 'Opened $path';
     });
   }
 
@@ -534,12 +571,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final existing = _pathForLink(title);
     if (existing != null) {
-      await _openNote(File('${v.root.path}/$existing'));
+      await _openNote(existing);
       return;
     }
     final file = await v.page(title);
     await _openNote(file);
-    setState(() => status = 'Created ${v.relativePath(file)}');
+    setState(() => status = 'Created $file');
   }
 
   Future<void> _newPage() async {
@@ -558,16 +595,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  Future<File?> _chooseTemplate(Vault v) async {
-    final templates = await v.templates
-        .list()
-        .where((entity) => entity is File && entity.path.endsWith('.typ'))
-        .cast<File>()
-        .toList();
-    templates.sort((a, b) => a.path.compareTo(b.path));
+  Future<String?> _chooseTemplate(Vault v) async {
+    final templates =
+        (await v.storage.list(path: '_system/templates'))
+            .where(
+              (entity) => !entity.isDirectory && entity.path.endsWith('.typ'),
+            )
+            .map((entity) => entity.path)
+            .toList()
+          ..sort();
     if (templates.isEmpty) return null;
     if (!mounted) return null;
-    return showDialog<File?>(
+    return showDialog<String?>(
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Choose template'),
@@ -579,7 +618,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           for (final file in templates)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, file),
-              child: Text(file.path.split(Platform.pathSeparator).last),
+              child: Text(file.split('/').last),
             ),
         ],
       ),
@@ -722,12 +761,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialView: initialView,
           index: ix,
           search: searchIndex,
-          problems: validation?.problems ?? ix.problems,
+          problems: (validation?.problems ?? ix.problems)
+              .where((problem) => !problem.code.startsWith('sync-'))
+              .toList(),
           onOpenNote: _openPath,
-          onResolveConflict: (problem) async {
-            await _resolveConflict(problem);
-          },
-          onCleanSyncCaches: _cleanSyncCaches,
           onSetTaskStatus: _setTaskStatus,
         ),
       ),
@@ -737,8 +774,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
     final v = vault;
     if (v == null) return;
-    final file = File('${v.root.path}/${task.notePath}');
-    final source = await file.readAsString();
+    final file = task.notePath;
+    final source = await v.storage.readText(file);
     await v.saveNote(
       file,
       task.recurrence != null && nextStatus == 'done'
@@ -750,19 +787,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : replaceTaskStatus(source, task.id, nextStatus),
     );
     await _rebuildIndex();
-  }
-
-  Future<void> _refreshPkms(String message) async {
-    final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    final pkms = await _readPkms(v, ix);
-    if (!mounted) return;
-    setState(() {
-      validation = _retainValidation(pkms.report);
-      searchIndex.replaceWith(pkms.search);
-      status = '$message · ${pkms.report.summary()}';
-    });
   }
 
   PkmsValidationReport _retainValidation(PkmsValidationReport next) {
@@ -862,13 +886,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (syncing) return;
-    if (isNextcloudManagedVault(v.root)) {
+    if (v.localRoot case final root? when isNextcloudManagedVault(root)) {
       setState(() => status = 'Sync handled by Nextcloud Desktop');
       return;
     }
     syncCompletion = Completer<void>();
-    PkmsProblem? pendingConflict;
-    Object? failure;
     setState(() {
       syncing = true;
       syncError = null;
@@ -883,277 +905,75 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : _currentSource();
       final revisionBeforeSync = editRevision;
-      final result = await NextcloudSync(cfg).sync(v, trigger: trigger);
+      final result = await NextcloudSync(
+        cfg,
+        onProgress: (stage, path) {
+          if (!mounted) return;
+          setState(() => syncStage = path == null ? stage : '$stage · $path');
+        },
+      ).sync(v, trigger: trigger);
       var concurrentConflict = false;
       if (syncedNote != null &&
-          identical(syncedNote, note) &&
-          await syncedNote.exists()) {
-        final diskSource = await syncedNote.readAsString();
+          syncedNote == note &&
+          await v.storage.exists(syncedNote)) {
+        final diskSource = await v.storage.readText(syncedNote);
         if (diskSource != sourceBeforeSync) {
           if (revisionBeforeSync == editRevision && !dirty) {
             _loadSource(diskSource);
           } else {
-            final conflict = File(
-              '${syncedNote.path}.remote-conflict-${DateTime.now().millisecondsSinceEpoch}',
+            await createSyncConflict(
+              v,
+              syncedNote,
+              localBytes: utf8.encode(_currentSource()),
+              remoteBytes: utf8.encode(diskSource),
             );
-            await conflict.writeAsString(diskSource, flush: true);
             concurrentConflict = true;
           }
         }
       }
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
-      for (final problem in pkms.report.problems) {
-        if (problem.code == 'sync-conflict') {
-          pendingConflict = problem;
-          break;
-        }
-      }
+      final conflicts = await loadSyncConflicts(v);
       setState(() {
         index = _retainIndex(ix);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         lastSync = result;
         lastSyncAt = DateTime.now();
-        final changed = result.uploaded + result.downloaded + result.repaired;
-        status = result.conflicts > 0 || concurrentConflict
+        syncConflicts = conflicts;
+        final changed =
+            result.uploaded +
+            result.downloaded +
+            result.deletedLocal +
+            result.deletedRemote +
+            result.repaired;
+        status = conflicts.isNotEmpty || concurrentConflict
             ? 'Needs attention'
             : changed == 0
             ? 'Up to date'
             : 'Synced';
       });
     } catch (e, stack) {
-      failure = e;
       debugPrintStack(label: 'Nextcloud sync failed: $e', stackTrace: stack);
-      try {
-        await for (final entity in v.root.list(recursive: true)) {
-          if (entity is File && entity.path.contains('.remote-conflict-')) {
-            pendingConflict = PkmsProblem(
-              code: 'sync-conflict',
-              severity: PkmsSeverity.error,
-              subject: v.relativePath(entity),
-              message: 'Both this device and Nextcloud changed the file.',
-            );
-            break;
-          }
-        }
-      } catch (_) {}
+      final conflicts = await loadSyncConflicts(v);
       if (mounted) {
         setState(() {
-          syncError = pendingConflict == null ? _friendlySyncError(e) : null;
-          status = pendingConflict == null ? syncError! : 'Needs attention';
+          syncConflicts = conflicts;
+          syncError = conflicts.isEmpty ? _friendlySyncError(e) : null;
+          status = conflicts.isEmpty ? syncError! : 'Needs attention';
         });
       }
     } finally {
-      if (mounted) setState(() => syncing = false);
+      if (mounted) {
+        setState(() {
+          syncing = false;
+          syncStage = null;
+        });
+      }
       syncCompletion?.complete();
       syncCompletion = null;
     }
     if (!mounted) return;
-    if (pendingConflict != null) {
-      PkmsProblem? next = pendingConflict;
-      while (next != null && await _resolveConflict(next)) {
-        next = _nextSyncConflict();
-      }
-    } else if (failure != null && trigger == 'manual') {
-      _showSyncDetails(0);
-    }
-  }
-
-  PkmsProblem? _nextSyncConflict() {
-    for (final problem in validation?.problems ?? const <PkmsProblem>[]) {
-      if (problem.code == 'sync-conflict') return problem;
-    }
-    return null;
-  }
-
-  Future<bool> _resolveConflict(PkmsProblem problem) async {
-    final v = vault;
-    if (v == null) return false;
-    final marker = problem.subject.indexOf('.remote-conflict-');
-    if (marker < 0) return false;
-    final conflict = File('${v.root.path}/${problem.subject}');
-    final original = File(
-      '${v.root.path}/${problem.subject.substring(0, marker)}',
-    );
-    if (!await conflict.exists()) {
-      await _refreshPkms('Conflict no longer exists');
-      return true;
-    }
-    final localText = await original.exists()
-        ? await original.readAsString()
-        : '';
-    final remoteText = await conflict.readAsString();
-    if (localText == remoteText ||
-        (localText.trim().isNotEmpty && remoteText.trim().isEmpty)) {
-      await conflict.delete();
-      await _refreshPkms(
-        localText == remoteText
-            ? 'Identical conflict copy removed'
-            : 'Empty conflict copy removed; local note kept',
-      );
-      _queueCloudSync();
-      return true;
-    }
-    final localModified = await original.exists()
-        ? await original.lastModified()
-        : null;
-    final remoteModified = await conflict.lastModified();
-    if (!mounted) return false;
-    final merged = TextEditingController(text: localText);
-    final selectedVersion = ValueNotifier<String?>('local');
-    final save = await showDialog<bool>(
-      context: context,
-      builder: (context) => Dialog.fullscreen(
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('Resolve sync conflict'),
-            leading: IconButton(
-              tooltip: 'Cancel',
-              onPressed: () => Navigator.pop(context, false),
-              icon: const Icon(Icons.close),
-            ),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                v.relativePath(original),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Both copies changed. Compare the highlighted sections, choose a version, or edit the final result.',
-              ),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<String?>(
-                valueListenable: selectedVersion,
-                builder: (context, selected, _) => LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cards = [
-                      _ConflictVersionCard(
-                        title: 'This device',
-                        text: localText,
-                        otherText: remoteText,
-                        modified: localModified,
-                        newer:
-                            localModified != null &&
-                            localModified.isAfter(remoteModified),
-                        selected: selected == 'local',
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        onUse: () {
-                          selectedVersion.value = 'local';
-                          merged.text = localText;
-                        },
-                      ),
-                      _ConflictVersionCard(
-                        title: 'Nextcloud copy',
-                        text: remoteText,
-                        otherText: localText,
-                        modified: remoteModified,
-                        newer:
-                            localModified == null ||
-                            remoteModified.isAfter(localModified),
-                        selected: selected == 'remote',
-                        color: Theme.of(context).colorScheme.tertiaryContainer,
-                        onUse: () {
-                          selectedVersion.value = 'remote';
-                          merged.text = remoteText;
-                        },
-                      ),
-                    ];
-                    if (constraints.maxWidth < 700) {
-                      return Column(
-                        children: [
-                          cards.first,
-                          const SizedBox(height: 12),
-                          cards.last,
-                        ],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: cards.first),
-                        const SizedBox(width: 12),
-                        Expanded(child: cards.last),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Final version',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'This is what will be saved and synced to your other devices.',
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: merged,
-                minLines: 12,
-                maxLines: null,
-                style: const TextStyle(fontFamily: 'monospace'),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                  labelText: 'Edit final version',
-                ),
-              ),
-            ],
-          ),
-          bottomNavigationBar: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.pop(context, true),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Save resolution'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    if (save == true) {
-      await v.saveNote(original, merged.text);
-      await conflict.delete();
-      await _refreshPkms('Conflict resolved');
-      _queueCloudSync();
-    }
-    selectedVersion.dispose();
-    merged.dispose();
-    return save == true;
-  }
-
-  Future<void> _cleanSyncCaches() async {
-    final v = vault;
-    if (v == null) return;
-    await for (final entity in v.root.list(recursive: true)) {
-      if (entity is! File) continue;
-      final path = v.relativePath(entity);
-      final marker = path.indexOf('.remote-conflict-');
-      if (marker < 0) continue;
-      final original = path.substring(0, marker);
-      if (original == '_index/index.json' ||
-          original == '_index/search-index.json.gz') {
-        await entity.delete();
-      }
-    }
-    await _refreshPkms('Old sync caches removed');
   }
 
   Future<bool> _showSyncSettings() async {
@@ -1288,7 +1108,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: _SettingsSheet(
-            vaultPath: v?.root.path ?? 'Opening vault...',
+            vaultPath: v?.storage.location ?? 'Opening vault...',
             cloud: cloud,
             syncing: syncing,
             vaults: vaultRegistry?.entries ?? const [],
@@ -1308,7 +1128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
             onNextcloud: () {
               Navigator.pop(context);
-              unawaited(_showSyncSettings());
+              unawaited(_showSyncDashboard());
             },
             onEnableReminders: () async {
               await taskScheduler.requestPermission();
@@ -1380,7 +1200,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openAttachment(String path) async {
     final v = vault;
     if (v == null || !isSafeVaultPath(path)) return;
-    final result = await OpenFile.open('${v.root.path}/$path');
+    if (v.storage is AndroidTreeVaultStorage) {
+      try {
+        await v.storage.open(path);
+      } catch (error) {
+        if (mounted) setState(() => status = 'Could not open file: $error');
+      }
+      return;
+    }
+    final result = await OpenFile.open('${v.localRoot!.path}/$path');
     if (result.type != ResultType.done && mounted) {
       setState(() => status = 'Could not open file: ${result.message}');
     }
@@ -1396,7 +1224,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
-    await _openNote(File('${v.root.path}/$path'));
+    await _openNote(path);
   }
 
   void _showPreview() {
@@ -1432,72 +1260,240 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _showSyncDetails(int conflicts) {
-    final v = vault;
-    final desktopManaged = v != null && isNextcloudManagedVault(v.root);
-    void closeThen(VoidCallback action) {
-      Navigator.pop(context);
-      action();
-    }
-
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Nextcloud sync',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 12),
-              _SyncStatusCard(
-                syncing: syncing,
-                cloudConfigured: cloud?.isReady ?? false,
-                desktopManaged: desktopManaged,
-                result: lastSync,
-                lastSyncAt: lastSyncAt,
-                error: syncError,
-                conflicts: conflicts,
-                onSync: syncing
-                    ? null
-                    : () => closeThen(() => unawaited(_syncNow())),
-                onReview: () => closeThen(
-                  () => unawaited(
-                    _showKnowledge(initialView: KnowledgeView.problems),
-                  ),
-                ),
-                onSetup: () => closeThen(() => unawaited(_showSyncSettings())),
-              ),
-              if (lastSync != null) ...[
-                const SizedBox(height: 16),
-                _SyncDistribution(result: lastSync!),
-              ],
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: v == null
-                    ? null
-                    : () => closeThen(() => unawaited(_copySyncDiagnostics())),
-                icon: const Icon(Icons.copy_all_outlined),
-                label: const Text('Copy diagnostics'),
-              ),
-            ],
-          ),
+  Future<void> _showSyncDashboard() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SyncDashboardScreen(
+          load: _loadSyncDashboard,
+          onSync: () => _syncNow(),
+          onConfigure: _showSyncSettings,
+          onResolve: _resolveSyncConflict,
+          onCopyDiagnostics: _copySyncDiagnostics,
         ),
       ),
     );
   }
 
+  Future<_SyncDashboardData> _loadSyncDashboard() async {
+    final v = vault;
+    if (v == null) {
+      return _SyncDashboardData(
+        storageName: 'Opening vault…',
+        storageLocation: '',
+        cloud: cloud,
+        syncing: syncing,
+        stage: syncStage,
+        error: syncError,
+        result: lastSync,
+        lastSyncAt: lastSyncAt,
+        desktopManaged: false,
+        storageHealthy: false,
+        conflicts: const [],
+        events: const [],
+      );
+    }
+    const tracePath = '.tylog/sync_trace.jsonl';
+    final events = <Map<String, Object?>>[];
+    if (await v.storage.exists(tracePath)) {
+      for (final line in (await v.storage.readText(tracePath)).split('\n')) {
+        if (line.trim().isEmpty) continue;
+        try {
+          events.add((jsonDecode(line) as Map).cast<String, Object?>());
+        } catch (_) {}
+      }
+    }
+    final entry = vaultRegistry!.active;
+    final healthy = storageHealthy ??= await _probeStorage(v.storage);
+    return _SyncDashboardData(
+      storageName: v.storage.displayName,
+      storageLocation: v.storage.location,
+      backupPath: entry.backupPath,
+      cloud: cloud,
+      syncing: syncing,
+      stage: syncStage,
+      error: syncError,
+      result: lastSync,
+      lastSyncAt: lastSyncAt,
+      desktopManaged:
+          v.localRoot != null && isNextcloudManagedVault(v.localRoot!),
+      storageHealthy: healthy,
+      conflicts: await loadSyncConflicts(v),
+      events: events.reversed.toList(),
+    );
+  }
+
+  Future<bool> _probeStorage(VaultStorage storage) async {
+    const path = '.tylog/.storage-health';
+    try {
+      await storage.writeText(path, 'ok');
+      final valid = await storage.readText(path) == 'ok';
+      await storage.delete(path);
+      return valid;
+    } catch (_) {
+      try {
+        await storage.delete(path);
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  Future<void> _resolveSyncConflict(SyncConflict conflict) async {
+    final v = vault;
+    final cfg = cloud;
+    if (v == null || cfg == null || !cfg.isReady) return;
+    final localBytes = conflict.localSnapshot == null
+        ? null
+        : await v.storage.readBytes(conflict.localSnapshot!);
+    final remoteBytes = conflict.remoteSnapshot == null
+        ? null
+        : await v.storage.readBytes(conflict.remoteSnapshot!);
+    final localText = conflict.isText && localBytes != null
+        ? utf8.decode(localBytes, allowMalformed: true)
+        : null;
+    final remoteText = conflict.isText && remoteBytes != null
+        ? utf8.decode(remoteBytes, allowMalformed: true)
+        : null;
+    if (!mounted) return;
+    final selected = ValueNotifier<SyncConflictResolution>(
+      SyncConflictResolution.keepLocal,
+    );
+    final merged = TextEditingController(text: localText ?? '');
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Resolve sync conflict'),
+            leading: IconButton(
+              tooltip: 'Cancel',
+              onPressed: () => Navigator.pop(context, false),
+              icon: const Icon(Icons.close),
+            ),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                conflict.path,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              ValueListenableBuilder<SyncConflictResolution>(
+                valueListenable: selected,
+                builder: (context, value, _) =>
+                    RadioGroup<SyncConflictResolution>(
+                      groupValue: value,
+                      onChanged: (next) {
+                        if (next == null) return;
+                        selected.value = next;
+                        if (next == SyncConflictResolution.keepLocal &&
+                            localText != null) {
+                          merged.text = localText;
+                        } else if (next == SyncConflictResolution.keepRemote &&
+                            remoteText != null) {
+                          merged.text = remoteText;
+                        }
+                      },
+                      child: Column(
+                        children: [
+                          RadioListTile<SyncConflictResolution>(
+                            value: SyncConflictResolution.keepLocal,
+                            title: Text(
+                              conflict.localExists
+                                  ? 'Keep this device version'
+                                  : 'Keep deletion from this device',
+                            ),
+                            subtitle: localBytes == null
+                                ? const Text('File deleted')
+                                : Text('${localBytes.length} bytes'),
+                          ),
+                          RadioListTile<SyncConflictResolution>(
+                            value: SyncConflictResolution.keepRemote,
+                            title: Text(
+                              conflict.remoteExists
+                                  ? 'Keep Nextcloud version'
+                                  : 'Keep deletion from Nextcloud',
+                            ),
+                            subtitle: remoteBytes == null
+                                ? const Text('File deleted')
+                                : Text('${remoteBytes.length} bytes'),
+                          ),
+                        ],
+                      ),
+                    ),
+              ),
+              if (localText != null && remoteText != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Final version',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: merged,
+                  minLines: 12,
+                  maxLines: null,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) =>
+                      selected.value = SyncConflictResolution.merge,
+                ),
+              ],
+            ],
+          ),
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.check),
+                label: const Text('Save resolution'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await NextcloudSync(cfg).resolveConflict(
+          v,
+          conflict,
+          selected.value,
+          mergedText: selected.value == SyncConflictResolution.merge
+              ? merged.text
+              : null,
+        );
+        final ix = await v.rebuildIndex();
+        final pkms = await _readPkms(v, ix);
+        if (mounted) {
+          setState(() {
+            index = _retainIndex(ix);
+            validation = _retainValidation(pkms.report);
+            searchIndex.replaceWith(pkms.search);
+            syncConflicts = syncConflicts
+                .where((item) => item.id != conflict.id)
+                .toList();
+            status = 'Conflict resolved';
+          });
+        }
+      } catch (error) {
+        if (mounted) setState(() => syncError = _friendlySyncError(error));
+      }
+    }
+    selected.dispose();
+    merged.dispose();
+  }
+
   Future<void> _copySyncDiagnostics() async {
     final v = vault;
     if (v == null) return;
-    final file = File('${v.meta.path}/sync_trace.jsonl');
-    final trace = await file.exists()
-        ? await file.readAsString()
+    const path = '.tylog/sync_trace.jsonl';
+    final trace = await v.storage.exists(path)
+        ? await v.storage.readText(path)
         : 'No sync trace is available.\n';
     await Clipboard.setData(
       ClipboardData(
@@ -1722,9 +1718,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<String?> _chooseCitation() async {
-    final file = vault?.bibliographyFile;
-    if (file == null || !await file.exists()) return null;
-    final entries = parseHayagrivaBibliography(await file.readAsString());
+    final v = vault;
+    if (v == null || !await v.storage.exists(Vault.bibliographyPath)) {
+      return null;
+    }
+    final entries = parseHayagrivaBibliography(
+      await v.storage.readText(Vault.bibliographyPath),
+    );
     if (!mounted) return null;
     return showModalBottomSheet<String>(
       context: context,
@@ -1756,18 +1756,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (sourcePath == null) return;
     final source = File(sourcePath);
     final base = source.path.split(Platform.pathSeparator).last;
-    var target = File('${v.assets.path}/$base');
+    var target = 'assets/$base';
     var suffix = 2;
-    while (await target.exists()) {
+    while (await v.storage.exists(target)) {
       final dot = base.lastIndexOf('.');
       final stem = dot < 0 ? base : base.substring(0, dot);
       final extension = dot < 0 ? '' : base.substring(dot);
-      target = File('${v.assets.path}/$stem-${suffix++}$extension');
+      target = 'assets/$stem-${suffix++}$extension';
     }
-    await source.copy(target.path);
-    final relative = v.relativePath(target);
+    await v.storage.importFile(target, source);
+    final relative = target;
     const imageExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'};
-    final lower = target.path.toLowerCase();
+    final lower = target.toLowerCase();
     final image = imageExtensions.any(lower.endsWith);
     _applyMagic(
       MagicRequest(
@@ -1791,8 +1791,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       firstDate: DateTime(1900),
       lastDate: DateTime(2200),
     );
-    final report = await writeReport(
-      v.root,
+    final report = await writeReportStorage(
+      v.storage,
       title,
       ix,
       ReportFilter(
@@ -1801,12 +1801,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         to: range == null ? null : _isoDay(range.end),
       ),
     );
-    final pdf = await exportReportPdf(v.root, report);
+    final pdf = await exportReportPdfStorage(v.storage, report);
     if (mounted) {
-      setState(
-        () => status =
-            'Created ${v.relativePath(report)} and ${v.relativePath(pdf)}',
-      );
+      setState(() => status = 'Created $report and $pdf');
       _queueCloudSync();
     }
   }
@@ -1864,7 +1861,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null || text.trim().isEmpty) return;
     final today = await v.todayNote();
-    final source = await today.readAsString();
+    final source = await v.storage.readText(today);
     final updated = '${source.trimRight()}\n\n${text.trim()}\n';
     await v.saveNote(today, updated);
     final rebuilt = await v.rebuildIndex();
@@ -1918,11 +1915,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
-    final syncConflicts =
-        validation?.count('sync-conflict') ??
-        index?.problems.where((p) => p.code == 'sync-conflict').length ??
-        0;
-    final desktopManaged = v != null && isNextcloudManagedVault(v.root);
+    final syncConflictCount = syncConflicts.length;
+    final desktopManaged =
+        v?.localRoot != null && isNextcloudManagedVault(v!.localRoot!);
     final linksPanel = _LinksPanel(
       current: current,
       outgoing: outgoing,
@@ -2094,9 +2089,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             configured: cloud?.isReady ?? false,
             desktopManaged: desktopManaged,
             error: syncError,
-            conflicts: syncConflicts,
+            conflicts: syncConflictCount,
             result: lastSync,
-            onPressed: () => _showSyncDetails(syncConflicts),
+            onPressed: _showSyncDashboard,
           ),
           PopupMenuButton<_ShellAction>(
             tooltip: 'More actions',
@@ -2125,8 +2120,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                 case _ShellAction.rebuild:
                   unawaited(_rebuildIndex());
-                case _ShellAction.sync:
-                  unawaited(_syncNow());
                 case _ShellAction.settings:
                   _showSettings();
                 case _ShellAction.typstHelp:
@@ -2157,11 +2150,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const PopupMenuItem(
                 value: _ShellAction.rebuild,
                 child: Text('Rebuild index'),
-              ),
-              PopupMenuItem(
-                value: _ShellAction.sync,
-                enabled: !syncing,
-                child: const Text('Sync'),
               ),
               const PopupMenuItem(
                 value: _ShellAction.typstHelp,
@@ -2262,7 +2250,6 @@ enum _ShellAction {
   split,
   backlinks,
   rebuild,
-  sync,
   typstHelp,
   settings,
 }
@@ -2294,142 +2281,264 @@ String _friendlySyncError(Object error) {
   return 'Sync stopped before completion: $text';
 }
 
-class _ConflictVersionCard extends StatelessWidget {
-  const _ConflictVersionCard({
-    required this.title,
-    required this.text,
-    required this.otherText,
-    required this.modified,
-    required this.newer,
-    required this.selected,
-    required this.color,
-    required this.onUse,
+class _SyncDashboardData {
+  const _SyncDashboardData({
+    required this.storageName,
+    required this.storageLocation,
+    required this.cloud,
+    required this.syncing,
+    required this.desktopManaged,
+    required this.storageHealthy,
+    required this.conflicts,
+    required this.events,
+    this.backupPath,
+    this.stage,
+    this.error,
+    this.result,
+    this.lastSyncAt,
   });
 
-  final String title;
-  final String text;
-  final String otherText;
-  final DateTime? modified;
-  final bool newer;
-  final bool selected;
-  final Color color;
-  final VoidCallback onUse;
+  final String storageName;
+  final String storageLocation;
+  final String? backupPath;
+  final String? stage;
+  final NextcloudConfig? cloud;
+  final bool syncing;
+  final bool desktopManaged;
+  final bool storageHealthy;
+  final String? error;
+  final SyncResult? result;
+  final DateTime? lastSyncAt;
+  final List<SyncConflict> conflicts;
+  final List<Map<String, Object?>> events;
+}
+
+class _SyncDashboardScreen extends StatefulWidget {
+  const _SyncDashboardScreen({
+    required this.load,
+    required this.onSync,
+    required this.onConfigure,
+    required this.onResolve,
+    required this.onCopyDiagnostics,
+  });
+
+  final Future<_SyncDashboardData> Function() load;
+  final Future<void> Function() onSync;
+  final Future<bool> Function() onConfigure;
+  final Future<void> Function(SyncConflict) onResolve;
+  final Future<void> Function() onCopyDiagnostics;
 
   @override
-  Widget build(BuildContext context) => Card(
-    color: color,
-    shape: RoundedRectangleBorder(
-      side: selected
-          ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-          : BorderSide.none,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    margin: EdgeInsets.zero,
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: onUse,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              modified == null
-                  ? 'Not present on this device'
-                  : 'Modified ${_relativeTime(modified!)}${newer ? ' · Newer' : ''}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Changed section',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 4),
-            Container(
-              constraints: const BoxConstraints(minHeight: 80, maxHeight: 220),
-              padding: const EdgeInsets.all(10),
-              color: Theme.of(
-                context,
-              ).colorScheme.surface.withValues(alpha: 0.75),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  _changedExcerpt(text, otherText),
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-              ),
-            ),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('View full version'),
-              children: [
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  alignment: Alignment.topLeft,
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      text.isEmpty ? '(Empty file)' : text,
-                      style: const TextStyle(fontFamily: 'monospace'),
+  State<_SyncDashboardScreen> createState() => _SyncDashboardScreenState();
+}
+
+class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
+  _SyncDashboardData? data;
+  Object? loadError;
+  bool running = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_reload());
+  }
+
+  Future<void> _reload() async {
+    try {
+      final loaded = await widget.load();
+      if (mounted) setState(() => data = loaded);
+    } catch (error) {
+      if (mounted) setState(() => loadError = error);
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => running = true);
+    final refresh = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => unawaited(_reload()),
+    );
+    try {
+      await action();
+    } finally {
+      refresh.cancel();
+      await _reload();
+      if (mounted) setState(() => running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = data;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sync'),
+        actions: [
+          IconButton(
+            tooltip: 'Configure Nextcloud',
+            onPressed: () => _run(() async {
+              await widget.onConfigure();
+            }),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      body: value == null
+          ? Center(
+              child: loadError == null
+                  ? const CircularProgressIndicator()
+                  : Text('Could not load sync dashboard: $loadError'),
+            )
+          : RefreshIndicator(
+              onRefresh: _reload,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if ((running || value.syncing) && value.stage != null) ...[
+                    LinearProgressIndicator(semanticsLabel: 'Sync progress'),
+                    const SizedBox(height: 8),
+                    Text(value.stage!),
+                    const SizedBox(height: 12),
+                  ],
+                  _SyncStatusCard(
+                    syncing: running || value.syncing,
+                    cloudConfigured: value.cloud?.isReady ?? false,
+                    desktopManaged: value.desktopManaged,
+                    result: value.result,
+                    lastSyncAt: value.lastSyncAt,
+                    error: value.error,
+                    conflicts: value.conflicts.length,
+                    onSync: running || value.conflicts.isNotEmpty
+                        ? null
+                        : () => unawaited(_run(widget.onSync)),
+                    onReview: value.conflicts.isEmpty
+                        ? () {}
+                        : () => unawaited(
+                            _run(() => widget.onResolve(value.conflicts.first)),
+                          ),
+                    onSetup: () => unawaited(
+                      _run(() async {
+                        await widget.onConfigure();
+                      }),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.folder_open),
+                      title: Text(value.storageName),
+                      subtitle: Text(
+                        [
+                          value.storageLocation,
+                          value.storageHealthy
+                              ? 'Permission and safe writes verified'
+                              : 'Folder access or safe writes unavailable',
+                          if (value.backupPath != null)
+                            'Recovery backup: ${value.backupPath}',
+                        ].join('\n'),
+                      ),
+                      isThreeLine: true,
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_outlined),
+                      title: Text(
+                        value.cloud?.isReady ?? false
+                            ? value.cloud!.serverUrl
+                            : 'Nextcloud not configured',
+                      ),
+                      subtitle: value.cloud?.isReady ?? false
+                          ? Text(
+                              '${value.cloud!.username} · ${value.cloud!.remoteFolder}',
+                            )
+                          : const Text(
+                              'Local folder remains available offline.',
+                            ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _run(() async {
+                        await widget.onConfigure();
+                      }),
+                    ),
+                  ),
+                  if (value.conflicts.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Conflicts',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    for (final conflict in value.conflicts)
+                      Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: ListTile(
+                          leading: const Icon(Icons.warning_amber_rounded),
+                          title: Text(conflict.path),
+                          subtitle: Text(
+                            conflict.localExists && conflict.remoteExists
+                                ? 'Both copies changed'
+                                : conflict.localExists
+                                ? 'Nextcloud deleted; this device changed'
+                                : 'This device deleted; Nextcloud changed',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _run(() => widget.onResolve(conflict)),
+                        ),
+                      ),
+                  ],
+                  if (value.result != null) ...[
+                    const SizedBox(height: 16),
+                    _SyncDistribution(result: value.result!),
+                  ],
+                  const SizedBox(height: 20),
+                  Text(
+                    'Diagnostics log',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  if (value.events.isEmpty)
+                    const ListTile(title: Text('No sync events recorded')),
+                  for (final event in value.events)
+                    ExpansionTile(
+                      title: Text(
+                        '${event['event'] ?? 'event'} · ${event['trigger'] ?? 'unknown'}',
+                      ),
+                      subtitle: Text(event['timestamp']?.toString() ?? ''),
+                      children: [
+                        if (event['stage'] != null)
+                          ListTile(
+                            title: Text('Stage: ${event['stage']}'),
+                            subtitle: event['path'] == null
+                                ? null
+                                : Text(event['path'].toString()),
+                          ),
+                        if (event['errorMessage'] != null)
+                          ListTile(
+                            leading: const Icon(Icons.error_outline),
+                            title: Text(event['errorMessage'].toString()),
+                          ),
+                        for (final decision
+                            in event['decisions'] is List
+                                ? event['decisions']! as List
+                                : const [])
+                          ListTile(
+                            dense: true,
+                            title: Text((decision as Map)['path'].toString()),
+                            subtitle: Text(
+                              '${decision['action']} · ${decision['reason']}',
+                            ),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: widget.onCopyDiagnostics,
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('Copy diagnostics'),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-String _changedExcerpt(String text, String other) {
-  if (text == other) return '(No text differences)';
-  final lines = text.split('\n');
-  final otherLines = other.split('\n');
-  var start = 0;
-  while (start < lines.length &&
-      start < otherLines.length &&
-      lines[start] == otherLines[start]) {
-    start++;
+    );
   }
-  var end = 0;
-  while (end < lines.length - start &&
-      end < otherLines.length - start &&
-      lines[lines.length - 1 - end] ==
-          otherLines[otherLines.length - 1 - end]) {
-    end++;
-  }
-  final changed = lines.sublist(start, lines.length - end);
-  if (changed.isEmpty || (changed.length == 1 && changed.first.isEmpty)) {
-    return '(Nothing in this version)';
-  }
-  final excerpt = changed.take(40).join('\n');
-  return changed.length > 40
-      ? '$excerpt\n… ${changed.length - 40} more lines'
-      : excerpt;
-}
-
-String _relativeTime(DateTime value) {
-  final difference = DateTime.now().difference(value);
-  if (difference.inMinutes < 1) return 'just now';
-  if (difference.inHours < 1) return '${difference.inMinutes}m ago';
-  if (difference.inDays < 1) return '${difference.inHours}h ago';
-  return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
 
 class _SyncIconButton extends StatelessWidget {
@@ -2490,6 +2599,8 @@ class _SyncDistribution extends StatelessWidget {
     final values = [
       ('Uploaded', result.uploaded, colors.primary),
       ('Downloaded', result.downloaded, colors.tertiary),
+      ('Deleted here', result.deletedLocal, colors.secondary),
+      ('Deleted remote', result.deletedRemote, colors.secondary),
       ('Unchanged', result.skipped, colors.outlineVariant),
       ('Repaired', result.repaired, colors.secondary),
       ('Conflicts', result.conflicts, colors.error),
@@ -2632,7 +2743,11 @@ class _SyncStatusCard extends StatelessWidget {
       onAction = onReview;
     } else {
       icon = Icons.cloud_done_outlined;
-      final changed = (result?.uploaded ?? 0) + (result?.downloaded ?? 0);
+      final changed =
+          (result?.uploaded ?? 0) +
+          (result?.downloaded ?? 0) +
+          (result?.deletedLocal ?? 0) +
+          (result?.deletedRemote ?? 0);
       title = result == null
           ? 'Ready to sync'
           : (changed == 0 ? 'Up to date' : 'Synced');
@@ -2882,17 +2997,12 @@ class _SettingsSheet extends StatelessWidget {
                 ),
               ),
               _SettingsTile(
-                icon: Icons.cloud,
-                title: 'Nextcloud settings',
-                subtitle: ready ? cloud!.serverUrl : 'Local folder only',
-                onTap: onNextcloud,
-              ),
-              _SettingsTile(
                 icon: Icons.sync,
-                title: 'Sync server status',
+                title: 'Sync',
                 subtitle: syncing
                     ? 'Syncing...'
-                    : (ready ? 'Ready' : 'Not configured'),
+                    : (ready ? cloud!.serverUrl : 'Not configured'),
+                onTap: onNextcloud,
               ),
               _SettingsTile(
                 icon: Icons.notifications_outlined,
@@ -2949,7 +3059,7 @@ class _VaultsSheet extends StatelessWidget {
             ),
             title: Text(entry.name),
             subtitle: Text(
-              entry.path,
+              entry.treeUri ?? entry.path,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

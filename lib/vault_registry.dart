@@ -5,40 +5,82 @@ import 'package:path_provider/path_provider.dart';
 
 import 'nextcloud_sync.dart';
 import 'vault.dart';
+import 'vault_storage.dart';
 
 class VaultEntry {
   const VaultEntry({
     required this.id,
     required this.name,
     required this.path,
+    this.storageKind = 'local-path',
+    this.treeUri,
+    this.backupPath,
     this.cloud,
   });
 
   final String id;
   final String name;
   final String path;
+  final String storageKind;
+  final String? treeUri;
+  final String? backupPath;
   final NextcloudConfig? cloud;
 
-  VaultEntry copyWith({NextcloudConfig? cloud}) =>
-      VaultEntry(id: id, name: name, path: path, cloud: cloud);
+  VaultStorage get storage => storageKind == 'android-tree'
+      ? AndroidTreeVaultStorage(uri: treeUri!, name: name)
+      : LocalVaultStorage(Directory(path));
+
+  VaultEntry copyWith({
+    String? name,
+    String? path,
+    String? storageKind,
+    String? treeUri,
+    String? backupPath,
+    NextcloudConfig? cloud,
+  }) => VaultEntry(
+    id: id,
+    name: name ?? this.name,
+    path: path ?? this.path,
+    storageKind: storageKind ?? this.storageKind,
+    treeUri: treeUri ?? this.treeUri,
+    backupPath: backupPath ?? this.backupPath,
+    cloud: cloud ?? this.cloud,
+  );
 
   Map<String, Object?> toJson() => {
     'id': id,
     'name': name,
-    'path': path,
+    'storage': storageKind == 'android-tree'
+        ? {'kind': storageKind, 'uri': treeUri, 'name': name}
+        : {'kind': storageKind, 'path': path},
+    if (backupPath != null) 'backupPath': backupPath,
     if (cloud != null) 'nextcloud': cloud!.toJson(),
   };
 
-  factory VaultEntry.fromJson(Map<String, Object?> json) => VaultEntry(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    path: json['path'] as String,
-    cloud: json['nextcloud'] is Map
-        ? NextcloudConfig.fromJson(
-            (json['nextcloud'] as Map).cast<String, Object?>(),
-          )
-        : null,
-  );
+  factory VaultEntry.fromJson(Map<String, Object?> json) {
+    final storage = json['storage'] is Map
+        ? (json['storage'] as Map).cast<String, Object?>()
+        : <String, Object?>{
+            'kind': 'local-path',
+            'path': json['path'] as String? ?? '',
+          };
+    final kind = storage['kind'] as String? ?? 'local-path';
+    final name =
+        json['name'] as String? ?? storage['name'] as String? ?? 'Vault';
+    return VaultEntry(
+      id: json['id'] as String,
+      name: name,
+      path: storage['path'] as String? ?? '',
+      storageKind: kind,
+      treeUri: storage['uri'] as String?,
+      backupPath: json['backupPath'] as String?,
+      cloud: json['nextcloud'] is Map
+          ? NextcloudConfig.fromJson(
+              (json['nextcloud'] as Map).cast<String, Object?>(),
+            )
+          : null,
+    );
+  }
 }
 
 class VaultRegistry {
@@ -105,6 +147,12 @@ class VaultRegistry {
       }
     }
 
+    if (Platform.isAndroid) {
+      final registry = VaultRegistry(file, [], '', onboardingComplete: false);
+      await registry.save();
+      return registry;
+    }
+
     final root = defaultVaultDirectory(documents).absolute.path;
     final legacyCloud = await NextcloudConfig.load();
     final entry = VaultEntry(
@@ -141,6 +189,61 @@ class VaultRegistry {
     return entry;
   }
 
+  Future<VaultEntry> addTree(AndroidTreeSelection selection) async {
+    final existing = entries
+        .where((entry) => entry.treeUri == selection.uri)
+        .firstOrNull;
+    if (existing != null) return existing;
+    final entry = VaultEntry(
+      id: _id(selection.uri),
+      name: selection.name,
+      path: '',
+      storageKind: 'android-tree',
+      treeUri: selection.uri,
+    );
+    entries.add(entry);
+    await save();
+    return entry;
+  }
+
+  Future<VaultEntry> migrateToTree(
+    VaultEntry entry,
+    AndroidTreeSelection selection,
+  ) async {
+    final destination = AndroidTreeVaultStorage(
+      uri: selection.uri,
+      name: selection.name,
+    );
+    if ((await destination.list()).isEmpty) {
+      await copyVaultStorage(entry.storage, destination);
+    } else {
+      await verifyMatchingVaultStorage(entry.storage, destination);
+    }
+    final migrated = entry.copyWith(
+      name: selection.name,
+      storageKind: 'android-tree',
+      treeUri: selection.uri,
+      backupPath: entry.path,
+    );
+    entries[entries.indexWhere((item) => item.id == entry.id)] = migrated;
+    await save();
+    return migrated;
+  }
+
+  Future<VaultEntry> rebindTree(
+    VaultEntry entry,
+    AndroidTreeSelection selection,
+  ) async {
+    final rebound = entry.copyWith(
+      name: selection.name,
+      storageKind: 'android-tree',
+      treeUri: selection.uri,
+    );
+    entries[entries.indexWhere((item) => item.id == entry.id)] = rebound;
+    await save();
+    return rebound;
+  }
+
   Future<void> select(VaultEntry entry) async {
     activeId = entry.id;
     await save();
@@ -166,21 +269,73 @@ class VaultRegistry {
   }
 
   Future<void> delete(VaultEntry entry) async {
-    final directory = Directory(entry.path);
-    if (await directory.exists()) {
-      await directory.delete(recursive: true);
+    if (entry.storageKind == 'android-tree') {
+      for (final item in (await entry.storage.list()).reversed) {
+        await entry.storage.delete(item.path);
+      }
+    } else {
+      final directory = Directory(entry.path);
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
     }
     await forget(entry);
   }
 
   Future<void> save() => file.writeAsString(
     jsonEncode({
+      'version': 2,
       'active': activeId,
       'onboardingComplete': onboardingComplete,
       'vaults': entries.map((entry) => entry.toJson()).toList(),
     }),
     flush: true,
   );
+}
+
+Future<void> copyVaultStorage(
+  VaultStorage source,
+  VaultStorage destination,
+) async {
+  if ((await destination.list()).isNotEmpty) {
+    throw StateError('Choose an empty folder for migration');
+  }
+  for (final item in await source.list(recursive: true)) {
+    if (item.isDirectory || item.path.startsWith('_index/')) continue;
+    final file = await source.materialize(item.path);
+    try {
+      await destination.importFile(item.path, file);
+    } finally {
+      if (source.materializedFilesAreTemporary && await file.exists()) {
+        await file.delete();
+      }
+    }
+    if (await source.hash(item.path) != await destination.hash(item.path)) {
+      throw StateError('Migration verification failed for ${item.path}');
+    }
+  }
+}
+
+Future<void> verifyMatchingVaultStorage(
+  VaultStorage source,
+  VaultStorage destination,
+) async {
+  final sourceFiles = (await source.list(recursive: true))
+      .where((item) => !item.isDirectory && !item.path.startsWith('_index/'))
+      .map((item) => item.path)
+      .toSet();
+  final destinationFiles = (await destination.list(recursive: true))
+      .where((item) => !item.isDirectory && !item.path.startsWith('_index/'))
+      .map((item) => item.path)
+      .toSet();
+  if (!destinationFiles.containsAll(sourceFiles)) {
+    throw StateError('Selected folder is not the existing vault');
+  }
+  for (final path in sourceFiles) {
+    if (await source.hash(path) != await destination.hash(path)) {
+      throw StateError('Selected folder differs at $path');
+    }
+  }
 }
 
 String _name(String path) =>
