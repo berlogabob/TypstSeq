@@ -49,60 +49,51 @@ void main() {
     expect(find.text(version), findsOneWidget);
   });
 
-  testWidgets('journal edits a chosen block while hiding other source', (
+  testWidgets('journal rich editor shows one body and formats the selection', (
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
     await tester.tap(find.text('Journal').last);
-    await tester.pump();
+    await tester.pumpAndSettle();
     await openSource(tester);
     expect(find.byTooltip('Editor'), findsOneWidget);
-    const raw = '= Heading\n\n#strong[Visible text]\n\n#custom()[Secret]';
+    const raw = '= Heading\n\nVisible text\n\n#custom()[Secret]';
     await tester.enterText(find.byType(TextField), raw);
 
     await tester.tap(find.text('Journal').last);
     await tester.pump();
-    expect(find.byType(TextField), findsNothing);
-    expect(find.text('Heading'), findsOneWidget);
-    expect(find.text('Visible text'), findsOneWidget);
-    expect(find.text('Custom Typst block'), findsOneWidget);
-    expect(find.textContaining('#strong'), findsNothing);
-    expect(find.textContaining('#custom'), findsNothing);
-
-    await tester.tap(find.text('Visible text'));
-    await tester.pump();
-    final blockEditor = find.byKey(const Key('controlled-block-editor'));
+    final rich = find.byKey(const Key('rich-journal-editor'));
+    expect(rich, findsOneWidget);
+    expect(tester.widget<TextField>(rich).readOnly, isTrue);
     expect(
-      tester.widget<TextField>(blockEditor).controller!.text,
-      '#strong[Visible text]',
+      tester.widget<TextField>(rich).controller!.text,
+      'Heading\n\nVisible text\n\n\uFFFC',
     );
-    expect(tester.widget<TextField>(blockEditor).focusNode!.hasFocus, isTrue);
-    for (final value in const [
-      '',
-      '#strong[C]',
-      '#strong[Ch]',
-      '#strong[Changed]',
-    ]) {
-      tester.testTextInput.updateEditingValue(
-        TextEditingValue(
-          text: value,
-          selection: TextSelection.collapsed(offset: value.length),
-        ),
-      );
-      await tester.pump();
-      expect(tester.widget<TextField>(blockEditor).focusNode!.hasFocus, isTrue);
-    }
-    await tester.tap(find.byTooltip('Done editing block'));
+    expect(find.text('Custom Typst'), findsOneWidget);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<TextField>(rich).controller!;
+    final start = controller.text.indexOf('Visible text');
+    controller.selection = TextSelection(
+      baseOffset: start,
+      extentOffset: start + 'Visible text'.length,
+    );
+    await tester.tap(find.byTooltip('Bold'));
     await tester.pump();
-    expect(find.text('Changed'), findsOneWidget);
-    expect(find.textContaining('#strong'), findsNothing);
+    expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(rich).readOnly, isTrue);
 
     await openSource(tester);
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '= Heading\n\n#strong[Changed]\n\n#custom()[Secret]',
+      '= Heading\n\n#strong[Visible text]\n\n#custom()[Secret]',
     );
     expect(find.byTooltip('Editor'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -255,7 +246,9 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Insert'));
     await tester.pumpAndSettle();
 
     for (final label in const [

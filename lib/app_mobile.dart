@@ -16,6 +16,7 @@ import 'models.dart';
 import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
 import 'report.dart';
+import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'task_scheduler.dart';
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VaultIndex? index;
   File? note;
   final sourceController = TextEditingController();
+  late final TyLogEditingController richController;
   Timer? autosave;
   Timer? cloudAutosave;
   Timer? cloudPoll;
@@ -90,6 +92,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    richController = TyLogEditingController(
+      source: '',
+      onSourceChanged: _acceptRichSource,
+      onError: _richEditorError,
+      onProtectedTap: (id) => unawaited(_editProtectedBlock(id)),
+    );
     WidgetsBinding.instance.addObserver(this);
     _open();
   }
@@ -100,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     autosave?.cancel();
     cloudAutosave?.cancel();
     cloudPoll?.cancel();
+    richController.dispose();
     sourceController.dispose();
     super.dispose();
   }
@@ -450,7 +459,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
   });
 
-  void _loadSource(String source) => sourceController.text = source;
+  void _loadSource(String source) {
+    sourceController.text = source;
+    richController.loadSource(source);
+  }
+
+  void _acceptRichSource(String source) {
+    if (sourceController.text == source) return;
+    sourceController.text = source;
+    _queueAutosave();
+  }
+
+  void _richEditorError(Object error) {
+    if (!mounted) return;
+    setState(() => status = 'Edit kept safe: $error');
+  }
+
+  Future<void> _editProtectedBlock(String id) async {
+    final input = TextEditingController(
+      text: richController.protectedSource(id),
+    );
+    final updated = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Typst block'),
+        content: SizedBox(
+          width: 640,
+          child: TextField(
+            controller: input,
+            autofocus: true,
+            minLines: 5,
+            maxLines: 16,
+            style: const TextStyle(fontFamily: 'monospace'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, input.text),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    input.dispose();
+    if (updated != null) richController.replaceProtected(id, updated);
+  }
 
   Future<void> _openNote(File file) async {
     final v = vault;
@@ -1346,11 +1403,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => mode = 'preview');
   }
 
-  void _showJournal() => setState(() => mode = 'normal');
+  void _showJournal() {
+    if (mode == 'source' || mode == 'split') {
+      richController.loadSource(sourceController.text);
+    }
+    setState(() => mode = 'normal');
+  }
 
-  void _updateControlledSource(String source) {
-    sourceController.text = source;
-    _queueAutosave();
+  void _editJournal() {
+    if (mode == 'source' || mode == 'split') {
+      richController.loadSource(sourceController.text);
+    }
+    setState(() => mode = 'edit');
   }
 
   void _showToday() => setState(() => mode = 'today');
@@ -1477,6 +1541,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _selectedText() {
+    if (mode == 'edit') return richController.selectedPlainText;
     final editor = sourceController;
     final selection = editor.selection;
     if (!selection.isValid || selection.isCollapsed) return '';
@@ -1484,6 +1549,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _applyMagic(MagicRequest request) {
+    if (mode == 'edit') {
+      richController.applyMagic(request);
+      return;
+    }
     final editor = sourceController;
     final edit = applyMagicEdit(editor.text, editor.selection, request);
     editor.value = TextEditingValue(text: edit.text, selection: edit.selection);
@@ -1796,9 +1865,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || text.trim().isEmpty) return;
     final today = await v.todayNote();
     final source = await today.readAsString();
-    await v.saveNote(today, '${source.trimRight()}\n\n${text.trim()}\n');
+    final updated = '${source.trimRight()}\n\n${text.trim()}\n';
+    await v.saveNote(today, updated);
     final rebuilt = await v.rebuildIndex();
     final pkms = await _readPkms(v, rebuilt);
+    if (note != null && v.relativePath(note!) == v.relativePath(today)) {
+      _loadSource(updated);
+    }
     setState(() {
       index = _retainIndex(rebuilt);
       validation = _retainValidation(pkms.report);
@@ -1932,9 +2005,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        'normal' => _ControlledEditorView(
-          source: sourceController.text,
-          onChanged: _updateControlledSource,
+        'normal' => TyLogRichEditor(
+          controller: richController,
+          readOnly: true,
+          onInsert: _showMagicMenu,
+        ),
+        'edit' => TyLogRichEditor(
+          controller: richController,
+          readOnly: false,
+          onInsert: _showMagicMenu,
         ),
         _ => const SizedBox.shrink(),
       },
@@ -2098,9 +2177,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       floatingActionButton: _destination == 1 && mode != 'graph'
           ? FloatingActionButton.extended(
-              onPressed: _showMagicMenu,
-              icon: const Icon(Icons.auto_fix_high),
-              label: const Text('Magic'),
+              onPressed: switch (mode) {
+                'normal' || 'preview' => _editJournal,
+                'edit' => _showJournal,
+                _ => _showMagicMenu,
+              },
+              icon: Icon(switch (mode) {
+                'normal' || 'preview' => Icons.edit,
+                'edit' => Icons.check,
+                _ => Icons.auto_fix_high,
+              }),
+              label: Text(switch (mode) {
+                'normal' || 'preview' => 'Edit',
+                'edit' => 'Done',
+                _ => 'Magic',
+              }),
             )
           : null,
       bottomNavigationBar: wideNavigation
@@ -3269,157 +3360,6 @@ class _LibraryView extends StatelessWidget {
         ),
     ],
   );
-}
-
-class _ControlledEditorView extends StatefulWidget {
-  const _ControlledEditorView({required this.source, required this.onChanged});
-
-  final String source;
-  final ValueChanged<String> onChanged;
-
-  @override
-  State<_ControlledEditorView> createState() => _ControlledEditorViewState();
-}
-
-class _ControlledEditorViewState extends State<_ControlledEditorView> {
-  final controller = TextEditingController();
-  final focusNode = FocusNode();
-  int? editingIndex;
-  String baseSource = '';
-  TextRange editRange = TextRange.empty;
-
-  @override
-  void dispose() {
-    controller.dispose();
-    focusNode.dispose();
-    super.dispose();
-  }
-
-  void _edit(int index, ControlledBlock block) {
-    baseSource = widget.source;
-    editRange = TextRange(start: block.start, end: block.end);
-    controller.value = TextEditingValue(
-      text: block.source,
-      selection: TextSelection.collapsed(offset: block.source.length),
-    );
-    setState(() => editingIndex = index);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => focusNode.requestFocus(),
-    );
-  }
-
-  void _change(String value) => widget.onChanged(
-    baseSource.replaceRange(editRange.start, editRange.end, value),
-  );
-
-  void _done() {
-    focusNode.unfocus();
-    setState(() => editingIndex = null);
-  }
-
-  Widget _editor() => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: TextField(
-            key: const Key('controlled-block-editor'),
-            controller: controller,
-            focusNode: focusNode,
-            minLines: 1,
-            maxLines: null,
-            style: const TextStyle(fontFamily: 'monospace'),
-            onChanged: _change,
-          ),
-        ),
-        IconButton(
-          tooltip: 'Done editing block',
-          onPressed: _done,
-          icon: const Icon(Icons.check),
-        ),
-      ],
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final blocks = parseControlledTypst(widget.source).blocks;
-    if (blocks.isEmpty) {
-      if (editingIndex != null) {
-        return ListView(
-          padding: const EdgeInsets.all(18),
-          children: [_editor()],
-        );
-      }
-      return Center(
-        child: FilledButton.tonalIcon(
-          onPressed: () => _edit(
-            0,
-            ControlledBlock(
-              start: widget.source.length,
-              end: widget.source.length,
-              source: '',
-              kind: ControlledBlockKind.paragraph,
-              supported: true,
-            ),
-          ),
-          icon: const Icon(Icons.edit),
-          label: const Text('Start writing'),
-        ),
-      );
-    }
-    final itemCount = editingIndex != null && editingIndex! >= blocks.length
-        ? editingIndex! + 1
-        : blocks.length;
-    return ListView.builder(
-      padding: const EdgeInsets.all(18),
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
-        if (editingIndex == index) return _editor();
-        final block = blocks[index];
-        final raw = block.kind == ControlledBlockKind.raw;
-        final preview = controlledBlockPreview(block);
-        final style = block.kind == ControlledBlockKind.heading
-            ? Theme.of(context).textTheme.headlineSmall
-            : Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Material(
-            color: raw
-                ? Theme.of(context).colorScheme.surfaceContainerLow
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              key: ValueKey('controlled-block-$index'),
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => _edit(index, block),
-              child: Padding(
-                padding: raw
-                    ? const EdgeInsets.all(12)
-                    : const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (raw) ...[
-                      const Icon(Icons.code, size: 20),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Text(
-                        preview.isEmpty ? 'Empty block' : preview,
-                        style: style,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _Editor extends StatefulWidget {
