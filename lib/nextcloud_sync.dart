@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'vault.dart';
@@ -22,8 +23,15 @@ class NextcloudConfig {
   bool get isReady {
     final server = Uri.tryParse(serverUrl.trim());
     final folders = _remoteFolders;
-    return server != null &&
-        (server.scheme == 'https' || server.scheme == 'http') &&
+    if (server == null) return false;
+    // ponytail: https required; http only to loopback (local/test dav). Basic auth
+    // over cleartext http to a public host would leak the password on the wire.
+    final loopback =
+        server.host == 'localhost' ||
+        (InternetAddress.tryParse(server.host)?.isLoopback ?? false);
+    final schemeOk =
+        server.scheme == 'https' || (server.scheme == 'http' && loopback);
+    return schemeOk &&
         server.host.isNotEmpty &&
         username.trim().isNotEmpty &&
         password.isNotEmpty &&
@@ -50,19 +58,41 @@ class NextcloudConfig {
     );
   }
 
+  NextcloudConfig withPassword(String password) => NextcloudConfig(
+    serverUrl: serverUrl,
+    username: username,
+    password: password,
+    remoteFolder: remoteFolder,
+  );
+
+  // ponytail: password lives in the OS keystore only, never in vaults.json /
+  // nextcloud.json. `password` is intentionally absent from toJson.
   Map<String, Object?> toJson() => {
     'serverUrl': serverUrl,
     'username': username,
-    'password': password,
     'remoteFolder': remoteFolder,
   };
 
   static NextcloudConfig fromJson(Map<String, Object?> json) => NextcloudConfig(
     serverUrl: json['serverUrl'] as String? ?? json['url'] as String? ?? '',
     username: json['username'] as String? ?? '',
+    // Legacy inline password (pre-keystore files); migrated out on next load/save.
     password: json['password'] as String? ?? '',
     remoteFolder: json['remoteFolder'] as String? ?? 'TyLogVault',
   );
+
+  static const _secure = FlutterSecureStorage();
+  static String _secretKey(String? vaultId) =>
+      'nextcloud-password-${vaultId ?? '__default__'}';
+
+  Future<void> saveSecret({String? vaultId}) =>
+      _secure.write(key: _secretKey(vaultId), value: password);
+
+  static Future<String?> readSecret({String? vaultId}) =>
+      _secure.read(key: _secretKey(vaultId));
+
+  static Future<void> deleteSecret({String? vaultId}) =>
+      _secure.delete(key: _secretKey(vaultId));
 
   static Future<File> settingsFile({String? vaultId}) async {
     final base = await getApplicationDocumentsDirectory();
@@ -75,12 +105,18 @@ class NextcloudConfig {
   static Future<NextcloudConfig?> load({String? vaultId}) async {
     final file = await settingsFile(vaultId: vaultId);
     if (!await file.exists()) return null;
-    return fromJson(
+    final config = fromJson(
       jsonDecode(await file.readAsString()) as Map<String, Object?>,
     );
+    final secret = await readSecret(vaultId: vaultId);
+    if (secret != null) return config.withPassword(secret);
+    // Migrate a legacy inline password into the keystore and strip it from disk.
+    if (config.password.isNotEmpty) await config.save(vaultId: vaultId);
+    return config;
   }
 
   Future<void> save({String? vaultId}) async {
+    await saveSecret(vaultId: vaultId);
     final file = await settingsFile(vaultId: vaultId);
     final temporary = File('${file.path}.tmp');
     await temporary.writeAsString(jsonEncode(toJson()), flush: true);

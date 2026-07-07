@@ -1,10 +1,43 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault_registry.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // In-memory stand-in for the OS keystore (no platform channel in unit tests).
+  final secureStore = <String, String>{};
+  setUp(() {
+    secureStore.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+          (call) async {
+            final args =
+                (call.arguments as Map?)?.cast<String, Object?>() ?? const {};
+            switch (call.method) {
+              case 'write':
+                secureStore[args['key'] as String] = args['value'] as String;
+                return null;
+              case 'read':
+                return secureStore[args['key'] as String];
+              case 'delete':
+                secureStore.remove(args['key'] as String);
+                return null;
+              case 'containsKey':
+                return secureStore.containsKey(args['key'] as String);
+              case 'readAll':
+                return secureStore;
+              case 'deleteAll':
+                secureStore.clear();
+                return null;
+            }
+            return null;
+          },
+        );
+  });
   test(
     'vault registry switches, keeps cloud settings separate, and forgets',
     () async {

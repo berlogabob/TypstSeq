@@ -62,15 +62,36 @@ class VaultRegistry {
     if (await file.exists()) {
       final json =
           jsonDecode(await file.readAsString()) as Map<String, Object?>;
-      final entries = (json['vaults'] as List)
+      final parsed = (json['vaults'] as List)
           .map(
             (item) =>
                 VaultEntry.fromJson((item as Map).cast<String, Object?>()),
           )
           .toList();
+      // Hydrate each cloud password from the OS keystore (migrating any legacy
+      // inline password out of vaults.json on first load after upgrade).
+      final entries = <VaultEntry>[];
+      var migrated = false;
+      for (final entry in parsed) {
+        final cloud = entry.cloud;
+        if (cloud == null) {
+          entries.add(entry);
+          continue;
+        }
+        final secret = await NextcloudConfig.readSecret(vaultId: entry.id);
+        if (secret != null) {
+          entries.add(entry.copyWith(cloud: cloud.withPassword(secret)));
+        } else {
+          if (cloud.password.isNotEmpty) {
+            await cloud.saveSecret(vaultId: entry.id);
+            migrated = true;
+          }
+          entries.add(entry);
+        }
+      }
       if (entries.isNotEmpty) {
         final active = json['active'] as String?;
-        return VaultRegistry(
+        final registry = VaultRegistry(
           file,
           entries,
           entries.any((entry) => entry.id == active)
@@ -78,6 +99,9 @@ class VaultRegistry {
               : entries.first.id,
           onboardingComplete: json['onboardingComplete'] as bool? ?? true,
         );
+        // Rewrite vaults.json without the now-migrated inline passwords.
+        if (migrated) await registry.save();
+        return registry;
       }
     }
 
@@ -89,6 +113,8 @@ class VaultRegistry {
       path: root,
       cloud: legacyCloud,
     );
+    // Key the legacy single-vault password under this entry's id.
+    if (legacyCloud != null) await legacyCloud.saveSecret(vaultId: entry.id);
     final registry = VaultRegistry(
       file,
       [entry],
@@ -126,12 +152,14 @@ class VaultRegistry {
   }
 
   Future<void> setCloud(VaultEntry entry, NextcloudConfig cloud) async {
+    await cloud.saveSecret(vaultId: entry.id);
     final index = entries.indexWhere((item) => item.id == entry.id);
     entries[index] = entry.copyWith(cloud: cloud);
     await save();
   }
 
   Future<void> forget(VaultEntry entry) async {
+    await NextcloudConfig.deleteSecret(vaultId: entry.id);
     entries.removeWhere((item) => item.id == entry.id);
     if (activeId == entry.id && entries.isNotEmpty) activeId = entries.first.id;
     await save();
