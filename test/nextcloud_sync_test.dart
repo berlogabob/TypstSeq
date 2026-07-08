@@ -737,6 +737,28 @@ void main() {
     expect(await vault.storage.exists('notes/delete.typ'), isFalse);
   });
 
+  test('remote deletion cannot erase a note edited during sync', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_edit_guard_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/editing.typ', 'saved text');
+    await NextcloudSync(_config(server)).sync(vault);
+    remote.remove('notes/editing.typ');
+
+    await expectLater(
+      NextcloudSync(_config(server), canReplaceLocal: (_) => false).sync(vault),
+      throwsStateError,
+    );
+
+    expect(await vault.storage.readText('notes/editing.typ'), 'saved text');
+  });
+
   test('delete versus edit creates a structured conflict', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);

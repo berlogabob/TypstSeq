@@ -911,24 +911,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (!mounted) return;
           setState(() => syncStage = path == null ? stage : '$stage · $path');
         },
+        canReplaceLocal: (path) =>
+            path != syncedNote ||
+            (revisionBeforeSync == editRevision && !dirty),
       ).sync(v, trigger: trigger);
       var concurrentConflict = false;
-      if (syncedNote != null &&
-          syncedNote == note &&
-          await v.storage.exists(syncedNote)) {
-        final diskSource = await v.storage.readText(syncedNote);
-        if (diskSource != sourceBeforeSync) {
-          if (revisionBeforeSync == editRevision && !dirty) {
-            _loadSource(diskSource);
-          } else {
-            await createSyncConflict(
-              v,
-              syncedNote,
-              localBytes: utf8.encode(_currentSource()),
-              remoteBytes: utf8.encode(diskSource),
-            );
-            concurrentConflict = true;
-          }
+      if (syncedNote != null && syncedNote == note) {
+        final diskExists = await v.storage.exists(syncedNote);
+        final diskSource = diskExists
+            ? await v.storage.readText(syncedNote)
+            : null;
+        final editorChanged = revisionBeforeSync != editRevision || dirty;
+        if (editorChanged && diskSource != sourceBeforeSync) {
+          final editorSource = _currentSource();
+          await createSyncConflict(
+            v,
+            syncedNote,
+            localBytes: utf8.encode(editorSource),
+            remoteBytes: diskSource == null ? null : utf8.encode(diskSource),
+          );
+          // The conflict snapshots both outcomes; keep the live editor version
+          // authoritative on disk so a sync race can never erase keystrokes.
+          await v.saveNote(syncedNote, editorSource);
+          concurrentConflict = true;
+        } else if (!editorChanged && diskSource != sourceBeforeSync) {
+          if (diskSource != null) _loadSource(diskSource);
         }
       }
       final ix = await v.rebuildIndex();

@@ -139,10 +139,11 @@ class NextcloudConfig {
 }
 
 class NextcloudSync {
-  NextcloudSync(this.config, {this.onProgress});
+  NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
 
   final NextcloudConfig config;
   final void Function(String stage, String? path)? onProgress;
+  final bool Function(String path)? canReplaceLocal;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
@@ -315,6 +316,7 @@ class NextcloudSync {
             reason = 'local-edit-remote-delete';
           } else {
             action = SyncAction.deleteLocal;
+            _requireLocalReplacementAllowed(path);
             await vault.storage.delete(path);
             deletedLocal++;
             reason = 'remote-deleted';
@@ -737,10 +739,17 @@ class NextcloudSync {
           await temporary.length() == 0) {
         return _DownloadResult(protected: true, etag: result.etag);
       }
+      _requireLocalReplacementAllowed(path);
       await storage.importFile(path, temporary);
       return result;
     } finally {
       if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  void _requireLocalReplacementAllowed(String path) {
+    if (canReplaceLocal?.call(path) == false) {
+      throw StateError('Local edit started during sync; retry after autosave');
     }
   }
 
@@ -1142,7 +1151,7 @@ Future<void> createSyncConflict(
   Vault vault,
   String path, {
   required List<int> localBytes,
-  required List<int> remoteBytes,
+  required List<int>? remoteBytes,
 }) async {
   final id = sha256
       .convert(utf8.encode('$path:${DateTime.now().microsecondsSinceEpoch}'))
@@ -1150,7 +1159,9 @@ Future<void> createSyncConflict(
       .substring(0, 20);
   final base = '.tylog/conflicts/$id';
   await vault.storage.writeBytes('$base.local', localBytes);
-  await vault.storage.writeBytes('$base.remote', remoteBytes);
+  if (remoteBytes != null) {
+    await vault.storage.writeBytes('$base.remote', remoteBytes);
+  }
   await vault.storage.writeText(
     '$base.json',
     jsonEncode({
@@ -1158,9 +1169,9 @@ Future<void> createSyncConflict(
       'path': path,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'localExists': true,
-      'remoteExists': true,
+      'remoteExists': remoteBytes != null,
       'localSnapshot': '$base.local',
-      'remoteSnapshot': '$base.remote',
+      if (remoteBytes != null) 'remoteSnapshot': '$base.remote',
     }),
   );
 }
