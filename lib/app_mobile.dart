@@ -72,6 +72,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String status = 'Opening vault...';
   bool dirty = false;
   int editRevision = 0;
+  int savedRevision = 0;
+  int indexedRevision = 0;
+  DateTime? lastEditAt;
   String mode = 'today';
   String helperSource = tylogHelperSource;
   NextcloudConfig? cloud;
@@ -85,8 +88,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool syncing = false;
   String? syncStage;
   bool? storageHealthy;
-  bool autosaveDeferred = false;
-  Completer<void>? syncCompletion;
   bool rebuilding = false;
   bool cancelRebuild = false;
   double? rebuildProgress;
@@ -208,6 +209,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastSyncAt = null;
         syncError = null;
         storageHealthy = null;
+        savedRevision = editRevision;
+        indexedRevision = editRevision;
+        lastEditAt = null;
         if (trigger != 'startup') mode = 'today';
         status = '$openStatus · ${pkms.report.summary()}';
       });
@@ -237,6 +241,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     await search.saveStorage(v.storage, Vault.searchIndexPath);
     return (report: report, search: search);
+  }
+
+  Future<void> _refreshIndex({
+    bool updateStatus = true,
+    bool force = false,
+  }) async {
+    final v = vault;
+    if (v == null || (!force && indexedRevision >= savedRevision)) return;
+    final revision = savedRevision;
+    try {
+      final ix = await v.rebuildIndex();
+      final pkms = await _readPkms(v, ix);
+      if (!mounted || v != vault) return;
+      setState(() {
+        index = _retainIndex(ix);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
+        indexedRevision = revision;
+        if (updateStatus) status = 'Indexed · ${pkms.report.summary()}';
+      });
+      unawaited(taskScheduler.reconcile(ix.tasks));
+    } catch (error) {
+      if (mounted && updateStatus) {
+        setState(() => status = 'Index refresh failed: $error');
+      }
+    }
+  }
+
+  Future<void> _ensureIndexed() async {
+    if (dirty) await _save(syncAfter: false);
+    await _refreshIndex();
   }
 
   Future<void> _switchVault(VaultEntry entry) async {
@@ -415,17 +450,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _save({
-    bool syncAfter = true,
-    bool allowWhileSyncing = false,
-  }) async {
+  Future<void> _save({bool syncAfter = true}) async {
     autosave?.cancel();
-    if (syncing && !allowWhileSyncing) {
-      autosaveDeferred = true;
-      await syncCompletion?.future;
-      if (!autosaveDeferred) return;
-      autosaveDeferred = false;
-    }
     final v = vault;
     final n = note;
     if (v == null || n == null) return;
@@ -433,18 +459,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final source = _currentSource();
     try {
       await v.saveNote(n, source);
-      final ix = await v.rebuildIndex();
-      final pkms = await _readPkms(v, ix);
       final editorUnchanged = revision == editRevision && n == note;
-      setState(() {
-        index = _retainIndex(ix);
-        validation = _retainValidation(pkms.report);
-        searchIndex.replaceWith(pkms.search);
-        if (editorUnchanged) {
+      if (editorUnchanged) {
+        setState(() {
+          savedRevision = revision;
           dirty = false;
-          status = 'Saved ${v.relativePath(n)} · ${pkms.report.summary()}';
-        }
-      });
+          status = 'Saved ${v.relativePath(n)}';
+        });
+      }
       if (syncAfter && editorUnchanged) _queueCloudSync();
     } catch (e) {
       if (revision == editRevision && n == note) {
@@ -454,14 +476,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _queueCloudSync() {
-    final cfg = cloud;
-    if (cfg == null || !cfg.isReady || syncing || _hasSyncConflicts) return;
     cloudAutosave?.cancel();
-    cloudAutosave = Timer(const Duration(seconds: 2), () {
-      if (!syncing && !dirty && !_hasSyncConflicts) {
-        unawaited(_syncNow(trigger: 'autosave'));
-      }
-    });
+    final edited = lastEditAt;
+    final elapsed = edited == null
+        ? Duration.zero
+        : DateTime.now().difference(edited);
+    final remaining = const Duration(seconds: 10) - elapsed;
+    cloudAutosave = Timer(
+      remaining.isNegative ? Duration.zero : remaining,
+      _runIdleMaintenance,
+    );
+  }
+
+  Future<void> _runIdleMaintenance() async {
+    if (!mounted) return;
+    if (dirty || richController.isComposing) return;
+    if (_editingRecently) {
+      _queueCloudSync();
+      return;
+    }
+    if (syncing) {
+      cloudAutosave = Timer(const Duration(seconds: 1), _runIdleMaintenance);
+      return;
+    }
+    final cfg = cloud;
+    if (cfg != null && cfg.isReady && !_hasSyncConflicts) {
+      await _syncNow(trigger: 'autosave');
+      return;
+    }
+    await _refreshIndex();
   }
 
   void _startCloudPolling() {
@@ -469,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cfg = cloud;
     if (cfg == null || !cfg.isReady) return;
     cloudPoll = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!syncing && !dirty && !_hasSyncConflicts && mounted) {
+      if (!syncing && !_editingRecently && !_hasSyncConflicts && mounted) {
         unawaited(_syncNow(trigger: 'poll'));
       }
     });
@@ -477,12 +520,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool get _hasSyncConflicts => syncConflicts.isNotEmpty;
 
+  bool get _editingRecently {
+    if (dirty || richController.isComposing) return true;
+    final edited = lastEditAt;
+    return edited != null &&
+        DateTime.now().difference(edited) < const Duration(seconds: 10);
+  }
+
   void _queueAutosave() {
-    setState(() {
-      editRevision++;
-      dirty = true;
-      status = 'Autosave pending...';
-    });
+    editRevision++;
+    lastEditAt = DateTime.now();
+    final becameDirty = !dirty;
+    dirty = true;
+    if (becameDirty) setState(() => status = 'Autosave pending...');
     autosave?.cancel();
     autosave = Timer(const Duration(milliseconds: 700), _save);
   }
@@ -555,6 +605,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       note = path;
       dirty = false;
+      savedRevision = editRevision;
       mode = 'normal';
       status = 'Opened $path';
     });
@@ -740,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
       _loadSource(updated);
-      dirty = true;
+      _queueAutosave();
       await _save();
     }
     for (final value in [title, tagsText, aliases]) {
@@ -751,6 +802,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showKnowledge({
     KnowledgeView initialView = KnowledgeView.search,
   }) async {
+    await _ensureIndexed();
+    if (!mounted || dirty) return;
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
@@ -862,6 +915,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         index = _retainIndex(ix);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
+        indexedRevision = savedRevision;
         status = 'Index rebuilt · ${pkms.report.summary()}';
       });
       unawaited(taskScheduler.reconcile(ix.tasks));
@@ -890,7 +944,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() => status = 'Sync handled by Nextcloud Desktop');
       return;
     }
-    syncCompletion = Completer<void>();
     setState(() {
       syncing = true;
       syncError = null;
@@ -899,7 +952,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       cloudAutosave?.cancel();
       if (dirty) {
-        await _save(syncAfter: false, allowWhileSyncing: true);
+        await _save(syncAfter: false);
         if (dirty) return;
       }
       final syncedNote = note;
@@ -938,6 +991,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (diskSource != null) _loadSource(diskSource);
         }
       }
+      final indexedThroughRevision = savedRevision;
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
       final conflicts = await loadSyncConflicts(v);
@@ -945,6 +999,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         index = _retainIndex(ix);
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
+        indexedRevision = indexedThroughRevision;
         lastSync = result;
         lastSyncAt = DateTime.now();
         syncConflicts = conflicts;
@@ -963,6 +1018,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (e, stack) {
       debugPrintStack(label: 'Nextcloud sync failed: $e', stackTrace: stack);
       final conflicts = await loadSyncConflicts(v);
+      await _refreshIndex(updateStatus: false, force: true);
       if (mounted) {
         setState(() {
           syncConflicts = conflicts;
@@ -977,8 +1033,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           syncStage = null;
         });
       }
-      syncCompletion?.complete();
-      syncCompletion = null;
     }
     if (!mounted) return;
   }
@@ -1103,7 +1157,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && (cloud?.isReady ?? false)) {
-      unawaited(_syncNow(trigger: 'resume'));
+      if (_editingRecently) {
+        _queueCloudSync();
+      } else {
+        unawaited(_syncNow(trigger: 'resume'));
+      }
     }
   }
 
@@ -1243,13 +1301,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       richController.loadSource(sourceController.text);
     }
     setState(() => mode = 'normal');
-  }
-
-  void _editJournal() {
-    if (mode == 'source' || mode == 'split') {
-      richController.loadSource(sourceController.text);
-    }
-    setState(() => mode = 'edit');
   }
 
   void _showToday() => setState(() => mode = 'today');
@@ -1544,7 +1595,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _selectedText() {
-    if (mode == 'edit') return richController.selectedPlainText;
+    if (mode == 'normal') return richController.selectedPlainText;
     final editor = sourceController;
     final selection = editor.selection;
     if (!selection.isValid || selection.isCollapsed) return '';
@@ -1552,7 +1603,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _applyMagic(MagicRequest request) {
-    if (mode == 'edit') {
+    if (mode == 'normal') {
       richController.applyMagic(request);
       return;
     }
@@ -1892,6 +1943,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _ => 1,
   };
 
+  Future<void> _showTasks() async {
+    await _ensureIndexed();
+    if (mounted && !dirty) setState(() => mode = 'tasks');
+  }
+
   void _selectDestination(int destination) {
     switch (destination) {
       case 0:
@@ -1901,7 +1957,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _showJournal();
         return;
       case 2:
-        setState(() => mode = 'tasks');
+        unawaited(_showTasks());
         return;
       case 3:
         setState(() => mode = 'library');
@@ -2009,12 +2065,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         'normal' => TyLogRichEditor(
           controller: richController,
-          readOnly: true,
-          onInsert: _showMagicMenu,
-        ),
-        'edit' => TyLogRichEditor(
-          controller: richController,
-          readOnly: false,
           onInsert: _showMagicMenu,
         ),
         _ => const SizedBox.shrink(),
@@ -2170,23 +2220,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      floatingActionButton: _destination == 1 && mode != 'graph'
+      floatingActionButton:
+          _destination == 1 && (mode == 'source' || mode == 'split')
           ? FloatingActionButton.extended(
-              onPressed: switch (mode) {
-                'normal' || 'preview' => _editJournal,
-                'edit' => _showJournal,
-                _ => _showMagicMenu,
-              },
-              icon: Icon(switch (mode) {
-                'normal' || 'preview' => Icons.edit,
-                'edit' => Icons.check,
-                _ => Icons.auto_fix_high,
-              }),
-              label: Text(switch (mode) {
-                'normal' || 'preview' => 'Edit',
-                'edit' => 'Done',
-                _ => 'Magic',
-              }),
+              onPressed: _showMagicMenu,
+              icon: const Icon(Icons.auto_fix_high),
+              label: const Text('Magic'),
             )
           : null,
       bottomNavigationBar: wideNavigation

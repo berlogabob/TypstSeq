@@ -72,17 +72,25 @@ void main() {
   });
 
   test(
-    'IME replacement keeps Cyrillic text and composing selection stable',
+    'IME composition renders immediately and commits once with one undo',
     () {
-      String? saved;
+      final saved = <String>[];
       final controller = TyLogEditingController(
         source: _source,
-        onSourceChanged: (value) => saved = value,
+        onSourceChanged: saved.add,
         onError: (error) => fail('$error'),
         onProtectedTap: (_) {},
       );
       addTearDown(controller.dispose);
       final old = controller.text;
+
+      controller.value = TextEditingValue(
+        text: old.replaceRange(0, 6, 'здрав'),
+        selection: const TextSelection.collapsed(offset: 5),
+        composing: const TextRange(start: 0, end: 5),
+      );
+      expect(controller.text, startsWith('здрав'));
+      expect(saved, isEmpty);
 
       controller.value = TextEditingValue(
         text: old.replaceRange(0, 6, 'здравствуй'),
@@ -92,9 +100,85 @@ void main() {
 
       expect(controller.text, startsWith('здравствуй'));
       expect(controller.value.composing, const TextRange(start: 0, end: 10));
-      expect(saved, contains('здравствуй, как дела?'));
+      expect(saved, isEmpty);
+
+      controller.value = controller.value.copyWith(
+        selection: const TextSelection.collapsed(offset: 10),
+        composing: TextRange.empty,
+      );
+
+      expect(saved, hasLength(1));
+      expect(saved.single, contains('здравствуй, как дела?'));
+      expect(controller.selection, const TextSelection.collapsed(offset: 10));
+      controller.undo();
+      expect(controller.text, old);
     },
   );
+
+  test('Gboard suggestion replacement does not leave ghost characters', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'список ',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.value = const TextEditingValue(
+      text: 'список м',
+      selection: TextSelection.collapsed(offset: 8),
+      composing: TextRange(start: 7, end: 8),
+    );
+    controller.value = const TextEditingValue(
+      text: 'список мир',
+      selection: TextSelection.collapsed(offset: 10),
+      composing: TextRange(start: 7, end: 10),
+    );
+    controller.value = const TextEditingValue(
+      text: 'список мира',
+      selection: TextSelection.collapsed(offset: 11),
+    );
+
+    expect(controller.text, 'список мира');
+    expect(saved, ['список мира']);
+    controller.undo();
+    expect(controller.text, 'список ');
+  });
+
+  test('rapid trailing Enters are visible and serialize immediately', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'строка',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n',
+      selection: TextSelection.collapsed(offset: 7),
+    );
+    expect(controller.text, 'строка\n');
+    expect(saved.single, 'строка\n');
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n\n',
+      selection: TextSelection.collapsed(offset: 8),
+    );
+    expect(controller.text, 'строка\n\n');
+    expect(saved.last, 'строка\n\n');
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n\nм',
+      selection: TextSelection.collapsed(offset: 9),
+      composing: TextRange(start: 8, end: 9),
+    );
+    expect(controller.text, 'строка\n\nм');
+    controller.value = controller.value.copyWith(composing: TextRange.empty);
+    expect(saved.last, 'строка\n\nм');
+  });
 
   test('collapsed Bold styles subsequently typed text', () {
     String? saved;
@@ -192,11 +276,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TyLogRichEditor(
-            controller: controller,
-            readOnly: true,
-            onInsert: () {},
-          ),
+          body: TyLogRichEditor(controller: controller, onInsert: () {}),
         ),
       ),
     );

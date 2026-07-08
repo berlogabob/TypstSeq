@@ -67,15 +67,20 @@ void main() {
     await tester.pump();
     final rich = find.byKey(const Key('rich-journal-editor'));
     expect(rich, findsOneWidget);
-    expect(tester.widget<TextField>(rich).readOnly, isTrue);
+    expect(tester.widget<TextField>(rich).readOnly, isFalse);
+    expect(tester.widget<TextField>(rich).focusNode!.hasFocus, isFalse);
+    expect(find.text('Edit'), findsNothing);
+    expect(find.text('Done'), findsNothing);
+    expect(find.byTooltip('Bold'), findsNothing);
     expect(
       tester.widget<TextField>(rich).controller!.text,
       'Heading\n\nVisible text\n\n\uFFFC',
     );
     expect(find.text('Custom Typst'), findsOneWidget);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+    await tester.tap(rich);
+    await tester.pump();
+    expect(find.byTooltip('Bold'), findsOneWidget);
     final controller = tester.widget<TextField>(rich).controller!;
     final start = controller.text.indexOf('Visible text');
     controller.selection = TextSelection(
@@ -85,11 +90,10 @@ void main() {
     await tester.tap(find.byTooltip('Bold'));
     await tester.pump();
     expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
-    expect(find.text('Done'), findsOneWidget);
-
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(rich).readOnly, isTrue);
+    await tester.tap(find.textContaining('TyLog').first);
+    await tester.pump();
+    expect(tester.widget<TextField>(rich).focusNode!.hasFocus, isFalse);
+    expect(find.byTooltip('Bold'), findsNothing);
 
     await openSource(tester);
     expect(
@@ -211,6 +215,41 @@ void main() {
     expect(tester.widget<TextField>(editor).controller!.text, 'abc');
   });
 
+  testWidgets('journal renders a trailing newline before the next character', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Journal').last);
+    await tester.pumpAndSettle();
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(editor);
+    await tester.pump();
+    final controller = tester.widget<TextField>(editor).controller!;
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n',
+      selection: TextSelection.collapsed(offset: 7),
+    );
+    await tester.pump();
+    expect(controller.text, 'строка\n');
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n\n',
+      selection: TextSelection.collapsed(offset: 8),
+    );
+    await tester.pump();
+    expect(controller.text, 'строка\n\n');
+
+    controller.value = const TextEditingValue(
+      text: 'строка\n\nм',
+      selection: TextSelection.collapsed(offset: 9),
+      composing: TextRange(start: 8, end: 9),
+    );
+    await tester.pump();
+    expect(controller.text, 'строка\n\nм');
+  });
+
   testWidgets('editor changes are autosaved', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -252,8 +291,8 @@ void main() {
 
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pump();
     await tester.tap(find.byTooltip('Insert'));
     await tester.pumpAndSettle();
 

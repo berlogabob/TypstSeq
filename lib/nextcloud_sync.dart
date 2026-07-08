@@ -303,30 +303,14 @@ class NextcloudSync {
               reason = 'remote-changed-during-delete';
             }
           }
-        } else if (prev != null && localExists && !remoteExists) {
-          if (localChanged || loadedState.recovered) {
-            action = SyncAction.conflict;
-            await _storeConflict(
-              vault,
-              path,
-              localExists: true,
-              remoteExists: false,
-            );
-            conflict++;
-            reason = 'local-edit-remote-delete';
-          } else {
-            action = SyncAction.deleteLocal;
-            _requireLocalReplacementAllowed(path);
-            await vault.storage.delete(path);
-            deletedLocal++;
-            reason = 'remote-deleted';
-          }
         } else if (!localExists && !remoteExists) {
           syncState.remove(path);
           skip++;
           reason = 'both-missing';
-        } else if ((!localExists && remoteExists) ||
-            (remoteChanged && !localChanged)) {
+          // ponytail: PROPFIND absence is not a deletion tombstone. The selected
+          // Android folder is authoritative, so a missing remote is restored.
+        } else if (remoteExists &&
+            (!localExists || (remoteChanged && !localChanged))) {
           action = SyncAction.download;
           final download = await _downloadStorage(
             path,

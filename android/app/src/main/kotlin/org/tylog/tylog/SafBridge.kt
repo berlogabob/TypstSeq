@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import io.flutter.plugin.common.BinaryMessenger
@@ -13,6 +15,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.concurrent.Executors
 
 class SafBridge(
     private val activity: Activity,
@@ -25,10 +28,14 @@ class SafBridge(
     }
 
     private val resolver = activity.contentResolver
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val executor = Executors.newSingleThreadExecutor()
+    private val channel = MethodChannel(messenger, CHANNEL)
     private var pendingPick: MethodChannel.Result? = null
+    @Volatile private var disposed = false
 
     init {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler(this)
+        channel.setMethodCallHandler(this)
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -52,61 +59,83 @@ class SafBridge(
             return
         }
 
-        try {
+        if (call.method !in setOf(
+                "exists", "createDirectory", "list", "stat", "read", "write",
+                "delete", "hash", "import", "materialize", "open",
+            )
+        ) {
+            result.notImplemented()
+            return
+        }
+        runStorage(result) {
             val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
             when (call.method) {
-                "exists" -> result.success(resolve(tree, path(call)) != null)
-                "createDirectory" -> {
-                    ensureDirectory(tree, path(call))
-                    result.success(null)
-                }
-                "list" -> result.success(
-                    list(
-                        tree,
-                        path(call),
-                        call.argument<Boolean>("recursive") == true,
-                    ),
+                "exists" -> resolve(tree, path(call)) != null
+                "createDirectory" -> ensureDirectory(tree, path(call)).let { null }
+                "list" -> list(
+                    tree,
+                    path(call),
+                    call.argument<Boolean>("recursive") == true,
                 )
-                "stat" -> result.success(resolve(tree, path(call))?.let(::metadata))
-                "read" -> result.success(read(resolveRequired(tree, path(call))))
-                "write" -> {
-                    writeAtomic(
-                        tree,
-                        path(call),
-                        call.argument<ByteArray>("bytes") ?: ByteArray(0),
-                    )
-                    result.success(null)
-                }
-                "delete" -> {
-                    resolve(tree, path(call))?.let { DocumentsContract.deleteDocument(resolver, it) }
-                    result.success(null)
-                }
-                "hash" -> result.success(hash(resolveRequired(tree, path(call))))
-                "import" -> {
-                    val source = File(call.argument<String>("source") ?: error("Missing source"))
-                    writeAtomic(tree, path(call), source)
-                    result.success(null)
-                }
-                "materialize" -> result.success(materialize(resolveRequired(tree, path(call))).path)
+                "stat" -> resolve(tree, path(call))?.let(::metadata)
+                "read" -> read(resolveRequired(tree, path(call)))
+                "write" -> writeAtomic(
+                    tree,
+                    path(call),
+                    call.argument<ByteArray>("bytes") ?: ByteArray(0),
+                ).let { null }
+                "delete" -> resolve(tree, path(call))
+                    ?.let { DocumentsContract.deleteDocument(resolver, it) }
+                    .let { null }
+                "hash" -> hash(resolveRequired(tree, path(call)))
+                "import" -> writeAtomic(
+                    tree,
+                    path(call),
+                    File(call.argument<String>("source") ?: error("Missing source")),
+                ).let { null }
+                "materialize" -> materialize(resolveRequired(tree, path(call))).path
                 "open" -> {
                     val document = resolveRequired(tree, path(call))
                     val extension = path(call).substringAfterLast('.', "")
                     val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
                         ?: "application/octet-stream"
-                    activity.startActivity(
-                        Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(document, mime)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        },
-                    )
-                    result.success(null)
+                    OpenRequest(document, mime)
                 }
-                else -> result.notImplemented()
+                else -> null
             }
-        } catch (error: Throwable) {
-            result.error("saf_error", error.message ?: error.javaClass.simpleName, null)
         }
     }
+
+    private fun runStorage(result: MethodChannel.Result, work: () -> Any?) {
+        executor.execute {
+            try {
+                val value = work()
+                postMain {
+                    if (value is OpenRequest) {
+                        activity.startActivity(
+                            Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(value.uri, value.mime)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            },
+                        )
+                        result.success(null)
+                    } else {
+                        result.success(value)
+                    }
+                }
+            } catch (error: Throwable) {
+                postMain {
+                    result.error("saf_error", error.message ?: error.javaClass.simpleName, null)
+                }
+            }
+        }
+    }
+
+    private fun postMain(action: () -> Unit) {
+        if (!disposed) mainHandler.post { if (!disposed) action() }
+    }
+
+    private data class OpenRequest(val uri: Uri, val mime: String)
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
         if (requestCode != PICK_TREE) return false
@@ -117,17 +146,44 @@ class SafBridge(
             return true
         }
         val uri = data.data!!
+        val flags = data.flags and
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         try {
-            val flags = data.flags and
-                (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             resolver.takePersistableUriPermission(uri, flags)
-            validate(uri)
-            result.success(mapOf("uri" to uri.toString(), "name" to displayName(root(uri))))
         } catch (error: Throwable) {
-            runCatching { resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             result.error("invalid_folder", "This folder cannot provide safe persistent writes: ${error.message}", null)
+            return true
+        }
+        executor.execute {
+            try {
+                validate(uri)
+                val name = displayName(root(uri))
+                postMain { result.success(mapOf("uri" to uri.toString(), "name" to name)) }
+            } catch (error: Throwable) {
+                runCatching {
+                    resolver.releasePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                postMain {
+                    result.error(
+                        "invalid_folder",
+                        "This folder cannot provide safe persistent writes: ${error.message}",
+                        null,
+                    )
+                }
+            }
         }
         return true
+    }
+
+    fun dispose() {
+        disposed = true
+        pendingPick = null
+        channel.setMethodCallHandler(null)
+        mainHandler.removeCallbacksAndMessages(null)
+        executor.shutdownNow()
     }
 
     private fun path(call: MethodCall): String = safePath(call.argument<String>("path") ?: "")

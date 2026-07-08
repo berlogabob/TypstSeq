@@ -717,7 +717,7 @@ void main() {
     expect(remote.containsKey('notes/delete.typ'), isFalse);
   });
 
-  test('remote deletion removes an unchanged local file', () async {
+  test('remote absence restores the authoritative local file', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
     final dir = await Directory.systemTemp.createTemp('tylog_delete_local_');
@@ -733,11 +733,12 @@ void main() {
     remote.remove('notes/delete.typ');
     final result = await NextcloudSync(_config(server)).sync(vault);
 
-    expect(result.deletedLocal, 1);
-    expect(await vault.storage.exists('notes/delete.typ'), isFalse);
+    expect(result.uploaded, 1);
+    expect(await vault.storage.readText('notes/delete.typ'), 'delete me');
+    expect(utf8.decode(remote['notes/delete.typ']!.bytes), 'delete me');
   });
 
-  test('remote deletion cannot erase a note edited during sync', () async {
+  test('remote edit cannot replace a note edited during sync', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
     final dir = await Directory.systemTemp.createTemp('tylog_edit_guard_');
@@ -749,7 +750,11 @@ void main() {
     await vault.ensureCreated();
     await vault.storage.writeText('notes/editing.typ', 'saved text');
     await NextcloudSync(_config(server)).sync(vault);
-    remote.remove('notes/editing.typ');
+    remote['notes/editing.typ'] = _MutableRemoteFile(
+      bytes: utf8.encode('remote edit'),
+      etag: '"remote-edit"',
+      modified: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
 
     await expectLater(
       NextcloudSync(_config(server), canReplaceLocal: (_) => false).sync(vault),
@@ -1015,9 +1020,13 @@ Future<HttpServer> _mutableWebDavServer(
       }
       request.response.write('</d:multistatus>');
     } else if (request.method == 'GET') {
-      final file = files[path]!;
-      request.response.headers.set(HttpHeaders.etagHeader, file.etag);
-      request.response.add(file.bytes);
+      final file = files[path];
+      if (file == null) {
+        request.response.statusCode = HttpStatus.notFound;
+      } else {
+        request.response.headers.set(HttpHeaders.etagHeader, file.etag);
+        request.response.add(file.bytes);
+      }
     } else if (request.method == 'PUT') {
       final bytes = await request.fold<List<int>>(
         [],

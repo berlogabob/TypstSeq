@@ -26,11 +26,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TyLogRichEditor(
-            controller: controller,
-            readOnly: false,
-            onInsert: () {},
-          ),
+          body: TyLogRichEditor(controller: controller, onInsert: () {}),
         ),
       ),
     );

@@ -15,4 +15,9 @@ class MainActivity : FlutterActivity() {
         if (::safBridge.isInitialized && safBridge.onActivityResult(requestCode, resultCode, data)) return
         super.onActivityResult(requestCode, resultCode, data)
     }
+
+    override fun onDestroy() {
+        if (::safBridge.isInitialized) safBridge.dispose()
+        super.onDestroy()
+    }
 }

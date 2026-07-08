@@ -113,11 +113,24 @@ class TyLogDocument {
 
     final blocks = <TyLogBlock>[];
     for (var i = first; i < parsed.blocks.length; i++) {
-      final block = parsed.blocks[i];
+      var block = parsed.blocks[i];
       final nextStart = i + 1 < parsed.blocks.length
           ? parsed.blocks[i + 1].start
           : source.length;
-      final separator = source.substring(block.end, nextStart);
+      var separator = source.substring(block.end, nextStart);
+      if (i == parsed.blocks.length - 1 &&
+          separator.isNotEmpty &&
+          separator.trim().isEmpty &&
+          block.kind == ControlledBlockKind.paragraph) {
+        block = ControlledBlock(
+          start: block.start,
+          end: nextStart,
+          source: '${block.source}$separator',
+          kind: block.kind,
+          supported: block.supported,
+        );
+        separator = '';
+      }
       blocks.add(_parseBlock(block, separator, i));
     }
     return TyLogDocument._(
@@ -261,7 +274,9 @@ class TyLogDocument {
         ),
       );
     }
+    final removedThroughEnd = replacements.isEmpty && last == blocks.length - 1;
     blocks.replaceRange(first, last + 1, replacements);
+    if (removedThroughEnd && blocks.isNotEmpty) blocks.last.separator = '';
   }
 
   void toggle(TextRange selection, {bool? bold, bool? italic}) {
@@ -428,11 +443,13 @@ class TyLogEditingController extends TextEditingController {
   final List<_Snapshot> _redo = [];
   static _RichClipboard? _richClipboard;
   late TextEditingValue _lastValue;
+  _Snapshot? _compositionStart;
   bool _updating = false;
   TyLogInlineStyle _typingStyle = const TyLogInlineStyle();
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
+  bool get isComposing => _isComposing(value);
   String get selectedPlainText =>
       selection.isValid ? document.plainText(selection) : '';
   String protectedSource(String id) => document.sourceFor(id);
@@ -445,6 +462,7 @@ class TyLogEditingController extends TextEditingController {
       selection: TextSelection.collapsed(offset: document.visibleText.length),
     );
     _lastValue = value;
+    _compositionStart = null;
     _undo.clear();
     _redo.clear();
     _updating = false;
@@ -455,10 +473,16 @@ class TyLogEditingController extends TextEditingController {
     if (_updating) return;
     final next = value;
     if (next.text == _lastValue.text) {
+      if (_compositionStart != null && !_isComposing(next)) {
+        _commitComposition(next);
+        return;
+      }
       _lastValue = next;
       return;
     }
-    final before = _snapshot();
+    final before = _Snapshot(document.copy(), _lastValue);
+    final composing = _isComposing(next);
+    if (composing) _compositionStart ??= before;
     try {
       final change = _replacement(_lastValue.text, next.text);
       document.replace(
@@ -487,17 +511,43 @@ class TyLogEditingController extends TextEditingController {
         accepted = value;
         _updating = false;
       }
-      final source = document.toSource();
-      _undo.add(before);
-      if (_undo.length > 100) _undo.removeAt(0);
-      _redo.clear();
       _lastValue = accepted;
+      if (composing) return;
+      final source = document.toSource();
+      _addUndo(_compositionStart ?? before);
+      _compositionStart = null;
+      _redo.clear();
       onSourceChanged(source);
     } catch (error) {
-      _restore(before, emit: false);
+      _restore(_compositionStart ?? before, emit: false);
+      _compositionStart = null;
       onError(error);
     }
   }
+
+  void _commitComposition(TextEditingValue next) {
+    final before = _compositionStart!;
+    try {
+      final source = document.toSource();
+      _lastValue = next;
+      _compositionStart = null;
+      _addUndo(before);
+      _redo.clear();
+      onSourceChanged(source);
+    } catch (error) {
+      _restore(before, emit: false);
+      _compositionStart = null;
+      onError(error);
+    }
+  }
+
+  void _addUndo(_Snapshot snapshot) {
+    _undo.add(snapshot);
+    if (_undo.length > 100) _undo.removeAt(0);
+  }
+
+  static bool _isComposing(TextEditingValue value) =>
+      value.composing.isValid && !value.composing.isCollapsed;
 
   void toggleBold() {
     if (selection.isCollapsed) {
@@ -718,6 +768,7 @@ class TyLogEditingController extends TextEditingController {
     document = snapshot.document.copy();
     value = snapshot.value.copyWith(text: document.visibleText);
     _lastValue = value;
+    _compositionStart = null;
     _updating = false;
     notifyListeners();
     if (emit) onSourceChanged(document.toSource());
@@ -784,12 +835,10 @@ class TyLogRichEditor extends StatefulWidget {
   const TyLogRichEditor({
     super.key,
     required this.controller,
-    required this.readOnly,
     required this.onInsert,
   });
 
   final TyLogEditingController controller;
-  final bool readOnly;
   final VoidCallback onInsert;
 
   @override
@@ -803,7 +852,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void initState() {
     super.initState();
     focusNode = FocusNode(onKeyEvent: _handleKey);
+    focusNode.addListener(_focusChanged);
   }
+
+  void _focusChanged() => setState(() {});
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.keyZ) {
@@ -820,17 +872,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   @override
-  void didUpdateWidget(covariant TyLogRichEditor oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.readOnly && !widget.readOnly) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) focusNode.requestFocus();
-      });
-    }
-  }
-
-  @override
   void dispose() {
+    focusNode.removeListener(_focusChanged);
     focusNode.dispose();
     super.dispose();
   }
@@ -843,8 +886,6 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           key: const Key('rich-journal-editor'),
           controller: widget.controller,
           focusNode: focusNode,
-          readOnly: widget.readOnly,
-          showCursor: !widget.readOnly,
           expands: true,
           minLines: null,
           maxLines: null,
@@ -854,6 +895,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             hintText: 'Start writing…',
             contentPadding: EdgeInsets.all(18),
           ),
+          onTapOutside: (_) => focusNode.unfocus(),
           contextMenuBuilder: (context, state) =>
               AdaptiveTextSelectionToolbar.buttonItems(
                 anchors: state.contextMenuAnchors,
@@ -866,8 +908,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                         widget.controller.copySelection();
                       },
                     ),
-                  if (!widget.readOnly &&
-                      !widget.controller.selection.isCollapsed)
+                  if (!widget.controller.selection.isCollapsed)
                     ContextMenuButtonItem(
                       type: ContextMenuButtonType.cut,
                       onPressed: () {
@@ -875,14 +916,13 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                         widget.controller.cutSelection();
                       },
                     ),
-                  if (!widget.readOnly)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.paste,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.paste();
-                      },
-                    ),
+                  ContextMenuButtonItem(
+                    type: ContextMenuButtonType.paste,
+                    onPressed: () {
+                      state.hideToolbar();
+                      widget.controller.paste();
+                    },
+                  ),
                   ContextMenuButtonItem(
                     type: ContextMenuButtonType.selectAll,
                     onPressed: () {
@@ -893,7 +933,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               ),
         ),
       ),
-      if (!widget.readOnly)
+      if (focusNode.hasFocus)
         SafeArea(
           top: false,
           child: SizedBox(
@@ -997,7 +1037,7 @@ class _ProtectedChip extends StatelessWidget {
 
 TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
   final source = block.source;
-  final trimmed = source.trim();
+  final trimmed = source.trimLeft();
   final id = 'block-$index-${source.hashCode}';
   if (block.kind == ControlledBlockKind.task ||
       block.kind == ControlledBlockKind.table ||
