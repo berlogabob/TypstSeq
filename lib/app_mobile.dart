@@ -146,7 +146,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       var active = registry.active;
       try {
-        await Vault.withStorage(active.storage).ensureCreated();
+        await Vault.withStorage(
+          active.storage,
+        ).ensureCreated(createIfMissing: active.storageKind != 'android-tree');
       } on PlatformException {
         if (active.storageKind != 'android-tree') rethrow;
         final selection = await AndroidTreeVaultStorage.pick();
@@ -157,7 +159,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return;
         }
         active = await registry.rebindTree(active, selection);
-        await Vault.withStorage(active.storage).ensureCreated();
+        await Vault.withStorage(
+          active.storage,
+        ).ensureCreated(createIfMissing: false);
       } on StateError {
         if (active.storageKind == 'android-tree') rethrow;
         var path = '${active.path}-v5';
@@ -186,7 +190,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       cloudAutosave?.cancel();
       cloudPoll?.cancel();
       final v = Vault.withStorage(entry.storage);
-      await v.ensureCreated();
+      await v.ensureCreated(
+        createIfMissing: entry.storageKind != 'android-tree',
+      );
       // ponytail: offline-first — render local vault immediately, sync in background
       final openStatus = 'Vault: ${v.storage.displayName}';
       final today = await v.todayNote();
@@ -1167,17 +1173,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showSettings() {
     final v = vault;
+    final registry = vaultRegistry;
+    final active = registry?.entries
+        .where((entry) => entry.id == registry.activeId)
+        .firstOrNull;
+    final activeLocation =
+        active?.treeUri ??
+        (active == null || active.path.isEmpty ? active?.name : active.path);
+    final openError = status.startsWith('Open failed:');
+    final vaultPath =
+        v?.storage.location ??
+        (openError
+            ? [activeLocation, status].whereType<String>().join('\n')
+            : activeLocation ?? status);
     showDialog<void>(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: _SettingsSheet(
-            vaultPath: v?.storage.location ?? 'Opening vault...',
+            vaultPath: vaultPath,
             cloud: cloud,
             syncing: syncing,
-            vaults: vaultRegistry?.entries ?? const [],
-            activeVaultId: vaultRegistry?.activeId,
+            vaults: registry?.entries ?? const [],
+            activeVaultId: registry?.activeId,
             onAddVault: () => unawaited(_pickVault()),
             onSwitchVault: (entry) {
               Navigator.pop(context);

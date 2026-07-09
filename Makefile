@@ -60,13 +60,15 @@ publish-release:
 	command -v gh >/dev/null && gh auth status >/dev/null 2>&1 || { echo "GitHub CLI is unavailable or not authenticated."; exit 1; }; \
 	APK="build/app/outputs/flutter-apk/app-release.apk"; \
 	test -f "$$APK" || { echo "Missing $$APK; run make build-android first."; exit 1; }; \
+	UPLOAD_APK="build/app/outputs/flutter-apk/tylog-android.apk"; \
+	cp "$$APK" "$$UPLOAD_APK"; \
 	NEW_VERSION="$$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d '[:space:]')"; \
 	TAG="v$$NEW_VERSION"; \
 	echo "Uploading $$(du -h "$$APK" | cut -f1) APK for $$TAG; this may take several minutes..."; \
 	if gh release view "$$TAG" --repo "$(OWNER_REPO)" >/dev/null 2>&1; then \
-		gh release upload "$$TAG" "$$APK#tylog-android.apk" --clobber --repo "$(OWNER_REPO)"; \
+		gh release upload "$$TAG" "$$UPLOAD_APK" --clobber --repo "$(OWNER_REPO)"; \
 	else \
-		gh release create "$$TAG" --title "Release $$NEW_VERSION" --notes "TyLog $$NEW_VERSION" --target "$(BRANCH)" --repo "$(OWNER_REPO)" "$$APK#tylog-android.apk"; \
+		gh release create "$$TAG" --title "Release $$NEW_VERSION" --notes "TyLog $$NEW_VERSION" --target "$(BRANCH)" --repo "$(OWNER_REPO)" "$$UPLOAD_APK"; \
 	fi; \
 	echo "GitHub Release upload complete."
 

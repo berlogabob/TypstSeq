@@ -193,6 +193,11 @@ class NextcloudSync {
       progress('scan-local');
       repaired = await _cleanResolvedConflictCopies(vault);
       final localPaths = (await _localFiles(vault.storage)).toSet();
+      if (syncState.isNotEmpty && remote.isNotEmpty && localPaths.isEmpty) {
+        throw StateError(
+          'Local vault listed no syncable files; refusing to propagate deletions.',
+        );
+      }
       final unresolved = (await loadSyncConflicts(
         vault,
       )).map((conflict) => conflict.path).toSet();

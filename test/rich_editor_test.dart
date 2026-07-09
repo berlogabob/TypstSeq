@@ -285,4 +285,34 @@ void main() {
     await tester.tap(find.text('Custom Typst'));
     expect(opened, isNotNull);
   });
+
+  testWidgets('format toolbar tap keeps focus and applies bold', (
+    tester,
+  ) async {
+    String? saved;
+    final controller = TyLogEditingController(
+      source: _source,
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () {}),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pump();
+    controller.selection = const TextSelection(baseOffset: 0, extentOffset: 6);
+
+    await tester.tap(find.byTooltip('Bold'));
+    await tester.pump();
+
+    expect(saved, contains('#strong[привет]'));
+    expect(find.byTooltip('Bold'), findsOneWidget);
+  });
 }

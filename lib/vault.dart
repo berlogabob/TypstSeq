@@ -48,11 +48,19 @@ class Vault {
     return vault;
   }
 
-  Future<void> ensureCreated() async {
-    if (!await storage.exists(settingsPath) && await _hasLegacyContent()) {
-      throw StateError(
-        'This is not a TyLog v5 vault. Choose an empty folder; automatic migration is intentionally unsupported.',
-      );
+  Future<void> ensureCreated({bool createIfMissing = true}) async {
+    final hasSettings = await storage.exists(settingsPath);
+    if (!hasSettings) {
+      if (await _hasLegacyContent()) {
+        throw StateError(
+          'This is not a TyLog v5 vault. Choose an empty folder; automatic migration is intentionally unsupported.',
+        );
+      }
+      if (!createIfMissing) {
+        throw StateError(
+          'TyLog vault marker is missing. Reselect the existing vault folder.',
+        );
+      }
     }
     for (final path in [
       'daily',
@@ -69,7 +77,7 @@ class Vault {
     ]) {
       await storage.createDirectory(path);
     }
-    if (!await storage.exists(settingsPath)) {
+    if (!hasSettings) {
       await storage.writeText(
         settingsPath,
         jsonEncode({'name': 'TyLogVault', 'version': 5}),

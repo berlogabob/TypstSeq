@@ -717,6 +717,39 @@ void main() {
     expect(remote.containsKey('notes/delete.typ'), isFalse);
   });
 
+  test('empty local vault listing cannot wipe remote files', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_empty_local_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/keep.typ', 'keep remote');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    for (final path in const [
+      'daily',
+      'notes',
+      'projects',
+      'articles',
+      'assets',
+      'outputs',
+      '_system',
+    ]) {
+      final root = Directory('${dir.path}/$path');
+      if (await root.exists()) await root.delete(recursive: true);
+    }
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(vault),
+      throwsStateError,
+    );
+    expect(utf8.decode(remote['notes/keep.typ']!.bytes), 'keep remote');
+  });
+
   test('remote absence restores the authoritative local file', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);

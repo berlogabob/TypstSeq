@@ -896,94 +896,97 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             contentPadding: EdgeInsets.all(18),
           ),
           onTapOutside: (_) => focusNode.unfocus(),
-          contextMenuBuilder: (context, state) =>
-              AdaptiveTextSelectionToolbar.buttonItems(
-                anchors: state.contextMenuAnchors,
-                buttonItems: [
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.copy,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.copySelection();
-                      },
-                    ),
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.cut,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.cutSelection();
-                      },
-                    ),
+          contextMenuBuilder: (context, state) => TextFieldTapRegion(
+            child: AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: state.contextMenuAnchors,
+              buttonItems: [
+                if (!widget.controller.selection.isCollapsed)
                   ContextMenuButtonItem(
-                    type: ContextMenuButtonType.paste,
+                    type: ContextMenuButtonType.copy,
                     onPressed: () {
                       state.hideToolbar();
-                      widget.controller.paste();
+                      widget.controller.copySelection();
                     },
                   ),
+                if (!widget.controller.selection.isCollapsed)
                   ContextMenuButtonItem(
-                    type: ContextMenuButtonType.selectAll,
+                    type: ContextMenuButtonType.cut,
                     onPressed: () {
-                      state.selectAll(SelectionChangedCause.toolbar);
+                      state.hideToolbar();
+                      widget.controller.cutSelection();
                     },
                   ),
-                ],
-              ),
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.paste,
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.paste();
+                  },
+                ),
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.selectAll,
+                  onPressed: () {
+                    state.selectAll(SelectionChangedCause.toolbar);
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       if (focusNode.hasFocus)
-        SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 48,
-            child: ListenableBuilder(
-              listenable: widget.controller,
-              builder: (context, _) => ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                scrollDirection: Axis.horizontal,
-                children: [
-                  IconButton(
-                    tooltip: 'Undo',
-                    onPressed: widget.controller.canUndo
-                        ? widget.controller.undo
-                        : null,
-                    icon: const Icon(Icons.undo),
-                  ),
-                  IconButton(
-                    tooltip: 'Redo',
-                    onPressed: widget.controller.canRedo
-                        ? widget.controller.redo
-                        : null,
-                    icon: const Icon(Icons.redo),
-                  ),
-                  IconButton(
-                    tooltip: 'Heading',
-                    onPressed: widget.controller.setHeading,
-                    icon: const Icon(Icons.title),
-                  ),
-                  IconButton(
-                    tooltip: 'Bold',
-                    onPressed: widget.controller.toggleBold,
-                    icon: const Icon(Icons.format_bold),
-                  ),
-                  IconButton(
-                    tooltip: 'Italic',
-                    onPressed: widget.controller.toggleItalic,
-                    icon: const Icon(Icons.format_italic),
-                  ),
-                  IconButton(
-                    tooltip: 'Bulleted list',
-                    onPressed: widget.controller.setBulletList,
-                    icon: const Icon(Icons.format_list_bulleted),
-                  ),
-                  IconButton(
-                    tooltip: 'Insert',
-                    onPressed: widget.onInsert,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
+        TextFieldTapRegion(
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 48,
+              child: ListenableBuilder(
+                listenable: widget.controller,
+                builder: (context, _) => ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    IconButton(
+                      tooltip: 'Undo',
+                      onPressed: widget.controller.canUndo
+                          ? widget.controller.undo
+                          : null,
+                      icon: const Icon(Icons.undo),
+                    ),
+                    IconButton(
+                      tooltip: 'Redo',
+                      onPressed: widget.controller.canRedo
+                          ? widget.controller.redo
+                          : null,
+                      icon: const Icon(Icons.redo),
+                    ),
+                    IconButton(
+                      tooltip: 'Heading',
+                      onPressed: widget.controller.setHeading,
+                      icon: const Icon(Icons.title),
+                    ),
+                    IconButton(
+                      tooltip: 'Bold',
+                      onPressed: widget.controller.toggleBold,
+                      icon: const Icon(Icons.format_bold),
+                    ),
+                    IconButton(
+                      tooltip: 'Italic',
+                      onPressed: widget.controller.toggleItalic,
+                      icon: const Icon(Icons.format_italic),
+                    ),
+                    IconButton(
+                      tooltip: 'Bulleted list',
+                      onPressed: widget.controller.setBulletList,
+                      icon: const Icon(Icons.format_list_bulleted),
+                    ),
+                    IconButton(
+                      tooltip: 'Insert',
+                      onPressed: widget.onInsert,
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

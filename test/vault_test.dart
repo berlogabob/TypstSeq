@@ -58,6 +58,19 @@ void main() {
     expect(settings['version'], 5);
   });
 
+  test('missing vault marker is rejected without mutation', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_missing_marker_');
+    addTearDown(() => dir.delete(recursive: true));
+
+    await expectLater(
+      Vault(dir).ensureCreated(createIfMissing: false),
+      throwsStateError,
+    );
+
+    expect(await Directory('${dir.path}/daily').exists(), isFalse);
+    expect(await File('${dir.path}/.tylog/settings.json').exists(), isFalse);
+  });
+
   test('old vault is rejected without mutation', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_old_');
     addTearDown(() => dir.delete(recursive: true));
