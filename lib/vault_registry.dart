@@ -83,6 +83,14 @@ class VaultEntry {
   }
 }
 
+bool vaultNeedsAndroidTreeMigration(VaultEntry entry, {bool? android}) =>
+    (android ?? Platform.isAndroid) && entry.storageKind != 'android-tree';
+
+bool shouldCreateDefaultReplacementVault({
+  required bool entriesEmpty,
+  bool? android,
+}) => entriesEmpty && !(android ?? Platform.isAndroid);
+
 class VaultRegistry {
   VaultRegistry(
     this.file,

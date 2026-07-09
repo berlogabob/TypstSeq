@@ -4,6 +4,7 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
+import 'package:tylog/vault_registry.dart';
 
 Future<void> openSource(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Preview'));
@@ -155,8 +156,11 @@ void main() {
             'Syncing…',
             'Sync paused',
             'Needs attention',
+            'Vault not open',
+            'Folder access unavailable',
             'Ready to sync',
             'Up to date',
+            'Synced',
           }.contains(widget.tooltip),
     );
     expect(syncButton, findsOneWidget);
@@ -174,6 +178,47 @@ void main() {
     expect(find.textContaining('↑'), findsNothing);
     expect(find.textContaining('↓'), findsNothing);
     expect(find.text('Copy diagnostics'), findsOneWidget);
+  });
+
+  test('sync status blocks unopened and unhealthy vaults', () {
+    final closed = syncStatusKind(
+      vaultOpen: false,
+      storageHealthy: false,
+      cloudConfigured: true,
+      desktopManaged: false,
+      syncing: false,
+      error: 'Open failed',
+      conflicts: 0,
+      result: null,
+    );
+    final unhealthy = syncStatusKind(
+      vaultOpen: true,
+      storageHealthy: false,
+      cloudConfigured: true,
+      desktopManaged: false,
+      syncing: false,
+      error: null,
+      conflicts: 0,
+      result: null,
+    );
+
+    expect(syncStatusTitle(closed), 'Vault not open');
+    expect(syncStatusAction(closed), isNull);
+    expect(syncStatusTitle(unhealthy), 'Folder access unavailable');
+    expect(syncStatusAction(unhealthy), isNull);
+    expect(vaultEntryLocation(null), isNull);
+    expect(
+      vaultEntryLocation(
+        const VaultEntry(
+          id: 'tree',
+          name: 'Tygo',
+          path: '',
+          storageKind: 'android-tree',
+          treeUri: 'content://provider/tree/primary%3ATygo',
+        ),
+      ),
+      'content://provider/tree/primary%3ATygo',
+    );
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {

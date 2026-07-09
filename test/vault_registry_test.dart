@@ -127,4 +127,31 @@ void main() {
       expect(restored.backupPath, '/private/TyLogVault');
     },
   );
+
+  test('Android uses SAF vaults and never creates a private replacement', () {
+    const local = VaultEntry(
+      id: 'local',
+      name: 'Local',
+      path: '/private/TyLog',
+    );
+    const tree = VaultEntry(
+      id: 'tree',
+      name: 'Tree',
+      path: '',
+      storageKind: 'android-tree',
+      treeUri: 'content://provider/tree/primary%3ATyLog',
+    );
+
+    expect(vaultNeedsAndroidTreeMigration(local, android: true), isTrue);
+    expect(vaultNeedsAndroidTreeMigration(tree, android: true), isFalse);
+    expect(vaultNeedsAndroidTreeMigration(local, android: false), isFalse);
+    expect(
+      shouldCreateDefaultReplacementVault(entriesEmpty: true, android: true),
+      isFalse,
+    );
+    expect(
+      shouldCreateDefaultReplacementVault(entriesEmpty: true, android: false),
+      isTrue,
+    );
+  });
 }

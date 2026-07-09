@@ -31,6 +31,76 @@ Future<String> appVersion() async =>
         ?.trim() ??
     'unknown';
 
+enum SyncStatusKind {
+  vaultClosed,
+  storageUnavailable,
+  desktopManaged,
+  notConfigured,
+  syncing,
+  paused,
+  conflicts,
+  ready,
+  upToDate,
+  synced,
+}
+
+SyncStatusKind syncStatusKind({
+  required bool vaultOpen,
+  required bool storageHealthy,
+  required bool cloudConfigured,
+  required bool desktopManaged,
+  required bool syncing,
+  required String? error,
+  required int conflicts,
+  required SyncResult? result,
+}) {
+  if (!vaultOpen) return SyncStatusKind.vaultClosed;
+  if (!storageHealthy) return SyncStatusKind.storageUnavailable;
+  if (desktopManaged) return SyncStatusKind.desktopManaged;
+  if (!cloudConfigured) return SyncStatusKind.notConfigured;
+  if (syncing) return SyncStatusKind.syncing;
+  if (error != null) return SyncStatusKind.paused;
+  if (conflicts > 0) return SyncStatusKind.conflicts;
+  if (result == null) return SyncStatusKind.ready;
+  final changed =
+      result.uploaded +
+      result.downloaded +
+      result.deletedLocal +
+      result.deletedRemote;
+  return changed == 0 ? SyncStatusKind.upToDate : SyncStatusKind.synced;
+}
+
+String syncStatusTitle(
+  SyncStatusKind kind, {
+  int conflicts = 0,
+}) => switch (kind) {
+  SyncStatusKind.vaultClosed => 'Vault not open',
+  SyncStatusKind.storageUnavailable => 'Folder access unavailable',
+  SyncStatusKind.desktopManaged => 'Nextcloud Desktop',
+  SyncStatusKind.notConfigured => 'Sync not connected',
+  SyncStatusKind.syncing => 'Syncing…',
+  SyncStatusKind.paused => 'Sync paused',
+  SyncStatusKind.conflicts =>
+    '$conflicts ${conflicts == 1 ? 'conflict needs' : 'conflicts need'} review',
+  SyncStatusKind.ready => 'Ready to sync',
+  SyncStatusKind.upToDate => 'Up to date',
+  SyncStatusKind.synced => 'Synced',
+};
+
+String? syncStatusAction(SyncStatusKind kind) => switch (kind) {
+  SyncStatusKind.notConfigured => 'Set up',
+  SyncStatusKind.paused => 'Retry',
+  SyncStatusKind.conflicts => 'Review',
+  SyncStatusKind.ready ||
+  SyncStatusKind.upToDate ||
+  SyncStatusKind.synced => 'Sync now',
+  _ => null,
+};
+
+String? vaultEntryLocation(VaultEntry? entry) =>
+    entry?.treeUri ??
+    (entry == null || entry.path.isEmpty ? entry?.name : entry.path);
+
 class TyLogApp extends StatelessWidget {
   const TyLogApp({super.key});
 
@@ -118,6 +188,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  VaultEntry? get _activeRegistryEntry {
+    final registry = vaultRegistry;
+    if (registry == null) return null;
+    return registry.entries
+        .where((entry) => entry.id == registry.activeId)
+        .firstOrNull;
+  }
+
+  void _closeVault(String message, {NextcloudConfig? nextCloud}) {
+    autosave?.cancel();
+    cloudAutosave?.cancel();
+    cloudPoll?.cancel();
+    _loadSource('');
+    setState(() {
+      vault = null;
+      note = null;
+      index = null;
+      validation = null;
+      searchIndex = PkmsSearchIndex.empty();
+      helperSource = tylogHelperSource;
+      cloud = nextCloud;
+      selectedTag = null;
+      lastSync = null;
+      syncConflicts = const [];
+      lastSyncAt = null;
+      syncError = null;
+      storageHealthy = false;
+      dirty = false;
+      savedRevision = editRevision;
+      indexedRevision = editRevision;
+      lastEditAt = null;
+      status = message;
+    });
+  }
+
   Future<void> _open() async {
     try {
       try {
@@ -135,27 +240,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
             return;
           }
-        } else if (registry.active.storageKind != 'android-tree') {
+        } else if (vaultNeedsAndroidTreeMigration(registry.active)) {
           if (!await _migrateAndroidVault(registry.active)) {
-            if (mounted) {
-              setState(() => status = 'Choose a vault folder to continue');
-            }
+            _closeVault('Choose a vault folder to continue');
             return;
           }
         }
       }
       var active = registry.active;
       try {
-        await Vault.withStorage(
-          active.storage,
-        ).ensureCreated(createIfMissing: active.storageKind != 'android-tree');
+        await Vault.withStorage(active.storage).ensureCreated(
+          createIfMissing: !vaultNeedsAndroidTreeMigration(active),
+        );
       } on PlatformException {
         if (active.storageKind != 'android-tree') rethrow;
         final selection = await AndroidTreeVaultStorage.pick();
         if (selection == null) {
-          setState(
-            () => status = 'Folder access is required to open this vault',
-          );
+          _closeVault('Folder access is required to open this vault');
           return;
         }
         active = await registry.rebindTree(active, selection);
@@ -180,18 +281,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _openVault(active, trigger: 'startup');
       if (!registry.onboardingComplete) await registry.completeOnboarding();
     } catch (e) {
-      setState(() => status = 'Open failed: $e');
+      _closeVault('Open failed: $e', nextCloud: _activeRegistryEntry?.cloud);
     }
   }
 
   Future<void> _openVault(VaultEntry entry, {String? trigger}) async {
+    if (vaultNeedsAndroidTreeMigration(entry)) {
+      if (!await _migrateAndroidVault(entry)) {
+        _closeVault(
+          'Choose a vault folder to continue',
+          nextCloud: entry.cloud,
+        );
+        return;
+      }
+      return _openVault(vaultRegistry!.active, trigger: trigger);
+    }
     try {
       autosave?.cancel();
       cloudAutosave?.cancel();
       cloudPoll?.cancel();
       final v = Vault.withStorage(entry.storage);
       await v.ensureCreated(
-        createIfMissing: entry.storageKind != 'android-tree',
+        createIfMissing: !vaultNeedsAndroidTreeMigration(entry),
       );
       // ponytail: offline-first — render local vault immediately, sync in background
       final openStatus = 'Vault: ${v.storage.displayName}';
@@ -227,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _startCloudPolling();
       }
     } catch (e) {
-      setState(() => status = 'Open failed: $e');
+      _closeVault('Open failed: $e', nextCloud: entry.cloud);
     }
   }
 
@@ -284,8 +395,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final registry = vaultRegistry;
     if (registry == null || registry.activeId == entry.id) return;
     if (dirty) await _save(syncAfter: false);
-    await registry.select(entry);
-    await _openVault(entry);
+    var next = entry;
+    if (vaultNeedsAndroidTreeMigration(next)) {
+      if (!await _migrateAndroidVault(next)) {
+        _closeVault('Choose a vault folder to continue', nextCloud: next.cloud);
+        return;
+      }
+      next = registry.active;
+    } else {
+      await registry.select(next);
+    }
+    await _openVault(next);
   }
 
   Future<bool> _pickVault({bool closeCurrent = true}) async {
@@ -438,12 +558,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final registry = vaultRegistry!;
       final wasActive = registry.activeId == entry.id;
       await registry.delete(entry);
-      if (registry.entries.isEmpty) {
+      if (shouldCreateDefaultReplacementVault(
+        entriesEmpty: registry.entries.isEmpty,
+      )) {
         final replacement = await Vault.openDefault();
         final replacementEntry = await registry.add(replacement.root.path);
         await registry.select(replacementEntry);
       }
-      if (wasActive) {
+      if (registry.entries.isEmpty && Platform.isAndroid) {
+        _closeVault('Choose a vault folder to continue');
+        await _pickVault(closeCurrent: false);
+        return;
+      }
+      if (wasActive && registry.entries.isNotEmpty) {
         await _openVault(registry.active);
       }
       if (mounted) {
@@ -1174,12 +1301,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showSettings() {
     final v = vault;
     final registry = vaultRegistry;
-    final active = registry?.entries
-        .where((entry) => entry.id == registry.activeId)
-        .firstOrNull;
-    final activeLocation =
-        active?.treeUri ??
-        (active == null || active.path.isEmpty ? active?.name : active.path);
+    final activeLocation = vaultEntryLocation(_activeRegistryEntry);
     final openError = status.startsWith('Open failed:');
     final vaultPath =
         v?.storage.location ??
@@ -1355,15 +1477,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<_SyncDashboardData> _loadSyncDashboard() async {
     final v = vault;
     if (v == null) {
+      final active = _activeRegistryEntry;
+      final error = syncError ?? (status == 'Opening vault...' ? null : status);
       return _SyncDashboardData(
-        storageName: 'Opening vault…',
-        storageLocation: '',
-        cloud: cloud,
+        storageName: active?.name ?? 'Vault not open',
+        storageLocation: vaultEntryLocation(active) ?? '',
+        cloud: active?.cloud ?? cloud,
         syncing: syncing,
         stage: syncStage,
-        error: syncError,
+        error: error,
         result: lastSync,
         lastSyncAt: lastSyncAt,
+        vaultOpen: false,
         desktopManaged: false,
         storageHealthy: false,
         conflicts: const [],
@@ -1392,6 +1517,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       error: syncError,
       result: lastSync,
       lastSyncAt: lastSyncAt,
+      vaultOpen: true,
       desktopManaged:
           v.localRoot != null && isNextcloudManagedVault(v.localRoot!),
       storageHealthy: healthy,
@@ -2162,6 +2288,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           _SyncIconButton(
             syncing: syncing,
+            vaultOpen: v != null,
+            storageHealthy: storageHealthy ?? true,
             configured: cloud?.isReady ?? false,
             desktopManaged: desktopManaged,
             error: syncError,
@@ -2352,6 +2480,7 @@ class _SyncDashboardData {
     required this.storageLocation,
     required this.cloud,
     required this.syncing,
+    required this.vaultOpen,
     required this.desktopManaged,
     required this.storageHealthy,
     required this.conflicts,
@@ -2369,6 +2498,7 @@ class _SyncDashboardData {
   final String? stage;
   final NextcloudConfig? cloud;
   final bool syncing;
+  final bool vaultOpen;
   final bool desktopManaged;
   final bool storageHealthy;
   final String? error;
@@ -2467,13 +2597,20 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
                   ],
                   _SyncStatusCard(
                     syncing: running || value.syncing,
+                    vaultOpen: value.vaultOpen,
+                    storageHealthy: value.storageHealthy,
                     cloudConfigured: value.cloud?.isReady ?? false,
                     desktopManaged: value.desktopManaged,
                     result: value.result,
                     lastSyncAt: value.lastSyncAt,
                     error: value.error,
                     conflicts: value.conflicts.length,
-                    onSync: running || value.conflicts.isNotEmpty
+                    onSync:
+                        running ||
+                            value.syncing ||
+                            !value.vaultOpen ||
+                            !value.storageHealthy ||
+                            value.conflicts.isNotEmpty
                         ? null
                         : () => unawaited(_run(widget.onSync)),
                     onReview: value.conflicts.isEmpty
@@ -2609,6 +2746,8 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
 class _SyncIconButton extends StatelessWidget {
   const _SyncIconButton({
     required this.syncing,
+    required this.vaultOpen,
+    required this.storageHealthy,
     required this.configured,
     required this.desktopManaged,
     required this.error,
@@ -2618,6 +2757,8 @@ class _SyncIconButton extends StatelessWidget {
   });
 
   final bool syncing;
+  final bool vaultOpen;
+  final bool storageHealthy;
   final bool configured;
   final bool desktopManaged;
   final String? error;
@@ -2627,19 +2768,29 @@ class _SyncIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, icon) = desktopManaged
-        ? ('Nextcloud Desktop', Icons.cloud_done_outlined)
-        : !configured
-        ? ('Sync not connected', Icons.cloud_off_outlined)
-        : syncing
-        ? ('Syncing…', Icons.sync)
-        : error != null
-        ? ('Sync paused', Icons.cloud_off_outlined)
-        : conflicts > 0
-        ? ('Needs attention', Icons.warning_amber_rounded)
-        : result == null
-        ? ('Ready to sync', Icons.cloud_outlined)
-        : ('Up to date', Icons.cloud_done_outlined);
+    final kind = syncStatusKind(
+      vaultOpen: vaultOpen,
+      storageHealthy: storageHealthy,
+      cloudConfigured: configured,
+      desktopManaged: desktopManaged,
+      syncing: syncing,
+      error: error,
+      conflicts: conflicts,
+      result: result,
+    );
+    final label = syncStatusTitle(kind, conflicts: conflicts);
+    final icon = switch (kind) {
+      SyncStatusKind.vaultClosed => Icons.folder_open,
+      SyncStatusKind.storageUnavailable => Icons.cloud_off_outlined,
+      SyncStatusKind.desktopManaged => Icons.cloud_done_outlined,
+      SyncStatusKind.notConfigured => Icons.cloud_off_outlined,
+      SyncStatusKind.syncing => Icons.sync,
+      SyncStatusKind.paused => Icons.cloud_off_outlined,
+      SyncStatusKind.conflicts => Icons.warning_amber_rounded,
+      SyncStatusKind.ready => Icons.cloud_outlined,
+      SyncStatusKind.upToDate ||
+      SyncStatusKind.synced => Icons.cloud_done_outlined,
+    };
     return IconButton(
       onPressed: onPressed,
       tooltip: label,
@@ -2742,6 +2893,8 @@ class _SyncMetric extends StatelessWidget {
 class _SyncStatusCard extends StatelessWidget {
   const _SyncStatusCard({
     required this.syncing,
+    required this.vaultOpen,
+    required this.storageHealthy,
     required this.cloudConfigured,
     required this.desktopManaged,
     required this.result,
@@ -2754,6 +2907,8 @@ class _SyncStatusCard extends StatelessWidget {
   });
 
   final bool syncing;
+  final bool vaultOpen;
+  final bool storageHealthy;
   final bool cloudConfigured;
   final bool desktopManaged;
   final SyncResult? result;
@@ -2767,64 +2922,67 @@ class _SyncStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    late final IconData icon;
-    late final String title;
-    late final String subtitle;
-    late final Color color;
-    String? action;
-    VoidCallback? onAction;
-
-    if (desktopManaged) {
-      icon = Icons.cloud_done_outlined;
-      title = 'Nextcloud Desktop';
-      subtitle = 'This folder syncs through the system.';
-      color = colors.surfaceContainerHighest;
-    } else if (!cloudConfigured) {
-      icon = Icons.cloud_off_outlined;
-      title = 'Sync not connected';
-      subtitle = 'Connect Nextcloud to sync this vault.';
-      color = colors.surfaceContainerHighest;
-      action = 'Set up';
-      onAction = onSetup;
-    } else if (syncing) {
-      icon = Icons.sync;
-      title = 'Syncing…';
-      subtitle = 'Checking this device and Nextcloud.';
-      color = colors.secondaryContainer;
-    } else if (error != null) {
-      icon = Icons.cloud_off_outlined;
-      title = 'Sync paused';
-      subtitle = error!;
-      color = colors.errorContainer;
-      action = 'Retry';
-      onAction = onSync;
-    } else if (conflicts > 0) {
-      icon = Icons.warning_amber_rounded;
-      title =
-          '$conflicts ${conflicts == 1 ? 'conflict needs' : 'conflicts need'} review';
-      subtitle = 'Your files are safe. Choose which changes to keep.';
-      color = colors.tertiaryContainer;
-      action = 'Review';
-      onAction = onReview;
-    } else {
-      icon = Icons.cloud_done_outlined;
-      final changed =
-          (result?.uploaded ?? 0) +
-          (result?.downloaded ?? 0) +
-          (result?.deletedLocal ?? 0) +
-          (result?.deletedRemote ?? 0);
-      title = result == null
-          ? 'Ready to sync'
-          : (changed == 0 ? 'Up to date' : 'Synced');
-      subtitle = result == null
-          ? 'No sync has completed in this session.'
-          : changed == 0
-          ? _lastChecked(lastSyncAt)
-          : '${result!.uploaded} uploaded · ${result!.downloaded} downloaded · ${_lastChecked(lastSyncAt).toLowerCase()}';
-      color = colors.primaryContainer;
-      action = 'Sync now';
-      onAction = onSync;
-    }
+    final kind = syncStatusKind(
+      vaultOpen: vaultOpen,
+      storageHealthy: storageHealthy,
+      cloudConfigured: cloudConfigured,
+      desktopManaged: desktopManaged,
+      syncing: syncing,
+      error: error,
+      conflicts: conflicts,
+      result: result,
+    );
+    final icon = switch (kind) {
+      SyncStatusKind.vaultClosed => Icons.folder_open,
+      SyncStatusKind.storageUnavailable => Icons.cloud_off_outlined,
+      SyncStatusKind.desktopManaged => Icons.cloud_done_outlined,
+      SyncStatusKind.notConfigured => Icons.cloud_off_outlined,
+      SyncStatusKind.syncing => Icons.sync,
+      SyncStatusKind.paused => Icons.cloud_off_outlined,
+      SyncStatusKind.conflicts => Icons.warning_amber_rounded,
+      SyncStatusKind.ready => Icons.cloud_done_outlined,
+      SyncStatusKind.upToDate ||
+      SyncStatusKind.synced => Icons.cloud_done_outlined,
+    };
+    final title = syncStatusTitle(kind, conflicts: conflicts);
+    final subtitle = switch (kind) {
+      SyncStatusKind.vaultClosed =>
+        error ?? 'Choose a vault folder before syncing.',
+      SyncStatusKind.storageUnavailable =>
+        error ?? 'Reselect the vault folder before syncing.',
+      SyncStatusKind.desktopManaged => 'This folder syncs through the system.',
+      SyncStatusKind.notConfigured => 'Connect Nextcloud to sync this vault.',
+      SyncStatusKind.syncing => 'Checking this device and Nextcloud.',
+      SyncStatusKind.paused => error!,
+      SyncStatusKind.conflicts =>
+        'Your files are safe. Choose which changes to keep.',
+      SyncStatusKind.ready => 'No sync has completed in this session.',
+      SyncStatusKind.upToDate => _lastChecked(lastSyncAt),
+      SyncStatusKind.synced =>
+        '${result!.uploaded} uploaded · ${result!.downloaded} downloaded · ${_lastChecked(lastSyncAt).toLowerCase()}',
+    };
+    final color = switch (kind) {
+      SyncStatusKind.vaultClosed ||
+      SyncStatusKind.storageUnavailable => colors.errorContainer,
+      SyncStatusKind.desktopManaged ||
+      SyncStatusKind.notConfigured => colors.surfaceContainerHighest,
+      SyncStatusKind.syncing => colors.secondaryContainer,
+      SyncStatusKind.paused => colors.errorContainer,
+      SyncStatusKind.conflicts => colors.tertiaryContainer,
+      SyncStatusKind.ready ||
+      SyncStatusKind.upToDate ||
+      SyncStatusKind.synced => colors.primaryContainer,
+    };
+    final action = syncStatusAction(kind);
+    final onAction = switch (kind) {
+      SyncStatusKind.notConfigured => onSetup,
+      SyncStatusKind.paused => onSync,
+      SyncStatusKind.conflicts => onReview,
+      SyncStatusKind.ready ||
+      SyncStatusKind.upToDate ||
+      SyncStatusKind.synced => onSync,
+      _ => null,
+    };
 
     return Semantics(
       liveRegion: true,
