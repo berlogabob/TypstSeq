@@ -40,6 +40,27 @@ void main() {
     },
   );
 
+  test('concurrent overwrites are atomic and leave no temp files', () async {
+    final directory = await Directory.systemTemp.createTemp('tylog_atomic_');
+    addTearDown(() => directory.delete(recursive: true));
+    final storage = LocalVaultStorage(directory);
+
+    await storage.writeText('notes/a.typ', 'one');
+    // Unique temp names: two in-flight writes to the same path must not
+    // collide, and the target must never be deleted before the rename.
+    await Future.wait([
+      storage.writeText('notes/a.typ', 'two'),
+      storage.writeText('notes/a.typ', 'three'),
+    ]);
+
+    expect(['two', 'three'], contains(await storage.readText('notes/a.typ')));
+    final leftovers = await directory
+        .list(recursive: true)
+        .where((entity) => entity.path.endsWith('.tmp'))
+        .toList();
+    expect(leftovers, isEmpty);
+  });
+
   test(
     'vault migration copies durable state, verifies hashes, and keeps source',
     () async {

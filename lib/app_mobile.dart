@@ -1148,6 +1148,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? 'Up to date'
             : 'Synced';
       });
+    } on SyncDeferred {
+      if (mounted) setState(() => status = 'Sync deferred while editing');
+      _queueCloudSync();
     } catch (e, stack) {
       debugPrintStack(label: 'Nextcloud sync failed: $e', stackTrace: stack);
       final conflicts = await loadSyncConflicts(v);
@@ -1289,6 +1292,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Android may kill the app inside the 700 ms autosave debounce; flush
+      // pending edits now so backgrounding never loses keystrokes.
+      if (dirty) unawaited(_save(syncAfter: false));
+      return;
+    }
     if (state == AppLifecycleState.resumed && (cloud?.isReady ?? false)) {
       if (_editingRecently) {
         _queueCloudSync();

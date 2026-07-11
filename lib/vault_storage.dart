@@ -4,6 +4,18 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
+/// Write via a unique sibling `.tmp` file then rename. POSIX rename replaces
+/// the target atomically, so a crash never leaves the file missing and
+/// concurrent writers never share a temp file.
+Future<void> writeFileAtomic(File file, List<int> bytes) async {
+  await file.parent.create(recursive: true);
+  final temporary = File(
+    '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+  );
+  await temporary.writeAsBytes(bytes, flush: true);
+  await temporary.rename(file.path);
+}
+
 class VaultStorageEntry {
   const VaultStorageEntry({
     required this.path,
@@ -117,14 +129,8 @@ class LocalVaultStorage extends VaultStorage {
   Future<Uint8List> readBytes(String path) => File(_path(path)).readAsBytes();
 
   @override
-  Future<void> writeBytes(String path, List<int> bytes) async {
-    final file = File(_path(path));
-    await file.parent.create(recursive: true);
-    final temporary = File('${file.path}.tmp');
-    await temporary.writeAsBytes(bytes, flush: true);
-    if (await file.exists()) await file.delete();
-    await temporary.rename(file.path);
-  }
+  Future<void> writeBytes(String path, List<int> bytes) =>
+      writeFileAtomic(File(_path(path)), bytes);
 
   @override
   Future<void> delete(String path) async {

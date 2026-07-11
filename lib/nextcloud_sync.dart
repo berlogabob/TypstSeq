@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -131,10 +132,7 @@ class NextcloudConfig {
   Future<void> save({String? vaultId}) async {
     await saveSecret(vaultId: vaultId);
     final file = await settingsFile(vaultId: vaultId);
-    final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(jsonEncode(toJson()), flush: true);
-    if (await file.exists()) await file.delete();
-    await temporary.rename(file.path);
+    await writeFileAtomic(file, utf8.encode(jsonEncode(toJson())));
   }
 }
 
@@ -165,8 +163,12 @@ class NextcloudSync {
       onProgress?.call(next, path);
     }
 
+    // ponytail: trace events are buffered and written once per sync (one SAF
+    // write instead of a full read+rewrite per event); a hard process kill
+    // loses that run's trace, acceptable for diagnostics.
+    final traceEvents = <Map<String, Object?>>[];
     progress(stage);
-    await _trace(vault, {
+    traceEvents.add({
       'timestamp': DateTime.now().toUtc().toIso8601String(),
       'runId': runId,
       'event': 'started',
@@ -180,7 +182,7 @@ class NextcloudSync {
       final loadedState = await _loadSyncState(vault);
       final syncState = loadedState.cursors;
       if (loadedState.recovered) {
-        await _trace(vault, {
+        traceEvents.add({
           'timestamp': DateTime.now().toUtc().toIso8601String(),
           'runId': runId,
           'event': 'state-recovered',
@@ -192,29 +194,44 @@ class NextcloudSync {
       remoteCount = remote.length;
       progress('scan-local');
       repaired = await _cleanResolvedConflictCopies(vault);
-      final localPaths = (await _localFiles(vault.storage)).toSet();
-      if (syncState.isNotEmpty && remote.isNotEmpty && localPaths.isEmpty) {
+      final localEntries = await _localFiles(vault.storage);
+      if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
         throw StateError(
           'Local vault listed no syncable files; refusing to propagate deletions.',
+        );
+      }
+      // ponytail: proportional guard against a flaky DocumentsProvider dropping
+      // listing entries; threshold max(10, 25%), add a confirmation flow if it
+      // ever fires on legitimate bulk deletes.
+      final plannedDeletions = syncState.keys
+          .where((path) => !localEntries.containsKey(path) && remote.containsKey(path))
+          .length;
+      final deletionLimit = math.max(10, syncState.length ~/ 4);
+      if (plannedDeletions > deletionLimit) {
+        throw StateError(
+          'Refusing to propagate $plannedDeletions deletions '
+          '(limit $deletionLimit); local listing may be incomplete.',
         );
       }
       final unresolved = (await loadSyncConflicts(
         vault,
       )).map((conflict) => conflict.path).toSet();
       final allPaths = <String>{
-        ...localPaths,
+        ...localEntries.keys,
         ...remote.keys,
         ...syncState.keys,
       }.toList()..sort();
 
       for (final path in allPaths) {
         progress('sync-file', path);
-        final localExists = await vault.storage.exists(path);
+        final localStat = localEntries[path];
+        final localExists = localStat != null;
         final remoteFile = remote[path];
         final remoteTime = remoteFile?.modified;
-        final localStat = localExists ? await vault.storage.stat(path) : null;
-        final localHash = localExists ? await vault.storage.hash(path) : null;
         final prev = syncState[path];
+        final localHash = localExists
+            ? await _localHash(vault.storage, path, localStat, prev)
+            : null;
         final remoteExists = remoteFile != null;
         final localChanged = prev == null
             ? localExists
@@ -250,7 +267,7 @@ class NextcloudSync {
             reason = 'same-content';
           } else if (_protectFromEmpty(path) &&
               await captured.file.length() == 0 &&
-              (localStat?.size ?? 0) > 0) {
+              (localStat.size ?? 0) > 0) {
             await captured.file.delete();
             action = SyncAction.upload;
             uploadedRemoteEtag = await _uploadStorage(
@@ -368,10 +385,13 @@ class NextcloudSync {
           skip++;
           reason = 'no-change';
         }
-        final nextLocalExists = await vault.storage.exists(path);
-        final nextLocal = nextLocalExists
+        // Only a download changes the local file; everything else can reuse the
+        // stat and hash captured above instead of re-reading over SAF.
+        final downloaded = action == SyncAction.download;
+        final nextLocal = downloaded
             ? await vault.storage.stat(path)
-            : null;
+            : localStat;
+        final nextLocalExists = downloaded ? nextLocal != null : localExists;
         final nextRemote = uploadedRemoteTime ?? remoteTime;
         if (action != SyncAction.conflict) {
           final nextRemoteExists =
@@ -380,8 +400,11 @@ class NextcloudSync {
           if (nextLocalExists && nextRemoteExists) {
             syncState[path] = SyncCursor(
               localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
+              localSize: nextLocal?.size,
               remoteMillis: nextRemote?.millisecondsSinceEpoch,
-              localSha256: await vault.storage.hash(path),
+              localSha256: downloaded
+                  ? await vault.storage.hash(path)
+                  : localHash,
               remoteEtag: _normEtag(
                 uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
               ),
@@ -403,7 +426,7 @@ class NextcloudSync {
 
       progress('save-local-state');
       await _saveSyncState(vault, syncState);
-      await _trace(vault, {
+      traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
         'event': 'completed',
@@ -430,7 +453,7 @@ class NextcloudSync {
         deletedRemote: deletedRemote,
       );
     } catch (error) {
-      await _trace(vault, {
+      traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
         'event': 'failed',
@@ -451,6 +474,7 @@ class NextcloudSync {
       });
       rethrow;
     } finally {
+      await _trace(vault, traceEvents);
       onProgress?.call('idle', null);
       _client.close(force: true);
     }
@@ -538,15 +562,36 @@ class NextcloudSync {
     }
   }
 
-  Future<List<String>> _localFiles(VaultStorage storage) async {
-    final out = <String>[];
+  Future<Map<String, VaultStorageEntry>> _localFiles(
+    VaultStorage storage,
+  ) async {
+    final out = <String, VaultStorageEntry>{};
     for (final entity in await storage.list(recursive: true)) {
       if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
-      final path = entity.path;
-      if (_isSyncInternal(path)) continue;
-      out.add(path);
+      if (_isSyncInternal(entity.path)) continue;
+      out[entity.path] = entity;
     }
     return out;
+  }
+
+  /// Reuses the cursor's hash when mtime+size are unchanged, so steady-state
+  /// syncs stop re-reading every file (a full SAF round-trip per file on
+  /// Android). Missing mtime/size falls back to hashing.
+  Future<String> _localHash(
+    VaultStorage storage,
+    String path,
+    VaultStorageEntry stat,
+    SyncCursor? prev,
+  ) async {
+    final millis = stat.modified?.millisecondsSinceEpoch;
+    if (prev?.localSha256 != null &&
+        millis != null &&
+        millis == prev!.localMillis &&
+        stat.size != null &&
+        stat.size == prev.localSize) {
+      return prev.localSha256!;
+    }
+    return storage.hash(path);
   }
 
   Future<Map<String, _RemoteFile>> _remoteFiles() async {
@@ -738,7 +783,7 @@ class NextcloudSync {
 
   void _requireLocalReplacementAllowed(String path) {
     if (canReplaceLocal?.call(path) == false) {
-      throw StateError('Local edit started during sync; retry after autosave');
+      throw const SyncDeferred();
     }
   }
 
@@ -945,15 +990,19 @@ class NextcloudSync {
     );
   }
 
-  Future<void> _trace(Vault vault, Map<String, Object?> event) async {
+  Future<void> _trace(Vault vault, List<Map<String, Object?>> events) async {
     try {
-      await _appendTrace(vault, event);
+      await _appendTrace(vault, events);
     } catch (_) {
       // Diagnostics must never stop file synchronization.
     }
   }
 
-  Future<void> _appendTrace(Vault vault, Map<String, Object?> event) async {
+  Future<void> _appendTrace(
+    Vault vault,
+    List<Map<String, Object?>> events,
+  ) async {
+    if (events.isEmpty) return;
     const path = '.tylog/sync_trace.jsonl';
     var bytes = await vault.storage.exists(path)
         ? await vault.storage.readBytes(path)
@@ -967,18 +1016,30 @@ class NextcloudSync {
     }
     await vault.storage.writeBytes(path, [
       ...bytes,
-      ...utf8.encode('${jsonEncode(event)}\n'),
+      for (final event in events) ...utf8.encode('${jsonEncode(event)}\n'),
     ]);
   }
 }
 
 bool _validSyncCursor(Map<String, Object?> json) =>
     (json['localMillis'] == null || json['localMillis'] is num) &&
+    (json['localSize'] == null || json['localSize'] is num) &&
     (json['remoteMillis'] == null || json['remoteMillis'] is num) &&
     (json['localSha256'] == null || json['localSha256'] is String) &&
     (json['remoteEtag'] == null || json['remoteEtag'] is String);
 
+/// A benign abort: the user started editing the file mid-sync, so the sync
+/// backs off instead of replacing local content. Callers should re-queue,
+/// not surface an error.
+class SyncDeferred implements Exception {
+  const SyncDeferred();
+
+  @override
+  String toString() => 'Local edit started during sync; retry after autosave';
+}
+
 String _safeErrorMessage(Object error) => switch (error) {
+  SyncDeferred() => error.toString(),
   HttpException() => error.message,
   FileSystemException() => error.message,
   FormatException() => error.message,
@@ -1224,18 +1285,21 @@ SyncAction decideSyncAction({
 class SyncCursor {
   const SyncCursor({
     this.localMillis,
+    this.localSize,
     this.remoteMillis,
     this.localSha256,
     this.remoteEtag,
   });
 
   final int? localMillis;
+  final int? localSize;
   final int? remoteMillis;
   final String? localSha256;
   final String? remoteEtag;
 
   factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
     localMillis: (json['localMillis'] as num?)?.toInt(),
+    localSize: (json['localSize'] as num?)?.toInt(),
     remoteMillis: (json['remoteMillis'] as num?)?.toInt(),
     localSha256: json['localSha256'] as String?,
     remoteEtag: json['remoteEtag'] as String?,
@@ -1243,6 +1307,7 @@ class SyncCursor {
 
   Map<String, Object?> toJson() => {
     'localMillis': localMillis,
+    if (localSize != null) 'localSize': localSize,
     'remoteMillis': remoteMillis,
     if (localSha256 != null) 'localSha256': localSha256,
     if (remoteEtag != null) 'remoteEtag': remoteEtag,

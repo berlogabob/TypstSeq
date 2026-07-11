@@ -290,14 +290,16 @@ class VaultRegistry {
     await forget(entry);
   }
 
-  Future<void> save() => file.writeAsString(
-    jsonEncode({
-      'version': 2,
-      'active': activeId,
-      'onboardingComplete': onboardingComplete,
-      'vaults': entries.map((entry) => entry.toJson()).toList(),
-    }),
-    flush: true,
+  Future<void> save() => writeFileAtomic(
+    file,
+    utf8.encode(
+      jsonEncode({
+        'version': 2,
+        'active': activeId,
+        'onboardingComplete': onboardingComplete,
+        'vaults': entries.map((entry) => entry.toJson()).toList(),
+      }),
+    ),
   );
 }
 

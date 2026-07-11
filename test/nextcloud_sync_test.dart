@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   test('Nextcloud config accepts local debug secret schema', () {
@@ -750,6 +751,60 @@ void main() {
     expect(utf8.decode(remote['notes/keep.typ']!.bytes), 'keep remote');
   });
 
+  test('unchanged files are not re-hashed on the next sync', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_fastpath_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final storage = _HashCountingStorage(dir);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/a.typ', 'note a');
+    await vault.storage.writeText('notes/b.typ', 'note b');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    storage.hashCalls = 0;
+    final second = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(second.uploaded, 0);
+    expect(second.downloaded, 0);
+    expect(second.conflicts, 0);
+    expect(storage.hashCalls, 0);
+  });
+
+  test('mass local disappearance does not wipe remote files', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_mass_delete_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    for (var i = 0; i < 20; i++) {
+      await vault.storage.writeText('notes/note$i.typ', 'note $i');
+    }
+    await NextcloudSync(_config(server)).sync(vault);
+
+    // Simulates a flaky listing (or accidental bulk removal): most files gone
+    // locally while the remote is unchanged.
+    for (var i = 0; i < 15; i++) {
+      await vault.storage.delete('notes/note$i.typ');
+    }
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(vault),
+      throwsStateError,
+    );
+    for (var i = 0; i < 20; i++) {
+      expect(remote.containsKey('notes/note$i.typ'), isTrue);
+    }
+  });
+
   test('remote absence restores the authoritative local file', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
@@ -791,7 +846,7 @@ void main() {
 
     await expectLater(
       NextcloudSync(_config(server), canReplaceLocal: (_) => false).sync(vault),
-      throwsStateError,
+      throwsA(isA<SyncDeferred>()),
     );
 
     expect(await vault.storage.readText('notes/editing.typ'), 'saved text');
@@ -925,6 +980,18 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
   username: 'alice',
   password: 'secret',
 );
+
+class _HashCountingStorage extends LocalVaultStorage {
+  _HashCountingStorage(super.root);
+
+  int hashCalls = 0;
+
+  @override
+  Future<String> hash(String path) {
+    hashCalls++;
+    return super.hash(path);
+  }
+}
 
 Future<List<Map<String, Object?>>> _traceEvents(Vault vault) async =>
     (await File('${vault.meta.path}/sync_trace.jsonl').readAsLines())
