@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/app_mobile.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
@@ -14,9 +15,28 @@ Future<void> openSource(WidgetTester tester) async {
 }
 
 void main() {
+  test('humanDate formats the day and hides the current year', () {
+    expect(
+      humanDate(DateTime(2026, 7, 6), now: DateTime(2026, 7, 13)),
+      'Mon, July 6',
+    );
+    expect(
+      humanDate(DateTime(2025, 12, 31), now: DateTime(2026, 7, 13)),
+      'Wed, December 31, 2025',
+    );
+  });
+
   testWidgets('TyLog shell renders', (tester) async {
     await tester.pumpWidget(const TyLogApp());
-    expect(find.text('TyLog'), findsOneWidget);
+    await tester.pumpAndSettle();
+    // AppBar leads with the note title (a human-readable date once a daily
+    // note is open) instead of an app title. No vault opens in tests, so the
+    // fallback title shows here.
+    expect(find.text('TyLog'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Today')),
+      findsOneWidget,
+    );
     expect(find.text('Save'), findsNothing);
     expect(find.byTooltip('Save'), findsNothing);
     expect(find.byTooltip('Graph'), findsNothing);
@@ -93,7 +113,7 @@ void main() {
     await tester.tap(find.byTooltip('Bold'));
     await tester.pump();
     expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
-    await tester.tap(find.textContaining('TyLog').first);
+    await tester.tap(find.text('Journal').last);
     await tester.pump();
     expect(tester.widget<TextField>(rich).focusNode!.hasFocus, isFalse);
     expect(find.byTooltip('Bold'), findsNothing);
@@ -308,7 +328,8 @@ void main() {
     await tester.enterText(find.byType(TextField), 'autosave text');
     await tester.pump();
 
-    expect(find.text('Autosave pending...'), findsOneWidget);
+    // Pending autosave shows as the dirty marker on the AppBar date title.
+    expect(find.textContaining('•'), findsOneWidget);
   });
 
   testWidgets('typing during autosave keeps the newer editor text dirty', (
@@ -328,8 +349,8 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, 'newer draft');
-    expect(find.text('Autosave pending...'), findsOneWidget);
-    expect(find.text('TyLog •'), findsOneWidget);
+    // Dirty marker moved to the AppBar date title.
+    expect(find.textContaining('•'), findsOneWidget);
   });
 
   testWidgets('Magic menu exposes the complete command set', (tester) async {

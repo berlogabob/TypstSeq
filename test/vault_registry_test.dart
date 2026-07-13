@@ -88,6 +88,52 @@ void main() {
     expect(registry.entries, isEmpty);
   });
 
+  test('forget still removes the vault when the keystore fails', () async {
+    // macOS keychain access can throw (entitlement/signature mismatch);
+    // forgetting must not depend on the secret being deletable.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+          (call) async {
+            if (call.method == 'delete') {
+              throw PlatformException(code: 'keystore_unavailable');
+            }
+            return null;
+          },
+        );
+    final base = await Directory.systemTemp.createTemp('tylog_forget_');
+    addTearDown(() => base.delete(recursive: true));
+    final first = await Directory('${base.path}/first').create();
+    final second = await Directory('${base.path}/second').create();
+    final file = File('${base.path}/vaults.json');
+    final registry = VaultRegistry(file, [], '');
+    final a = await registry.add(first.path);
+    await registry.add(second.path);
+
+    await registry.forget(a);
+
+    expect(registry.entries, hasLength(1));
+    expect(await file.readAsString(), isNot(contains(a.id)));
+  });
+
+  test('forgetting the last vault empties the registry and active id', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_forget_last_');
+    addTearDown(() => base.delete(recursive: true));
+    final root = await Directory('${base.path}/only').create();
+    final file = File('${base.path}/vaults.json');
+    final registry = VaultRegistry(file, [], '');
+    final entry = await registry.add(root.path);
+
+    await registry.forget(entry);
+
+    expect(registry.entries, isEmpty);
+    expect(registry.activeId, '');
+    expect(await root.exists(), isTrue); // forget keeps files
+    final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
+    expect(json['vaults'], isEmpty);
+    expect(json['active'], '');
+  });
+
   test('first-run onboarding completion is persisted', () async {
     final base = await Directory.systemTemp.createTemp('tylog_onboarding_');
     addTearDown(() => base.delete(recursive: true));

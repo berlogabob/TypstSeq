@@ -497,17 +497,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _forgetVault(VaultEntry entry) async {
     final registry = vaultRegistry!;
-    if (registry.entries.length == 1) {
-      setState(() => status = 'Cannot forget the only vault');
-      return;
+    try {
+      if (entry.id == registry.activeId && registry.entries.length > 1) {
+        await _switchVault(
+          registry.entries.firstWhere((item) => item.id != entry.id),
+        );
+      }
+      await registry.forget(entry);
+      if (registry.entries.isEmpty) {
+        _closeVault('Forgot ${entry.name}; add a vault to continue');
+        return;
+      }
+      if (mounted) setState(() => status = 'Forgot ${entry.name}; files kept');
+    } catch (e) {
+      if (mounted) setState(() => status = 'Forget failed: $e');
     }
-    if (entry.id == registry.activeId) {
-      await _switchVault(
-        registry.entries.firstWhere((item) => item.id != entry.id),
-      );
-    }
-    await registry.forget(entry);
-    if (mounted) setState(() => status = 'Forgot ${entry.name}; files kept');
   }
 
   Future<void> _deleteVault(VaultEntry entry) async {
@@ -2250,53 +2254,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onOpenFile: _openAttachment,
       onEditMetadata: _editCurrentMetadata,
     );
-    final dailyDate = _dailyDateOf(current);
     final journalMode = const {'normal', 'preview', 'source', 'split'};
     final workArea = _WorkSurface(
-      title: currentTitle,
-      subtitle: current ?? 'daily journal',
-      status: status,
-      trailing: journalMode.contains(mode)
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (dailyDate != null)
-                  IconButton(
-                    tooltip: 'Previous day',
-                    icon: const Icon(Icons.chevron_left),
-                    // Calendar day, not 24h: DST-safe.
-                    onPressed: () => unawaited(
-                      _openDay(
-                        DateTime(
-                          dailyDate.year,
-                          dailyDate.month,
-                          dailyDate.day - 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                IconButton(
-                  tooltip: 'Calendar',
-                  icon: const Icon(Icons.calendar_month_outlined),
-                  onPressed: () => unawaited(_showCalendarPicker()),
-                ),
-                if (dailyDate != null)
-                  IconButton(
-                    tooltip: 'Next day',
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () => unawaited(
-                      _openDay(
-                        DateTime(
-                          dailyDate.year,
-                          dailyDate.month,
-                          dailyDate.day + 1,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            )
-          : null,
       child: switch (mode) {
         'today' => _TodayView(
           index: index,
@@ -2411,18 +2370,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(dirty ? 'TyLog •' : 'TyLog'),
-            Text(
-              currentTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ],
-        ),
+        titleSpacing: 0,
+        title: journalMode.contains(mode) && currentDaily != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Previous day',
+                    icon: const Icon(Icons.chevron_left),
+                    // Calendar day, not 24h: DST-safe.
+                    onPressed: () => unawaited(
+                      _openDay(
+                        DateTime(
+                          currentDaily.year,
+                          currentDaily.month,
+                          currentDaily.day - 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: Tooltip(
+                      message: 'Calendar',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => unawaited(_showCalendarPicker()),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            dirty
+                                ? '${humanDate(currentDaily)} •'
+                                : humanDate(currentDaily),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Next day',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => unawaited(
+                      _openDay(
+                        DateTime(
+                          currentDaily.year,
+                          currentDaily.month,
+                          currentDaily.day + 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Text(
+                dirty ? '$currentTitle •' : currentTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
         actions: [
           IconButton(
             onPressed: _showKnowledge,
@@ -3535,63 +3543,16 @@ class _SettingsTile extends StatelessWidget {
 }
 
 class _WorkSurface extends StatelessWidget {
-  const _WorkSurface({
-    required this.title,
-    required this.subtitle,
-    required this.status,
-    required this.child,
-    this.trailing,
-  });
+  const _WorkSurface({required this.child});
 
-  final String title;
-  final String subtitle;
-  final String status;
   final Widget child;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
     child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  status,
-                  style: Theme.of(context).textTheme.labelSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(child: child),
-        ],
-      ),
+      child: child,
     ),
   );
 }
@@ -4048,6 +4009,32 @@ List<String> _csvValues(String value) =>
 
 String _isoDay(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+/// "Mon, July 6"; the year is appended only when it is not the current year.
+// ponytail: English-only names, add intl if localization is ever needed.
+String humanDate(DateTime day, {DateTime? now}) {
+  final label =
+      '${_weekdayNames[day.weekday - 1]}, ${_monthNames[day.month - 1]} ${day.day}';
+  return day.year == (now ?? DateTime.now()).year
+      ? label
+      : '$label, ${day.year}';
+}
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);

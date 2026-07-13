@@ -279,9 +279,17 @@ class VaultRegistry {
   }
 
   Future<void> forget(VaultEntry entry) async {
-    await NextcloudConfig.deleteSecret(vaultId: entry.id);
+    // Keystore access can fail/hang (macOS keychain entitlement mismatch);
+    // an orphaned secret must not block forgetting the vault.
+    try {
+      await NextcloudConfig.deleteSecret(
+        vaultId: entry.id,
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
     entries.removeWhere((item) => item.id == entry.id);
-    if (activeId == entry.id && entries.isNotEmpty) activeId = entries.first.id;
+    if (activeId == entry.id) {
+      activeId = entries.isNotEmpty ? entries.first.id : '';
+    }
     await save();
   }
 

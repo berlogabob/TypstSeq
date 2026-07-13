@@ -1038,9 +1038,11 @@ class _TaskChip extends StatelessWidget {
               onTap: onToggle,
               borderRadius: BorderRadius.circular(10),
               child: Padding(
+                // Kept short so the chip fits its line box in the editor;
+                // taller padding makes it overlap adjacent lines.
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8,
-                  vertical: 8,
+                  vertical: 4,
                 ),
                 child: Icon(
                   done ? Icons.check_box : Icons.check_box_outline_blank,
@@ -1052,7 +1054,7 @@ class _TaskChip extends StatelessWidget {
               onTap: onTap,
               borderRadius: BorderRadius.circular(10),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
+                padding: const EdgeInsets.fromLTRB(0, 4, 12, 4),
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
