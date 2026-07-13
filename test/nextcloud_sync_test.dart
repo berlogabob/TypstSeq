@@ -113,6 +113,9 @@ void main() {
     expect(isSyncableVaultPath('notes/a.typ'), isTrue);
     expect(isSyncableVaultPath('journal/a.typ'), isFalse);
     expect(isSyncInternalPath('notes/a.typ.remote-conflict-1'), isTrue);
+    expect(isSyncInternalPath('notes/.a.typ.tylog-12345.backup'), isTrue);
+    expect(isSyncInternalPath('daily/2026/07/.x.typ.tylog-9.backup'), isTrue);
+    expect(isSyncInternalPath('notes/backup-notes.typ'), isFalse);
     expect(
       isSyncInternalPath(
         '_index/index.json.remote-conflict-1.remote-conflict-2',
@@ -698,6 +701,31 @@ void main() {
     );
   });
 
+  test('truncated chunked download is never committed', () async {
+    final server = await _webDavServer(
+      truncatedChunked: true,
+      remoteContent: 'full remote note content',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_truncated_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('keep local');
+    await note.setLastModified(DateTime.utc(2020));
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(vault, trigger: 'test'),
+      throwsA(anything),
+    );
+
+    expect(await note.readAsString(), 'keep local');
+  });
+
   test('local deletion removes an unchanged remote file', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
@@ -1016,6 +1044,7 @@ Future<void> _seedCursor(Vault vault, File note, String remoteEtag) async {
 
 Future<HttpServer> _webDavServer({
   bool interrupted = false,
+  bool truncatedChunked = false,
   String remoteContent = '',
   DateTime? remoteModified,
   String? remoteModifiedValue,
@@ -1044,6 +1073,19 @@ Future<HttpServer> _webDavServer({
       );
     } else if (request.method == 'GET') {
       request.response.headers.set(HttpHeaders.etagHeader, etag);
+      if (truncatedChunked) {
+        // Chunked body that terminates cleanly but is shorter than the real
+        // content; only the checksum header exposes the truncation.
+        request.response.headers.set(
+          'X-Hash-SHA256',
+          sha256.convert(utf8.encode(remoteContent)).toString(),
+        );
+        request.response.write(
+          remoteContent.substring(0, remoteContent.length ~/ 2),
+        );
+        await request.response.close();
+        return;
+      }
       if (interrupted) {
         request.response.contentLength = 100;
         final socket = await request.response.detachSocket(writeHeaders: true);

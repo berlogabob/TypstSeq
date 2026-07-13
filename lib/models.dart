@@ -340,6 +340,17 @@ class VaultIndex {
     return items;
   }
 
+  /// ISO days that carry calendar content, split by whether the day has its
+  /// own journal file or only references pointing at it.
+  ({Set<String> daily, Set<String> refs}) get calendarDayMarks {
+    final daily = <String>{};
+    final refs = <String>{};
+    for (final item in calendar) {
+      (item.kind == CalendarItemKind.daily ? daily : refs).add(item.date);
+    }
+    return (daily: daily, refs: refs);
+  }
+
   Map<String, Object?> toJson() => {
     'version': version,
     'notes': notes.map((note) => note.toJson()).toList(),

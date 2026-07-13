@@ -26,8 +26,10 @@ void main() {
     expect(find.byTooltip('More actions'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
     expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byKey(const Key('quick-capture')), findsOneWidget);
+    expect(find.byKey(const Key('quick-capture')), findsNothing);
     expect(find.byTooltip('Quick actions'), findsNothing);
+    // Launch lands in the journal editor with today's file open.
+    expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
   });
 
   testWidgets('settings menu shows real app data', (tester) async {
@@ -77,7 +79,7 @@ void main() {
       tester.widget<TextField>(rich).controller!.text,
       'Heading\n\nVisible text\n\n\uFFFC',
     );
-    expect(find.text('Custom Typst'), findsOneWidget);
+    expect(find.text('Secret'), findsOneWidget);
 
     await tester.tap(rich);
     await tester.pump();

@@ -688,6 +688,9 @@ class TyLogEditingController extends TextEditingController {
     _updating = false;
   });
 
+  void toggleTask(String id) =>
+      replaceProtected(id, toggleTaskSource(document.sourceFor(id)));
+
   void undo() {
     if (_undo.isEmpty) return;
     _redo.add(_snapshot());
@@ -785,14 +788,25 @@ class TyLogEditingController extends TextEditingController {
     for (var i = 0; i < document.blocks.length; i++) {
       final block = document.blocks[i];
       if (block.isProtected) {
+        final source = block.originalSource;
         children.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: _ProtectedChip(
-              label: block.protectedLabel ?? 'Custom Typst',
-              block: true,
-              onTap: () => onProtectedTap(block.id),
-            ),
+            child: isTaskSource(source)
+                ? _TaskChip(
+                    label: (block.protectedLabel ?? '').replaceFirst(
+                      'Task: ',
+                      '',
+                    ),
+                    done: taskStatusOf(source) == 'done',
+                    onToggle: () => toggleTask(block.id),
+                    onTap: () => onProtectedTap(block.id),
+                  )
+                : _ProtectedChip(
+                    label: block.protectedLabel ?? 'Custom Typst',
+                    block: true,
+                    onTap: () => onProtectedTap(block.id),
+                  ),
           ),
         );
         global++;
@@ -995,6 +1009,68 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   );
 }
 
+class _TaskChip extends StatelessWidget {
+  const _TaskChip({
+    required this.label,
+    required this.done,
+    required this.onToggle,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool done;
+  final VoidCallback onToggle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: '$label, task ${done ? 'done' : 'to do'}',
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              key: const Key('task-checkbox'),
+              onTap: onToggle,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+                child: Icon(
+                  done ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 20,
+                ),
+              ),
+            ),
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: done
+                      ? const TextStyle(
+                          decoration: TextDecoration.lineThrough,
+                        )
+                      : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _ProtectedChip extends StatelessWidget {
   const _ProtectedChip({
     required this.label,
@@ -1180,12 +1256,48 @@ List<TyLogInline>? _parseInline(
       i += raw.length;
       continue;
     }
-    if (source.codeUnitAt(i) == 35) return null;
+    if (source.codeUnitAt(i) == 35) {
+      // Any other cleanly delimited call (e.g. #footnote[…], #link("url"))
+      // becomes an inline protected atom so the surrounding prose stays
+      // editable instead of collapsing the whole paragraph.
+      final end = inlineCallEnd(source, i);
+      if (end == null) return null;
+      final raw = source.substring(i, end);
+      flush();
+      parts.add(
+        TyLogInline.atom(
+          source: raw,
+          label: _atomLabel(raw),
+          id: 'atom-${source.hashCode}-${atom++}',
+        ),
+      );
+      i = end;
+      continue;
+    }
     plain.writeCharCode(source.codeUnitAt(i));
     i++;
   }
   flush();
   return _normalize(parts);
+}
+
+bool isTaskSource(String source) =>
+    source.trimLeft().startsWith('#tylog.task(');
+
+String taskStatusOf(String source) =>
+    RegExp(r'status\s*:\s*"([^"]*)"').firstMatch(source)?.group(1) ?? 'todo';
+
+/// Flips a single `#tylog.task(...)` call between done and todo.
+// ponytail: flat regex over the call source, same ceiling as
+// scanner.replaceTaskStatus; structural parse if task text ever
+// legitimately contains `status: "..."`.
+String toggleTaskSource(String source) {
+  final match = RegExp(r'status\s*:\s*"([^"]*)"').firstMatch(source);
+  if (match == null) {
+    return source.replaceFirst('#tylog.task(', '#tylog.task(status: "done", ');
+  }
+  final next = match.group(1) == 'done' ? 'todo' : 'done';
+  return source.replaceRange(match.start, match.end, 'status: "$next"');
 }
 
 String _atomLabel(String source) {

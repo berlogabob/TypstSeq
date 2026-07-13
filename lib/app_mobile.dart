@@ -13,6 +13,7 @@ import 'controlled_editor.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'models.dart';
+import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
 import 'report.dart';
@@ -145,8 +146,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int savedRevision = 0;
   int indexedRevision = 0;
   DateTime? lastEditAt;
-  String mode = 'today';
+  // Launch lands in the journal editor with today's file open.
+  String mode = 'normal';
   String helperSource = tylogHelperSource;
+  String bibliographySource = '';
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
@@ -171,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       source: '',
       onSourceChanged: _acceptRichSource,
       onError: _richEditorError,
-      onProtectedTap: (id) => unawaited(_editProtectedBlock(id)),
+      onProtectedTap: (id) => unawaited(_tapProtected(id)),
     );
     WidgetsBinding.instance.addObserver(this);
     _open();
@@ -310,6 +313,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
       final loadedHelper = await v.storage.readText(Vault.helperPath);
+      final loadedBibliography = await v.storage.exists(Vault.bibliographyPath)
+          ? await v.storage.readText(Vault.bibliographyPath)
+          : '';
       final conflicts = await loadSyncConflicts(v);
       _loadSource(await v.storage.readText(today));
       setState(() {
@@ -319,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         validation = _retainValidation(pkms.report);
         searchIndex = pkms.search;
         helperSource = loadedHelper;
+        bibliographySource = loadedBibliography;
         cloud = entry.cloud;
         selectedTag = null;
         lastSync = null;
@@ -329,16 +336,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         savedRevision = editRevision;
         indexedRevision = editRevision;
         lastEditAt = null;
-        if (trigger != 'startup') mode = 'today';
+        mode = 'normal';
         status = '$openStatus · ${pkms.report.summary()}';
       });
       unawaited(taskScheduler.reconcile(ix.tasks));
+      unawaited(_sweepSafBackups(v));
       if (entry.cloud != null && entry.cloud!.isReady) {
         if (trigger != null) unawaited(_syncNow(trigger: trigger));
         _startCloudPolling();
       }
     } catch (e) {
       _closeVault('Open failed: $e', nextCloud: entry.cloud);
+    }
+  }
+
+  // Delete orphans of interrupted SAF atomic replaces so they never sync.
+  Future<void> _sweepSafBackups(Vault v) async {
+    try {
+      final entries = await v.storage.list(recursive: true);
+      for (final e in entries) {
+        if (!e.isDirectory && isSafBackupPath(e.path)) {
+          await v.storage.delete(e.path);
+        }
+      }
+    } catch (_) {
+      // Best-effort cleanup; sync filtering is the hard guarantee.
     }
   }
 
@@ -677,7 +699,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     '/_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
     '_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
     '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
+    if (bibliographySource.isNotEmpty) ...{
+      Vault.bibliographyPath: Uint8List.fromList(
+        utf8.encode(bibliographySource),
+      ),
+      '/${Vault.bibliographyPath}': Uint8List.fromList(
+        utf8.encode(bibliographySource),
+      ),
+    },
   });
+
+  /// Preview-only source: cited notes get a bibliography section appended so
+  /// `@key` references resolve; the stored note is never modified.
+  String _previewSource() {
+    final source = sourceController.text;
+    final bib = bibliographySource.trim();
+    if (bib.isEmpty || bib == '{}') return source;
+    if (!RegExp(r'(^|[\s\[(])@[A-Za-z0-9_-]+').hasMatch(source)) return source;
+    return '$source\n#bibliography("/${Vault.bibliographyPath}")\n';
+  }
 
   void _loadSource(String source) {
     sourceController.text = source;
@@ -693,6 +733,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _richEditorError(Object error) {
     if (!mounted) return;
     setState(() => status = 'Edit kept safe: $error');
+  }
+
+  // Logseq behavior: tapping a date reference navigates to that day's journal
+  // page; every other protected chip opens the raw Typst editor.
+  Future<void> _tapProtected(String id) async {
+    final match = RegExp(
+      r'^#tylog\.date-ref\("(\d{4})-(\d{2})-(\d{2})"',
+    ).firstMatch(richController.protectedSource(id).trim());
+    if (match != null) {
+      await _openDay(
+        DateTime(
+          int.parse(match.group(1)!),
+          int.parse(match.group(2)!),
+          int.parse(match.group(3)!),
+        ),
+      );
+      return;
+    }
+    await _editProtectedBlock(id);
   }
 
   Future<void> _editProtectedBlock(String id) async {
@@ -748,6 +807,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return;
     await _openNote(await v.todayNote());
+  }
+
+  Future<void> _openDay(DateTime day) async {
+    final v = vault;
+    if (v == null) return;
+    await _openNote(await v.dailyNote(day));
+  }
+
+  /// Date of the currently open note when it is a daily journal file.
+  DateTime? _dailyDateOf(String? path) {
+    if (path == null) return null;
+    final match = RegExp(
+      r'^daily/\d{4}/\d{2}/(\d{4})-(\d{2})-(\d{2})\.typ$',
+    ).firstMatch(path);
+    if (match == null) return null;
+    return DateTime(
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      int.parse(match.group(3)!),
+    );
+  }
+
+  Future<void> _showCalendarPicker() async {
+    final day = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: MonthCalendar(
+              index: index,
+              initialMonth: _dailyDateOf(
+                vault == null || note == null
+                    ? null
+                    : vault!.relativePath(note!),
+              ),
+              onOpenDay: (day) => Navigator.pop(context, day),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (day != null) await _openDay(day);
   }
 
   Future<void> _openLink(String title) async {
@@ -1454,7 +1557,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => mode = 'normal');
   }
 
-  void _showToday() => setState(() => mode = 'today');
+  void _showToday() {
+    if (!dirty) setState(() => mode = 'today');
+  }
 
   void _showSource() => setState(() => mode = 'source');
 
@@ -1935,9 +2040,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || !await v.storage.exists(Vault.bibliographyPath)) {
       return null;
     }
-    final entries = parseHayagrivaBibliography(
-      await v.storage.readText(Vault.bibliographyPath),
-    );
+    final bib = await v.storage.readText(Vault.bibliographyPath);
+    bibliographySource = bib;
+    final entries = parseHayagrivaBibliography(bib);
     if (!mounted) return null;
     return showModalBottomSheet<String>(
       context: context,
@@ -2070,27 +2175,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (action != null) await _runMagic(action);
   }
 
-  Future<void> _quickCapture(String text) async {
-    final v = vault;
-    if (v == null || text.trim().isEmpty) return;
-    final today = await v.todayNote();
-    final source = await v.storage.readText(today);
-    final updated = '${source.trimRight()}\n\n${text.trim()}\n';
-    await v.saveNote(today, updated);
-    final rebuilt = await v.rebuildIndex();
-    final pkms = await _readPkms(v, rebuilt);
-    if (note != null && v.relativePath(note!) == v.relativePath(today)) {
-      _loadSource(updated);
-    }
-    setState(() {
-      index = _retainIndex(rebuilt);
-      validation = _retainValidation(pkms.report);
-      searchIndex.replaceWith(pkms.search);
-      status = 'Captured in today\'s journal';
-    });
-    _queueCloudSync();
-  }
-
   int get _destination => switch (mode) {
     'today' => 0,
     'tasks' => 2,
@@ -2136,10 +2220,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final syncConflictCount = syncConflicts.length;
     final desktopManaged =
         v?.localRoot != null && isNextcloudManagedVault(v!.localRoot!);
+    final currentDaily = _dailyDateOf(current);
+    final dayItems = currentDaily == null
+        ? const <CalendarItem>[]
+        : (index?.calendar ?? const <CalendarItem>[])
+              .where(
+                (item) =>
+                    item.date == _isoDay(currentDaily) &&
+                    item.notePath != current,
+              )
+              .toList();
     final linksPanel = _LinksPanel(
       current: current,
       outgoing: outgoing,
       backlinks: backlinks,
+      dayItems: dayItems,
       fileRefs: current == null
           ? const <String>[]
           : index?.notesByPath[current]?.fileRefs ?? const <String>[],
@@ -2150,14 +2245,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onOpenFile: _openAttachment,
       onEditMetadata: _editCurrentMetadata,
     );
+    final dailyDate = _dailyDateOf(current);
+    final journalMode = const {'normal', 'preview', 'source', 'split'};
     final workArea = _WorkSurface(
       title: currentTitle,
       subtitle: current ?? 'daily journal',
       status: status,
+      trailing: journalMode.contains(mode)
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (dailyDate != null)
+                  IconButton(
+                    tooltip: 'Previous day',
+                    icon: const Icon(Icons.chevron_left),
+                    // Calendar day, not 24h: DST-safe.
+                    onPressed: () => unawaited(
+                      _openDay(
+                        DateTime(
+                          dailyDate.year,
+                          dailyDate.month,
+                          dailyDate.day - 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Calendar',
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  onPressed: () => unawaited(_showCalendarPicker()),
+                ),
+                if (dailyDate != null)
+                  IconButton(
+                    tooltip: 'Next day',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => unawaited(
+                      _openDay(
+                        DateTime(
+                          dailyDate.year,
+                          dailyDate.month,
+                          dailyDate.day + 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            )
+          : null,
       child: switch (mode) {
         'today' => _TodayView(
           index: index,
-          onCapture: _quickCapture,
           onOpenToday: _openToday,
           onOpenPath: _openPath,
         ),
@@ -2166,14 +2303,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onOpenPath: _openPath,
           onSetStatus: _setTaskStatus,
         ),
-        'library' => _LibraryView(index: index, onOpenPath: _openPath),
+        'library' => _LibraryView(
+          index: index,
+          onOpenPath: _openPath,
+          onOpenDay: (day) => unawaited(_openDay(day)),
+        ),
         'graph' => GraphView(
           graph: graph ?? const NoteGraph(nodes: [], edges: []),
           currentPath: current,
           onOpenPath: _openPath,
         ),
         'preview' => TypstDocumentViewer(
-          source: sourceController.text,
+          source: _previewSource(),
           files: _typstFiles(),
           loadingBuilder: (_) =>
               const Center(child: CircularProgressIndicator()),
@@ -2212,7 +2353,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const VerticalDivider(width: 1),
             Expanded(
               child: TypstDocumentViewer(
-                source: sourceController.text,
+                source: _previewSource(),
                 files: _typstFiles(),
               ),
             ),
@@ -3066,12 +3207,14 @@ class _LinksPanel extends StatelessWidget {
     required this.onOpenPath,
     required this.onOpenFile,
     required this.onEditMetadata,
+    this.dayItems = const [],
   });
 
   final String? current;
   final List<String> outgoing;
   final List<String> backlinks;
   final List<String> fileRefs;
+  final List<CalendarItem> dayItems;
   final VaultIndex? index;
   final LinkResolution Function(String title) resolveLink;
   final ValueChanged<String> onOpenLink;
@@ -3140,6 +3283,30 @@ class _LinksPanel extends StatelessWidget {
             ),
             onTap: () => onOpenFile(path),
           ),
+        if (dayItems.isNotEmpty) ...[
+          const Divider(height: 28),
+          _SectionTitle('On this day'),
+          for (final item in dayItems)
+            ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              leading: Icon(
+                item.kind == CalendarItemKind.task
+                    ? Icons.task_alt
+                    : Icons.event,
+              ),
+              title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                item.notePath,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              onTap: () => onOpenPath(item.notePath),
+            ),
+        ],
         const Divider(height: 28),
         _SectionTitle('Backlinks'),
         if (backlinks.isEmpty)
@@ -3368,12 +3535,14 @@ class _WorkSurface extends StatelessWidget {
     required this.subtitle,
     required this.status,
     required this.child,
+    this.trailing,
   });
 
   final String title;
   final String subtitle;
   final String status;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -3383,7 +3552,18 @@ class _WorkSurface extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
           Row(
             children: [
               Expanded(
@@ -3411,40 +3591,25 @@ class _WorkSurface extends StatelessWidget {
   );
 }
 
-class _TodayView extends StatefulWidget {
+class _TodayView extends StatelessWidget {
   const _TodayView({
     required this.index,
-    required this.onCapture,
     required this.onOpenToday,
     required this.onOpenPath,
   });
 
   final VaultIndex? index;
-  final Future<void> Function(String text) onCapture;
   final Future<void> Function() onOpenToday;
   final ValueChanged<String> onOpenPath;
 
   @override
-  State<_TodayView> createState() => _TodayViewState();
-}
-
-class _TodayViewState extends State<_TodayView> {
-  final quick = TextEditingController();
-
-  @override
-  void dispose() {
-    quick.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final today = _isoDay(DateTime.now());
-    final notes = widget.index?.notes ?? const <NoteRef>[];
+    final notes = index?.notes ?? const <NoteRef>[];
     final daily = notes
         .where((note) => note.kind == 'daily' && note.date == today)
         .firstOrNull;
-    final due = (widget.index?.tasks ?? const <TaskRef>[])
+    final due = (index?.tasks ?? const <TaskRef>[])
         .where(
           (task) =>
               task.status != 'done' &&
@@ -3464,9 +3629,9 @@ class _TodayViewState extends State<_TodayView> {
         .toList();
     final backlinks = daily == null
         ? const <String>[]
-        : widget.index?.backlinksByTarget[daily.path] ?? const <String>[];
+        : index?.backlinksByTarget[daily.path] ?? const <String>[];
     final calendar =
-        widget.index?.calendar
+        index?.calendar
             .where((item) => item.date.compareTo(today) >= 0)
             .take(7)
             .toList() ??
@@ -3477,27 +3642,8 @@ class _TodayViewState extends State<_TodayView> {
         Text('Today', style: Theme.of(context).textTheme.headlineMedium),
         Text(today, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 16),
-        TextField(
-          key: const Key('quick-capture'),
-          controller: quick,
-          minLines: 2,
-          maxLines: 5,
-          decoration: InputDecoration(
-            hintText: 'Quick note…',
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              tooltip: 'Capture',
-              icon: const Icon(Icons.send),
-              onPressed: () async {
-                await widget.onCapture(quick.text);
-                quick.clear();
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: widget.onOpenToday,
+          onPressed: onOpenToday,
           icon: const Icon(Icons.edit_note),
           label: const Text('Open today’s journal'),
         ),
@@ -3510,7 +3656,7 @@ class _TodayViewState extends State<_TodayView> {
                 leading: const Icon(Icons.task_alt),
                 title: Text(task.text),
                 subtitle: Text(task.due ?? ''),
-                onTap: () => widget.onOpenPath(task.notePath),
+                onTap: () => onOpenPath(task.notePath),
               ),
           ],
         ),
@@ -3523,7 +3669,7 @@ class _TodayViewState extends State<_TodayView> {
                 leading: const Icon(Icons.event),
                 title: Text(item.title),
                 subtitle: Text(item.date),
-                onTap: () => widget.onOpenPath(item.notePath),
+                onTap: () => onOpenPath(item.notePath),
               ),
           ],
         ),
@@ -3536,7 +3682,7 @@ class _TodayViewState extends State<_TodayView> {
                 leading: const Icon(Icons.notes),
                 title: Text(item.title),
                 subtitle: Text(item.path),
-                onTap: () => widget.onOpenPath(item.path),
+                onTap: () => onOpenPath(item.path),
               ),
           ],
         ),
@@ -3547,8 +3693,8 @@ class _TodayViewState extends State<_TodayView> {
             for (final path in backlinks)
               ListTile(
                 leading: const Icon(Icons.link),
-                title: Text(widget.index?.notesByPath[path]?.title ?? path),
-                onTap: () => widget.onOpenPath(path),
+                title: Text(index?.notesByPath[path]?.title ?? path),
+                onTap: () => onOpenPath(path),
               ),
           ],
         ),
@@ -3560,7 +3706,7 @@ class _TodayViewState extends State<_TodayView> {
               ListTile(
                 leading: const Icon(Icons.inbox_outlined),
                 title: Text(item.title),
-                onTap: () => widget.onOpenPath(item.path),
+                onTap: () => onOpenPath(item.path),
               ),
           ],
         ),
@@ -3643,10 +3789,15 @@ class _PrimaryTasksView extends StatelessWidget {
 }
 
 class _LibraryView extends StatelessWidget {
-  const _LibraryView({required this.index, required this.onOpenPath});
+  const _LibraryView({
+    required this.index,
+    required this.onOpenPath,
+    required this.onOpenDay,
+  });
 
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
+  final ValueChanged<DateTime> onOpenDay;
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
@@ -3668,16 +3819,10 @@ class _LibraryView extends StatelessWidget {
               _notes('note'),
               _notes('project'),
               _notes('article'),
-              ListView(
-                children: [
-                  for (final item in index?.calendar ?? const <CalendarItem>[])
-                    ListTile(
-                      leading: const Icon(Icons.event),
-                      title: Text(item.title),
-                      subtitle: Text(item.date),
-                      onTap: () => onOpenPath(item.notePath),
-                    ),
-                ],
+              _CalendarTab(
+                index: index,
+                onOpenPath: onOpenPath,
+                onOpenDay: onOpenDay,
               ),
             ],
           ),
@@ -3703,6 +3848,63 @@ class _LibraryView extends StatelessWidget {
         ),
     ],
   );
+}
+
+class _CalendarTab extends StatefulWidget {
+  const _CalendarTab({
+    required this.index,
+    required this.onOpenPath,
+    required this.onOpenDay,
+  });
+
+  final VaultIndex? index;
+  final ValueChanged<String> onOpenPath;
+  final ValueChanged<DateTime> onOpenDay;
+
+  @override
+  State<_CalendarTab> createState() => _CalendarTabState();
+}
+
+class _CalendarTabState extends State<_CalendarTab> {
+  DateTime selected = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    final iso = _isoDay(selected);
+    final items = (widget.index?.calendar ?? const <CalendarItem>[])
+        .where((item) => item.date == iso)
+        .toList();
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      children: [
+        MonthCalendar(
+          index: widget.index,
+          initialMonth: selected,
+          onDaySelected: (day) => setState(() => selected = day),
+          onOpenDay: widget.onOpenDay,
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.edit_note),
+          title: Text('Open journal $iso'),
+          onTap: () => widget.onOpenDay(selected),
+        ),
+        if (items.isEmpty)
+          const ListTile(title: Text('Nothing on this day yet')),
+        for (final item in items)
+          ListTile(
+            leading: Icon(switch (item.kind) {
+              CalendarItemKind.daily => Icons.book_outlined,
+              CalendarItemKind.task => Icons.task_alt,
+              _ => Icons.event,
+            }),
+            title: Text(item.title),
+            subtitle: Text(item.notePath),
+            onTap: () => widget.onOpenPath(item.notePath),
+          ),
+      ],
+    );
+  }
 }
 
 class _Editor extends StatefulWidget {

@@ -728,10 +728,9 @@ class NextcloudSync {
     final tmp = File(
       '${file.path}.download-${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
-    final response = await (await _open(
-      'GET',
-      _remoteUri(path),
-    )).close().timeout(const Duration(seconds: 60));
+    final request = await _open('GET', _remoteUri(path));
+    request.headers.set('X-Hash', 'sha256');
+    final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
       throw HttpException('GET $path ${response.statusCode}');
     }
@@ -740,6 +739,17 @@ class NextcloudSync {
         response.headers.value('oc-etag');
     try {
       await response.pipe(tmp.openWrite());
+      // A truncated body (dropped connection, chunked short read) must never
+      // be committed as the local note.
+      final declaredLength = response.headers.contentLength;
+      if (declaredLength >= 0 && await tmp.length() != declaredLength) {
+        throw HttpException('GET $path truncated body');
+      }
+      final remoteHash = response.headers.value('x-hash-sha256');
+      if (remoteHash != null &&
+          remoteHash.toLowerCase() != await _sha256(tmp)) {
+        throw HttpException('GET $path checksum mismatch');
+      }
       if (protectNonEmpty &&
           _protectFromEmpty(path) &&
           await file.exists() &&
@@ -1089,7 +1099,16 @@ bool isSyncInternalPath(String path) =>
     path.startsWith('.tylog/') ||
     path.startsWith('_index/') ||
     path.contains('.remote-conflict-') ||
-    path.endsWith('.tmp');
+    path.endsWith('.tmp') ||
+    isSafBackupPath(path);
+
+// Orphan of an interrupted SAF atomic replace: `.<name>.tylog-<nanos>.backup`.
+bool isSafBackupPath(String path) {
+  final name = path.split('/').last;
+  return name.startsWith('.') &&
+      name.endsWith('.backup') &&
+      name.contains('.tylog-');
+}
 
 bool isSyncableVaultPath(String path) => const [
   'daily/',

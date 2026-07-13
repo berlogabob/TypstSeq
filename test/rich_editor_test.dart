@@ -281,9 +281,34 @@ void main() {
       ),
     );
 
-    expect(find.text('Custom Typst'), findsOneWidget);
-    await tester.tap(find.text('Custom Typst'));
+    // The delimited custom call renders as an inline atom labelled by its
+    // bracket content; tapping it still opens the protected editor.
+    expect(find.text('Keep exactly'), findsOneWidget);
+    await tester.tap(find.text('Keep exactly'));
     expect(opened, isNotNull);
+  });
+
+  testWidgets('unknown inline call keeps surrounding prose editable', (
+    tester,
+  ) async {
+    const source = 'Before #footnote[note text] after and #link("https://x")\n';
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    expect(controller.text, contains('Before ￼ after and ￼'));
+    expect(controller.document.toSource(), source);
+
+    // Prose around the atoms stays editable.
+    final after = controller.text.indexOf('after');
+    controller.document.replace(after, after + 5, 'AFTER');
+    expect(controller.document.toSource(), contains('AFTER and'));
+    expect(controller.document.toSource(), contains('#footnote[note text]'));
+    expect(controller.document.toSource(), contains('#link("https://x")'));
   });
 
   testWidgets('format toolbar tap keeps focus and applies bold', (
@@ -314,5 +339,49 @@ void main() {
 
     expect(saved, contains('#strong[привет]'));
     expect(find.byTooltip('Bold'), findsOneWidget);
+  });
+
+  test('toggleTaskSource round-trips status in both directions', () {
+    const noStatus =
+        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)';
+    final done = toggleTaskSource(noStatus);
+    expect(done, contains('status: "done"'));
+    expect(done, contains('id: "t1"'));
+    expect(toggleTaskSource(done), contains('status: "todo"'));
+  });
+
+  testWidgets('task checkbox toggles and writes status back to source', (
+    tester,
+  ) async {
+    const source =
+        'Intro paragraph\n\n'
+        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)\n';
+    String? saved;
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () {}),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
+    await tester.tap(find.byKey(const Key('task-checkbox')));
+    await tester.pump();
+
+    expect(saved, contains('status: "done"'));
+    expect(find.byIcon(Icons.check_box), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('task-checkbox')));
+    await tester.pump();
+    expect(saved, contains('status: "todo"'));
   });
 }

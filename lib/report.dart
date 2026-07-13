@@ -73,7 +73,7 @@ String generateReportSource(String title, List<NoteRef> notes) =>
 
 #export.report(${typstString(title)}, [
 ${notes.map((note) => '#include "/${note.path}"\n#pagebreak()').join('\n')}
-])
+${notes.any((note) => note.citations.isNotEmpty) ? '#bibliography("/_system/bibliography.yml")\n' : ''}])
 ''';
 
 Future<File> writeReport(

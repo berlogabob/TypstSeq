@@ -152,8 +152,7 @@ ControlledBlock _block(String source, int start, int end) {
     _ => ControlledBlockKind.paragraph,
   };
   final supported =
-      kind != ControlledBlockKind.paragraph ||
-      !_unsupportedCode.hasMatch(_removeSupportedInline(raw));
+      kind != ControlledBlockKind.paragraph || _inlineCodeDelimited(raw);
   return ControlledBlock(
     start: start,
     end: end,
@@ -163,14 +162,62 @@ ControlledBlock _block(String source, int start, int end) {
   );
 }
 
-final _unsupportedCode = RegExp(r'#');
+/// A paragraph stays editable when every `#` in it starts a cleanly
+/// delimited inline call; each such call becomes a protected inline atom.
+bool _inlineCodeDelimited(String raw) {
+  for (var i = 0; i < raw.length; i++) {
+    final code = raw.codeUnitAt(i);
+    if (code == 92) {
+      i++;
+      continue;
+    }
+    if (code != 35) continue;
+    final end = inlineCallEnd(raw, i);
+    if (end == null) return false;
+    i = end - 1;
+  }
+  return true;
+}
 
-String _removeSupportedInline(String value) => value.replaceAll(
-  RegExp(
-    r'#(?:strong|emph|image|link|cite|tylog\.(?:ref-note|tag|date-ref|attachment))\b',
-  ),
-  '',
-);
+/// Exclusive end of an inline `#name.sub(...)[...]…` call starting at
+/// [start], or null when it is not cleanly delimited. At least one `(...)`
+/// or `[...]` group is required, so statements like `#show: …` or
+/// `#import "…"` stay unsupported.
+int? inlineCallEnd(String source, int start) {
+  final name = RegExp(
+    r'#[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*',
+  ).matchAsPrefix(source, start);
+  if (name == null) return null;
+  var i = name.end;
+  var groups = 0;
+  if (i < source.length && source.codeUnitAt(i) == 40) {
+    final close = _balancedParenEnd(source, i);
+    if (close == null) return null;
+    i = close;
+    groups++;
+  }
+  while (i < source.length && source.codeUnitAt(i) == 91) {
+    final close = _balancedSquareEnd(source, i);
+    if (close == null) return null;
+    i = close;
+    groups++;
+  }
+  return groups == 0 ? null : i;
+}
+
+int? _balancedSquareEnd(String source, int open) {
+  var depth = 0;
+  for (var i = open; i < source.length; i++) {
+    final code = source.codeUnitAt(i);
+    if (code == 92) {
+      i++;
+      continue;
+    }
+    if (code == 91) depth++;
+    if (code == 93 && --depth == 0) return i + 1;
+  }
+  return null;
+}
 
 String _inlinePreview(String source) {
   var value = source;
@@ -178,6 +225,8 @@ String _inlinePreview(String source) {
     RegExp(r'#tylog\.(?:ref-note|date-ref|attachment)\([^)]*\)\[([^\]]*)\]'),
     RegExp(r'#link\([^)]*\)\[([^\]]*)\]'),
     RegExp(r'#(?:strong|emph)\[([^\]]*)\]'),
+    // Generic labelled call, e.g. #footnote[…] or #custom(...)[…].
+    RegExp(r'#[A-Za-z][A-Za-z0-9_.-]*(?:\([^)]*\))?\[([^\]]*)\]'),
   ]) {
     value = value.replaceAllMapped(pattern, (match) => match.group(1)!);
   }

@@ -102,6 +102,24 @@ void main() {
     expect(await vault.readText(article), contains('kind: "article"'));
   });
 
+  test('dailyNote opens or creates the journal file for any date', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_daily_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    final past = await vault.dailyNote(DateTime(2025, 1, 9));
+    final future = await vault.dailyNote(DateTime(2027, 12, 31));
+
+    expect(vault.relativePath(past), 'daily/2025/01/2025-01-09.typ');
+    expect(vault.relativePath(future), 'daily/2027/12/2027-12-31.typ');
+    expect(await vault.readText(past), contains('kind: "daily"'));
+    // Reopening returns the existing file untouched.
+    await vault.saveNote(past, 'existing content');
+    expect(await vault.dailyNote(DateTime(2025, 1, 9)), past);
+    expect(await vault.readText(past), 'existing content');
+  });
+
   test(
     'page creates once and atomic save preserves existing content',
     () async {

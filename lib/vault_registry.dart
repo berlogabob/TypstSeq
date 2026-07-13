@@ -128,14 +128,21 @@ class VaultRegistry {
           entries.add(entry);
           continue;
         }
-        final secret = await NextcloudConfig.readSecret(vaultId: entry.id);
-        if (secret != null) {
-          entries.add(entry.copyWith(cloud: cloud.withPassword(secret)));
-        } else {
-          if (cloud.password.isNotEmpty) {
-            await cloud.saveSecret(vaultId: entry.id);
-            migrated = true;
+        // Keystore access can fail (e.g. macOS keychain entitlement/signature
+        // mismatch on dev runs). A local vault must still open, so fall back
+        // to whatever the entry already carries instead of aborting startup.
+        try {
+          final secret = await NextcloudConfig.readSecret(vaultId: entry.id);
+          if (secret != null) {
+            entries.add(entry.copyWith(cloud: cloud.withPassword(secret)));
+          } else {
+            if (cloud.password.isNotEmpty) {
+              await cloud.saveSecret(vaultId: entry.id);
+              migrated = true;
+            }
+            entries.add(entry);
           }
+        } on Exception {
           entries.add(entry);
         }
       }

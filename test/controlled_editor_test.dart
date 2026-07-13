@@ -17,12 +17,13 @@ void main() {
     expect(document.blocks.map((block) => block.kind), [
       ControlledBlockKind.heading,
       ControlledBlockKind.paragraph,
-      ControlledBlockKind.raw,
+      // Cleanly delimited unknown calls stay in an editable paragraph.
+      ControlledBlockKind.paragraph,
     ]);
     expect(document.blocks.map(controlledBlockPreview), [
       'Heading',
       'Visible and topic',
-      'Custom Typst block',
+      'Keep exactly',
     ]);
     expect(
       document.replaceBlock(1, '#strong[Changed]'),

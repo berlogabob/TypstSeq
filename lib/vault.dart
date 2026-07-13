@@ -126,6 +126,9 @@ class Vault {
     return path;
   }
 
+  /// Opens (creating if missing) the journal file for an arbitrary day.
+  Future<String> dailyNote(DateTime day) => todayNote(day);
+
   Future<String> page(
     String title, {
     String kind = 'note',

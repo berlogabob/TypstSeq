@@ -71,5 +71,20 @@ void main() {
       source.indexOf('articles/paper.typ'),
       lessThan(source.indexOf('daily/2026')),
     );
+    // No citations in these notes: no bibliography section.
+    expect(source, isNot(contains('#bibliography')));
+  });
+
+  test('report with cited notes appends the vault bibliography', () {
+    const cited = NoteRef(
+      id: 'paper',
+      path: 'articles/paper.typ',
+      title: 'Paper',
+      kind: 'article',
+      citations: ['smith-2026'],
+      outgoingLinks: [],
+    );
+    final source = generateReportSource('Cited report', const [cited]);
+    expect(source, contains('#bibliography("/_system/bibliography.yml")'));
   });
 }
