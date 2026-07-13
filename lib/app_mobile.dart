@@ -1813,12 +1813,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final trace = await v.storage.exists(path)
         ? await v.storage.readText(path)
         : 'No sync trace is available.\n';
+    // A hung run never finishes, so the trace file is never written for it;
+    // surface the live state up front so a stuck sync is still diagnosable.
+    final state =
+        'state: syncing=$syncing stage=${syncStage ?? '-'} '
+        'lastSyncAt=${lastSyncAt ?? '-'}\n\n';
     await Clipboard.setData(
       ClipboardData(
         text:
             'TyLog ${await appVersion()}\n'
             'Platform: ${Platform.operatingSystem}\n'
-            '$trace',
+            '$state$trace',
       ),
     );
     if (!mounted) return;
@@ -3106,7 +3111,7 @@ class _SyncStatusCard extends StatelessWidget {
       SyncStatusKind.syncing => 'Checking this device and Nextcloud.',
       SyncStatusKind.paused => error!,
       SyncStatusKind.conflicts =>
-        'Your files are safe. Choose which changes to keep.',
+        'Sync is paused until you review the conflicts. Your files are safe.',
       SyncStatusKind.ready => 'No sync has completed in this session.',
       SyncStatusKind.upToDate => _lastChecked(lastSyncAt),
       SyncStatusKind.synced =>

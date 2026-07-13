@@ -132,7 +132,9 @@ class VaultRegistry {
         // mismatch on dev runs). A local vault must still open, so fall back
         // to whatever the entry already carries instead of aborting startup.
         try {
-          final secret = await NextcloudConfig.readSecret(vaultId: entry.id);
+          final secret = await NextcloudConfig.readSecret(
+            vaultId: entry.id,
+          ).timeout(const Duration(seconds: 5));
           if (secret != null) {
             entries.add(entry.copyWith(cloud: cloud.withPassword(secret)));
           } else {

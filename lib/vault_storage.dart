@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -173,10 +174,27 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   static const _channel = MethodChannel('org.tylog.tylog/saf');
 
+  // ponytail: Dart-side watchdog only; the native single-thread executor in
+  // SafBridge stays wedged until app restart. Per-call native watchdogs if
+  // a stalled DocumentsProvider recurs in practice.
+  static Duration safCallTimeout = const Duration(seconds: 120);
+
+  static Future<T> _invoke<T>(Future<T> call, String op) async {
+    try {
+      return await call.timeout(safCallTimeout);
+    } on TimeoutException {
+      throw PlatformException(
+        code: 'saf_timeout',
+        message: 'Folder provider did not respond: $op',
+      );
+    }
+  }
+
   final String uri;
   final String name;
 
   static Future<AndroidTreeSelection?> pick() async {
+    // No watchdog: the system folder picker waits on the user.
     final result = await _channel.invokeMapMethod<String, Object?>('pickTree');
     if (result == null) return null;
     return AndroidTreeSelection(
@@ -201,12 +219,17 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<bool> exists(String path) async =>
-      await _channel.invokeMethod<bool>('exists', _args({'path': path})) ??
+      await _invoke<bool?>(
+        _channel.invokeMethod<bool>('exists', _args({'path': path})),
+        'exists',
+      ) ??
       false;
 
   @override
-  Future<void> createDirectory(String path) =>
-      _channel.invokeMethod<void>('createDirectory', _args({'path': path}));
+  Future<void> createDirectory(String path) => _invoke(
+    _channel.invokeMethod<void>('createDirectory', _args({'path': path})),
+    'createDirectory',
+  );
 
   @override
   Future<List<VaultStorageEntry>> list({
@@ -214,9 +237,12 @@ class AndroidTreeVaultStorage extends VaultStorage {
     bool recursive = false,
   }) async {
     final values =
-        await _channel.invokeListMethod<Map<Object?, Object?>>(
+        await _invoke(
+          _channel.invokeListMethod<Map<Object?, Object?>>(
+            'list',
+            _args({'path': path, 'recursive': recursive}),
+          ),
           'list',
-          _args({'path': path, 'recursive': recursive}),
         ) ??
         const [];
     return values
@@ -237,9 +263,9 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<VaultStorageEntry?> stat(String path) async {
-    final value = await _channel.invokeMapMethod<Object?, Object?>(
+    final value = await _invoke(
+      _channel.invokeMapMethod<Object?, Object?>('stat', _args({'path': path})),
       'stat',
-      _args({'path': path}),
     );
     if (value == null) return null;
     return VaultStorageEntry(
@@ -254,40 +280,54 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<Uint8List> readBytes(String path) async =>
-      await _channel.invokeMethod<Uint8List>('read', _args({'path': path})) ??
+      await _invoke<Uint8List?>(
+        _channel.invokeMethod<Uint8List>('read', _args({'path': path})),
+        'read',
+      ) ??
       Uint8List(0);
 
   @override
-  Future<void> writeBytes(String path, List<int> bytes) =>
-      _channel.invokeMethod<void>(
-        'write',
-        _args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
-      );
+  Future<void> writeBytes(String path, List<int> bytes) => _invoke(
+    _channel.invokeMethod<void>(
+      'write',
+      _args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
+    ),
+    'write',
+  );
 
   @override
-  Future<void> delete(String path) =>
-      _channel.invokeMethod<void>('delete', _args({'path': path}));
+  Future<void> delete(String path) => _invoke(
+    _channel.invokeMethod<void>('delete', _args({'path': path})),
+    'delete',
+  );
 
   @override
   Future<String> hash(String path) async =>
-      (await _channel.invokeMethod<String>('hash', _args({'path': path})))!;
+      (await _invoke<String?>(
+        _channel.invokeMethod<String>('hash', _args({'path': path})),
+        'hash',
+      ))!;
 
   @override
-  Future<void> importFile(String path, File source) =>
-      _channel.invokeMethod<void>(
-        'import',
-        _args({'path': path, 'source': source.path}),
-      );
+  Future<void> importFile(String path, File source) => _invoke(
+    _channel.invokeMethod<void>(
+      'import',
+      _args({'path': path, 'source': source.path}),
+    ),
+    'import',
+  );
 
   @override
   Future<File> materialize(String path) async => File(
-    (await _channel.invokeMethod<String>(
+    (await _invoke(
+      _channel.invokeMethod<String>('materialize', _args({'path': path})),
       'materialize',
-      _args({'path': path}),
     ))!,
   );
 
   @override
-  Future<void> open(String path) =>
-      _channel.invokeMethod<void>('open', _args({'path': path}));
+  Future<void> open(String path) => _invoke(
+    _channel.invokeMethod<void>('open', _args({'path': path})),
+    'open',
+  );
 }

@@ -144,6 +144,8 @@ class NextcloudSync {
   final bool Function(String path)? canReplaceLocal;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
+  static Duration propfindBodyTimeout = const Duration(seconds: 60);
+
   Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     var stage = 'start';
@@ -601,7 +603,10 @@ class NextcloudSync {
       '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getetag/><d:getcontentlength/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
-    final body = await response.transform(utf8.decoder).join();
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(propfindBodyTimeout);
     if (response.statusCode != 207) {
       throw HttpException('PROPFIND unexpected status ${response.statusCode}');
     }
@@ -688,7 +693,9 @@ class NextcloudSync {
     } else if (remote == null) {
       request.headers.set(HttpHeaders.ifNoneMatchHeader, '*');
     }
-    await request.addStream(file.openRead());
+    // ponytail: flat 5-minute cap per file transfer; chunked/resumable uploads if
+    // large attachments start hitting this.
+    await request.addStream(file.openRead()).timeout(const Duration(minutes: 5));
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode == HttpStatus.preconditionFailed) {
       throw const _RemoteChanged();
@@ -738,7 +745,7 @@ class NextcloudSync {
         response.headers.value(HttpHeaders.etagHeader) ??
         response.headers.value('oc-etag');
     try {
-      await response.pipe(tmp.openWrite());
+      await response.pipe(tmp.openWrite()).timeout(const Duration(minutes: 5));
       // A truncated body (dropped connection, chunked short read) must never
       // be committed as the local note.
       final declaredLength = response.headers.contentLength;

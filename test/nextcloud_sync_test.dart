@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -497,6 +498,23 @@ void main() {
     expect(events.last['event'], 'failed');
     expect(events.last['stage'], 'list-remote');
     expect(jsonEncode(events), isNot(contains('secret')));
+  });
+
+  test('a stalled PROPFIND body times out instead of hanging', () async {
+    final originalTimeout = NextcloudSync.propfindBodyTimeout;
+    NextcloudSync.propfindBodyTimeout = const Duration(milliseconds: 100);
+    addTearDown(() => NextcloudSync.propfindBodyTimeout = originalTimeout);
+    final server = await _webDavServer(propfindStalled: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_propfind_stall_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(Vault(dir)),
+      throwsA(isA<TimeoutException>()),
+    ).timeout(const Duration(seconds: 10));
   });
 
   test('HTTP 200 HTML is not accepted as an empty WebDAV folder', () async {
@@ -1045,6 +1063,7 @@ Future<void> _seedCursor(Vault vault, File note, String remoteEtag) async {
 Future<HttpServer> _webDavServer({
   bool interrupted = false,
   bool truncatedChunked = false,
+  bool propfindStalled = false,
   String remoteContent = '',
   DateTime? remoteModified,
   String? remoteModifiedValue,
@@ -1059,6 +1078,14 @@ Future<HttpServer> _webDavServer({
     if (request.method == 'MKCOL') {
       request.response.statusCode = HttpStatus.methodNotAllowed;
     } else if (request.method == 'PROPFIND') {
+      if (propfindStalled) {
+        // Accept the request and commit the headers, then never write (or
+        // close) the body: simulates a provider that stalls mid-response.
+        request.response.statusCode = propfindStatus;
+        request.response.headers.contentLength = 1 << 20;
+        await request.response.detachSocket(writeHeaders: true);
+        return;
+      }
       request.response.statusCode = propfindStatus;
       request.response.write(
         propfindBody ??

@@ -1,12 +1,51 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'a stalled SAF call surfaces as a PlatformException instead of hanging',
+    () async {
+      final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+      AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+      addTearDown(
+        () => AndroidTreeVaultStorage.safCallTimeout = originalTimeout,
+      );
+      const channel = MethodChannel('org.tylog.tylog/saf');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            channel,
+            (call) => Completer<Object?>().future,
+          );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      final storage = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+
+      await expectLater(
+        storage.exists('notes/a.typ'),
+        throwsA(
+          isA<PlatformException>().having(
+            (error) => error.code,
+            'code',
+            'saf_timeout',
+          ),
+        ),
+      );
+    },
+  );
+
   test(
     'storage contract sees external edits and preserves binary files',
     () async {
