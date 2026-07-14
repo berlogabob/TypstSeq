@@ -6,6 +6,7 @@ import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_registry.dart';
+import 'package:typst_flutter/typst_flutter.dart';
 
 Future<void> openSource(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Preview'));
@@ -142,6 +143,12 @@ void main() {
 
     expect(find.byTooltip('Source'), findsOneWidget);
     expect(find.byIcon(Icons.code), findsWidgets);
+    expect(
+      tester
+          .widget<TypstDocumentViewer>(find.byType(TypstDocumentViewer))
+          .renderMode,
+      TypstRenderMode.raster,
+    );
     await tester.tap(find.byTooltip('Source'));
     await tester.pump();
 

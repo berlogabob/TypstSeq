@@ -990,6 +990,41 @@ void main() {
     expect(await loadSyncConflicts(vault), isEmpty);
   });
 
+  test('keep local resolves with edits made after the conflict', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'notes/live.typ': _MutableRemoteFile(
+        bytes: utf8.encode('remote note'),
+        etag: '"remote"',
+        modified: DateTime.now().toUtc(),
+      ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_live_conflict_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/live.typ', 'original local');
+    await createSyncConflict(
+      vault,
+      'notes/live.typ',
+      localBytes: utf8.encode('original local'),
+      remoteBytes: utf8.encode('remote note'),
+    );
+    final conflict = (await loadSyncConflicts(vault)).single;
+    await vault.storage.writeText('notes/live.typ', 'updated local');
+
+    await NextcloudSync(
+      _config(server),
+    ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+
+    expect(await vault.storage.readText('notes/live.typ'), 'updated local');
+    expect(utf8.decode(remote['notes/live.typ']!.bytes), 'updated local');
+    expect(await loadSyncConflicts(vault), isEmpty);
+  });
+
   test('nested configured folders are created one segment at a time', () async {
     final created = <String>[];
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

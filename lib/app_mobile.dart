@@ -1664,9 +1664,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final cfg = cloud;
     if (v == null || cfg == null || !cfg.isReady) return;
-    final localBytes = conflict.localSnapshot == null
-        ? null
-        : await v.storage.readBytes(conflict.localSnapshot!);
+    final localBytes = await v.storage.exists(conflict.path)
+        ? await v.storage.readBytes(conflict.path)
+        : null;
     final remoteBytes = conflict.remoteSnapshot == null
         ? null
         : await v.storage.readBytes(conflict.remoteSnapshot!);
@@ -1722,7 +1722,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           RadioListTile<SyncConflictResolution>(
                             value: SyncConflictResolution.keepLocal,
                             title: Text(
-                              conflict.localExists
+                              localBytes != null
                                   ? 'Keep this device version'
                                   : 'Keep deletion from this device',
                             ),
@@ -3308,7 +3308,11 @@ class _LinksPanel extends StatelessWidget {
                     ? Icons.task_alt
                     : Icons.event,
               ),
-              title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               subtitle: Text(
                 item.notePath,
                 maxLines: 1,

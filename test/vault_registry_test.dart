@@ -116,23 +116,27 @@ void main() {
     expect(await file.readAsString(), isNot(contains(a.id)));
   });
 
-  test('forgetting the last vault empties the registry and active id', () async {
-    final base = await Directory.systemTemp.createTemp('tylog_forget_last_');
-    addTearDown(() => base.delete(recursive: true));
-    final root = await Directory('${base.path}/only').create();
-    final file = File('${base.path}/vaults.json');
-    final registry = VaultRegistry(file, [], '');
-    final entry = await registry.add(root.path);
+  test(
+    'forgetting the last vault empties the registry and active id',
+    () async {
+      final base = await Directory.systemTemp.createTemp('tylog_forget_last_');
+      addTearDown(() => base.delete(recursive: true));
+      final root = await Directory('${base.path}/only').create();
+      final file = File('${base.path}/vaults.json');
+      final registry = VaultRegistry(file, [], '');
+      final entry = await registry.add(root.path);
 
-    await registry.forget(entry);
+      await registry.forget(entry);
 
-    expect(registry.entries, isEmpty);
-    expect(registry.activeId, '');
-    expect(await root.exists(), isTrue); // forget keeps files
-    final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
-    expect(json['vaults'], isEmpty);
-    expect(json['active'], '');
-  });
+      expect(registry.entries, isEmpty);
+      expect(registry.activeId, '');
+      expect(await root.exists(), isTrue); // forget keeps files
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, Object?>;
+      expect(json['vaults'], isEmpty);
+      expect(json['active'], '');
+    },
+  );
 
   test('first-run onboarding completion is persisted', () async {
     final base = await Directory.systemTemp.createTemp('tylog_onboarding_');
@@ -198,6 +202,21 @@ void main() {
     expect(
       shouldCreateDefaultReplacementVault(entriesEmpty: true, android: false),
       isTrue,
+    );
+  });
+
+  test('iOS vault paths follow the current app container', () {
+    expect(
+      rebaseIosVaultPath(
+        '/var/mobile/Containers/Data/Application/OLD/Documents/TyLogVault',
+        '/var/mobile/Containers/Data/Application/NEW/Documents',
+        ios: true,
+      ),
+      '/var/mobile/Containers/Data/Application/NEW/Documents/TyLogVault',
+    );
+    expect(
+      rebaseIosVaultPath('/external/TyLogVault', '/new/Documents', ios: true),
+      '/external/TyLogVault',
     );
   });
 }

@@ -206,7 +206,10 @@ class NextcloudSync {
       // listing entries; threshold max(10, 25%), add a confirmation flow if it
       // ever fires on legitimate bulk deletes.
       final plannedDeletions = syncState.keys
-          .where((path) => !localEntries.containsKey(path) && remote.containsKey(path))
+          .where(
+            (path) =>
+                !localEntries.containsKey(path) && remote.containsKey(path),
+          )
           .length;
       final deletionLimit = math.max(10, syncState.length ~/ 4);
       if (plannedDeletions > deletionLimit) {
@@ -517,11 +520,6 @@ class NextcloudSync {
             throw ArgumentError('Merged text cannot be empty');
           }
           await vault.storage.writeText(conflict.path, mergedText);
-        } else if (conflict.localExists) {
-          await vault.storage.writeBytes(
-            conflict.path,
-            await vault.storage.readBytes(conflict.localSnapshot!),
-          );
         }
         if (await vault.storage.exists(conflict.path)) {
           remoteEtag = await _uploadStorage(
@@ -695,7 +693,9 @@ class NextcloudSync {
     }
     // ponytail: flat 5-minute cap per file transfer; chunked/resumable uploads if
     // large attachments start hitting this.
-    await request.addStream(file.openRead()).timeout(const Duration(minutes: 5));
+    await request
+        .addStream(file.openRead())
+        .timeout(const Duration(minutes: 5));
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode == HttpStatus.preconditionFailed) {
       throw const _RemoteChanged();

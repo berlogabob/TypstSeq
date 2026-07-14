@@ -91,6 +91,14 @@ bool shouldCreateDefaultReplacementVault({
   bool? android,
 }) => entriesEmpty && !(android ?? Platform.isAndroid);
 
+String rebaseIosVaultPath(String path, String documentsPath, {bool? ios}) {
+  if (!(ios ?? Platform.isIOS)) return path;
+  final match = RegExp(
+    r'^/var/mobile/Containers/Data/Application/[^/]+/Documents/(.+)$',
+  ).firstMatch(path);
+  return match == null ? path : '$documentsPath/${match.group(1)}';
+}
+
 class VaultRegistry {
   VaultRegistry(
     this.file,
@@ -122,7 +130,13 @@ class VaultRegistry {
       // inline password out of vaults.json on first load after upgrade).
       final entries = <VaultEntry>[];
       var migrated = false;
-      for (final entry in parsed) {
+      for (var entry in parsed) {
+        final rebasedPath = rebaseIosVaultPath(entry.path, documents.path);
+        if (rebasedPath != entry.path &&
+            await Directory(rebasedPath).exists()) {
+          entry = entry.copyWith(path: rebasedPath);
+          migrated = true;
+        }
         final cloud = entry.cloud;
         if (cloud == null) {
           entries.add(entry);
