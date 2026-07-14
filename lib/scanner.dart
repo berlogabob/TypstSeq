@@ -1,120 +1,23 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'models.dart';
+import 'tylog_assets.dart';
 import 'vault_storage.dart';
 
-const tylogHelperSource = '''// tylog-helper-version: 5
-#import "theme.typ" as theme
+enum TylogHelperKind { current, legacy, custom }
 
-#let note(
-  id: none,
-  title: none,
-  kind: "note",
-  date: none,
-  tags: (),
-  aliases: (),
-  project: none,
-  properties: (:),
-  body,
-) = [
-  #metadata((
-    id: id,
-    title: title,
-    kind: kind,
-    date: date,
-    tags: tags,
-    aliases: aliases,
-    project: project,
-    properties: properties,
-  )) <tylog-note>
-  #theme.document(body)
-]
-
-#let ref-note(target, body) = [
-  #metadata((target: target, text: repr(body))) <tylog-link>
-  #body
-]
-
-#let tag(name) = [
-  #metadata(name) <tylog-tag>
-  #text(fill: gray)[#name]
-]
-
-#let date-ref(date, body) = [
-  #metadata((date: date, text: repr(body))) <tylog-date>
-  #body
-]
-
-#let attachment(path, kind: "file", body) = [
-  #metadata((path: path, kind: kind, title: repr(body))) <tylog-attachment>
-  #body
-]
-
-#let task(
-  id: none,
-  text: none,
-  status: "todo",
-  priority: "normal",
-  project: none,
-  scheduled: none,
-  due: none,
-  remind: none,
-  timezone: none,
-  recurrence: none,
-  dependencies: (),
-  assignees: (),
-  tags: (),
-  completed: (),
-  properties: (:),
-) = [
-  #metadata((
-    id: id,
-    text: text,
-    status: status,
-    priority: priority,
-    project: project,
-    scheduled: scheduled,
-    due: due,
-    remind: remind,
-    timezone: timezone,
-    recurrence: recurrence,
-    dependencies: dependencies,
-    assignees: assignees,
-    tags: tags,
-    completed: completed,
-    properties: properties,
-  )) <tylog-task>
-  #if status == "done" { "☑ " } else { "☐ " }
-  #text
-]
-''';
-
-const tylogThemeSource = '''// tylog-theme-version: 1
-#let document(body) = {
-  set page(paper: "a4", margin: 2cm)
-  set text(font: "Libertinus Serif", size: 11pt)
-  set heading(numbering: "1.1")
-  body
-}
-''';
-
-const tylogExportSource = '''// tylog-export-version: 1
-#import "theme.typ" as theme
-#let report(title, body) = theme.document([
-  #heading(level: 1, title)
-  #body
-])
-''';
-
-enum TylogHelperKind { current, custom }
-
-TylogHelperKind classifyTylogHelper(String source) {
+Future<TylogHelperKind> classifyTylogHelper(String source) async {
+  final assets = await TylogAssets.load();
   final normalized = source.replaceAll('\r\n', '\n').trim();
-  if (normalized == tylogHelperSource.trim()) return TylogHelperKind.current;
+  if (normalized == assets.text('typst/vault/tylog.typ').trim()) {
+    return TylogHelperKind.current;
+  }
+  if (normalized == assets.text('typst/vault/legacy-v5-tylog.typ').trim()) {
+    return TylogHelperKind.legacy;
+  }
   return TylogHelperKind.custom;
 }
 
@@ -223,12 +126,15 @@ class QueriedMetadata {
 }
 
 class TypstMetadataReader {
-  TypstMetadataReader._(this._compiler);
+  TypstMetadataReader._(this._compiler, this._files);
 
   final TypstCompiler _compiler;
+  final FileSource _files;
 
-  static Future<TypstMetadataReader> create() async =>
-      TypstMetadataReader._(await TypstCompiler.create());
+  static Future<TypstMetadataReader> create() async => TypstMetadataReader._(
+    await TypstCompiler.create(),
+    FileSource.bytes((await TylogAssets.load()).compilerFiles),
+  );
 
   Future<QueriedMetadata> read(String source) async {
     final calls = locateTypstCalls(source);
@@ -242,17 +148,7 @@ class TypstMetadataReader {
         tasks: [],
       );
     }
-    final document = await _compiler.compile(
-      source: source,
-      files: FileSource.bytes({
-        '_system/tylog.typ': Uint8List.fromList(utf8.encode(tylogHelperSource)),
-        '/_system/tylog.typ': Uint8List.fromList(
-          utf8.encode(tylogHelperSource),
-        ),
-        '_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
-        '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
-      }),
-    );
+    final document = await _compiler.compile(source: source, files: _files);
     try {
       final noteValues = decodeTypstMetadata(
         await _compiler.query(document: document, selector: '<tylog-note>'),
@@ -269,6 +165,7 @@ class TypstMetadataReader {
           decodeTypstMetadata(
             await _compiler.query(document: document, selector: '<tylog-tag>'),
           ),
+          'name',
         ),
         dates: _maps(
           decodeTypstMetadata(
@@ -870,7 +767,7 @@ List<String> _targets(List<Object?> values, [String? key]) => _sorted(
             ? value
             : value is Map
             ? value[key]
-            : null,
+            : value,
       )
       .whereType<Object>()
       .map((value) => value.toString())

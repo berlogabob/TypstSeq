@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
 import 'scanner.dart';
+import 'tylog_assets.dart';
 import 'vault_storage.dart';
 
 class Vault {
@@ -90,14 +91,25 @@ class Vault {
         );
       }
     }
+    final bundled = await TylogAssets.load();
+    final managed = bundled.managedVaultFiles;
     if (!await storage.exists(helperPath)) {
-      await storage.writeText(helperPath, tylogHelperSource);
+      await storage.writeBytes(helperPath, managed[helperPath]!);
+    } else if (await classifyTylogHelper(await storage.readText(helperPath)) ==
+        TylogHelperKind.legacy) {
+      await storage.writeBytes(helperPath, managed[helperPath]!);
     }
-    if (!await storage.exists(themePath)) {
-      await storage.writeText(themePath, tylogThemeSource);
+    for (final path in [themePath, exportPath]) {
+      if (!await storage.exists(path)) {
+        await storage.writeBytes(path, managed[path]!);
+      }
     }
-    if (!await storage.exists(exportPath)) {
-      await storage.writeText(exportPath, tylogExportSource);
+    for (final entry in managed.entries) {
+      if (!entry.key.startsWith('_system/packages/')) continue;
+      if (!await storage.exists(entry.key) ||
+          !_sameBytes(await storage.readBytes(entry.key), entry.value)) {
+        await storage.writeBytes(entry.key, entry.value);
+      }
     }
     if (!await storage.exists(bibliographyPath)) {
       await storage.writeText(bibliographyPath, '{}\n');
@@ -255,6 +267,14 @@ class Vault {
   Future<String> readText(String path) => storage.readText(path);
   Future<List<int>> readBytes(String path) => storage.readBytes(path);
   Future<bool> exists(String path) => storage.exists(path);
+}
+
+bool _sameBytes(List<int> left, List<int> right) {
+  if (left.length != right.length) return false;
+  for (var i = 0; i < left.length; i++) {
+    if (left[i] != right[i]) return false;
+  }
+  return true;
 }
 
 Directory defaultVaultDirectory(

@@ -26,7 +26,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
 ) async {
   final problems = <PkmsProblem>[...index.problems];
   if (await storage.exists('_system/tylog.typ') &&
-      classifyTylogHelper(await storage.readText('_system/tylog.typ')) ==
+      await classifyTylogHelper(await storage.readText('_system/tylog.typ')) ==
           TylogHelperKind.custom) {
     problems.add(
       const PkmsProblem(

@@ -1,0 +1,12 @@
+[package]
+name = "tylog"
+version = "0.1.0"
+entrypoint = "lib.typ"
+authors = ["BerlogaBob <@berlogabob>"]
+license = "MIT"
+description = "Semantic note, link, tag, attachment, and task metadata for TyLog vaults."
+repository = "https://github.com/berlogabob/TypstSeq"
+compiler = "0.15.0"
+categories = ["utility"]
+disciplines = ["computer-science"]
+

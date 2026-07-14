@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tylog/scanner.dart';
+import 'package:tylog/tylog_assets.dart';
 import 'package:tylog/vault.dart';
 
 void main() {
@@ -50,12 +50,59 @@ void main() {
     ]) {
       expect(await Directory('${dir.path}/$path').exists(), isTrue);
     }
-    expect(await vault.helperFile.readAsString(), tylogHelperSource);
+    expect(
+      await vault.helperFile.readAsString(),
+      (await TylogAssets.load()).text('typst/vault/tylog.typ'),
+    );
     expect(await vault.themeFile.exists(), isTrue);
     expect(await vault.exportFile.exists(), isTrue);
     expect(await vault.bibliographyFile.exists(), isTrue);
     final settings = jsonDecode(await vault.settingsFile.readAsString()) as Map;
     expect(settings['version'], 5);
+  });
+
+  test('exact legacy helper upgrades without rewriting notes', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_upgrade_');
+    addTearDown(() => dir.delete(recursive: true));
+    final assets = await TylogAssets.load();
+    await Directory('${dir.path}/.tylog').create(recursive: true);
+    await Directory('${dir.path}/_system').create(recursive: true);
+    await Directory('${dir.path}/notes').create(recursive: true);
+    await File(
+      '${dir.path}/.tylog/settings.json',
+    ).writeAsString(jsonEncode({'name': 'TyLogVault', 'version': 5}));
+    await File(
+      '${dir.path}/_system/tylog.typ',
+    ).writeAsString(assets.text('typst/vault/legacy-v5-tylog.typ'));
+    const source = '#import "/_system/tylog.typ" as tylog\n= Existing\n';
+    await File('${dir.path}/notes/existing.typ').writeAsString(source);
+
+    await Vault(dir).ensureCreated();
+
+    expect(
+      await File('${dir.path}/_system/tylog.typ').readAsString(),
+      assets.text('typst/vault/tylog.typ'),
+    );
+    expect(await File('${dir.path}/notes/existing.typ').readAsString(), source);
+  });
+
+  test('custom helper is preserved and vendored package is repaired', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_custom_package_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    const custom = '#let note(..args) = [custom]';
+    await vault.storage.writeText(Vault.helperPath, custom);
+    const packagePath = '_system/packages/tylog/0.1.0/lib.typ';
+    await vault.storage.writeText(packagePath, 'broken');
+
+    await vault.ensureCreated();
+
+    expect(await vault.storage.readText(Vault.helperPath), custom);
+    expect(
+      await vault.storage.readText(packagePath),
+      (await TylogAssets.load()).text('typst/tylog/lib.typ'),
+    );
   });
 
   test('missing vault marker is rejected without mutation', () async {

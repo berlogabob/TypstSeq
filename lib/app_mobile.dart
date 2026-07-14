@@ -21,6 +21,7 @@ import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'task_scheduler.dart';
+import 'tylog_assets.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
@@ -148,7 +149,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime? lastEditAt;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
-  String helperSource = tylogHelperSource;
+  String helperSource = '';
+  Map<String, Uint8List> typstPackageFiles = const {};
   String bibliographySource = '';
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
@@ -210,7 +212,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       index = null;
       validation = null;
       searchIndex = PkmsSearchIndex.empty();
-      helperSource = tylogHelperSource;
+      helperSource = '';
+      typstPackageFiles = const {};
       cloud = nextCloud;
       selectedTag = null;
       lastSync = null;
@@ -313,6 +316,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
       final loadedHelper = await v.storage.readText(Vault.helperPath);
+      final loadedTypstPackage = <String, Uint8List>{};
+      for (final asset
+          in (await TylogAssets.load()).managedVaultFiles.entries) {
+        final bytes = await v.storage.readBytes(asset.key);
+        loadedTypstPackage[asset.key] = bytes;
+        loadedTypstPackage['/${asset.key}'] = bytes;
+      }
       final loadedBibliography = await v.storage.exists(Vault.bibliographyPath)
           ? await v.storage.readText(Vault.bibliographyPath)
           : '';
@@ -325,6 +335,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         validation = _retainValidation(pkms.report);
         searchIndex = pkms.search;
         helperSource = loadedHelper;
+        typstPackageFiles = loadedTypstPackage;
         bibliographySource = loadedBibliography;
         cloud = entry.cloud;
         selectedTag = null;
@@ -701,8 +712,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   FileSource _typstFiles() => FileSource.bytes({
     '_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
     '/_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
-    '_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
-    '/_system/theme.typ': Uint8List.fromList(utf8.encode(tylogThemeSource)),
+    ...typstPackageFiles,
     if (bibliographySource.isNotEmpty) ...{
       Vault.bibliographyPath: Uint8List.fromList(
         utf8.encode(bibliographySource),
