@@ -47,10 +47,10 @@ Future<void> initializeVaultStorage(
       );
     }
   }
-  for (final path in TylogVaultPaths.directories) {
-    await storage.createDirectory(path);
-  }
   if (!hasSettings) {
+    for (final path in TylogVaultPaths.directories) {
+      await storage.createDirectory(path);
+    }
     await storage.writeText(
       TylogVaultPaths.settings,
       jsonEncode({'name': 'TyLogVault', 'version': 5}),

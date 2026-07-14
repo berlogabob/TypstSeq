@@ -1278,6 +1278,9 @@ class SyncResult {
   final int deletedLocal;
   final int deletedRemote;
 
+  bool get requiresIndexRefresh =>
+      uploaded > 0 || downloaded > 0 || deletedLocal > 0;
+
   @override
   String toString() =>
       'Sync($trigger): ↑$uploaded ↓$downloaded =$skipped !$conflicts, remote $remoteCount';

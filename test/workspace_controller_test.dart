@@ -50,6 +50,35 @@ void main() {
       expect(inspector.calls, 2);
     },
   );
+
+  test(
+    'registered Android vault is never recreated when access is empty',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.openVault(
+        const VaultEntry(
+          id: 'android',
+          name: 'Android vault',
+          path: '',
+          storageKind: 'android-tree',
+          treeUri: 'content://test/tree',
+        ),
+        storage: storage,
+      );
+
+      expect(controller.vault, isNull);
+      expect(controller.status, startsWith('Open failed:'));
+      expect(storage._directories, {''});
+      expect(storage._files, isEmpty);
+    },
+  );
 }
 
 class _FakeInspector implements TypstInspector {

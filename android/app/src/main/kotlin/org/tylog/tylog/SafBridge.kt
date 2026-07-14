@@ -45,17 +45,16 @@ class SafBridge(
                 return
             }
             pendingPick = result
-            activity.startActivityForResult(
-                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                    addFlags(
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
-                            Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
-                    )
-                },
-                PICK_TREE,
-            )
+            activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_TREE)
+            return
+        }
+
+        if (call.method == "hasAccess") {
+            val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
+            val granted = resolver.persistedUriPermissions.any {
+                it.uri == tree && it.isReadPermission && it.isWritePermission
+            }
+            result.success(granted)
             return
         }
 

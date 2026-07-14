@@ -111,7 +111,9 @@ class WorkspaceController extends ChangeNotifier {
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
       await opened.ensureCreated(
-        createIfMissing: !vaultNeedsAndroidTreeMigration(next),
+        createIfMissing:
+            next.storageKind != 'android-tree' &&
+            !vaultNeedsAndroidTreeMigration(next),
       );
       final today = await opened.todayNote();
       final built = await opened.rebuildIndex(inspector: inspector);
@@ -351,13 +353,19 @@ class WorkspaceController extends ChangeNotifier {
         }
       }
       final indexedThroughRevision = savedRevision;
-      final built = await opened.rebuildIndex(inspector: inspector);
-      final pkms = await _readPkms(opened, built);
       final conflicts = await loadSyncConflicts(opened);
-      index = _retainIndex(built);
-      validation = _retainValidation(pkms.report);
-      searchIndex.replaceWith(pkms.search);
-      indexedRevision = indexedThroughRevision;
+      if (result.requiresIndexRefresh ||
+          concurrentConflict ||
+          indexedRevision < savedRevision) {
+        syncStage = 'index-local-changes';
+        notifyListeners();
+        final built = await opened.rebuildIndex(inspector: inspector);
+        final pkms = await _readPkms(opened, built);
+        index = _retainIndex(built);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
+        indexedRevision = indexedThroughRevision;
+      }
       lastSync = result;
       lastSyncAt = DateTime.now();
       syncConflicts = conflicts;

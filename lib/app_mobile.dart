@@ -266,8 +266,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       var active = registry.active;
       try {
-        await Vault.withStorage(active.storage).ensureCreated(
-          createIfMissing: !vaultNeedsAndroidTreeMigration(active),
+        final storage = active.storage;
+        if (storage is AndroidTreeVaultStorage &&
+            (!await storage.hasAccess() ||
+                !await storage.exists(Vault.settingsPath))) {
+          throw PlatformException(
+            code: 'saf_access_lost',
+            message: 'Vault folder access must be granted again',
+          );
+        }
+        await Vault.withStorage(storage).ensureCreated(
+          createIfMissing:
+              active.storageKind != 'android-tree' &&
+              !vaultNeedsAndroidTreeMigration(active),
         );
       } on PlatformException {
         if (active.storageKind != 'android-tree') rethrow;
@@ -276,10 +287,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _closeVault('Folder access is required to open this vault');
           return;
         }
+        final sameTree = selection.uri == active.treeUri;
         active = await registry.rebindTree(active, selection);
         await Vault.withStorage(
           active.storage,
-        ).ensureCreated(createIfMissing: false);
+        ).ensureCreated(createIfMissing: !sameTree);
       } on StateError {
         if (active.storageKind == 'android-tree') rethrow;
         var path = '${active.path}-v5';

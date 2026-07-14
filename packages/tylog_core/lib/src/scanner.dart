@@ -336,9 +336,7 @@ Future<VaultIndex> scanVaultStorage(
     files.add(entity);
   }
   files.sort((a, b) => a.path.compareTo(b.path));
-  final inspectionFiles = inspector == null
-      ? const <String, Uint8List>{}
-      : await _inspectionFiles(storage);
+  Map<String, Uint8List>? inspectionFiles;
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -364,6 +362,9 @@ Future<VaultIndex> scanVaultStorage(
       continue;
     }
     final source = await storage.readText(relative);
+    inspectionFiles ??= inspector == null
+        ? const <String, Uint8List>{}
+        : await _inspectionFiles(storage);
     try {
       final queried = inspector == null
           ? null

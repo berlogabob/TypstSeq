@@ -9,6 +9,28 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  test('no-change sync skips the local index rebuild', () {
+    const unchanged = SyncResult(
+      trigger: 'poll',
+      uploaded: 0,
+      downloaded: 0,
+      skipped: 21,
+      conflicts: 0,
+      remoteCount: 21,
+    );
+    const downloaded = SyncResult(
+      trigger: 'poll',
+      uploaded: 0,
+      downloaded: 1,
+      skipped: 20,
+      conflicts: 0,
+      remoteCount: 21,
+    );
+
+    expect(unchanged.requiresIndexRefresh, isFalse);
+    expect(downloaded.requiresIndexRefresh, isTrue);
+  });
+
   test('Nextcloud config accepts local debug secret schema', () {
     final config = NextcloudConfig.fromJson({
       'url': 'https://cloud.example/',
