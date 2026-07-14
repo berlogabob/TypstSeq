@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/vault.dart';
 
 import 'flutter_typst_inspector.dart';
 import 'tylog_assets.dart';
@@ -15,13 +16,13 @@ class Vault {
 
   final VaultStorage storage;
 
-  static const indexPath = '_index/index.json';
-  static const searchIndexPath = '_index/search-index.json.gz';
-  static const helperPath = '_system/tylog.typ';
-  static const themePath = '_system/theme.typ';
-  static const exportPath = '_system/export.typ';
-  static const bibliographyPath = '_system/bibliography.yml';
-  static const settingsPath = '.tylog/settings.json';
+  static const indexPath = TylogVaultPaths.index;
+  static const searchIndexPath = TylogVaultPaths.searchIndex;
+  static const helperPath = TylogVaultPaths.helper;
+  static const themePath = TylogVaultPaths.theme;
+  static const exportPath = TylogVaultPaths.export;
+  static const bibliographyPath = TylogVaultPaths.bibliography;
+  static const settingsPath = TylogVaultPaths.settings;
 
   static Future<Vault> openDefault() async {
     final base = await getApplicationDocumentsDirectory();
@@ -31,74 +32,14 @@ class Vault {
   }
 
   Future<void> ensureCreated({bool createIfMissing = true}) async {
-    final hasSettings = await storage.exists(settingsPath);
-    if (!hasSettings) {
-      if (await _hasLegacyContent()) {
-        throw StateError(
-          'This is not a TyLog v5 vault. Choose an empty folder; automatic migration is intentionally unsupported.',
-        );
-      }
-      if (!createIfMissing) {
-        throw StateError(
-          'TyLog vault marker is missing. Reselect the existing vault folder.',
-        );
-      }
-    }
-    for (final path in [
-      'daily',
-      'notes',
-      'projects',
-      'articles',
-      'assets',
-      'outputs',
-      '_system',
-      '_index',
-      '.tylog',
-      '.tylog/conflicts',
-      '_system/templates',
-    ]) {
-      await storage.createDirectory(path);
-    }
-    if (!hasSettings) {
-      await storage.writeText(
-        settingsPath,
-        jsonEncode({'name': 'TyLogVault', 'version': 5}),
-      );
-    } else {
-      final settings = jsonDecode(await storage.readText(settingsPath)) as Map;
-      if (settings['version'] != 5) {
-        throw StateError(
-          'This vault uses schema ${settings['version']}; TyLog requires a new v5 vault.',
-        );
-      }
-    }
     final bundled = await TylogAssets.load();
-    final managed = bundled.managedVaultFiles;
-    if (!await storage.exists(helperPath)) {
-      await storage.writeBytes(helperPath, managed[helperPath]!);
-    } else if (classifyTylogHelper(
-          await storage.readText(helperPath),
-          current: bundled.text('typst/vault/tylog.typ'),
-          legacy: bundled.text('typst/vault/legacy-v5-tylog.typ'),
-        ) ==
-        TylogHelperKind.legacy) {
-      await storage.writeBytes(helperPath, managed[helperPath]!);
-    }
-    for (final path in [themePath, exportPath]) {
-      if (!await storage.exists(path)) {
-        await storage.writeBytes(path, managed[path]!);
-      }
-    }
-    for (final entry in managed.entries) {
-      if (!entry.key.startsWith('_system/packages/')) continue;
-      if (!await storage.exists(entry.key) ||
-          !_sameBytes(await storage.readBytes(entry.key), entry.value)) {
-        await storage.writeBytes(entry.key, entry.value);
-      }
-    }
-    if (!await storage.exists(bibliographyPath)) {
-      await storage.writeText(bibliographyPath, '{}\n');
-    }
+    await initializeVaultStorage(
+      storage,
+      managedFiles: bundled.managedVaultFiles,
+      currentHelper: bundled.text('typst/vault/tylog.typ'),
+      legacyHelper: bundled.text('typst/vault/legacy-v5-tylog.typ'),
+      createIfMissing: createIfMissing,
+    );
   }
 
   Future<String> todayNote([DateTime? now]) async {
@@ -234,30 +175,9 @@ class Vault {
     await storage.writeText(path, text);
   }
 
-  Future<bool> _hasLegacyContent() async {
-    for (final entry in await storage.list()) {
-      final name = entry.path.split('/').last;
-      if (name == '.DS_Store') continue;
-      if (name == '.tylog' && entry.isDirectory) {
-        if ((await storage.list(path: '.tylog')).isNotEmpty) return true;
-        continue;
-      }
-      return true;
-    }
-    return false;
-  }
-
   Future<String> readText(String path) => storage.readText(path);
   Future<List<int>> readBytes(String path) => storage.readBytes(path);
   Future<bool> exists(String path) => storage.exists(path);
-}
-
-bool _sameBytes(List<int> left, List<int> right) {
-  if (left.length != right.length) return false;
-  for (var i = 0; i < left.length; i++) {
-    if (left[i] != right[i]) return false;
-  }
-  return true;
 }
 
 Directory defaultVaultDirectory(
