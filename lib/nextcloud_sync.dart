@@ -678,13 +678,13 @@ class NextcloudSync {
 
   Future<String?> _upload(
     String path,
-    File file, {
+    List<int> bytes, {
     required String localHash,
     required _RemoteFile? remote,
   }) async {
     await _ensureParents(path);
     final request = await _open('PUT', _remoteUri(path));
-    request.contentLength = await file.length();
+    request.contentLength = bytes.length;
     request.headers.set('X-Hash', 'sha256');
     if (remote?.etag != null) {
       request.headers.set(HttpHeaders.ifMatchHeader, remote!.etag!);
@@ -693,9 +693,7 @@ class NextcloudSync {
     }
     // ponytail: flat 5-minute cap per file transfer; chunked/resumable uploads if
     // large attachments start hitting this.
-    await request
-        .addStream(file.openRead())
-        .timeout(const Duration(minutes: 5));
+    request.add(bytes);
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode == HttpStatus.preconditionFailed) {
       throw const _RemoteChanged();
@@ -717,14 +715,12 @@ class NextcloudSync {
     required String localHash,
     required _RemoteFile? remote,
   }) async {
-    final file = await storage.materialize(path);
-    try {
-      return await _upload(path, file, localHash: localHash, remote: remote);
-    } finally {
-      if (storage.materializedFilesAreTemporary && await file.exists()) {
-        await file.delete();
-      }
-    }
+    return _upload(
+      path,
+      await storage.readBytes(path),
+      localHash: localHash,
+      remote: remote,
+    );
   }
 
   Future<_DownloadResult> _download(
@@ -791,7 +787,7 @@ class NextcloudSync {
         return _DownloadResult(protected: true, etag: result.etag);
       }
       _requireLocalReplacementAllowed(path);
-      await storage.importFile(path, temporary);
+      await storage.writeBytes(path, await temporary.readAsBytes());
       return result;
     } finally {
       if (await temporary.exists()) await temporary.delete();
@@ -840,7 +836,10 @@ class NextcloudSync {
     }
     try {
       if (temporary != null) {
-        await vault.storage.importFile('$base.remote', temporary);
+        await vault.storage.writeBytes(
+          '$base.remote',
+          await temporary.readAsBytes(),
+        );
       }
     } finally {
       if (temporary != null && await temporary.exists()) {
@@ -879,7 +878,7 @@ class NextcloudSync {
       if (!await vault.storage.exists(original)) continue;
       final duplicate =
           (entity.size ?? 0) == 0 &&
-              _protectFromEmpty(vault.relativePath(original)) &&
+              _protectFromEmpty(original) &&
               ((await vault.storage.stat(original))?.size ?? 0) > 0 ||
           await vault.storage.hash(relative) ==
               await vault.storage.hash(original);

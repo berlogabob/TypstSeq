@@ -1,0 +1,136 @@
+import 'dart:io';
+
+import 'package:test/test.dart';
+import 'package:tylog_core/tylog_core.dart';
+
+void main() {
+  test('Format v1 and legacy records decode to the same values', () {
+    final v1 = decodeTylogMetadataRecords(const [
+      TypstMetadataRecord(
+        label: '<tylog-note>',
+        value: {'schema': 1, 'entity': 'note', 'id': 'n1', 'title': 'Note'},
+      ),
+      TypstMetadataRecord(
+        label: '<tylog-tag>',
+        value: {'schema': 1, 'entity': 'tag', 'name': 'core'},
+      ),
+    ]);
+    final legacy = decodeTylogMetadataRecords(const [
+      TypstMetadataRecord(
+        label: '<tylog-note>',
+        value: {'id': 'n1', 'title': 'Note'},
+      ),
+      TypstMetadataRecord(label: '<tylog-tag>', value: 'core'),
+    ]);
+
+    expect(v1.note?['id'], legacy.note?['id']);
+    expect(v1.tags, legacy.tags);
+  });
+
+  test(
+    'scanVaultStorage queries once and matches fallback index content',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog_core_scan_');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      await storage.writeText(
+        'notes/a.typ',
+        '''#show: tylog.note.with(id: "a", title: "A", tags: ("core",))
+#tylog.ref-note("b")[B]
+''',
+      );
+      await storage.writeText(
+        'notes/b.typ',
+        '#show: tylog.note.with(id: "b", title: "B")',
+      );
+      final inspector = _SourceInspector();
+
+      final inspected = await scanVaultStorage(storage, inspector: inspector);
+      final fallback = await scanVaultStorage(storage);
+
+      expect(inspector.calls, 2);
+      expect(inspected.backlinksByTarget, fallback.backlinksByTarget);
+      expect(_stableNotes(inspected), _stableNotes(fallback));
+    },
+  );
+
+  test('inspector failure warns and retains fallback backlinks', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_bad_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/bad.typ',
+      '#show: tylog.note.with(id: "bad", title: "Bad"\n'
+          '#tylog.ref-note("target")[Target]',
+    );
+
+    final index = await scanVaultStorage(
+      storage,
+      inspector: _FailingInspector(),
+    );
+
+    expect(index.notes.single.outgoingLinks, ['target']);
+    expect(
+      index.problems.map((problem) => problem.code),
+      contains('metadata-query-failed'),
+    );
+  });
+
+  test('local storage rejects traversal', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_paths_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+
+    expect(() => storage.writeText('../outside', 'no'), throwsArgumentError);
+    expect(await File('${root.parent.path}/outside').exists(), isFalse);
+  });
+}
+
+class _SourceInspector implements TypstInspector {
+  int calls = 0;
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
+    calls++;
+    final note = scanNote(input.path, input.source);
+    return [
+      TypstMetadataRecord(
+        label: '<tylog-note>',
+        value: {
+          'schema': 1,
+          'entity': 'note',
+          'id': note.id,
+          'title': note.title,
+          'kind': note.kind,
+          'tags': note.tags,
+          'aliases': note.aliases,
+          'properties': note.properties,
+        },
+      ),
+      for (final target in note.outgoingLinks)
+        TypstMetadataRecord(
+          label: '<tylog-link>',
+          value: {'schema': 1, 'entity': 'link', 'target': target},
+        ),
+    ];
+  }
+}
+
+class _FailingInspector implements TypstInspector {
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) =>
+      throw StateError('fixture does not compile');
+}
+
+Map<String, Object?> _stableNotes(VaultIndex index) => {
+  for (final note in index.notes)
+    note.path: {
+      'id': note.id,
+      'title': note.title,
+      'kind': note.kind,
+      'tags': note.tags,
+      'aliases': note.aliases,
+      'links': note.outgoingLinks,
+      'attachments': note.attachments.map((item) => item.toJson()).toList(),
+    },
+};

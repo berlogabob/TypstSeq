@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 import 'bibliography.dart';
@@ -16,6 +16,7 @@ import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
+import 'platform_file_actions.dart';
 import 'report.dart';
 import 'rich_editor.dart';
 import 'scanner.dart';
@@ -168,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double? rebuildProgress;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
+  final platformFileActions = const PlatformFileActions();
 
   @override
   void initState() {
@@ -199,6 +201,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return registry.entries
         .where((entry) => entry.id == registry.activeId)
         .firstOrNull;
+  }
+
+  Directory? get _localVaultDirectory {
+    final entry = _activeRegistryEntry;
+    return entry == null || entry.storageKind != 'local-path'
+        ? null
+        : Directory(entry.path);
   }
 
   void _closeVault(String message, {NextcloudConfig? nextCloud}) {
@@ -311,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         createIfMissing: !vaultNeedsAndroidTreeMigration(entry),
       );
       // ponytail: offline-first — render local vault immediately, sync in background
-      final openStatus = 'Vault: ${v.storage.displayName}';
+      final openStatus = 'Vault: ${entry.name}';
       final today = await v.todayNote();
       final ix = await v.rebuildIndex();
       final pkms = await _readPkms(v, ix);
@@ -598,8 +607,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (shouldCreateDefaultReplacementVault(
         entriesEmpty: registry.entries.isEmpty,
       )) {
-        final replacement = await Vault.openDefault();
-        final replacementEntry = await registry.add(replacement.root.path);
+        final replacement = defaultVaultDirectory(
+          await getApplicationDocumentsDirectory(),
+        );
+        await Vault(replacement).ensureCreated();
+        final replacementEntry = await registry.add(replacement.path);
         await registry.select(replacementEntry);
       }
       if (registry.entries.isEmpty && Platform.isAndroid) {
@@ -634,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           savedRevision = revision;
           dirty = false;
-          status = 'Saved ${v.relativePath(n)}';
+          status = 'Saved $n';
         });
       }
       if (syncAfter && editorUnchanged) _queueCloudSync();
@@ -854,9 +866,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: MonthCalendar(
               index: index,
               initialMonth: _dailyDateOf(
-                vault == null || note == null
-                    ? null
-                    : vault!.relativePath(note!),
+                vault == null || note == null ? null : note!,
               ),
               onOpenDay: (day) => Navigator.pop(context, day),
             ),
@@ -892,7 +902,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _openNote(file);
     setState(() {
       index = ix;
-      status = 'Created ${v.relativePath(file)}';
+      status = 'Created $file';
     });
   }
 
@@ -957,7 +967,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final ix = index;
     final n = note;
     if (v == null || ix == null || n == null) return;
-    final path = v.relativePath(n);
+    final path = n;
     final current = ix.notesByPath[path];
     if (current == null) return;
     if (current.metadataSource != 'typst-query') {
@@ -1190,7 +1200,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (syncing) return;
-    if (v.localRoot case final root? when isNextcloudManagedVault(root)) {
+    if (_localVaultDirectory case final root?
+        when isNextcloudManagedVault(root)) {
       setState(() => status = 'Sync handled by Nextcloud Desktop');
       return;
     }
@@ -1426,15 +1437,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showSettings() {
-    final v = vault;
     final registry = vaultRegistry;
     final activeLocation = vaultEntryLocation(_activeRegistryEntry);
     final openError = status.startsWith('Open failed:');
-    final vaultPath =
-        v?.storage.location ??
-        (openError
-            ? [activeLocation, status].whereType<String>().join('\n')
-            : activeLocation ?? status);
+    final vaultPath = openError
+        ? [activeLocation, status].whereType<String>().join('\n')
+        : activeLocation ?? status;
     showDialog<void>(
       context: context,
       builder: (context) => Dialog(
@@ -1533,17 +1541,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openAttachment(String path) async {
     final v = vault;
     if (v == null || !isSafeVaultPath(path)) return;
-    if (v.storage is AndroidTreeVaultStorage) {
-      try {
-        await v.storage.open(path);
-      } catch (error) {
-        if (mounted) setState(() => status = 'Could not open file: $error');
-      }
-      return;
-    }
-    final result = await OpenFile.open('${v.localRoot!.path}/$path');
-    if (result.type != ResultType.done && mounted) {
-      setState(() => status = 'Could not open file: ${result.message}');
+    try {
+      await platformFileActions.openExternal(
+        v.storage,
+        path,
+        localRoot: _localVaultDirectory,
+      );
+    } catch (error) {
+      if (mounted) setState(() => status = 'Could not open file: $error');
     }
   }
 
@@ -1637,8 +1642,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final entry = vaultRegistry!.active;
     final healthy = storageHealthy ??= await _probeStorage(v.storage);
     return _SyncDashboardData(
-      storageName: v.storage.displayName,
-      storageLocation: v.storage.location,
+      storageName: entry.name,
+      storageLocation: entry.storageKind == 'android-tree'
+          ? entry.treeUri ?? entry.name
+          : entry.path,
       backupPath: entry.backupPath,
       cloud: cloud,
       syncing: syncing,
@@ -1648,7 +1655,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       lastSyncAt: lastSyncAt,
       vaultOpen: true,
       desktopManaged:
-          v.localRoot != null && isNextcloudManagedVault(v.localRoot!),
+          _localVaultDirectory != null &&
+          isNextcloudManagedVault(_localVaultDirectory!),
       storageHealthy: healthy,
       conflicts: await loadSyncConflicts(v),
       events: events.reversed.toList(),
@@ -1931,7 +1939,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = await vault!.page(title, kind: kind ?? 'note');
     final rebuilt = await vault!.rebuildIndex();
     setState(() => index = _retainIndex(rebuilt));
-    return rebuilt.notesByPath[vault!.relativePath(file)];
+    return rebuilt.notesByPath[file];
   }
 
   Future<void> _runMagic(MagicAction action) async {
@@ -2040,7 +2048,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final file = note;
     if (v == null || file == null) return null;
-    return index?.notesByPath[v.relativePath(file)];
+    return index?.notesByPath[file];
   }
 
   DateTime? _parseMagicDate(String value) {
@@ -2101,7 +2109,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final extension = dot < 0 ? '' : base.substring(dot);
       target = 'assets/$stem-${suffix++}$extension';
     }
-    await v.storage.importFile(target, source);
+    await platformFileActions.importFile(v.storage, target, source);
     final relative = target;
     const imageExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'};
     final lower = target.toLowerCase();
@@ -2226,7 +2234,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final v = vault;
-    final current = v == null || note == null ? null : v.relativePath(note!);
+    final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
     final backlinks = current == null
         ? const <String>[]
@@ -2238,7 +2246,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
     final syncConflictCount = syncConflicts.length;
     final desktopManaged =
-        v?.localRoot != null && isNextcloudManagedVault(v!.localRoot!);
+        _localVaultDirectory != null &&
+        isNextcloudManagedVault(_localVaultDirectory!);
     final currentDaily = _dailyDateOf(current);
     final dayItems = currentDaily == null
         ? const <CalendarItem>[]

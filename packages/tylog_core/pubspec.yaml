@@ -1,0 +1,14 @@
+name: tylog_core
+description: Flutter-independent TyLog format, vault, indexing, and CLI core.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  crypto: ^3.0.7
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

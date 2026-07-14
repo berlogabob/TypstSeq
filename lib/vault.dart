@@ -2,37 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:tylog_core/models.dart';
+import 'package:tylog_core/scanner.dart';
+import 'package:tylog_core/storage.dart';
 
-import 'models.dart';
-import 'scanner.dart';
+import 'flutter_typst_inspector.dart';
 import 'tylog_assets.dart';
-import 'vault_storage.dart';
 
 class Vault {
   Vault(Directory root) : storage = LocalVaultStorage(root);
   Vault.withStorage(this.storage);
 
   final VaultStorage storage;
-
-  Directory get root => (storage as LocalVaultStorage).root;
-  Directory? get localRoot => storage is LocalVaultStorage ? root : null;
-  Directory get daily => Directory('${root.path}/daily');
-  Directory get notes => Directory('${root.path}/notes');
-  Directory get projects => Directory('${root.path}/projects');
-  Directory get articles => Directory('${root.path}/articles');
-  Directory get assets => Directory('${root.path}/assets');
-  Directory get outputs => Directory('${root.path}/outputs');
-  Directory get system => Directory('${root.path}/_system');
-  Directory get cache => Directory('${root.path}/_index');
-  Directory get meta => Directory('${root.path}/.tylog');
-  Directory get templates => Directory('${system.path}/templates');
-  File get indexFile => File('${cache.path}/index.json');
-  File get searchIndexFile => File('${cache.path}/search-index.json.gz');
-  File get helperFile => File('${system.path}/tylog.typ');
-  File get themeFile => File('${system.path}/theme.typ');
-  File get exportFile => File('${system.path}/export.typ');
-  File get bibliographyFile => File('${system.path}/bibliography.yml');
-  File get settingsFile => File('${meta.path}/settings.json');
 
   static const indexPath = '_index/index.json';
   static const searchIndexPath = '_index/search-index.json.gz';
@@ -95,7 +76,11 @@ class Vault {
     final managed = bundled.managedVaultFiles;
     if (!await storage.exists(helperPath)) {
       await storage.writeBytes(helperPath, managed[helperPath]!);
-    } else if (await classifyTylogHelper(await storage.readText(helperPath)) ==
+    } else if (classifyTylogHelper(
+          await storage.readText(helperPath),
+          current: bundled.text('typst/vault/tylog.typ'),
+          legacy: bundled.text('typst/vault/legacy-v5-tylog.typ'),
+        ) ==
         TylogHelperKind.legacy) {
       await storage.writeBytes(helperPath, managed[helperPath]!);
     }
@@ -180,13 +165,25 @@ class Vault {
     bool Function()? isCancelled,
   }) async {
     final previous = await loadIndex();
-    final index = await scanVaultStorage(
-      storage,
-      previous: previous,
-      force: force,
-      onProgress: onProgress,
-      isCancelled: isCancelled,
-    );
+    FlutterTypstInspector? inspector;
+    try {
+      inspector = await FlutterTypstInspector.create();
+    } catch (_) {
+      // Native Typst is optional in unit tests; core safely falls back.
+    }
+    final VaultIndex index;
+    try {
+      index = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: previous,
+        force: force,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+    } finally {
+      inspector?.dispose();
+    }
     await storage.writeText(
       indexPath,
       const JsonEncoder.withIndent('  ').convert(index.toJson()),
@@ -248,20 +245,6 @@ class Vault {
       return true;
     }
     return false;
-  }
-
-  String relativePath(Object value) {
-    if (value is String && !value.startsWith(storage.location)) {
-      return value.replaceAll('\\', '/');
-    }
-    final path = value is File ? value.absolute.path : value.toString();
-    if (storage is! LocalVaultStorage) return path.replaceAll('\\', '/');
-    final rootPath = root.absolute.path.endsWith(Platform.pathSeparator)
-        ? root.absolute.path
-        : '${root.absolute.path}${Platform.pathSeparator}';
-    return path
-        .substring(rootPath.length)
-        .replaceAll(Platform.pathSeparator, '/');
   }
 
   Future<String> readText(String path) => storage.readText(path);

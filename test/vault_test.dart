@@ -51,13 +51,14 @@ void main() {
       expect(await Directory('${dir.path}/$path').exists(), isTrue);
     }
     expect(
-      await vault.helperFile.readAsString(),
+      await vault.storage.readText(Vault.helperPath),
       (await TylogAssets.load()).text('typst/vault/tylog.typ'),
     );
-    expect(await vault.themeFile.exists(), isTrue);
-    expect(await vault.exportFile.exists(), isTrue);
-    expect(await vault.bibliographyFile.exists(), isTrue);
-    final settings = jsonDecode(await vault.settingsFile.readAsString()) as Map;
+    expect(await vault.storage.exists(Vault.themePath), isTrue);
+    expect(await vault.storage.exists(Vault.exportPath), isTrue);
+    expect(await vault.storage.exists(Vault.bibliographyPath), isTrue);
+    final settings =
+        jsonDecode(await vault.storage.readText(Vault.settingsPath)) as Map;
     expect(settings['version'], 5);
   });
 
@@ -140,10 +141,10 @@ void main() {
     final project = await vault.project('PhD Thesis');
     final article = await vault.article('Smith 2026');
 
-    expect(vault.relativePath(daily), 'daily/2026/07/2026-07-01.typ');
-    expect(vault.relativePath(note), 'notes/Моя заметка.typ');
-    expect(vault.relativePath(project), 'projects/PhD Thesis.typ');
-    expect(vault.relativePath(article), 'articles/Smith 2026.typ');
+    expect(daily, 'daily/2026/07/2026-07-01.typ');
+    expect(note, 'notes/Моя заметка.typ');
+    expect(project, 'projects/PhD Thesis.typ');
+    expect(article, 'articles/Smith 2026.typ');
     expect(await vault.readText(daily), contains('kind: "daily"'));
     expect(await vault.readText(project), contains('kind: "project"'));
     expect(await vault.readText(article), contains('kind: "article"'));
@@ -158,8 +159,8 @@ void main() {
     final past = await vault.dailyNote(DateTime(2025, 1, 9));
     final future = await vault.dailyNote(DateTime(2027, 12, 31));
 
-    expect(vault.relativePath(past), 'daily/2025/01/2025-01-09.typ');
-    expect(vault.relativePath(future), 'daily/2027/12/2027-12-31.typ');
+    expect(past, 'daily/2025/01/2025-01-09.typ');
+    expect(future, 'daily/2027/12/2027-12-31.typ');
     expect(await vault.readText(past), contains('kind: "daily"'));
     // Reopening returns the existing file untouched.
     await vault.saveNote(past, 'existing content');
@@ -210,10 +211,10 @@ void main() {
 ''');
 
     final first = await vault.rebuildIndex();
-    final firstJson = await vault.indexFile.readAsString();
-    await vault.cache.delete(recursive: true);
+    final firstJson = await vault.storage.readText(Vault.indexPath);
+    await vault.storage.delete('_index');
     final second = await vault.rebuildIndex();
-    final secondJson = await vault.indexFile.readAsString();
+    final secondJson = await vault.storage.readText(Vault.indexPath);
 
     expect(first.version, 5);
     expect(first.backlinksByTarget['notes/Child.typ'], ['notes/Root.typ']);

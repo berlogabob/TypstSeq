@@ -309,7 +309,7 @@ void main() {
       final note = File('${dir.path}/daily/2026/07/note.typ');
       await note.parent.create(recursive: true);
       await note.writeAsString('local note');
-      await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+      await vault.storage.writeText('.tylog/sync_state.json', '{');
 
       final result = await NextcloudSync(_config(server)).sync(vault);
 
@@ -321,22 +321,16 @@ void main() {
         'remote note',
       );
       expect(
-        await vault.meta
-            .list()
-            .where((file) => file.path.contains('sync_state.corrupt-'))
-            .length,
+        (await vault.storage.list(
+          path: '.tylog',
+        )).where((file) => file.path.contains('sync_state.corrupt-')).length,
         1,
       );
       expect(
-        jsonDecode(
-          await File('${vault.meta.path}/sync_state.json').readAsString(),
-        ),
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json')),
         isA<Map>(),
       );
-      expect(
-        await File('${vault.meta.path}/sync_state.json.tmp').exists(),
-        isFalse,
-      );
+      expect(await vault.storage.exists('.tylog/sync_state.json.tmp'), isFalse);
     },
   );
 
@@ -354,7 +348,7 @@ void main() {
       final note = File('${dir.path}/daily/2026/07/note.typ');
       await note.parent.create(recursive: true);
       await note.writeAsString('same note');
-      await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+      await vault.storage.writeText('.tylog/sync_state.json', '{');
 
       final result = await NextcloudSync(_config(server)).sync(vault);
 
@@ -385,17 +379,14 @@ void main() {
       });
       final vault = Vault(dir);
       await vault.ensureCreated();
-      await File(
-        '${vault.meta.path}/sync_state.json',
-      ).writeAsString(state.value);
+      await vault.storage.writeText('.tylog/sync_state.json', state.value);
 
       await NextcloudSync(_config(server)).sync(vault);
 
       expect(
-        await vault.meta
-            .list()
-            .where((file) => file.path.contains('sync_state.corrupt-'))
-            .length,
+        (await vault.storage.list(
+          path: '.tylog',
+        )).where((file) => file.path.contains('sync_state.corrupt-')).length,
         1,
       );
       final events = await _traceEvents(vault);
@@ -423,19 +414,17 @@ void main() {
     final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('local note');
-    final state = File('${vault.meta.path}/sync_state.json');
-    await state.writeAsString('{');
+    await vault.storage.writeText('.tylog/sync_state.json', '{');
 
     await expectLater(
       NextcloudSync(_config(broken)).sync(vault),
       throwsA(anything),
     );
-    expect(await state.readAsString(), '{');
+    expect(await vault.storage.readText('.tylog/sync_state.json'), '{');
     expect(
-      await vault.meta
-          .list()
-          .where((file) => file.path.contains('sync_state.corrupt-'))
-          .length,
+      (await vault.storage.list(
+        path: '.tylog',
+      )).where((file) => file.path.contains('sync_state.corrupt-')).length,
       1,
     );
 
@@ -466,7 +455,7 @@ void main() {
     final local = File('${dir.path}/notes/local.typ');
     await local.parent.create(recursive: true);
     await local.writeAsString('local only');
-    await File('${vault.meta.path}/sync_state.json').writeAsString('{');
+    await vault.storage.writeText('.tylog/sync_state.json', '{');
 
     final result = await NextcloudSync(_config(server)).sync(vault);
 
@@ -549,19 +538,27 @@ void main() {
     });
     final vault = Vault(dir);
     await vault.ensureCreated();
-    final trace = File('${vault.meta.path}/sync_trace.jsonl');
     final oldLine = '${jsonEncode({'old': List.filled(1024, 'x').join()})}\n';
-    await trace.writeAsString(List.filled(600, oldLine).join());
+    await vault.storage.writeText(
+      '.tylog/sync_trace.jsonl',
+      List.filled(600, oldLine).join(),
+    );
 
     await NextcloudSync(_config(server)).sync(vault);
 
-    expect(await trace.length(), lessThan(512 * 1024));
-    for (final line in await trace.readAsLines()) {
+    expect(
+      (await vault.storage.stat('.tylog/sync_trace.jsonl'))!.size,
+      lessThan(512 * 1024),
+    );
+    for (final line in (await vault.storage.readText(
+      '.tylog/sync_trace.jsonl',
+    )).split('\n')) {
+      if (line.isEmpty) continue;
       expect(jsonDecode(line), isA<Map>());
     }
 
-    await trace.delete();
-    await Directory(trace.path).create();
+    await vault.storage.delete('.tylog/sync_trace.jsonl');
+    await vault.storage.createDirectory('.tylog/sync_trace.jsonl');
     final retry = await NextcloudSync(_config(server)).sync(vault);
     expect(retry.remoteCount, 1);
   });
@@ -578,7 +575,7 @@ void main() {
     final note = File('${dir.path}/daily/2026/07/note.typ');
     await note.parent.create(recursive: true);
     await note.writeAsString('same note');
-    await _seedCursor(vault, note, '"remote-1"');
+    await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
     await note.setLastModified(DateTime.utc(2040));
 
     final result = await NextcloudSync(_config(server)).sync(vault);
@@ -604,7 +601,7 @@ void main() {
       final note = File('${dir.path}/daily/2026/07/note.typ');
       await note.parent.create(recursive: true);
       await note.writeAsString('local old');
-      await _seedCursor(vault, note, '"remote-1"');
+      await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
 
       final result = await NextcloudSync(_config(server)).sync(vault);
 
@@ -1075,16 +1072,24 @@ class _HashCountingStorage extends LocalVaultStorage {
 }
 
 Future<List<Map<String, Object?>>> _traceEvents(Vault vault) async =>
-    (await File('${vault.meta.path}/sync_trace.jsonl').readAsLines())
+    (await vault.storage.readText('.tylog/sync_trace.jsonl'))
+        .split('\n')
+        .where((line) => line.isNotEmpty)
         .map((line) => (jsonDecode(line) as Map).cast<String, Object?>())
         .toList();
 
-Future<void> _seedCursor(Vault vault, File note, String remoteEtag) async {
+Future<void> _seedCursor(
+  Vault vault,
+  String notePath,
+  File note,
+  String remoteEtag,
+) async {
   final hash = sha256.convert(await note.readAsBytes()).toString();
-  await File('${vault.meta.path}/sync_state.json').writeAsString(
+  await vault.storage.writeText(
+    '.tylog/sync_state.json',
     jsonEncode({
       'cursors': {
-        vault.relativePath(note): {
+        notePath: {
           'localMillis': (await note.lastModified()).millisecondsSinceEpoch,
           'remoteMillis': DateTime.utc(2030).millisecondsSinceEpoch,
           'localSha256': hash,

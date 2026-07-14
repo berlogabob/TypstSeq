@@ -343,14 +343,7 @@ Future<void> copyVaultStorage(
   }
   for (final item in await source.list(recursive: true)) {
     if (item.isDirectory || item.path.startsWith('_index/')) continue;
-    final file = await source.materialize(item.path);
-    try {
-      await destination.importFile(item.path, file);
-    } finally {
-      if (source.materializedFilesAreTemporary && await file.exists()) {
-        await file.delete();
-      }
-    }
+    await destination.writeBytes(item.path, await source.readBytes(item.path));
     if (await source.hash(item.path) != await destination.hash(item.path)) {
       throw StateError('Migration verification failed for ${item.path}');
     }

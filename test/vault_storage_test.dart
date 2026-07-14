@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -160,18 +161,15 @@ void main() {
 
 class _SimulatedSafStorage extends LocalVaultStorage {
   _SimulatedSafStorage(super.root);
-
-  @override
-  String get location => 'content://test/${root.path.hashCode}';
 }
 
 class _CorruptingStorage extends _SimulatedSafStorage {
   _CorruptingStorage(super.root);
 
   @override
-  Future<void> importFile(String path, File source) async {
-    await super.importFile(path, source);
-    await writeText(path, 'corrupt');
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    await super.writeBytes(path, bytes);
+    await super.writeBytes(path, utf8.encode('corrupt'));
   }
 }
 
