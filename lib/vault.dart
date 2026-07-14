@@ -101,16 +101,20 @@ class Vault {
       page(title, kind: 'article', now: now);
 
   Future<VaultIndex> rebuildIndex({
+    TypstInspector? inspector,
     bool force = false,
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final previous = await loadIndex();
-    FlutterTypstInspector? inspector;
-    try {
-      inspector = await FlutterTypstInspector.create();
-    } catch (_) {
-      // Native Typst is optional in unit tests; core safely falls back.
+    FlutterTypstInspector? ownedInspector;
+    if (inspector == null) {
+      try {
+        ownedInspector = await FlutterTypstInspector.create();
+        inspector = ownedInspector;
+      } catch (_) {
+        // Native Typst is optional in unit tests; core safely falls back.
+      }
     }
     final VaultIndex index;
     try {
@@ -123,7 +127,7 @@ class Vault {
         isCancelled: isCancelled,
       );
     } finally {
-      inspector?.dispose();
+      ownedInspector?.dispose();
     }
     await storage.writeText(
       indexPath,

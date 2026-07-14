@@ -22,10 +22,10 @@ import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'task_scheduler.dart';
-import 'tylog_assets.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
+import 'workspace_controller.dart';
 
 Future<String> appVersion() async =>
     RegExp(r'^version:\s*(.+)$', multiLine: true)
@@ -134,42 +134,57 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  Vault? vault;
-  VaultIndex? index;
-  String? note;
   final sourceController = TextEditingController();
   late final TyLogEditingController richController;
-  Timer? autosave;
-  Timer? cloudAutosave;
-  Timer? cloudPoll;
-  String status = 'Opening vault...';
-  bool dirty = false;
-  int editRevision = 0;
-  int savedRevision = 0;
-  int indexedRevision = 0;
-  DateTime? lastEditAt;
+  late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
-  String helperSource = '';
-  Map<String, Uint8List> typstPackageFiles = const {};
-  String bibliographySource = '';
-  NextcloudConfig? cloud;
-  PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
-  PkmsValidationReport? validation;
-  SyncResult? lastSync;
-  List<SyncConflict> syncConflicts = const [];
-  DateTime? lastSyncAt;
-  String? syncError;
   String? selectedTag;
-  bool syncing = false;
-  String? syncStage;
-  bool? storageHealthy;
-  bool rebuilding = false;
-  bool cancelRebuild = false;
-  double? rebuildProgress;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
   final platformFileActions = const PlatformFileActions();
+
+  Vault? get vault => workspace.vault;
+  VaultIndex? get index => workspace.index;
+  set index(VaultIndex? value) => workspace.index = value;
+  String? get note => workspace.note;
+  set note(String? value) => workspace.note = value;
+  String get status => workspace.status;
+  set status(String value) => workspace.status = value;
+  bool get dirty => workspace.dirty;
+  set dirty(bool value) => workspace.dirty = value;
+  int get editRevision => workspace.editRevision;
+  set editRevision(int value) => workspace.editRevision = value;
+  int get savedRevision => workspace.savedRevision;
+  set savedRevision(int value) => workspace.savedRevision = value;
+  int get indexedRevision => workspace.indexedRevision;
+  set indexedRevision(int value) => workspace.indexedRevision = value;
+  DateTime? get lastEditAt => workspace.lastEditAt;
+  set lastEditAt(DateTime? value) => workspace.lastEditAt = value;
+  String get helperSource => workspace.helperSource;
+  Map<String, Uint8List> get typstPackageFiles => workspace.typstPackageFiles;
+  String get bibliographySource => workspace.bibliographySource;
+  set bibliographySource(String value) => workspace.bibliographySource = value;
+  NextcloudConfig? get cloud => workspace.cloud;
+  set cloud(NextcloudConfig? value) => workspace.cloud = value;
+  PkmsSearchIndex get searchIndex => workspace.searchIndex;
+  PkmsValidationReport? get validation => workspace.validation;
+  set validation(PkmsValidationReport? value) => workspace.validation = value;
+  SyncResult? get lastSync => workspace.lastSync;
+  List<SyncConflict> get syncConflicts => workspace.syncConflicts;
+  set syncConflicts(List<SyncConflict> value) =>
+      workspace.syncConflicts = value;
+  DateTime? get lastSyncAt => workspace.lastSyncAt;
+  String? get syncError => workspace.syncError;
+  set syncError(String? value) => workspace.syncError = value;
+  bool get syncing => workspace.syncing;
+  String? get syncStage => workspace.syncStage;
+  bool? get storageHealthy => workspace.storageHealthy;
+  set storageHealthy(bool? value) => workspace.storageHealthy = value;
+  bool get rebuilding => workspace.rebuilding;
+  bool get cancelRebuild => workspace.cancelRebuild;
+  set cancelRebuild(bool value) => workspace.cancelRebuild = value;
+  double? get rebuildProgress => workspace.rebuildProgress;
 
   @override
   void initState() {
@@ -180,6 +195,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onError: _richEditorError,
       onProtectedTap: (id) => unawaited(_tapProtected(id)),
     );
+    workspace = WorkspaceController(
+      taskScheduler: taskScheduler,
+      isComposing: () => richController.isComposing,
+    )..addListener(_workspaceChanged);
     WidgetsBinding.instance.addObserver(this);
     _open();
   }
@@ -187,12 +206,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    autosave?.cancel();
-    cloudAutosave?.cancel();
-    cloudPoll?.cancel();
+    workspace
+      ..removeListener(_workspaceChanged)
+      ..dispose();
     richController.dispose();
     sourceController.dispose();
     super.dispose();
+  }
+
+  void _workspaceChanged() {
+    if (!mounted) return;
+    if (sourceController.text != workspace.source) {
+      sourceController.text = workspace.source;
+      richController.loadSource(workspace.source);
+    }
+    setState(() {});
   }
 
   VaultEntry? get _activeRegistryEntry {
@@ -204,38 +232,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Directory? get _localVaultDirectory {
-    final entry = _activeRegistryEntry;
-    return entry == null || entry.storageKind != 'local-path'
-        ? null
-        : Directory(entry.path);
+    return workspace.localDirectory;
   }
 
   void _closeVault(String message, {NextcloudConfig? nextCloud}) {
-    autosave?.cancel();
-    cloudAutosave?.cancel();
-    cloudPoll?.cancel();
-    _loadSource('');
-    setState(() {
-      vault = null;
-      note = null;
-      index = null;
-      validation = null;
-      searchIndex = PkmsSearchIndex.empty();
-      helperSource = '';
-      typstPackageFiles = const {};
-      cloud = nextCloud;
-      selectedTag = null;
-      lastSync = null;
-      syncConflicts = const [];
-      lastSyncAt = null;
-      syncError = null;
-      storageHealthy = false;
-      dirty = false;
-      savedRevision = editRevision;
-      indexedRevision = editRevision;
-      lastEditAt = null;
-      status = message;
-    });
+    selectedTag = null;
+    workspace.close(message, nextCloud: nextCloud);
   }
 
   Future<void> _open() async {
@@ -311,126 +313,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return _openVault(vaultRegistry!.active, trigger: trigger);
     }
-    try {
-      autosave?.cancel();
-      cloudAutosave?.cancel();
-      cloudPoll?.cancel();
-      final v = Vault.withStorage(entry.storage);
-      await v.ensureCreated(
-        createIfMissing: !vaultNeedsAndroidTreeMigration(entry),
-      );
-      // ponytail: offline-first — render local vault immediately, sync in background
-      final openStatus = 'Vault: ${entry.name}';
-      final today = await v.todayNote();
-      final ix = await v.rebuildIndex();
-      final pkms = await _readPkms(v, ix);
-      final loadedHelper = await v.storage.readText(Vault.helperPath);
-      final loadedTypstPackage = <String, Uint8List>{};
-      for (final asset
-          in (await TylogAssets.load()).managedVaultFiles.entries) {
-        final bytes = await v.storage.readBytes(asset.key);
-        loadedTypstPackage[asset.key] = bytes;
-        loadedTypstPackage['/${asset.key}'] = bytes;
-      }
-      final loadedBibliography = await v.storage.exists(Vault.bibliographyPath)
-          ? await v.storage.readText(Vault.bibliographyPath)
-          : '';
-      final conflicts = await loadSyncConflicts(v);
-      _loadSource(await v.storage.readText(today));
+    await workspace.openVault(entry, trigger: trigger);
+    if (mounted) {
       setState(() {
-        vault = v;
-        note = today;
-        index = _retainIndex(ix);
-        validation = _retainValidation(pkms.report);
-        searchIndex = pkms.search;
-        helperSource = loadedHelper;
-        typstPackageFiles = loadedTypstPackage;
-        bibliographySource = loadedBibliography;
-        cloud = entry.cloud;
         selectedTag = null;
-        lastSync = null;
-        syncConflicts = conflicts;
-        lastSyncAt = null;
-        syncError = null;
-        storageHealthy = null;
-        savedRevision = editRevision;
-        indexedRevision = editRevision;
-        lastEditAt = null;
         mode = 'normal';
-        status = '$openStatus · ${pkms.report.summary()}';
       });
-      unawaited(taskScheduler.reconcile(ix.tasks));
-      unawaited(_sweepSafBackups(v));
-      if (entry.cloud != null && entry.cloud!.isReady) {
-        if (trigger != null) unawaited(_syncNow(trigger: trigger));
-        _startCloudPolling();
-      }
-    } catch (e) {
-      _closeVault('Open failed: $e', nextCloud: entry.cloud);
-    }
-  }
-
-  // Delete orphans of interrupted SAF atomic replaces so they never sync.
-  Future<void> _sweepSafBackups(Vault v) async {
-    try {
-      final entries = await v.storage.list(recursive: true);
-      for (final e in entries) {
-        if (!e.isDirectory && isSafBackupPath(e.path)) {
-          await v.storage.delete(e.path);
-        }
-      }
-    } catch (_) {
-      // Best-effort cleanup; sync filtering is the hard guarantee.
-    }
-  }
-
-  Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(
-    Vault v,
-    VaultIndex ix,
-  ) async {
-    final report = await validatePkmsStorage(v.storage, ix);
-    final cached = await PkmsSearchIndex.loadStorage(
-      v.storage,
-      Vault.searchIndexPath,
-    );
-    final search = await PkmsSearchIndex.buildStorage(
-      v.storage,
-      ix,
-      previous: cached,
-    );
-    await search.saveStorage(v.storage, Vault.searchIndexPath);
-    return (report: report, search: search);
-  }
-
-  Future<void> _refreshIndex({
-    bool updateStatus = true,
-    bool force = false,
-  }) async {
-    final v = vault;
-    if (v == null || (!force && indexedRevision >= savedRevision)) return;
-    final revision = savedRevision;
-    try {
-      final ix = await v.rebuildIndex();
-      final pkms = await _readPkms(v, ix);
-      if (!mounted || v != vault) return;
-      setState(() {
-        index = _retainIndex(ix);
-        validation = _retainValidation(pkms.report);
-        searchIndex.replaceWith(pkms.search);
-        indexedRevision = revision;
-        if (updateStatus) status = 'Indexed · ${pkms.report.summary()}';
-      });
-      unawaited(taskScheduler.reconcile(ix.tasks));
-    } catch (error) {
-      if (mounted && updateStatus) {
-        setState(() => status = 'Index refresh failed: $error');
-      }
     }
   }
 
   Future<void> _ensureIndexed() async {
-    if (dirty) await _save(syncAfter: false);
-    await _refreshIndex();
+    await workspace.ensureIndexed();
   }
 
   Future<void> _switchVault(VaultEntry entry) async {
@@ -597,9 +490,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     typed.dispose();
     if (confirmed != true) return;
 
-    autosave?.cancel();
-    cloudAutosave?.cancel();
-    cloudPoll?.cancel();
+    workspace.cancelPendingWork();
     try {
       final registry = vaultRegistry!;
       final wasActive = registry.activeId == entry.id;
@@ -633,90 +524,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _save({bool syncAfter = true}) async {
-    autosave?.cancel();
-    final v = vault;
-    final n = note;
-    if (v == null || n == null) return;
-    final revision = editRevision;
-    final source = _currentSource();
-    try {
-      await v.saveNote(n, source);
-      final editorUnchanged = revision == editRevision && n == note;
-      if (editorUnchanged) {
-        setState(() {
-          savedRevision = revision;
-          dirty = false;
-          status = 'Saved $n';
-        });
-      }
-      if (syncAfter && editorUnchanged) _queueCloudSync();
-    } catch (e) {
-      if (revision == editRevision && n == note) {
-        setState(() => status = 'Save failed: $e');
-      }
+    if (_currentSource() != workspace.source) {
+      workspace.source = _currentSource();
     }
+    await workspace.save(syncAfter: syncAfter);
   }
 
-  void _queueCloudSync() {
-    cloudAutosave?.cancel();
-    final edited = lastEditAt;
-    final elapsed = edited == null
-        ? Duration.zero
-        : DateTime.now().difference(edited);
-    final remaining = const Duration(seconds: 10) - elapsed;
-    cloudAutosave = Timer(
-      remaining.isNegative ? Duration.zero : remaining,
-      _runIdleMaintenance,
-    );
-  }
+  void _queueCloudSync() => workspace.queueCloudSync();
 
-  Future<void> _runIdleMaintenance() async {
-    if (!mounted) return;
-    if (dirty || richController.isComposing) return;
-    if (_editingRecently) {
-      _queueCloudSync();
-      return;
-    }
-    if (syncing) {
-      cloudAutosave = Timer(const Duration(seconds: 1), _runIdleMaintenance);
-      return;
-    }
-    final cfg = cloud;
-    if (cfg != null && cfg.isReady && !_hasSyncConflicts) {
-      await _syncNow(trigger: 'autosave');
-      return;
-    }
-    await _refreshIndex();
-  }
+  void _startCloudPolling() => workspace.startCloudPolling();
 
-  void _startCloudPolling() {
-    cloudPoll?.cancel();
-    final cfg = cloud;
-    if (cfg == null || !cfg.isReady) return;
-    cloudPoll = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!syncing && !_editingRecently && !_hasSyncConflicts && mounted) {
-        unawaited(_syncNow(trigger: 'poll'));
-      }
-    });
-  }
-
-  bool get _hasSyncConflicts => syncConflicts.isNotEmpty;
-
-  bool get _editingRecently {
-    if (dirty || richController.isComposing) return true;
-    final edited = lastEditAt;
-    return edited != null &&
-        DateTime.now().difference(edited) < const Duration(seconds: 10);
-  }
+  bool get _editingRecently => workspace.editingRecently;
 
   void _queueAutosave() {
-    editRevision++;
-    lastEditAt = DateTime.now();
-    final becameDirty = !dirty;
-    dirty = true;
-    if (becameDirty) setState(() => status = 'Autosave pending...');
-    autosave?.cancel();
-    autosave = Timer(const Duration(milliseconds: 700), _save);
+    workspace.edit(_currentSource());
   }
 
   String _currentSource() => sourceController.text;
@@ -820,10 +641,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (dirty) await _save();
     final source = await v.storage.readText(path);
     _loadSource(source);
+    workspace.replaceNote(path, source);
     setState(() {
-      note = path;
-      dirty = false;
-      savedRevision = editRevision;
       mode = 'normal';
       status = 'Opened $path';
     });
@@ -898,10 +717,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final template = await _chooseTemplate(v);
     if (dirty) await _save();
     final file = await v.page(title, template: template);
-    final ix = await v.rebuildIndex();
+    await workspace.refreshIndex(force: true);
     await _openNote(file);
     setState(() {
-      index = ix;
       status = 'Created $file';
     });
   }
@@ -1102,36 +920,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _rebuildIndex();
   }
 
-  PkmsValidationReport _retainValidation(PkmsValidationReport next) {
-    final current = validation;
-    if (current == null) return next;
-    current.problems
-      ..clear()
-      ..addAll(next.problems);
-    return current;
-  }
-
-  VaultIndex _retainIndex(VaultIndex next) {
-    final current = index;
-    if (current == null || current.version != next.version) return next;
-    current.notesByPath
-      ..clear()
-      ..addAll(next.notesByPath);
-    current.backlinksByTarget
-      ..clear()
-      ..addAll(next.backlinksByTarget);
-    current.attachmentBacklinksByPath
-      ..clear()
-      ..addAll(next.attachmentBacklinksByPath);
-    current.problems
-      ..clear()
-      ..addAll(next.problems);
-    current.tasks
-      ..clear()
-      ..addAll(next.tasks);
-    return current;
-  }
-
   String? _pathForLink(String title) {
     final ix = index;
     return ix == null ? null : resolveLinkPath(ix, title);
@@ -1145,160 +933,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _rebuildIndex() async {
-    final v = vault;
-    if (v == null) return;
-    if (rebuilding) {
-      cancelRebuild = true;
-      return;
-    }
-    setState(() {
-      rebuilding = true;
-      cancelRebuild = false;
-      rebuildProgress = 0;
-      status = 'Rebuilding index...';
-    });
-    try {
-      final ix = await v.rebuildIndex(
-        force: true,
-        isCancelled: () => cancelRebuild,
-        onProgress: (complete, total) {
-          if (!mounted || (complete % 100 != 0 && complete != total)) return;
-          setState(() {
-            rebuildProgress = total == 0 ? 1 : complete / total;
-            status = 'Rebuilding index: $complete / $total';
-          });
-        },
-      );
-      final pkms = await _readPkms(v, ix);
-      if (!mounted) return;
-      setState(() {
-        index = _retainIndex(ix);
-        validation = _retainValidation(pkms.report);
-        searchIndex.replaceWith(pkms.search);
-        indexedRevision = savedRevision;
-        status = 'Index rebuilt · ${pkms.report.summary()}';
-      });
-      unawaited(taskScheduler.reconcile(ix.tasks));
-    } on IndexBuildCancelled {
-      if (mounted) setState(() => status = 'Index rebuild cancelled');
-    } finally {
-      if (mounted) {
-        setState(() {
-          rebuilding = false;
-          rebuildProgress = null;
-        });
-      }
-    }
+    await workspace.rebuildIndex();
   }
 
   Future<void> _syncNow({String trigger = 'manual'}) async {
-    final v = vault;
-    final cfg = cloud;
-    if (v == null) return;
-    if (cfg == null || !cfg.isReady) {
-      await _showSyncSettings();
-      return;
-    }
-    if (syncing) return;
-    if (_localVaultDirectory case final root?
-        when isNextcloudManagedVault(root)) {
-      setState(() => status = 'Sync handled by Nextcloud Desktop');
-      return;
-    }
-    setState(() {
-      syncing = true;
-      syncError = null;
-      status = 'Syncing…';
-    });
     try {
-      cloudAutosave?.cancel();
-      if (dirty) {
-        await _save(syncAfter: false);
-        if (dirty) return;
-      }
-      final syncedNote = note;
-      final sourceBeforeSync = syncedNote == null ? null : _currentSource();
-      final revisionBeforeSync = editRevision;
-      final result = await NextcloudSync(
-        cfg,
-        onProgress: (stage, path) {
-          if (!mounted) return;
-          setState(() => syncStage = path == null ? stage : '$stage · $path');
-        },
-        canReplaceLocal: (path) =>
-            path != syncedNote ||
-            (revisionBeforeSync == editRevision && !dirty),
-      ).sync(v, trigger: trigger);
-      var concurrentConflict = false;
-      if (syncedNote != null && syncedNote == note) {
-        final diskExists = await v.storage.exists(syncedNote);
-        final diskSource = diskExists
-            ? await v.storage.readText(syncedNote)
-            : null;
-        final editorChanged = revisionBeforeSync != editRevision || dirty;
-        if (editorChanged && diskSource != sourceBeforeSync) {
-          final editorSource = _currentSource();
-          await createSyncConflict(
-            v,
-            syncedNote,
-            localBytes: utf8.encode(editorSource),
-            remoteBytes: diskSource == null ? null : utf8.encode(diskSource),
-          );
-          // The conflict snapshots both outcomes; keep the live editor version
-          // authoritative on disk so a sync race can never erase keystrokes.
-          await v.saveNote(syncedNote, editorSource);
-          concurrentConflict = true;
-        } else if (!editorChanged && diskSource != sourceBeforeSync) {
-          if (diskSource != null) _loadSource(diskSource);
-        }
-      }
-      final indexedThroughRevision = savedRevision;
-      final ix = await v.rebuildIndex();
-      final pkms = await _readPkms(v, ix);
-      final conflicts = await loadSyncConflicts(v);
-      setState(() {
-        index = _retainIndex(ix);
-        validation = _retainValidation(pkms.report);
-        searchIndex.replaceWith(pkms.search);
-        indexedRevision = indexedThroughRevision;
-        lastSync = result;
-        lastSyncAt = DateTime.now();
-        syncConflicts = conflicts;
-        final changed =
-            result.uploaded +
-            result.downloaded +
-            result.deletedLocal +
-            result.deletedRemote +
-            result.repaired;
-        status = conflicts.isNotEmpty || concurrentConflict
-            ? 'Needs attention'
-            : changed == 0
-            ? 'Up to date'
-            : 'Synced';
-      });
-    } on SyncDeferred {
-      if (mounted) setState(() => status = 'Sync deferred while editing');
-      _queueCloudSync();
-    } catch (e, stack) {
-      debugPrintStack(label: 'Nextcloud sync failed: $e', stackTrace: stack);
-      final conflicts = await loadSyncConflicts(v);
-      await _refreshIndex(updateStatus: false, force: true);
-      if (mounted) {
-        setState(() {
-          syncConflicts = conflicts;
-          syncError = conflicts.isEmpty ? _friendlySyncError(e) : null;
-          status = conflicts.isEmpty ? syncError! : 'Needs attention';
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          syncing = false;
-          syncStage = null;
-        });
-      }
+      await workspace.syncNow(trigger: trigger);
+    } on WorkspaceSyncNotConfigured {
+      await _showSyncSettings();
     }
-    if (!mounted) return;
   }
 
   Future<bool> _showSyncSettings() async {
@@ -1640,7 +1283,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
     final entry = vaultRegistry!.active;
-    final healthy = storageHealthy ??= await _probeStorage(v.storage);
+    final healthy = storageHealthy ?? await workspace.probeStorage();
     return _SyncDashboardData(
       storageName: entry.name,
       storageLocation: entry.storageKind == 'android-tree'
@@ -1658,24 +1301,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _localVaultDirectory != null &&
           isNextcloudManagedVault(_localVaultDirectory!),
       storageHealthy: healthy,
-      conflicts: await loadSyncConflicts(v),
+      conflicts: syncConflicts,
       events: events.reversed.toList(),
     );
-  }
-
-  Future<bool> _probeStorage(VaultStorage storage) async {
-    const path = '.tylog/.storage-health';
-    try {
-      await storage.writeText(path, 'ok');
-      final valid = await storage.readText(path) == 'ok';
-      await storage.delete(path);
-      return valid;
-    } catch (_) {
-      try {
-        await storage.delete(path);
-      } catch (_) {}
-      return false;
-    }
   }
 
   Future<void> _resolveSyncConflict(SyncConflict conflict) async {
@@ -1799,27 +1427,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (save == true) {
       try {
-        await NextcloudSync(cfg).resolveConflict(
-          v,
+        await workspace.resolveConflict(
           conflict,
           selected.value,
           mergedText: selected.value == SyncConflictResolution.merge
               ? merged.text
               : null,
         );
-        final ix = await v.rebuildIndex();
-        final pkms = await _readPkms(v, ix);
-        if (mounted) {
-          setState(() {
-            index = _retainIndex(ix);
-            validation = _retainValidation(pkms.report);
-            searchIndex.replaceWith(pkms.search);
-            syncConflicts = syncConflicts
-                .where((item) => item.id != conflict.id)
-                .toList();
-            status = 'Conflict resolved';
-          });
-        }
       } catch (error) {
         if (mounted) setState(() => syncError = _friendlySyncError(error));
       }
@@ -1937,9 +1551,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (title == null || title.isEmpty || vault == null) return null;
     final file = await vault!.page(title, kind: kind ?? 'note');
-    final rebuilt = await vault!.rebuildIndex();
-    setState(() => index = _retainIndex(rebuilt));
-    return rebuilt.notesByPath[file];
+    await workspace.refreshIndex(force: true);
+    return index?.notesByPath[file];
   }
 
   Future<void> _runMagic(MagicAction action) async {
