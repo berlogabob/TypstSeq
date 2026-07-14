@@ -487,7 +487,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    typed.dispose();
     if (confirmed != true) return;
 
     workspace.cancelPendingWork();
@@ -631,7 +630,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    input.dispose();
     if (updated != null) richController.replaceProtected(id, updated);
   }
 
@@ -872,9 +870,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _queueAutosave();
       await _save();
     }
-    for (final value in [title, tagsText, aliases]) {
-      value.dispose();
-    }
   }
 
   Future<void> _showKnowledge({
@@ -945,7 +940,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _showSyncSettings() async {
-    final vaultId = vaultRegistry!.activeId;
+    final vaultId = vaultRegistry?.activeId;
     final cfg =
         await NextcloudConfig.load(vaultId: vaultId) ??
         cloud ??
@@ -1043,14 +1038,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     await draftWrites;
-    url.dispose();
-    user.dispose();
-    pass.dispose();
-    folder.dispose();
     if (saved == null) return false;
     if (!mounted) return false;
+    final registry = vaultRegistry;
+    if (registry == null) return false;
     await saved.save(vaultId: vaultId);
-    final registry = vaultRegistry!;
     await registry.setCloud(registry.active, saved);
     setState(() {
       cloud = saved;
@@ -1438,8 +1430,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (mounted) setState(() => syncError = _friendlySyncError(error));
       }
     }
-    selected.dispose();
-    merged.dispose();
   }
 
   Future<void> _copySyncDiagnostics() async {
@@ -1491,7 +1481,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    input.dispose();
     return value?.trim();
   }
 
