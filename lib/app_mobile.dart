@@ -282,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } on PlatformException {
         if (active.storageKind != 'android-tree') rethrow;
-        final selection = await AndroidTreeVaultStorage.pick();
+        final selection = await _requestAndroidVaultAccess();
         if (selection == null) {
           _closeVault('Folder access is required to open this vault');
           return;
@@ -358,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<bool> _pickVault({bool closeCurrent = true}) async {
     if (closeCurrent && Navigator.canPop(context)) Navigator.pop(context);
     if (Platform.isAndroid) {
-      final selection = await AndroidTreeVaultStorage.pick();
+      final selection = await _requestAndroidVaultAccess();
       if (selection == null) return false;
       final storage = AndroidTreeVaultStorage(
         uri: selection.uri,
@@ -404,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _migrateAndroidVault(VaultEntry entry) async {
-    final selection = await AndroidTreeVaultStorage.pick();
+    final selection = await _requestAndroidVaultAccess();
     if (selection == null) return false;
     try {
       final migrated = await vaultRegistry!.migrateToTree(entry, selection);
@@ -418,6 +418,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return false;
     }
+  }
+
+  Future<AndroidTreeSelection?> _requestAndroidVaultAccess() async {
+    final allowed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Allow vault folder access'),
+        content: const Text(
+          'TyLog needs access to one folder to read and save your notes. '
+          'Android will open its folder picker. Choose your vault, then tap '
+          '“Use this folder”. TyLog cannot access other folders.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Choose folder'),
+          ),
+        ],
+      ),
+    );
+    if (allowed != true || !mounted) return null;
+    return AndroidTreeVaultStorage.pick();
   }
 
   Future<void> _forgetVault(VaultEntry entry) async {
