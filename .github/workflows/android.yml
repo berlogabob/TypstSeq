@@ -22,7 +22,30 @@ jobs:
         with:
           channel: stable
           cache: true
+      - uses: typst-community/setup-typst@v5
+        with:
+          typst-version: 0.15.0
+      - name: Verify TyLog Format v1 and Typst package
+        run: |
+          typst compile --root typst/tylog typst/tylog/examples/basic.typ /tmp/tylog-example.pdf
+          (
+            cd test/fixtures/tylog_format_v1
+            typst eval 'query(metadata)' --root . --in valid.typ > /tmp/tylog-metadata.json
+          )
+          for entity in note link tag date attachment task; do
+            grep -q "\"label\":\"<tylog-$entity>\"" /tmp/tylog-metadata.json
+          done
+          grep -q '"schema":1' /tmp/tylog-metadata.json
+      - name: Test Flutter-independent core and CLI
+        working-directory: packages/tylog_core
+        run: |
+          dart pub get
+          dart test
       - run: ./tool/setup_typst_native.sh
+      - name: Analyze Flutter app
+        run: flutter analyze
+      - name: Test Flutter app
+        run: flutter test
       - name: Configure release signing
         if: github.event_name != 'pull_request'
         env:

@@ -2,14 +2,16 @@ SHELL := /bin/bash
 
 APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
-RELEASE_GIT_PATHS ?= .github .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android integration_test ios lib linux macos packages tool sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
+RELEASE_GIT_PATHS ?= .github .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android docs integration_test ios lib linux macos packages spec tool typst sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
 OWNER_REPO ?= berlogabob/TypstSeq
 
-.PHONY: help setup-native test verify build-android publish-release release clean
+.PHONY: help setup-native test-core test-typst test verify build-android publish-release release clean
 
 help:
 	@echo "TyLog release commands"
 	@echo "  make setup-native  # explicitly prepare typst_flutter native libraries"
+	@echo "  make test-core     # run Flutter-independent core and CLI tests"
+	@echo "  make test-typst    # compile/query the Typst package and format fixture"
 	@echo "  make verify        # run analysis, tests, native integration, and release builds"
 	@echo "  make bump-version   # 1.0.0+1 -> 1.0.0+2"
 	@echo "  make build-android  # build release APK"
@@ -22,7 +24,16 @@ bump-version:
 setup-native:
 	@./tool/setup_typst_native.sh
 
-test:
+test-core:
+	@cd packages/tylog_core && dart test
+
+test-typst:
+	@typst compile --root typst/tylog typst/tylog/examples/basic.typ /tmp/tylog-example.pdf
+	@cd test/fixtures/tylog_format_v1 && typst eval 'query(metadata)' --root . --in valid.typ > /tmp/tylog-metadata.json
+	@for entity in note link tag date attachment task; do grep -q "\"label\":\"<tylog-$$entity>\"" /tmp/tylog-metadata.json; done
+	@grep -q '"schema":1' /tmp/tylog-metadata.json
+
+test: test-core test-typst
 	@flutter analyze
 	@flutter test
 
