@@ -295,19 +295,23 @@ class WorkspaceController extends ChangeNotifier {
     });
   }
 
-  Future<void> syncNow({String trigger = 'manual'}) async {
+  Future<bool> syncNow({
+    String trigger = 'manual',
+    NextcloudConfig? configOverride,
+    InitialSyncMode? initialMode,
+  }) async {
     final opened = vault;
-    final config = cloud;
-    if (opened == null) return;
+    final config = configOverride ?? cloud;
+    if (opened == null) return false;
     if (config == null || !config.isReady) {
       throw const WorkspaceSyncNotConfigured();
     }
-    if (syncing) return;
+    if (syncing) return false;
     final local = localDirectory;
     if (local != null && isNextcloudManagedVault(local)) {
       status = 'Sync handled by Nextcloud Desktop';
       notifyListeners();
-      return;
+      return true;
     }
     syncing = true;
     syncError = null;
@@ -317,7 +321,7 @@ class WorkspaceController extends ChangeNotifier {
     try {
       if (dirty) {
         await save(syncAfter: false);
-        if (dirty) return;
+        if (dirty) return false;
       }
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
@@ -331,7 +335,7 @@ class WorkspaceController extends ChangeNotifier {
         canReplaceLocal: (path) =>
             path != syncedNote ||
             (revisionBeforeSync == editRevision && !dirty),
-      ).sync(opened, trigger: trigger);
+      ).sync(opened, trigger: trigger, initialMode: initialMode);
       var concurrentConflict = false;
       if (syncedNote != null && syncedNote == note) {
         final diskExists = await opened.storage.exists(syncedNote);
@@ -381,10 +385,12 @@ class WorkspaceController extends ChangeNotifier {
           ? 'Up to date'
           : 'Synced';
       notifyListeners();
+      return true;
     } on SyncDeferred {
       status = 'Sync deferred while editing';
       queueCloudSync();
       notifyListeners();
+      return false;
     } catch (error, stack) {
       debugPrintStack(
         label: 'Nextcloud sync failed: $error',
@@ -395,6 +401,7 @@ class WorkspaceController extends ChangeNotifier {
       syncError = syncConflicts.isEmpty ? friendlySyncError(error) : null;
       status = syncConflicts.isEmpty ? syncError! : 'Needs attention';
       notifyListeners();
+      return false;
     } finally {
       syncing = false;
       syncStage = null;

@@ -45,7 +45,17 @@ class SafBridge(
                 return
             }
             pendingPick = result
-            activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_TREE)
+            activity.startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+                    )
+                },
+                PICK_TREE,
+            )
             return
         }
 
@@ -55,6 +65,24 @@ class SafBridge(
                 it.uri == tree && it.isReadPermission && it.isWritePermission
             }
             result.success(granted)
+            return
+        }
+
+        if (call.method == "persistAccess") {
+            val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
+            try {
+                resolver.takePersistableUriPermission(
+                    tree,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                result.success(null)
+            } catch (error: Throwable) {
+                result.error(
+                    "invalid_folder",
+                    "This folder cannot provide persistent access: ${error.message}",
+                    null,
+                )
+            }
             return
         }
 
@@ -145,30 +173,15 @@ class SafBridge(
             return true
         }
         val uri = data.data!!
-        val flags = data.flags and
-            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        try {
-            resolver.takePersistableUriPermission(uri, flags)
-        } catch (error: Throwable) {
-            result.error("invalid_folder", "This folder cannot provide safe persistent writes: ${error.message}", null)
-            return true
-        }
         executor.execute {
             try {
-                validate(uri)
                 val name = displayName(root(uri))
                 postMain { result.success(mapOf("uri" to uri.toString(), "name" to name)) }
             } catch (error: Throwable) {
-                runCatching {
-                    resolver.releasePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                    )
-                }
                 postMain {
                     result.error(
                         "invalid_folder",
-                        "This folder cannot provide safe persistent writes: ${error.message}",
+                        "This folder cannot be read: ${error.message}",
                         null,
                     )
                 }
@@ -411,12 +424,4 @@ class SafBridge(
         return file
     }
 
-    private fun validate(tree: Uri) {
-        val name = ".tylog-access-${System.nanoTime()}.tmp"
-        writeAtomic(tree, name, "first".toByteArray())
-        writeAtomic(tree, name, "replacement".toByteArray())
-        val document = resolveRequired(tree, name)
-        require(String(read(document)) == "replacement") { "Storage provider cannot replace documents safely" }
-        require(DocumentsContract.deleteDocument(resolver, document)) { "Storage provider cannot delete documents" }
-    }
 }

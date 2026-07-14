@@ -45,6 +45,9 @@ class AndroidTreeVaultStorage extends VaultStorage {
   Future<bool> hasAccess() async =>
       await channel.invokeMethod<bool>('hasAccess', args()) ?? false;
 
+  Future<void> persistAccess() =>
+      channel.invokeMethod<void>('persistAccess', args());
+
   static Future<AndroidTreeSelection?> pick() async {
     final result = await channel.invokeMapMethod<String, Object?>('pickTree');
     if (result == null) return null;

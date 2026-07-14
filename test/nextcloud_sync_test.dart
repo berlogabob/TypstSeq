@@ -84,6 +84,170 @@ void main() {
     );
   });
 
+  test('initial setup maps all local and cloud combinations', () {
+    expect(
+      initialSyncModeFor(localHasData: false, remoteHasData: false),
+      InitialSyncMode.safeMerge,
+    );
+    expect(
+      initialSyncModeFor(localHasData: true, remoteHasData: false),
+      InitialSyncMode.uploadLocal,
+    );
+    expect(
+      initialSyncModeFor(localHasData: false, remoteHasData: true),
+      InitialSyncMode.downloadRemote,
+    );
+    expect(
+      initialSyncModeFor(localHasData: true, remoteHasData: true),
+      InitialSyncMode.safeMerge,
+    );
+  });
+
+  test(
+    'setup inspection distinguishes local and remote vault states',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_preflight_');
+      final remote = <String, _MutableRemoteFile>{};
+      final server = await _mutableWebDavServer(remote);
+      final missingServer = await _missingWebDavServer();
+      addTearDown(() async {
+        await server.close(force: true);
+        await missingServer.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final starter = await vault.todayNote(DateTime(2026, 7, 14));
+
+      final pristine = await inspectLocalSync(vault);
+      expect(pristine.hasUserContent, isFalse);
+      expect(pristine.pristineStarterPaths, [starter]);
+      expect(
+        (await NextcloudSync(_config(missingServer)).inspectRemoteVault()).kind,
+        RemoteVaultKind.missing,
+      );
+      expect(
+        (await NextcloudSync(_config(server)).inspectRemoteVault()).kind,
+        RemoteVaultKind.empty,
+      );
+
+      remote['other.txt'] = _remoteText('unrelated');
+      expect(
+        (await NextcloudSync(_config(server)).inspectRemoteVault()).kind,
+        RemoteVaultKind.nonVault,
+      );
+
+      remote
+        ..clear()
+        ..['_system/tylog.typ'] = _remoteText('helper')
+        ..['notes/cloud.typ'] = _remoteText('cloud note');
+      final valid = await NextcloudSync(_config(server)).inspectRemoteVault();
+      expect(valid.kind, RemoteVaultKind.validVault);
+      expect(valid.userFileCount, 1);
+
+      await vault.storage.writeText(starter, 'edited starter');
+      expect((await inspectLocalSync(vault)).userFileCount, 1);
+    },
+  );
+
+  test(
+    'initial sync modes cover the four local and cloud combinations',
+    () async {
+      Future<({Vault vault, Directory dir, String starter})> freshVault(
+        String name,
+      ) async {
+        final dir = await Directory.systemTemp.createTemp(name);
+        final vault = Vault(dir);
+        await vault.ensureCreated();
+        final starter = await vault.todayNote(DateTime(2026, 7, 14));
+        return (vault: vault, dir: dir, starter: starter);
+      }
+
+      final empty = await freshVault('tylog_initial_empty_');
+      final emptyRemote = <String, _MutableRemoteFile>{};
+      final emptyServer = await _mutableWebDavServer(emptyRemote);
+      final localOnly = await freshVault('tylog_initial_upload_');
+      await localOnly.vault.storage.writeText('notes/local.typ', 'local note');
+      final uploadRemote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteBytes(
+          await localOnly.vault.storage.readBytes('_system/tylog.typ'),
+        ),
+      };
+      final uploadServer = await _mutableWebDavServer(uploadRemote);
+      final cloudOnly = await freshVault('tylog_initial_download_');
+      final helper = await cloudOnly.vault.storage.readBytes(
+        '_system/tylog.typ',
+      );
+      final downloadRemote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteBytes(helper),
+        'notes/cloud.typ': _remoteText('cloud note'),
+      };
+      final downloadServer = await _mutableWebDavServer(downloadRemote);
+      final both = await freshVault('tylog_initial_merge_');
+      await both.vault.storage.writeText('notes/local.typ', 'local only');
+      await both.vault.storage.writeText('notes/both.typ', 'local version');
+      final mergeHelper = await both.vault.storage.readBytes(
+        '_system/tylog.typ',
+      );
+      final mergeRemote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteBytes(mergeHelper),
+        'notes/cloud.typ': _remoteText('cloud only'),
+        'notes/both.typ': _remoteText('cloud version'),
+      };
+      final mergeServer = await _mutableWebDavServer(mergeRemote);
+      addTearDown(() async {
+        for (final server in [
+          emptyServer,
+          uploadServer,
+          downloadServer,
+          mergeServer,
+        ]) {
+          await server.close(force: true);
+        }
+        for (final dir in [empty.dir, localOnly.dir, cloudOnly.dir, both.dir]) {
+          await dir.delete(recursive: true);
+        }
+      });
+
+      final created = await NextcloudSync(
+        _config(emptyServer),
+      ).sync(empty.vault, initialMode: InitialSyncMode.safeMerge);
+      expect(created.deletedLocal + created.deletedRemote, 0);
+      expect(emptyRemote, contains('_system/tylog.typ'));
+
+      final uploaded = await NextcloudSync(
+        _config(uploadServer),
+      ).sync(localOnly.vault, initialMode: InitialSyncMode.uploadLocal);
+      expect(uploaded.deletedLocal + uploaded.deletedRemote, 0);
+      expect(utf8.decode(uploadRemote['notes/local.typ']!.bytes), 'local note');
+
+      final downloaded = await NextcloudSync(
+        _config(downloadServer),
+      ).sync(cloudOnly.vault, initialMode: InitialSyncMode.downloadRemote);
+      expect(downloaded.deletedRemote, 0);
+      expect(
+        await cloudOnly.vault.storage.readText('notes/cloud.typ'),
+        'cloud note',
+      );
+      expect(await cloudOnly.vault.storage.exists(cloudOnly.starter), isFalse);
+
+      final merged = await NextcloudSync(
+        _config(mergeServer),
+      ).sync(both.vault, initialMode: InitialSyncMode.safeMerge);
+      expect(merged.conflicts, 1);
+      expect(merged.deletedLocal + merged.deletedRemote, 0);
+      expect(
+        await both.vault.storage.readText('notes/cloud.typ'),
+        'cloud only',
+      );
+      expect(utf8.decode(mergeRemote['notes/local.typ']!.bytes), 'local only');
+      expect(
+        (await loadSyncConflicts(both.vault)).single.path,
+        'notes/both.typ',
+      );
+    },
+  );
+
   test('sync action prefers conflict when both changed', () {
     expect(
       decideSyncAction(
@@ -1220,6 +1384,23 @@ class _MutableRemoteFile {
   final List<int> bytes;
   final String etag;
   final DateTime modified;
+}
+
+_MutableRemoteFile _remoteText(String text) => _remoteBytes(utf8.encode(text));
+
+_MutableRemoteFile _remoteBytes(List<int> bytes) => _MutableRemoteFile(
+  bytes: bytes,
+  etag: '"fixture-${sha256.convert(bytes)}"',
+  modified: DateTime.utc(2030),
+);
+
+Future<HttpServer> _missingWebDavServer() async {
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  server.listen((request) async {
+    request.response.statusCode = HttpStatus.notFound;
+    await request.response.close();
+  });
+  return server;
 }
 
 Future<HttpServer> _mutableWebDavServer(

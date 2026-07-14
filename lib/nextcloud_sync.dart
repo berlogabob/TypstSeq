@@ -136,6 +136,65 @@ class NextcloudConfig {
   }
 }
 
+enum RemoteVaultKind { missing, empty, validVault, nonVault }
+
+enum InitialSyncMode { uploadLocal, downloadRemote, safeMerge }
+
+InitialSyncMode initialSyncModeFor({
+  required bool localHasData,
+  required bool remoteHasData,
+}) => localHasData && !remoteHasData
+    ? InitialSyncMode.uploadLocal
+    : !localHasData && remoteHasData
+    ? InitialSyncMode.downloadRemote
+    : InitialSyncMode.safeMerge;
+
+class RemoteVaultInspection {
+  const RemoteVaultInspection(
+    this.kind, {
+    this.fileCount = 0,
+    this.userFileCount = 0,
+  });
+
+  final RemoteVaultKind kind;
+  final int fileCount;
+  final int userFileCount;
+}
+
+class LocalSyncInspection {
+  const LocalSyncInspection({
+    required this.userFileCount,
+    required this.pristineStarterPaths,
+  });
+
+  final int userFileCount;
+  final List<String> pristineStarterPaths;
+
+  bool get hasUserContent => userFileCount > 0;
+}
+
+Future<LocalSyncInspection> inspectLocalSync(Vault vault) async {
+  var userFiles = 0;
+  final pristine = <String>[];
+  for (final entry in await vault.storage.list(recursive: true)) {
+    if (entry.isDirectory || !isSyncableVaultPath(entry.path)) continue;
+    if (entry.path.startsWith('_system/')) continue;
+    if (entry.path.startsWith('daily/') && entry.path.endsWith('.typ')) {
+      final source = await vault.storage.readText(entry.path);
+      if (isPristineStarterNote(entry.path, source)) {
+        pristine.add(entry.path);
+        continue;
+      }
+    }
+    userFiles++;
+  }
+  pristine.sort();
+  return LocalSyncInspection(
+    userFileCount: userFiles,
+    pristineStarterPaths: pristine,
+  );
+}
+
 class NextcloudSync {
   NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
 
@@ -146,7 +205,40 @@ class NextcloudSync {
 
   static Duration propfindBodyTimeout = const Duration(seconds: 60);
 
-  Future<SyncResult> sync(Vault vault, {String trigger = 'manual'}) async {
+  Future<RemoteVaultInspection> inspectRemoteVault() async {
+    try {
+      final remote = await _remoteFiles(
+        allowMissing: true,
+        includeNonSyncable: true,
+      );
+      if (remote == null) {
+        return const RemoteVaultInspection(RemoteVaultKind.missing);
+      }
+      if (remote.isEmpty) {
+        return const RemoteVaultInspection(RemoteVaultKind.empty);
+      }
+      final userFiles = remote.keys
+          .where(
+            (path) => isSyncableVaultPath(path) && !path.startsWith('_system/'),
+          )
+          .length;
+      return RemoteVaultInspection(
+        remote.containsKey('_system/tylog.typ')
+            ? RemoteVaultKind.validVault
+            : RemoteVaultKind.nonVault,
+        fileCount: remote.length,
+        userFileCount: userFiles,
+      );
+    } finally {
+      _client.close(force: true);
+    }
+  }
+
+  Future<SyncResult> sync(
+    Vault vault, {
+    String trigger = 'manual',
+    InitialSyncMode? initialMode,
+  }) async {
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     var stage = 'start';
     String? currentPath;
@@ -182,8 +274,11 @@ class NextcloudSync {
       await _ensureConfiguredFolder();
       progress('load-local-state');
       final loadedState = await _loadSyncState(vault);
-      final syncState = loadedState.cursors;
-      if (loadedState.recovered) {
+      final syncState = initialMode == null
+          ? loadedState.cursors
+          : <String, SyncCursor>{};
+      final stateRecovered = initialMode == null && loadedState.recovered;
+      if (stateRecovered) {
         traceEvents.add({
           'timestamp': DateTime.now().toUtc().toIso8601String(),
           'runId': runId,
@@ -192,8 +287,38 @@ class NextcloudSync {
         });
       }
       progress('list-remote');
-      final remote = await _remoteFiles();
+      final remote = (await _remoteFiles())!;
       remoteCount = remote.length;
+      final remoteUserCount = remote.keys
+          .where((path) => !path.startsWith('_system/'))
+          .length;
+      if (initialMode == InitialSyncMode.uploadLocal &&
+          (remoteUserCount > 0 ||
+              remote.isNotEmpty && !remote.containsKey('_system/tylog.typ'))) {
+        throw StateError(
+          'The cloud folder changed and is no longer an empty TyLog vault.',
+        );
+      }
+      if (initialMode == InitialSyncMode.downloadRemote &&
+          (!remote.containsKey('_system/tylog.typ') || remoteUserCount == 0)) {
+        throw StateError(
+          'The cloud folder changed and is not a populated TyLog vault.',
+        );
+      }
+      if (initialMode == InitialSyncMode.safeMerge &&
+          remote.isNotEmpty &&
+          !remote.containsKey('_system/tylog.typ')) {
+        throw StateError('The cloud folder is not a TyLog vault.');
+      }
+      if (initialMode == InitialSyncMode.downloadRemote) {
+        final local = await inspectLocalSync(vault);
+        if (local.hasUserContent) {
+          throw StateError('The local vault changed and is no longer empty.');
+        }
+        for (final path in local.pristineStarterPaths) {
+          await vault.storage.delete(path);
+        }
+      }
       progress('scan-local');
       repaired = await _cleanResolvedConflictCopies(vault);
       final localEntries = await _localFiles(vault.storage);
@@ -255,8 +380,26 @@ class NextcloudSync {
         if (unresolved.contains(path)) {
           skip++;
           reason = 'unresolved-conflict';
+        } else if (initialMode == InitialSyncMode.downloadRemote) {
+          if (remoteExists) {
+            action = SyncAction.download;
+            final download = await _downloadStorage(
+              path,
+              vault.storage,
+              protectNonEmpty: true,
+            );
+            if (download.protected) {
+              throw StateError('Cloud file $path is empty; local copy kept.');
+            }
+            observedRemoteEtag = download.etag;
+            down++;
+            reason = localExists ? 'initial-cloud-copy' : 'initial-download';
+          } else {
+            skip++;
+            reason = 'initial-local-only';
+          }
         } else if ((prev == null && localExists && remoteExists) ||
-            (loadedState.recovered && localExists && remoteExists) ||
+            (stateRecovered && localExists && remoteExists) ||
             (prev != null &&
                 localChanged &&
                 remoteChanged &&
@@ -300,7 +443,7 @@ class NextcloudSync {
             reason = prev == null ? 'first-sync-different' : 'both-changed';
           }
         } else if (prev != null && !localExists && remoteExists) {
-          if (remoteChanged || loadedState.recovered) {
+          if (remoteChanged || stateRecovered) {
             action = SyncAction.conflict;
             await _storeConflict(
               vault,
@@ -492,7 +635,7 @@ class NextcloudSync {
     String? mergedText,
   }) async {
     try {
-      final remote = await _remoteFiles();
+      final remote = (await _remoteFiles())!;
       final currentRemote = remote[conflict.path];
       if (conflict.remoteExists != (currentRemote != null) ||
           conflict.remoteEtag != null &&
@@ -594,7 +737,10 @@ class NextcloudSync {
     return storage.hash(path);
   }
 
-  Future<Map<String, _RemoteFile>> _remoteFiles() async {
+  Future<Map<String, _RemoteFile>?> _remoteFiles({
+    bool allowMissing = false,
+    bool includeNonSyncable = false,
+  }) async {
     final request = await _open('PROPFIND', config.rootUri);
     request.headers.set('Depth', 'infinity');
     request.write(
@@ -605,6 +751,7 @@ class NextcloudSync {
         .transform(utf8.decoder)
         .join()
         .timeout(propfindBodyTimeout);
+    if (allowMissing && response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
       throw HttpException('PROPFIND unexpected status ${response.statusCode}');
     }
@@ -638,7 +785,7 @@ class NextcloudSync {
         if (lengthValue != null && length == null) {
           throw const FormatException('invalid getcontentlength');
         }
-        if (!_isSyncInternal(path)) {
+        if (includeNonSyncable || !_isSyncInternal(path)) {
           files[path] = _RemoteFile(
             modified: HttpDate.parse(modifiedValue),
             etag: _xmlValue(block, 'getetag'),

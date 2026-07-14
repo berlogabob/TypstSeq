@@ -10,6 +10,9 @@ import 'package:tylog_core/vault.dart';
 import 'flutter_typst_inspector.dart';
 import 'tylog_assets.dart';
 
+export 'package:tylog_core/vault.dart'
+    show VaultStorageInspection, VaultStorageKind, inspectVaultStorage;
+
 class Vault {
   Vault(Directory root) : storage = LocalVaultStorage(root);
   Vault.withStorage(this.storage);
@@ -234,6 +237,22 @@ String _noteSource({
 = $title
 
 ''';
+
+bool isPristineStarterNote(String path, String source) {
+  final match = RegExp(
+    r'^daily/\d{4}/\d{2}/(\d{4}-\d{2}-\d{2})\.typ$',
+  ).firstMatch(path);
+  final day = match?.group(1);
+  return day != null &&
+      source ==
+          _noteSource(
+            id: day,
+            title: day,
+            kind: 'daily',
+            date: day,
+            tags: const ['journal'],
+          );
+}
 
 String _typstList(List<String> values) => values.isEmpty
     ? '()'

@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault_registry.dart';
@@ -79,6 +81,42 @@ void main() {
       expect(storage._files, isEmpty);
     },
   );
+
+  test('failed initial sync does not activate draft cloud config', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response.statusCode = HttpStatus.internalServerError;
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: _MemoryStorage(),
+    );
+    final draft = NextcloudConfig(
+      serverUrl:
+          'http://${server.address.address}:${server.port}/remote.php/dav/files/alice/TyLogVault',
+      username: 'alice',
+      password: 'secret',
+    );
+
+    expect(
+      await controller.syncNow(
+        trigger: 'setup',
+        configOverride: draft,
+        initialMode: InitialSyncMode.safeMerge,
+      ),
+      isFalse,
+    );
+    expect(controller.cloud, isNull);
+    expect(controller.syncing, isFalse);
+  });
 }
 
 class _FakeInspector implements TypstInspector {

@@ -282,16 +282,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } on PlatformException {
         if (active.storageKind != 'android-tree') rethrow;
-        final selection = await _requestAndroidVaultAccess();
-        if (selection == null) {
+        final selected = await _chooseAndroidVault(
+          allowEmpty: false,
+          requiredUri: active.treeUri,
+        );
+        if (selected == null) {
           _closeVault('Folder access is required to open this vault');
           return;
         }
-        final sameTree = selection.uri == active.treeUri;
-        active = await registry.rebindTree(active, selection);
+        active = await registry.rebindTree(active, selected.selection);
         await Vault.withStorage(
           active.storage,
-        ).ensureCreated(createIfMissing: !sameTree);
+        ).ensureCreated(createIfMissing: false);
       } on StateError {
         if (active.storageKind == 'android-tree') rethrow;
         var path = '${active.path}-v5';
@@ -358,8 +360,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<bool> _pickVault({bool closeCurrent = true}) async {
     if (closeCurrent && Navigator.canPop(context)) Navigator.pop(context);
     if (Platform.isAndroid) {
-      final selection = await _requestAndroidVaultAccess();
-      if (selection == null) return false;
+      final selected = await _chooseAndroidVault(allowEmpty: true);
+      if (selected == null) return false;
+      final selection = selected.selection;
       final storage = AndroidTreeVaultStorage(
         uri: selection.uri,
         name: selection.name,
@@ -404,11 +407,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _migrateAndroidVault(VaultEntry entry) async {
-    final selection = await _requestAndroidVaultAccess();
-    if (selection == null) return false;
+    final selected = await _chooseAndroidVault(allowEmpty: true);
+    if (selected == null) return false;
+    final selection = selected.selection;
     try {
-      final migrated = await vaultRegistry!.migrateToTree(entry, selection);
-      await vaultRegistry!.select(migrated);
+      final registry = vaultRegistry!;
+
+      Future<void> adoptSelectedVault() async {
+        final storage = AndroidTreeVaultStorage(
+          uri: selection.uri,
+          name: selection.name,
+        );
+        await Vault.withStorage(storage).ensureCreated();
+        final replacement = await registry.addTree(selection);
+        await registry.select(replacement);
+        await registry.forget(entry);
+      }
+
+      if (selected.inspection.kind == VaultStorageKind.validVault) {
+        await adoptSelectedVault();
+      } else {
+        final source = await inspectVaultStorage(entry.storage);
+        if (source.kind == VaultStorageKind.validVault) {
+          final migrated = await registry.migrateToTree(entry, selection);
+          await registry.select(migrated);
+        } else if (source.kind == VaultStorageKind.empty) {
+          await adoptSelectedVault();
+        } else {
+          throw StateError(
+            'The previous app vault is not a valid v5 vault; its files were kept.',
+          );
+        }
+      }
       return true;
     } catch (error) {
       if (mounted) {
@@ -418,6 +448,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return false;
     }
+  }
+
+  Future<({AndroidTreeSelection selection, VaultStorageInspection inspection})?>
+  _chooseAndroidVault({required bool allowEmpty, String? requiredUri}) async {
+    Future<bool> chooseAgain(String message) async {
+      if (!mounted) return false;
+      return await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Folder cannot be used'),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Choose another folder'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+
+    var explainAccess = true;
+    while (mounted) {
+      AndroidTreeSelection? selection;
+      try {
+        selection = explainAccess
+            ? await _requestAndroidVaultAccess()
+            : await AndroidTreeVaultStorage.pick();
+        explainAccess = false;
+      } catch (error) {
+        if (!await chooseAgain('TyLog could not open this folder: $error')) {
+          return null;
+        }
+        continue;
+      }
+      if (selection == null) return null;
+      final storage = AndroidTreeVaultStorage(
+        uri: selection.uri,
+        name: selection.name,
+      );
+      VaultStorageInspection? inspection;
+      Object? inspectionError;
+      try {
+        inspection = await inspectVaultStorage(storage);
+        final acceptedKind =
+            inspection.kind == VaultStorageKind.validVault ||
+            allowEmpty && inspection.kind == VaultStorageKind.empty;
+        if (acceptedKind &&
+            (requiredUri == null || selection.uri == requiredUri)) {
+          await storage.persistAccess();
+          return (selection: selection, inspection: inspection);
+        }
+      } catch (error) {
+        inspectionError = error;
+      }
+      final message = inspectionError != null
+          ? 'TyLog could not inspect this folder: $inspectionError'
+          : requiredUri != null && selection.uri != requiredUri
+          ? 'This is a different folder. Select the original vault folder.'
+          : inspection!.kind == VaultStorageKind.incompatibleVault
+          ? 'This folder has a malformed or unsupported TyLog vault marker.'
+          : allowEmpty
+          ? 'This folder contains other files. Choose an empty folder or an existing TyLog vault.'
+          : 'This is not the existing TyLog vault. Select its original folder.';
+      if (!await chooseAgain(message)) return null;
+    }
+    return null;
   }
 
   Future<AndroidTreeSelection?> _requestAndroidVaultAccess() async {
@@ -991,106 +1094,190 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final folder = TextEditingController(
       text: cfg?.remoteFolder ?? 'TyLogVault',
     );
-    var draftWrites = Future<void>.value();
     NextcloudConfig draft() => NextcloudConfig(
       serverUrl: url.text,
       username: user.text,
       password: pass.text,
       remoteFolder: folder.text,
     );
-
-    void remember(StateSetter refresh) {
-      refresh(() {});
-      final snapshot = draft();
-      draftWrites = draftWrites
-          .then((_) => snapshot.save(vaultId: vaultId))
-          .catchError((_) {});
-    }
-
-    final saved = await showDialog<NextcloudConfig>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Connect Nextcloud'),
-          content: SingleChildScrollView(
-            child: AutofillGroup(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: url,
-                    keyboardType: TextInputType.url,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.url],
-                    onChanged: (_) => remember(setDialogState),
-                    decoration: const InputDecoration(
-                      labelText: 'Server URL',
-                      hintText: 'https://cloud.example.com',
+    while (true) {
+      if (!mounted) return false;
+      final saved = await showDialog<NextcloudConfig>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Connect Nextcloud'),
+            content: SingleChildScrollView(
+              child: AutofillGroup(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: url,
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.url],
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Server URL',
+                        hintText: 'https://cloud.example.com',
+                      ),
                     ),
-                  ),
-                  TextField(
-                    controller: user,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.username],
-                    onChanged: (_) => remember(setDialogState),
-                    decoration: const InputDecoration(labelText: 'Login'),
-                  ),
-                  TextField(
-                    controller: pass,
-                    obscureText: true,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.password],
-                    onChanged: (_) => remember(setDialogState),
-                    decoration: const InputDecoration(
-                      labelText: 'Password or app password',
+                    TextField(
+                      controller: user,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.username],
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(labelText: 'Login'),
                     ),
-                  ),
-                  TextField(
-                    controller: folder,
-                    textInputAction: TextInputAction.done,
-                    onChanged: (_) => remember(setDialogState),
-                    decoration: const InputDecoration(
-                      labelText: 'Remote folder',
-                      helperText: 'Created inside your Nextcloud files.',
+                    TextField(
+                      controller: pass,
+                      obscureText: true,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.password],
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Password or app password',
+                      ),
                     ),
-                  ),
-                ],
+                    TextField(
+                      controller: folder,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Remote folder',
+                        helperText: 'Created inside your Nextcloud files.',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: draft().isReady
+                    ? () {
+                        TextInput.finishAutofillContext();
+                        Navigator.pop(context, draft());
+                      }
+                    : null,
+                child: const Text('Check folder'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: draft().isReady
-                  ? () {
-                      TextInput.finishAutofillContext();
-                      Navigator.pop(context, draft());
-                    }
-                  : null,
-              child: const Text('Save and connect'),
-            ),
-          ],
         ),
+      );
+      if (saved == null || !mounted) return false;
+      final opened = vault;
+      final registry = vaultRegistry;
+      if (opened == null || registry == null) return false;
+      try {
+        final local = await inspectLocalSync(opened);
+        final remote = await NextcloudSync(saved).inspectRemoteVault();
+        if (!mounted) return false;
+        if (remote.kind == RemoteVaultKind.nonVault) {
+          await _showNextcloudSetupError(
+            'This cloud folder contains files but is not a TyLog vault. Choose another folder.',
+          );
+          continue;
+        }
+        final mode = await _confirmInitialSync(local, remote);
+        if (mode == null || !mounted) return false;
+        final connected = await workspace.syncNow(
+          trigger: 'setup',
+          configOverride: saved,
+          initialMode: mode,
+        );
+        if (!connected) {
+          await _showNextcloudSetupError(
+            workspace.syncError ?? 'Initial sync did not complete.',
+          );
+          continue;
+        }
+        await registry.setCloud(registry.active, saved);
+        setState(() {
+          cloud = saved;
+          status = 'Nextcloud connected';
+        });
+        _startCloudPolling();
+        return true;
+      } catch (error) {
+        if (!mounted) return false;
+        await _showNextcloudSetupError(friendlySyncError(error));
+      }
+    }
+  }
+
+  Future<InitialSyncMode?> _confirmInitialSync(
+    LocalSyncInspection local,
+    RemoteVaultInspection remote,
+  ) {
+    final localHasData = local.hasUserContent;
+    final remoteHasData =
+        remote.kind == RemoteVaultKind.validVault && remote.userFileCount > 0;
+    final mode = initialSyncModeFor(
+      localHasData: localHasData,
+      remoteHasData: remoteHasData,
+    );
+    final (title, message, action) = switch ((localHasData, remoteHasData)) {
+      (false, false) => (
+        'Start new cloud sync?',
+        'Both vaults are empty. TyLog will create the cloud folder and upload the starter vault.',
+        'Start sync',
+      ),
+      (true, false) => (
+        'Upload local vault?',
+        'The local vault has ${local.userFileCount} user files and the cloud folder is empty.',
+        'Upload local vault',
+      ),
+      (false, true) => (
+        'Use cloud vault?',
+        'The cloud vault has ${remote.userFileCount} user files. TyLog will download them and replace only untouched starter notes.',
+        'Use cloud vault',
+      ),
+      (true, true) => (
+        'Merge both vaults?',
+        'Unique files will copy both ways. Different files at the same path become conflicts; nothing is deleted.',
+        'Safe merge',
+      ),
+    };
+    return showDialog<InitialSyncMode>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, mode),
+            child: Text(action),
+          ),
+        ],
       ),
     );
-    await draftWrites;
-    if (saved == null) return false;
-    if (!mounted) return false;
-    final registry = vaultRegistry;
-    if (registry == null) return false;
-    await saved.save(vaultId: vaultId);
-    await registry.setCloud(registry.active, saved);
-    setState(() {
-      cloud = saved;
-      status = 'Nextcloud saved';
-    });
-    _startCloudPolling();
-    unawaited(_syncNow(trigger: 'settings'));
-    return true;
   }
+
+  Future<void> _showNextcloudSetupError(String message) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Nextcloud not connected'),
+      content: Text(message),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Back to setup'),
+        ),
+      ],
+    ),
+  );
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {

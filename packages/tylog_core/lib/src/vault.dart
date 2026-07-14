@@ -27,6 +27,42 @@ abstract final class TylogVaultPaths {
   ];
 }
 
+enum VaultStorageKind { empty, validVault, nonVault, incompatibleVault }
+
+class VaultStorageInspection {
+  const VaultStorageInspection(this.kind, {this.entryCount = 0});
+
+  final VaultStorageKind kind;
+  final int entryCount;
+}
+
+Future<VaultStorageInspection> inspectVaultStorage(VaultStorage storage) async {
+  final entries = (await storage.list())
+      .where((entry) => entry.path.split('/').last != '.DS_Store')
+      .toList();
+  if (!await storage.exists(TylogVaultPaths.settings)) {
+    return VaultStorageInspection(
+      entries.isEmpty ? VaultStorageKind.empty : VaultStorageKind.nonVault,
+      entryCount: entries.length,
+    );
+  }
+  try {
+    final settings = jsonDecode(
+      await storage.readText(TylogVaultPaths.settings),
+    );
+    if (settings is Map && settings['version'] == 5) {
+      return VaultStorageInspection(
+        VaultStorageKind.validVault,
+        entryCount: entries.length,
+      );
+    }
+  } catch (_) {}
+  return VaultStorageInspection(
+    VaultStorageKind.incompatibleVault,
+    entryCount: entries.length,
+  );
+}
+
 Future<void> initializeVaultStorage(
   VaultStorage storage, {
   required Map<String, List<int>> managedFiles,
@@ -34,11 +70,15 @@ Future<void> initializeVaultStorage(
   required String legacyHelper,
   bool createIfMissing = true,
 }) async {
-  final hasSettings = await storage.exists(TylogVaultPaths.settings);
+  final inspection = await inspectVaultStorage(storage);
+  final hasSettings = inspection.kind == VaultStorageKind.validVault;
   if (!hasSettings) {
-    if (await _hasLegacyContent(storage)) {
+    if (inspection.kind == VaultStorageKind.incompatibleVault) {
+      throw StateError('This vault marker is malformed or unsupported.');
+    }
+    if (inspection.kind == VaultStorageKind.nonVault) {
       throw StateError(
-        'This is not a TyLog v5 vault. Choose an empty folder; automatic migration is intentionally unsupported.',
+        'This folder contains other files. Choose an empty folder or a TyLog v5 vault.',
       );
     }
     if (!createIfMissing) {
@@ -55,14 +95,6 @@ Future<void> initializeVaultStorage(
       TylogVaultPaths.settings,
       jsonEncode({'name': 'TyLogVault', 'version': 5}),
     );
-  } else {
-    final settings =
-        jsonDecode(await storage.readText(TylogVaultPaths.settings)) as Map;
-    if (settings['version'] != 5) {
-      throw StateError(
-        'This vault uses schema ${settings['version']}; TyLog requires a v5 vault.',
-      );
-    }
   }
 
   if (!await storage.exists(TylogVaultPaths.helper)) {
@@ -96,19 +128,6 @@ Future<void> initializeVaultStorage(
   if (!await storage.exists(TylogVaultPaths.bibliography)) {
     await storage.writeText(TylogVaultPaths.bibliography, '{}\n');
   }
-}
-
-Future<bool> _hasLegacyContent(VaultStorage storage) async {
-  for (final entry in await storage.list()) {
-    final name = entry.path.split('/').last;
-    if (name == '.DS_Store') continue;
-    if (name == '.tylog' && entry.isDirectory) {
-      if ((await storage.list(path: '.tylog')).isNotEmpty) return true;
-      continue;
-    }
-    return true;
-  }
-  return false;
 }
 
 bool _sameBytes(List<int> left, List<int> right) {
