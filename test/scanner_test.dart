@@ -177,6 +177,28 @@ Text "#tylog.tag(\"ignored\")"
     expect((values.single as Map)['id'], 'n1');
   });
 
+  test('Format v1 envelopes retain the six stable metadata labels', () {
+    const queried = '''[
+      {"func":"metadata","value":{"schema":1,"entity":"note","id":"n1"},"label":"<tylog-note>"},
+      {"func":"metadata","value":{"schema":1,"entity":"link","target":"n2"},"label":"<tylog-link>"},
+      {"func":"metadata","value":{"schema":1,"entity":"tag","name":"format"},"label":"<tylog-tag>"},
+      {"func":"metadata","value":{"schema":1,"entity":"date","date":"2026-07-14"},"label":"<tylog-date>"},
+      {"func":"metadata","value":{"schema":1,"entity":"attachment","path":"assets/spec.pdf"},"label":"<tylog-attachment>"},
+      {"func":"metadata","value":{"schema":1,"entity":"task","id":"t1","text":"Test"},"label":"<tylog-task>"}
+    ]''';
+
+    final values = decodeTypstMetadata(queried).cast<Map>();
+    expect(values.map((value) => value['schema']), everyElement(1));
+    expect(values.map((value) => value['entity']), [
+      'note',
+      'link',
+      'tag',
+      'date',
+      'attachment',
+      'task',
+    ]);
+  });
+
   test('scanner derives native Typst citations outside comments and strings', () {
     final note = scanNote(
       'notes/A.typ',
