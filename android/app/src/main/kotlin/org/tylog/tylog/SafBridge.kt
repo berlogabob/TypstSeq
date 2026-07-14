@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -88,7 +89,8 @@ class SafBridge(
 
         if (call.method !in setOf(
                 "exists", "createDirectory", "list", "stat", "read", "write",
-                "delete", "hash", "import", "materialize", "open",
+                "delete", "deleteRoot", "releaseAccess", "hash", "import",
+                "materialize", "open",
             )
         ) {
             result.notImplemented()
@@ -114,6 +116,19 @@ class SafBridge(
                 "delete" -> resolve(tree, path(call))
                     ?.let { DocumentsContract.deleteDocument(resolver, it) }
                     .let { null }
+                "deleteRoot" -> {
+                    val document = root(tree)
+                    if (documentExists(document)) {
+                        require(DocumentsContract.deleteDocument(resolver, document)) {
+                            "Storage provider could not delete the vault folder"
+                        }
+                    }
+                    null
+                }
+                "releaseAccess" -> resolver.releasePersistableUriPermission(
+                    tree,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                ).let { null }
                 "hash" -> hash(resolveRequired(tree, path(call)))
                 "import" -> writeAtomic(
                     tree,
@@ -257,7 +272,7 @@ class SafBridge(
     }
 
     private fun list(tree: Uri, path: String, recursive: Boolean): List<Map<String, Any?>> {
-        val parent = resolveRequired(tree, path)
+        val parent = resolve(tree, path) ?: return emptyList()
         require(isDirectory(parent)) { "$path is not a folder" }
         val out = mutableListOf<Map<String, Any?>>()
         listInto(tree, parent, path, recursive, out)
@@ -310,6 +325,12 @@ class SafBridge(
                 "modified" to if (cursor.isNull(modifiedColumn)) null else cursor.getLong(modifiedColumn),
             )
         }
+    }
+
+    private fun documentExists(uri: Uri): Boolean = try {
+        query(uri).use { it.moveToFirst() }
+    } catch (_: FileNotFoundException) {
+        false
     }
 
     private fun query(uri: Uri): Cursor = resolver.query(

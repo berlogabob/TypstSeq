@@ -135,10 +135,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final sourceController = TextEditingController();
+  final sourceEditorKey = GlobalKey<_EditorState>();
   late final TyLogEditingController richController;
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
+  int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
@@ -382,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return false;
       }
     }
-    final path = await FilePicker.platform.getDirectoryPath(
+    final path = await FilePicker.getDirectoryPath(
       dialogTitle: 'Choose vault folder',
     );
     if (path == null) return false;
@@ -553,16 +555,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _forgetVault(VaultEntry entry) async {
     final registry = vaultRegistry!;
     try {
-      if (entry.id == registry.activeId && registry.entries.length > 1) {
-        await _switchVault(
-          registry.entries.firstWhere((item) => item.id != entry.id),
-        );
-      }
+      workspace.cancelPendingWork();
+      final wasActive = entry.id == registry.activeId;
       await registry.forget(entry);
       if (registry.entries.isEmpty) {
         _closeVault('Forgot ${entry.name}; add a vault to continue');
         return;
       }
+      if (wasActive) await _openVault(registry.active);
       if (mounted) setState(() => status = 'Forgot ${entry.name}; files kept');
     } catch (e) {
       if (mounted) setState(() => status = 'Forget failed: $e');
@@ -659,7 +659,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => status = 'Delete failed; vault kept: $e');
+        setState(
+          () => status = entry.storageKind == 'android-tree'
+              ? 'Delete failed; use Android Files to delete ${entry.name}: $e'
+              : 'Delete failed; vault kept: $e',
+        );
       }
     }
   }
@@ -954,6 +958,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final title = TextEditingController(text: current.title);
     final tagsText = TextEditingController(text: current.tags.join(', '));
     final aliases = TextEditingController(text: current.aliases.join(', '));
+    final entityType = TextEditingController(
+      text: current.properties['type']?.toString() ?? '',
+    );
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -979,6 +986,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   labelText: 'Aliases, comma-separated',
                 ),
               ),
+              TextField(
+                controller: entityType,
+                decoration: const InputDecoration(
+                  labelText: 'Entity type (optional)',
+                  hintText: 'person, place, castle…',
+                ),
+              ),
             ],
           ),
         ),
@@ -995,6 +1009,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (saved == true) {
+      final properties = Map<String, Object?>.from(current.properties);
+      if (entityType.text.trim().isEmpty) {
+        properties.remove('type');
+      } else {
+        properties['type'] = entityType.text.trim();
+      }
       final updated = replaceNoteHeader(
         _currentSource(),
         NoteMetadataDraft(
@@ -1005,7 +1025,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           date: current.date,
           tags: _csvValues(tagsText.text),
           aliases: _csvValues(aliases.text),
-          properties: current.properties,
+          properties: properties,
         ),
       );
       _loadSource(updated);
@@ -1033,7 +1053,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               .where((problem) => !problem.code.startsWith('sync-'))
               .toList(),
           onOpenNote: _openPath,
-          onSetTaskStatus: _setTaskStatus,
         ),
       ),
     );
@@ -1297,6 +1316,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _showVaults() {
+    final registry = vaultRegistry;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _VaultsSheet(
+        vaults: registry?.entries ?? const [],
+        activeVaultId: registry?.activeId,
+        onAddVault: () {
+          if (vaultRegistry != null) unawaited(_pickVault());
+        },
+        onSwitchVault: (entry) => unawaited(_switchVault(entry)),
+        onForgetVault: (entry) => unawaited(_forgetVault(entry)),
+        onDeleteVault: (entry) => unawaited(_deleteVault(entry)),
+      ),
+    );
+  }
+
   void _showSettings() {
     final registry = vaultRegistry;
     final activeLocation = vaultEntryLocation(_activeRegistryEntry);
@@ -1304,7 +1341,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final vaultPath = openError
         ? [activeLocation, status].whereType<String>().join('\n')
         : activeLocation ?? status;
-    showDialog<void>(
+    showDialog<bool>(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -1313,21 +1350,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             vaultPath: vaultPath,
             cloud: cloud,
             syncing: syncing,
-            vaults: registry?.entries ?? const [],
-            activeVaultId: registry?.activeId,
-            onAddVault: () => unawaited(_pickVault()),
-            onSwitchVault: (entry) {
-              Navigator.pop(context);
-              unawaited(_switchVault(entry));
-            },
-            onForgetVault: (entry) {
-              Navigator.pop(context);
-              unawaited(_forgetVault(entry));
-            },
-            onDeleteVault: (entry) {
-              Navigator.pop(context);
-              unawaited(_deleteVault(entry));
-            },
+            vaultCount: registry?.entries.length ?? 0,
+            onManageVaults: () => Navigator.pop(context, true),
             onNextcloud: () {
               Navigator.pop(context);
               unawaited(_showSyncDashboard());
@@ -1340,7 +1364,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
-    );
+    ).then((manageVaults) {
+      if (manageVaults == true && mounted) _showVaults();
+    });
   }
 
   Future<void> _showTypstHelp({String? error}) async {
@@ -1426,31 +1452,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _openNote(path);
   }
 
-  void _showPreview() {
-    setState(() => mode = 'preview');
-  }
-
-  void _showJournal() {
+  void _showEditor() {
     if (mode == 'source' || mode == 'split') {
       richController.loadSource(sourceController.text);
     }
     setState(() => mode = 'normal');
   }
 
-  void _showToday() {
-    if (!dirty) setState(() => mode = 'today');
+  Future<void> _showToday() async {
+    if (dirty) await _save();
+    if (!mounted) return;
+    setState(() => primaryDestination = 0);
+    await _openToday();
   }
 
-  void _showSource() => setState(() => mode = 'source');
-
-  void _cycleEditorMode() {
-    switch (mode) {
-      case 'preview':
-        _showSource();
-      case 'source':
-        _showJournal();
-      default:
-        _showPreview();
+  void _setEditorMode(String next) {
+    if (next == 'normal') {
+      _showEditor();
+    } else {
+      if (mode == 'normal') sourceController.text = _currentSource();
+      setState(() => mode = next);
     }
   }
 
@@ -1693,6 +1714,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         content: TextField(
           controller: input,
           autofocus: true,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            labelText: title,
+          ),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
@@ -1729,22 +1754,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _queueAutosave();
   }
 
-  Future<NoteRef?> _chooseNote({String? kind, bool create = false}) async {
+  Future<NoteRef?> _chooseNote({
+    String? kind,
+    bool create = false,
+    String? heading,
+  }) async {
     final notes = (index?.notes ?? const <NoteRef>[])
         .where((note) => kind == null || note.kind == kind)
         .toList();
-    final chosen = await showModalBottomSheet<NoteRef>(
+    final chosen = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
           children: [
+            if (heading != null)
+              ListTile(
+                title: Text(heading),
+                subtitle: const Text('Dismiss to use no filter'),
+              ),
             if (create)
               ListTile(
                 leading: const Icon(Icons.add),
                 title: Text('Create ${kind ?? 'note'}'),
-                onTap: () => Navigator.pop(context),
+                onTap: () => Navigator.pop(context, 'create'),
               ),
             for (final item in notes)
               ListTile(
@@ -1759,7 +1793,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (chosen != null || !create) return chosen;
+    if (chosen is NoteRef) return chosen;
+    if (chosen != 'create') return null;
     final title = await _askText(
       'New ${kind ?? 'note'}',
       initialValue: _selectedText(),
@@ -1770,19 +1805,154 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return index?.notesByPath[file];
   }
 
+  List<NoteRef> get _entities =>
+      (index?.notes ?? const <NoteRef>[])
+          .where(
+            (item) => (item.properties['type']?.toString() ?? '').isNotEmpty,
+          )
+          .toList()
+        ..sort((a, b) => a.title.compareTo(b.title));
+
+  Future<NoteRef?> _chooseEntity() async {
+    final chosen = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('New entity'),
+              onTap: () => Navigator.pop(context, 'create'),
+            ),
+            for (final item in _entities)
+              ListTile(
+                leading: const Icon(Icons.alternate_email),
+                title: Text(item.title),
+                subtitle: Text(item.properties['type'].toString()),
+                onTap: () => Navigator.pop(context, item),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen is NoteRef) return chosen;
+    return chosen == 'create' ? _createEntity() : null;
+  }
+
+  Future<NoteRef?> _createEntity() async {
+    final title = TextEditingController();
+    final type = TextEditingController(text: 'person');
+    final aliases = TextEditingController();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New entity'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: title,
+              autofocus: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Name',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: type,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Type',
+                hintText: 'person, place, castle…',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: aliases,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Aliases, comma-separated',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    final name = title.text.trim();
+    final entityType = type.text.trim();
+    final v = vault;
+    if (save != true || name.isEmpty || entityType.isEmpty || v == null) {
+      return null;
+    }
+    final file = await v.page(name);
+    await workspace.refreshIndex(force: true);
+    final created = index?.notesByPath[file];
+    if (created == null) return null;
+    await v.saveNote(
+      file,
+      replaceNoteHeader(
+        await v.storage.readText(file),
+        NoteMetadataDraft(
+          id: created.id,
+          title: created.title,
+          kind: created.kind,
+          tags: created.tags,
+          aliases: _csvValues(aliases.text),
+          properties: {...created.properties, 'type': entityType},
+        ),
+      ),
+    );
+    await workspace.refreshIndex(force: true);
+    return index?.notesByPath[file];
+  }
+
   Future<void> _runMagic(MagicAction action) async {
     switch (action) {
       case MagicAction.bold:
       case MagicAction.italic:
       case MagicAction.heading:
-      case MagicAction.equation:
         _applyMagic(MagicRequest(action: action));
         return;
+      case MagicAction.equation:
+        final selected = _selectedText();
+        final value = selected.isEmpty ? await _askText('Equation') : selected;
+        if (value == null || value.isEmpty) return;
+        _applyMagic(MagicRequest(action: action, value: value));
+        return;
       case MagicAction.table:
-        _applyMagic(const MagicRequest(action: MagicAction.table));
+        final size = await _askTableSize();
+        if (size == null) return;
+        _applyMagic(
+          MagicRequest(
+            action: MagicAction.table,
+            rows: size.$1,
+            columns: size.$2,
+          ),
+        );
         return;
       case MagicAction.noteLink:
         final target = await _chooseNote(create: true);
+        if (target != null) {
+          _applyMagic(
+            MagicRequest(action: action, id: target.id, value: target.title),
+          );
+        }
+        return;
+      case MagicAction.mention:
+        final target = await _chooseEntity();
         if (target != null) {
           _applyMagic(
             MagicRequest(action: action, id: target.id, value: target.title),
@@ -1832,6 +2002,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           firstDate: DateTime(2000),
           lastDate: DateTime(2100),
           initialDate: DateTime.now(),
+          helpText: 'Due date (optional)',
         );
         _applyMagic(
           MagicRequest(
@@ -1890,9 +2061,85 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return DateTime.tryParse(value);
   }
 
+  Future<(int, int)?> _askTableSize() async {
+    final rows = TextEditingController(text: '2');
+    final columns = TextEditingController(text: '2');
+    String? error;
+    final result = await showDialog<(int, int)>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Table size'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: rows,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Rows'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: columns,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Columns'),
+                    ),
+                  ),
+                ],
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(error!),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final rowCount = int.tryParse(rows.text);
+                final columnCount = int.tryParse(columns.text);
+                if (rowCount == null ||
+                    columnCount == null ||
+                    rowCount < 1 ||
+                    rowCount > 10 ||
+                    columnCount < 1 ||
+                    columnCount > 10) {
+                  setDialogState(() => error = 'Use 1–10');
+                  return;
+                }
+                Navigator.pop(context, (rowCount, columnCount));
+              },
+              child: const Text('Insert'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return result;
+  }
+
+  void _magicFeedback(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<String?> _chooseCitation() async {
     final v = vault;
     if (v == null || !await v.storage.exists(Vault.bibliographyPath)) {
+      _magicFeedback('No bibliography entries');
       return null;
     }
     final bib = await v.storage.readText(Vault.bibliographyPath);
@@ -1924,7 +2171,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _insertAttachment() async {
     final v = vault;
     if (v == null) return;
-    final picked = await FilePicker.platform.pickFiles();
+    final picked = await FilePicker.pickFiles();
     final sourcePath = picked?.files.single.path;
     if (sourcePath == null) return;
     final source = File(sourcePath);
@@ -1957,12 +2204,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || ix == null) return;
     final title = await _askText('Report title');
     if (title == null || title.isEmpty) return;
-    final project = await _chooseNote(kind: 'project');
+    final project = await _chooseNote(
+      kind: 'project',
+      heading: 'Project filter (optional)',
+    );
     if (!mounted) return;
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(1900),
       lastDate: DateTime(2200),
+      helpText: 'Date range (optional)',
     );
     final report = await writeReportStorage(
       v.storage,
@@ -1977,85 +2228,167 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final pdf = await exportReportPdfStorage(v.storage, report);
     if (mounted) {
       setState(() => status = 'Created $report and $pdf');
+      _magicFeedback('Created report and PDF');
       _queueCloudSync();
     }
   }
 
   Future<void> _showMagicMenu() async {
-    final action = await showModalBottomSheet<MagicAction>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.8,
-          child: GridView.count(
-            crossAxisCount: MediaQuery.sizeOf(context).width < 500 ? 3 : 4,
-            children: [
-              for (final entry in const <MagicAction, (IconData, String)>{
-                MagicAction.noteLink: (Icons.link, 'Note link'),
-                MagicAction.tag: (Icons.tag, 'Tag'),
-                MagicAction.task: (Icons.task_alt, 'Task'),
-                MagicAction.date: (Icons.event, 'Date'),
-                MagicAction.project: (Icons.work_outline, 'Project'),
-                MagicAction.citation: (Icons.format_quote, 'Citation'),
-                MagicAction.attachment: (Icons.attach_file, 'Attachment'),
-                MagicAction.heading: (Icons.title, 'Heading'),
-                MagicAction.bold: (Icons.format_bold, 'Bold'),
-                MagicAction.italic: (Icons.format_italic, 'Italic'),
-                MagicAction.table: (Icons.table_chart, 'Table'),
-                MagicAction.equation: (Icons.functions, 'Equation'),
-                MagicAction.report: (Icons.picture_as_pdf, 'Report'),
-              }.entries)
-                InkWell(
-                  onTap: () => Navigator.pop(context, entry.key),
-                  child: Semantics(
-                    button: true,
-                    label: entry.value.$2,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(entry.value.$1),
-                        const SizedBox(height: 6),
-                        Text(entry.value.$2, textAlign: TextAlign.center),
-                      ],
+    try {
+      final action = await showModalBottomSheet<MagicAction>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.8,
+            child: GridView.count(
+              crossAxisCount: MediaQuery.sizeOf(context).width < 500 ? 3 : 4,
+              children: [
+                for (final entry in const <MagicAction, (IconData, String)>{
+                  MagicAction.noteLink: (Icons.link, 'Note link'),
+                  MagicAction.mention: (Icons.alternate_email, 'Mention'),
+                  MagicAction.tag: (Icons.tag, 'Tag'),
+                  MagicAction.task: (Icons.task_alt, 'Task'),
+                  MagicAction.date: (Icons.event, 'Date'),
+                  MagicAction.project: (Icons.work_outline, 'Project'),
+                  MagicAction.citation: (Icons.format_quote, 'Citation'),
+                  MagicAction.attachment: (Icons.attach_file, 'Attachment'),
+                  MagicAction.heading: (Icons.title, 'Heading'),
+                  MagicAction.bold: (Icons.format_bold, 'Bold'),
+                  MagicAction.italic: (Icons.format_italic, 'Italic'),
+                  MagicAction.table: (Icons.table_chart, 'Table'),
+                  MagicAction.equation: (Icons.functions, 'Equation'),
+                  MagicAction.report: (Icons.picture_as_pdf, 'Report'),
+                }.entries)
+                  InkWell(
+                    onTap: () => Navigator.pop(context, entry.key),
+                    child: Semantics(
+                      button: true,
+                      label: entry.value.$2,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (entry.key == MagicAction.heading)
+                            Text(
+                              'H1',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            )
+                          else
+                            Icon(entry.value.$1),
+                          const SizedBox(height: 6),
+                          Text(entry.value.$2, textAlign: TextAlign.center),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
+        ),
+      );
+      if (action != null) {
+        try {
+          await _runMagic(action);
+        } catch (error) {
+          _magicFeedback('Magic failed: $error');
+        }
+      }
+    } finally {
+      if (mounted && (mode == 'source' || mode == 'split')) {
+        sourceEditorKey.currentState?.requestFocus();
+      }
+    }
+  }
+
+  Future<void> _selectDestination(int destination) async {
+    if (destination == 3) {
+      await _showKnowledge();
+      return;
+    }
+    if (destination == 4) return;
+    if (dirty) await _save();
+    if (!mounted) return;
+    switch (destination) {
+      case 0:
+        await _showToday();
+        return;
+      case 1:
+        setState(() {
+          primaryDestination = 1;
+          mode = 'journal';
+        });
+        return;
+      case 2:
+        setState(() {
+          primaryDestination = 2;
+          mode = 'library';
+        });
+        return;
+    }
+  }
+
+  Future<void> _showMoreMenu(Widget linksPanel) async {
+    final action = await showModalBottomSheet<_ShellAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final entry in const <_ShellAction, (IconData, String)>{
+              _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
+              _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
+              _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
+              _ShellAction.split: (Icons.vertical_split, 'Split editor'),
+              _ShellAction.backlinks: (Icons.link, 'Context'),
+              _ShellAction.problems: (Icons.warning_amber, 'Problems'),
+              _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
+              _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
+              _ShellAction.settings: (Icons.settings, 'Settings'),
+            }.entries)
+              ListTile(
+                leading: Icon(entry.value.$1),
+                title: Text(entry.value.$2),
+                onTap: () => Navigator.pop(context, entry.key),
+              ),
+          ],
         ),
       ),
     );
-    if (action != null) await _runMagic(action);
+    if (action == null) return;
+    await _runShellAction(action, linksPanel);
   }
 
-  int get _destination => switch (mode) {
-    'today' => 0,
-    'tasks' => 2,
-    'library' => 3,
-    _ => 1,
-  };
-
-  Future<void> _showTasks() async {
-    await _ensureIndexed();
-    if (mounted && !dirty) setState(() => mode = 'tasks');
-  }
-
-  void _selectDestination(int destination) {
-    switch (destination) {
-      case 0:
-        _showToday();
-        return;
-      case 1:
-        _showJournal();
-        return;
-      case 2:
-        unawaited(_showTasks());
-        return;
-      case 3:
-        setState(() => mode = 'library');
-        return;
+  Future<void> _runShellAction(_ShellAction action, Widget linksPanel) async {
+    switch (action) {
+      case _ShellAction.vaults:
+        _showVaults();
+      case _ShellAction.newPage:
+        await _newPage();
+      case _ShellAction.graph:
+        setState(() => mode = 'graph');
+      case _ShellAction.split:
+        sourceController.text = _currentSource();
+        setState(() => mode = 'split');
+      case _ShellAction.backlinks:
+        await showDialog<void>(
+          context: context,
+          builder: (_) => Dialog.fullscreen(
+            child: Scaffold(
+              appBar: AppBar(title: const Text('Context')),
+              body: SafeArea(child: linksPanel),
+            ),
+          ),
+        );
+      case _ShellAction.problems:
+        await _showKnowledge(initialView: KnowledgeView.problems);
+      case _ShellAction.rebuild:
+        await _rebuildIndex();
+      case _ShellAction.typstHelp:
+        await _showTypstHelp();
+      case _ShellAction.settings:
+        _showSettings();
     }
   }
 
@@ -2101,124 +2434,126 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onOpenFile: _openAttachment,
       onEditMetadata: _editCurrentMetadata,
     );
-    final journalMode = const {'normal', 'preview', 'source', 'split'};
-    final workArea = _WorkSurface(
-      child: switch (mode) {
-        'today' => _TodayView(
-          index: index,
-          onOpenToday: _openToday,
-          onOpenPath: _openPath,
-        ),
-        'tasks' => _PrimaryTasksView(
-          tasks: index?.tasks ?? const [],
-          onOpenPath: _openPath,
-          onSetStatus: _setTaskStatus,
-        ),
-        'library' => _LibraryView(
-          index: index,
-          onOpenPath: _openPath,
-          onOpenDay: (day) => unawaited(_openDay(day)),
-        ),
-        'graph' => GraphView(
-          graph: graph ?? const NoteGraph(nodes: [], edges: []),
-          currentPath: current,
-          onOpenPath: _openPath,
-        ),
-        'preview' => TypstDocumentViewer(
-          source: _previewSource(),
-          files: _typstFiles(),
-          loadingBuilder: (_) =>
-              const Center(child: CircularProgressIndicator()),
-          errorBuilder: (_, error) => Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SelectableText('Typst error:\n$error'),
-                  FilledButton.tonalIcon(
-                    onPressed: () =>
-                        unawaited(_showTypstHelp(error: error.toString())),
-                    icon: const Icon(Icons.help_outline),
-                    label: const Text('Explain error'),
-                  ),
-                ],
-              ),
+    final documentModes = const {
+      'normal',
+      'read',
+      'preview',
+      'source',
+      'split',
+    };
+    final content = switch (mode) {
+      'journal' => _JournalFeed(
+        vault: v,
+        index: index,
+        onOpenPath: (path) {
+          primaryDestination = 1;
+          unawaited(_openPath(path));
+        },
+      ),
+      'library' => _LibraryView(
+        index: index,
+        onOpenPath: (path) {
+          primaryDestination = 2;
+          unawaited(_openPath(path));
+        },
+        onOpenDay: (day) {
+          primaryDestination = 2;
+          unawaited(_openDay(day));
+        },
+        onSetTaskStatus: _setTaskStatus,
+        onCreateEntity: () => unawaited(_createEntity()),
+      ),
+      'graph' => GraphView(
+        graph: graph ?? const NoteGraph(nodes: [], edges: []),
+        currentPath: current,
+        onOpenPath: _openPath,
+      ),
+      'preview' => TypstDocumentViewer(
+        source: _previewSource(),
+        files: _typstFiles(),
+        loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
+        errorBuilder: (_, error) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText('Typst error:\n$error'),
+                FilledButton.tonalIcon(
+                  onPressed: () =>
+                      unawaited(_showTypstHelp(error: error.toString())),
+                  icon: const Icon(Icons.help_outline),
+                  label: const Text('Explain error'),
+                ),
+              ],
             ),
           ),
         ),
-        'source' => _Editor(
-          controller: sourceController,
-          onChanged: _queueAutosave,
-          monospace: true,
-        ),
-        'split' => Row(
-          children: [
-            Expanded(
-              child: _Editor(
-                controller: sourceController,
-                onChanged: _queueAutosave,
-                monospace: true,
-              ),
+      ),
+      'source' => _Editor(
+        key: sourceEditorKey,
+        controller: sourceController,
+        onChanged: _queueAutosave,
+        monospace: true,
+      ),
+      'read' => SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: TyLogReadView(source: _currentSource()),
+      ),
+      'split' => Row(
+        children: [
+          Expanded(
+            child: _Editor(
+              key: sourceEditorKey,
+              controller: sourceController,
+              onChanged: _queueAutosave,
+              monospace: true,
             ),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: TypstDocumentViewer(
-                source: _previewSource(),
-                files: _typstFiles(),
-              ),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: TypstDocumentViewer(
+              source: _previewSource(),
+              files: _typstFiles(),
             ),
-          ],
-        ),
-        'normal' => TyLogRichEditor(
-          controller: richController,
-          onInsert: _showMagicMenu,
-        ),
-        _ => const SizedBox.shrink(),
-      },
+          ),
+        ],
+      ),
+      'normal' => TyLogRichEditor(
+        controller: richController,
+        onInsert: _showMagicMenu,
+      ),
+      _ => const SizedBox.shrink(),
+    };
+    final today = DateTime.now();
+    final isTodayDocument =
+        primaryDestination == 0 &&
+        documentModes.contains(mode) &&
+        currentDaily != null &&
+        _isoDay(currentDaily) == _isoDay(today);
+    final workArea = _WorkSurface(
+      child: isTodayDocument
+          ? _TodayPage(
+              tasks: index?.tasks ?? const [],
+              editor: content,
+              onOpenPath: _openPath,
+              onSetStatus: _setTaskStatus,
+            )
+          : content,
     );
 
     final wideNavigation = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       appBar: AppBar(
-        leading: PopupMenuButton<String>(
-          tooltip: 'Vaults',
-          icon: const Icon(Icons.folder_outlined),
-          onSelected: (id) {
-            if (id == 'settings') {
-              _showSettings();
-              return;
-            }
-            final entries = vaultRegistry?.entries ?? const <VaultEntry>[];
-            for (final entry in entries) {
-              if (entry.id == id) unawaited(_switchVault(entry));
-            }
-          },
-          itemBuilder: (_) => [
-            for (final entry in vaultRegistry?.entries ?? const <VaultEntry>[])
-              PopupMenuItem(
-                value: entry.id,
-                child: Row(
-                  children: [
-                    Icon(
-                      entry.id == vaultRegistry?.activeId
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(entry.name)),
-                  ],
-                ),
-              ),
-            const PopupMenuDivider(),
-            const PopupMenuItem(
-              value: 'settings',
-              child: Text('Manage vaults'),
-            ),
-          ],
-        ),
+        automaticallyImplyLeading: false,
         titleSpacing: 0,
-        title: journalMode.contains(mode) && currentDaily != null
+        title: mode == 'journal'
+            ? const Text('Journal')
+            : mode == 'library'
+            ? const Text('Library')
+            : mode == 'graph'
+            ? const Text('Graph')
+            : documentModes.contains(mode) && currentDaily != null
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2248,9 +2583,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             vertical: 8,
                           ),
                           child: Text(
-                            dirty
-                                ? '${humanDate(currentDaily)} •'
-                                : humanDate(currentDaily),
+                            '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -2279,24 +2612,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 overflow: TextOverflow.ellipsis,
               ),
         actions: [
-          IconButton(
-            onPressed: _showKnowledge,
-            icon: const Icon(Icons.search),
-            tooltip: 'Search knowledge',
-          ),
-          IconButton(
-            onPressed: _cycleEditorMode,
-            icon: Icon(switch (mode) {
-              'preview' => Icons.code,
-              'source' => Icons.visibility_off,
-              _ => Icons.visibility,
-            }),
-            tooltip: switch (mode) {
-              'preview' => 'Source',
-              'source' => 'Editor',
-              _ => 'Preview',
-            },
-          ),
+          if (mode == 'journal')
+            IconButton(
+              tooltip: 'Choose journal date',
+              onPressed: () => unawaited(_showCalendarPicker()),
+              icon: const Icon(Icons.calendar_month),
+            ),
+          if (documentModes.contains(mode))
+            PopupMenuButton<String>(
+              tooltip: 'View mode',
+              icon: Icon(switch (mode) {
+                'read' => Icons.chrome_reader_mode_outlined,
+                'preview' => Icons.picture_as_pdf_outlined,
+                'source' => Icons.code,
+                _ => Icons.edit_outlined,
+              }),
+              onSelected: _setEditorMode,
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'normal', child: Text('Edit')),
+                PopupMenuItem(value: 'read', child: Text('Read')),
+                PopupMenuItem(value: 'preview', child: Text('Preview')),
+                PopupMenuItem(value: 'source', child: Text('Source')),
+              ],
+            ),
           _SyncIconButton(
             syncing: syncing,
             vaultOpen: v != null,
@@ -2308,89 +2646,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             result: lastSync,
             onPressed: _showSyncDashboard,
           ),
-          PopupMenuButton<_ShellAction>(
-            tooltip: 'More actions',
-            onSelected: (action) {
-              switch (action) {
-                case _ShellAction.today:
-                  _showToday();
-                case _ShellAction.newPage:
-                  unawaited(_newPage());
-                case _ShellAction.graph:
-                  mode == 'graph'
-                      ? _showJournal()
-                      : setState(() => mode = 'graph');
-                case _ShellAction.split:
-                  sourceController.text = _currentSource();
-                  setState(() => mode = 'split');
-                case _ShellAction.backlinks:
-                  showDialog<void>(
-                    context: context,
-                    builder: (_) => Dialog.fullscreen(
-                      child: Scaffold(
-                        appBar: AppBar(title: const Text('Context')),
-                        body: SafeArea(child: linksPanel),
-                      ),
-                    ),
-                  );
-                case _ShellAction.rebuild:
-                  unawaited(_rebuildIndex());
-                case _ShellAction.settings:
-                  _showSettings();
-                case _ShellAction.typstHelp:
-                  unawaited(_showTypstHelp());
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: _ShellAction.today,
-                child: Text('Today'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.newPage,
-                child: Text('New page'),
-              ),
-              PopupMenuItem(
-                value: _ShellAction.graph,
-                child: Text(mode == 'graph' ? 'Journal' : 'Graph'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.split,
-                child: Text('Split editor'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.backlinks,
-                child: Text('Backlinks and files'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.rebuild,
-                child: Text('Rebuild index'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.typstHelp,
-                child: Text('Typst help'),
-              ),
-              const PopupMenuItem(
-                value: _ShellAction.settings,
-                child: Text('Settings'),
-              ),
-            ],
-          ),
         ],
       ),
       floatingActionButton:
-          _destination == 1 && (mode == 'source' || mode == 'split')
-          ? FloatingActionButton.extended(
-              onPressed: _showMagicMenu,
-              icon: const Icon(Icons.auto_fix_high),
-              label: const Text('Magic'),
+          documentModes.contains(mode) && (mode == 'source' || mode == 'split')
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 52),
+              child: FloatingActionButton.extended(
+                onPressed: _showMagicMenu,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('Magic'),
+              ),
             )
           : null,
       bottomNavigationBar: wideNavigation
           ? null
           : NavigationBar(
-              selectedIndex: _destination,
-              onDestinationSelected: _selectDestination,
+              selectedIndex: primaryDestination,
+              onDestinationSelected: (destination) {
+                if (destination == 4) {
+                  unawaited(_showMoreMenu(linksPanel));
+                } else {
+                  unawaited(_selectDestination(destination));
+                }
+              },
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
                 NavigationDestination(
@@ -2398,12 +2677,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   label: 'Journal',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.task_alt),
-                  label: 'Tasks',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.library_books),
                   label: 'Library',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.search),
+                  label: 'Search',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.more_horiz),
+                  label: 'More',
                 ),
               ],
             ),
@@ -2411,8 +2694,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? Row(
               children: [
                 NavigationRail(
-                  selectedIndex: _destination,
-                  onDestinationSelected: _selectDestination,
+                  selectedIndex: primaryDestination,
+                  onDestinationSelected: (destination) {
+                    if (destination == 4) {
+                      unawaited(_showMoreMenu(linksPanel));
+                    } else {
+                      unawaited(_selectDestination(destination));
+                    }
+                  },
                   labelType: NavigationRailLabelType.all,
                   destinations: const [
                     NavigationRailDestination(
@@ -2424,12 +2713,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       label: Text('Journal'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.task_alt),
-                      label: Text('Tasks'),
-                    ),
-                    NavigationRailDestination(
                       icon: Icon(Icons.library_books),
                       label: Text('Library'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.search),
+                      label: Text('Search'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: Text('More'),
                     ),
                   ],
                 ),
@@ -2448,11 +2741,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 enum _ShellAction {
-  today,
+  vaults,
   newPage,
   graph,
   split,
   backlinks,
+  problems,
   rebuild,
   typstHelp,
   settings,
@@ -3202,12 +3496,8 @@ class _SettingsSheet extends StatelessWidget {
     required this.cloud,
     required this.syncing,
     required this.onNextcloud,
-    required this.vaults,
-    required this.activeVaultId,
-    required this.onAddVault,
-    required this.onSwitchVault,
-    required this.onForgetVault,
-    required this.onDeleteVault,
+    required this.vaultCount,
+    required this.onManageVaults,
     required this.onEnableReminders,
   });
 
@@ -3215,12 +3505,8 @@ class _SettingsSheet extends StatelessWidget {
   final NextcloudConfig? cloud;
   final bool syncing;
   final VoidCallback onNextcloud;
-  final List<VaultEntry> vaults;
-  final String? activeVaultId;
-  final VoidCallback onAddVault;
-  final ValueChanged<VaultEntry> onSwitchVault;
-  final ValueChanged<VaultEntry> onForgetVault;
-  final ValueChanged<VaultEntry> onDeleteVault;
+  final int vaultCount;
+  final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
 
   @override
@@ -3246,19 +3532,8 @@ class _SettingsSheet extends StatelessWidget {
               _SettingsTile(
                 icon: Icons.create_new_folder,
                 title: 'Vaults',
-                subtitle: '${vaults.length} vaults · manage and switch',
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: true,
-                  builder: (context) => _VaultsSheet(
-                    vaults: vaults,
-                    activeVaultId: activeVaultId,
-                    onAddVault: onAddVault,
-                    onSwitchVault: onSwitchVault,
-                    onForgetVault: onForgetVault,
-                    onDeleteVault: onDeleteVault,
-                  ),
-                ),
+                subtitle: '$vaultCount vaults · manage and switch',
+                onTap: onManageVaults,
               ),
               _SettingsTile(
                 icon: Icons.sync,
@@ -3408,158 +3683,143 @@ class _WorkSurface extends StatelessWidget {
   );
 }
 
-class _TodayView extends StatelessWidget {
-  const _TodayView({
-    required this.index,
-    required this.onOpenToday,
+class _TodayPage extends StatelessWidget {
+  const _TodayPage({
+    required this.tasks,
+    required this.editor,
     required this.onOpenPath,
+    required this.onSetStatus,
   });
 
-  final VaultIndex? index;
-  final Future<void> Function() onOpenToday;
+  final List<TaskRef> tasks;
+  final Widget editor;
   final ValueChanged<String> onOpenPath;
+  final Future<void> Function(TaskRef task, String status) onSetStatus;
 
   @override
   Widget build(BuildContext context) {
     final today = _isoDay(DateTime.now());
-    final notes = index?.notes ?? const <NoteRef>[];
-    final daily = notes
-        .where((note) => note.kind == 'daily' && note.date == today)
-        .firstOrNull;
-    final due = (index?.tasks ?? const <TaskRef>[])
-        .where(
-          (task) =>
-              task.status != 'done' &&
-              task.due != null &&
-              task.due!.split('T').first.compareTo(today) <= 0,
-        )
-        .toList();
-    final recent = notes.where((note) => note.kind != 'daily').toList()
-      ..sort(
-        (a, b) => (b.modifiedMillis ?? 0).compareTo(a.modifiedMillis ?? 0),
-      );
-    final inbox = notes
-        .where(
-          (note) =>
-              note.kind == 'note' && note.project == null && note.tags.isEmpty,
-        )
-        .toList();
-    final backlinks = daily == null
-        ? const <String>[]
-        : index?.backlinksByTarget[daily.path] ?? const <String>[];
-    final calendar =
-        index?.calendar
-            .where((item) => item.date.compareTo(today) >= 0)
-            .take(7)
-            .toList() ??
-        const <CalendarItem>[];
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    final agenda =
+        tasks.where((task) {
+          if (task.status == 'done' || task.status == 'cancelled') return false;
+          final due = task.due?.split('T').first;
+          final scheduled = task.scheduled?.split('T').first;
+          return due != null && due.compareTo(today) <= 0 || scheduled == today;
+        }).toList()..sort(
+          (a, b) => (a.due ?? a.scheduled ?? '9999').compareTo(
+            b.due ?? b.scheduled ?? '9999',
+          ),
+        );
+    return Column(
       children: [
-        Text('Today', style: Theme.of(context).textTheme.headlineMedium),
-        Text(today, style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: onOpenToday,
-          icon: const Icon(Icons.edit_note),
-          label: const Text('Open today’s journal'),
-        ),
-        _DashboardSection(
-          title: 'Due and overdue',
-          empty: 'No due tasks',
+        ExpansionTile(
+          key: const PageStorageKey('today-agenda'),
+          initiallyExpanded: agenda.isNotEmpty,
+          leading: const Icon(Icons.event_note),
+          title: Text('Agenda${agenda.isEmpty ? '' : ' · ${agenda.length}'}'),
+          subtitle: agenda.isEmpty
+              ? const Text('Nothing actionable today')
+              : null,
           children: [
-            for (final task in due)
-              ListTile(
-                leading: const Icon(Icons.task_alt),
+            for (final task in agenda)
+              CheckboxListTile(
+                value: false,
                 title: Text(task.text),
-                subtitle: Text(task.due ?? ''),
-                onTap: () => onOpenPath(task.notePath),
+                subtitle: Text(
+                  task.due == null ? 'Scheduled today' : 'Due ${task.due}',
+                ),
+                onChanged: (done) {
+                  if (done == true) unawaited(onSetStatus(task, 'done'));
+                },
+                secondary: IconButton(
+                  tooltip: 'Open source note',
+                  onPressed: () => onOpenPath(task.notePath),
+                  icon: const Icon(Icons.open_in_new),
+                ),
               ),
           ],
         ),
-        _DashboardSection(
-          title: 'Next dates',
-          empty: 'No upcoming dates',
-          children: [
-            for (final item in calendar)
-              ListTile(
-                leading: const Icon(Icons.event),
-                title: Text(item.title),
-                subtitle: Text(item.date),
-                onTap: () => onOpenPath(item.notePath),
-              ),
-          ],
-        ),
-        _DashboardSection(
-          title: 'Recent notes',
-          empty: 'No notes yet',
-          children: [
-            for (final item in recent.take(5))
-              ListTile(
-                leading: const Icon(Icons.notes),
-                title: Text(item.title),
-                subtitle: Text(item.path),
-                onTap: () => onOpenPath(item.path),
-              ),
-          ],
-        ),
-        _DashboardSection(
-          title: 'Today’s mentions',
-          empty: 'No backlinks to today',
-          children: [
-            for (final path in backlinks)
-              ListTile(
-                leading: const Icon(Icons.link),
-                title: Text(index?.notesByPath[path]?.title ?? path),
-                onTap: () => onOpenPath(path),
-              ),
-          ],
-        ),
-        _DashboardSection(
-          title: 'Inbox',
-          empty: 'No unclassified notes',
-          children: [
-            for (final item in inbox.take(5))
-              ListTile(
-                leading: const Icon(Icons.inbox_outlined),
-                title: Text(item.title),
-                onTap: () => onOpenPath(item.path),
-              ),
-          ],
-        ),
+        const Divider(height: 1),
+        Expanded(child: editor),
       ],
     );
   }
 }
 
-class _DashboardSection extends StatelessWidget {
-  const _DashboardSection({
-    required this.title,
-    required this.empty,
-    required this.children,
+class _JournalFeed extends StatefulWidget {
+  const _JournalFeed({
+    required this.vault,
+    required this.index,
+    required this.onOpenPath,
   });
 
-  final String title;
-  final String empty;
-  final List<Widget> children;
+  final Vault? vault;
+  final VaultIndex? index;
+  final ValueChanged<String> onOpenPath;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        if (children.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(empty),
-          )
-        else
-          ...children,
-      ],
-    ),
-  );
+  State<_JournalFeed> createState() => _JournalFeedState();
+}
+
+class _JournalFeedState extends State<_JournalFeed> {
+  final sources = <String, Future<String>>{};
+
+  @override
+  void didUpdateWidget(_JournalFeed oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.vault != oldWidget.vault) sources.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final days =
+        (widget.index?.notes ?? const <NoteRef>[])
+            .where((note) => note.kind == 'daily')
+            .toList()
+          ..sort((a, b) => (b.date ?? b.path).compareTo(a.date ?? a.path));
+    if (days.isEmpty) {
+      return const Center(child: Text('No journal pages yet'));
+    }
+    return ListView.builder(
+      key: const PageStorageKey('journal-feed'),
+      itemCount: days.length,
+      itemBuilder: (context, index) {
+        final day = days[index];
+        final source = sources.putIfAbsent(
+          day.path,
+          () => widget.vault!.storage.readText(day.path),
+        );
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => widget.onOpenPath(day.path),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    day.date == null
+                        ? day.title
+                        : humanDate(DateTime.parse(day.date!)),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const Divider(),
+                  FutureBuilder<String>(
+                    future: source,
+                    builder: (context, snapshot) => snapshot.hasData
+                        ? TyLogReadView(source: snapshot.data!)
+                        : const LinearProgressIndicator(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _PrimaryTasksView extends StatelessWidget {
@@ -3610,15 +3870,19 @@ class _LibraryView extends StatelessWidget {
     required this.index,
     required this.onOpenPath,
     required this.onOpenDay,
+    required this.onSetTaskStatus,
+    required this.onCreateEntity,
   });
 
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
+  final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
+  final VoidCallback onCreateEntity;
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 4,
+    length: 6,
     child: Column(
       children: [
         const TabBar(
@@ -3627,6 +3891,8 @@ class _LibraryView extends StatelessWidget {
             Tab(text: 'Notes'),
             Tab(text: 'Projects'),
             Tab(text: 'Articles'),
+            Tab(text: 'Tasks'),
+            Tab(text: 'Entities'),
             Tab(text: 'Calendar'),
           ],
         ),
@@ -3636,6 +3902,12 @@ class _LibraryView extends StatelessWidget {
               _notes('note'),
               _notes('project'),
               _notes('article'),
+              _PrimaryTasksView(
+                tasks: index?.tasks ?? const <TaskRef>[],
+                onSetStatus: onSetTaskStatus,
+                onOpenPath: onOpenPath,
+              ),
+              _entities(),
               _CalendarTab(
                 index: index,
                 onOpenPath: onOpenPath,
@@ -3665,6 +3937,41 @@ class _LibraryView extends StatelessWidget {
         ),
     ],
   );
+
+  Widget _entities() {
+    final entities =
+        (index?.notes ?? const <NoteRef>[])
+            .where(
+              (note) => (note.properties['type']?.toString() ?? '').isNotEmpty,
+            )
+            .toList()
+          ..sort((a, b) => a.title.compareTo(b.title));
+    return ListView(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.add),
+          title: const Text('New entity'),
+          onTap: onCreateEntity,
+        ),
+        if (entities.isEmpty)
+          const ListTile(
+            title: Text('No people, places, or other entities yet'),
+          ),
+        for (final note in entities)
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: Text(note.title),
+            subtitle: Text(
+              [
+                note.properties['type'],
+                if (note.aliases.isNotEmpty) note.aliases.join(', '),
+              ].join(' · '),
+            ),
+            onTap: () => onOpenPath(note.path),
+          ),
+      ],
+    );
+  }
 }
 
 class _CalendarTab extends StatefulWidget {
@@ -3726,6 +4033,7 @@ class _CalendarTabState extends State<_CalendarTab> {
 
 class _Editor extends StatefulWidget {
   const _Editor({
+    super.key,
     required this.controller,
     required this.onChanged,
     this.monospace = false,
@@ -3741,6 +4049,8 @@ class _Editor extends StatefulWidget {
 
 class _EditorState extends State<_Editor> {
   final focusNode = FocusNode();
+
+  void requestFocus() => focusNode.requestFocus();
 
   @override
   void dispose() {
@@ -3886,6 +4196,9 @@ String humanDate(DateTime day, {DateTime? now}) {
       ? label
       : '$label, ${day.year}';
 }
+
+String compactHumanDate(DateTime day) =>
+    '${_weekdayNames[day.weekday - 1]}, ${_monthNames[day.month - 1].substring(0, 3)} ${day.day}';
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);

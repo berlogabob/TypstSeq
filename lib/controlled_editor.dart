@@ -289,6 +289,7 @@ int? _balancedParenEnd(String source, int open) {
 
 enum MagicAction {
   noteLink,
+  mention,
   tag,
   task,
   date,
@@ -354,6 +355,8 @@ SourceEdit applyMagicEdit(
   final replacement = switch (request.action) {
     MagicAction.noteLink || MagicAction.project =>
       '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${typstContent(selected.isEmpty ? value ?? '' : selected)}]',
+    MagicAction.mention =>
+      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${typstContent('@${value ?? selected}')}]',
     MagicAction.tag => '#tylog.tag(${typstString(value ?? selected)})',
     MagicAction.task => _taskSnippet(
       id: request.id ?? 'task',
@@ -367,17 +370,48 @@ SourceEdit applyMagicEdit(
     MagicAction.attachment =>
       '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${request.kind == 'image' ? '#image(${typstString(value ?? '')})' : typstContent(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
     MagicAction.heading =>
-      '= ${typstContent(selected.isEmpty ? value ?? 'Heading' : selected)}',
+      '= ${typstContent(selected.isEmpty ? value ?? '' : selected)}',
     MagicAction.bold => '#strong[${typstContent(selected)}]',
     MagicAction.italic => '#emph[${typstContent(selected)}]',
     MagicAction.table => _tableSnippet(request.rows, request.columns),
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
   };
+  if (const {
+    MagicAction.task,
+    MagicAction.table,
+    MagicAction.equation,
+    MagicAction.heading,
+  }.contains(request.action)) {
+    final before = source.substring(0, start);
+    final after = source.substring(end).replaceFirst(RegExp(r'^\n+'), '');
+    final prefix = before.isEmpty
+        ? ''
+        : before.endsWith('\n\n')
+        ? ''
+        : before.endsWith('\n')
+        ? '\n'
+        : '\n\n';
+    final inserted = '$prefix$replacement\n\n';
+    return SourceEdit(
+      text: '$before$inserted$after',
+      selection: TextSelection.collapsed(
+        offset:
+            start +
+            inserted.length -
+            (request.action == MagicAction.heading ? 2 : 0),
+      ),
+    );
+  }
   final text = source.replaceRange(start, end, replacement);
+  final offset = switch (request.action) {
+    MagicAction.bold when selected.isEmpty => start + '#strong['.length,
+    MagicAction.italic when selected.isEmpty => start + '#emph['.length,
+    _ => start + replacement.length,
+  };
   return SourceEdit(
     text: text,
-    selection: TextSelection.collapsed(offset: start + replacement.length),
+    selection: TextSelection.collapsed(offset: offset),
   );
 }
 

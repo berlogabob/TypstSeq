@@ -8,11 +8,27 @@ import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
-Future<void> openSource(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Preview'));
+Future<void> setViewMode(WidgetTester tester, String mode) async {
+  await tester.tap(find.byTooltip('View mode'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(mode).last);
   await tester.pump();
-  await tester.tap(find.byTooltip('Source'));
-  await tester.pump();
+}
+
+Future<void> openSource(WidgetTester tester) => setViewMode(tester, 'Source');
+
+Future<void> openMagicAction(WidgetTester tester, String label) async {
+  await tester.tap(find.byTooltip('Insert'));
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.text(label),
+    100,
+    scrollable: find.byType(Scrollable).last,
+  );
+  await tester.ensureVisible(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -41,10 +57,9 @@ void main() {
     expect(find.text('Save'), findsNothing);
     expect(find.byTooltip('Save'), findsNothing);
     expect(find.byTooltip('Graph'), findsNothing);
-    expect(find.byTooltip('Search knowledge'), findsOneWidget);
-    expect(find.byIcon(Icons.visibility), findsOneWidget);
-    expect(find.byTooltip('Vaults'), findsOneWidget);
-    expect(find.byTooltip('More actions'), findsOneWidget);
+    expect(find.text('Search'), findsOneWidget);
+    expect(find.byTooltip('View mode'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byKey(const Key('quick-capture')), findsNothing);
@@ -59,9 +74,16 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('More actions'));
+    await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
+    await tester.scrollUntilVisible(
+      find.text('Settings'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Settings'));
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsWidgets);
@@ -72,6 +94,11 @@ void main() {
     expect(find.text('App version'), findsOneWidget);
     await tester.pump();
     expect(find.text(version), findsOneWidget);
+
+    await tester.tap(find.text('Vaults'));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Add or create vault'), findsOneWidget);
   });
 
   testWidgets('journal rich editor shows one body and formats the selection', (
@@ -80,20 +107,15 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
     await openSource(tester);
-    expect(find.byTooltip('Editor'), findsOneWidget);
     const raw = '= Heading\n\nVisible text\n\n#custom()[Secret]';
     await tester.enterText(find.byType(TextField), raw);
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pump();
+    await setViewMode(tester, 'Edit');
     final rich = find.byKey(const Key('rich-journal-editor'));
     expect(rich, findsOneWidget);
     expect(tester.widget<TextField>(rich).readOnly, isFalse);
     expect(tester.widget<TextField>(rich).focusNode!.hasFocus, isFalse);
-    expect(find.text('Edit'), findsNothing);
     expect(find.text('Done'), findsNothing);
     expect(find.byTooltip('Bold'), findsNothing);
     expect(
@@ -114,7 +136,7 @@ void main() {
     await tester.tap(find.byTooltip('Bold'));
     await tester.pump();
     expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
-    await tester.tap(find.text('Journal').last);
+    tester.widget<TextField>(rich).focusNode!.unfocus();
     await tester.pump();
     expect(tester.widget<TextField>(rich).focusNode!.hasFocus, isFalse);
     expect(find.byTooltip('Bold'), findsNothing);
@@ -124,41 +146,33 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       '= Heading\n\n#strong[Visible text]\n\n#custom()[Secret]',
     );
-    expect(find.byTooltip('Editor'), findsOneWidget);
+    expect(find.byTooltip('View mode'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('view control cycles editor preview source and editor', (
+  testWidgets('view chooser opens read preview source and editor modes', (
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
-    await tester.tap(find.text('Journal').last);
-    await tester.pump();
+    expect(find.byTooltip('View mode'), findsOneWidget);
+    await setViewMode(tester, 'Read');
+    expect(find.byType(SelectableText), findsWidgets);
 
-    expect(find.byTooltip('Preview'), findsOneWidget);
-    expect(find.byIcon(Icons.visibility), findsOneWidget);
-    await tester.tap(find.byTooltip('Preview'));
-    await tester.pump();
+    await setViewMode(tester, 'Preview');
 
-    expect(find.byTooltip('Source'), findsOneWidget);
-    expect(find.byIcon(Icons.code), findsWidgets);
     expect(
       tester
           .widget<TypstDocumentViewer>(find.byType(TypstDocumentViewer))
           .renderMode,
       TypstRenderMode.raster,
     );
-    await tester.tap(find.byTooltip('Source'));
-    await tester.pump();
+    await setViewMode(tester, 'Source');
 
-    expect(find.byTooltip('Editor'), findsOneWidget);
-    expect(find.byIcon(Icons.visibility_off), findsOneWidget);
-    await tester.tap(find.byTooltip('Editor'));
-    await tester.pump();
+    expect(find.byType(TextField), findsOneWidget);
+    await setViewMode(tester, 'Edit');
 
-    expect(find.byTooltip('Preview'), findsOneWidget);
-    expect(find.byIcon(Icons.visibility), findsOneWidget);
+    expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
   });
 
   testWidgets('graph remains available from overflow', (tester) async {
@@ -166,7 +180,7 @@ void main() {
     await tester.pump();
 
     expect(find.byTooltip('Graph'), findsNothing);
-    await tester.tap(find.byTooltip('More actions'));
+    await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();
     expect(find.text('Graph'), findsOneWidget);
     expect(find.text('Sync'), findsNothing);
@@ -267,8 +281,6 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
     await openSource(tester);
     final editor = find.byType(TextField);
     await tester.tap(editor);
@@ -293,8 +305,6 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const TyLogApp());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
     final editor = find.byKey(const Key('rich-journal-editor'));
     await tester.tap(editor);
@@ -328,8 +338,6 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
     await openSource(tester);
 
     await tester.enterText(find.byType(TextField), 'autosave text');
@@ -345,8 +353,6 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
     await openSource(tester);
 
     await tester.enterText(find.byType(TextField), 'first draft');
@@ -364,8 +370,6 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
     await tester.pump();
     await tester.tap(find.byTooltip('Insert'));
@@ -373,6 +377,7 @@ void main() {
 
     for (final label in const [
       'Note link',
+      'Mention',
       'Tag',
       'Task',
       'Date',
@@ -384,15 +389,105 @@ void main() {
       'Italic',
       'Table',
       'Equation',
+      'Report',
     ]) {
+      await tester.scrollUntilVisible(
+        find.text(label),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.text(label), findsOneWidget);
     }
-    await tester.scrollUntilVisible(
-      find.text('Report'),
-      100,
-      scrollable: find.byType(Scrollable).last,
+    expect(find.text('H1'), findsWidgets);
+  });
+
+  testWidgets('Magic Table validates size and leaves the editor writable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(editor);
+    await tester.pump();
+
+    await openMagicAction(tester, 'Table');
+    expect(find.text('Table size'), findsOneWidget);
+    final fields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
     );
-    expect(find.text('Report'), findsOneWidget);
+    expect(tester.widget<TextField>(fields.at(0)).controller!.text, '2');
+    expect(tester.widget<TextField>(fields.at(1)).controller!.text, '2');
+
+    await tester.enterText(fields.at(0), '0');
+    await tester.tap(find.widgetWithText(FilledButton, 'Insert'));
+    await tester.pump();
+    expect(find.text('Use 1–10'), findsOneWidget);
+
+    await tester.enterText(fields.at(0), '3');
+    await tester.enterText(fields.at(1), '4');
+    await tester.tap(find.widgetWithText(FilledButton, 'Insert'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(editor);
+    expect(field.controller!.text, contains('￼'));
+    expect(field.focusNode!.hasFocus, isTrue);
+
+    tester.testTextInput.updateEditingValue(
+      TextEditingValue(
+        text: '${field.controller!.text}x',
+        selection: TextSelection.collapsed(
+          offset: field.controller!.text.length + 1,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(field.controller!.text, endsWith('x'));
+  });
+
+  testWidgets('Magic Equation prompts and Cancel restores focus', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(editor);
+    await tester.pump();
+
+    await openMagicAction(tester, 'Equation');
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(editor).focusNode!.hasFocus, isTrue);
+
+    await openMagicAction(tester, 'Equation');
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'x + y',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(editor).controller!.text, contains('￼'));
+    expect(tester.widget<TextField>(editor).focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('source Magic Cancel restores source focus', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+    await openSource(tester);
+    await tester.pumpAndSettle();
+    final editor = find.byType(TextField);
+    await tester.tap(editor);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(FloatingActionButton, 'Magic'));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(editor).focusNode!.hasFocus, isTrue);
   });
 
   testWidgets('TyLog fits a phone-width screen', (tester) async {
@@ -467,5 +562,4 @@ KnowledgeScreen _knowledgeScreen({
   search: PkmsSearchIndex.empty(),
   problems: problems,
   onOpenNote: (_) {},
-  onSetTaskStatus: (_, _) async {},
 );

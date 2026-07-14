@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
 
 const _source = '''#import "/_system/tylog.typ" as tylog
@@ -69,6 +70,41 @@ void main() {
     expect(saved.last, _source);
     controller.redo();
     expect(saved.last, contains('#strong[привет]'));
+  });
+
+  test('heading, list, and task actions work on an empty document', () {
+    TyLogEditingController controller(List<String> saved) =>
+        TyLogEditingController(
+          source: '',
+          onSourceChanged: saved.add,
+          onError: (error) => fail('$error'),
+          onProtectedTap: (_) {},
+        );
+
+    final headingSaved = <String>[];
+    final heading = controller(headingSaved);
+    addTearDown(heading.dispose);
+    heading.setHeading();
+    expect(headingSaved.last, startsWith('='));
+
+    final listSaved = <String>[];
+    final list = controller(listSaved);
+    addTearDown(list.dispose);
+    list.setBulletList();
+    expect(listSaved.last, startsWith('-'));
+
+    final taskSaved = <String>[];
+    final task = controller(taskSaved);
+    addTearDown(task.dispose);
+    task.applyMagic(
+      const MagicRequest(
+        action: MagicAction.task,
+        id: 'task-1',
+        value: 'Write report',
+      ),
+    );
+    expect(taskSaved.last, contains('#tylog.task('));
+    expect(taskSaved.last, contains('text: "Write report"'));
   });
 
   test(
@@ -180,6 +216,130 @@ void main() {
     expect(saved.last, 'строка\n\nм');
   });
 
+  test('heading formats only the current physical line and exits on Enter', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'first\nsecond\nthird',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection.collapsed(offset: 8);
+
+    controller.setHeading();
+
+    expect(controller.text, 'first\n\nsecond\n\nthird');
+    expect(saved.last, 'first\n\n= second\n\nthird');
+    expect(controller.selection.baseOffset, 9);
+
+    controller.selection = const TextSelection.collapsed(offset: 13);
+    controller.value = const TextEditingValue(
+      text: 'first\n\nsecond\n\n\nthird',
+      selection: TextSelection.collapsed(offset: 14),
+    );
+    expect(controller.text, 'first\n\nsecond\n\n\n\nthird');
+    expect(controller.document.blocks[2].style, TyLogBlockStyle.paragraph);
+  });
+
+  test('list toggles one line, continues, and empty Enter exits', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'item',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection.collapsed(offset: 4);
+
+    controller.setBulletList();
+    expect(controller.text, '• item');
+    expect(controller.selection.baseOffset, 6);
+
+    controller.value = const TextEditingValue(
+      text: '• item\n',
+      selection: TextSelection.collapsed(offset: 7),
+    );
+    expect(controller.text, '• item\n• ');
+    expect(controller.selection.baseOffset, 9);
+
+    controller.value = const TextEditingValue(
+      text: '• item\n• \n',
+      selection: TextSelection.collapsed(offset: 10),
+    );
+    expect(controller.text, '• item\n\n');
+    expect(saved.last, '- item\n\n');
+
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    controller.setBulletList();
+    expect(controller.text, 'item\n\n');
+    expect(saved.last, 'item\n\n');
+  });
+
+  test('programmatic actions finish composition and accept more IME text', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.value = const TextEditingValue(
+      text: 'ab',
+      selection: TextSelection.collapsed(offset: 2),
+      composing: TextRange(start: 1, end: 2),
+    );
+
+    controller.setHeading();
+    expect(controller.value.composing, TextRange.empty);
+    expect(saved.last, '= ab');
+
+    controller.value = const TextEditingValue(
+      text: 'abc',
+      selection: TextSelection.collapsed(offset: 3),
+      composing: TextRange(start: 2, end: 3),
+    );
+    controller.value = controller.value.copyWith(composing: TextRange.empty);
+    expect(saved.last, '= abc');
+  });
+
+  test('block magic leaves a writable paragraph and correct caret', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+
+    controller.applyMagic(
+      const MagicRequest(
+        action: MagicAction.task,
+        id: 'task-1',
+        value: 'Write report',
+      ),
+    );
+    expect(controller.selection.baseOffset, controller.text.length);
+    controller.value = TextEditingValue(
+      text: '${controller.text}x',
+      selection: TextSelection.collapsed(offset: controller.text.length + 1),
+      composing: TextRange(
+        start: controller.text.length,
+        end: controller.text.length + 1,
+      ),
+    );
+    controller.value = controller.value.copyWith(composing: TextRange.empty);
+
+    expect(saved.last, startsWith('seed\n\n#tylog.task('));
+    expect(saved.last, endsWith('\n\nx'));
+  });
+
   test('collapsed Bold styles subsequently typed text', () {
     String? saved;
     final controller = TyLogEditingController(
@@ -276,7 +436,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TyLogRichEditor(controller: controller, onInsert: () {}),
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
         ),
       ),
     );
@@ -326,7 +486,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TyLogRichEditor(controller: controller, onInsert: () {}),
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
         ),
       ),
     );
@@ -339,6 +499,40 @@ void main() {
 
     expect(saved, contains('#strong[привет]'));
     expect(find.byTooltip('Bold'), findsOneWidget);
+  });
+
+  testWidgets('insert callback restores editor focus when it completes', (
+    tester,
+  ) async {
+    final controller = TyLogEditingController(
+      source: 'text',
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(
+            controller: controller,
+            onInsert: () async {
+              FocusManager.instance.primaryFocus?.unfocus();
+              await Future<void>.delayed(Duration.zero);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Insert'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
   });
 
   test('toggleTaskSource round-trips status in both directions', () {
@@ -368,7 +562,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TyLogRichEditor(controller: controller, onInsert: () {}),
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
         ),
       ),
     );

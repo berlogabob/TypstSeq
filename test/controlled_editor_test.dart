@@ -69,6 +69,20 @@ void main() {
     );
     expect(linked.text, '#tylog.ref-note("amazon")[Amazon]');
 
+    final mention = applyMagicEdit(
+      '',
+      const TextSelection.collapsed(offset: 0),
+      const MagicRequest(
+        action: MagicAction.mention,
+        id: 'fernando-marson',
+        value: 'Fernando Marson',
+      ),
+    );
+    expect(
+      mention.text,
+      r'#tylog.ref-note("fernando-marson")[\@Fernando Marson]',
+    );
+
     final task = applyMagicEdit(
       'write "report"',
       const TextSelection(baseOffset: 0, extentOffset: 14),
@@ -127,8 +141,52 @@ void main() {
         edit(
           const MagicRequest(action: MagicAction.table, rows: 2, columns: 2),
         ).text,
-        '#table(columns: 2, [], [], [], [])',
+        '#table(columns: 2, [], [], [], [])\n\n',
       );
     },
   );
+
+  test('source Magic leaves a safe typing caret', () {
+    final table = applyMagicEdit(
+      'beforeafter',
+      const TextSelection.collapsed(offset: 6),
+      const MagicRequest(action: MagicAction.table, rows: 2, columns: 3),
+    );
+    expect(
+      table.text,
+      'before\n\n#table(columns: 3, [], [], [], [], [], [])\n\nafter',
+    );
+    expect(table.selection.baseOffset, table.text.indexOf('after'));
+    expect(
+      table.text.replaceRange(table.selection.start, table.selection.end, 'x'),
+      contains('#table(columns: 3, [], [], [], [], [], [])\n\nxafter'),
+    );
+
+    for (final action in [MagicAction.bold, MagicAction.italic]) {
+      final edit = applyMagicEdit(
+        '',
+        const TextSelection.collapsed(offset: 0),
+        MagicRequest(action: action),
+      );
+      expect(
+        edit.text.replaceRange(edit.selection.start, edit.selection.end, 'x'),
+        action == MagicAction.bold ? '#strong[x]' : '#emph[x]',
+      );
+    }
+
+    final heading = applyMagicEdit(
+      '',
+      const TextSelection.collapsed(offset: 0),
+      const MagicRequest(action: MagicAction.heading),
+    );
+    expect(heading.text, '= \n\n');
+    expect(
+      heading.text.replaceRange(
+        heading.selection.start,
+        heading.selection.end,
+        'Title',
+      ),
+      '= Title\n\n',
+    );
+  });
 }

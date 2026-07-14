@@ -88,6 +88,103 @@ void main() {
     expect(registry.entries, isEmpty);
   });
 
+  test('Android tree deletion removes the root before forgetting it', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_tree_delete_');
+    addTearDown(() => base.delete(recursive: true));
+    const channel = MethodChannel('org.tylog.tylog/saf');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call.method);
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    const entry = VaultEntry(
+      id: 'tree',
+      name: 'Tygo',
+      path: '',
+      storageKind: 'android-tree',
+      treeUri: 'content://provider/tree/Tygo',
+    );
+    final registry = VaultRegistry(File('${base.path}/vaults.json'), [
+      entry,
+    ], entry.id);
+
+    await registry.delete(entry);
+
+    expect(calls, ['deleteRoot', 'releaseAccess']);
+    expect(registry.entries, isEmpty);
+  });
+
+  test('failed Android tree deletion keeps the vault registered', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_tree_failure_');
+    addTearDown(() => base.delete(recursive: true));
+    const channel = MethodChannel('org.tylog.tylog/saf');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          throw PlatformException(code: 'unsupported', message: 'kept');
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    const entry = VaultEntry(
+      id: 'tree',
+      name: 'Tygo',
+      path: '',
+      storageKind: 'android-tree',
+      treeUri: 'content://provider/tree/Tygo',
+    );
+    final registry = VaultRegistry(File('${base.path}/vaults.json'), [
+      entry,
+    ], entry.id);
+
+    await expectLater(
+      registry.delete(entry),
+      throwsA(isA<PlatformException>()),
+    );
+
+    expect(registry.entries, [entry]);
+  });
+
+  test('forgetting an active Android vault only releases its grant', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_tree_forget_');
+    addTearDown(() => base.delete(recursive: true));
+    const channel = MethodChannel('org.tylog.tylog/saf');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call.method);
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final keptDirectory = await Directory('${base.path}/kept').create();
+    const forgotten = VaultEntry(
+      id: 'tree',
+      name: 'Tygo',
+      path: '',
+      storageKind: 'android-tree',
+      treeUri: 'content://provider/tree/Tygo',
+    );
+    final kept = VaultEntry(id: 'kept', name: 'Kept', path: keptDirectory.path);
+    final registry = VaultRegistry(File('${base.path}/vaults.json'), [
+      forgotten,
+      kept,
+    ], forgotten.id);
+
+    await registry.forget(forgotten);
+
+    expect(calls, ['releaseAccess']);
+    expect(registry.activeId, kept.id);
+    expect(await keptDirectory.exists(), isTrue);
+  });
+
   test('forget still removes the vault when the keystore fails', () async {
     // macOS keychain access can throw (entitlement/signature mismatch);
     // forgetting must not depend on the secret being deletable.

@@ -293,6 +293,11 @@ class VaultRegistry {
   }
 
   Future<void> forget(VaultEntry entry) async {
+    if (entry.storageKind == 'android-tree') {
+      try {
+        await (entry.storage as AndroidTreeVaultStorage).releaseAccess();
+      } catch (_) {}
+    }
     // Keystore access can fail/hang (macOS keychain entitlement mismatch);
     // an orphaned secret must not block forgetting the vault.
     try {
@@ -309,9 +314,7 @@ class VaultRegistry {
 
   Future<void> delete(VaultEntry entry) async {
     if (entry.storageKind == 'android-tree') {
-      for (final item in (await entry.storage.list()).reversed) {
-        await entry.storage.delete(item.path);
-      }
+      await (entry.storage as AndroidTreeVaultStorage).deleteRoot();
     } else {
       final directory = Directory(entry.path);
       if (await directory.exists()) {

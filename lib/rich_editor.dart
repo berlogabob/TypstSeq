@@ -295,12 +295,64 @@ class TyLogDocument {
     }
   }
 
-  void setBlockStyle(int offset, TyLogBlockStyle style) {
+  int setBlockStyle(int offset, TyLogBlockStyle style) {
+    if (blocks.isEmpty) blocks = [_newParagraph('', 0, separator: '')];
     final hit = _blockAt(offset, preferPrevious: true);
-    if (hit == null || blocks[hit.index].isProtected) return;
-    blocks[hit.index]
-      ..style = style
-      ..dirty = true;
+    if (hit == null || blocks[hit.index].isProtected) return offset;
+    final block = blocks[hit.index];
+    final units = _units(block.parts);
+    final local = (offset - hit.start).clamp(0, units.length);
+    var lineStart = local;
+    while (lineStart > 0 && units[lineStart - 1].code != 10) {
+      lineStart--;
+    }
+    var lineEnd = local;
+    while (lineEnd < units.length && units[lineEnd].code != 10) {
+      lineEnd++;
+    }
+    final before = units.sublist(0, lineStart);
+    final line = units.sublist(lineStart, lineEnd);
+    final after = units.sublist(lineEnd);
+    if (before.isNotEmpty && before.last.code == 10) before.removeLast();
+    if (after.isNotEmpty && after.first.code == 10) after.removeAt(0);
+
+    final togglingList =
+        style == TyLogBlockStyle.bulletList &&
+        block.style == TyLogBlockStyle.bulletList;
+    final targetStyle = togglingList ? TyLogBlockStyle.paragraph : style;
+    var removedPrefix = 0;
+    if (block.style == TyLogBlockStyle.bulletList &&
+        line.length >= 2 &&
+        line[0].code == 0x2022 &&
+        line[1].code == 32) {
+      line.removeRange(0, 2);
+      removedPrefix = 2;
+    }
+    if (targetStyle == TyLogBlockStyle.bulletList) {
+      final inherited = line.isEmpty
+          ? const TyLogInlineStyle()
+          : line.first.style;
+      line.insertAll(0, [
+        _Unit(0x2022, inherited, null),
+        _Unit(32, inherited, null),
+      ]);
+    }
+
+    final replacements = <TyLogBlock>[];
+    if (before.isNotEmpty) replacements.add(_blockFrom(block, before));
+    final target = _blockFrom(block, line, style: targetStyle);
+    replacements.add(target);
+    if (after.isNotEmpty) replacements.add(_blockFrom(block, after));
+    for (final replacement in replacements) {
+      replacement.separator = '\n\n';
+    }
+    replacements.last.separator = block.separator;
+    blocks.replaceRange(hit.index, hit.index + 1, replacements);
+    final targetIndex = hit.index + (before.isEmpty ? 0 : 1);
+    final insertedPrefix = targetStyle == TyLogBlockStyle.bulletList ? 2 : 0;
+    final caretInLine = (local - lineStart - removedPrefix + insertedPrefix)
+        .clamp(0, line.length);
+    return _ranges[targetIndex].start + caretInLine;
   }
 
   void replaceProtected(String id, String source) {
@@ -334,11 +386,12 @@ class TyLogDocument {
     }
   }
 
-  void insertSource(
+  int insertSource(
     TextRange selection,
     String source, {
     required String label,
   }) {
+    if (blocks.isEmpty) blocks = [_newParagraph('', 0, separator: '')];
     _replaceWithParts(selection, [
       TyLogInline.atom(
         source: source,
@@ -346,6 +399,110 @@ class TyLogDocument {
         id: 'atom-${DateTime.now().microsecondsSinceEpoch}',
       ),
     ]);
+    return selection.start + 1;
+  }
+
+  int insertBlock(TextRange selection, String source) {
+    final parsed = parseControlledTypst(source);
+    if (parsed.blocks.length != 1) {
+      throw const FormatException('Magic block must contain one Typst block.');
+    }
+    final replacement = _parseBlock(parsed.blocks.single, '', blocks.length);
+    if (blocks.isEmpty) {
+      replacement.separator = '\n\n';
+      blocks = [replacement, _newParagraph('', 1, separator: '')];
+      return 3;
+    }
+    replace(selection.start, selection.end, '');
+    final hit = _blockAt(selection.start, preferPrevious: true);
+    if (hit == null) {
+      replacement.separator = '\n\n';
+      blocks.addAll([
+        replacement,
+        _newParagraph('', blocks.length + 1, separator: ''),
+      ]);
+      return _ranges.last.start;
+    }
+    final current = blocks[hit.index];
+    if (!current.isProtected && current.visibleText.isEmpty) {
+      replacement.separator = '\n\n';
+      blocks.insert(hit.index, replacement);
+      return _ranges[hit.index + 1].start;
+    }
+    final tailSeparator = current.separator;
+    replacement.separator = '\n\n';
+    if (!current.isProtected) {
+      final units = _units(current.parts);
+      while (units.isNotEmpty && units.last.code == 10) {
+        units.removeLast();
+      }
+      current.parts = _parts(units);
+    }
+    current
+      ..separator = '\n\n'
+      ..dirty = true;
+    blocks.insert(hit.index + 1, replacement);
+    final next = hit.index + 2;
+    if (next >= blocks.length ||
+        blocks[next].isProtected ||
+        blocks[next].visibleText.isNotEmpty) {
+      blocks.insert(
+        next,
+        _newParagraph(
+          '',
+          DateTime.now().microsecondsSinceEpoch,
+          separator: tailSeparator,
+        ),
+      );
+      replacement.separator = '\n\n';
+    }
+    return _ranges[next].start;
+  }
+
+  int insertNewline(int offset) {
+    final hit = _blockAt(offset, preferPrevious: true);
+    if (hit == null || blocks[hit.index].isProtected) return offset;
+    final block = blocks[hit.index];
+    if (block.style == TyLogBlockStyle.bulletList) {
+      final units = _units(block.parts);
+      final local = (offset - hit.start).clamp(0, units.length);
+      var start = local;
+      while (start > 0 && units[start - 1].code != 10) {
+        start--;
+      }
+      var end = local;
+      while (end < units.length && units[end].code != 10) {
+        end++;
+      }
+      final contentStart =
+          start +
+          (end - start >= 2 &&
+                  units[start].code == 0x2022 &&
+                  units[start + 1].code == 32
+              ? 2
+              : 0);
+      if (units.sublist(contentStart, end).every((unit) => unit.code == 32)) {
+        return setBlockStyle(offset, TyLogBlockStyle.bulletList);
+      }
+      replace(offset, offset, '\n• ');
+      return offset + 3;
+    }
+    if (block.style != TyLogBlockStyle.heading) {
+      replace(offset, offset, '\n');
+      return offset + 1;
+    }
+    final units = _units(block.parts);
+    final local = (offset - hit.start).clamp(0, units.length);
+    final heading = _blockFrom(block, units.sublist(0, local));
+    final paragraph = _blockFrom(
+      block,
+      units.sublist(local),
+      style: TyLogBlockStyle.paragraph,
+    );
+    heading.separator = '\n\n';
+    paragraph.separator = block.separator;
+    blocks.replaceRange(hit.index, hit.index + 1, [heading, paragraph]);
+    return _ranges[hit.index + 1].start;
   }
 
   void _replaceWithParts(TextRange selection, List<TyLogInline> inserted) {
@@ -402,7 +559,12 @@ class TyLogDocument {
     final source = buffer.toString();
     if (validate) {
       final reparsed = TyLogDocument.parse(source);
-      if (reparsed.visibleText != visibleText ||
+      final persistedVisible = blocks
+          .where((block) => block.isProtected || block.visibleText.isNotEmpty)
+          .map((block) => block.visibleText)
+          .join('\n\n');
+      if ((reparsed.visibleText != visibleText &&
+              reparsed.visibleText != persistedVisible) ||
           !_sameProtectedSources(reparsed, this)) {
         throw const FormatException(
           'Rich editor could not validate Typst output.',
@@ -485,6 +647,28 @@ class TyLogEditingController extends TextEditingController {
     if (composing) _compositionStart ??= before;
     try {
       final change = _replacement(_lastValue.text, next.text);
+      if (change.replacement == '\n' && change.start == change.oldEnd) {
+        final previousCaret = _lastValue.selection.extentOffset;
+        final enterOffset =
+            previousCaret >= 0 &&
+                next.selection.extentOffset == previousCaret + 1
+            ? previousCaret
+            : change.start;
+        final offset = document.insertNewline(enterOffset);
+        _updating = true;
+        value = TextEditingValue(
+          text: document.visibleText,
+          selection: TextSelection.collapsed(offset: offset),
+        );
+        _lastValue = value;
+        _updating = false;
+        final source = document.toSource();
+        _addUndo(_compositionStart ?? before);
+        _compositionStart = null;
+        _redo.clear();
+        onSourceChanged(source);
+        return;
+      }
       document.replace(
         change.start,
         change.oldEnd,
@@ -550,6 +734,7 @@ class TyLogEditingController extends TextEditingController {
       value.composing.isValid && !value.composing.isCollapsed;
 
   void toggleBold() {
+    _clearComposition();
     if (selection.isCollapsed) {
       _typingStyle = _typingStyle.copyWith(bold: !_typingStyle.bold);
       notifyListeners();
@@ -564,6 +749,7 @@ class TyLogEditingController extends TextEditingController {
   }
 
   void toggleItalic() {
+    _clearComposition();
     if (selection.isCollapsed) {
       _typingStyle = _typingStyle.copyWith(italic: !_typingStyle.italic);
       notifyListeners();
@@ -577,16 +763,19 @@ class TyLogEditingController extends TextEditingController {
     );
   }
 
-  void setHeading() => _format(
-    () => document.setBlockStyle(selection.baseOffset, TyLogBlockStyle.heading),
-  );
+  void setHeading() {
+    var offset = selection.isValid ? selection.baseOffset : text.length;
+    _format(() {
+      offset = document.setBlockStyle(offset, TyLogBlockStyle.heading);
+    }, selectionOffset: () => offset);
+  }
 
-  void setBulletList() => _format(
-    () => document.setBlockStyle(
-      selection.baseOffset,
-      TyLogBlockStyle.bulletList,
-    ),
-  );
+  void setBulletList() {
+    var offset = selection.isValid ? selection.baseOffset : text.length;
+    _format(() {
+      offset = document.setBlockStyle(offset, TyLogBlockStyle.bulletList);
+    }, selectionOffset: () => offset);
+  }
 
   bool _selectionHas(bool Function(TyLogInlineStyle style) test) {
     if (!selection.isValid) return false;
@@ -609,13 +798,31 @@ class TyLogEditingController extends TextEditingController {
     return false;
   }
 
-  void _format(VoidCallback change) {
+  void _clearComposition() {
+    if (!_isComposing(value)) return;
+    value = value.copyWith(composing: TextRange.empty);
+  }
+
+  void _format(VoidCallback change, {int Function()? selectionOffset}) {
+    _clearComposition();
     final before = _snapshot();
     try {
       change();
       final source = document.toSource();
       _undo.add(before);
       _redo.clear();
+      if (value.text != document.visibleText) {
+        final offset = math.min(
+          selectionOffset?.call() ?? selection.baseOffset,
+          document.visibleText.length,
+        );
+        _updating = true;
+        value = TextEditingValue(
+          text: document.visibleText,
+          selection: TextSelection.collapsed(offset: offset),
+        );
+        _updating = false;
+      }
       _lastValue = value;
       notifyListeners();
       onSourceChanged(source);
@@ -626,6 +833,7 @@ class TyLogEditingController extends TextEditingController {
   }
 
   void applyMagic(MagicRequest request) {
+    _clearComposition();
     switch (request.action) {
       case MagicAction.bold:
         toggleBold();
@@ -637,6 +845,9 @@ class TyLogEditingController extends TextEditingController {
         setHeading();
         return;
       default:
+        final selection = this.selection.isValid
+            ? this.selection
+            : TextSelection.collapsed(offset: text.length);
         final selected = selectedPlainText;
         final edit = applyMagicEdit(
           selected,
@@ -645,6 +856,7 @@ class TyLogEditingController extends TextEditingController {
         );
         final label = switch (request.action) {
           MagicAction.noteLink ||
+          MagicAction.mention ||
           MagicAction.project => request.value ?? selected,
           MagicAction.tag => request.value ?? selected,
           MagicAction.task => request.value ?? selected,
@@ -659,9 +871,15 @@ class TyLogEditingController extends TextEditingController {
         };
         final before = _snapshot();
         try {
-          document.insertSource(selection, edit.text, label: label);
+          final isBlock = const {
+            MagicAction.task,
+            MagicAction.table,
+            MagicAction.equation,
+          }.contains(request.action);
+          final offset = isBlock
+              ? document.insertBlock(selection, edit.text)
+              : document.insertSource(selection, edit.text, label: label);
           final nextText = document.visibleText;
-          final offset = math.min(selection.start + 1, nextText.length);
           _updating = true;
           value = TextEditingValue(
             text: nextText,
@@ -782,6 +1000,16 @@ class TyLogEditingController extends TextEditingController {
     required BuildContext context,
     TextStyle? style,
     required bool withComposing,
+  }) => _textSpan(context, style, withComposing: withComposing);
+
+  TextSpan readTextSpan(BuildContext context, {TextStyle? style}) =>
+      _textSpan(context, style, withComposing: false, interactive: false);
+
+  TextSpan _textSpan(
+    BuildContext context,
+    TextStyle? style, {
+    required bool withComposing,
+    bool interactive = true,
   }) {
     final children = <InlineSpan>[];
     var global = 0;
@@ -799,13 +1027,14 @@ class TyLogEditingController extends TextEditingController {
                       '',
                     ),
                     done: taskStatusOf(source) == 'done',
-                    onToggle: () => toggleTask(block.id),
-                    onTap: () => onProtectedTap(block.id),
+                    due: taskDueOf(source),
+                    onToggle: interactive ? () => toggleTask(block.id) : null,
+                    onTap: interactive ? () => onProtectedTap(block.id) : null,
                   )
                 : _ProtectedChip(
                     label: block.protectedLabel ?? 'Custom Typst',
                     block: true,
-                    onTap: () => onProtectedTap(block.id),
+                    onTap: interactive ? () => onProtectedTap(block.id) : null,
                   ),
           ),
         );
@@ -819,7 +1048,7 @@ class TyLogEditingController extends TextEditingController {
                 child: _ProtectedChip(
                   label: part.label!,
                   block: false,
-                  onTap: () => onProtectedTap(part.id!),
+                  onTap: interactive ? () => onProtectedTap(part.id!) : null,
                 ),
               ),
             );
@@ -853,10 +1082,48 @@ class TyLogRichEditor extends StatefulWidget {
   });
 
   final TyLogEditingController controller;
-  final VoidCallback onInsert;
+  final Future<void> Function() onInsert;
 
   @override
   State<TyLogRichEditor> createState() => _TyLogRichEditorState();
+}
+
+class TyLogReadView extends StatefulWidget {
+  const TyLogReadView({super.key, required this.source});
+
+  final String source;
+
+  @override
+  State<TyLogReadView> createState() => _TyLogReadViewState();
+}
+
+class _TyLogReadViewState extends State<TyLogReadView> {
+  late final TyLogEditingController controller = TyLogEditingController(
+    source: widget.source,
+    onSourceChanged: (_) {},
+    onError: (_) {},
+    onProtectedTap: (_) {},
+  );
+
+  @override
+  void didUpdateWidget(TyLogReadView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.source != oldWidget.source) controller.loadSource(widget.source);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SelectableText.rich(
+    controller.readTextSpan(
+      context,
+      style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+    ),
+  );
 }
 
 class _TyLogRichEditorState extends State<TyLogRichEditor> {
@@ -975,9 +1242,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       icon: const Icon(Icons.redo),
                     ),
                     IconButton(
-                      tooltip: 'Heading',
+                      tooltip: 'Heading 1',
                       onPressed: widget.controller.setHeading,
-                      icon: const Icon(Icons.title),
+                      icon: Text(
+                        'H1',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Bold',
@@ -996,7 +1266,13 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                     ),
                     IconButton(
                       tooltip: 'Insert',
-                      onPressed: widget.onInsert,
+                      onPressed: () async {
+                        try {
+                          await widget.onInsert();
+                        } finally {
+                          if (mounted) focusNode.requestFocus();
+                        }
+                      },
                       icon: const Icon(Icons.add_circle_outline),
                     ),
                   ],
@@ -1013,56 +1289,59 @@ class _TaskChip extends StatelessWidget {
   const _TaskChip({
     required this.label,
     required this.done,
+    required this.due,
     required this.onToggle,
     required this.onTap,
   });
 
   final String label;
   final bool done;
-  final VoidCallback onToggle;
-  final VoidCallback onTap;
+  final String? due;
+  final VoidCallback? onToggle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Semantics(
     label: '$label, task ${done ? 'done' : 'to do'}',
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Material(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+    child: LayoutBuilder(
+      builder: (context, constraints) => Container(
+        width: constraints.hasBoundedWidth ? constraints.maxWidth : null,
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            InkWell(
+            IconButton(
               key: const Key('task-checkbox'),
-              onTap: onToggle,
-              borderRadius: BorderRadius.circular(10),
-              child: Padding(
-                // Kept short so the chip fits its line box in the editor;
-                // taller padding makes it overlap adjacent lines.
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                child: Icon(
-                  done ? Icons.check_box : Icons.check_box_outline_blank,
-                  size: 20,
-                ),
+              onPressed: onToggle,
+              icon: Icon(
+                done ? Icons.check_box : Icons.check_box_outline_blank,
               ),
             ),
-            InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(10),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 12, 4),
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: done
-                      ? const TextStyle(
-                          decoration: TextDecoration.lineThrough,
-                        )
-                      : null,
+            Expanded(
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: done
+                          ? const TextStyle(
+                              decoration: TextDecoration.lineThrough,
+                            )
+                          : null,
+                    ),
+                    if (due != null)
+                      Text(
+                        'Due $due',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -1082,11 +1361,11 @@ class _ProtectedChip extends StatelessWidget {
 
   final String label;
   final bool block;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
+    button: onTap != null,
     label: '$label, protected Typst',
     child: Padding(
       padding: EdgeInsets.symmetric(horizontal: block ? 0 : 2, vertical: 2),
@@ -1289,6 +1568,9 @@ bool isTaskSource(String source) =>
 String taskStatusOf(String source) =>
     RegExp(r'status\s*:\s*"([^"]*)"').firstMatch(source)?.group(1) ?? 'todo';
 
+String? taskDueOf(String source) =>
+    RegExp(r'due\s*:\s*"([^"]*)"').firstMatch(source)?.group(1);
+
 /// Flips a single `#tylog.task(...)` call between done and todo.
 // ponytail: flat regex over the call source, same ceiling as
 // scanner.replaceTaskStatus; structural parse if task text ever
@@ -1304,7 +1586,9 @@ String toggleTaskSource(String source) {
 
 String _atomLabel(String source) {
   final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
-  if (content != null && content.isNotEmpty) return content;
+  if (content != null && content.isNotEmpty) {
+    return content.replaceAll(r'\@', '@');
+  }
   final quoted = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
   if (quoted != null) {
     return quoted.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
@@ -1443,6 +1727,19 @@ TyLogBlock _newParagraph(String text, int id, {required String separator}) =>
       separator: separator,
       dirty: true,
     );
+
+TyLogBlock _blockFrom(
+  TyLogBlock original,
+  List<_Unit> units, {
+  TyLogBlockStyle? style,
+}) => TyLogBlock(
+  id: 'split-${DateTime.now().microsecondsSinceEpoch}-${units.hashCode}',
+  style: style ?? original.style,
+  parts: _parts(units),
+  originalSource: '',
+  separator: original.separator,
+  dirty: true,
+);
 
 String _serializeBlock(TyLogBlock block) {
   if (block.isProtected) return block.originalSource;

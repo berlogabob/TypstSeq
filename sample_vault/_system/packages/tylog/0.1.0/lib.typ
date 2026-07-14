@@ -4,9 +4,15 @@
 
 #let default-tag-view(name) = text(fill: gray)[#name]
 
-#let default-task-view(text-value, status, priority) = [
-  #if status == "done" { "☑ " } else if status == "cancelled" { "☒ " } else { "☐ " }
-  #text-value
+#let default-task-view(text-value, status, priority) = block(
+  width: 100%,
+  inset: (x: 0.65em, y: 0.45em),
+  radius: 0.35em,
+  fill: if status == "done" { luma(96%) } else { luma(98%) },
+  stroke: (left: 2pt + if priority == "high" { red } else { luma(70%) }),
+)[
+  #box(width: 1.4em)[#if status == "done" { sym.checkmark } else if status == "cancelled" { sym.times } else { sym.ballot }]
+  #if status == "done" { strike(text-value) } else { text-value }
 ]
 
 #let document(
@@ -115,4 +121,3 @@
   )) <tylog-task>
   #view(text, status, priority)
 ]
-

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'search_index.dart';
 
-enum KnowledgeView { search, tasks, problems }
+enum KnowledgeView { search, problems }
 
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({
@@ -13,7 +13,6 @@ class KnowledgeScreen extends StatefulWidget {
     required this.search,
     required this.problems,
     required this.onOpenNote,
-    required this.onSetTaskStatus,
   });
 
   final KnowledgeView initialView;
@@ -21,7 +20,6 @@ class KnowledgeScreen extends StatefulWidget {
   final PkmsSearchIndex search;
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
-  final Future<void> Function(TaskRef, String) onSetTaskStatus;
 
   @override
   State<KnowledgeScreen> createState() => _KnowledgeScreenState();
@@ -37,7 +35,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     appBar: AppBar(
       title: Text(switch (view) {
         KnowledgeView.search => 'Search',
-        KnowledgeView.tasks => 'Tasks',
         KnowledgeView.problems => 'Problems',
       }),
       actions: [
@@ -47,7 +44,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           onSelected: (next) => setState(() => view = next),
           itemBuilder: (_) => const [
             PopupMenuItem(value: KnowledgeView.search, child: Text('Search')),
-            PopupMenuItem(value: KnowledgeView.tasks, child: Text('Tasks')),
             PopupMenuItem(
               value: KnowledgeView.problems,
               child: Text('Problems'),
@@ -58,7 +54,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     ),
     body: switch (view) {
       KnowledgeView.search => _search(),
-      KnowledgeView.tasks => _tasks(),
       KnowledgeView.problems => _problems(),
     },
   );
@@ -123,49 +118,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             onTap: result.kind == 'file'
                 ? null
                 : () => widget.onOpenNote(result.path),
-          ),
-      ],
-    );
-  }
-
-  Widget _tasks() {
-    final tasks = widget.index.tasks.toList()
-      ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        if (tasks.isEmpty)
-          const ListTile(
-            leading: Icon(Icons.task_alt),
-            title: Text('No indexed tasks'),
-            subtitle: Text('Add a #tylog.task(...) call to a note.'),
-          ),
-        for (final task in tasks)
-          ListTile(
-            leading: Icon(
-              task.status == 'done'
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
-            ),
-            title: Text(task.text),
-            subtitle: Text(
-              [
-                task.status,
-                if (task.project != null) task.project!,
-                if (task.due != null) 'due ${task.due}',
-              ].join(' · '),
-            ),
-            onTap: () => widget.onOpenNote(task.notePath),
-            trailing: PopupMenuButton<String>(
-              tooltip: 'Task status',
-              onSelected: (status) => widget.onSetTaskStatus(task, status),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'todo', child: Text('To do')),
-                PopupMenuItem(value: 'doing', child: Text('Doing')),
-                PopupMenuItem(value: 'done', child: Text('Done')),
-                PopupMenuItem(value: 'cancelled', child: Text('Cancelled')),
-              ],
-            ),
           ),
       ],
     );

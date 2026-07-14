@@ -207,6 +207,16 @@ Text "#tylog.tag(\"ignored\")"
     expect(note.citations, ['real', 'second-key']);
   });
 
+  test('escaped entity mentions are not indexed as citations', () {
+    final note = scanNote(
+      'notes/A.typ',
+      r'#show: tylog.note.with(id: "a", title: "A")'
+          '\n'
+          r'#tylog.ref-note("fernando")[\@Fernando] and @real.',
+    );
+    expect(note.citations, ['real']);
+  });
+
   test('10k note resolver remains linear-time', () {
     final notes = List.generate(
       10000,

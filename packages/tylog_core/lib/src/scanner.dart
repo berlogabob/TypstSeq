@@ -763,6 +763,9 @@ List<String> _citations(String source) {
       final end = _skipRaw(source, i);
       masked.write(''.padRight(end - i));
       i = end;
+    } else if (source.codeUnitAt(i) == 92 && i + 1 < source.length) {
+      masked.write('  ');
+      i += 2;
     } else {
       masked.writeCharCode(source.codeUnitAt(i++));
     }
