@@ -39,12 +39,36 @@ Future<PkmsValidationReport> validatePkmsStorage(
       ),
     );
   }
+  if (await storage.exists('_system/theme.typ') &&
+      !(await storage.readText(
+        '_system/theme.typ',
+      )).contains('// tylog-theme-version: 1')) {
+    problems.add(
+      const PkmsProblem(
+        code: 'custom-typst-theme',
+        severity: PkmsSeverity.warning,
+        subject: '_system/theme.typ',
+        message: 'Custom Typst theme compatibility cannot be verified.',
+        fix: 'Keep the custom theme compatible with tylog.document.',
+      ),
+    );
+  }
 
   const standardKinds = {'note', 'daily', 'project', 'article', 'research'};
   const taskStatuses = {'todo', 'doing', 'done', 'cancelled'};
   const priorities = {'low', 'normal', 'high', 'urgent'};
 
   for (final note in index.notes) {
+    if (note.id.trim().isEmpty) {
+      problems.add(
+        PkmsProblem(
+          code: 'invalid-note-id',
+          severity: PkmsSeverity.error,
+          subject: note.path,
+          message: 'Note ID must be a non-empty stable string.',
+        ),
+      );
+    }
     if (!standardKinds.contains(note.kind)) {
       problems.add(
         PkmsProblem(
@@ -92,6 +116,26 @@ Future<PkmsValidationReport> validatePkmsStorage(
   }
 
   for (final task in index.tasks) {
+    if (task.id.trim().isEmpty) {
+      problems.add(
+        PkmsProblem(
+          code: 'invalid-task-id',
+          severity: PkmsSeverity.error,
+          subject: task.notePath,
+          message: 'Task ID must be a non-empty stable string.',
+        ),
+      );
+    }
+    if (task.text.trim().isEmpty) {
+      problems.add(
+        PkmsProblem(
+          code: 'invalid-task-text',
+          severity: PkmsSeverity.error,
+          subject: task.id.isEmpty ? task.notePath : task.id,
+          message: 'Task text must be a non-empty string.',
+        ),
+      );
+    }
     if (!taskStatuses.contains(task.status)) {
       problems.add(
         PkmsProblem(

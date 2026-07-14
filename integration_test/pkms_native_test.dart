@@ -53,6 +53,18 @@ void main() {
       expect(metadata.attachments.single['path'], 'assets/manual.pdf');
       expect(metadata.tasks.single['id'], 'task-1');
 
+      final embeddedIndex = await scanVaultStorage(
+        vault.storage,
+        inspector: inspector,
+        force: true,
+      );
+      final cliIndex = await scanVaultStorage(
+        vault.storage,
+        inspector: CliTypstInspector(root),
+        force: true,
+      );
+      expect(_stableIndex(embeddedIndex), _stableIndex(cliIndex));
+
       await vault.saveNote(
         'notes/Broken.typ',
         '''#import "/_system/tylog.typ" as tylog
@@ -121,4 +133,14 @@ Object? _normalizedValue(Object? value) {
     return {for (final key in keys) key: _normalizedValue(value[key])};
   }
   return value;
+}
+
+Map<String, Object?> _stableIndex(VaultIndex index) {
+  final json = (jsonDecode(jsonEncode(index.toJson())) as Map)
+      .cast<String, Object?>();
+  for (final note in (json['notes'] as List).cast<Map>()) {
+    note.remove('fingerprint');
+    note.remove('modifiedMillis');
+  }
+  return json;
 }

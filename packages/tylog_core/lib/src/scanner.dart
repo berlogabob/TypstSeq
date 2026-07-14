@@ -573,7 +573,7 @@ NoteRef _queriedNote(
   final note = metadata.note!;
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
   return NoteRef(
-    id: _text(note['id']) ?? stem,
+    id: _text(note['id']) ?? '',
     path: path,
     title: _text(note['title']) ?? stem,
     kind: _text(note['kind']) ?? _kindFromPath(path),
@@ -670,12 +670,11 @@ NoteRef _fallbackNote(
 
 List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
     values
-        .where((value) => value['id'] != null && value['text'] != null)
         .map(
           (value) => TaskRef(
-            id: value['id'].toString(),
+            id: _text(value['id']) ?? '',
             notePath: path,
-            text: value['text'].toString(),
+            text: _text(value['text']) ?? '',
             status: value['status']?.toString() ?? 'todo',
             priority: value['priority']?.toString() ?? 'normal',
             project: _text(value['project']),

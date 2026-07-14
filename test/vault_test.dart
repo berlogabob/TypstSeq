@@ -87,19 +87,22 @@ void main() {
     expect(await File('${dir.path}/notes/existing.typ').readAsString(), source);
   });
 
-  test('custom helper is preserved and vendored package is repaired', () async {
+  test('custom helper and theme are preserved; package is repaired', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_custom_package_');
     addTearDown(() => dir.delete(recursive: true));
     final vault = Vault(dir);
     await vault.ensureCreated();
     const custom = '#let note(..args) = [custom]';
     await vault.storage.writeText(Vault.helperPath, custom);
+    const customTheme = '#let document(body) = body';
+    await vault.storage.writeText(Vault.themePath, customTheme);
     const packagePath = '_system/packages/tylog/0.1.0/lib.typ';
     await vault.storage.writeText(packagePath, 'broken');
 
     await vault.ensureCreated();
 
     expect(await vault.storage.readText(Vault.helperPath), custom);
+    expect(await vault.storage.readText(Vault.themePath), customTheme);
     expect(
       await vault.storage.readText(packagePath),
       (await TylogAssets.load()).text('typst/tylog/lib.typ'),
