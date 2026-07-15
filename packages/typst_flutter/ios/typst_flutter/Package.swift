@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "typst_flutter",
-  platforms: [.iOS(.v13)],
+  platforms: [.iOS(.v14)],
   products: [
     .library(name: "typst-flutter", targets: ["typst_flutter"]),
   ],

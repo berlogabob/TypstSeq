@@ -313,11 +313,17 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     }
+    final keepRunningOffscreen =
+        Platform.isAndroid &&
+        const {'setup', 'manual', 'retry'}.contains(trigger);
     syncing = true;
     syncError = null;
     status = 'Syncing…';
     _cloudAutosave?.cancel();
     notifyListeners();
+    if (keepRunningOffscreen) {
+      await _startSyncForeground('Preparing Nextcloud sync…');
+    }
     try {
       if (dirty) {
         await save(syncAfter: false);
@@ -329,7 +335,14 @@ class WorkspaceController extends ChangeNotifier {
       final result = await NextcloudSync(
         config,
         onProgress: (stage, path) {
-          syncStage = path == null ? stage : '$stage · $path';
+          syncStage = stage == 'idle'
+              ? null
+              : path == null
+              ? stage
+              : '$stage · $path';
+          if (keepRunningOffscreen && syncStage != null) {
+            unawaited(_updateSyncForeground(syncStage!));
+          }
           notifyListeners();
         },
         canReplaceLocal: (path) =>
@@ -403,6 +416,7 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return false;
     } finally {
+      if (keepRunningOffscreen) await _stopSyncForeground();
       syncing = false;
       syncStage = null;
       notifyListeners();
@@ -457,6 +471,27 @@ class WorkspaceController extends ChangeNotifier {
   void updateCloud(NextcloudConfig? value) {
     cloud = value;
     notifyListeners();
+  }
+
+  Future<void> _startSyncForeground(String detail) => _syncForeground(
+    () => AndroidTreeVaultStorage.startSyncForeground(detail: detail),
+  );
+
+  Future<void> _updateSyncForeground(String detail) => _syncForeground(
+    () => AndroidTreeVaultStorage.updateSyncForeground(detail: detail),
+  );
+
+  Future<void> _stopSyncForeground() =>
+      _syncForeground(AndroidTreeVaultStorage.stopSyncForeground);
+
+  Future<void> _syncForeground(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      // Checkpoints still make the sync resumable if Android rejects a
+      // foreground-service start (for example, from a background context).
+      debugPrint('Android sync foreground service unavailable: $error');
+    }
   }
 
   void replaceNote(String path, String value) {
@@ -558,7 +593,27 @@ class WorkspaceController extends ChangeNotifier {
 bool _notComposing() => false;
 
 String friendlySyncError(Object error) {
-  if (error is SocketException) return 'Cannot reach Nextcloud';
-  if (error is HttpException) return error.message;
-  return error.toString();
+  if (error is SocketException || error is TimeoutException) {
+    return 'Nextcloud connection was interrupted. Progress was saved; Retry resumes.';
+  }
+  if (error is HandshakeException) {
+    return 'Nextcloud security certificate could not be verified.';
+  }
+  if (error is FileSystemException) {
+    return 'TyLog could not update the local vault: '
+        '${error.osError?.message ?? error.message}';
+  }
+  if (error is FormatException) return 'Sync data could not be read.';
+  final text = error is HttpException ? error.message : error.toString();
+  if (text.contains('401') || text.contains('403')) {
+    return 'Nextcloud rejected the login. Re-enter the app password.';
+  }
+  if (text.contains('404')) {
+    return 'The configured Nextcloud folder was not found.';
+  }
+  if (text.contains('PROPFIND invalid file metadata')) {
+    return 'Nextcloud returned invalid file metadata.';
+  }
+  if (text.contains('507')) return 'Nextcloud is out of storage space.';
+  return 'Sync stopped before completion: $text';
 }

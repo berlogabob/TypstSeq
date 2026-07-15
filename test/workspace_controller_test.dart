@@ -117,6 +117,17 @@ void main() {
     expect(controller.cloud, isNull);
     expect(controller.syncing, isFalse);
   });
+
+  test('sync errors explain resumable network and authentication failures', () {
+    expect(
+      friendlySyncError(const SocketException('offline')),
+      contains('Progress was saved'),
+    );
+    expect(
+      friendlySyncError(const HttpException('PROPFIND unexpected status 401')),
+      'Nextcloud rejected the login. Re-enter the app password.',
+    );
+  });
 }
 
 class _FakeInspector implements TypstInspector {

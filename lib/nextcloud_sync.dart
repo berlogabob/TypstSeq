@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -204,6 +205,10 @@ class NextcloudSync {
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   static Duration propfindBodyTimeout = const Duration(seconds: 60);
+  static List<Duration> connectionRetryDelays = const [
+    Duration(seconds: 1),
+    Duration(seconds: 3),
+  ];
 
   Future<RemoteVaultInspection> inspectRemoteVault() async {
     try {
@@ -250,6 +255,7 @@ class NextcloudSync {
     var deletedLocal = 0;
     var deletedRemote = 0;
     var remoteCount = 0;
+    Map<String, SyncCursor>? syncState;
     final decisions = <SyncDecision>[];
     void progress(String next, [String? path]) {
       stage = next;
@@ -274,10 +280,18 @@ class NextcloudSync {
       await _ensureConfiguredFolder();
       progress('load-local-state');
       final loadedState = await _loadSyncState(vault);
-      final syncState = initialMode == null
+      syncState = initialMode == null
           ? loadedState.cursors
           : <String, SyncCursor>{};
       final stateRecovered = initialMode == null && loadedState.recovered;
+      if (loadedState.remoteMismatch) {
+        traceEvents.add({
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'runId': runId,
+          'event': 'state-reset-remote',
+          'trigger': trigger,
+        });
+      }
       if (stateRecovered) {
         traceEvents.add({
           'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -352,8 +366,12 @@ class NextcloudSync {
         ...syncState.keys,
       }.toList()..sort();
 
+      // Save the bootstrap/reset marker before the first transfer. A retry can
+      // then resume even if Android kills the process before the first batch.
+      await _saveSyncState(vault, syncState);
+      var completed = 0;
       for (final path in allPaths) {
-        progress('sync-file', path);
+        progress('sync-file ${completed + 1}/${allPaths.length}', path);
         final localStat = localEntries[path];
         final localExists = localStat != null;
         final remoteFile = remote[path];
@@ -570,6 +588,10 @@ class NextcloudSync {
             remoteMillis: nextRemote?.millisecondsSinceEpoch,
           ),
         );
+        completed++;
+        if (completed % 10 == 0) {
+          await _saveSyncState(vault, syncState);
+        }
       }
 
       progress('save-local-state');
@@ -601,6 +623,20 @@ class NextcloudSync {
         deletedRemote: deletedRemote,
       );
     } catch (error) {
+      final checkpoint = syncState;
+      if (checkpoint != null) {
+        try {
+          await _saveSyncState(vault, checkpoint);
+        } catch (checkpointError) {
+          traceEvents.add({
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'runId': runId,
+            'event': 'checkpoint-failed',
+            'errorType': checkpointError.runtimeType.toString(),
+            'errorMessage': _safeErrorMessage(checkpointError),
+          });
+        }
+      }
       traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
@@ -623,7 +659,6 @@ class NextcloudSync {
       rethrow;
     } finally {
       await _trace(vault, traceEvents);
-      onProgress?.call('idle', null);
       _client.close(force: true);
     }
   }
@@ -1085,13 +1120,22 @@ class NextcloudSync {
   }
 
   Future<HttpClientRequest> _open(String method, Uri uri) async {
-    final request = await _client.openUrl(method, uri);
-    request.headers.set(
-      HttpHeaders.authorizationHeader,
-      'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}',
-    );
-    request.headers.set(HttpHeaders.userAgentHeader, 'TyLog WebDAV sync');
-    return request;
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final request = await _client.openUrl(method, uri);
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}',
+        );
+        request.headers.set(HttpHeaders.userAgentHeader, 'TyLog WebDAV sync');
+        return request;
+      } on SocketException {
+        if (attempt >= connectionRetryDelays.length) rethrow;
+      } on TimeoutException {
+        if (attempt >= connectionRetryDelays.length) rethrow;
+      }
+      await Future<void>.delayed(connectionRetryDelays[attempt]);
+    }
   }
 
   bool _isChanged(DateTime? now, int? previousMillis) {
@@ -1103,18 +1147,50 @@ class NextcloudSync {
   bool _isSyncInternal(String path) =>
       isSyncInternalPath(path) || !isSyncableVaultPath(path);
 
-  Future<({Map<String, SyncCursor> cursors, bool recovered})> _loadSyncState(
-    Vault vault,
-  ) async {
+  String get _remoteKey {
+    final root = config.rootUri;
+    final normalized = Uri(
+      scheme: root.scheme.toLowerCase(),
+      host: root.host.toLowerCase(),
+      port: root.hasPort ? root.port : null,
+      path: root.path,
+    );
+    return sha256
+        .convert(utf8.encode('$normalized\n${config.username.trim()}'))
+        .toString();
+  }
+
+  Future<
+    ({Map<String, SyncCursor> cursors, bool recovered, bool remoteMismatch})
+  >
+  _loadSyncState(Vault vault) async {
     const path = '.tylog/sync_state.json';
     if (!await vault.storage.exists(path)) {
-      return (cursors: <String, SyncCursor>{}, recovered: false);
+      return (
+        cursors: <String, SyncCursor>{},
+        recovered: false,
+        remoteMismatch: false,
+      );
     }
     final source = await vault.storage.readText(path);
     try {
       final decoded = jsonDecode(source);
       if (decoded is! Map || decoded['cursors'] is! Map) {
         throw const FormatException('sync state requires a cursors map');
+      }
+      if (decoded['schema'] != null && decoded['schema'] != 2) {
+        throw const FormatException('unsupported sync state schema');
+      }
+      if (decoded['remoteKey'] != null && decoded['remoteKey'] is! String) {
+        throw const FormatException('sync state remoteKey must be a string');
+      }
+      final storedRemoteKey = decoded['remoteKey'] as String?;
+      if (storedRemoteKey != null && storedRemoteKey != _remoteKey) {
+        return (
+          cursors: <String, SyncCursor>{},
+          recovered: false,
+          remoteMismatch: true,
+        );
       }
       final cursors = <String, SyncCursor>{};
       for (final entry in (decoded['cursors'] as Map).entries) {
@@ -1127,7 +1203,7 @@ class NextcloudSync {
         }
         cursors[entry.key as String] = SyncCursor.fromJson(cursor);
       }
-      return (cursors: cursors, recovered: false);
+      return (cursors: cursors, recovered: false, remoteMismatch: false);
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
       final modified =
@@ -1137,7 +1213,11 @@ class NextcloudSync {
       if (!await vault.storage.exists(archive)) {
         await vault.storage.writeText(archive, source);
       }
-      return (cursors: <String, SyncCursor>{}, recovered: true);
+      return (
+        cursors: <String, SyncCursor>{},
+        recovered: true,
+        remoteMismatch: false,
+      );
     }
   }
 
@@ -1148,6 +1228,8 @@ class NextcloudSync {
     await vault.storage.writeText(
       '.tylog/sync_state.json',
       const JsonEncoder.withIndent('  ').convert({
+        'schema': 2,
+        'remoteKey': _remoteKey,
         'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
       }),
     );

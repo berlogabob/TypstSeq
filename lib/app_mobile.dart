@@ -12,6 +12,7 @@ import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
+import 'markdown_article_import.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
@@ -47,6 +48,36 @@ enum SyncStatusKind {
   synced,
 }
 
+enum _MarkdownImportOutcome { imported, replaced, kept, unchanged, failed }
+
+class _MarkdownImportReportItem {
+  const _MarkdownImportReportItem({
+    required this.name,
+    required this.outcome,
+    this.detail,
+  });
+
+  final String name;
+  final _MarkdownImportOutcome outcome;
+  final String? detail;
+}
+
+class _PreparedMarkdownArticle {
+  const _PreparedMarkdownArticle(this.name, this.draft);
+
+  final String name;
+  final MarkdownArticleDraft draft;
+}
+
+enum _MarkdownDuplicateChoice { keepExisting, useImported, merged }
+
+class _MarkdownDuplicateDecision {
+  const _MarkdownDuplicateDecision(this.choice, [this.source]);
+
+  final _MarkdownDuplicateChoice choice;
+  final String? source;
+}
+
 SyncStatusKind syncStatusKind({
   required bool vaultOpen,
   required bool storageHealthy,
@@ -60,8 +91,8 @@ SyncStatusKind syncStatusKind({
   if (!vaultOpen) return SyncStatusKind.vaultClosed;
   if (!storageHealthy) return SyncStatusKind.storageUnavailable;
   if (desktopManaged) return SyncStatusKind.desktopManaged;
-  if (!cloudConfigured) return SyncStatusKind.notConfigured;
   if (syncing) return SyncStatusKind.syncing;
+  if (!cloudConfigured) return SyncStatusKind.notConfigured;
   if (error != null) return SyncStatusKind.paused;
   if (conflicts > 0) return SyncStatusKind.conflicts;
   if (result == null) return SyncStatusKind.ready;
@@ -868,6 +899,391 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _importMarkdownArticles() async {
+    final opened = vault;
+    if (opened == null) return;
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['md', 'markdown'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    if (dirty) await _save(syncAfter: false);
+    if (!mounted || vault != opened) return;
+
+    final progress = ValueNotifier<String>(
+      'Preparing 0 of ${picked.files.length}',
+    );
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Importing Markdown articles'),
+          content: ValueListenableBuilder<String>(
+            valueListenable: progress,
+            builder: (context, message, _) => SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(message),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final prepared = <_PreparedMarkdownArticle>[];
+    final report = <_MarkdownImportReportItem>[];
+    for (var index = 0; index < picked.files.length; index++) {
+      final file = picked.files[index];
+      progress.value =
+          'Preparing ${index + 1} of ${picked.files.length}\n${file.name}';
+      try {
+        final lower = file.name.toLowerCase();
+        if (!lower.endsWith('.md') && !lower.endsWith('.markdown')) {
+          throw const FormatException(
+            'Only .md and .markdown files are supported',
+          );
+        }
+        prepared.add(
+          _PreparedMarkdownArticle(
+            file.name,
+            await buildMarkdownArticleDraft(
+              bytes: await file.readAsBytes(),
+              sourceName: file.name,
+            ),
+          ),
+        );
+      } catch (error) {
+        report.add(
+          _MarkdownImportReportItem(
+            name: file.name,
+            outcome: _MarkdownImportOutcome.failed,
+            detail: error.toString(),
+          ),
+        );
+      }
+    }
+    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    progress.dispose();
+    if (!mounted) return;
+
+    final articles = (index?.notes ?? const <NoteRef>[])
+        .where((note) => note.kind == 'article')
+        .toList();
+    var wroteFiles = false;
+    for (final item in prepared) {
+      final draft = item.draft;
+      try {
+        final duplicate = classifyMarkdownDuplicate(draft, articles);
+        final warningDetail = draft.diagnostics.isEmpty
+            ? null
+            : '${draft.diagnostics.length} conversion warning${draft.diagnostics.length == 1 ? '' : 's'}';
+        switch (duplicate.kind) {
+          case MarkdownDuplicateKind.newArticle:
+            final path = await nextMarkdownArticlePath(
+              opened.storage,
+              draft.title,
+            );
+            await opened.saveNote(path, draft.typstSource);
+            articles.add(_noteForImportedArticle(path, draft));
+            wroteFiles = true;
+            report.add(
+              _MarkdownImportReportItem(
+                name: item.name,
+                outcome: _MarkdownImportOutcome.imported,
+                detail: warningDetail ?? path,
+              ),
+            );
+            break;
+          case MarkdownDuplicateKind.unchanged:
+            report.add(
+              _MarkdownImportReportItem(
+                name: item.name,
+                outcome: _MarkdownImportOutcome.unchanged,
+                detail: duplicate.existing?.path,
+              ),
+            );
+            break;
+          case MarkdownDuplicateKind.changed:
+            final existing = duplicate.existing!;
+            final existingSource = await opened.readText(existing.path);
+            final decision = await _resolveMarkdownDuplicate(
+              existing: existingSource,
+              incoming: draft.typstSource,
+              title: draft.title,
+            );
+            if (decision.choice == _MarkdownDuplicateChoice.keepExisting) {
+              report.add(
+                _MarkdownImportReportItem(
+                  name: item.name,
+                  outcome: _MarkdownImportOutcome.kept,
+                  detail: existing.path,
+                ),
+              );
+              continue;
+            }
+            final source = decision.choice == _MarkdownDuplicateChoice.merged
+                ? decision.source!
+                : draft.typstSource;
+            await opened.saveNote(existing.path, source);
+            final position = articles.indexOf(existing);
+            if (position >= 0) {
+              articles[position] = _noteForImportedArticle(
+                existing.path,
+                draft,
+              );
+            }
+            wroteFiles = true;
+            report.add(
+              _MarkdownImportReportItem(
+                name: item.name,
+                outcome: _MarkdownImportOutcome.replaced,
+                detail: decision.choice == _MarkdownDuplicateChoice.merged
+                    ? 'Manual merge · ${existing.path}'
+                    : warningDetail ?? existing.path,
+              ),
+            );
+            break;
+        }
+      } catch (error) {
+        report.add(
+          _MarkdownImportReportItem(
+            name: item.name,
+            outcome: _MarkdownImportOutcome.failed,
+            detail: error.toString(),
+          ),
+        );
+      }
+    }
+
+    if (wroteFiles) {
+      await workspace.refreshIndex(updateStatus: false, force: true);
+      _queueCloudSync();
+    }
+    if (!mounted) return;
+    final successful = report
+        .where((item) => item.outcome != _MarkdownImportOutcome.failed)
+        .length;
+    setState(() {
+      status =
+          'Markdown import: $successful succeeded, '
+          '${report.length - successful} failed';
+    });
+    await _showMarkdownImportReport(report);
+  }
+
+  NoteRef _noteForImportedArticle(String path, MarkdownArticleDraft draft) =>
+      NoteRef(
+        id: draft.id,
+        path: path,
+        title: draft.title,
+        kind: 'article',
+        date: draft.date,
+        tags: draft.tags,
+        aliases: draft.aliases,
+        outgoingLinks: const [],
+        properties: draft.properties,
+        metadataSource: 'typst-query',
+      );
+
+  Future<_MarkdownDuplicateDecision> _resolveMarkdownDuplicate({
+    required String existing,
+    required String incoming,
+    required String title,
+  }) async {
+    final merged = TextEditingController(text: incoming);
+    final result = await showDialog<_MarkdownDuplicateDecision>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        insetPadding: const EdgeInsets.all(16),
+        title: Text('Article changed: $title'),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 1000,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final panes = [
+                      _markdownSourcePane('Existing Typst', existing),
+                      _markdownSourcePane('Incoming Typst', incoming),
+                    ];
+                    return constraints.maxWidth >= 700
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: panes[0]),
+                              const SizedBox(width: 12),
+                              Expanded(child: panes[1]),
+                            ],
+                          )
+                        : ListView(
+                            children: [
+                              SizedBox(height: 180, child: panes[0]),
+                              const SizedBox(height: 12),
+                              SizedBox(height: 180, child: panes[1]),
+                            ],
+                          );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => merged.text = existing,
+                    child: const Text('Edit existing'),
+                  ),
+                  TextButton(
+                    onPressed: () => merged.text = incoming,
+                    child: const Text('Edit imported'),
+                  ),
+                ],
+              ),
+              SizedBox(
+                height: 180,
+                child: TextField(
+                  key: const ValueKey('markdown-manual-merge'),
+                  controller: merged,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Manual merged Typst source',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(
+              context,
+              const _MarkdownDuplicateDecision(
+                _MarkdownDuplicateChoice.keepExisting,
+              ),
+            ),
+            child: const Text('Keep existing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(
+              context,
+              const _MarkdownDuplicateDecision(
+                _MarkdownDuplicateChoice.useImported,
+              ),
+            ),
+            child: const Text('Use imported'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (merged.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Merged Typst cannot be empty')),
+                );
+                return;
+              }
+              Navigator.pop(
+                context,
+                _MarkdownDuplicateDecision(
+                  _MarkdownDuplicateChoice.merged,
+                  merged.text,
+                ),
+              );
+            },
+            child: const Text('Save manual merge'),
+          ),
+        ],
+      ),
+    );
+    merged.dispose();
+    return result ??
+        const _MarkdownDuplicateDecision(_MarkdownDuplicateChoice.keepExisting);
+  }
+
+  Widget _markdownSourcePane(String title, String source) => DecoratedBox(
+    decoration: BoxDecoration(
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(8),
+            child: SelectableText(
+              source,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _showMarkdownImportReport(
+    List<_MarkdownImportReportItem> report,
+  ) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Markdown import complete'),
+      content: SizedBox(
+        width: 560,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final item in report)
+              ListTile(
+                dense: true,
+                leading: Icon(switch (item.outcome) {
+                  _MarkdownImportOutcome.imported => Icons.file_download_done,
+                  _MarkdownImportOutcome.replaced => Icons.swap_horiz,
+                  _MarkdownImportOutcome.kept => Icons.inventory_2_outlined,
+                  _MarkdownImportOutcome.unchanged =>
+                    Icons.check_circle_outline,
+                  _MarkdownImportOutcome.failed => Icons.error_outline,
+                }),
+                title: Text(item.name),
+                subtitle: Text(
+                  '${item.outcome.name}${item.detail == null ? '' : ' · ${item.detail}'}',
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
+
   Future<String?> _chooseTemplate(Vault v) async {
     final templates =
         (await v.storage.list(path: '_system/templates'))
@@ -1101,6 +1517,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _showSyncSettings() async {
+    if (workspace.syncing) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sync already in progress')));
+      return false;
+    }
     final vaultId = vaultRegistry?.activeId;
     final cfg =
         await NextcloudConfig.load(vaultId: vaultId) ??
@@ -1121,6 +1543,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     while (true) {
       if (!mounted) return false;
+      if (workspace.syncing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sync already in progress')),
+        );
+        return false;
+      }
       final saved = await showDialog<NextcloudConfig>(
         context: context,
         builder: (context) => StatefulBuilder(
@@ -1206,20 +1634,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
         final mode = await _confirmInitialSync(local, remote);
         if (mode == null || !mounted) return false;
+        await registry.setCloud(registry.active, saved);
+        if (!mounted) return false;
+        setState(() {
+          cloud = saved;
+          status = 'Nextcloud connected · starting initial sync';
+        });
         final connected = await workspace.syncNow(
           trigger: 'setup',
           configOverride: saved,
           initialMode: mode,
         );
-        if (!connected) {
-          await _showNextcloudSetupError(
-            workspace.syncError ?? 'Initial sync did not complete.',
-          );
-          continue;
-        }
-        await registry.setCloud(registry.active, saved);
+        if (!connected) return false;
         setState(() {
-          cloud = saved;
           status = 'Nextcloud connected';
         });
         _startCloudPolling();
@@ -1674,7 +2101,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               : null,
         );
       } catch (error) {
-        if (mounted) setState(() => syncError = _friendlySyncError(error));
+        if (mounted) setState(() => syncError = friendlySyncError(error));
       }
     }
   }
@@ -2462,6 +2889,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
         onSetTaskStatus: _setTaskStatus,
         onCreateEntity: () => unawaited(_createEntity()),
+        onImportMarkdownArticles: _importMarkdownArticles,
       ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
@@ -2752,33 +3180,6 @@ enum _ShellAction {
   settings,
 }
 
-String _friendlySyncError(Object error) {
-  if (error is SocketException || error is TimeoutException) {
-    return 'Nextcloud is unreachable. Your changes are safe on this device.';
-  }
-  if (error is HandshakeException) {
-    return 'Nextcloud security certificate could not be verified.';
-  }
-  if (error is FileSystemException) {
-    return 'TyLog could not update the local vault: ${error.osError?.message ?? error.message}';
-  }
-  if (error is FormatException) {
-    return 'Sync data could not be read.';
-  }
-  final text = error.toString();
-  if (text.contains('401') || text.contains('403')) {
-    return 'Nextcloud rejected the login. Check Sync settings.';
-  }
-  if (text.contains('404')) {
-    return 'The configured Nextcloud folder was not found.';
-  }
-  if (text.contains('PROPFIND invalid file metadata')) {
-    return 'Nextcloud returned invalid file metadata.';
-  }
-  if (text.contains('507')) return 'Nextcloud is out of storage space.';
-  return 'Sync stopped before completion: $text';
-}
-
 class _SyncDashboardData {
   const _SyncDashboardData({
     required this.storageName,
@@ -2853,6 +3254,7 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    if (running || data?.syncing == true) return;
     setState(() => running = true);
     final refresh = Timer.periodic(
       const Duration(milliseconds: 250),
@@ -2870,15 +3272,18 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final value = data;
+    final busy = running || (value?.syncing ?? false);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sync'),
         actions: [
           IconButton(
             tooltip: 'Configure Nextcloud',
-            onPressed: () => _run(() async {
-              await widget.onConfigure();
-            }),
+            onPressed: busy
+                ? null
+                : () => _run(() async {
+                    await widget.onConfigure();
+                  }),
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -2923,11 +3328,13 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
                         : () => unawaited(
                             _run(() => widget.onResolve(value.conflicts.first)),
                           ),
-                    onSetup: () => unawaited(
-                      _run(() async {
-                        await widget.onConfigure();
-                      }),
-                    ),
+                    onSetup: busy
+                        ? null
+                        : () => unawaited(
+                            _run(() async {
+                              await widget.onConfigure();
+                            }),
+                          ),
                   ),
                   const SizedBox(height: 16),
                   Card(
@@ -2963,9 +3370,11 @@ class _SyncDashboardScreenState extends State<_SyncDashboardScreen> {
                               'Local folder remains available offline.',
                             ),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _run(() async {
-                        await widget.onConfigure();
-                      }),
+                      onTap: busy
+                          ? null
+                          : () => _run(() async {
+                              await widget.onConfigure();
+                            }),
                     ),
                   ),
                   if (value.conflicts.isNotEmpty) ...[
@@ -3222,7 +3631,7 @@ class _SyncStatusCard extends StatelessWidget {
   final int conflicts;
   final VoidCallback? onSync;
   final VoidCallback onReview;
-  final VoidCallback onSetup;
+  final VoidCallback? onSetup;
 
   @override
   Widget build(BuildContext context) {
@@ -3872,6 +4281,7 @@ class _LibraryView extends StatelessWidget {
     required this.onOpenDay,
     required this.onSetTaskStatus,
     required this.onCreateEntity,
+    required this.onImportMarkdownArticles,
   });
 
   final VaultIndex? index;
@@ -3879,6 +4289,7 @@ class _LibraryView extends StatelessWidget {
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
   final VoidCallback onCreateEntity;
+  final Future<void> Function() onImportMarkdownArticles;
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
@@ -3922,6 +4333,14 @@ class _LibraryView extends StatelessWidget {
 
   Widget _notes(String kind) => ListView(
     children: [
+      if (kind == 'article')
+        ListTile(
+          key: const ValueKey('import-markdown-articles'),
+          leading: const Icon(Icons.file_upload_outlined),
+          title: const Text('Import Markdown articles'),
+          subtitle: const Text('Select one or more .md or .markdown files'),
+          onTap: () => unawaited(onImportMarkdownArticles()),
+        ),
       for (final note in (index?.notes ?? const <NoteRef>[]).where(
         (note) => note.kind == kind,
       ))

@@ -20,6 +20,9 @@ export 'src/document.dart';
 export 'src/exceptions.dart';
 export 'src/files.dart';
 export 'src/fonts.dart';
+export 'src/markdown_import.dart';
+export 'src/rust/api/markdown_import.dart'
+    show MarkdownImportDiagnostic, MarkdownTypstResult;
 export 'src/rust/api/typst.dart'
     show PageInfo, TypstDiagnostic, TypstSeverity, TypstSourceLocation;
 export 'src/widgets/typst_compiler_provider.dart';

@@ -186,6 +186,23 @@ void main() {
     expect(find.text('Sync'), findsNothing);
   });
 
+  testWidgets('Articles starts with Markdown batch import', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Library').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Articles'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('import-markdown-articles')), findsOneWidget);
+    expect(find.text('Import Markdown articles'), findsOneWidget);
+    expect(
+      find.text('Select one or more .md or .markdown files'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('sync status opens the full dashboard', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -262,6 +279,22 @@ void main() {
       ),
       'content://provider/tree/primary%3ATygo',
     );
+  });
+
+  test('active initial sync wins over not-configured status', () {
+    final kind = syncStatusKind(
+      vaultOpen: true,
+      storageHealthy: true,
+      cloudConfigured: false,
+      desktopManaged: false,
+      syncing: true,
+      error: null,
+      conflicts: 0,
+      result: null,
+    );
+
+    expect(kind, SyncStatusKind.syncing);
+    expect(syncStatusTitle(kind), 'Syncing…');
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {

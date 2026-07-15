@@ -19,7 +19,7 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform = :ios, '13.0'
+  s.platform = :ios, '14.0'
   s.swift_version = '5.0'
 
   # ── Pre-built binary detection ──────────────────────────────────────────────
@@ -29,13 +29,18 @@ Pod::Spec.new do |s|
   # __dir__ is the directory containing this podspec (the ios/ directory),
   # so we navigate one level up to the package root.
 
-  prebuilt_xcframework = '../.typst_flutter_prebuilt/ios/typst_flutter.xcframework'
+  # Keep the vendored artifact inside the iOS pod root. CocoaPods silently
+  # ignores XCFramework paths that escape this directory with `..`.
+  prebuilt_xcframework = 'typst_flutter/Frameworks/typst_flutter.xcframework'
+  prebuilt_xcframework_on_disk = File.join(__dir__, prebuilt_xcframework)
 
-  if File.exist?(File.expand_path(prebuilt_xcframework, __dir__))
+  if File.exist?(prebuilt_xcframework_on_disk)
     # ── Pre-built path ────────────────────────────────────────────────────────
-    s.vendored_frameworks = prebuilt_xcframework
+    s.preserve_paths = prebuilt_xcframework
     s.pod_target_xcconfig = {
       'DEFINES_MODULE' => 'YES',
+      'OTHER_LDFLAGS[sdk=iphoneos*]' => '$(inherited) -force_load "$(PODS_TARGET_SRCROOT)/typst_flutter/Frameworks/typst_flutter.xcframework/ios-arm64/libtypst_flutter.a"',
+      'OTHER_LDFLAGS[sdk=iphonesimulator*]' => '$(inherited) -force_load "$(PODS_TARGET_SRCROOT)/typst_flutter/Frameworks/typst_flutter.xcframework/ios-arm64_x86_64-simulator/libtypst_flutter.a"',
     }
   else
     # ── Cargokit fallback ─────────────────────────────────────────────────────

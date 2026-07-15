@@ -23,6 +23,15 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   static const channel = MethodChannel('org.tylog.tylog/saf');
 
+  static Future<void> startSyncForeground({String? detail}) =>
+      channel.invokeMethod<void>('startSyncForeground', {'detail': ?detail});
+
+  static Future<void> updateSyncForeground({String? detail}) =>
+      channel.invokeMethod<void>('updateSyncForeground', {'detail': ?detail});
+
+  static Future<void> stopSyncForeground() =>
+      channel.invokeMethod<void>('stopSyncForeground');
+
   // ponytail: Dart-side watchdog only; the native single-thread executor in
   // SafBridge stays wedged until app restart. Per-call native watchdogs if
   // a stalled DocumentsProvider recurs in practice.

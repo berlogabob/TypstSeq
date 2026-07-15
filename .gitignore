@@ -29,6 +29,7 @@ migrate_working_dir/
 .dart_tool/
 packages/typst_flutter/.typst_flutter_prebuilt/
 packages/typst_flutter/rust/target/
+packages/tylog_import_core/target/
 packages/typst_flutter/.native-build*/
 packages/typst_flutter/macos/typst_flutter/.build/
 packages/typst_flutter/ios/typst_flutter/Frameworks/

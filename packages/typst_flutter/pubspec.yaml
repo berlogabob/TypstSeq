@@ -32,6 +32,11 @@ dev_dependencies:
     sdk: flutter
   very_good_analysis: ^10.2.0
 
+flutter_rust_bridge:
+  rust_input: crate::api
+  rust_root: rust/
+  dart_output: lib/src/rust
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

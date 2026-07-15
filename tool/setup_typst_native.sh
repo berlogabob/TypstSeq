@@ -12,12 +12,6 @@ flutter pub get
 dart run typst_flutter:setup
 
 if [ "$(uname -s)" = "Darwin" ]; then
-  ios_framework="$package/ios/typst_flutter/Frameworks/typst_flutter.xcframework"
-  rm -rf "$ios_framework"
-  mkdir -p "$(dirname "$ios_framework")"
-  cp -R "$package/.typst_flutter_prebuilt/ios/typst_flutter.xcframework" \
-    "$ios_framework"
-
   rustup=${RUSTUP:-$(command -v rustup || true)}
   if [ -z "$rustup" ] && [ -x /opt/homebrew/opt/rustup/bin/rustup ]; then
     rustup=/opt/homebrew/opt/rustup/bin/rustup
@@ -32,7 +26,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   rustc_bin=$("$rustup" which --toolchain "$toolchain" rustc)
   cargo_bin=$("$rustup" which --toolchain "$toolchain" cargo)
   "$rustup" target add --toolchain "$toolchain" \
-    aarch64-apple-darwin x86_64-apple-darwin
+    aarch64-apple-darwin x86_64-apple-darwin \
+    aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios \
+    aarch64-linux-android armv7-linux-androideabi \
+    x86_64-linux-android i686-linux-android
   cd "$package/rust"
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
     if [ "$target" = aarch64-apple-darwin ]; then
@@ -52,6 +49,59 @@ if [ "$(uname -s)" = "Darwin" ]; then
     "$package/.native-build-$toolchain-rustup/aarch64-apple-darwin/release/libtypst_flutter.a" \
     "$package/.native-build-$toolchain-rustup/x86_64-apple-darwin/release/libtypst_flutter.a" \
     -output "$package/.typst_flutter_prebuilt/macos/libtypst_flutter.a"
+
+  for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+    echo "Building typst_flutter for iOS 14.0 ($target)..."
+    CARGO_TARGET_DIR="$package/.native-build-$toolchain-rustup" \
+      IPHONEOS_DEPLOYMENT_TARGET=14.0 \
+      RUSTC="$rustc_bin" \
+      "$cargo_bin" build --release --target "$target"
+  done
+  ios_device="$package/.native-build-$toolchain-rustup/aarch64-apple-ios/release/libtypst_flutter.a"
+  ios_simulator_dir="$package/.native-build-$toolchain-rustup/ios-simulator"
+  mkdir -p "$ios_simulator_dir"
+  ios_simulator="$ios_simulator_dir/libtypst_flutter.a"
+  xcrun lipo -create \
+    "$package/.native-build-$toolchain-rustup/aarch64-apple-ios-sim/release/libtypst_flutter.a" \
+    "$package/.native-build-$toolchain-rustup/x86_64-apple-ios/release/libtypst_flutter.a" \
+    -output "$ios_simulator"
+  ios_staging="${TMPDIR:-/tmp}/typst_flutter-$$.xcframework"
+  xcodebuild -create-xcframework \
+    -library "$ios_device" \
+    -library "$ios_simulator" \
+    -output "$ios_staging"
+  for ios_framework in \
+    "$package/.typst_flutter_prebuilt/ios/typst_flutter.xcframework" \
+    "$package/ios/typst_flutter/Frameworks/typst_flutter.xcframework"; do
+    rm -rf "$ios_framework"
+    mkdir -p "$(dirname "$ios_framework")"
+    cp -R "$ios_staging" "$ios_framework"
+  done
+  rm -rf "$ios_staging"
+
+  if ! command -v cargo-ndk >/dev/null 2>&1; then
+    "$cargo_bin" install cargo-ndk --version 4.1.2 --locked
+  fi
+  android_sdk=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
+  android_ndk=${ANDROID_NDK_HOME:-}
+  if [ -z "$android_ndk" ]; then
+    for candidate in "$android_sdk"/ndk/*; do
+      [ -d "$candidate" ] && android_ndk=$candidate
+    done
+  fi
+  if [ -z "$android_ndk" ] || [ ! -d "$android_ndk" ]; then
+    echo "Android NDK is required to build typst_flutter locally." >&2
+    exit 1
+  fi
+  echo "Building typst_flutter for Android with $(basename "$android_ndk")..."
+  PATH="$HOME/.cargo/bin:$PATH" \
+    ANDROID_NDK_HOME="$android_ndk" \
+    CARGO_TARGET_DIR="$package/.native-build-$toolchain-rustup-android" \
+    RUSTC="$rustc_bin" \
+    "$cargo_bin" ndk \
+      -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 \
+      -o "$package/.typst_flutter_prebuilt/android" \
+      build --release
 fi
 
 echo "typst_flutter native libraries are ready."

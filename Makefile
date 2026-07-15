@@ -26,6 +26,7 @@ setup-native:
 
 test-core:
 	@cd packages/tylog_core && dart test
+	@cargo test --manifest-path packages/tylog_import_core/Cargo.toml
 
 test-typst:
 	@typst compile --root typst/tylog typst/tylog/examples/basic.typ /tmp/tylog-example.pdf
@@ -39,6 +40,7 @@ test: test-core test-typst
 
 verify: test
 	@flutter test integration_test/pkms_native_test.dart -d macos
+	@flutter test integration_test/markdown_import_native_test.dart -d macos
 	@flutter build apk --release
 	@flutter build macos --release
 	@if [ "$$(uname -s)" = Linux ]; then flutter build linux; else echo "Skipping Linux build on $$(uname -s); covered by CI."; fi

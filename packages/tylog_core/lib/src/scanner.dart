@@ -966,13 +966,16 @@ String _typstList(List<String> values) =>
 
 String _typstDictionary(Map<String, Object?> values) {
   if (values.isEmpty) return '(:)';
-  return '(${values.entries.map((entry) => '${entry.key}: ${_typstValue(entry.value)}').join(', ')},)';
+  return '(${values.entries.map((entry) => '${_typstString(entry.key)}: ${_typstValue(entry.value)}').join(', ')},)';
 }
 
 String _typstValue(Object? value) => switch (value) {
   null => 'none',
   bool() || num() => value.toString(),
   String() => _typstString(value),
-  List() => '(${value.map(_typstValue).join(', ')},)',
+  List() => value.isEmpty ? '()' : '(${value.map(_typstValue).join(', ')},)',
+  Map() => _typstDictionary({
+    for (final entry in value.entries) entry.key.toString(): entry.value,
+  }),
   _ => _typstString(value.toString()),
 };

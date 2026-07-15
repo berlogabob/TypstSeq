@@ -248,6 +248,88 @@ void main() {
     },
   );
 
+  test(
+    'interrupted initial sync checkpoints and resumes completed files',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+        for (var index = 0; index < 14; index++)
+          'notes/${index.toString().padLeft(2, '0')}.typ': _remoteText(
+            'remote $index',
+          ),
+      };
+      final gets = <String, int>{};
+      final server = await _mutableWebDavServer(
+        remote,
+        interruptGetOnce: 'notes/11.typ',
+        getCounts: gets,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_checkpoint_');
+      final storage = _CheckpointCountingStorage(dir);
+      final vault = Vault.withStorage(storage);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await vault.todayNote(DateTime(2026, 7, 14));
+
+      await expectLater(
+        NextcloudSync(
+          _config(server),
+        ).sync(vault, initialMode: InitialSyncMode.downloadRemote),
+        throwsA(anything),
+      );
+
+      final checkpoint =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map<String, Object?>;
+      expect(checkpoint['schema'], 2);
+      expect(
+        checkpoint['remoteKey'],
+        isA<String>().having((v) => v.length, 'length', 64),
+      );
+      expect((checkpoint['cursors'] as Map).length, greaterThanOrEqualTo(10));
+      expect(storage.checkpointWrites, greaterThanOrEqualTo(3));
+
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'retry');
+
+      expect(gets['notes/00.typ'], 1);
+      expect(gets['notes/10.typ'], 1);
+      expect(gets['notes/11.typ'], 2);
+      expect(await vault.storage.readText('notes/13.typ'), 'remote 13');
+    },
+  );
+
+  test('legacy state upgrades and a different remote resets cursors', () async {
+    final server = await _webDavServer(remoteContent: 'remote note');
+    final dir = await Directory.systemTemp.createTemp('tylog_state_remote_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('local note');
+    await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
+
+    await NextcloudSync(_config(server)).sync(vault);
+    final upgraded =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map<String, Object?>;
+    expect(upgraded['schema'], 2);
+    expect(upgraded['remoteKey'], isA<String>());
+
+    await vault.storage.writeText(
+      '.tylog/sync_state.json',
+      jsonEncode({...upgraded, 'remoteKey': 'different-remote'}),
+    );
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    expect(result.conflicts, 1);
+  });
+
   test('sync action prefers conflict when both changed', () {
     expect(
       decideSyncAction(
@@ -583,44 +665,53 @@ void main() {
     });
   }
 
-  test('failed recovery keeps corrupt state for the next retry', () async {
-    final broken = await _webDavServer(
-      interrupted: true,
-      remoteContent: 'remote note',
-    );
-    final dir = await Directory.systemTemp.createTemp('tylog_retry_recovery_');
-    HttpServer? healthy;
-    addTearDown(() async {
+  test(
+    'failed recovery replaces corrupt state with a resumable checkpoint',
+    () async {
+      final broken = await _webDavServer(
+        interrupted: true,
+        remoteContent: 'remote note',
+      );
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_retry_recovery_',
+      );
+      HttpServer? healthy;
+      addTearDown(() async {
+        await broken.close(force: true);
+        await healthy?.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final note = File('${dir.path}/daily/2026/07/note.typ');
+      await note.parent.create(recursive: true);
+      await note.writeAsString('local note');
+      await vault.storage.writeText('.tylog/sync_state.json', '{');
+
+      await expectLater(
+        NextcloudSync(_config(broken)).sync(vault),
+        throwsA(anything),
+      );
+      final checkpoint =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map<String, Object?>;
+      expect(checkpoint['schema'], 2);
+      expect(checkpoint['cursors'], isNotEmpty);
+      expect(
+        (await vault.storage.list(
+          path: '.tylog',
+        )).where((file) => file.path.contains('sync_state.corrupt-')).length,
+        1,
+      );
+
       await broken.close(force: true);
-      await healthy?.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    final note = File('${dir.path}/daily/2026/07/note.typ');
-    await note.parent.create(recursive: true);
-    await note.writeAsString('local note');
-    await vault.storage.writeText('.tylog/sync_state.json', '{');
+      healthy = await _webDavServer(remoteContent: 'remote note');
+      final result = await NextcloudSync(_config(healthy)).sync(vault);
 
-    await expectLater(
-      NextcloudSync(_config(broken)).sync(vault),
-      throwsA(anything),
-    );
-    expect(await vault.storage.readText('.tylog/sync_state.json'), '{');
-    expect(
-      (await vault.storage.list(
-        path: '.tylog',
-      )).where((file) => file.path.contains('sync_state.corrupt-')).length,
-      1,
-    );
-
-    await broken.close(force: true);
-    healthy = await _webDavServer(remoteContent: 'remote note');
-    final result = await NextcloudSync(_config(healthy)).sync(vault);
-
-    expect(result.conflicts, 1);
-    expect(await note.readAsString(), 'local note');
-  });
+      expect(result.conflicts, 1);
+      expect(await note.readAsString(), 'local note');
+    },
+  );
 
   test('recovery still transfers files that exist on only one side', () async {
     final remote = <String, _MutableRemoteFile>{
@@ -1257,6 +1348,18 @@ class _HashCountingStorage extends LocalVaultStorage {
   }
 }
 
+class _CheckpointCountingStorage extends LocalVaultStorage {
+  _CheckpointCountingStorage(super.root);
+
+  int checkpointWrites = 0;
+
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) {
+    if (path == '.tylog/sync_state.json') checkpointWrites++;
+    return super.writeBytes(path, bytes);
+  }
+}
+
 Future<List<Map<String, Object?>>> _traceEvents(Vault vault) async =>
     (await vault.storage.readText('.tylog/sync_trace.jsonl'))
         .split('\n')
@@ -1407,9 +1510,12 @@ Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
   bool unquotedPutEtag = false,
   bool rejectDelete = false,
+  String? interruptGetOnce,
+  Map<String, int>? getCounts,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
+  var interrupted = false;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
     final path = request.uri.path.startsWith(root)
@@ -1432,9 +1538,18 @@ Future<HttpServer> _mutableWebDavServer(
       }
       request.response.write('</d:multistatus>');
     } else if (request.method == 'GET') {
+      getCounts?.update(path, (count) => count + 1, ifAbsent: () => 1);
       final file = files[path];
       if (file == null) {
         request.response.statusCode = HttpStatus.notFound;
+      } else if (!interrupted && path == interruptGetOnce) {
+        interrupted = true;
+        request.response.contentLength = file.bytes.length + 10;
+        final socket = await request.response.detachSocket(writeHeaders: true);
+        socket.add(file.bytes.take(1).toList());
+        await socket.flush();
+        socket.destroy();
+        return;
       } else {
         request.response.headers.set(HttpHeaders.etagHeader, file.etag);
         request.response.add(file.bytes);

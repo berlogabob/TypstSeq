@@ -40,6 +40,34 @@ class SafBridge(
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method in setOf(
+                "startSyncForeground",
+                "updateSyncForeground",
+                "stopSyncForeground",
+            )
+        ) {
+            try {
+                when (call.method) {
+                    "startSyncForeground" -> SyncForegroundService.start(
+                        activity,
+                        call.argument<String>("detail"),
+                    )
+                    "updateSyncForeground" -> SyncForegroundService.update(
+                        call.argument<String>("detail"),
+                    )
+                    "stopSyncForeground" -> SyncForegroundService.stop(activity)
+                }
+                result.success(null)
+            } catch (error: Throwable) {
+                result.error(
+                    "foreground_sync_error",
+                    error.message ?: error.javaClass.simpleName,
+                    null,
+                )
+            }
+            return
+        }
+
         if (call.method == "pickTree") {
             if (pendingPick != null) {
                 result.error("already_active", "Folder picker is already active", null)

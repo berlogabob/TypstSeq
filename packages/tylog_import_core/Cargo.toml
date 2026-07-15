@@ -1,0 +1,10 @@
+[package]
+name = "tylog_import_core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+comrak = { version = "0.54", default-features = false }
+url = "2.5"
+
