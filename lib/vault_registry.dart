@@ -7,6 +7,26 @@ import 'nextcloud_sync.dart';
 import 'vault.dart';
 import 'vault_storage.dart';
 
+class RecentNote {
+  const RecentNote({required this.path, required this.openedAt, this.progress = 0});
+
+  final String path;
+  final DateTime openedAt;
+  final double progress;
+
+  Map<String, Object?> toJson() => {
+    'path': path,
+    'openedAt': openedAt.toIso8601String(),
+    if (progress > 0) 'progress': progress,
+  };
+
+  factory RecentNote.fromJson(Map<String, Object?> json) => RecentNote(
+    path: json['path'] as String,
+    openedAt: DateTime.parse(json['openedAt'] as String),
+    progress: (json['progress'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class VaultEntry {
   const VaultEntry({
     required this.id,
@@ -16,6 +36,7 @@ class VaultEntry {
     this.treeUri,
     this.backupPath,
     this.cloud,
+    this.recent = const [],
   });
 
   final String id;
@@ -25,6 +46,7 @@ class VaultEntry {
   final String? treeUri;
   final String? backupPath;
   final NextcloudConfig? cloud;
+  final List<RecentNote> recent;
 
   VaultStorage get storage => storageKind == 'android-tree'
       ? AndroidTreeVaultStorage(uri: treeUri!, name: name)
@@ -37,6 +59,7 @@ class VaultEntry {
     String? treeUri,
     String? backupPath,
     NextcloudConfig? cloud,
+    List<RecentNote>? recent,
   }) => VaultEntry(
     id: id,
     name: name ?? this.name,
@@ -45,6 +68,7 @@ class VaultEntry {
     treeUri: treeUri ?? this.treeUri,
     backupPath: backupPath ?? this.backupPath,
     cloud: cloud ?? this.cloud,
+    recent: recent ?? this.recent,
   );
 
   Map<String, Object?> toJson() => {
@@ -55,6 +79,7 @@ class VaultEntry {
         : {'kind': storageKind, 'path': path},
     if (backupPath != null) 'backupPath': backupPath,
     if (cloud != null) 'nextcloud': cloud!.toJson(),
+    if (recent.isNotEmpty) 'recent': recent.map((r) => r.toJson()).toList(),
   };
 
   factory VaultEntry.fromJson(Map<String, Object?> json) {
@@ -79,6 +104,11 @@ class VaultEntry {
               (json['nextcloud'] as Map).cast<String, Object?>(),
             )
           : null,
+      recent: json['recent'] is List
+          ? (json['recent'] as List)
+                .map((item) => RecentNote.fromJson((item as Map).cast<String, Object?>()))
+                .toList()
+          : const [],
     );
   }
 }
@@ -318,6 +348,37 @@ class VaultRegistry {
     await cloud.saveSecret(vaultId: entry.id);
     final index = entries.indexWhere((item) => item.id == entry.id);
     entries[index] = entry.copyWith(cloud: cloud);
+    await save();
+  }
+
+  static const _maxRecentNotes = 30;
+
+  Future<void> recordOpen(VaultEntry entry, String path) async {
+    final index = entries.indexWhere((item) => item.id == entry.id);
+    if (index == -1) return;
+    final without = entry.recent.where((r) => r.path != path);
+    final next = [RecentNote(path: path, openedAt: DateTime.now()), ...without]
+        .take(_maxRecentNotes)
+        .toList();
+    entries[index] = entry.copyWith(recent: next);
+    await save();
+  }
+
+  Future<void> recordProgress(
+    VaultEntry entry,
+    String path,
+    double progress,
+  ) async {
+    final index = entries.indexWhere((item) => item.id == entry.id);
+    if (index == -1) return;
+    entries[index] = entry.copyWith(
+      recent: [
+        for (final r in entry.recent)
+          r.path == path
+              ? RecentNote(path: r.path, openedAt: r.openedAt, progress: progress)
+              : r,
+      ],
+    );
     await save();
   }
 

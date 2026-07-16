@@ -885,6 +885,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       mode = 'normal';
       status = 'Opened $path';
     });
+    final entry = _activeRegistryEntry;
+    if (entry != null) unawaited(vaultRegistry!.recordOpen(entry, path));
   }
 
   Future<void> _openToday() async {
@@ -1552,6 +1554,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _rebuildIndex();
   }
 
+  Future<void> _setReadStatus(NoteRef note, String status) async {
+    final v = vault;
+    if (v == null) return;
+    final source = await v.storage.readText(note.path);
+    await v.saveNote(
+      note.path,
+      replaceNoteHeader(
+        source,
+        NoteMetadataDraft(
+          id: note.id,
+          title: note.title,
+          kind: note.kind,
+          project: note.project,
+          date: note.date,
+          tags: note.tags,
+          aliases: note.aliases,
+          properties: {...note.properties, 'status': status},
+        ),
+      ),
+    );
+    await _rebuildIndex();
+  }
+
   String? _pathForLink(String title) {
     final ix = index;
     return ix == null ? null : resolveLinkPath(ix, title);
@@ -2042,6 +2067,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       fontScale: fontScale,
       nightMode: nightMode,
     );
+  }
+
+  Future<void> _recordReadingProgress(String path, double progress) async {
+    final entry = _activeRegistryEntry;
+    if (entry == null) return;
+    await vaultRegistry!.recordProgress(entry, path, progress);
+  }
+
+  List<(NoteRef note, double progress)> _recentNotes() {
+    final notesByPath = index?.notesByPath;
+    if (notesByPath == null) return const [];
+    final result = <(NoteRef, double)>[];
+    for (final recent in _activeRegistryEntry?.recent ?? const []) {
+      final note = notesByPath[recent.path];
+      if (note == null) continue;
+      result.add((note, recent.progress));
+      if (result.length == 8) break;
+    }
+    return result;
   }
 
   Future<void> _showSyncDashboard() async {
@@ -2968,10 +3012,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mode == 'read') {
       return _ReadingMode(
         source: _currentSource(),
+        path: current,
         fontScale: vaultRegistry?.readingFontScale ?? 1,
         nightMode: vaultRegistry?.readingNightMode ?? false,
         onExit: _showEditor,
         onPreferencesChanged: _updateReadingPreferences,
+        onProgress: _recordReadingProgress,
       );
     }
     final backlinks = current == null
@@ -3029,6 +3075,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => _LibraryView(
         index: index,
+        progressByPath: {
+          for (final r in _activeRegistryEntry?.recent ?? const [])
+            r.path: r.progress,
+        },
         onOpenPath: (path) {
           primaryDestination = 2;
           unawaited(_openPath(path));
@@ -3038,6 +3088,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           unawaited(_openDay(day));
         },
         onSetTaskStatus: _setTaskStatus,
+        onSetReadStatus: _setReadStatus,
         onCreateEntity: () => unawaited(_createEntity()),
         onImportMarkdownArticles: _importMarkdownArticles,
       ),
@@ -3150,6 +3201,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final bodyContent = isTodayDocument
         ? _TodayPage(
             tasks: index?.tasks ?? const [],
+            recent: _recentNotes(),
             editor: content,
             onOpenPath: _openPath,
             onSetStatus: _setTaskStatus,
@@ -3398,18 +3450,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 class _ReadingMode extends StatefulWidget {
   const _ReadingMode({
     required this.source,
+    required this.path,
     required this.fontScale,
     required this.nightMode,
     required this.onExit,
     required this.onPreferencesChanged,
+    required this.onProgress,
   });
 
   final String source;
+  final String? path;
   final double fontScale;
   final bool nightMode;
   final VoidCallback onExit;
   final Future<void> Function(double fontScale, bool nightMode)
   onPreferencesChanged;
+  final Future<void> Function(String path, double progress) onProgress;
 
   @override
   State<_ReadingMode> createState() => _ReadingModeState();
@@ -3431,6 +3487,10 @@ class _ReadingModeState extends State<_ReadingMode> {
 
   @override
   void dispose() {
+    final path = widget.path;
+    if (path != null) {
+      unawaited(widget.onProgress(path, progress.value).catchError((_) {}));
+    }
     scrollController
       ..removeListener(_updateProgress)
       ..dispose();
@@ -4638,12 +4698,14 @@ bool isTaskInTodayAgenda(TaskRef task, String today) {
 class _TodayPage extends StatelessWidget {
   const _TodayPage({
     required this.tasks,
+    required this.recent,
     required this.editor,
     required this.onOpenPath,
     required this.onSetStatus,
   });
 
   final List<TaskRef> tasks;
+  final List<(NoteRef note, double progress)> recent;
   final Widget editor;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
@@ -4686,6 +4748,23 @@ class _TodayPage extends StatelessWidget {
               ),
           ],
         ),
+        if (recent.isNotEmpty)
+          ExpansionTile(
+            key: const PageStorageKey('today-continue-reading'),
+            initiallyExpanded: true,
+            leading: const Icon(Icons.history),
+            title: const Text('Continue reading'),
+            children: [
+              for (final (note, progress) in recent)
+                ListTile(
+                  title: Text(note.title),
+                  subtitle: progress > 0
+                      ? LinearProgressIndicator(value: progress)
+                      : Text(note.path),
+                  onTap: () => onOpenPath(note.path),
+                ),
+            ],
+          ),
         const Divider(height: 1),
         Expanded(child: editor),
       ],
@@ -4922,17 +5001,21 @@ class _PrimaryTasksView extends StatelessWidget {
 class _LibraryView extends StatelessWidget {
   const _LibraryView({
     required this.index,
+    required this.progressByPath,
     required this.onOpenPath,
     required this.onOpenDay,
     required this.onSetTaskStatus,
+    required this.onSetReadStatus,
     required this.onCreateEntity,
     required this.onImportMarkdownArticles,
   });
 
   final VaultIndex? index;
+  final Map<String, double> progressByPath;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
+  final Future<void> Function(NoteRef note, String status) onSetReadStatus;
   final VoidCallback onCreateEntity;
   final Future<void> Function() onImportMarkdownArticles;
 
@@ -5003,9 +5086,38 @@ class _LibraryView extends StatelessWidget {
           }),
           title: Text(note.title),
           subtitle: Text(note.path),
+          trailing: kind != 'article' ? null : _articleTrailing(note),
           onTap: () => onOpenPath(note.path),
         );
       },
+    );
+  }
+
+  Widget _articleTrailing(NoteRef note) {
+    final status = note.properties['status'] as String?;
+    final progress = progressByPath[note.path] ?? 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (progress > 0 && progress < 1) ...[
+          SizedBox(
+            width: 40,
+            child: LinearProgressIndicator(value: progress),
+          ),
+          const SizedBox(width: 8),
+        ],
+        ChoiceChip(
+          label: Text(switch (status) {
+            'read' => 'Read',
+            'unread' => 'Unread',
+            _ => 'Mark read',
+          }),
+          selected: status == 'read',
+          onSelected: (_) => unawaited(
+            onSetReadStatus(note, status == 'read' ? 'unread' : 'read'),
+          ),
+        ),
+      ],
     );
   }
 

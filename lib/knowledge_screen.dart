@@ -29,6 +29,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late KnowledgeView view = widget.initialView;
   String query = '';
   String? selectedTag;
+  String tagFilter = '';
   final _searchController = TextEditingController();
   // Codes with more than 5 problems collapse to one summary tile (a single
   // failing inspector can dead-mark itself for the rest of a scan and flood
@@ -70,9 +71,16 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   );
 
   Widget _search() {
-    final tags = <String>{
-      for (final note in widget.index.notes) ...note.tags,
-    }.toList()..sort();
+    final tagCounts = <String, int>{};
+    for (final note in widget.index.notes) {
+      for (final tag in note.tags) {
+        tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      }
+    }
+    final tags = tagCounts.keys
+        .where((tag) => tagFilter.isEmpty || tag.contains(tagFilter))
+        .toList()
+      ..sort((a, b) => tagCounts[b]!.compareTo(tagCounts[a]!));
     final results = widget.search.search(query, tag: selectedTag);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -92,8 +100,17 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ),
                 onChanged: (value) => setState(() => query = value),
               ),
-              if (tags.isNotEmpty) ...[
+              if (tagCounts.isNotEmpty) ...[
                 const SizedBox(height: 12),
+                TextField(
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.tag),
+                    hintText: 'Filter tags',
+                  ),
+                  onChanged: (value) => setState(() => tagFilter = value),
+                ),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -137,7 +154,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           ),
           onTap: result.kind == 'file'
               ? null
-              : () => widget.onOpenNote(result.path),
+              : () {
+                  widget.onOpenNote(result.path);
+                  Navigator.pop(context);
+                },
         );
       },
     );
