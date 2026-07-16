@@ -32,6 +32,10 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.heading: (Icons.title, 'Heading'),
   MagicAction.bold: (Icons.format_bold, 'Bold'),
   MagicAction.italic: (Icons.format_italic, 'Italic'),
+  MagicAction.strike: (Icons.format_strikethrough, 'Strikethrough'),
+  MagicAction.underline: (Icons.format_underline, 'Underline'),
+  MagicAction.mono: (Icons.code, 'Monospace'),
+  MagicAction.highlight: (Icons.border_color, 'Highlight'),
   MagicAction.table: (Icons.table_chart, 'Table'),
   MagicAction.equation: (Icons.functions, 'Equation'),
   MagicAction.report: (Icons.picture_as_pdf, 'Report'),
@@ -46,21 +50,84 @@ enum TyLogBlockStyle {
   taskLine,
 }
 
+/// Sentinel distinguishing "leave [TyLogInlineStyle.highlight] unchanged"
+/// from "set it to null" in [TyLogInlineStyle.copyWith] and the plumbing
+/// that forwards through [TyLogDocument.toggle] / `_styleBlock`.
+const Object _unsetHighlight = Object();
+
+/// Verbatim Typst fill expressions for the four toolbar palette swatches.
+/// `#highlight[...]` with no `fill:` argument (stored as `''`) renders with
+/// Typst's own default fill, which is close to but not identical to
+/// [kHighlightYellow] below.
+const kHighlightYellow = 'rgb("#FFF59D")';
+const kHighlightGreen = 'rgb("#C8E6C9")';
+const kHighlightPink = 'rgb("#F8BBD0")';
+const kHighlightBlue = 'rgb("#B3E5FC")';
+
+const Map<String, Color> _highlightPalette = {
+  '': Color(0xFFFFF59D),
+  kHighlightYellow: Color(0xFFFFF59D),
+  kHighlightGreen: Color(0xFFC8E6C9),
+  kHighlightPink: Color(0xFFF8BBD0),
+  kHighlightBlue: Color(0xFFB3E5FC),
+};
+
+/// Unknown/custom fill expressions (round-tripped verbatim but not in the
+/// palette) render with a neutral tint rather than no highlight at all.
+Color _highlightColor(String fill) =>
+    _highlightPalette[fill] ?? const Color(0x339E9E9E);
+
 class TyLogInlineStyle {
-  const TyLogInlineStyle({this.bold = false, this.italic = false});
+  const TyLogInlineStyle({
+    this.bold = false,
+    this.italic = false,
+    this.strike = false,
+    this.underline = false,
+    this.mono = false,
+    this.highlight,
+  });
 
   final bool bold;
   final bool italic;
+  final bool strike;
+  final bool underline;
+  final bool mono;
 
-  TyLogInlineStyle copyWith({bool? bold, bool? italic}) =>
-      TyLogInlineStyle(bold: bold ?? this.bold, italic: italic ?? this.italic);
+  /// `null` = no highlight; `''` = default-fill `#highlight[...]`; otherwise
+  /// the verbatim Typst fill expression passed to `#highlight(fill: ...)`.
+  final String? highlight;
+
+  TyLogInlineStyle copyWith({
+    bool? bold,
+    bool? italic,
+    bool? strike,
+    bool? underline,
+    bool? mono,
+    Object? highlight = _unsetHighlight,
+  }) => TyLogInlineStyle(
+    bold: bold ?? this.bold,
+    italic: italic ?? this.italic,
+    strike: strike ?? this.strike,
+    underline: underline ?? this.underline,
+    mono: mono ?? this.mono,
+    highlight: identical(highlight, _unsetHighlight)
+        ? this.highlight
+        : highlight as String?,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is TyLogInlineStyle && bold == other.bold && italic == other.italic;
+      other is TyLogInlineStyle &&
+      bold == other.bold &&
+      italic == other.italic &&
+      strike == other.strike &&
+      underline == other.underline &&
+      mono == other.mono &&
+      highlight == other.highlight;
 
   @override
-  int get hashCode => Object.hash(bold, italic);
+  int get hashCode =>
+      Object.hash(bold, italic, strike, underline, mono, highlight);
 }
 
 class TyLogInline {
@@ -98,6 +165,7 @@ class TyLogBlock {
     required this.separator,
     this.dirty = false,
     this.protectedLabel,
+    this.headingLevel = 1,
   });
 
   final String id;
@@ -107,6 +175,9 @@ class TyLogBlock {
   String separator;
   bool dirty;
   final String? protectedLabel;
+
+  /// Number of leading `=` for a heading block (1-6); meaningless otherwise.
+  int headingLevel;
 
   bool get isProtected => style == TyLogBlockStyle.protected;
   String get visibleText =>
@@ -120,6 +191,7 @@ class TyLogBlock {
     separator: separator,
     dirty: dirty,
     protectedLabel: protectedLabel,
+    headingLevel: headingLevel,
   );
 }
 
@@ -363,7 +435,16 @@ class TyLogDocument {
     if (removedThroughEnd && blocks.isNotEmpty) blocks.last.separator = '';
   }
 
-  void toggle(TextRange selection, {bool? bold, bool? italic}) {
+  void toggle(
+    TextRange selection, {
+    bool? bold,
+    bool? italic,
+    bool? strike,
+    bool? underline,
+    bool? mono,
+    Object? highlight = _unsetHighlight,
+    bool reset = false,
+  }) {
     if (!selection.isValid || selection.isCollapsed) return;
     for (final range in _ranges) {
       final start = math.max(selection.start, range.start);
@@ -375,11 +456,16 @@ class TyLogDocument {
         end - range.start,
         bold: bold,
         italic: italic,
+        strike: strike,
+        underline: underline,
+        mono: mono,
+        highlight: highlight,
+        reset: reset,
       );
     }
   }
 
-  int setBlockStyle(int offset, TyLogBlockStyle style) {
+  int setBlockStyle(int offset, TyLogBlockStyle style, {int headingLevel = 1}) {
     if (blocks.isEmpty) blocks = [_newParagraph('', 0, separator: '')];
     final hit = _blockAt(offset, preferPrevious: true);
     if (hit == null || blocks[hit.index].isProtected) return offset;
@@ -401,9 +487,16 @@ class TyLogDocument {
     if (after.isNotEmpty && after.first.code == 10) after.removeAt(0);
 
     final togglingList =
-        style == TyLogBlockStyle.bulletList &&
-        block.style == TyLogBlockStyle.bulletList;
-    final targetStyle = togglingList ? TyLogBlockStyle.paragraph : style;
+        (style == TyLogBlockStyle.bulletList ||
+            style == TyLogBlockStyle.numberedList) &&
+        block.style == style;
+    final togglingHeading =
+        style == TyLogBlockStyle.heading &&
+        block.style == TyLogBlockStyle.heading &&
+        block.headingLevel == headingLevel;
+    final targetStyle = togglingList || togglingHeading
+        ? TyLogBlockStyle.paragraph
+        : style;
     var removedPrefix = 0;
     if (block.style == TyLogBlockStyle.bulletList &&
         line.length >= 2 &&
@@ -412,6 +505,15 @@ class TyLogDocument {
       line.removeRange(0, 2);
       removedPrefix = 2;
     }
+    if (block.style == TyLogBlockStyle.numberedList) {
+      final match = RegExp(
+        r'^\d+\.\s',
+      ).matchAsPrefix(String.fromCharCodes(line.map((unit) => unit.code)));
+      if (match != null) {
+        line.removeRange(0, match.end);
+        removedPrefix = match.end;
+      }
+    }
     if (block.style == TyLogBlockStyle.taskLine &&
         line.length >= 2 &&
         (line[0].code == 0x2610 || line[0].code == 0x2611) &&
@@ -419,6 +521,7 @@ class TyLogDocument {
       line.removeRange(0, 2);
       removedPrefix = 2;
     }
+    var insertedPrefix = 0;
     if (targetStyle == TyLogBlockStyle.bulletList) {
       final inherited = line.isEmpty
           ? const TyLogInlineStyle()
@@ -427,11 +530,26 @@ class TyLogDocument {
         _Unit(0x2022, inherited, null),
         _Unit(32, inherited, null),
       ]);
+      insertedPrefix = 2;
+    } else if (targetStyle == TyLogBlockStyle.numberedList) {
+      final inherited = line.isEmpty
+          ? const TyLogInlineStyle()
+          : line.first.style;
+      const prefix = '1. ';
+      line.insertAll(0, [
+        for (final code in prefix.codeUnits) _Unit(code, inherited, null),
+      ]);
+      insertedPrefix = prefix.length;
     }
 
     final replacements = <TyLogBlock>[];
     if (before.isNotEmpty) replacements.add(_blockFrom(block, before));
-    final target = _blockFrom(block, line, style: targetStyle);
+    final target = _blockFrom(
+      block,
+      line,
+      style: targetStyle,
+      headingLevel: headingLevel,
+    );
     replacements.add(target);
     if (after.isNotEmpty) replacements.add(_blockFrom(block, after));
     for (final replacement in replacements) {
@@ -440,7 +558,6 @@ class TyLogDocument {
     replacements.last.separator = block.separator;
     blocks.replaceRange(hit.index, hit.index + 1, replacements);
     final targetIndex = hit.index + (before.isEmpty ? 0 : 1);
-    final insertedPrefix = targetStyle == TyLogBlockStyle.bulletList ? 2 : 0;
     final caretInLine = (local - lineStart - removedPrefix + insertedPrefix)
         .clamp(0, line.length);
     return _ranges[targetIndex].start + caretInLine;
@@ -630,6 +747,30 @@ class TyLogDocument {
       replace(offset, offset, '\n• ');
       return offset + 3;
     }
+    if (block.style == TyLogBlockStyle.numberedList) {
+      final units = _units(block.parts);
+      final local = (offset - hit.start).clamp(0, units.length);
+      var start = local;
+      while (start > 0 && units[start - 1].code != 10) {
+        start--;
+      }
+      var end = local;
+      while (end < units.length && units[end].code != 10) {
+        end++;
+      }
+      final lineText = String.fromCharCodes(
+        units.sublist(start, end).map((unit) => unit.code),
+      );
+      final match = RegExp(r'^(\d+)\.\s').matchAsPrefix(lineText);
+      final contentStart = start + (match?.end ?? 0);
+      if (units.sublist(contentStart, end).every((unit) => unit.code == 32)) {
+        return setBlockStyle(offset, TyLogBlockStyle.numberedList);
+      }
+      final nextNumber = (int.tryParse(match?.group(1) ?? '0') ?? 0) + 1;
+      final insertion = '\n$nextNumber. ';
+      replace(offset, offset, insertion);
+      return offset + insertion.length;
+    }
     if (block.style != TyLogBlockStyle.heading) {
       replace(offset, offset, '\n');
       return offset + 1;
@@ -731,11 +872,22 @@ class TyLogDocument {
 class TyLogEditingController extends TextEditingController {
   TyLogEditingController({
     required String source,
-    required this.onSourceChanged,
-    required this.onError,
-    required this.onProtectedTap,
-  }) : document = TyLogDocument.parse(source),
-       super(text: TyLogDocument.parse(source).visibleText) {
+    required ValueChanged<String> onSourceChanged,
+    required ValueChanged<Object> onError,
+    required ValueChanged<String> onProtectedTap,
+  }) : this._(
+         TyLogDocument.parse(source),
+         onSourceChanged,
+         onError,
+         onProtectedTap,
+       );
+
+  TyLogEditingController._(
+    this.document,
+    this.onSourceChanged,
+    this.onError,
+    this.onProtectedTap,
+  ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
   }
@@ -968,10 +1120,92 @@ class TyLogEditingController extends TextEditingController {
     );
   }
 
-  void setHeading() {
+  void toggleStrike() {
+    _clearComposition();
+    if (selection.isCollapsed) {
+      _typingStyle = _typingStyle.copyWith(strike: !_typingStyle.strike);
+      notifyListeners();
+      return;
+    }
+    _format(
+      () => document.toggle(
+        selection,
+        strike: !_selectionHas((style) => style.strike),
+      ),
+    );
+  }
+
+  void toggleUnderline() {
+    _clearComposition();
+    if (selection.isCollapsed) {
+      _typingStyle = _typingStyle.copyWith(underline: !_typingStyle.underline);
+      notifyListeners();
+      return;
+    }
+    _format(
+      () => document.toggle(
+        selection,
+        underline: !_selectionHas((style) => style.underline),
+      ),
+    );
+  }
+
+  void toggleMono() {
+    _clearComposition();
+    if (selection.isCollapsed) {
+      _typingStyle = _typingStyle.copyWith(mono: !_typingStyle.mono);
+      notifyListeners();
+      return;
+    }
+    _format(
+      () => document.toggle(
+        selection,
+        mono: !_selectionHas((style) => style.mono),
+      ),
+    );
+  }
+
+  /// Sets the highlight fill explicitly — `null` clears it, `''` is Typst's
+  /// default fill, anything else is a verbatim `fill:` expression. Used by
+  /// the toolbar's long-press palette and by [setHighlight] callers that
+  /// already know the target fill.
+  void setHighlight(String? fill) {
+    _clearComposition();
+    if (selection.isCollapsed) {
+      _typingStyle = _typingStyle.copyWith(highlight: fill);
+      notifyListeners();
+      return;
+    }
+    _format(() => document.toggle(selection, highlight: fill));
+  }
+
+  /// Tap behavior for the highlight toolbar button and the "highlight"
+  /// magic/slash action: toggles the default fill on/off.
+  void toggleHighlight() {
+    final active = selection.isCollapsed
+        ? _typingStyle.highlight != null
+        : _selectionHas((style) => style.highlight != null);
+    setHighlight(active ? null : '');
+  }
+
+  void clearFormatting() {
+    _clearComposition();
+    if (selection.isCollapsed) {
+      _typingStyle = const TyLogInlineStyle();
+      notifyListeners();
+      return;
+    }
+    _format(() => document.toggle(selection, reset: true));
+  }
+
+  void setHeading({int level = 1}) {
     var offset = selection.isValid ? selection.baseOffset : text.length;
     _format(() {
-      offset = document.setBlockStyle(offset, TyLogBlockStyle.heading);
+      offset = document.setBlockStyle(
+        offset,
+        TyLogBlockStyle.heading,
+        headingLevel: level,
+      );
     }, selectionOffset: () => offset);
   }
 
@@ -979,6 +1213,13 @@ class TyLogEditingController extends TextEditingController {
     var offset = selection.isValid ? selection.baseOffset : text.length;
     _format(() {
       offset = document.setBlockStyle(offset, TyLogBlockStyle.bulletList);
+    }, selectionOffset: () => offset);
+  }
+
+  void setNumberedList() {
+    var offset = selection.isValid ? selection.baseOffset : text.length;
+    _format(() {
+      offset = document.setBlockStyle(offset, TyLogBlockStyle.numberedList);
     }, selectionOffset: () => offset);
   }
 
@@ -1049,6 +1290,18 @@ class TyLogEditingController extends TextEditingController {
       case MagicAction.heading:
         setHeading();
         return;
+      case MagicAction.strike:
+        toggleStrike();
+        return;
+      case MagicAction.underline:
+        toggleUnderline();
+        return;
+      case MagicAction.mono:
+        toggleMono();
+        return;
+      case MagicAction.highlight:
+        toggleHighlight();
+        return;
       default:
         final selection = this.selection.isValid
             ? this.selection
@@ -1072,7 +1325,13 @@ class TyLogEditingController extends TextEditingController {
           MagicAction.table => 'Table',
           MagicAction.equation => request.value ?? selected,
           MagicAction.report => 'Report',
-          MagicAction.bold || MagicAction.italic || MagicAction.heading => '',
+          MagicAction.bold ||
+          MagicAction.italic ||
+          MagicAction.heading ||
+          MagicAction.strike ||
+          MagicAction.underline ||
+          MagicAction.mono ||
+          MagicAction.highlight => '',
         };
         final before = _snapshot();
         try {
@@ -1259,6 +1518,46 @@ class TyLogEditingController extends TextEditingController {
             block.visibleText.startsWith('☑');
         for (final part in block.parts) {
           if (part.isAtom) {
+            // Read mode never writes back to source, so an unknown wrapper
+            // call (e.g. a hand-authored `#step[...]`) can safely be shown
+            // as its real inner text instead of a truncated chip. Known
+            // reference atoms (links, tags, citations, mentions) stay chips
+            // in both modes since they're navigable, not just prose.
+            if (!interactive && !_isReferenceAtom(part.source!)) {
+              final body = _atomBody(part.source!);
+              final nested = _parseInline(body) ?? [TyLogInline.text(body)];
+              for (final nestedPart in nested) {
+                if (nestedPart.isAtom) {
+                  children.add(
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: _ProtectedChip(
+                        label: nestedPart.label!,
+                        block: false,
+                        onTap: null,
+                      ),
+                    ),
+                  );
+                  global++;
+                } else {
+                  _addTextSpans(
+                    children,
+                    nestedPart.text,
+                    global,
+                    style: _styleFor(
+                      context,
+                      style,
+                      block.style,
+                      block.headingLevel,
+                      nestedPart.style,
+                    ),
+                    composing: TextRange.empty,
+                  );
+                  global += nestedPart.text.length;
+                }
+              }
+              continue;
+            }
             children.add(
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
@@ -1271,7 +1570,13 @@ class TyLogEditingController extends TextEditingController {
             );
             global++;
           } else {
-            var partStyle = _styleFor(context, style, block.style, part.style);
+            var partStyle = _styleFor(
+              context,
+              style,
+              block.style,
+              block.headingLevel,
+              part.style,
+            );
             if (taskDone) {
               partStyle = partStyle.copyWith(
                 decoration: TextDecoration.lineThrough,
@@ -1378,6 +1683,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   OverlayEntry? _overlayEntry;
   Timer? _debounce;
   int _mentionQueryToken = 0;
+  final GlobalKey _headingButtonKey = GlobalKey();
+  final GlobalKey _highlightButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -1693,6 +2000,50 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     super.dispose();
   }
 
+  RelativeRect _menuPositionBelow(BuildContext context, GlobalKey key) {
+    final button = key.currentContext!.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = button.localToGlobal(
+      button.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    return RelativeRect.fromRect(
+      Rect.fromPoints(topLeft, bottomRight),
+      Offset.zero & overlay.size,
+    );
+  }
+
+  Future<void> _showHeadingMenu(BuildContext context) async {
+    final level = await showMenu<int>(
+      context: context,
+      position: _menuPositionBelow(context, _headingButtonKey),
+      items: const [
+        PopupMenuItem(value: 2, child: Text('Heading 2')),
+        PopupMenuItem(value: 3, child: Text('Heading 3')),
+        PopupMenuItem(value: 4, child: Text('Heading 4')),
+      ],
+    );
+    if (level != null) widget.controller.setHeading(level: level);
+    if (mounted) focusNode.requestFocus();
+  }
+
+  Future<void> _showHighlightMenu(BuildContext context) async {
+    final fill = await showMenu<String>(
+      context: context,
+      position: _menuPositionBelow(context, _highlightButtonKey),
+      items: const [
+        PopupMenuItem(value: kHighlightYellow, child: Text('Yellow')),
+        PopupMenuItem(value: kHighlightGreen, child: Text('Green')),
+        PopupMenuItem(value: kHighlightPink, child: Text('Pink')),
+        PopupMenuItem(value: kHighlightBlue, child: Text('Blue')),
+      ],
+    );
+    if (fill != null) widget.controller.setHighlight(fill);
+    if (mounted) focusNode.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
@@ -1782,8 +2133,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       icon: const Icon(Icons.redo),
                     ),
                     IconButton(
-                      tooltip: 'Heading 1',
+                      key: _headingButtonKey,
+                      tooltip: 'Heading 1 (long-press for more levels)',
                       onPressed: widget.controller.setHeading,
+                      onLongPress: () => _showHeadingMenu(context),
                       icon: Text(
                         'H1',
                         style: Theme.of(context).textTheme.titleMedium,
@@ -1800,9 +2153,41 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       icon: const Icon(Icons.format_italic),
                     ),
                     IconButton(
+                      tooltip: 'Strikethrough',
+                      onPressed: widget.controller.toggleStrike,
+                      icon: const Icon(Icons.format_strikethrough),
+                    ),
+                    IconButton(
+                      tooltip: 'Underline',
+                      onPressed: widget.controller.toggleUnderline,
+                      icon: const Icon(Icons.format_underline),
+                    ),
+                    IconButton(
+                      tooltip: 'Monospace',
+                      onPressed: widget.controller.toggleMono,
+                      icon: const Icon(Icons.code),
+                    ),
+                    IconButton(
+                      key: _highlightButtonKey,
+                      tooltip: 'Highlight (long-press for colors)',
+                      onPressed: widget.controller.toggleHighlight,
+                      onLongPress: () => _showHighlightMenu(context),
+                      icon: const Icon(Icons.border_color),
+                    ),
+                    IconButton(
                       tooltip: 'Bulleted list',
                       onPressed: widget.controller.setBulletList,
                       icon: const Icon(Icons.format_list_bulleted),
+                    ),
+                    IconButton(
+                      tooltip: 'Numbered list',
+                      onPressed: widget.controller.setNumberedList,
+                      icon: const Icon(Icons.format_list_numbered),
+                    ),
+                    IconButton(
+                      tooltip: 'Clear formatting',
+                      onPressed: widget.controller.clearFormatting,
+                      icon: const Icon(Icons.format_clear),
                     ),
                     IconButton(
                       tooltip: 'Insert',
@@ -1853,13 +2238,22 @@ class _ProtectedChip extends StatelessWidget {
               horizontal: block ? 12 : 7,
               vertical: block ? 10 : 3,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(block ? Icons.code : Icons.link, size: 16),
-                const SizedBox(width: 5),
-                Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-              ],
+            // Bounded (not single-line-ellipsized) so a long extracted
+            // label — e.g. a hand-authored `#step[...]` body — stays fully
+            // readable instead of being cut to "…" after a few words.
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(block ? Icons.code : Icons.link, size: 16),
+                  const SizedBox(width: 5),
+                  Flexible(child: Text(label)),
+                ],
+              ),
             ),
           ),
         ),
@@ -1913,8 +2307,11 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
 
   var style = TyLogBlockStyle.paragraph;
   var body = trimmed;
+  var headingLevel = 1;
   if (block.kind == ControlledBlockKind.heading) {
     style = TyLogBlockStyle.heading;
+    final marker = RegExp(r'^=+').firstMatch(trimmed)!.group(0)!;
+    headingLevel = marker.length;
     body = trimmed.replaceFirst(RegExp(r'^=+\s*'), '');
   } else if (block.kind == ControlledBlockKind.list) {
     final numbered = RegExp(r'^(?:\d+\. |\+ )').hasMatch(trimmed);
@@ -1947,6 +2344,7 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     parts: parts,
     originalSource: source,
     separator: separator,
+    headingLevel: headingLevel,
   );
 }
 
@@ -1969,9 +2367,11 @@ List<TyLogInline>? _parseInline(
       i += 2;
       continue;
     }
-    final styled = <(String, bool, bool)>[
-      ('#strong[', true, false),
-      ('#emph[', false, true),
+    final styled = <(String, TyLogInlineStyle Function(TyLogInlineStyle))>[
+      ('#strong[', (s) => s.copyWith(bold: true)),
+      ('#emph[', (s) => s.copyWith(italic: true)),
+      ('#strike[', (s) => s.copyWith(strike: true)),
+      ('#underline[', (s) => s.copyWith(underline: true)),
     ];
     var consumedStyle = false;
     for (final entry in styled) {
@@ -1981,10 +2381,7 @@ List<TyLogInline>? _parseInline(
       if (close == null) return null;
       final nested = _parseInline(
         source.substring(open + 1, close - 1),
-        inherited: inherited.copyWith(
-          bold: inherited.bold || entry.$2,
-          italic: inherited.italic || entry.$3,
-        ),
+        inherited: entry.$2(inherited),
       );
       if (nested == null) return null;
       flush();
@@ -2012,6 +2409,30 @@ List<TyLogInline>? _parseInline(
         i = close + 1;
         continue;
       }
+    }
+
+    if (delimiter == '`') {
+      // Raw Typst content: literal, no recursive markup parsing inside.
+      final close = source.indexOf('`', i + 1);
+      if (close > i) {
+        flush();
+        parts.add(
+          TyLogInline.text(
+            source.substring(i + 1, close),
+            style: inherited.copyWith(mono: true),
+          ),
+        );
+        i = close + 1;
+        continue;
+      }
+    }
+
+    final highlightMatch = _tryParseHighlight(source, i, inherited);
+    if (highlightMatch != null) {
+      flush();
+      parts.addAll(highlightMatch.$2);
+      i = highlightMatch.$1;
+      continue;
     }
 
     final atomMatch = RegExp(
@@ -2055,6 +2476,31 @@ List<TyLogInline>? _parseInline(
   return _normalize(parts);
 }
 
+/// Whether [source] is one of the app's own navigable reference calls
+/// (link, tag, citation, mention, …) rather than a generic unknown wrapper
+/// call. Reference atoms stay chips in Read mode; generic wrappers unwrap
+/// to their inner text since there's nowhere to navigate to.
+bool _isReferenceAtom(String source) =>
+    source.startsWith('@') ||
+    source.startsWith('#link(') ||
+    source.startsWith('#tylog.ref-note(') ||
+    source.startsWith('#tylog.date-ref(') ||
+    source.startsWith('#tylog.attachment(') ||
+    source.startsWith('#tylog.tag(') ||
+    source.startsWith('#cite(') ||
+    source.startsWith('#image(') ||
+    source.startsWith('#Image(');
+
+/// Inner content of a `#name(...)?[body]` call's trailing bracket group, or
+/// the raw source unchanged if it has no bracket body.
+String _atomBody(String source) {
+  final open = source.indexOf('[');
+  if (open < 0) return source;
+  final close = _squareEnd(source, open);
+  if (close == null) return source;
+  return source.substring(open + 1, close - 1);
+}
+
 String _atomLabel(String source) {
   final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
@@ -2092,6 +2538,73 @@ int _unescapedIndexOf(String source, String value, int start) {
   return index;
 }
 
+/// Exclusive end of a balanced, string-aware `(...)` group starting at
+/// [open] (which must be `(`), or null if unbalanced.
+int? _parenEnd(String source, int open) {
+  var depth = 0;
+  var inString = false;
+  for (var i = open; i < source.length; i++) {
+    final code = source.codeUnitAt(i);
+    if (code == 92) {
+      i++;
+      continue;
+    }
+    if (code == 34) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (code == 40) depth++;
+    if (code == 41 && --depth == 0) return i + 1;
+  }
+  return null;
+}
+
+/// Tries to parse `#highlight[...]` (default fill, stored as `''`) or
+/// `#highlight(fill: <expr>)[...]` (verbatim fill expression) starting at
+/// [i]. Returns the exclusive end index and the parsed nested parts, or
+/// null if the shape doesn't match — in which case the caller falls through
+/// to the generic inline-call handling, so a malformed/unsupported
+/// `#highlight(...)` becomes a protected atom instead of destroying the
+/// whole block.
+(int, List<TyLogInline>)? _tryParseHighlight(
+  String source,
+  int i,
+  TyLogInlineStyle inherited,
+) {
+  const name = '#highlight';
+  if (!source.startsWith(name, i)) return null;
+  final nameEnd = i + name.length;
+  if (nameEnd >= source.length) return null;
+  if (source.codeUnitAt(nameEnd) == 91) {
+    final close = _squareEnd(source, nameEnd);
+    if (close == null) return null;
+    final nested = _parseInline(
+      source.substring(nameEnd + 1, close - 1),
+      inherited: inherited.copyWith(highlight: ''),
+    );
+    return nested == null ? null : (close, nested);
+  }
+  if (source.codeUnitAt(nameEnd) != 40) return null;
+  final parenClose = _parenEnd(source, nameEnd);
+  if (parenClose == null ||
+      parenClose >= source.length ||
+      source.codeUnitAt(parenClose) != 91) {
+    return null;
+  }
+  final inner = source.substring(nameEnd + 1, parenClose - 1).trim();
+  final fillMatch = RegExp(r'^fill:\s*(.*)$').firstMatch(inner);
+  if (fillMatch == null) return null;
+  final fill = fillMatch.group(1)!.trim();
+  final squareClose = _squareEnd(source, parenClose);
+  if (squareClose == null) return null;
+  final nested = _parseInline(
+    source.substring(parenClose + 1, squareClose - 1),
+    inherited: inherited.copyWith(highlight: fill),
+  );
+  return nested == null ? null : (squareClose, nested);
+}
+
 void _replaceInBlock(
   TyLogBlock block,
   int start,
@@ -2123,15 +2636,26 @@ void _styleBlock(
   int end, {
   bool? bold,
   bool? italic,
+  bool? strike,
+  bool? underline,
+  bool? mono,
+  Object? highlight = _unsetHighlight,
+  bool reset = false,
 }) {
   final units = _units(block.parts);
   for (var i = start; i < end && i < units.length; i++) {
     if (units[i].atom != null) continue;
-    units[i] = _Unit(
-      units[i].code,
-      units[i].style.copyWith(bold: bold, italic: italic),
-      null,
-    );
+    final style = reset
+        ? const TyLogInlineStyle()
+        : units[i].style.copyWith(
+            bold: bold,
+            italic: italic,
+            strike: strike,
+            underline: underline,
+            mono: mono,
+            highlight: highlight,
+          );
+    units[i] = _Unit(units[i].code, style, null);
   }
   block
     ..parts = _parts(units)
@@ -2203,6 +2727,7 @@ TyLogBlock _blockFrom(
   TyLogBlock original,
   List<_Unit> units, {
   TyLogBlockStyle? style,
+  int? headingLevel,
 }) => TyLogBlock(
   id: 'split-${DateTime.now().microsecondsSinceEpoch}-${units.hashCode}',
   style: style ?? original.style,
@@ -2210,13 +2735,14 @@ TyLogBlock _blockFrom(
   originalSource: '',
   separator: original.separator,
   dirty: true,
+  headingLevel: headingLevel ?? original.headingLevel,
 );
 
 String _serializeBlock(TyLogBlock block) {
   if (block.isProtected) return block.originalSource;
   final content = block.parts.map(_serializePart).join();
   return switch (block.style) {
-    TyLogBlockStyle.heading => '= $content',
+    TyLogBlockStyle.heading => '${'=' * block.headingLevel} $content',
     TyLogBlockStyle.bulletList =>
       content
           .split('\n')
@@ -2237,11 +2763,27 @@ String _serializeBlock(TyLogBlock block) {
   };
 }
 
+/// Nesting order is innermost → outermost: raw backticks (mono) first —
+/// Typst raw content can't contain other markup, so it must sit closest to
+/// the text — then #emph/#strong/#strike/#underline, with #highlight
+/// outermost since markup nests validly inside a highlighted region.
+///
+/// Known limitation: mono text containing a literal backtick cannot
+/// round-trip (there is no escape for it in single-backtick raw); `toSource`
+/// validation reverts the edit rather than emit broken Typst.
 String _serializePart(TyLogInline part) {
   if (part.isAtom) return part.source!;
-  var value = typstContent(part.text);
+  var value = part.style.mono ? '`${part.text}`' : typstContent(part.text);
   if (part.style.italic) value = '#emph[$value]';
   if (part.style.bold) value = '#strong[$value]';
+  if (part.style.strike) value = '#strike[$value]';
+  if (part.style.underline) value = '#underline[$value]';
+  final highlight = part.style.highlight;
+  if (highlight != null) {
+    value = highlight.isEmpty
+        ? '#highlight[$value]'
+        : '#highlight(fill: $highlight)[$value]';
+  }
   return value;
 }
 
@@ -2316,18 +2858,40 @@ TextStyle _styleFor(
   BuildContext context,
   TextStyle? base,
   TyLogBlockStyle block,
+  int headingLevel,
   TyLogInlineStyle inline,
 ) {
   var style = base ?? DefaultTextStyle.of(context).style;
   if (block == TyLogBlockStyle.heading) {
-    style = style.merge(Theme.of(context).textTheme.headlineSmall);
+    final textTheme = Theme.of(context).textTheme;
+    final headingStyle = switch (headingLevel) {
+      1 => textTheme.headlineSmall,
+      2 => textTheme.titleLarge,
+      3 => textTheme.titleMedium,
+      _ => textTheme.titleSmall,
+    };
+    style = style.merge(headingStyle);
   }
   if (block == TyLogBlockStyle.bulletList) {
     style = style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
   }
+  final decorations = <TextDecoration>[
+    if (inline.strike) TextDecoration.lineThrough,
+    if (inline.underline) TextDecoration.underline,
+  ];
   return style.copyWith(
     fontWeight: inline.bold ? FontWeight.bold : style.fontWeight,
     fontStyle: inline.italic ? FontStyle.italic : style.fontStyle,
+    decoration: decorations.isEmpty
+        ? style.decoration
+        : TextDecoration.combine(decorations),
+    fontFamily: inline.mono ? 'monospace' : style.fontFamily,
+    fontSize: inline.mono && style.fontSize != null
+        ? style.fontSize! * 0.9
+        : style.fontSize,
+    backgroundColor: inline.highlight != null
+        ? _highlightColor(inline.highlight!)
+        : style.backgroundColor,
   );
 }
 

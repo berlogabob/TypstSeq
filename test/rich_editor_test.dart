@@ -72,6 +72,25 @@ void main() {
     expect(saved.last, contains('#strong[привет]'));
   });
 
+  test(
+    'constructor redirect still parses the source exactly once effectively '
+    '(document and displayed text agree)',
+    () {
+      final controller = TyLogEditingController(
+        source: _source,
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final expected = TyLogDocument.parse(_source).visibleText;
+      expect(controller.text, expected);
+      expect(controller.document.visibleText, expected);
+      expect(controller.document.visibleText, controller.text);
+    },
+  );
+
   test('heading, list, and task actions work on an empty document', () {
     TyLogEditingController controller(List<String> saved) =>
         TyLogEditingController(
@@ -1254,6 +1273,220 @@ void main() {
         find.byKey(const Key('autocomplete-mention-list')),
         findsNothing,
       );
+    },
+  );
+
+  test('collapsed strike/underline/mono style subsequently typed text', () {
+    void checkPrefix(void Function(TyLogEditingController) toggle, String open) {
+      String? saved;
+      final controller = TyLogEditingController(
+        source: _source,
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.selection = const TextSelection.collapsed(offset: 0);
+
+      toggle(controller);
+      controller.value = controller.value.copyWith(
+        text: 'Да ${controller.text}',
+        selection: const TextSelection.collapsed(offset: 3),
+      );
+
+      expect(saved, contains('$open' 'Да '));
+    }
+
+    checkPrefix((c) => c.toggleStrike(), '#strike[');
+    checkPrefix((c) => c.toggleUnderline(), '#underline[');
+    checkPrefix((c) => c.toggleMono(), '`');
+  });
+
+  test('range toggle emits strike, underline, and mono wrappers', () {
+    TyLogEditingController controller(List<String> saved) =>
+        TyLogEditingController(
+          source: _source,
+          onSourceChanged: saved.add,
+          onError: (error) => fail('$error'),
+          onProtectedTap: (_) {},
+        );
+    const word = 'привет';
+
+    final strikeSaved = <String>[];
+    final strikeController = controller(strikeSaved);
+    addTearDown(strikeController.dispose);
+    strikeController.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: word.length,
+    );
+    strikeController.toggleStrike();
+    expect(strikeSaved.last, contains('#strike[привет]'));
+
+    final underlineSaved = <String>[];
+    final underlineController = controller(underlineSaved);
+    addTearDown(underlineController.dispose);
+    underlineController.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: word.length,
+    );
+    underlineController.toggleUnderline();
+    expect(underlineSaved.last, contains('#underline[привет]'));
+
+    final monoSaved = <String>[];
+    final monoController = controller(monoSaved);
+    addTearDown(monoController.dispose);
+    monoController.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: word.length,
+    );
+    monoController.toggleMono();
+    expect(monoSaved.last, contains('`привет`'));
+  });
+
+  test(
+    'highlight toggle applies default fill, palette sets an explicit fill, '
+    'and an unknown fill round-trips verbatim',
+    () {
+      String? saved;
+      final controller = TyLogEditingController(
+        source: _source,
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      const word = 'привет';
+      controller.selection = const TextSelection(
+        baseOffset: 0,
+        extentOffset: word.length,
+      );
+
+      controller.toggleHighlight();
+      expect(saved, contains('#highlight[привет]'));
+
+      controller.setHighlight(kHighlightGreen);
+      expect(saved, contains('#highlight(fill: $kHighlightGreen)[привет]'));
+
+      controller.toggleHighlight();
+      expect(saved, contains('привет'));
+      expect(saved, isNot(contains('#highlight')));
+
+      const customFillSource =
+          '#highlight(fill: gradient.linear(red, blue))[x]';
+      expect(
+        TyLogDocument.parse(customFillSource).toSource(),
+        customFillSource,
+      );
+    },
+  );
+
+  test(
+    'bold, strike, and highlight combine and round-trip mono-innermost, '
+    'highlight-outermost',
+    () {
+      final document = TyLogDocument.parse('combo');
+      const selection = TextSelection(baseOffset: 0, extentOffset: 5);
+      document.toggle(selection, bold: true);
+      document.toggle(selection, strike: true);
+      document.toggle(selection, highlight: kHighlightYellow);
+
+      final source = document.toSource();
+      expect(source, '#highlight(fill: $kHighlightYellow)[#strike[#strong[combo]]]');
+
+      final reparsed = TyLogDocument.parse(source);
+      expect(reparsed.visibleText, document.visibleText);
+      expect(reparsed.toSource(), source);
+    },
+  );
+
+  test(
+    '== level headings round-trip verbatim and setHeading applies a chosen level',
+    () {
+      const source = '== Section\n\nBody text';
+      final document = TyLogDocument.parse(source);
+      expect(document.toSource(), source);
+      expect(document.blocks.first.headingLevel, 2);
+
+      final saved = <String>[];
+      final controller = TyLogEditingController(
+        source: 'plain text',
+        onSourceChanged: saved.add,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.selection = const TextSelection.collapsed(offset: 0);
+
+      controller.setHeading(level: 3);
+      expect(saved.last, startsWith('=== '));
+    },
+  );
+
+  test('setNumberedList emits a + prefixed line', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'item',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection.collapsed(offset: 4);
+
+    controller.setNumberedList();
+    expect(controller.text, '1. item');
+    expect(saved.last, startsWith('+ '));
+  });
+
+  test('clearFormatting over a bold+italic selection produces plain text', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: '#strong[#emph[x]]',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection(baseOffset: 0, extentOffset: 1);
+
+    controller.clearFormatting();
+
+    expect(saved.last, 'x');
+  });
+
+  testWidgets(
+    'long-press on Heading 1 shows a level menu and applies H2',
+    (tester) async {
+      String? saved;
+      final controller = TyLogEditingController(
+        source: _source,
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('rich-journal-editor')));
+      await tester.pump();
+      controller.selection = const TextSelection.collapsed(offset: 0);
+
+      await tester.longPress(
+        find.byTooltip('Heading 1 (long-press for more levels)'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Heading 2'), findsOneWidget);
+      await tester.tap(find.text('Heading 2'));
+      await tester.pumpAndSettle();
+
+      expect(saved, contains('== '));
     },
   );
 }

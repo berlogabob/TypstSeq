@@ -215,13 +215,14 @@ class NextcloudSync {
 
   Future<RemoteVaultInspection> inspectRemoteVault() async {
     try {
-      final remote = await _remoteFiles(
+      final result = await _remoteFiles(
         allowMissing: true,
         includeNonSyncable: true,
       );
-      if (remote == null) {
+      if (result == null) {
         return const RemoteVaultInspection(RemoteVaultKind.missing);
       }
+      final remote = result.files;
       if (remote.isEmpty) {
         return const RemoteVaultInspection(RemoteVaultKind.empty);
       }
@@ -259,6 +260,8 @@ class NextcloudSync {
     var deletedLocal = 0;
     var deletedRemote = 0;
     var remoteCount = 0;
+    var cursorsDirty = false;
+    String? freshRootEtag;
     Map<String, SyncCursor>? syncState;
     _RemoteArchiveSnapshot? archiveSnapshot;
     var pristineStarterPaths = const <String>[];
@@ -308,8 +311,62 @@ class NextcloudSync {
           'trigger': trigger,
         });
       }
+      // Fast path for a steady-state poll: the root collection's own etag
+      // changes whenever anything beneath it changes (the mechanism real
+      // Nextcloud clients rely on). If it still matches what the last full
+      // run observed, and every local file is exactly where its cursor left
+      // it, nothing at all changed and the Depth:infinity crawl, rename
+      // detection, conflict-copy scan and per-path loop can all be skipped.
+      // Any mismatch falls straight through to the full run below — this
+      // must never be the thing that decides a local edit is safe to skip.
+      if (initialMode == null &&
+          !stateRecovered &&
+          !loadedState.remoteMismatch &&
+          loadedState.rootEtag != null) {
+        progress('probe-root');
+        final unresolvedForShortcut = await loadSyncConflicts(vault);
+        if (unresolvedForShortcut.isEmpty) {
+          final probedEtag = await _retryTransient(_rootEtag);
+          if (probedEtag != null &&
+              _normEtag(probedEtag) == _normEtag(loadedState.rootEtag)) {
+            progress('scan-local-shortcut');
+            final localListing = await _localFiles(vault.storage);
+            if (_matchesLocalCursorSnapshot(
+              localListing.syncable,
+              syncState,
+            )) {
+              remoteCount = syncState.length;
+              traceEvents.add({
+                'timestamp': DateTime.now().toUtc().toIso8601String(),
+                'runId': runId,
+                'event': 'no-change-shortcut',
+                'trigger': trigger,
+                'uploaded': 0,
+                'downloaded': 0,
+                'skipped': 0,
+                'conflicts': 0,
+                'repaired': 0,
+                'renamed': 0,
+                'deletedLocal': 0,
+                'deletedRemote': 0,
+                'remoteCount': remoteCount,
+              });
+              return SyncResult(
+                trigger: trigger,
+                uploaded: 0,
+                downloaded: 0,
+                skipped: 0,
+                conflicts: 0,
+                remoteCount: remoteCount,
+              );
+            }
+          }
+        }
+      }
       progress('list-remote');
-      final remote = (await _retryTransient(_remoteFiles))!;
+      final remoteResult = (await _retryTransient(_remoteFiles))!;
+      final remote = remoteResult.files;
+      freshRootEtag = remoteResult.rootEtag;
       remoteCount = remote.length;
       final remoteUserCount = remote.keys
           .where((path) => !path.startsWith('_system/'))
@@ -340,8 +397,9 @@ class NextcloudSync {
         pristineStarterPaths = local.pristineStarterPaths;
       }
       progress('scan-local');
-      repaired = await _cleanResolvedConflictCopies(vault);
-      final localEntries = await _localFiles(vault.storage);
+      final localListing = await _localFiles(vault.storage);
+      final localEntries = localListing.syncable;
+      repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
       if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
         throw StateError(
           'Local vault listed no syncable files; refusing to propagate deletions.',
@@ -354,6 +412,7 @@ class NextcloudSync {
         remote,
         syncState,
         progress,
+        rootEtag: freshRootEtag,
       );
       renamed = renameDetection.decisions.length;
       decisions.addAll(renameDetection.decisions);
@@ -375,7 +434,11 @@ class NextcloudSync {
       }
       // Save the bootstrap/reset marker before the first transfer. A retry can
       // then resume even if Android kills the process before the first batch.
-      await _saveSyncState(vault, syncState);
+      // Only a genuine reset/bootstrap needs this write — a plain steady-state
+      // run hasn't changed anything relative to what's already on disk.
+      if (stateRecovered || loadedState.remoteMismatch || initialMode != null) {
+        await _saveSyncState(vault, syncState, rootEtag: freshRootEtag);
+      }
       if (_shouldUseArchive(
         initialMode: initialMode,
         stateRecovered: stateRecovered,
@@ -437,9 +500,13 @@ class NextcloudSync {
             );
             if (result.updateCursor) {
               if (result.cursor == null) {
-                cursors.remove(path);
+                if (cursors.remove(path) != null) cursorsDirty = true;
               } else {
+                final previousCursor = cursors[path];
                 cursors[path] = result.cursor!;
+                if (_cursorNeedsPersist(previousCursor, result.cursor!)) {
+                  cursorsDirty = true;
+                }
               }
             }
             up += result.uploaded;
@@ -451,13 +518,14 @@ class NextcloudSync {
             decisions.add(result.decision);
             completed++;
             progress('sync-file $completed/${allPaths.length}', path);
-            if (completed % 10 == 0) {
+            if (completed % 10 == 0 && cursorsDirty) {
               final snapshot = Map<String, SyncCursor>.of(cursors);
               final write = checkpointTail.then(
-                (_) => _saveSyncState(vault, snapshot),
+                (_) => _saveSyncState(vault, snapshot, rootEtag: freshRootEtag),
               );
               checkpointTail = write.catchError((_) {});
               await write;
+              cursorsDirty = false;
             }
           } catch (error, stack) {
             firstError ??= error;
@@ -477,8 +545,17 @@ class NextcloudSync {
         Error.throwWithStackTrace(firstError!, firstStack!);
       }
 
+      // Note: freshRootEtag reflects the remote as it was *before* this
+      // run's own uploads/deletes/renames (it was captured by the same
+      // Depth:infinity listing the per-path loop just used, before the
+      // loop ran). A run that itself changes the remote is therefore one
+      // run behind on enabling the shortcut — self-correcting, since the
+      // *next* full run's own pre-loop listing will already reflect those
+      // changes and persist an accurate etag if nothing further happens.
       progress('save-local-state');
-      await _saveSyncState(vault, syncState);
+      if (cursorsDirty || freshRootEtag != loadedState.rootEtag) {
+        await _saveSyncState(vault, syncState, rootEtag: freshRootEtag);
+      }
       traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
@@ -511,7 +588,7 @@ class NextcloudSync {
       final checkpoint = syncState;
       if (checkpoint != null) {
         try {
-          await _saveSyncState(vault, checkpoint);
+          await _saveSyncState(vault, checkpoint, rootEtag: freshRootEtag);
         } catch (checkpointError) {
           traceEvents.add({
             'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -557,8 +634,27 @@ class NextcloudSync {
     String? mergedText,
   }) async {
     try {
-      final remote = (await _remoteFiles())!;
-      final currentRemote = remote[conflict.path];
+      // Self-heal (loadSyncConflicts) may have already deleted this record's
+      // snapshot(s) on disk between when the UI loaded it and now — e.g. the
+      // dashboard held a stale in-memory copy. There's nothing left to apply
+      // in that case; treat it as already resolved instead of crashing on
+      // the missing file.
+      if (resolution == SyncConflictResolution.keepRemote &&
+          conflict.remoteExists &&
+          (conflict.remoteSnapshot == null ||
+              !await vault.storage.exists(conflict.remoteSnapshot!))) {
+        for (final snapshot in [
+          conflict.localSnapshot,
+          conflict.remoteSnapshot,
+          conflict.recordPath,
+        ]) {
+          if (snapshot != null) await vault.storage.delete(snapshot);
+        }
+        return;
+      }
+      // A single-resource Depth:0 probe instead of a whole-tree PROPFIND —
+      // resolving one conflict shouldn't cost a full remote crawl.
+      final currentRemote = await _probeRemoteFile(conflict.path);
       if (conflict.remoteExists != (currentRemote != null) ||
           conflict.remoteEtag != null &&
               _normEtag(currentRemote?.etag) !=
@@ -614,7 +710,7 @@ class NextcloudSync {
       } else {
         state.cursors.remove(conflict.path);
       }
-      await _saveSyncState(vault, state.cursors);
+      await _saveSyncState(vault, state.cursors, rootEtag: state.rootEtag);
       for (final snapshot in [
         conflict.localSnapshot,
         conflict.remoteSnapshot,
@@ -702,7 +798,7 @@ class NextcloudSync {
       final archive = ZipDecoder().decodeStream(input);
       final files = _validatedArchiveFiles(archive, remote);
       if (files == null) return null;
-      final after = (await _remoteFiles())!;
+      final after = (await _remoteFiles())!.files;
       if (!_sameRemoteSnapshot(remote, after)) {
         throw StateError('Cloud changed during archive download; Retry.');
       }
@@ -786,16 +882,42 @@ class NextcloudSync {
     return true;
   }
 
-  Future<Map<String, VaultStorageEntry>> _localFiles(
-    VaultStorage storage,
-  ) async {
-    final out = <String, VaultStorageEntry>{};
-    for (final entity in await storage.list(recursive: true)) {
+  /// One recursive listing feeds both the syncable path map used by the main
+  /// loop and the raw entries (which include `.remote-conflict-*` copies)
+  /// needed by [_cleanResolvedConflictCopies], instead of two tree walks.
+  Future<
+    ({List<VaultStorageEntry> raw, Map<String, VaultStorageEntry> syncable})
+  >
+  _localFiles(VaultStorage storage) async {
+    final raw = await storage.list(recursive: true);
+    final syncable = <String, VaultStorageEntry>{};
+    for (final entity in raw) {
       if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
       if (_isSyncInternal(entity.path)) continue;
-      out[entity.path] = entity;
+      syncable[entity.path] = entity;
     }
-    return out;
+    return (raw: raw, syncable: syncable);
+  }
+
+  /// Cheap in-memory check for the no-change shortcut: every local file must
+  /// still match its cursor's recorded mtime+size exactly, and no path may be
+  /// missing or extra. Any mismatch must fall through to the full run — this
+  /// is the only thing standing between a local edit and data loss.
+  bool _matchesLocalCursorSnapshot(
+    Map<String, VaultStorageEntry> local,
+    Map<String, SyncCursor> cursors,
+  ) {
+    if (local.length != cursors.length) return false;
+    for (final entry in local.entries) {
+      final cursor = cursors[entry.key];
+      if (cursor == null) return false;
+      final millis = entry.value.modified?.millisecondsSinceEpoch;
+      if (millis == null || millis != cursor.localMillis) return false;
+      if (entry.value.size == null || entry.value.size != cursor.localSize) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<_PathResult> _syncPath({
@@ -1033,6 +1155,36 @@ class NextcloudSync {
       reason = 'no-change';
     }
 
+    // Self-heal files this app uploaded before the `OC-Checksum` header case
+    // fix: the server still stores the lowercase `sha256:` type, which makes
+    // Nextcloud Desktop refuse to sync the file at all ("unknown checksum
+    // type"). Only re-PUT paths that are otherwise fully in sync — never a
+    // path that's about to conflict, download, or genuinely upload new
+    // content — and send byte-identical content guarded by If-Match so a
+    // concurrent remote change (412) is simply skipped; the next sync
+    // retries.
+    if ((reason == 'no-change' || reason == 'same-content') &&
+        remoteFile != null &&
+        remoteFile.sha256Lowercase &&
+        localHash != null) {
+      try {
+        final repairBytes = localBytes ?? await vault.storage.readBytes(path);
+        final repairedEtag = await _uploadStorage(
+          path,
+          vault.storage,
+          localHash: localHash,
+          remote: remoteFile,
+          bytes: repairBytes,
+        );
+        observedRemoteEtag = repairedEtag ?? observedRemoteEtag;
+        repaired++;
+        reason = 'checksum-repaired';
+      } on _RemoteChanged {
+        // Remote moved since PROPFIND; leave state as-is and let the next
+        // sync pass re-evaluate whether a repair is still needed.
+      }
+    }
+
     final wasDownloaded = action == SyncAction.download;
     final nextLocal = wasDownloaded
         ? await vault.storage.stat(path)
@@ -1086,8 +1238,9 @@ class NextcloudSync {
     Map<String, VaultStorageEntry> local,
     Map<String, _RemoteFile> remote,
     Map<String, SyncCursor> state,
-    void Function(String stage, String? path) progress,
-  ) async {
+    void Function(String stage, String? path) progress, {
+    required String? rootEtag,
+  }) async {
     if (state.isEmpty) {
       return const _RenameDetection(
         decisions: [],
@@ -1157,7 +1310,7 @@ class NextcloudSync {
       );
       remote.remove(old.key);
       remote[replacement.key] = moved;
-      await _saveSyncState(vault, state);
+      await _saveSyncState(vault, state, rootEtag: rootEtag);
       decisions.add(
         SyncDecision(
           path: replacement.key,
@@ -1257,7 +1410,7 @@ class NextcloudSync {
           localSha256: group.key,
           remoteEtag: _normEtag(remoteFile.etag),
         );
-        await _saveSyncState(vault, state);
+        await _saveSyncState(vault, state, rootEtag: rootEtag);
         decisions.add(
           SyncDecision(
             path: replacement,
@@ -1300,7 +1453,7 @@ class NextcloudSync {
     return storage.hash(path);
   }
 
-  Future<Map<String, _RemoteFile>?> _remoteFiles({
+  Future<({Map<String, _RemoteFile> files, String? rootEtag})?> _remoteFiles({
     bool allowMissing = false,
     bool includeNonSyncable = false,
   }) async {
@@ -1323,6 +1476,11 @@ class NextcloudSync {
     }
 
     final files = <String, _RemoteFile>{};
+    // The root collection's own entry (href ends with '/') is included in a
+    // Depth:infinity response alongside every file; its etag changes
+    // whenever anything beneath it changes, which is what makes the
+    // no-change shortcut in sync() safe to rely on.
+    String? rootEtag;
     for (final match in RegExp(
       r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
       dotAll: true,
@@ -1334,7 +1492,12 @@ class NextcloudSync {
           throw const FormatException('missing href');
         }
         final href = Uri.decodeComponent(hrefValue);
-        if (href.endsWith('/')) continue;
+        if (href.endsWith('/')) {
+          if (rootEtag == null && _isRootHref(href)) {
+            rootEtag = _xmlValue(block, 'getetag');
+          }
+          continue;
+        }
         final modifiedValue = _xmlValue(block, 'getlastmodified');
         if (modifiedValue == null) {
           throw const FormatException('missing getlastmodified');
@@ -1349,11 +1512,13 @@ class NextcloudSync {
           throw const FormatException('invalid getcontentlength');
         }
         if (includeNonSyncable || !_isSyncInternal(path)) {
+          final checksum = _xmlSha256Info(block);
           files[path] = _RemoteFile(
             modified: HttpDate.parse(modifiedValue),
             etag: _xmlValue(block, 'getetag'),
             length: length,
-            sha256: _xmlSha256(block),
+            sha256: checksum?.hash,
+            sha256Lowercase: checksum?.lowercase ?? false,
           );
         }
       } catch (error) {
@@ -1364,7 +1529,101 @@ class NextcloudSync {
         throw HttpException('PROPFIND invalid file metadata: $message');
       }
     }
-    return files;
+    return (files: files, rootEtag: rootEtag);
+  }
+
+  bool _isRootHref(String href) {
+    final root = config.rootUri.path;
+    final normalizedRoot = root.endsWith('/')
+        ? root.substring(0, root.length - 1)
+        : root;
+    final normalizedHref = href.endsWith('/')
+        ? href.substring(0, href.length - 1)
+        : href;
+    return normalizedHref.endsWith(normalizedRoot);
+  }
+
+  /// Depth:0 probe of just the root collection's etag — the cheap
+  /// "has anything at all changed" check used by the no-change shortcut in
+  /// sync(), instead of a full Depth:infinity crawl. Only trusts a response
+  /// whose href actually resolves to the root — a server that ignores Depth
+  /// and always answers with some other resource must not produce a
+  /// misleading match.
+  Future<String?> _rootEtag() async {
+    final request = await _open('PROPFIND', config.rootUri);
+    request.headers.set('Depth', '0');
+    request.write(
+      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>''',
+    );
+    final response = await request.close().timeout(const Duration(seconds: 60));
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(propfindBodyTimeout);
+    if (response.statusCode != 207) {
+      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+    }
+    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+      throw const HttpException('PROPFIND invalid multistatus response');
+    }
+    for (final match in RegExp(
+      r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
+      dotAll: true,
+    ).allMatches(body)) {
+      final block = match.group(1)!;
+      final hrefValue = _xmlValue(block, 'href');
+      if (hrefValue == null) continue;
+      if (_isRootHref(Uri.decodeComponent(hrefValue))) {
+        return _xmlValue(block, 'getetag');
+      }
+    }
+    return null;
+  }
+
+  /// Single-resource Depth:0 probe used by resolveConflict — one request
+  /// instead of a whole-tree PROPFIND to check one file's current etag.
+  Future<_RemoteFile?> _probeRemoteFile(String path) async {
+    final request = await _open('PROPFIND', _remoteUri(path));
+    request.headers.set('Depth', '0');
+    request.write(
+      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getetag/></d:prop></d:propfind>''',
+    );
+    final response = await request.close().timeout(const Duration(seconds: 60));
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(propfindBodyTimeout);
+    if (response.statusCode == HttpStatus.notFound) return null;
+    if (response.statusCode != 207) {
+      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+    }
+    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+      throw const HttpException('PROPFIND invalid multistatus response');
+    }
+    String? block;
+    for (final match in RegExp(
+      r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
+      dotAll: true,
+    ).allMatches(body)) {
+      final candidate = match.group(1)!;
+      final hrefValue = _xmlValue(candidate, 'href');
+      if (hrefValue == null) continue;
+      if (_relativeRemotePath(Uri.decodeComponent(hrefValue)) == path) {
+        block = candidate;
+        break;
+      }
+    }
+    if (block == null) return null;
+    final modifiedValue = _xmlValue(block, 'getlastmodified');
+    if (modifiedValue == null) {
+      throw const HttpException(
+        'PROPFIND invalid file metadata: missing getlastmodified',
+      );
+    }
+    return _RemoteFile(
+      modified: HttpDate.parse(modifiedValue),
+      etag: _xmlValue(block, 'getetag'),
+    );
   }
 
   String? _relativeRemotePath(String href) {
@@ -1397,7 +1656,10 @@ class NextcloudSync {
     final request = await _open('PUT', _remoteUri(path));
     request.contentLength = bytes.length;
     request.headers.set('X-Hash', 'sha256');
-    request.headers.set('OC-Checksum', 'sha256:$localHash');
+    // Nextcloud Desktop's checksum types are case-sensitive (SHA256, not
+    // sha256); a lowercase type makes it reject the file with "unknown
+    // checksum type" and refuse to sync it at all.
+    request.headers.set('OC-Checksum', 'SHA256:$localHash');
     if (remote?.etag != null) {
       request.headers.set(HttpHeaders.ifMatchHeader, remote!.etag!);
     } else if (remote == null) {
@@ -1664,9 +1926,12 @@ class NextcloudSync {
     );
   }
 
-  Future<int> _cleanResolvedConflictCopies(Vault vault) async {
+  Future<int> _cleanResolvedConflictCopies(
+    Vault vault,
+    List<VaultStorageEntry> entries,
+  ) async {
     var cleaned = 0;
-    for (final entity in await vault.storage.list(recursive: true)) {
+    for (final entity in entries) {
       if (entity.isDirectory || !entity.path.contains('.remote-conflict-')) {
         continue;
       }
@@ -1829,7 +2094,12 @@ class NextcloudSync {
   }
 
   Future<
-    ({Map<String, SyncCursor> cursors, bool recovered, bool remoteMismatch})
+    ({
+      Map<String, SyncCursor> cursors,
+      bool recovered,
+      bool remoteMismatch,
+      String? rootEtag,
+    })
   >
   _loadSyncState(Vault vault) async {
     const path = '.tylog/sync_state.json';
@@ -1838,6 +2108,7 @@ class NextcloudSync {
         cursors: <String, SyncCursor>{},
         recovered: false,
         remoteMismatch: false,
+        rootEtag: null,
       );
     }
     final source = await vault.storage.readText(path);
@@ -1852,12 +2123,16 @@ class NextcloudSync {
       if (decoded['remoteKey'] != null && decoded['remoteKey'] is! String) {
         throw const FormatException('sync state remoteKey must be a string');
       }
+      if (decoded['rootEtag'] != null && decoded['rootEtag'] is! String) {
+        throw const FormatException('sync state rootEtag must be a string');
+      }
       final storedRemoteKey = decoded['remoteKey'] as String?;
       if (storedRemoteKey != null && storedRemoteKey != _remoteKey) {
         return (
           cursors: <String, SyncCursor>{},
           recovered: false,
           remoteMismatch: true,
+          rootEtag: null,
         );
       }
       final cursors = <String, SyncCursor>{};
@@ -1871,7 +2146,12 @@ class NextcloudSync {
         }
         cursors[entry.key as String] = SyncCursor.fromJson(cursor);
       }
-      return (cursors: cursors, recovered: false, remoteMismatch: false);
+      return (
+        cursors: cursors,
+        recovered: false,
+        remoteMismatch: false,
+        rootEtag: decoded['rootEtag'] as String?,
+      );
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
       final modified =
@@ -1885,19 +2165,22 @@ class NextcloudSync {
         cursors: <String, SyncCursor>{},
         recovered: true,
         remoteMismatch: false,
+        rootEtag: null,
       );
     }
   }
 
   Future<void> _saveSyncState(
     Vault vault,
-    Map<String, SyncCursor> state,
-  ) async {
+    Map<String, SyncCursor> state, {
+    String? rootEtag,
+  }) async {
     await vault.storage.writeText(
       '.tylog/sync_state.json',
       jsonEncode({
         'schema': 2,
         'remoteKey': _remoteKey,
+        'rootEtag': ?rootEtag,
         'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
       }),
     );
@@ -1941,6 +2224,22 @@ bool _validSyncCursor(Map<String, Object?> json) =>
     (json['localSha256'] == null || json['localSha256'] is String) &&
     (json['remoteEtag'] == null || json['remoteEtag'] is String);
 
+/// Whether a rebuilt cursor differs from the previous one in a way that
+/// actually matters for a future sync decision — i.e. worth a checkpoint
+/// write. Deliberately excludes `remoteMillis`: it's derived from the
+/// server's `getlastmodified` header, which round-trips through the
+/// second-precision HTTP-date format and so drifts by sub-second amounts on
+/// every real listing even when nothing changed. `remoteEtag` is the
+/// authoritative "did the remote change" signal whenever the server
+/// provides one (the common case); comparing raw millis here would mark
+/// nearly every steady-state file dirty on every run, defeating the point.
+bool _cursorNeedsPersist(SyncCursor? previous, SyncCursor next) =>
+    previous == null ||
+    previous.localMillis != next.localMillis ||
+    previous.localSize != next.localSize ||
+    previous.localSha256 != next.localSha256 ||
+    previous.remoteEtag != next.remoteEtag;
+
 /// A benign abort: the user started editing the file mid-sync, so the sync
 /// backs off instead of replacing local content. Callers should re-queue,
 /// not surface an error.
@@ -1979,14 +2278,23 @@ String? _xmlValue(String xml, String name) {
       .trim();
 }
 
-String? _xmlSha256(String xml) {
+/// Parses the `oc:checksums` PROPFIND block, returning both the hash and
+/// whether its `sha256:` type prefix was stored in lowercase — Nextcloud
+/// Desktop only recognizes the uppercase `SHA256:` type and otherwise refuses
+/// to sync the file, which is what files this app PUT before the header case
+/// fix look like server-side.
+({String hash, bool lowercase})? _xmlSha256Info(String xml) {
   for (final match in RegExp(
     r'<[^:>]*:?checksum[^>]*>\s*([^<]+)\s*</[^:>]*:?checksum>',
     caseSensitive: false,
   ).allMatches(xml)) {
     final value = match.group(1)!.trim();
     if (value.toLowerCase().startsWith('sha256:')) {
-      return value.substring(value.indexOf(':') + 1).toLowerCase();
+      final colon = value.indexOf(':');
+      return (
+        hash: value.substring(colon + 1).toLowerCase(),
+        lowercase: value.substring(0, colon) == 'sha256',
+      );
     }
   }
   return null;
@@ -1998,12 +2306,14 @@ class _RemoteFile {
     this.etag,
     this.length,
     this.sha256,
+    this.sha256Lowercase = false,
   });
 
   final DateTime modified;
   final String? etag;
   final int? length;
   final String? sha256;
+  final bool sha256Lowercase;
 }
 
 class _RemoteArchiveSnapshot {

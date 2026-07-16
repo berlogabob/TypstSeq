@@ -125,6 +125,61 @@ void main() {
     );
   });
 
+  test(
+    'a fallback note is re-inspected once a healthy inspector is available',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'tylog_core_reinspect_',
+      );
+      final previousTimeout = typstInspectTimeout;
+      typstInspectTimeout = const Duration(milliseconds: 100);
+      addTearDown(() async {
+        typstInspectTimeout = previousTimeout;
+        await root.delete(recursive: true);
+      });
+      final storage = LocalVaultStorage(root);
+      await storage.writeText(
+        'notes/poison.typ',
+        '#show: tylog.note.with(id: "poison", title: "Poison")',
+      );
+      // Sorted after poison.typ: the dead-inspector shortcut skips a real
+      // query and falls back to legacy parsing, recording the flood-causing
+      // 'metadata-fallback' problem this fix is about.
+      await storage.writeText(
+        'notes/z-after.typ',
+        '#show: tylog.note.with(id: "z", title: "After")',
+      );
+
+      final first = await scanVaultStorage(
+        storage,
+        inspector: _HangingInspector('notes/poison.typ'),
+      ).timeout(const Duration(seconds: 10));
+      expect(
+        first.problems
+            .where((problem) => problem.code == 'metadata-fallback')
+            .map((problem) => problem.subject),
+        contains('notes/z-after.typ'),
+      );
+
+      // Same fingerprints (files untouched) but this pass's inspector is
+      // healthy — the cached fallback note must not shortcut past it.
+      final healthyInspector = _SourceInspector();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: healthyInspector,
+        previous: first,
+      );
+
+      expect(healthyInspector.calls, 2);
+      expect(
+        second.problems.where(
+          (problem) => problem.code == 'metadata-fallback',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
   test('inspection files exclude other note sources', () async {
     final root = await Directory.systemTemp.createTemp('tylog_core_files_');
     addTearDown(() => root.delete(recursive: true));
@@ -147,6 +202,36 @@ void main() {
     expect(inspector.fileKeys, contains('files/photo.jpg'));
     expect(inspector.fileKeys, isNot(contains('notes/a.typ')));
     expect(inspector.fileKeys, isNot(contains('articles/big.typ')));
+  });
+
+  test('fallback re-inspection is capped per scan', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_cap_');
+    final previousCap = maxMetadataReinspectionsPerScan;
+    maxMetadataReinspectionsPerScan = 2;
+    addTearDown(() async {
+      maxMetadataReinspectionsPerScan = previousCap;
+      await root.delete(recursive: true);
+    });
+    final storage = LocalVaultStorage(root);
+    for (var index = 0; index < 4; index++) {
+      await storage.writeText(
+        'notes/n$index.typ',
+        '#show: tylog.note.with(id: "n$index", title: "N$index")',
+      );
+    }
+    // First scan without an inspector: everything lands as fallback.
+    final first = await scanVaultStorage(storage);
+    // Second scan with a healthy inspector: only the cap's worth of notes
+    // may be re-inspected; the rest stay cached fallbacks for later scans.
+    final inspector = _SourceInspector();
+    final second = await scanVaultStorage(
+      storage,
+      inspector: inspector,
+      previous: first,
+    );
+
+    expect(inspector.calls, 2);
+    expect(second.problems.where((p) => p.code == 'metadata-fallback'), hasLength(2));
   });
 
   test('local storage rejects traversal', () async {

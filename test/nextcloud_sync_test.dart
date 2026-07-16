@@ -313,6 +313,169 @@ void main() {
     },
   );
 
+  test(
+    'steady-state second sync writes sync_state.json zero times',
+    () async {
+      // Empty remote: the first sync uploads the vault's own starter
+      // content (including the real `_system/tylog.typ`, not a stand-in),
+      // so nothing conflicts and the second sync is genuinely steady-state.
+      final remote = <String, _MutableRemoteFile>{};
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_dirty_gate_');
+      final storage = _CheckpointCountingStorage(dir);
+      final vault = Vault.withStorage(storage);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      for (var index = 0; index < 20; index++) {
+        await vault.storage.writeText(
+          'notes/${index.toString().padLeft(2, '0')}.typ',
+          'note $index',
+        );
+      }
+
+      // The root etag persisted by a full run is captured before that run's
+      // own uploads, so the run right after bootstrap is still a full run
+      // (self-correcting: it settles on an accurate etag since nothing else
+      // changes during it). The run after *that* is the one that can shortcut.
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      storage.checkpointWrites = 0;
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(result.uploaded, 0);
+      expect(result.downloaded, 0);
+      expect(result.conflicts, 0);
+      expect(storage.checkpointWrites, 0);
+    },
+  );
+
+  test(
+    'no-change shortcut probes the root etag instead of listing the tree',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp('tylog_shortcut_noop_');
+      final storage = _CheckpointCountingStorage(dir);
+      final vault = Vault.withStorage(storage);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      // Bootstrap, then one settling run so the persisted root etag reflects
+      // the bootstrap's own uploads (see comment in the checkpoint test above).
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+      metrics
+        ..depthZeroPropfinds = 0
+        ..depthInfinityPropfinds = 0;
+      storage.checkpointWrites = 0;
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(metrics.depthZeroPropfinds, 1);
+      expect(metrics.depthInfinityPropfinds, 0);
+      expect(storage.checkpointWrites, 0);
+      expect(result.uploaded, 0);
+      expect(result.downloaded, 0);
+      expect(result.skipped, 0);
+      expect(result.conflicts, 0);
+      final events = await _traceEvents(vault);
+      expect(events.map((event) => event['event']), contains('no-change-shortcut'));
+    },
+  );
+
+  test(
+    'no-change shortcut falls through and downloads a remote change',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_shortcut_remote_change_',
+      );
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+
+      // Simulates another client editing the file directly: the collection
+      // etag (derived from current file state) changes along with it, so
+      // the probe must catch this without us bumping anything by hand.
+      remote['notes/a.typ'] = _remoteText('note a v2');
+      metrics
+        ..depthZeroPropfinds = 0
+        ..depthInfinityPropfinds = 0;
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(metrics.depthZeroPropfinds, 1);
+      expect(metrics.depthInfinityPropfinds, 1);
+      expect(result.downloaded, 1);
+      expect(await vault.storage.readText('notes/a.typ'), 'note a v2');
+    },
+  );
+
+  test(
+    'no-change shortcut never skips a local edit (data-safety guard)',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_shortcut_local_change_',
+      );
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+
+      // The remote is untouched (the probe would match) but the local file
+      // changed; the shortcut must still fall through to a full run rather
+      // than risk skipping a real edit.
+      await vault.storage.writeText('notes/a.typ', 'edited locally');
+      metrics
+        ..depthZeroPropfinds = 0
+        ..depthInfinityPropfinds = 0;
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(metrics.depthZeroPropfinds, 1);
+      expect(metrics.depthInfinityPropfinds, 1);
+      expect(result.uploaded, 1);
+      expect(
+        utf8.decode(remote['notes/a.typ']!.bytes),
+        'edited locally',
+      );
+    },
+  );
+
   test('a transient abort during folder preparation is retried', () async {
     final remote = <String, _MutableRemoteFile>{
       '_system/tylog.typ': _remoteText('helper'),
@@ -558,6 +721,9 @@ void main() {
     expect(noteUpload['contentLength'], 10);
     expect(noteUpload['ifMatch'], '"remote-1"');
     expect(noteUpload['xHash'], 'sha256');
+    // Nextcloud Desktop's checksum types are case-sensitive; a lowercase
+    // type makes it silently refuse to sync the file.
+    expect(noteUpload['checksum'], startsWith('SHA256:'));
   });
 
   test('identical local and remote changes do not create a conflict', () async {
@@ -1402,6 +1568,93 @@ void main() {
   });
 
   test(
+    'resolveConflict prunes an orphaned record instead of throwing',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/live.typ': _MutableRemoteFile(
+          bytes: utf8.encode('remote note'),
+          etag: '"remote"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_orphan_conflict_',
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/live.typ', 'local text');
+      await createSyncConflict(
+        vault,
+        'notes/live.typ',
+        localBytes: utf8.encode('local text'),
+        remoteBytes: utf8.encode('remote note'),
+      );
+      final conflict = (await loadSyncConflicts(vault)).single;
+      // Self-heal (or a previous resolve) already removed the remote
+      // snapshot on disk before the UI's stale in-memory copy gets acted on.
+      await vault.storage.delete(conflict.remoteSnapshot!);
+
+      await expectLater(
+        NextcloudSync(
+          _config(server),
+        ).resolveConflict(vault, conflict, SyncConflictResolution.keepRemote),
+        completes,
+      );
+
+      expect(await loadSyncConflicts(vault), isEmpty);
+    },
+  );
+
+  test(
+    'resolveConflict probes one file instead of listing the tree',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/live.typ': _MutableRemoteFile(
+          bytes: utf8.encode('remote note'),
+          etag: '"remote"',
+          modified: DateTime.now().toUtc(),
+        ),
+        for (var index = 0; index < 20; index++)
+          'notes/other$index.typ': _remoteText('other $index'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_resolve_probe_',
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/live.typ', 'local text');
+      await createSyncConflict(
+        vault,
+        'notes/live.typ',
+        localBytes: utf8.encode('local text'),
+        remoteBytes: utf8.encode('remote note'),
+      );
+      final conflict = (await loadSyncConflicts(vault)).single;
+      metrics
+        ..depthZeroPropfinds = 0
+        ..depthInfinityPropfinds = 0;
+
+      await NextcloudSync(
+        _config(server),
+      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+
+      expect(metrics.depthInfinityPropfinds, 0);
+      expect(metrics.depthZeroPropfinds, 1);
+    },
+  );
+
+  test(
     'createSyncConflict replaces an existing unresolved record for the '
     'same path instead of stacking',
     () async {
@@ -1819,6 +2072,102 @@ void main() {
   });
 
   test(
+    'lowercase server checksum is self-repaired for an in-sync file',
+    () async {
+      final content = utf8.encode('poisoned upload');
+      final remote = <String, _MutableRemoteFile>{
+        'daily/2026/07/note.typ': _MutableRemoteFile(
+          bytes: content,
+          etag: '"remote-1"',
+          modified: DateTime.utc(2026, 7, 1),
+        ),
+      };
+      final uploads = <Map<String, Object?>>[];
+      final server = await _mutableWebDavServer(
+        remote,
+        lowercaseChecksums: true,
+        uploads: uploads,
+      );
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_checksum_repair_',
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeBytes('daily/2026/07/note.typ', content);
+
+      final result = await NextcloudSync(_config(server)).sync(vault);
+
+      final repairs = uploads
+          .where((upload) => upload['path'] == 'daily/2026/07/note.typ')
+          .toList();
+      expect(repairs, hasLength(1));
+      expect(repairs.single['checksum'], startsWith('SHA256:'));
+      expect(repairs.single['body'], 'poisoned upload');
+      expect(result.repaired, greaterThanOrEqualTo(1));
+      expect(result.conflicts, 0);
+
+      // Second sync: the repair PUT already replaced the stored checksum
+      // with the uppercase type, so nothing re-fires.
+      uploads.clear();
+      final second = await NextcloudSync(_config(server)).sync(vault);
+      expect(
+        uploads.where((upload) => upload['path'] == 'daily/2026/07/note.typ'),
+        isEmpty,
+      );
+      expect(second.conflicts, 0);
+    },
+  );
+
+  test(
+    'a genuinely changed file with a lowercase server checksum still '
+    'conflicts normally',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'daily/2026/07/note.typ': _MutableRemoteFile(
+          bytes: utf8.encode('remote version'),
+          etag: '"remote-1"',
+          modified: DateTime.utc(2026, 7, 1),
+        ),
+      };
+      final uploads = <Map<String, Object?>>[];
+      final server = await _mutableWebDavServer(
+        remote,
+        lowercaseChecksums: true,
+        uploads: uploads,
+      );
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_checksum_guard_',
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText(
+        'daily/2026/07/note.typ',
+        'local version',
+      );
+
+      final result = await NextcloudSync(_config(server)).sync(vault);
+
+      expect(result.conflicts, greaterThanOrEqualTo(1));
+      expect(
+        uploads.where((upload) => upload['path'] == 'daily/2026/07/note.typ'),
+        isEmpty,
+      );
+      expect(
+        utf8.decode(remote['daily/2026/07/note.typ']!.bytes),
+        'remote version',
+      );
+    },
+  );
+
+  test(
     'path transfers use two to four workers and one MKCOL per parent',
     () async {
       final remote = <String, _MutableRemoteFile>{};
@@ -2107,6 +2456,7 @@ Future<HttpServer> _webDavServer({
         'ifMatch': request.headers.value(HttpHeaders.ifMatchHeader),
         'ifNoneMatch': request.headers.value(HttpHeaders.ifNoneMatchHeader),
         'xHash': request.headers.value('x-hash'),
+        'checksum': request.headers.value('oc-checksum'),
       });
       final status = request.uri.path.endsWith('/daily/2026/07/note.typ')
           ? putStatus
@@ -2142,6 +2492,11 @@ class _WebDavMetrics {
   int individualGets = 0;
   int activeTransfers = 0;
   int maxTransfers = 0;
+  // Depth:0 root-etag probes vs. Depth:infinity full-tree listings, tracked
+  // separately from [propfinds] (which counts both) so the no-change
+  // shortcut tests can assert exactly which kind of PROPFIND happened.
+  int depthZeroPropfinds = 0;
+  int depthInfinityPropfinds = 0;
   final mkcols = <String, int>{};
 
   void startTransfer() {
@@ -2169,12 +2524,31 @@ Future<HttpServer> _missingWebDavServer() async {
   return server;
 }
 
+/// A stand-in for a real Nextcloud collection etag: derived purely from the
+/// current file map (path + etag of every entry), so it changes whenever the
+/// map changes — whether that's a PUT/MOVE/DELETE routed through the server
+/// handler below, or a test directly mutating `files` to simulate a change
+/// from another client.
+String _collectionEtag(Map<String, _MutableRemoteFile> files) {
+  final buffer = StringBuffer();
+  for (final key in files.keys.toList()..sort()) {
+    buffer.write('$key:${files[key]!.etag}\n');
+  }
+  return '"col-${sha256.convert(utf8.encode(buffer.toString()))}"';
+}
+
 Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
   bool unquotedPutEtag = false,
   bool rejectDelete = false,
   bool rejectMove = false,
   bool includeChecksums = false,
+  // Simulates files this app PUT before the OC-Checksum header case fix:
+  // the server still stores the lowercase `sha256:` type, which is what
+  // makes Nextcloud Desktop refuse to sync the file. A path stops being
+  // served lowercase once a real PUT (re-)uploads it, matching how the
+  // repair actually clears the poisoned state server-side.
+  bool lowercaseChecksums = false,
   bool serveArchive = false,
   bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
@@ -2182,12 +2556,14 @@ Future<HttpServer> _mutableWebDavServer(
   Map<String, int>? getCounts,
   Duration transferDelay = Duration.zero,
   _WebDavMetrics? metrics,
+  List<Map<String, Object?>>? uploads,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
   var interrupted = false;
   var mkcolInterrupted = false;
   var archiveChanged = false;
+  final upgradedChecksums = <String>{};
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
     final path = request.uri.path.startsWith(root)
@@ -2210,21 +2586,70 @@ Future<HttpServer> _mutableWebDavServer(
       request.response.statusCode = HttpStatus.methodNotAllowed;
     } else if (request.method == 'PROPFIND') {
       metrics?.propfinds++;
+      final depth = request.headers.value('Depth');
+      if (depth == '0') {
+        metrics?.depthZeroPropfinds++;
+      } else {
+        metrics?.depthInfinityPropfinds++;
+      }
+      if (path.isNotEmpty) {
+        // Single-resource probe (resolveConflict's etag check): one
+        // response for that path only, or 404 if it doesn't exist.
+        final file = files[path];
+        if (file == null) {
+          request.response.statusCode = HttpStatus.notFound;
+        } else {
+          final checksum = sha256.convert(file.bytes);
+          final serveLowercase =
+              lowercaseChecksums && !upgradedChecksums.contains(path);
+          final checksumType = serveLowercase ? 'sha256' : 'SHA256';
+          request.response.statusCode = 207;
+          request.response.write(
+            '<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
+            '<d:response><d:href>$root$path</d:href>'
+            '<d:propstat><d:prop><d:getlastmodified>'
+            '${HttpDate.format(file.modified)}'
+            '</d:getlastmodified><d:getetag>${file.etag}</d:getetag>'
+            '<d:getcontentlength>${file.bytes.length}</d:getcontentlength>'
+            '${includeChecksums || lowercaseChecksums ? '<oc:checksums><oc:checksum>$checksumType:$checksum</oc:checksum></oc:checksums>' : ''}'
+            '</d:prop></d:propstat></d:response>'
+            '</d:multistatus>',
+          );
+        }
+        await request.response.close();
+        return;
+      }
       request.response.statusCode = 207;
       request.response.write(
         '<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">',
       );
-      for (final entry in files.entries) {
-        final checksum = sha256.convert(entry.value.bytes);
-        request.response.write(
-          '<d:response><d:href>$root${entry.key}</d:href>'
-          '<d:propstat><d:prop><d:getlastmodified>'
-          '${HttpDate.format(entry.value.modified)}'
-          '</d:getlastmodified><d:getetag>${entry.value.etag}</d:getetag>'
-          '<d:getcontentlength>${entry.value.bytes.length}</d:getcontentlength>'
-          '${includeChecksums ? '<oc:checksums><oc:checksum>SHA256:$checksum</oc:checksum></oc:checksums>' : ''}'
-          '</d:prop></d:propstat></d:response>',
-        );
+      // The root collection's own entry: a real Nextcloud server's etag here
+      // changes whenever anything beneath it changes, which is what the
+      // no-change shortcut probes for. Computed fresh from current file
+      // state so it reacts to direct test mutations of `files`, not just
+      // PUT/MOVE/DELETE routed through this handler.
+      request.response.write(
+        '<d:response><d:href>$root</d:href>'
+        '<d:propstat><d:prop><d:getetag>${_collectionEtag(files)}</d:getetag>'
+        '<d:resourcetype><d:collection/></d:resourcetype>'
+        '</d:prop></d:propstat></d:response>',
+      );
+      if (depth != '0') {
+        for (final entry in files.entries) {
+          final checksum = sha256.convert(entry.value.bytes);
+          final serveLowercase =
+              lowercaseChecksums && !upgradedChecksums.contains(entry.key);
+          final checksumType = serveLowercase ? 'sha256' : 'SHA256';
+          request.response.write(
+            '<d:response><d:href>$root${entry.key}</d:href>'
+            '<d:propstat><d:prop><d:getlastmodified>'
+            '${HttpDate.format(entry.value.modified)}'
+            '</d:getlastmodified><d:getetag>${entry.value.etag}</d:getetag>'
+            '<d:getcontentlength>${entry.value.bytes.length}</d:getcontentlength>'
+            '${includeChecksums || lowercaseChecksums ? '<oc:checksums><oc:checksum>$checksumType:$checksum</oc:checksum></oc:checksums>' : ''}'
+            '</d:prop></d:propstat></d:response>',
+          );
+        }
       }
       request.response.write('</d:multistatus>');
     } else if (request.method == 'GET') {
@@ -2294,6 +2719,13 @@ Future<HttpServer> _mutableWebDavServer(
           [],
           (all, chunk) => all..addAll(chunk),
         );
+        uploads?.add({
+          'path': path,
+          'body': utf8.decode(bytes),
+          'checksum': request.headers.value('oc-checksum'),
+          'ifMatch': request.headers.value(HttpHeaders.ifMatchHeader),
+        });
+        upgradedChecksums.add(path);
         final etag = '"upload-${version++}"';
         files[path] = _MutableRemoteFile(
           bytes: bytes,

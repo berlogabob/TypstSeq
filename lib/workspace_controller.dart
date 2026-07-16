@@ -342,16 +342,44 @@ class WorkspaceController extends ChangeNotifier {
   void startCloudPolling() {
     _cloudPoll?.cancel();
     if (!(cloud?.isReady ?? false)) return;
-    _cloudPoll = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!syncing && !editingRecently && !hasSyncConflicts) {
-        unawaited(syncNow(trigger: 'poll'));
-      }
-    });
+    _cloudPoll = Timer.periodic(
+      const Duration(seconds: 25),
+      (_) => unawaited(pollTick()),
+    );
   }
 
   /// Stops the background cloud poll, e.g. while the app is backgrounded.
   void stopCloudPolling() {
     _cloudPoll?.cancel();
+  }
+
+  /// One 25s poll tick's worth of work. Exposed (not just called from the
+  /// [Timer] in [startCloudPolling]) so tests can drive it directly instead
+  /// of waiting on a real 25-second timer.
+  @visibleForTesting
+  Future<void> pollTick() async {
+    if (syncing || editingRecently) return;
+    if (hasSyncConflicts) {
+      // A conflict record self-healed on disk (loadSyncConflicts deletes
+      // matching snapshots) doesn't refresh this in-memory list on its own,
+      // and hasSyncConflicts gates every poll — without this refresh a
+      // phantom conflict would suppress auto-sync forever. Cheap: only
+      // lists the conflicts directory, no full sync.
+      await refreshSyncConflicts();
+      return;
+    }
+    await syncNow(trigger: 'poll');
+  }
+
+  /// Re-reads conflict records from disk and refreshes [syncConflicts].
+  /// Used to clear a phantom in-memory conflict that self-heal already
+  /// resolved on disk (see [startCloudPolling]), and to keep the sync
+  /// dashboard in sync with disk state when it opens.
+  Future<void> refreshSyncConflicts() async {
+    final opened = vault;
+    if (opened == null) return;
+    syncConflicts = await loadSyncConflicts(opened);
+    notifyListeners();
   }
 
   Future<bool> syncNow({
@@ -501,14 +529,23 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final config = cloud;
     if (opened == null || config == null || !config.isReady) return;
-    await NextcloudSync(
-      config,
-    ).resolveConflict(opened, conflict, resolution, mergedText: mergedText);
-    await refreshIndex(updateStatus: false, force: true);
-    syncConflicts = syncConflicts
-        .where((item) => item.id != conflict.id)
-        .toList();
-    status = 'Conflict resolved';
+    try {
+      await NextcloudSync(
+        config,
+      ).resolveConflict(opened, conflict, resolution, mergedText: mergedText);
+      await refreshIndex(updateStatus: false, force: true);
+      // Refresh from disk rather than just filtering out this one id: a
+      // resolve can also self-heal other now-matching records.
+      syncConflicts = await loadSyncConflicts(opened);
+      syncError = null;
+      status = syncConflicts.isEmpty ? 'Conflict resolved' : 'Needs attention';
+    } catch (error) {
+      // Keep the conflict in the list rather than silently dropping it —
+      // an error here (e.g. the remote moved again) must stay visible, not
+      // leave the user thinking it resolved when it didn't.
+      syncError = friendlySyncError(error);
+      status = 'Needs attention';
+    }
     notifyListeners();
   }
 

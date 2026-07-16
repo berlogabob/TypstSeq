@@ -373,6 +373,41 @@ void main() {
     expect(controller.hasActiveCloudPoll, isFalse);
   });
 
+  test(
+    'a poll tick clears a phantom conflict instead of staying stuck forever',
+    () async {
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      // Simulate self-heal: the in-memory list still holds a conflict, but
+      // its record was already deleted from (or never written to) disk.
+      controller.syncConflicts = [
+        SyncConflict(
+          id: 'phantom',
+          path: 'notes/gone.typ',
+          recordPath: '.tylog/conflicts/phantom.json',
+          createdAt: DateTime.utc(2026),
+          localExists: true,
+          remoteExists: true,
+        ),
+      ];
+      expect(controller.hasSyncConflicts, isTrue);
+
+      await controller.pollTick();
+
+      expect(controller.hasSyncConflicts, isFalse);
+      expect(controller.syncConflicts, isEmpty);
+    },
+  );
+
   test('shouldRolloverToday detects a calendar day change', () {
     final openedAt = DateTime(2026, 7, 15, 23, 55);
     expect(

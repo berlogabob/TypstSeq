@@ -30,6 +30,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   String query = '';
   String? selectedTag;
   final _searchController = TextEditingController();
+  // Codes with more than 5 problems collapse to one summary tile (a single
+  // failing inspector can dead-mark itself for the rest of a scan and flood
+  // this list with one unactionable row per article otherwise).
+  final Set<String> _expandedCodes = {};
 
   @override
   void dispose() {
@@ -141,32 +145,75 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   Widget _problems() {
     final problems = widget.problems;
-    final itemCount = problems.isEmpty ? 1 : problems.length;
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: itemCount,
-      itemBuilder: (context, i) {
-        if (problems.isEmpty) {
-          return const ListTile(
+    if (problems.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(12),
+        children: const [
+          ListTile(
             leading: Icon(Icons.check_circle_outline),
             title: Text('No vault problems'),
-          );
-        }
-        final problem = problems[i];
-        return ListTile(
-          leading: Icon(switch (problem.severity) {
-            PkmsSeverity.error => Icons.error_outline,
-            PkmsSeverity.warning => Icons.warning_amber,
-            PkmsSeverity.info => Icons.info_outline,
-          }),
-          title: Text(problem.message),
-          subtitle: Text(
-            '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
           ),
-          isThreeLine: problem.fix != null,
-          onTap: null,
-        );
+        ],
+      );
+    }
+    final byCode = <String, List<PkmsProblem>>{};
+    for (final problem in problems) {
+      byCode.putIfAbsent(problem.code, () => []).add(problem);
+    }
+    final items = <Object>[];
+    for (final group in byCode.values) {
+      if (group.length > 5) {
+        items.add(group);
+        if (_expandedCodes.contains(group.first.code)) {
+          items.addAll(group);
+        }
+      } else {
+        items.addAll(group);
+      }
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        return item is List<PkmsProblem>
+            ? _problemGroupTile(item)
+            : _problemTile(item as PkmsProblem);
       },
     );
   }
+
+  Widget _problemTile(PkmsProblem problem) => ListTile(
+    leading: Icon(_problemIcon(problem.severity)),
+    title: Text(problem.message),
+    subtitle: Text(
+      '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
+    ),
+    isThreeLine: problem.fix != null,
+    onTap: null,
+  );
+
+  Widget _problemGroupTile(List<PkmsProblem> group) {
+    final code = group.first.code;
+    final expanded = _expandedCodes.contains(code);
+    return ListTile(
+      leading: Icon(_problemIcon(group.first.severity)),
+      title: Text(group.first.message),
+      subtitle: Text('· ${group.length} notes'),
+      trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+      onTap: () => setState(() {
+        if (expanded) {
+          _expandedCodes.remove(code);
+        } else {
+          _expandedCodes.add(code);
+        }
+      }),
+    );
+  }
+
+  IconData _problemIcon(PkmsSeverity severity) => switch (severity) {
+    PkmsSeverity.error => Icons.error_outline,
+    PkmsSeverity.warning => Icons.warning_amber,
+    PkmsSeverity.info => Icons.info_outline,
+  };
 }

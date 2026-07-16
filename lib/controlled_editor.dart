@@ -299,6 +299,10 @@ enum MagicAction {
   heading,
   bold,
   italic,
+  strike,
+  underline,
+  mono,
+  highlight,
   table,
   equation,
   report,
@@ -373,6 +377,11 @@ SourceEdit applyMagicEdit(
       '= ${typstContent(selected.isEmpty ? value ?? '' : selected)}',
     MagicAction.bold => '#strong[${typstContent(selected)}]',
     MagicAction.italic => '#emph[${typstContent(selected)}]',
+    MagicAction.strike => '#strike[${typstContent(selected)}]',
+    MagicAction.underline => '#underline[${typstContent(selected)}]',
+    // Raw Typst content is literal — no typstContent escaping inside.
+    MagicAction.mono => '`$selected`',
+    MagicAction.highlight => '#highlight[${typstContent(selected)}]',
     MagicAction.table => _tableSnippet(request.rows, request.columns),
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
@@ -407,6 +416,12 @@ SourceEdit applyMagicEdit(
   final offset = switch (request.action) {
     MagicAction.bold when selected.isEmpty => start + '#strong['.length,
     MagicAction.italic when selected.isEmpty => start + '#emph['.length,
+    MagicAction.strike when selected.isEmpty => start + '#strike['.length,
+    MagicAction.underline when selected.isEmpty =>
+      start + '#underline['.length,
+    MagicAction.mono when selected.isEmpty => start + '`'.length,
+    MagicAction.highlight when selected.isEmpty =>
+      start + '#highlight['.length,
     _ => start + replacement.length,
   };
   return SourceEdit(

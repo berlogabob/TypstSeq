@@ -503,6 +503,10 @@ void main() {
     expect(find.textContaining('#show:'), findsNothing);
   });
 
+  // Journal feed windowing (scroll-triggered lazy loading) is covered in
+  // test/journal_feed_test.dart, which needs a real (Live) test binding to
+  // exercise actual vault I/O — see the comment at the top of that file.
+
   testWidgets('source keeps focus while typing consecutive characters', (
     tester,
   ) async {
@@ -778,6 +782,64 @@ void main() {
     );
     expect(find.text('Both copies changed.'), findsOneWidget);
     expect(tester.widget<ListTile>(find.byType(ListTile).last).onTap, isNull);
+  });
+
+  testWidgets('knowledge problems groups a large same-code flood', (
+    tester,
+  ) async {
+    final flood = [
+      for (var i = 0; i < 8; i++)
+        PkmsProblem(
+          code: 'metadata-fallback',
+          severity: PkmsSeverity.warning,
+          subject: 'notes/note-$i.typ',
+          message: 'Typst metadata was unavailable; using legacy parsing.',
+        ),
+    ];
+    const smallGroup = [
+      PkmsProblem(
+        code: 'metadata-query-failed',
+        severity: PkmsSeverity.warning,
+        subject: 'notes/broken-a.typ',
+        message: 'Typst metadata query failed: boom',
+      ),
+      PkmsProblem(
+        code: 'metadata-query-failed',
+        severity: PkmsSeverity.warning,
+        subject: 'notes/broken-b.typ',
+        message: 'Typst metadata query failed: boom',
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _knowledgeScreen(
+          initialView: KnowledgeView.problems,
+          problems: [...flood, ...smallGroup],
+        ),
+      ),
+    );
+
+    // Collapsed: one summary tile for the 8-strong flood; the 2-item group
+    // still renders its rows directly, same as before grouping existed.
+    expect(
+      find.text('Typst metadata was unavailable; using legacy parsing.'),
+      findsOneWidget,
+    );
+    expect(find.text('· 8 notes'), findsOneWidget);
+    expect(find.text('notes/broken-a.typ'), findsOneWidget);
+    expect(find.text('notes/broken-b.typ'), findsOneWidget);
+    expect(find.text('notes/note-0.typ'), findsNothing);
+
+    await tester.tap(find.text('· 8 notes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('notes/note-0.typ'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('notes/note-7.typ'),
+      100,
+      scrollable: find.byType(Scrollable),
+    );
+    expect(find.text('notes/note-7.typ'), findsOneWidget);
   });
 }
 

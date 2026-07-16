@@ -161,6 +161,12 @@ abstract interface class TypstInspector {
 /// `metadata-query-failed` problem names it.
 Duration typstInspectTimeout = const Duration(seconds: 30);
 
+/// Upper bound on how many cached fallback notes a single scan re-queries.
+/// Re-inspection is a per-note Typst compile (seconds each on device); an
+/// uncapped pass over a large backlog pins the CPU for hours and starves
+/// sync. Capped, the backlog drains a slice per scan instead.
+int maxMetadataReinspectionsPerScan = 50;
+
 List<TypstMetadataRecord> decodeTypstMetadataRecords(String json) {
   final elements = (jsonDecode(json) as List).cast<Object?>();
   return [
@@ -344,6 +350,7 @@ Future<VaultIndex> scanVaultStorage(
   // first timeout every later query would idle out too (30 s × hundreds of
   // notes). Drop to the source-based scan for the rest of this pass instead.
   var activeInspector = inspector;
+  var reinspected = 0;
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -355,9 +362,20 @@ Future<VaultIndex> scanVaultStorage(
     final fingerprint =
         '${file.modified?.millisecondsSinceEpoch ?? 0}:${file.size ?? 0}';
     final cached = previous?.notesByPath[relative];
+    // A cached fallback note (dead inspector during some earlier scan) is
+    // re-queried when an inspector is available so it can upgrade to real
+    // metadata and drop its metadata-fallback problem — but only up to
+    // [maxMetadataReinspectionsPerScan] per pass: each re-query is a Typst
+    // compile, and an uncapped backlog pins the device CPU for hours.
+    final reinspect =
+        cached?.metadataSource != 'typst-query' &&
+        activeInspector != null &&
+        reinspected < maxMetadataReinspectionsPerScan;
+    if (reinspect && cached?.fingerprint == fingerprint) reinspected++;
     if (!force &&
         previous?.version == 5 &&
-        cached?.fingerprint == fingerprint) {
+        cached?.fingerprint == fingerprint &&
+        !reinspect) {
       notes[relative] = cached!;
       tasks.addAll(
         previous?.tasks.where((task) => task.notePath == relative) ?? const [],
