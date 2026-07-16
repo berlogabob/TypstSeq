@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -152,6 +153,13 @@ class TypstMetadataRecord {
 abstract interface class TypstInspector {
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input);
 }
+
+/// Upper bound for a single note's metadata query. A pathological document
+/// can make the Typst compile spin forever (device-verified: one synced
+/// article froze the whole scan, and with it index + search, until app
+/// restart); on timeout the note falls back to the source-based scan and a
+/// `metadata-query-failed` problem names it.
+Duration typstInspectTimeout = const Duration(seconds: 30);
 
 List<TypstMetadataRecord> decodeTypstMetadataRecords(String json) {
   final elements = (jsonDecode(json) as List).cast<Object?>();
@@ -325,18 +333,17 @@ Future<VaultIndex> scanVaultStorage(
   for (final entity in await storage.list(recursive: true)) {
     if (entity.isDirectory || !entity.path.endsWith('.typ')) continue;
     final relative = entity.path;
-    if (!const [
-      'daily/',
-      'notes/',
-      'projects/',
-      'articles/',
-    ].any(relative.startsWith)) {
+    if (!_noteRoots.any(relative.startsWith)) {
       continue;
     }
     files.add(entity);
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   Map<String, Uint8List>? inspectionFiles;
+  // A poisoned note can wedge the inspector's single native worker; after the
+  // first timeout every later query would idle out too (30 s × hundreds of
+  // notes). Drop to the source-based scan for the rest of this pass instead.
+  var activeInspector = inspector;
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -362,20 +369,22 @@ Future<VaultIndex> scanVaultStorage(
       continue;
     }
     final source = await storage.readText(relative);
-    inspectionFiles ??= inspector == null
+    inspectionFiles ??= activeInspector == null
         ? const <String, Uint8List>{}
         : await _inspectionFiles(storage);
     try {
-      final queried = inspector == null
+      final queried = activeInspector == null
           ? null
           : decodeTylogMetadataRecords(
-              await inspector.inspect(
-                TypstDocumentInput(
-                  path: relative,
-                  source: source,
-                  files: inspectionFiles,
-                ),
-              ),
+              await activeInspector
+                  .inspect(
+                    TypstDocumentInput(
+                      path: relative,
+                      source: source,
+                      files: inspectionFiles,
+                    ),
+                  )
+                  .timeout(typstInspectTimeout),
             );
       notes[relative] = queried?.note == null
           ? _fallbackNote(
@@ -400,6 +409,7 @@ Future<VaultIndex> scanVaultStorage(
         problems.add(_fallbackProblem(relative));
       }
     } catch (error) {
+      if (error is TimeoutException) activeInspector = null;
       final fallback = _fallbackNote(
         relative,
         source,
@@ -423,12 +433,23 @@ Future<VaultIndex> scanVaultStorage(
   return buildVaultIndex(notes, problems: problems, tasks: tasks);
 }
 
+const _noteRoots = ['daily/', 'notes/', 'projects/', 'articles/'];
+
 Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
   final files = <String, Uint8List>{};
   for (final entry in await storage.list(recursive: true)) {
     if (entry.isDirectory ||
         entry.path.startsWith('_index/') ||
         entry.path.startsWith('.tylog/')) {
+      continue;
+    }
+    // Other notes' sources are not compile inputs — loading them meant ~1600
+    // serial SAF reads (minutes of stall) and the whole vault held in RAM
+    // before the first metadata query could run. Keep _system (package,
+    // template, bibliography) and attachments only.
+    // ponytail: cross-note #include loses metadata and falls back with a
+    // problem; pass the included note explicitly if that ever matters.
+    if (_noteRoots.any(entry.path.startsWith) && entry.path.endsWith('.typ')) {
       continue;
     }
     final bytes = await storage.readBytes(entry.path);
@@ -525,44 +546,333 @@ String serializeNoteHeader(NoteMetadataDraft draft) {
   return '#show: tylog.note.with(\n${fields.join('\n')}\n)';
 }
 
+/// Migrates the legacy `properties["type"]` entity classifier into `kind`.
+///
+/// Historically "entities" (people/places/orgs) were modeled as notes with a
+/// generic `kind: "note"` and a `properties["type"]` value carrying the real
+/// classification. That's a duplicated classifier — this folds `type` into
+/// `kind` (the single classifier going forward) and drops it from
+/// `properties`. Only touches notes that are still on the generic `kind:
+/// "note"` default with a non-empty `properties["type"]`; already-specific
+/// kinds are left untouched so this is safe to run repeatedly (idempotent)
+/// and never clobbers a deliberately-set kind.
+String migrateEntityTypeToKind(String source) {
+  final call = _noteHeader(source);
+  if (call == null) return source;
+  final header = call.source;
+  final kind = _field(header, 'kind') ?? 'note';
+  final properties = _parseProperties(header);
+  final type = properties['type'];
+  if (kind != 'note' || type is! String || type.isEmpty) {
+    return source;
+  }
+  final newProperties = Map<String, Object?>.from(properties)..remove('type');
+  final draft = NoteMetadataDraft(
+    id: _field(header, 'id') ?? '',
+    title: _field(header, 'title') ?? '',
+    kind: type,
+    project: _field(header, 'project'),
+    date: _field(header, 'date'),
+    tags: _parseList(header, 'tags'),
+    aliases: _parseList(header, 'aliases'),
+    properties: newProperties,
+  );
+  return replaceNoteHeader(source, draft);
+}
+
+/// Parses the `properties: (...)` dictionary out of a `tylog.note.with(...)`
+/// header's source text. Keys are always quoted strings (see
+/// [_typstDictionary]); values are decoded when they're strings, numbers,
+/// booleans, or `none`, and otherwise kept as their raw Typst source text.
+Map<String, Object?> _parseProperties(String callSource) {
+  final field = _locateTopLevelField(callSource, 'properties');
+  if (field == null) return const {};
+  final value = callSource.substring(field.valueStart, field.valueEnd).trim();
+  if (!value.startsWith('(') || !value.endsWith(')')) return const {};
+  final inner = value.substring(1, value.length - 1).trim();
+  if (inner.isEmpty || inner == ':') return const {};
+  final entryKeyValue = RegExp(
+    r'^\s*"((?:\\.|[^"\\])*)"\s*:\s*(.*)$',
+    dotAll: true,
+  );
+  final result = <String, Object?>{};
+  for (final entry in _splitTopLevel(inner)) {
+    if (entry.trim().isEmpty) continue;
+    final match = entryKeyValue.firstMatch(entry);
+    if (match == null) continue;
+    final key = match
+        .group(1)!
+        .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+    result[key] = _parsePropertyValue(match.group(2)!.trim());
+  }
+  return result;
+}
+
+/// Splits a Typst argument/dictionary body on top-level commas, skipping
+/// commas nested inside strings, raw blocks, comments, or `(...)`/`[...]`.
+List<String> _splitTopLevel(String source) {
+  final parts = <String>[];
+  var depth = 0;
+  var start = 0;
+  var i = 0;
+  while (i < source.length) {
+    if (_starts(source, i, '//')) {
+      final nl = source.indexOf('\n', i);
+      i = nl < 0 ? source.length : nl;
+      continue;
+    }
+    if (_starts(source, i, '/*')) {
+      i = _skipBlockComment(source, i);
+      continue;
+    }
+    final code = source.codeUnitAt(i);
+    if (code == 34) {
+      i = _skipString(source, i);
+      continue;
+    }
+    if (code == 96) {
+      i = _skipRaw(source, i);
+      continue;
+    }
+    if (code == 40 || code == 91) {
+      depth++;
+      i++;
+      continue;
+    }
+    if (code == 41 || code == 93) {
+      depth--;
+      i++;
+      continue;
+    }
+    if (code == 44 && depth == 0) {
+      parts.add(source.substring(start, i));
+      i++;
+      start = i;
+      continue;
+    }
+    i++;
+  }
+  if (start < source.length) parts.add(source.substring(start));
+  return parts;
+}
+
+Object? _parsePropertyValue(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed == 'none') return null;
+  if (trimmed == 'true') return true;
+  if (trimmed == 'false') return false;
+  final quoted = RegExp(
+    r'^"((?:\\.|[^"\\])*)"$',
+  ).firstMatch(trimmed);
+  if (quoted != null) {
+    return quoted
+        .group(1)!
+        .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+  }
+  final number = num.tryParse(trimmed);
+  if (number != null) return number;
+  return trimmed;
+}
+
 String replaceTaskStatus(String source, String id, String status) {
-  final call = locateTypstCalls(
-    source,
-    names: const {'tylog.task'},
-  ).where((call) => _field(call.source, 'id') == id).firstOrNull;
-  if (call == null) throw StateError('Task $id not found');
-  final statusField = RegExp(r'status\s*:\s*"[^"]*"').firstMatch(call.source);
-  final replacement = statusField == null
+  final call = _locateTaskCall(source, id);
+  final field = _locateTopLevelField(call.source, 'status');
+  final replacement = field == null
       ? call.source.replaceFirst(RegExp(r'\)\s*$'), '  status: "$status",\n)')
       : call.source.replaceRange(
-          statusField.start,
-          statusField.end,
+          field.start,
+          field.end,
           'status: "$status"',
         );
   return source.replaceRange(call.start, call.end, replacement);
 }
 
 String completeTaskOccurrence(String source, String id, String timestamp) {
-  final call = locateTypstCalls(
-    source,
-    names: const {'tylog.task'},
-  ).where((call) => _field(call.source, 'id') == id).firstOrNull;
-  if (call == null) throw StateError('Task $id not found');
-  final completed = RegExp(
-    r'completed\s*:\s*\(([^)]*)\)',
-  ).firstMatch(call.source);
-  final replacement = completed == null
+  final call = _locateTaskCall(source, id);
+  final field = _locateTopLevelField(call.source, 'completed');
+  final replacement = field == null
       ? call.source.replaceFirst(
           RegExp(r'\)\s*$'),
           '  completed: ("$timestamp",),\n)',
         )
       : call.source.replaceRange(
-          completed.start,
-          completed.end,
-          'completed: (${completed.group(1)}"$timestamp",)',
+          field.start,
+          field.end,
+          'completed: (${call.source.substring(field.valueStart + 1, field.valueEnd - 1)}"$timestamp",)',
         );
   return source.replaceRange(call.start, call.end, replacement);
 }
+
+String replaceTaskText(String source, String id, String text) {
+  final call = _locateTaskCall(source, id);
+  final quoted =
+      '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
+  final field = _locateTopLevelField(call.source, 'text');
+  final replacement = field == null
+      ? call.source.replaceFirst(
+          RegExp(r'\)\s*$'),
+          '  text: $quoted,\n)',
+        )
+      : call.source.replaceRange(
+          field.start,
+          field.end,
+          'text: $quoted',
+        );
+  return source.replaceRange(call.start, call.end, replacement);
+}
+
+/// Structurally reads the top-level string field [name] from a single call's
+/// source (e.g. `#tylog.task(...)`). Returns the unescaped string value, or
+/// null when the field is absent or its value isn't a double-quoted string
+/// literal (e.g. `due: none`).
+String? taskField(String callSource, String name) {
+  final field = _locateTopLevelField(callSource, name);
+  if (field == null) return null;
+  final value = callSource.substring(field.valueStart, field.valueEnd);
+  final quoted = RegExp(r'^"((?:\\.|[^"\\])*)"$').firstMatch(value);
+  if (quoted == null) return null;
+  return quoted
+      .group(1)!
+      .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+}
+
+/// Locates the single `tylog.task(...)` call whose `id` field equals [id].
+///
+/// Throws a [StateError] if no task with that id exists, or if more than
+/// one task shares the id (rather than silently mutating a random match).
+TypstCall _locateTaskCall(String source, String id) {
+  final matches = locateTypstCalls(
+    source,
+    names: const {'tylog.task'},
+  ).where((call) => _field(call.source, 'id') == id).toList();
+  if (matches.isEmpty) throw StateError('Task $id not found');
+  if (matches.length > 1) {
+    throw StateError('Duplicate task id "$id" (${matches.length} matches)');
+  }
+  return matches.single;
+}
+
+/// The `[start, end)` byte range of a `name: value` pair, plus the
+/// `[valueStart, valueEnd)` range of just the value, as found at the top
+/// level of a single Typst call's argument list (depth 1, i.e. directly
+/// inside the call's outer parens, outside any string/comment/raw block and
+/// outside any nested `(...)`/`[...]`).
+class _TopLevelField {
+  const _TopLevelField(this.start, this.end, this.valueStart, this.valueEnd);
+
+  final int start;
+  final int end;
+  final int valueStart;
+  final int valueEnd;
+}
+
+/// Structurally locates the top-level `name: value` field inside a single
+/// call's source (e.g. `#tylog.task(...)`), reusing the same char-scanning
+/// primitives as [locateTypstCalls] so strings, comments, raw blocks, and
+/// nested parens/brackets can't be mistaken for a field boundary.
+///
+/// Returns null if the field isn't present at the top level of the call.
+_TopLevelField? _locateTopLevelField(String callSource, String name) {
+  final open = callSource.indexOf('(');
+  if (open < 0) return null;
+  var i = open + 1;
+  const outerDepth = 1;
+  var depth = outerDepth;
+  while (i < callSource.length && depth > 0) {
+    if (_starts(callSource, i, '//')) {
+      final nl = callSource.indexOf('\n', i);
+      i = nl < 0 ? callSource.length : nl;
+      continue;
+    }
+    if (_starts(callSource, i, '/*')) {
+      i = _skipBlockComment(callSource, i);
+      continue;
+    }
+    final code = callSource.codeUnitAt(i);
+    if (code == 34) {
+      i = _skipString(callSource, i);
+      continue;
+    }
+    if (code == 96) {
+      i = _skipRaw(callSource, i);
+      continue;
+    }
+    if (code == 40 || code == 91) {
+      depth++;
+      i++;
+      continue;
+    }
+    if (code == 41 || code == 93) {
+      depth--;
+      i++;
+      continue;
+    }
+    if (depth == outerDepth && _identifierStart(code)) {
+      final identStart = i;
+      while (i < callSource.length && _identifier(callSource.codeUnitAt(i))) {
+        i++;
+      }
+      final ident = callSource.substring(identStart, i);
+      var j = i;
+      while (j < callSource.length && _space(callSource.codeUnitAt(j))) {
+        j++;
+      }
+      if (ident != name || j >= callSource.length || callSource.codeUnitAt(j) != 58) {
+        continue;
+      }
+      var k = j + 1;
+      while (k < callSource.length && _space(callSource.codeUnitAt(k))) {
+        k++;
+      }
+      final valueStart = k;
+      var valueDepth = outerDepth;
+      while (k < callSource.length) {
+        if (_starts(callSource, k, '//')) {
+          final nl = callSource.indexOf('\n', k);
+          k = nl < 0 ? callSource.length : nl;
+          continue;
+        }
+        if (_starts(callSource, k, '/*')) {
+          k = _skipBlockComment(callSource, k);
+          continue;
+        }
+        final vcode = callSource.codeUnitAt(k);
+        if (vcode == 34) {
+          k = _skipString(callSource, k);
+          continue;
+        }
+        if (vcode == 96) {
+          k = _skipRaw(callSource, k);
+          continue;
+        }
+        if (vcode == 40 || vcode == 91) {
+          valueDepth++;
+          k++;
+          continue;
+        }
+        if (vcode == 41 || vcode == 93) {
+          if (valueDepth == outerDepth) break;
+          valueDepth--;
+          k++;
+          continue;
+        }
+        if (vcode == 44 && valueDepth == outerDepth) break;
+        k++;
+      }
+      var valueEnd = k;
+      while (valueEnd > valueStart &&
+          _space(callSource.codeUnitAt(valueEnd - 1))) {
+        valueEnd--;
+      }
+      return _TopLevelField(identStart, valueEnd, valueStart, valueEnd);
+    }
+    i++;
+  }
+  return null;
+}
+
+bool _identifierStart(int code) =>
+    code >= 65 && code <= 90 || code >= 97 && code <= 122 || code == 95;
 
 NoteRef _queriedNote(
   String path,

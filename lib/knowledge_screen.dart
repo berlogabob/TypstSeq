@@ -29,6 +29,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late KnowledgeView view = widget.initialView;
   String query = '';
   String? selectedTag;
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -63,76 +70,90 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       for (final note in widget.index.notes) ...note.tags,
     }.toList()..sort();
     final results = widget.search.search(query, tag: selectedTag);
-    return ListView(
+    return ListView.builder(
       padding: const EdgeInsets.all(16),
-      children: [
-        TextField(
-          autofocus: true,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search notes, tasks, and attachments',
-          ),
-          onChanged: (value) => setState(() => query = value),
-        ),
-        if (tags.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+      itemCount: 1 + results.length,
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: selectedTag == null,
-                onSelected: (_) => setState(() => selectedTag = null),
-              ),
-              for (final tag in tags)
-                ChoiceChip(
-                  label: Text('#$tag'),
-                  selected: selectedTag == tag,
-                  onSelected: (_) => setState(() => selectedTag = tag),
+              TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search notes, tasks, and attachments',
                 ),
+                onChanged: (value) => setState(() => query = value),
+              ),
+              if (tags.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All'),
+                      selected: selectedTag == null,
+                      onSelected: (_) => setState(() => selectedTag = null),
+                    ),
+                    for (final tag in tags)
+                      ChoiceChip(
+                        label: Text('#$tag'),
+                        selected: selectedTag == tag,
+                        onSelected: (_) => setState(() => selectedTag = tag),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
             ],
+          );
+        }
+        final result = results[i - 1];
+        return ListTile(
+          leading: Icon(switch (result.kind) {
+            'task' => Icons.task_alt,
+            'file' => Icons.attach_file,
+            'project' => Icons.work_outline,
+            'article' => Icons.article_outlined,
+            _ => Icons.description_outlined,
+          }),
+          title: Text(result.title),
+          subtitle: Text(
+            [
+              result.kind,
+              result.path,
+              if (result.snippet != null) result.snippet!,
+            ].join(' · '),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-        ],
-        const SizedBox(height: 8),
-        for (final result in results)
-          ListTile(
-            leading: Icon(switch (result.kind) {
-              'task' => Icons.task_alt,
-              'file' => Icons.attach_file,
-              'project' => Icons.work_outline,
-              'article' => Icons.article_outlined,
-              _ => Icons.description_outlined,
-            }),
-            title: Text(result.title),
-            subtitle: Text(
-              [
-                result.kind,
-                result.path,
-                if (result.snippet != null) result.snippet!,
-              ].join(' · '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: result.kind == 'file'
-                ? null
-                : () => widget.onOpenNote(result.path),
-          ),
-      ],
+          onTap: result.kind == 'file'
+              ? null
+              : () => widget.onOpenNote(result.path),
+        );
+      },
     );
   }
 
-  Widget _problems() => ListView(
-    padding: const EdgeInsets.all(12),
-    children: [
-      if (widget.problems.isEmpty)
-        const ListTile(
-          leading: Icon(Icons.check_circle_outline),
-          title: Text('No vault problems'),
-        ),
-      for (final problem in widget.problems)
-        ListTile(
+  Widget _problems() {
+    final problems = widget.problems;
+    final itemCount = problems.isEmpty ? 1 : problems.length;
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: itemCount,
+      itemBuilder: (context, i) {
+        if (problems.isEmpty) {
+          return const ListTile(
+            leading: Icon(Icons.check_circle_outline),
+            title: Text('No vault problems'),
+          );
+        }
+        final problem = problems[i];
+        return ListTile(
           leading: Icon(switch (problem.severity) {
             PkmsSeverity.error => Icons.error_outline,
             PkmsSeverity.warning => Icons.warning_amber,
@@ -144,7 +165,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           ),
           isThreeLine: problem.fix != null,
           onTap: null,
-        ),
-    ],
-  );
+        );
+      },
+    );
+  }
 }

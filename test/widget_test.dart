@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:typst_flutter/typst_flutter.dart';
@@ -76,13 +78,8 @@ void main() {
 
     await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Settings'),
-      300,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -120));
-    await tester.pumpAndSettle();
+    // Settings is now the second item in the More sheet (right after
+    // Vaults), so it's visible without scrolling.
     await tester.tap(find.widgetWithText(ListTile, 'Settings'));
     await tester.pumpAndSettle();
 
@@ -158,6 +155,9 @@ void main() {
     expect(find.byTooltip('View mode'), findsOneWidget);
     await setViewMode(tester, 'Read');
     expect(find.byType(SelectableText), findsWidgets);
+    expect(find.byTooltip('View mode'), findsNothing);
+    await tester.tap(find.byTooltip('Back to edit'));
+    await tester.pump();
 
     await setViewMode(tester, 'Preview');
 
@@ -173,6 +173,144 @@ void main() {
     await setViewMode(tester, 'Edit');
 
     expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
+  });
+
+  testWidgets('reading mode reflows phone text and keeps only reader controls', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+    await openSource(tester);
+    await tester.enterText(
+      find.byType(TextField),
+      List.generate(
+        80,
+        (index) =>
+            'Paragraph $index has enough words to wrap naturally on a phone screen.',
+      ).join('\n\n'),
+    );
+    await setViewMode(tester, 'Read');
+    await tester.pump();
+
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byTooltip('View mode'), findsNothing);
+    expect(find.byTooltip('Back to edit'), findsOneWidget);
+    expect(find.byTooltip('Reading settings'), findsOneWidget);
+    expect(find.text('Agenda'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const Key('reading-document'))).width,
+      lessThanOrEqualTo(324),
+    );
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byKey(const Key('reading-progress')),
+          )
+          .value,
+      closeTo(0, 0.01),
+    );
+
+    final scroll = tester
+        .widget<SingleChildScrollView>(find.byKey(const Key('reading-scroll')))
+        .controller!;
+    scroll.jumpTo(scroll.position.maxScrollExtent / 2);
+    await tester.pump();
+    final oldFraction = scroll.offset / scroll.position.maxScrollExtent;
+    final oldFontSize = MediaQuery.textScalerOf(
+      tester.element(find.byKey(const Key('reading-document'))),
+    ).scale(16);
+
+    await tester.tap(find.byTooltip('Reading settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reading-font-larger')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('110%'), findsOneWidget);
+    expect(
+      MediaQuery.textScalerOf(
+        tester.element(find.byKey(const Key('reading-document'))),
+      ).scale(16),
+      greaterThan(oldFontSize),
+    );
+    expect(
+      scroll.offset / scroll.position.maxScrollExtent,
+      closeTo(oldFraction, 0.02),
+    );
+
+    await tester.tap(find.byKey(const Key('reading-night-mode')));
+    await tester.pump();
+    expect(
+      Theme.of(
+        tester.element(find.byKey(const Key('reading-document'))),
+      ).brightness,
+      Brightness.dark,
+    );
+
+    scroll.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pump();
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byKey(const Key('reading-progress')),
+          )
+          .value,
+      1,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reading mode handles system back and fullscreen restoration', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          calls.add(call);
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+    await setViewMode(tester, 'Read');
+    await tester.tap(find.byTooltip('Reading settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reading-fullscreen')));
+    await tester.pump();
+    expect(
+      calls,
+      contains(
+        isMethodCall(
+          'SystemChrome.setEnabledSystemUIMode',
+          arguments: 'SystemUiMode.immersiveSticky',
+        ),
+      ),
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(
+      calls,
+      contains(
+        isMethodCall(
+          'SystemChrome.setEnabledSystemUIMode',
+          arguments: 'SystemUiMode.edgeToEdge',
+        ),
+      ),
+    );
   });
 
   testWidgets('graph remains available from overflow', (tester) async {
@@ -295,6 +433,63 @@ void main() {
 
     expect(kind, SyncStatusKind.syncing);
     expect(syncStatusTitle(kind), 'Syncing…');
+  });
+
+  test('rename-only sync is reported as a completed change', () {
+    final kind = syncStatusKind(
+      vaultOpen: true,
+      storageHealthy: true,
+      cloudConfigured: true,
+      desktopManaged: false,
+      syncing: false,
+      error: null,
+      conflicts: 0,
+      result: const SyncResult(
+        trigger: 'manual',
+        uploaded: 0,
+        downloaded: 0,
+        skipped: 3,
+        conflicts: 0,
+        remoteCount: 3,
+        renamed: 1,
+      ),
+    );
+
+    expect(kind, SyncStatusKind.synced);
+    expect(syncStatusTitle(kind), 'Synced');
+  });
+
+  test('sync status distinguishes configured+error from not-configured', () {
+    // Regression test: Settings tile should not show 'Not configured'
+    // when Nextcloud IS configured but sync is paused due to error.
+    final withError = syncStatusKind(
+      vaultOpen: true,
+      storageHealthy: true,
+      cloudConfigured: true,
+      desktopManaged: false,
+      syncing: false,
+      error: 'Connection timeout',
+      conflicts: 0,
+      result: null,
+    );
+
+    expect(syncStatusTitle(withError), 'Sync paused');
+    expect(syncStatusTitle(withError), isNot('Not configured'));
+
+    // Same with conflicts: should not show 'Not configured'
+    final withConflicts = syncStatusKind(
+      vaultOpen: true,
+      storageHealthy: true,
+      cloudConfigured: true,
+      desktopManaged: false,
+      syncing: false,
+      error: null,
+      conflicts: 2,
+      result: null,
+    );
+
+    expect(syncStatusTitle(withConflicts, conflicts: 2), '2 conflicts need review');
+    expect(syncStatusTitle(withConflicts, conflicts: 2), isNot('Not configured'));
   });
 
   testWidgets('journal mode hides Typst system prelude', (tester) async {

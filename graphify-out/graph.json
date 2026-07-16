@@ -813,8 +813,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_markdown_article_import_dart",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "package:tylog/markdown_article_import.dart"
     },
     {
@@ -851,6 +851,336 @@
       "norm_label": "package:tylog/vault.dart"
     },
     {
+      "label": "nextcloud_sync_native_test.dart",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "nextcloud_sync_native_test.dart"
+    },
+    {
+      "label": "_NativeRemoteFile",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_nativeremotefile",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "_nativeremotefile"
+    },
+    {
+      "label": "_NativeWebDavServer",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_nativewebdavserver",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "_nativewebdavserver"
+    },
+    {
+      "label": "filler",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_filler",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "filler"
+    },
+    {
+      "label": "bytes",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_bytes",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "bytes"
+    },
+    {
+      "label": "List",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "list",
+      "community": 124,
+      "community_name": "crate::api::typst::RenderResult",
+      "norm_label": "list"
+    },
+    {
+      "label": "etag",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_etag",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "etag"
+    },
+    {
+      "label": "_root",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_root",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "_root"
+    },
+    {
+      "label": "static const",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "static_const",
+      "community": 106,
+      "community_name": "tylog_assets.dart",
+      "norm_label": "static const"
+    },
+    {
+      "label": "server",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_server",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "server"
+    },
+    {
+      "label": "HttpServer",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "httpserver",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "httpserver"
+    },
+    {
+      "label": "files",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_files",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "files"
+    },
+    {
+      "label": "Map",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "map",
+      "community": 13,
+      "community_name": "files.dart",
+      "norm_label": "map"
+    },
+    {
+      "label": "serveArchive",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_servearchive",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "servearchive"
+    },
+    {
+      "label": "individualDelay",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_individualdelay",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "individualdelay"
+    },
+    {
+      "label": "Duration",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "none_duration",
+      "community": 133,
+      "community_name": "Duration",
+      "norm_label": "duration"
+    },
+    {
+      "label": "propfinds",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_propfinds",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "propfinds"
+    },
+    {
+      "label": "archiveGets",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_archivegets",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "archivegets"
+    },
+    {
+      "label": "individualGets",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_individualgets",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "individualgets"
+    },
+    {
+      "label": "config",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_config",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "config"
+    },
+    {
+      "label": "NextcloudConfig? get",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "nextcloudconfig_get",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "nextcloudconfig? get"
+    },
+    {
+      "label": "main",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_main",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "main"
+    },
+    {
+      "label": "_fixture",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_fixture",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "_fixture"
+    },
+    {
+      "label": "fromText",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_fromtext",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "fromtext"
+    },
+    {
+      "label": "start",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_start",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "start"
+    },
+    {
+      "label": "close",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_close",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "close"
+    },
+    {
+      "label": "_handle",
+      "file_type": "code",
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "integration_test_nextcloud_sync_native_test_handle",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "_handle"
+    },
+    {
+      "label": "package:archive/archive.dart",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "package_archive_archive_dart",
+      "community": 49,
+      "community_name": "String",
+      "norm_label": "package:archive/archive.dart"
+    },
+    {
+      "label": "package:crypto/crypto.dart",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "package_crypto_crypto_dart",
+      "community": 97,
+      "community_name": "storage.dart",
+      "norm_label": "package:crypto/crypto.dart"
+    },
+    {
+      "label": "package:tylog/nextcloud_sync.dart",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "package_tylog_nextcloud_sync_dart",
+      "community": 102,
+      "community_name": "vault_storage_test.dart",
+      "norm_label": "package:tylog/nextcloud_sync.dart"
+    },
+    {
       "label": "pkms_native_test.dart",
       "file_type": "code",
       "source_file": "integration_test/pkms_native_test.dart",
@@ -879,8 +1209,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "return",
-      "community": 124,
-      "community_name": "crate::api::typst::RenderResult",
+      "community": 24,
+      "community_name": "dart:io",
       "norm_label": "return"
     },
     {
@@ -1231,8 +1561,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_flutter_material_dart",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "package:flutter/material.dart"
     },
     {
@@ -1242,8 +1572,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_controlled_editor_dart",
-      "community": 34,
-      "community_name": "widget_test.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "package:tylog/controlled_editor.dart"
     },
     {
@@ -1253,8 +1583,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_rich_editor_dart",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "package:tylog/rich_editor.dart"
     },
     {
@@ -1666,6 +1996,50 @@
       "community": 33,
       "community_name": "State",
       "norm_label": "widgetsbindingobserver"
+    },
+    {
+      "label": "_ReadingMode",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_readingmode",
+      "community": 33,
+      "community_name": "State",
+      "norm_label": "_readingmode"
+    },
+    {
+      "label": "_ReadingModeState",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_readingmodestate",
+      "community": 33,
+      "community_name": "State",
+      "norm_label": "_readingmodestate"
+    },
+    {
+      "label": "_ReadingTextScaler",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_readingtextscaler",
+      "community": 114,
+      "community_name": "cli_test.dart",
+      "norm_label": "_readingtextscaler"
+    },
+    {
+      "label": "TextScaler",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "textscaler",
+      "community": 114,
+      "community_name": "cli_test.dart",
+      "norm_label": "textscaler"
     },
     {
       "label": "_ShellAction",
@@ -2317,17 +2691,6 @@
       "norm_label": "typstpackagefiles"
     },
     {
-      "label": "Map",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "map",
-      "community": 106,
-      "community_name": "tylog_assets.dart",
-      "norm_label": "map"
-    },
-    {
       "label": "bibliographySource",
       "file_type": "code",
       "source_file": "lib/app_mobile.dart",
@@ -2348,17 +2711,6 @@
       "community": 0,
       "community_name": "app_mobile.dart",
       "norm_label": "cloud"
-    },
-    {
-      "label": "NextcloudConfig? get",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "nextcloudconfig_get",
-      "community": 0,
-      "community_name": "app_mobile.dart",
-      "norm_label": "nextcloudconfig? get"
     },
     {
       "label": "searchIndex",
@@ -2436,17 +2788,6 @@
       "community": 0,
       "community_name": "app_mobile.dart",
       "norm_label": "syncconflicts"
-    },
-    {
-      "label": "List",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "list",
-      "community": 124,
-      "community_name": "crate::api::typst::RenderResult",
-      "norm_label": "list"
     },
     {
       "label": "lastSyncAt",
@@ -2568,6 +2909,138 @@
       "community": 0,
       "community_name": "app_mobile.dart",
       "norm_label": "_entities"
+    },
+    {
+      "label": "fontScale",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_fontscale",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "fontscale"
+    },
+    {
+      "label": "nightMode",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_nightmode",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "nightmode"
+    },
+    {
+      "label": "onExit",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_onexit",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "onexit"
+    },
+    {
+      "label": "VoidCallback?",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "voidcallback",
+      "community": 2,
+      "community_name": "rich_editor.dart",
+      "norm_label": "voidcallback?"
+    },
+    {
+      "label": "scrollController",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_scrollcontroller",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "scrollcontroller"
+    },
+    {
+      "label": "progress",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_progress",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "progress"
+    },
+    {
+      "label": "fullscreen",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_fullscreen",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "fullscreen"
+    },
+    {
+      "label": "base",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_base",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "base"
+    },
+    {
+      "label": "factor",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_factor",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "factor"
+    },
+    {
+      "label": "textScaleFactor",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_textscalefactor",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "textscalefactor"
+    },
+    {
+      "label": "operator",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_operator",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "operator"
+    },
+    {
+      "label": "hashCode",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_hashcode",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "hashcode"
     },
     {
       "label": "storageName",
@@ -2755,17 +3228,6 @@
       "community": 0,
       "community_name": "app_mobile.dart",
       "norm_label": "onpressed"
-    },
-    {
-      "label": "VoidCallback?",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "voidcallback",
-      "community": 2,
-      "community_name": "rich_editor.dart",
-      "norm_label": "voidcallback?"
     },
     {
       "label": "label",
@@ -4022,6 +4484,17 @@
       "norm_label": "_seteditormode"
     },
     {
+      "label": "_updateReadingPreferences",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_updatereadingpreferences",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_updatereadingpreferences"
+    },
+    {
       "label": "_showSyncDashboard",
       "file_type": "code",
       "source_file": "lib/app_mobile.dart",
@@ -4264,6 +4737,72 @@
       "norm_label": "_currenttitle"
     },
     {
+      "label": "_updateProgress",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_updateprogress",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_updateprogress"
+    },
+    {
+      "label": "_setFontScale",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_setfontscale",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_setfontscale"
+    },
+    {
+      "label": "_setNightMode",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_setnightmode",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_setnightmode"
+    },
+    {
+      "label": "_persistPreferences",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_persistpreferences",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_persistpreferences"
+    },
+    {
+      "label": "_setFullscreen",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_setfullscreen",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "_setfullscreen"
+    },
+    {
+      "label": "scale",
+      "file_type": "code",
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_app_mobile_scale",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "scale"
+    },
+    {
       "label": "_reload",
       "file_type": "code",
       "source_file": "lib/app_mobile.dart",
@@ -4413,8 +4952,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_flutter_services_dart",
-      "community": 13,
-      "community_name": "files.dart",
+      "community": 102,
+      "community_name": "vault_storage_test.dart",
       "norm_label": "package:flutter/services.dart"
     },
     {
@@ -4446,8 +4985,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_typst_flutter_typst_flutter_dart",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "package:typst_flutter/typst_flutter.dart"
     },
     {
@@ -4658,6 +5197,28 @@
       "community": 0,
       "community_name": "app_mobile.dart",
       "norm_label": "workspace_controller.dart"
+    },
+    {
+      "label": "SystemUiOverlayStyle",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "systemuioverlaystyle",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "systemuioverlaystyle"
+    },
+    {
+      "label": "ScrollMetricsNotification",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "scrollmetricsnotification",
+      "community": 0,
+      "community_name": "app_mobile.dart",
+      "norm_label": "scrollmetricsnotification"
     },
     {
       "label": "bibliography.dart",
@@ -5502,8 +6063,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_flutter_typst_inspector",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "flutter_typst_inspector.dart"
     },
     {
@@ -5524,8 +6085,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_flutter_typst_inspector_compiler",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "_compiler"
     },
     {
@@ -5535,8 +6096,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_flutter_typst_inspector_create",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "create"
     },
     {
@@ -5546,8 +6107,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_flutter_typst_inspector_inspect",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "inspect"
     },
     {
@@ -5557,8 +6118,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_flutter_typst_inspector_dispose",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "dispose"
     },
     {
@@ -5568,8 +6129,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_core_scanner_dart",
-      "community": 24,
-      "community_name": "dart:io",
+      "community": 109,
+      "community_name": "core_test.dart",
       "norm_label": "package:tylog_core/scanner.dart"
     },
     {
@@ -5879,17 +6440,6 @@
       "community": 7,
       "community_name": "graph.dart",
       "norm_label": "noderadius"
-    },
-    {
-      "label": "static const",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "static_const",
-      "community": 106,
-      "community_name": "tylog_assets.dart",
-      "norm_label": "static const"
     },
     {
       "label": "minimumNodeSpacing",
@@ -6206,8 +6756,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_knowledge_screen_knowledgeview",
-      "community": 37,
-      "community_name": "graph_test.dart",
+      "community": 105,
+      "community_name": "task_scheduler.dart",
       "norm_label": "knowledgeview"
     },
     {
@@ -6349,8 +6899,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_main",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "main.dart"
     },
     {
@@ -6360,8 +6910,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_main_main",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "main"
     },
     {
@@ -6371,8 +6921,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "app_mobile_dart",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "app_mobile.dart"
     },
     {
@@ -6470,8 +7020,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "int",
-      "community": 125,
-      "community_name": "crate::api::typst::TypstCompileError",
+      "community": 124,
+      "community_name": "crate::api::typst::RenderResult",
       "norm_label": "int?"
     },
     {
@@ -6992,17 +7542,6 @@
       "norm_label": "_filenametitle"
     },
     {
-      "label": "package:crypto/crypto.dart",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "package_crypto_crypto_dart",
-      "community": 97,
-      "community_name": "storage.dart",
-      "norm_label": "package:crypto/crypto.dart"
-    },
-    {
       "label": "package:tylog_core/models.dart",
       "file_type": "code",
       "source_file": null,
@@ -7020,8 +7559,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_core_storage_dart",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "package:tylog_core/storage.dart"
     },
     {
@@ -7031,8 +7570,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_models",
-      "community": 125,
-      "community_name": "crate::api::typst::TypstCompileError",
+      "community": 124,
+      "community_name": "crate::api::typst::RenderResult",
       "norm_label": "models.dart"
     },
     {
@@ -7344,6 +7883,39 @@
       "norm_label": "_remotefile"
     },
     {
+      "label": "_RemoteArchiveSnapshot",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_remotearchivesnapshot",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_remotearchivesnapshot"
+    },
+    {
+      "label": "_RenameDetection",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_renamedetection",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_renamedetection"
+    },
+    {
+      "label": "_PathResult",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_pathresult",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_pathresult"
+    },
+    {
       "label": "_DownloadResult",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -7619,6 +8191,17 @@
       "norm_label": "_client"
     },
     {
+      "label": "_ensuredParents",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_ensuredparents",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_ensuredparents"
+    },
+    {
       "label": "propfindBodyTimeout",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -7674,6 +8257,17 @@
       "norm_label": "match"
     },
     {
+      "label": "null",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_null",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "null"
+    },
+    {
       "label": "modified",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -7705,6 +8299,204 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "length"
+    },
+    {
+      "label": "sha256",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_sha256",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "sha256"
+    },
+    {
+      "label": "source",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_source",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "source"
+    },
+    {
+      "label": "File",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "file",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "file"
+    },
+    {
+      "label": "input",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_input",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "input"
+    },
+    {
+      "label": "InputFileStream",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "inputfilestream",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "inputfilestream"
+    },
+    {
+      "label": "files",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_files",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "files"
+    },
+    {
+      "label": "decisions",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_decisions",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "decisions"
+    },
+    {
+      "label": "protectedLocalDeletions",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_protectedlocaldeletions",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "protectedlocaldeletions"
+    },
+    {
+      "label": "Set",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "set",
+      "community": 24,
+      "community_name": "dart:io",
+      "norm_label": "set"
+    },
+    {
+      "label": "decision",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_decision",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "decision"
+    },
+    {
+      "label": "updateCursor",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_updatecursor",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "updatecursor"
+    },
+    {
+      "label": "cursor",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_cursor",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "cursor"
+    },
+    {
+      "label": "uploaded",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_uploaded",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "uploaded"
+    },
+    {
+      "label": "downloaded",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_downloaded",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "downloaded"
+    },
+    {
+      "label": "skipped",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_skipped",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "skipped"
+    },
+    {
+      "label": "conflicts",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_conflicts",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "conflicts"
+    },
+    {
+      "label": "repaired",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_repaired",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "repaired"
+    },
+    {
+      "label": "deletedRemote",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_deletedremote",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "deletedremote"
     },
     {
       "label": "protected",
@@ -7872,17 +8664,6 @@
       "norm_label": "istext"
     },
     {
-      "label": "conflicts",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_conflicts",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "conflicts"
-    },
-    {
       "label": "base",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -7905,39 +8686,6 @@
       "norm_label": "trigger"
     },
     {
-      "label": "uploaded",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_uploaded",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "uploaded"
-    },
-    {
-      "label": "downloaded",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_downloaded",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "downloaded"
-    },
-    {
-      "label": "skipped",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_skipped",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "skipped"
-    },
-    {
       "label": "remoteCount",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -7949,15 +8697,15 @@
       "norm_label": "remotecount"
     },
     {
-      "label": "repaired",
+      "label": "renamed",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
       "source_location": null,
       "_origin": "ast",
-      "id": "lib_nextcloud_sync_repaired",
+      "id": "lib_nextcloud_sync_renamed",
       "community": 6,
       "community_name": "nextcloud_sync.dart",
-      "norm_label": "repaired"
+      "norm_label": "renamed"
     },
     {
       "label": "deletedLocal",
@@ -7969,17 +8717,6 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "deletedlocal"
-    },
-    {
-      "label": "deletedRemote",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_deletedremote",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "deletedremote"
     },
     {
       "label": "requiresIndexRefresh",
@@ -8090,17 +8827,6 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "timestamp"
-    },
-    {
-      "label": "decisions",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_decisions",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "decisions"
     },
     {
       "label": "withPassword",
@@ -8268,6 +8994,50 @@
       "norm_label": "resolveconflict"
     },
     {
+      "label": "_shouldUseArchive",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_shouldusearchive",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_shouldusearchive"
+    },
+    {
+      "label": "_downloadArchive",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_downloadarchive",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_downloadarchive"
+    },
+    {
+      "label": "_validatedArchiveFiles",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_validatedarchivefiles",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_validatedarchivefiles"
+    },
+    {
+      "label": "_sameRemoteSnapshot",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_sameremotesnapshot",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_sameremotesnapshot"
+    },
+    {
       "label": "_localFiles",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -8277,6 +9047,28 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "_localfiles"
+    },
+    {
+      "label": "_syncPath",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_syncpath",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_syncpath"
+    },
+    {
+      "label": "_detectRenames",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_detectrenames",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_detectrenames"
     },
     {
       "label": "_localHash",
@@ -8444,6 +9236,17 @@
       "norm_label": "_mkcol"
     },
     {
+      "label": "_moveRemote",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_moveremote",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_moveremote"
+    },
+    {
       "label": "_deleteRemote",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -8576,17 +9379,6 @@
       "norm_label": "_protectfromempty"
     },
     {
-      "label": "_sha256",
-      "file_type": "code",
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "_origin": "ast",
-      "id": "lib_nextcloud_sync_sha256",
-      "community": 6,
-      "community_name": "nextcloud_sync.dart",
-      "norm_label": "_sha256"
-    },
-    {
       "label": "_xmlValue",
       "file_type": "code",
       "source_file": "lib/nextcloud_sync.dart",
@@ -8596,6 +9388,50 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "_xmlvalue"
+    },
+    {
+      "label": "_xmlSha256",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_xmlsha256",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "_xmlsha256"
+    },
+    {
+      "label": "contains",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_contains",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "contains"
+    },
+    {
+      "label": "read",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_read",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "read"
+    },
+    {
+      "label": "close",
+      "file_type": "code",
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_nextcloud_sync_close",
+      "community": 6,
+      "community_name": "nextcloud_sync.dart",
+      "norm_label": "close"
     },
     {
       "label": "isSyncInternalPath",
@@ -8684,6 +9520,28 @@
       "community": 6,
       "community_name": "nextcloud_sync.dart",
       "norm_label": "decidesyncaction"
+    },
+    {
+      "label": "dart:typed_data",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "dart_typed_data",
+      "community": 24,
+      "community_name": "dart:io",
+      "norm_label": "dart:typed_data"
+    },
+    {
+      "label": "package:archive/archive_io.dart",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "package_archive_archive_io_dart",
+      "community": 19,
+      "community_name": "setup.dart",
+      "norm_label": "package:archive/archive_io.dart"
     },
     {
       "label": "package:flutter_secure_storage/flutter_secure_storage.dart",
@@ -8849,17 +9707,6 @@
       "community": 24,
       "community_name": "dart:io",
       "norm_label": "exportreportpdfstorage"
-    },
-    {
-      "label": "dart:typed_data",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "dart_typed_data",
-      "community": 24,
-      "community_name": "dart:io",
-      "norm_label": "dart:typed_data"
     },
     {
       "label": "package:tylog_core/report.dart",
@@ -10584,8 +11431,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_search_index",
-      "community": 124,
-      "community_name": "crate::api::typst::RenderResult",
+      "community": 25,
+      "community_name": "dart:convert",
       "norm_label": "search_index.dart"
     },
     {
@@ -10595,8 +11442,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_core_search_index_dart",
-      "community": 124,
-      "community_name": "crate::api::typst::RenderResult",
+      "community": 25,
+      "community_name": "dart:convert",
       "norm_label": "package:tylog_core/search_index.dart"
     },
     {
@@ -11392,17 +12239,6 @@
       "norm_label": "file"
     },
     {
-      "label": "File",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "file",
-      "community": 20,
-      "community_name": "vault_registry.dart",
-      "norm_label": "file"
-    },
-    {
       "label": "entries",
       "file_type": "code",
       "source_file": "lib/vault_registry.dart",
@@ -11434,6 +12270,50 @@
       "community": 20,
       "community_name": "vault_registry.dart",
       "norm_label": "onboardingcomplete"
+    },
+    {
+      "label": "readingFontScale",
+      "file_type": "code",
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_vault_registry_readingfontscale",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "readingfontscale"
+    },
+    {
+      "label": "readingNightMode",
+      "file_type": "code",
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_vault_registry_readingnightmode",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "readingnightmode"
+    },
+    {
+      "label": "_pendingSave",
+      "file_type": "code",
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_vault_registry_pendingsave",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "_pendingsave"
+    },
+    {
+      "label": "Future",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "future",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "future"
     },
     {
       "label": "active",
@@ -11623,6 +12503,17 @@
       "norm_label": "completeonboarding"
     },
     {
+      "label": "updateReadingPreferences",
+      "file_type": "code",
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "lib_vault_registry_updatereadingpreferences",
+      "community": 20,
+      "community_name": "vault_registry.dart",
+      "norm_label": "updatereadingpreferences"
+    },
+    {
       "label": "setCloud",
       "file_type": "code",
       "source_file": "lib/vault_registry.dart",
@@ -11717,8 +12608,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "lib_vault_storage_androidtreevaultstorage",
-      "community": 51,
-      "community_name": "workspace_controller_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "androidtreevaultstorage"
     },
     {
@@ -13779,8 +14670,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_core_tylog_core_dart",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "package:tylog_core/tylog_core.dart"
     },
     {
@@ -14871,17 +15762,6 @@
       "community": 103,
       "community_name": "report.dart",
       "norm_label": "kinds"
-    },
-    {
-      "label": "Set",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "set",
-      "community": 24,
-      "community_name": "dart:io",
-      "norm_label": "set"
     },
     {
       "label": "tags",
@@ -16793,8 +17673,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_lib_src_storage_vaultstorage",
-      "community": 51,
-      "community_name": "workspace_controller_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "vaultstorage"
     },
     {
@@ -16804,8 +17684,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_lib_src_storage_localvaultstorage",
-      "community": 27,
-      "community_name": "nextcloud_sync_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "localvaultstorage"
     },
     {
@@ -17508,8 +18388,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_test_cli_test",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "cli_test.dart"
     },
     {
@@ -17519,8 +18399,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_test_cli_test_main",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "main"
     },
     {
@@ -17530,8 +18410,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_test_cli_test_cli",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "_cli"
     },
     {
@@ -17541,8 +18421,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_test_test_dart",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "package:test/test.dart"
     },
     {
@@ -17552,8 +18432,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "stateerror",
-      "community": 110,
-      "community_name": "TypstInspector",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "stateerror"
     },
     {
@@ -17640,8 +18520,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_test_vault_inspection_test",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "vault_inspection_test.dart"
     },
     {
@@ -17651,8 +18531,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "packages_tylog_core_test_vault_inspection_test_main",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 115,
+      "community_name": "@internal",
       "norm_label": "main"
     },
     {
@@ -17662,8 +18542,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "lib.rs"
     },
     {
@@ -17673,8 +18553,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_importdiagnostic",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "importdiagnostic"
     },
     {
@@ -17684,8 +18564,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_rs_option",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "option"
     },
     {
@@ -17695,8 +18575,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_markdownconversion",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "markdownconversion"
     },
     {
@@ -17706,8 +18586,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_rs_vec",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "vec"
     },
     {
@@ -17717,8 +18597,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_convert_markdown",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "convert_markdown()"
     },
     {
@@ -17728,8 +18608,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "typstrenderer"
     },
     {
@@ -17739,8 +18619,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "url",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "url"
     },
     {
@@ -17750,8 +18630,8 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_render_block",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".render_block()"
     },
     {
@@ -17761,8 +18641,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "astnode",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "astnode"
     },
     {
@@ -17772,8 +18652,8 @@
       "source_location": "L129",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_render_list",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".render_list()"
     },
     {
@@ -17783,8 +18663,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "listtype",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "listtype"
     },
     {
@@ -17794,8 +18674,8 @@
       "source_location": "L182",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_render_table",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".render_table()"
     },
     {
@@ -17805,8 +18685,8 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_render_inline_children",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".render_inline_children()"
     },
     {
@@ -17816,8 +18696,8 @@
       "source_location": "L214",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_render_inline",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".render_inline()"
     },
     {
@@ -17827,8 +18707,8 @@
       "source_location": "L283",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_wrap_inline",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".wrap_inline()"
     },
     {
@@ -17838,8 +18718,8 @@
       "source_location": "L295",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_resolve_link",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".resolve_link()"
     },
     {
@@ -17849,8 +18729,8 @@
       "source_location": "L321",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typstrenderer_warn",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": ".warn()"
     },
     {
@@ -17860,8 +18740,8 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_is_matching_title",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "is_matching_title()"
     },
     {
@@ -17871,8 +18751,8 @@
       "source_location": "L335",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_normalize_title",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "normalize_title()"
     },
     {
@@ -17882,8 +18762,8 @@
       "source_location": "L343",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_collect_plain_text",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "collect_plain_text()"
     },
     {
@@ -17893,8 +18773,8 @@
       "source_location": "L356",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_needs_markup_boundary",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "needs_markup_boundary()"
     },
     {
@@ -17904,8 +18784,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_escape_markup",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "escape_markup()"
     },
     {
@@ -17915,8 +18795,8 @@
       "source_location": "L405",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_typst_string",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "typst_string()"
     },
     {
@@ -17926,8 +18806,8 @@
       "source_location": "L409",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_raw_fence",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "raw_fence()"
     },
     {
@@ -17937,8 +18817,8 @@
       "source_location": "L418",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_write_raw_inline",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "write_raw_inline()"
     },
     {
@@ -17948,8 +18828,8 @@
       "source_location": "L425",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_write_raw_block",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "write_raw_block()"
     },
     {
@@ -17959,8 +18839,8 @@
       "source_location": "L447",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_converts_core_gfm_to_editable_typst",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "converts_core_gfm_to_editable_typst()"
     },
     {
@@ -17970,8 +18850,8 @@
       "source_location": "L470",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_escapes_typst_and_reports_unsupported_content",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "escapes_typst_and_reports_unsupported_content()"
     },
     {
@@ -17981,8 +18861,8 @@
       "source_location": "L488",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_unsafe_and_unresolved_links_degrade_to_text",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "unsafe_and_unresolved_links_degrade_to_text()"
     },
     {
@@ -17992,8 +18872,8 @@
       "source_location": "L499",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_converts_nested_structure_and_line_markup",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "converts_nested_structure_and_line_markup()"
     },
     {
@@ -18003,8 +18883,8 @@
       "source_location": "L515",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_images_become_resolved_links_and_unicode_is_preserved",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "images_become_resolved_links_and_unicode_is_preserved()"
     },
     {
@@ -18014,8 +18894,8 @@
       "source_location": "L536",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_raw_fences_expand_around_embedded_backticks",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "raw_fences_expand_around_embedded_backticks()"
     },
     {
@@ -18025,8 +18905,8 @@
       "source_location": "L547",
       "_origin": "ast",
       "id": "packages_tylog_import_core_src_lib_separates_typst_functions_from_adjacent_delimiters",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "separates_typst_functions_from_adjacent_delimiters()"
     },
     {
@@ -18358,17 +19238,6 @@
       "community": 19,
       "community_name": "setup.dart",
       "norm_label": "dart:isolate"
-    },
-    {
-      "label": "package:archive/archive_io.dart",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "package_archive_archive_io_dart",
-      "community": 19,
-      "community_name": "setup.dart",
-      "norm_label": "package:archive/archive_io.dart"
     },
     {
       "label": "package:http/http.dart",
@@ -26243,8 +27112,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "markdown_import.rs"
     },
     {
@@ -26254,8 +27123,8 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import_markdownimportdiagnostic",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "markdownimportdiagnostic"
     },
     {
@@ -26265,8 +27134,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import_rs_option",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "option"
     },
     {
@@ -26276,8 +27145,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import_markdowntypstresult",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "markdowntypstresult"
     },
     {
@@ -26287,8 +27156,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import_rs_vec",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "vec"
     },
     {
@@ -26298,8 +27167,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_markdown_import_convert_markdown",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "convert_markdown()"
     },
     {
@@ -26858,7 +27727,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "duration",
+      "id": "packages_typst_flutter_rust_src_api_typst_rs_duration",
       "community": 5,
       "community_name": "typst.rs",
       "norm_label": "duration"
@@ -26936,8 +27805,8 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_api_typst_get_typst_version",
-      "community": 49,
-      "community_name": "String",
+      "community": 5,
+      "community_name": "typst.rs",
       "norm_label": "get_typst_version()"
     },
     {
@@ -27431,8 +28300,8 @@
       "source_location": "L691",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_string",
-      "community": 49,
-      "community_name": "String",
+      "community": 107,
+      "community_name": "fonts.dart",
       "norm_label": "string"
     },
     {
@@ -27893,8 +28762,8 @@
       "source_location": "L922",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult",
-      "community": 109,
-      "community_name": "core_test.dart",
+      "community": 120,
+      "community_name": "GraphView",
       "norm_label": "crate::api::typst::renderresult"
     },
     {
@@ -27904,8 +28773,8 @@
       "source_location": "L924",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_sse_decode",
-      "community": 109,
-      "community_name": "core_test.dart",
+      "community": 120,
+      "community_name": "GraphView",
       "norm_label": ".sse_decode()"
     },
     {
@@ -27915,8 +28784,8 @@
       "source_location": "L936",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror",
-      "community": 114,
-      "community_name": "cli_test.dart",
+      "community": 129,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "crate::api::typst::typstcompileerror"
     },
     {
@@ -27926,8 +28795,8 @@
       "source_location": "L938",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_sse_decode",
-      "community": 114,
-      "community_name": "cli_test.dart",
+      "community": 129,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": ".sse_decode()"
     },
     {
@@ -27937,8 +28806,8 @@
       "source_location": "L947",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstdiagnostic",
-      "community": 115,
-      "community_name": "@internal",
+      "community": 130,
+      "community_name": "crate::api::typst::TypstDiagnostic",
       "norm_label": "crate::api::typst::typstdiagnostic"
     },
     {
@@ -27948,8 +28817,8 @@
       "source_location": "L949",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstdiagnostic_sse_decode",
-      "community": 115,
-      "community_name": "@internal",
+      "community": 130,
+      "community_name": "crate::api::typst::TypstDiagnostic",
       "norm_label": ".sse_decode()"
     },
     {
@@ -27959,8 +28828,8 @@
       "source_location": "L967",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstseverity",
-      "community": 120,
-      "community_name": "GraphView",
+      "community": 131,
+      "community_name": "crate::api::typst::TypstSeverity",
       "norm_label": "crate::api::typst::typstseverity"
     },
     {
@@ -27970,8 +28839,8 @@
       "source_location": "L969",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstseverity_sse_decode",
-      "community": 120,
-      "community_name": "GraphView",
+      "community": 131,
+      "community_name": "crate::api::typst::TypstSeverity",
       "norm_label": ".sse_decode()"
     },
     {
@@ -28388,8 +29257,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "renderresult",
-      "community": 109,
-      "community_name": "core_test.dart",
+      "community": 120,
+      "community_name": "GraphView",
       "norm_label": "renderresult"
     },
     {
@@ -28399,8 +29268,8 @@
       "source_location": "L1204",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_into_into_dart",
-      "community": 109,
-      "community_name": "core_test.dart",
+      "community": 120,
+      "community_name": "GraphView",
       "norm_label": ".into_into_dart()"
     },
     {
@@ -28421,8 +29290,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "typstcompileerror",
-      "community": 114,
-      "community_name": "cli_test.dart",
+      "community": 129,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "typstcompileerror"
     },
     {
@@ -28432,8 +29301,8 @@
       "source_location": "L1221",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_into_into_dart",
-      "community": 114,
-      "community_name": "cli_test.dart",
+      "community": 129,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": ".into_into_dart()"
     },
     {
@@ -28454,8 +29323,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "typstdiagnostic",
-      "community": 115,
-      "community_name": "@internal",
+      "community": 130,
+      "community_name": "crate::api::typst::TypstDiagnostic",
       "norm_label": "typstdiagnostic"
     },
     {
@@ -28465,8 +29334,8 @@
       "source_location": "L1245",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstdiagnostic_into_into_dart",
-      "community": 115,
-      "community_name": "@internal",
+      "community": 130,
+      "community_name": "crate::api::typst::TypstDiagnostic",
       "norm_label": ".into_into_dart()"
     },
     {
@@ -28487,8 +29356,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_rs_typstseverity",
-      "community": 120,
-      "community_name": "GraphView",
+      "community": 131,
+      "community_name": "crate::api::typst::TypstSeverity",
       "norm_label": "typstseverity"
     },
     {
@@ -28498,8 +29367,8 @@
       "source_location": "L1266",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstseverity_into_into_dart",
-      "community": 120,
-      "community_name": "GraphView",
+      "community": 131,
+      "community_name": "crate::api::typst::TypstSeverity",
       "norm_label": ".into_into_dart()"
     },
     {
@@ -28883,8 +29752,8 @@
       "source_location": "L1549",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_renderresult_sse_encode",
-      "community": 109,
-      "community_name": "core_test.dart",
+      "community": 120,
+      "community_name": "GraphView",
       "norm_label": ".sse_encode()"
     },
     {
@@ -28894,8 +29763,8 @@
       "source_location": "L1558",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstcompileerror_sse_encode",
-      "community": 114,
-      "community_name": "cli_test.dart",
+      "community": 129,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": ".sse_encode()"
     },
     {
@@ -28905,8 +29774,8 @@
       "source_location": "L1565",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstdiagnostic_sse_encode",
-      "community": 115,
-      "community_name": "@internal",
+      "community": 130,
+      "community_name": "crate::api::typst::TypstDiagnostic",
       "norm_label": ".sse_encode()"
     },
     {
@@ -28916,8 +29785,8 @@
       "source_location": "L1576",
       "_origin": "ast",
       "id": "packages_typst_flutter_rust_src_frb_generated_crate_api_typst_typstseverity_sse_encode",
-      "community": 120,
-      "community_name": "GraphView",
+      "community": 131,
+      "community_name": "crate::api::typst::TypstSeverity",
       "norm_label": ".sse_encode()"
     },
     {
@@ -29169,8 +30038,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_controlled_editor_test",
-      "community": 13,
-      "community_name": "files.dart",
+      "community": 102,
+      "community_name": "vault_storage_test.dart",
       "norm_label": "controlled_editor_test.dart"
     },
     {
@@ -29180,8 +30049,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_controlled_editor_test_main",
-      "community": 13,
-      "community_name": "files.dart",
+      "community": 102,
+      "community_name": "vault_storage_test.dart",
       "norm_label": "main"
     },
     {
@@ -29191,8 +30060,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_graph_test",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "graph_test.dart"
     },
     {
@@ -29202,8 +30071,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_graph_test_main",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "main"
     },
     {
@@ -29213,8 +30082,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_graph_dart",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "package:tylog/graph.dart"
     },
     {
@@ -29224,8 +30093,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "renderbox",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "renderbox"
     },
     {
@@ -29235,8 +30104,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "custompaint",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "custompaint"
     },
     {
@@ -29246,8 +30115,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "interactiveviewer",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 34,
+      "community_name": "widget_test.dart",
       "norm_label": "interactiveviewer"
     },
     {
@@ -29257,8 +30126,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_markdown_article_import_test",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "markdown_article_import_test.dart"
     },
     {
@@ -29268,8 +30137,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_markdown_article_import_test_main",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "main"
     },
     {
@@ -29279,8 +30148,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_markdown_article_import_test_fakeconverter",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "fakeconverter"
     },
     {
@@ -29290,8 +30159,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_markdown_article_import_test_note",
-      "community": 25,
-      "community_name": "dart:convert",
+      "community": 125,
+      "community_name": "crate::api::typst::TypstCompileError",
       "norm_label": "_note"
     },
     {
@@ -29334,8 +30203,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_nextcloud_sync_test_hashcountingstorage",
-      "community": 27,
-      "community_name": "nextcloud_sync_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "_hashcountingstorage"
     },
     {
@@ -29345,8 +30214,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_nextcloud_sync_test_checkpointcountingstorage",
-      "community": 27,
-      "community_name": "nextcloud_sync_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "_checkpointcountingstorage"
     },
     {
@@ -29359,6 +30228,17 @@
       "community": 27,
       "community_name": "nextcloud_sync_test.dart",
       "norm_label": "_mutableremotefile"
+    },
+    {
+      "label": "_WebDavMetrics",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_webdavmetrics",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "_webdavmetrics"
     },
     {
       "label": "hashCalls",
@@ -29515,6 +30395,94 @@
       "norm_label": "modified"
     },
     {
+      "label": "propfinds",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_propfinds",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "propfinds"
+    },
+    {
+      "label": "archiveGets",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_archivegets",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "archivegets"
+    },
+    {
+      "label": "moves",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_moves",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "moves"
+    },
+    {
+      "label": "puts",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_puts",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "puts"
+    },
+    {
+      "label": "individualGets",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_individualgets",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "individualgets"
+    },
+    {
+      "label": "activeTransfers",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_activetransfers",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "activetransfers"
+    },
+    {
+      "label": "maxTransfers",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_maxtransfers",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "maxtransfers"
+    },
+    {
+      "label": "mkcols",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_mkcols",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "mkcols"
+    },
+    {
       "label": "unquotedPutEtag",
       "file_type": "code",
       "source_file": "test/nextcloud_sync_test.dart",
@@ -29537,6 +30505,61 @@
       "norm_label": "rejectdelete"
     },
     {
+      "label": "rejectMove",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_rejectmove",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "rejectmove"
+    },
+    {
+      "label": "includeChecksums",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_includechecksums",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "includechecksums"
+    },
+    {
+      "label": "serveArchive",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_servearchive",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "servearchive"
+    },
+    {
+      "label": "changeSnapshotAfterArchive",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_changesnapshotafterarchive",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "changesnapshotafterarchive"
+    },
+    {
+      "label": "transferDelay",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_transferdelay",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "transferdelay"
+    },
+    {
       "label": "root",
       "file_type": "code",
       "source_file": "test/nextcloud_sync_test.dart",
@@ -29557,6 +30580,17 @@
       "community": 27,
       "community_name": "nextcloud_sync_test.dart",
       "norm_label": "version"
+    },
+    {
+      "label": "archiveChanged",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_archivechanged",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "archivechanged"
     },
     {
       "label": "main",
@@ -29625,6 +30659,28 @@
       "norm_label": "_webdavserver"
     },
     {
+      "label": "startTransfer",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_starttransfer",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "starttransfer"
+    },
+    {
+      "label": "finishTransfer",
+      "file_type": "code",
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "_origin": "ast",
+      "id": "test_nextcloud_sync_test_finishtransfer",
+      "community": 27,
+      "community_name": "nextcloud_sync_test.dart",
+      "norm_label": "finishtransfer"
+    },
+    {
       "label": "_remoteText",
       "file_type": "code",
       "source_file": "test/nextcloud_sync_test.dart",
@@ -29667,17 +30723,6 @@
       "community": 27,
       "community_name": "nextcloud_sync_test.dart",
       "norm_label": "_mutablewebdavserver"
-    },
-    {
-      "label": "package:tylog/nextcloud_sync.dart",
-      "file_type": "code",
-      "source_file": null,
-      "source_location": null,
-      "_origin": "ast",
-      "id": "package_tylog_nextcloud_sync_dart",
-      "community": 102,
-      "community_name": "vault_storage_test.dart",
-      "norm_label": "package:tylog/nextcloud_sync.dart"
     },
     {
       "label": "HttpException",
@@ -29807,8 +30852,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_rich_editor_test",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "rich_editor_test.dart"
     },
     {
@@ -29818,8 +30863,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_rich_editor_test_source",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "_source"
     },
     {
@@ -29829,8 +30874,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_rich_editor_test_main",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "main"
     },
     {
@@ -29840,8 +30885,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "editabletext",
-      "community": 107,
-      "community_name": "fonts.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "editabletext"
     },
     {
@@ -29895,8 +30940,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_task_scheduler_test",
-      "community": 34,
-      "community_name": "widget_test.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "task_scheduler_test.dart"
     },
     {
@@ -29906,8 +30951,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_task_scheduler_test_main",
-      "community": 34,
-      "community_name": "widget_test.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "main"
     },
     {
@@ -29917,8 +30962,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "package_tylog_task_scheduler_dart",
-      "community": 34,
-      "community_name": "widget_test.dart",
+      "community": 41,
+      "community_name": "rich_editor_native_test.dart",
       "norm_label": "package:tylog/task_scheduler.dart"
     },
     {
@@ -30263,6 +31308,28 @@
       "norm_label": "package:tylog/main.dart"
     },
     {
+      "label": "LinearProgressIndicator",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "linearprogressindicator",
+      "community": 37,
+      "community_name": "graph_test.dart",
+      "norm_label": "linearprogressindicator"
+    },
+    {
+      "label": "SingleChildScrollView",
+      "file_type": "code",
+      "source_file": null,
+      "source_location": null,
+      "_origin": "ast",
+      "id": "singlechildscrollview",
+      "community": 37,
+      "community_name": "graph_test.dart",
+      "norm_label": "singlechildscrollview"
+    },
+    {
       "label": "ListTile",
       "file_type": "code",
       "source_file": null,
@@ -30302,8 +31369,8 @@
       "source_location": null,
       "_origin": "ast",
       "id": "test_workspace_controller_test_memorystorage",
-      "community": 51,
-      "community_name": "workspace_controller_test.dart",
+      "community": 134,
+      "community_name": "LocalVaultStorage",
       "norm_label": "_memorystorage"
     },
     {
@@ -33109,6 +34176,17 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "dart_convert"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
       "source_file": "integration_test/pkms_native_test.dart",
       "source_location": null,
       "weight": 1.0,
@@ -33410,6 +34488,17 @@
       "_origin": "ast",
       "source": "test_workspace_controller_test",
       "target": "dart_convert"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "dart_io"
     },
     {
       "relation": "imports",
@@ -33775,6 +34864,17 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_flutter_test_flutter_test_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
       "source_file": "integration_test/pkms_native_test.dart",
       "source_location": null,
       "weight": 1.0,
@@ -34006,6 +35106,17 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_integration_test_integration_test_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
       "source_file": "integration_test/pkms_native_test.dart",
       "source_location": null,
       "weight": 1.0,
@@ -34126,6 +35237,17 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_tylog_vault_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
       "source_file": "integration_test/pkms_native_test.dart",
       "source_location": null,
       "weight": 1.0,
@@ -34165,6 +35287,1011 @@
       "_origin": "ast",
       "source": "test_vault_test",
       "target": "package_tylog_vault_dart"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "httpserver"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_archivegets"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_bytes"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_close"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_config"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_etag"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_files"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_filler"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_fixture"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_fromtext"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_handle"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_individualdelay"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_individualgets"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_main"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_nativeremotefile"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_nativewebdavserver"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_propfinds"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_root"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_servearchive"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_server"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "integration_test_nextcloud_sync_native_test_start"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "nextcloudconfig_get"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_archive_archive_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "package_tylog_nextcloud_sync_dart"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "integration_test/nextcloud_sync_native_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "integration_test_nextcloud_sync_native_test",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/controlled_editor.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_controlled_editor",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/graph.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_graph",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/knowledge_screen.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_knowledge_screen",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/markdown_article_import.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_markdown_article_import",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/models.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_models",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/pkms_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_pkms_registry",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/rich_editor.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_rich_editor",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_scanner",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/search_index.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_search_index",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_vault_registry",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/workspace_controller.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_workspace_controller",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/graph.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_graph",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/models.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_models",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_scanner",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/search_index.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_search_index",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/validation.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_validation",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/document.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_document",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/exceptions.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_exceptions",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/files.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_files",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/fonts.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_fonts",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/rust/api/markdown_import.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_rust_api_markdown_import",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/rust/api/typst.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_rust_api_typst",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/widget_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "test_widget_test",
+      "target": "list"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/graph.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_graph",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/month_calendar.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_month_calendar",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/tylog_assets.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_tylog_assets",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_vault",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_storage.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_vault_storage_dart_lib_vault_storage",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/vault.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_vault",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/rust/frb_generated.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_rust_frb_generated",
+      "target": "static_const"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/graph.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_graph",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/markdown_article_import.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_markdown_article_import",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/tylog_assets.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_tylog_assets",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/workspace_controller.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_workspace_controller",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/bin/tylog.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_bin_tylog",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/models.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_models",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_scanner",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/search_index.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_search_index",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/bin/setup.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_bin_setup",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/lib/src/files.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_typst_flutter_lib_src_files",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/workspace_controller_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "test_workspace_controller_test",
+      "target": "map"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "nextcloudconfig_get"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "package_archive_archive_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/markdown_article_import.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_markdown_article_import",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/storage.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_storage",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/bin/setup.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_typst_flutter_bin_setup",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "package_crypto_crypto_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "package_tylog_nextcloud_sync_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/vault_registry_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_vault_registry_test",
+      "target": "package_tylog_nextcloud_sync_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/widget_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_widget_test",
+      "target": "package_tylog_nextcloud_sync_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/workspace_controller_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_workspace_controller_test",
+      "target": "package_tylog_nextcloud_sync_dart"
     },
     {
       "relation": "defines",
@@ -34941,6 +37068,17 @@
       "source_location": null,
       "weight": 1.0,
       "_origin": "ast",
+      "source": "lib_app_mobile_readingmode",
+      "target": "statefulwidget"
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
       "source": "lib_app_mobile_syncdashboardscreen",
       "target": "statefulwidget"
     },
@@ -35074,6 +37212,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile_journalfeedstate",
+      "target": "state"
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile_readingmodestate",
       "target": "state"
     },
     {
@@ -35929,6 +38078,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_base"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_bibliographysource"
     },
     {
@@ -36513,6 +38673,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_factor"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_filerefs"
     },
     {
@@ -36535,7 +38706,40 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_fontscale"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_forgetvault"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_fullscreen"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_hashcode"
     },
     {
       "relation": "defines",
@@ -36956,6 +39160,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_nightmode"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_note"
     },
     {
@@ -37034,6 +39249,17 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "lib_app_mobile_oneditmetadata"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_onexit"
     },
     {
       "relation": "defines",
@@ -37275,6 +39501,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_operator"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_outcome"
     },
     {
@@ -37309,6 +39546,17 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "lib_app_mobile_pathforlink"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_persistpreferences"
     },
     {
       "relation": "defines",
@@ -37385,6 +39633,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_progress"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_queueautosave"
     },
     {
@@ -37397,6 +39656,39 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "lib_app_mobile_queuecloudsync"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_readingmode"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_readingmodestate"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_readingtextscaler"
     },
     {
       "relation": "defines",
@@ -37616,6 +39908,28 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_scale"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_scrollcontroller"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_searchindex"
     },
     {
@@ -37683,6 +39997,39 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "lib_app_mobile_seteditormode"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_setfontscale"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_setfullscreen"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_setnightmode"
     },
     {
       "relation": "defines",
@@ -38223,6 +40570,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_app_mobile",
+      "target": "lib_app_mobile_textscalefactor"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
       "target": "lib_app_mobile_title"
     },
     {
@@ -38279,6 +40637,28 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "lib_app_mobile_typstpackagefiles"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_updateprogress"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "lib_app_mobile_updatereadingpreferences"
     },
     {
       "relation": "defines",
@@ -38566,30 +40946,6 @@
       "target": "lib_workspace_controller_workspacecontroller"
     },
     {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/app_mobile.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_app_mobile",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/app_mobile.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_app_mobile",
-      "target": "map"
-    },
-    {
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -38632,18 +40988,6 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "nextcloud_sync_dart"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/app_mobile.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_app_mobile",
-      "target": "nextcloudconfig_get"
     },
     {
       "relation": "references",
@@ -38803,6 +41147,18 @@
       "target": "scanner_dart"
     },
     {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "type_lookup",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "scrollmetricsnotification"
+    },
+    {
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -38838,6 +41194,18 @@
       "target": "syncresult_get"
     },
     {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "type_lookup",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "systemuioverlaystyle"
+    },
+    {
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -38859,6 +41227,18 @@
       "_origin": "ast",
       "source": "lib_app_mobile",
       "target": "texteditingcontroller"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_app_mobile",
+      "target": "textscaler"
     },
     {
       "relation": "references",
@@ -39214,6 +41594,28 @@
       "source_location": null,
       "weight": 1.0,
       "_origin": "ast",
+      "source": "lib_app_mobile_readingmodestate",
+      "target": "lib_app_mobile_readingmode"
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_app_mobile_readingtextscaler",
+      "target": "textscaler"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/app_mobile.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
       "source": "lib_app_mobile_syncdashboardscreenstate",
       "target": "lib_app_mobile_syncdashboardscreen"
     },
@@ -39386,427 +41788,13 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
-      "source_file": "lib/graph.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_graph",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/markdown_article_import.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_markdown_article_import",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/tylog_assets.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_tylog_assets",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/workspace_controller.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_workspace_controller",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/bin/tylog.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_bin_tylog",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/models.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_models",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_scanner",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/search_index.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_search_index",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/bin/setup.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_bin_setup",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/files.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_files",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/workspace_controller_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "test_workspace_controller_test",
-      "target": "map"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/controlled_editor.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_controlled_editor",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/graph.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_graph",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/knowledge_screen.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_knowledge_screen",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/markdown_article_import.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_markdown_article_import",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/models.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_models",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_nextcloud_sync",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/pkms_registry.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_pkms_registry",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
       "source_file": "lib/rich_editor.dart",
       "source_location": null,
       "weight": 1.0,
       "context": "variable_type",
       "_origin": "ast",
       "source": "lib_rich_editor",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_scanner",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/search_index.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_search_index",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/vault_registry.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_vault_registry",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/workspace_controller.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_workspace_controller",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/graph.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_graph",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/models.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_models",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_scanner",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/search_index.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_search_index",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/validation.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_validation",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/document.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_document",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/exceptions.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_exceptions",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/files.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_files",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/fonts.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_fonts",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/rust/api/markdown_import.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_rust_api_markdown_import",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/rust/api/typst.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_rust_api_typst",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/nextcloud_sync_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "test_nextcloud_sync_test",
-      "target": "list"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/widget_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "test_widget_test",
-      "target": "list"
+      "target": "voidcallback"
     },
     {
       "relation": "references",
@@ -39907,18 +41895,6 @@
       "_origin": "ast",
       "source": "packages_tylog_core_lib_src_scanner",
       "target": "object"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/rich_editor.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_rich_editor",
-      "target": "voidcallback"
     },
     {
       "relation": "references",
@@ -40209,6 +42185,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_vault_storage_test",
+      "target": "package_flutter_services_dart"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/widget_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_widget_test",
       "target": "package_flutter_services_dart"
     },
     {
@@ -42294,18 +44281,6 @@
       "source_file": "lib/graph.dart",
       "source_location": null,
       "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_graph",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/graph.dart",
-      "source_location": null,
-      "weight": 1.0,
       "_origin": "ast",
       "source": "lib_graph_graphviewstate",
       "target": "lib_graph_graphview"
@@ -42320,90 +44295,6 @@
       "_origin": "ast",
       "source": "lib_graph_graphpainter",
       "target": "custompainter"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/month_calendar.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_month_calendar",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_nextcloud_sync",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/tylog_assets.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_tylog_assets",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/vault.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_vault",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/vault_storage.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "lib_vault_storage_dart_lib_vault_storage",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/vault.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_vault",
-      "target": "static_const"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/lib/src/rust/frb_generated.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_typst_flutter_lib_src_rust_frb_generated",
-      "target": "static_const"
     },
     {
       "relation": "imports",
@@ -43244,17 +45135,6 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_markdown_article_import",
-      "target": "package_crypto_crypto_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/markdown_article_import.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "lib_markdown_article_import",
       "target": "package_tylog_core_models_dart"
     },
     {
@@ -43338,50 +45218,6 @@
       "_origin": "ast",
       "source": "packages_tylog_core_lib_src_storage",
       "target": "int"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/nextcloud_sync.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "lib_nextcloud_sync",
-      "target": "package_crypto_crypto_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/storage.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_storage",
-      "target": "package_crypto_crypto_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/bin/setup.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "packages_typst_flutter_bin_setup",
-      "target": "package_crypto_crypto_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/nextcloud_sync_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "test_nextcloud_sync_test",
-      "target": "package_crypto_crypto_dart"
     },
     {
       "relation": "exports",
@@ -43660,6 +45496,41 @@
       "target": "lib_month_calendar_monthcalendar"
     },
     {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "file"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "inputfilestream"
+    },
+    {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -43723,6 +45594,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_close"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_config"
     },
     {
@@ -43756,6 +45638,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_contains"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_createdat"
     },
     {
@@ -43778,7 +45671,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_cursor"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_decidesyncaction"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_decision"
     },
     {
       "relation": "defines",
@@ -43844,7 +45759,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_detectrenames"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_download"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_downloadarchive"
     },
     {
       "relation": "defines",
@@ -43899,6 +45836,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_ensuredparents"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_ensureparents"
     },
     {
@@ -43922,6 +45870,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_filecount"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_files"
     },
     {
       "relation": "defines",
@@ -43999,6 +45958,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_initialsyncmodefor"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_input"
     },
     {
       "relation": "defines",
@@ -44295,6 +46265,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_moveremote"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_name"
     },
     {
@@ -44340,6 +46321,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_null"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_open"
     },
     {
@@ -44363,6 +46355,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_path"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_pathresult"
     },
     {
       "relation": "defines",
@@ -44417,7 +46420,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_protectedlocaldeletions"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_protectfromempty"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_read"
     },
     {
       "relation": "defines",
@@ -44462,6 +46487,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_relativeremotepath"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_remotearchivesnapshot"
     },
     {
       "relation": "defines",
@@ -44627,6 +46663,28 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_renamed"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_renamedetection"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_repaired"
     },
     {
@@ -44672,6 +46730,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_safeerrormessage"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_sameremotesnapshot"
     },
     {
       "relation": "defines",
@@ -44770,7 +46839,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_shouldusearchive"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_skipped"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_source"
     },
     {
       "relation": "defines",
@@ -44840,24 +46931,26 @@
       "target": "lib_nextcloud_sync_syncconflictresolution"
     },
     {
-      "relation": "defines",
+      "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lib/nextcloud_sync.dart",
       "source_location": null,
       "weight": 1.0,
       "_origin": "ast",
+      "context": "variable_type",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_synccursor"
     },
     {
-      "relation": "defines",
+      "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lib/nextcloud_sync.dart",
       "source_location": null,
       "weight": 1.0,
       "_origin": "ast",
+      "context": "variable_type",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_syncdecision"
     },
@@ -44871,6 +46964,17 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_syncdeferred"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_syncpath"
     },
     {
       "relation": "defines",
@@ -44958,6 +47062,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_updatecursor"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_upload"
     },
     {
@@ -45035,6 +47150,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_validatedarchivefiles"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_validsynccursor"
     },
     {
@@ -45057,7 +47183,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
+      "target": "lib_nextcloud_sync_xmlsha256"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
       "target": "lib_nextcloud_sync_xmlvalue"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "package_archive_archive_io_dart"
     },
     {
       "relation": "imports",
@@ -45081,6 +47229,18 @@
       "_origin": "ast",
       "source": "lib_nextcloud_sync",
       "target": "required_bool_remotechanged_bool"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/nextcloud_sync.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_nextcloud_sync",
+      "target": "set"
     },
     {
       "relation": "references",
@@ -45233,6 +47393,141 @@
       "target": "static_duration"
     },
     {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "lib_vault_registry",
+      "target": "file"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/report.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_report",
+      "target": "set"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "source": "lib_scanner",
+      "target": "set"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/report.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_report",
+      "target": "set"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_scanner",
+      "target": "set"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/workspace_controller_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "variable_type",
+      "_origin": "ast",
+      "source": "test_workspace_controller_test",
+      "target": "set"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/report.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_report",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "lib_scanner",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/scanner.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_scanner",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/tylog_core/lib/src/storage.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_tylog_core_lib_src_storage",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/workspace_controller_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_workspace_controller_test",
+      "target": "dart_typed_data"
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "packages/typst_flutter/bin/setup.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_typst_flutter_bin_setup",
+      "target": "package_archive_archive_io_dart"
+    },
+    {
       "relation": "exports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -45286,17 +47581,6 @@
       "_origin": "ast",
       "source": "lib_platform_file_actions",
       "target": "package_open_file_open_file_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/report.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "lib_report",
-      "target": "dart_typed_data"
     },
     {
       "relation": "defines",
@@ -45374,60 +47658,6 @@
       "_origin": "ast",
       "source": "lib_report",
       "target": "package_tylog_core_report_dart"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/report.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_report",
-      "target": "set"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "lib_scanner",
-      "target": "dart_typed_data"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_scanner",
-      "target": "dart_typed_data"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/storage.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_storage",
-      "target": "dart_typed_data"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/workspace_controller_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "test_workspace_controller_test",
-      "target": "dart_typed_data"
     },
     {
       "relation": "references",
@@ -47163,17 +49393,6 @@
       "weight": 1.0,
       "context": "variable_type",
       "source": "lib_scanner",
-      "target": "set"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "lib/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "source": "lib_scanner",
       "target": "vaultindex_previous_bool"
     },
     {
@@ -47938,7 +50157,7 @@
       "context": "variable_type",
       "_origin": "ast",
       "source": "lib_vault_registry",
-      "target": "file"
+      "target": "future"
     },
     {
       "relation": "defines",
@@ -48191,6 +50410,39 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "lib_vault_registry",
+      "target": "lib_vault_registry_pendingsave"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_vault_registry",
+      "target": "lib_vault_registry_readingfontscale"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_vault_registry",
+      "target": "lib_vault_registry_readingnightmode"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_vault_registry",
       "target": "lib_vault_registry_rebaseiosvaultpath"
     },
     {
@@ -48302,6 +50554,17 @@
       "_origin": "ast",
       "source": "lib_vault_registry",
       "target": "lib_vault_registry_treeuri"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lib/vault_registry.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "lib_vault_registry",
+      "target": "lib_vault_registry_updatereadingpreferences"
     },
     {
       "relation": "defines",
@@ -51895,18 +54158,6 @@
       "target": "packages_tylog_core_lib_src_report_writetext"
     },
     {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/report.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_report",
-      "target": "set"
-    },
-    {
       "relation": "imports",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -51916,30 +54167,6 @@
       "_origin": "ast",
       "source": "packages_tylog_core_lib_src_report",
       "target": "storage_dart"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/tylog_core/lib/src/scanner.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "packages_tylog_core_lib_src_scanner",
-      "target": "set"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/workspace_controller_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "context": "variable_type",
-      "_origin": "ast",
-      "source": "test_workspace_controller_test",
-      "target": "set"
     },
     {
       "relation": "imports",
@@ -55823,17 +58050,6 @@
       "_origin": "ast",
       "source": "packages_typst_flutter_bin_setup",
       "target": "dart_isolate"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "packages/typst_flutter/bin/setup.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "packages_typst_flutter_bin_setup",
-      "target": "package_archive_archive_io_dart"
     },
     {
       "relation": "imports",
@@ -67044,7 +69260,7 @@
       "context": "generic_arg",
       "_origin": "ast",
       "source": "packages_typst_flutter_rust_src_api_typst_simpleworld_today",
-      "target": "duration",
+      "target": "packages_typst_flutter_rust_src_api_typst_rs_datetime",
       "confidence_score": 1.0
     },
     {
@@ -67056,7 +69272,7 @@
       "context": "generic_arg",
       "_origin": "ast",
       "source": "packages_typst_flutter_rust_src_api_typst_simpleworld_today",
-      "target": "packages_typst_flutter_rust_src_api_typst_rs_datetime",
+      "target": "packages_typst_flutter_rust_src_api_typst_rs_duration",
       "confidence_score": 1.0
     },
     {
@@ -73127,17 +75343,6 @@
       "target": "httpexception"
     },
     {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/nextcloud_sync_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "test_nextcloud_sync_test",
-      "target": "package_tylog_nextcloud_sync_dart"
-    },
-    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -73158,7 +75363,51 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_activetransfers"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_archivechanged"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_archivegets"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_bytes"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_changesnapshotafterarchive"
     },
     {
       "relation": "defines",
@@ -73213,6 +75462,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_finishtransfer"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_hash"
     },
     {
@@ -73246,6 +75506,28 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_includechecksums"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_individualgets"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_interrupted"
     },
     {
@@ -73268,6 +75550,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_maxtransfers"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_missingwebdavserver"
     },
     {
@@ -73279,7 +75572,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_mkcols"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_modified"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_moves"
     },
     {
       "relation": "defines",
@@ -73312,6 +75627,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_propfinds"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_propfindstalled"
     },
     {
@@ -73334,6 +75660,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_puts"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_putstatus"
     },
     {
@@ -73346,6 +75683,17 @@
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_rejectdelete"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_rejectmove"
     },
     {
       "relation": "defines",
@@ -73411,6 +75759,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_servearchive"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_server"
     },
     {
@@ -73422,7 +75781,29 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_starttransfer"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_traceevents"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_transferdelay"
     },
     {
       "relation": "defines",
@@ -73466,6 +75847,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
+      "target": "test_nextcloud_sync_test_webdavmetrics"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/nextcloud_sync_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "test_nextcloud_sync_test",
       "target": "test_nextcloud_sync_test_webdavserver"
     },
     {
@@ -73490,28 +75882,6 @@
       "_origin": "ast",
       "source": "test_nextcloud_sync_test",
       "target": "timeoutexception"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/vault_registry_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "test_vault_registry_test",
-      "target": "package_tylog_nextcloud_sync_dart"
-    },
-    {
-      "relation": "imports",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "test/workspace_controller_test.dart",
-      "source_location": null,
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "test_workspace_controller_test",
-      "target": "package_tylog_nextcloud_sync_dart"
     },
     {
       "relation": "imports",
@@ -73922,6 +76292,18 @@
       "context": "type_lookup",
       "_origin": "ast",
       "source": "test_widget_test",
+      "target": "linearprogressindicator"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/widget_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "type_lookup",
+      "_origin": "ast",
+      "source": "test_widget_test",
       "target": "listtile"
     },
     {
@@ -73956,6 +76338,18 @@
       "_origin": "ast",
       "source": "test_widget_test",
       "target": "package_tylog_main_dart"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "test/widget_test.dart",
+      "source_location": null,
+      "weight": 1.0,
+      "context": "type_lookup",
+      "_origin": "ast",
+      "source": "test_widget_test",
+      "target": "singlechildscrollview"
     },
     {
       "relation": "defines",
@@ -74951,5 +77345,5 @@
       "source_file": "PLAN.md"
     }
   ],
-  "built_at_commit": "21f407b56aacb1367282ce2dbb881297c847411c"
+  "built_at_commit": "15b2bf29138b40c7ac044b3493d1be609be8a851"
 }

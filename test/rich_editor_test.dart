@@ -305,7 +305,7 @@ void main() {
     expect(saved.last, '= abc');
   });
 
-  test('block magic leaves a writable paragraph and correct caret', () {
+  test('task magic places the caret at the end of the task text', () {
     final saved = <String>[];
     final controller = TyLogEditingController(
       source: 'seed\n',
@@ -325,18 +325,168 @@ void main() {
         value: 'Write report',
       ),
     );
-    expect(controller.selection.baseOffset, controller.text.length);
+    final caret =
+        controller.text.indexOf('Write report') + 'Write report'.length;
+    // The task renders as an editable checklist line now, so the caret sits
+    // right after its text — not at the very end of the document (there is
+    // still a trailing empty paragraph after it).
+    expect(controller.selection.baseOffset, caret);
+    expect(controller.text, contains('☐ Write report'));
     controller.value = TextEditingValue(
-      text: '${controller.text}x',
-      selection: TextSelection.collapsed(offset: controller.text.length + 1),
-      composing: TextRange(
-        start: controller.text.length,
-        end: controller.text.length + 1,
-      ),
+      text: controller.text.replaceRange(caret, caret, 'x'),
+      selection: TextSelection.collapsed(offset: caret + 1),
+      composing: TextRange(start: caret, end: caret + 1),
     );
     controller.value = controller.value.copyWith(composing: TextRange.empty);
 
     expect(saved.last, startsWith('seed\n\n#tylog.task('));
+    expect(saved.last, contains('text: "Write reportx"'));
+  });
+
+  // These four tests exercise the generic protected-chip boundary machinery
+  // in insertNewline/_handleValue. They used to insert a task to get a chip
+  // to poke at; tasks now render as editable checklist lines instead, so a
+  // table (still a protected block) stands in as the chip.
+  test('Enter at a protected block trailing boundary opens a paragraph', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.applyMagic(const MagicRequest(action: MagicAction.table));
+
+    // Mobile places the caret here: just after the chip, before the gap.
+    final boundary = controller.text.indexOf('￼') + 1;
+    controller.selection = TextSelection.collapsed(offset: boundary);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(boundary, boundary, '\n'),
+      selection: TextSelection.collapsed(offset: boundary + 1),
+    );
+
+    expect(controller.selection.baseOffset, boundary + 2);
+    final caret = controller.selection.baseOffset;
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(caret, caret, 'x'),
+      selection: TextSelection.collapsed(offset: caret + 1),
+    );
+    expect(controller.text, contains('￼\n\nx'));
+    expect(saved.last, contains('#table('));
+  });
+
+  test('typing at a protected block trailing boundary starts a paragraph', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.applyMagic(const MagicRequest(action: MagicAction.table));
+
+    final boundary = controller.text.indexOf('￼') + 1;
+    controller.selection = TextSelection.collapsed(offset: boundary);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(boundary, boundary, 'x'),
+      selection: TextSelection.collapsed(offset: boundary + 1),
+    );
+
+    expect(controller.text, contains('￼\n\nx'));
+    expect(controller.selection.baseOffset, boundary + 3);
+    expect(saved.last, contains('#table('));
+  });
+
+  test('typing at a protected block leading boundary lands above it', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.applyMagic(const MagicRequest(action: MagicAction.table));
+
+    // Tapping the chip line places the caret just before the chip.
+    final leading = controller.text.indexOf('￼');
+    controller.selection = TextSelection.collapsed(offset: leading);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(leading, leading, 'x'),
+      selection: TextSelection.collapsed(offset: leading + 1),
+    );
+
+    expect(controller.text, contains('x\n\n￼'));
+    expect(controller.selection.baseOffset, leading + 1);
+    expect(saved.last, contains('#table('));
+  });
+
+  test('Enter at a protected block leading boundary opens a line above', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.applyMagic(const MagicRequest(action: MagicAction.table));
+
+    final leading = controller.text.indexOf('￼');
+    controller.selection = TextSelection.collapsed(offset: leading);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(leading, leading, '\n'),
+      selection: TextSelection.collapsed(offset: leading + 1),
+    );
+
+    // Caret stays with the chip, a writable blank line sits above it.
+    expect(controller.text, contains('\n\n￼'));
+    expect(controller.selection.baseOffset, leading + 2);
+    expect(saved.last, contains('#table('));
+  });
+
+  test('typing after loadSource ending in a protected block appends a paragraph', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.applyMagic(const MagicRequest(action: MagicAction.table));
+
+    // Reload a note whose source ends with the table: the trailing empty
+    // paragraph is dropped on reparse and the caret lands on the chip's end.
+    controller.loadSource(saved.last.trimRight());
+    expect(controller.text, endsWith('￼'));
+    expect(controller.selection.baseOffset, controller.text.length);
+
+    final caret = controller.selection.baseOffset;
+    controller.value = TextEditingValue(
+      text: '${controller.text}x',
+      selection: TextSelection.collapsed(offset: caret + 1),
+    );
+
+    expect(controller.text, endsWith('￼\n\nx'));
+    expect(saved.last, contains('#table('));
     expect(saved.last, endsWith('\n\nx'));
   });
 
@@ -535,20 +685,474 @@ void main() {
     );
   });
 
-  test('toggleTaskSource round-trips status in both directions', () {
-    const noStatus =
-        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)';
-    final done = toggleTaskSource(noStatus);
-    expect(done, contains('status: "done"'));
-    expect(done, contains('id: "t1"'));
-    expect(toggleTaskSource(done), contains('status: "todo"'));
+  test(
+    'a full-fat task renders as an editable checklist line, byte-identical',
+    () {
+      const todoSource =
+          '#tylog.task(\n'
+          '  id: "t1",\n'
+          '  text: "Ship it",\n'
+          '  due: "2026-07-20",\n'
+          '  project: "Launch",\n'
+          '  priority: "high",\n'
+          '  recurrence: "weekly",\n'
+          '  properties: (owner: "alex"),\n'
+          ')';
+      final controller = TyLogEditingController(
+        source: todoSource,
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      expect(controller.text, '☐ Ship it');
+      expect(controller.text, isNot(contains('￼')));
+      expect(TyLogDocument.parse(todoSource).toSource(), todoSource);
+
+      const doneSource =
+          '#tylog.task(\n'
+          '  id: "t1",\n'
+          '  text: "Ship it",\n'
+          '  status: "done",\n'
+          '  due: "2026-07-20",\n'
+          '  project: "Launch",\n'
+          '  priority: "high",\n'
+          '  recurrence: "weekly",\n'
+          '  properties: (owner: "alex"),\n'
+          ')';
+      expect(TyLogDocument.parse(doneSource).visibleText, '☑ Ship it');
+    },
+  );
+
+  test('typing at the end of a task line changes only the text field', () {
+    const source =
+        '#tylog.task(\n'
+        '  id: "t1",\n'
+        '  text: "Ship it",\n'
+        '  due: "2026-07-20",\n'
+        '  project: "Launch",\n'
+        ')';
+    String? saved;
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.value = TextEditingValue(
+      text: '${controller.text} today',
+      selection: TextSelection.collapsed(offset: controller.text.length + 6),
+    );
+
+    expect(
+      saved,
+      source.replaceFirst('text: "Ship it"', 'text: "Ship it today"'),
+    );
   });
 
-  testWidgets('task checkbox toggles and writes status back to source', (
+  test('Enter at the end of a task line opens a paragraph beneath it', () {
+    const source =
+        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)';
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.value = TextEditingValue(
+      text: '${controller.text}\n',
+      selection: TextSelection.collapsed(offset: controller.text.length + 1),
+    );
+
+    expect(controller.text, '☐ Ship it\n\n');
+    expect(controller.selection.baseOffset, controller.text.length);
+    expect(saved.last, contains('#tylog.task('));
+
+    controller.value = TextEditingValue(
+      text: '${controller.text}note',
+      selection: TextSelection.collapsed(offset: controller.text.length + 4),
+    );
+    expect(controller.text, '☐ Ship it\n\nnote');
+    expect(saved.last, contains('#tylog.task('));
+    expect(saved.last, endsWith('\n\nnote'));
+  });
+
+  test('backspace at task content start converts the line to a paragraph', () {
+    const source =
+        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)';
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    // Caret right after "☐ "; backspace removes the char at lineStart + 1
+    // (the space), which is exactly what a real backspace there produces.
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(1, 2, ''),
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+
+    expect(controller.text, 'Ship it');
+    expect(saved.last, isNot(contains('#tylog.task')));
+  });
+
+  test('Enter on an empty task line converts it to a paragraph', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.applyMagic(
+      const MagicRequest(action: MagicAction.task, id: 'task-1', value: ''),
+    );
+    // insertBlock always leaves a trailing empty paragraph after the task.
+    expect(controller.text, '☐ \n\n');
+    expect(controller.selection.baseOffset, 2);
+
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(2, 2, '\n'),
+      selection: const TextSelection.collapsed(offset: 3),
+    );
+
+    expect(saved.last, isNot(contains('#tylog.task')));
+  });
+
+  test('tapping the checkbox toggles status and preserves other fields', () {
+    const source =
+        '#tylog.task(\n'
+        '  id: "t1",\n'
+        '  text: "Ship it",\n'
+        '  due: "2026-07-20",\n'
+        '  project: "Launch",\n'
+        ')';
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = const TextSelection.collapsed(offset: 0);
+    controller.handleEditorTap();
+
+    expect(controller.text, startsWith('☑'));
+    expect(controller.selection.baseOffset, 2);
+    expect(saved.last, contains('status: "done"'));
+    expect(saved.last, contains('text: "Ship it"'));
+    expect(saved.last, contains('due: "2026-07-20"'));
+    expect(saved.last, contains('project: "Launch"'));
+
+    controller.selection = const TextSelection.collapsed(offset: 0);
+    controller.handleEditorTap();
+    expect(controller.text, startsWith('☐'));
+    expect(saved.last, contains('status: "todo"'));
+
+    // Stale-source case: edit the text first, then toggle. Both the new
+    // text and the new status must land in the saved source.
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    controller.value = TextEditingValue(
+      text: '${controller.text} today',
+      selection: TextSelection.collapsed(offset: controller.text.length + 6),
+    );
+    expect(saved.last, contains('text: "Ship it today"'));
+    // Status was explicitly written back to "todo" by the previous toggle;
+    // a plain text edit must leave it untouched.
+    expect(saved.last, contains('status: "todo"'));
+
+    controller.selection = const TextSelection.collapsed(offset: 0);
+    controller.handleEditorTap();
+    expect(saved.last, contains('text: "Ship it today"'));
+    expect(saved.last, contains('status: "done"'));
+  });
+
+  test('typing between the glyph and space is rejected', () {
+    const source =
+        '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)';
+    final errors = <Object>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (_) {},
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final before = controller.text;
+
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(1, 1, 'x'),
+      selection: const TextSelection.collapsed(offset: 2),
+    );
+
+    expect(errors, isNotEmpty);
+    expect(controller.text, before);
+  });
+
+  test('editing one task leaves a sibling task byte-identical', () {
+    const source =
+        'Intro\n\n'
+        '#tylog.task(id: "t1", text: "First", due: none, project: none)\n\n'
+        'Middle\n\n'
+        '#tylog.task(id: "t2", text: "Second", due: none, project: none)\n';
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    final target = controller.text.lastIndexOf('Second') + 'Second'.length;
+    controller.selection = TextSelection.collapsed(offset: target);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(target, target, '!'),
+      selection: TextSelection.collapsed(offset: target + 1),
+    );
+
+    expect(saved.last, contains('#tylog.task(id: "t1", text: "First"'));
+    expect(saved.last, contains('text: "Second!"'));
+  });
+
+  test(
+    'quotes and backslashes in task text round-trip through save and load',
+    () {
+      const source =
+          '#tylog.task(id: "t1", text: "Plain", due: none, project: none)';
+      String? saved;
+      final controller = TyLogEditingController(
+        source: source,
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      const newText = 'Say "hi" \\ ok';
+      controller.value = TextEditingValue(
+        text: '☐ $newText',
+        selection: TextSelection.collapsed(offset: 2 + newText.length),
+      );
+
+      expect(saved, isNotNull);
+      final reloaded = TyLogEditingController(
+        source: saved!,
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(reloaded.dispose);
+      expect(reloaded.text, '☐ $newText');
+    },
+  );
+
+  test('applyMagic(task) places the caret at the end of the task text', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.applyMagic(
+      const MagicRequest(
+        action: MagicAction.task,
+        id: 'task-1',
+        value: 'Write report',
+      ),
+    );
+
+    expect(controller.text, contains('☐ Write report'));
+    final caret =
+        controller.text.indexOf('Write report') + 'Write report'.length;
+    expect(controller.selection.baseOffset, caret);
+
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(caret, caret, '!'),
+      selection: TextSelection.collapsed(offset: caret + 1),
+    );
+    expect(controller.text, contains('Write report!'));
+    expect(saved.last, contains('#tylog.task('));
+  });
+
+  test('a structurally malformed task stays a protected chip', () {
+    const source = '#tylog.task(id: someVar, text: myText)';
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    expect(controller.text, '￼');
+    expect(TyLogDocument.parse(source).toSource(), source);
+  });
+
+  const fullFatTaskAndNote =
+      '#tylog.task(\n'
+      '  id: "t1",\n'
+      '  text: "Ship it",\n'
+      '  due: "2026-07-20",\n'
+      '  project: "Launch",\n'
+      '  priority: "high",\n'
+      '  recurrence: "weekly",\n'
+      '  properties: (owner: "alex"),\n'
+      ')\n\n'
+      'Notes here';
+
+  test(
+    'pasting text with a blank line into a task line is refused and the '
+    'task is preserved',
+    () {
+      final errors = <Object>[];
+      final controller = TyLogEditingController(
+        source: fullFatTaskAndNote,
+        onSourceChanged: (_) {},
+        onError: errors.add,
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final before = controller.text;
+      expect(before, '☐ Ship it\n\nNotes here');
+      final caret = before.indexOf('Ship');
+
+      controller.selection = TextSelection.collapsed(offset: caret);
+      controller.value = TextEditingValue(
+        text: before.replaceRange(caret, caret, 'X\n\nY'),
+        selection: TextSelection.collapsed(offset: caret + 4),
+      );
+
+      expect(errors, isNotEmpty);
+      expect(controller.text, before);
+      // Task bytes, including recurrence/properties, survive intact.
+      expect(controller.document.toSource(), fullFatTaskAndNote);
+    },
+  );
+
+  test(
+    'a selection spanning from mid-task-text into the next paragraph is '
+    'refused',
+    () {
+      final errors = <Object>[];
+      final controller = TyLogEditingController(
+        source: fullFatTaskAndNote,
+        onSourceChanged: (_) {},
+        onError: errors.add,
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final before = controller.text;
+      final start = before.indexOf('Ship');
+      final end = before.indexOf('Notes') + 2;
+
+      controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+      controller.value = TextEditingValue(
+        text: before.replaceRange(start, end, 'Z'),
+        selection: TextSelection.collapsed(offset: start + 1),
+      );
+
+      expect(errors, isNotEmpty);
+      expect(controller.text, before);
+      expect(controller.document.toSource(), fullFatTaskAndNote);
+    },
+  );
+
+  test(
+    'pasting a blank-line paste at the exact end of a task line is refused '
+    'and the task is preserved',
+    () {
+      final errors = <Object>[];
+      final saved = <String>[];
+      final controller = TyLogEditingController(
+        source: fullFatTaskAndNote,
+        onSourceChanged: saved.add,
+        onError: errors.add,
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final before = controller.text;
+      // Caret exactly at the task line's trailing boundary (range.end),
+      // the ordinary end-of-task caret position.
+      final caret = before.indexOf('\n\n');
+      expect(before.substring(0, caret), '☐ Ship it');
+
+      controller.selection = TextSelection.collapsed(offset: caret);
+      controller.value = TextEditingValue(
+        text: before.replaceRange(caret, caret, 'Foo\n\nBar'),
+        selection: TextSelection.collapsed(offset: caret + 8),
+      );
+
+      expect(errors, isNotEmpty);
+      expect(controller.text, before);
+      expect(controller.document.toSource(), fullFatTaskAndNote);
+      if (saved.isNotEmpty) {
+        expect(saved.last, contains('recurrence: "weekly"'));
+        expect(saved.last, contains('properties: (owner: "alex")'));
+        expect(saved.last, contains('#tylog.task('));
+      }
+    },
+  );
+
+  test(
+    'deleting a whole task line (through into the next paragraph) is '
+    'allowed and drops the task from the source',
+    () {
+      final saved = <String>[];
+      final controller = TyLogEditingController(
+        source: fullFatTaskAndNote,
+        onSourceChanged: saved.add,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final before = controller.text;
+      // Covers the entire task line's range plus the first char of the
+      // following paragraph ("N" of "Notes").
+      const start = 0;
+      final end = before.indexOf('Notes') + 1;
+
+      controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+      controller.value = TextEditingValue(
+        text: before.replaceRange(start, end, ''),
+        selection: const TextSelection.collapsed(offset: start),
+      );
+
+      expect(saved, isNotEmpty);
+      expect(saved.last, isNot(contains('#tylog.task(')));
+    },
+  );
+
+  testWidgets('tapping the task checkbox glyph toggles its status', (
     tester,
   ) async {
     const source =
-        'Intro paragraph\n\n'
         '#tylog.task(id: "t1", text: "Ship it", due: none, project: none)\n';
     String? saved;
     final controller = TyLogEditingController(
@@ -566,16 +1170,90 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pump();
 
-    expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
-    await tester.tap(find.byKey(const Key('task-checkbox')));
+    final editableState = tester.state<EditableTextState>(
+      find.byType(EditableText),
+    );
+    final renderEditable = editableState.renderEditable;
+    final caretRect = renderEditable.getLocalRectForCaret(
+      const TextPosition(offset: 0),
+    );
+    await tester.tapAt(renderEditable.localToGlobal(caretRect.center));
     await tester.pump();
 
     expect(saved, contains('status: "done"'));
-    expect(find.byIcon(Icons.check_box), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('task-checkbox')));
-    await tester.pump();
-    expect(saved, contains('status: "todo"'));
   });
+
+  testWidgets(
+    'typing @Fer and tapping a suggestion inserts a byte-identical mention',
+    (tester) async {
+      String? saved;
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      final queries = <String>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (query) async {
+                queries.add(query);
+                return const [
+                  MentionSuggestion(
+                    id: 'FernandoMarson',
+                    title: 'FernandoMarson',
+                  ),
+                ];
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('rich-journal-editor')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('rich-journal-editor')),
+        '@Fer',
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump();
+
+      expect(queries, contains('Fer'));
+      expect(
+        find.byKey(const Key('autocomplete-mention-FernandoMarson')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('autocomplete-mention-FernandoMarson')),
+      );
+      await tester.pumpAndSettle();
+
+      final expectedSnippet = applyMagicEdit(
+        '@Fer',
+        const TextSelection(baseOffset: 0, extentOffset: 4),
+        const MagicRequest(
+          action: MagicAction.mention,
+          id: 'FernandoMarson',
+          value: 'FernandoMarson',
+        ),
+      ).text;
+      expect(expectedSnippet, contains('#tylog.ref-note("FernandoMarson")'));
+      expect(saved, contains(expectedSnippet));
+      expect(
+        find.byKey(const Key('autocomplete-mention-list')),
+        findsNothing,
+      );
+    },
+  );
 }

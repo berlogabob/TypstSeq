@@ -175,6 +175,30 @@ class Vault {
     return id;
   }
 
+  Future<String> nextTaskId(String text, {DateTime? now}) async {
+    final instant = now ?? DateTime.now();
+    final stamp =
+        '${instant.year.toString().padLeft(4, '0')}'
+        '${instant.month.toString().padLeft(2, '0')}'
+        '${instant.day.toString().padLeft(2, '0')}-'
+        '${instant.hour.toString().padLeft(2, '0')}'
+        '${instant.minute.toString().padLeft(2, '0')}'
+        '${instant.second.toString().padLeft(2, '0')}';
+    final slug = text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    final base = slug.isEmpty ? stamp : '$stamp-$slug';
+    final ids = (await loadIndex())?.tasks.map((task) => task.id).toSet() ?? {};
+    var id = base;
+    var suffix = 2;
+    while (ids.contains(id)) {
+      id = '$base-${suffix++}';
+    }
+    return id;
+  }
+
   Future<void> saveNote(String path, String text) async {
     if (path.endsWith('.typ') && text.trim().isEmpty) {
       throw ArgumentError('A TyLog note cannot be empty');

@@ -1,13 +1,50 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:tylog_core/scanner.dart';
 
 import 'controlled_editor.dart';
+import 'editor_autocomplete.dart';
+
+export 'editor_autocomplete.dart' show MentionSuggestion;
 
 const _object = '\uFFFC';
 
-enum TyLogBlockStyle { paragraph, heading, bulletList, numberedList, protected }
+/// Kill-switch for the inline "@"/"/" autocomplete popup. Flip to false to
+/// instantly disable it without touching call sites, if it ever
+/// destabilizes editing.
+const bool kEnableInlineAutocomplete = true;
+
+/// Icon and label shown for each [MagicAction] \u2014 the single source of truth
+/// reused by both the Magic bottom-sheet menu (`app_mobile.dart`) and the
+/// inline "/" command palette.
+const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
+  MagicAction.noteLink: (Icons.link, 'Note link'),
+  MagicAction.mention: (Icons.alternate_email, 'Mention'),
+  MagicAction.tag: (Icons.tag, 'Tag'),
+  MagicAction.task: (Icons.task_alt, 'Task'),
+  MagicAction.date: (Icons.event, 'Date'),
+  MagicAction.project: (Icons.work_outline, 'Project'),
+  MagicAction.citation: (Icons.format_quote, 'Citation'),
+  MagicAction.attachment: (Icons.attach_file, 'Attachment'),
+  MagicAction.heading: (Icons.title, 'Heading'),
+  MagicAction.bold: (Icons.format_bold, 'Bold'),
+  MagicAction.italic: (Icons.format_italic, 'Italic'),
+  MagicAction.table: (Icons.table_chart, 'Table'),
+  MagicAction.equation: (Icons.functions, 'Equation'),
+  MagicAction.report: (Icons.picture_as_pdf, 'Report'),
+};
+
+enum TyLogBlockStyle {
+  paragraph,
+  heading,
+  bulletList,
+  numberedList,
+  protected,
+  taskLine,
+}
 
 class TyLogInlineStyle {
   const TyLogInlineStyle({this.bold = false, this.italic = false});
@@ -230,6 +267,16 @@ class TyLogDocument {
         0,
         block.visibleText.length,
       );
+      if (block.style == TyLogBlockStyle.taskLine) {
+        if (replacement.contains('\n')) {
+          throw const FormatException('Task text is a single line.');
+        }
+        if (localStart < 2 && localEnd > 0) {
+          throw const FormatException(
+            'The task checkbox is not editable text.',
+          );
+        }
+      }
       _replaceInBlock(
         block,
         localStart,
@@ -240,7 +287,44 @@ class TyLogDocument {
       return;
     }
 
+    _guardTaskLineIntegrity(start, end, replacement, startHit, endHit);
     _replaceAcrossBlocks(start, end, replacement, startHit, endHit);
+  }
+
+  /// `_replaceAcrossBlocks` rebuilds every block it touches as plain
+  /// paragraphs, which would silently drop a taskLine's `#tylog.task(...)`
+  /// call (recurrence, properties, id, ...) even though the visible text
+  /// still matches. Refuse any multi-block/`\n\n`-containing edit that
+  /// touches a task line unless it is a pure deletion that removes the
+  /// whole task (the user deliberately deleted the line).
+  ///
+  /// The guard must inspect the same inclusive block-index span
+  /// `_replaceAcrossBlocks` will rebuild — `_blockAt(..., preferPrevious:
+  /// true)` resolves an offset sitting exactly on a task's trailing
+  /// boundary TO the task, so a plain character-interval overlap check
+  /// would miss a zero-width insertion at `range.end` that still dissolves
+  /// the task.
+  void _guardTaskLineIntegrity(
+    int start,
+    int end,
+    String replacement,
+    _BlockRange? startHit,
+    _BlockRange? endHit,
+  ) {
+    final isPureDeletion = replacement.isEmpty;
+    final first = startHit?.index ?? 0;
+    final last = endHit?.index ?? blocks.length - 1;
+    final ranges = _ranges;
+    for (var i = first; i <= last && i < blocks.length; i++) {
+      if (blocks[i].style != TyLogBlockStyle.taskLine) continue;
+      final range = ranges[i];
+      final fullyCovered = range.start >= start && range.end <= end;
+      if (!isPureDeletion || !fullyCovered) {
+        throw const FormatException(
+          'Edit would destroy a task; delete the whole task line instead.',
+        );
+      }
+    }
   }
 
   void _replaceAcrossBlocks(
@@ -328,6 +412,13 @@ class TyLogDocument {
       line.removeRange(0, 2);
       removedPrefix = 2;
     }
+    if (block.style == TyLogBlockStyle.taskLine &&
+        line.length >= 2 &&
+        (line[0].code == 0x2610 || line[0].code == 0x2611) &&
+        line[1].code == 32) {
+      line.removeRange(0, 2);
+      removedPrefix = 2;
+    }
     if (targetStyle == TyLogBlockStyle.bulletList) {
       final inherited = line.isEmpty
           ? const TyLogInlineStyle()
@@ -408,26 +499,28 @@ class TyLogDocument {
       throw const FormatException('Magic block must contain one Typst block.');
     }
     final replacement = _parseBlock(parsed.blocks.single, '', blocks.length);
+    final isTask = replacement.style == TyLogBlockStyle.taskLine;
     if (blocks.isEmpty) {
       replacement.separator = '\n\n';
       blocks = [replacement, _newParagraph('', 1, separator: '')];
-      return 3;
+      return isTask ? replacement.visibleText.length : 3;
     }
     replace(selection.start, selection.end, '');
     final hit = _blockAt(selection.start, preferPrevious: true);
     if (hit == null) {
       replacement.separator = '\n\n';
+      final replacementIndex = blocks.length;
       blocks.addAll([
         replacement,
         _newParagraph('', blocks.length + 1, separator: ''),
       ]);
-      return _ranges.last.start;
+      return isTask ? _ranges[replacementIndex].end : _ranges.last.start;
     }
     final current = blocks[hit.index];
     if (!current.isProtected && current.visibleText.isEmpty) {
       replacement.separator = '\n\n';
       blocks.insert(hit.index, replacement);
-      return _ranges[hit.index + 1].start;
+      return isTask ? _ranges[hit.index].end : _ranges[hit.index + 1].start;
     }
     final tailSeparator = current.separator;
     replacement.separator = '\n\n';
@@ -456,13 +549,63 @@ class TyLogDocument {
       );
       replacement.separator = '\n\n';
     }
-    return _ranges[next].start;
+    return isTask ? _ranges[hit.index + 1].end : _ranges[next].start;
   }
 
   int insertNewline(int offset) {
     final hit = _blockAt(offset, preferPrevious: true);
-    if (hit == null || blocks[hit.index].isProtected) return offset;
+    if (hit == null) return offset;
+    if (blocks[hit.index].isProtected) {
+      // At the chip's edges, Enter opens a writable paragraph next to the
+      // protected node; anywhere on the chip itself it is still refused.
+      if (offset == hit.end) {
+        final protected = blocks[hit.index];
+        blocks.insert(
+          hit.index + 1,
+          _newParagraph(
+            '',
+            DateTime.now().microsecondsSinceEpoch,
+            separator: protected.separator,
+          ),
+        );
+        protected.separator = '\n\n';
+        return _ranges[hit.index + 1].start;
+      }
+      if (offset == hit.start) {
+        blocks.insert(
+          hit.index,
+          _newParagraph(
+            '',
+            DateTime.now().microsecondsSinceEpoch,
+            separator: '\n\n',
+          ),
+        );
+        // Caret stays with the chip; the blank line sits above it.
+        return _ranges[hit.index + 1].start;
+      }
+      return offset;
+    }
     final block = blocks[hit.index];
+    if (block.style == TyLogBlockStyle.taskLine) {
+      final content = block.visibleText.length > 2
+          ? block.visibleText.substring(2)
+          : '';
+      if (content.isEmpty) {
+        return setBlockStyle(offset, TyLogBlockStyle.paragraph);
+      }
+      // Same body as the protected trailing-edge branch above: a task line
+      // never splits, Enter anywhere in it opens a fresh paragraph after it.
+      blocks.insert(
+        hit.index + 1,
+        _newParagraph(
+          '',
+          DateTime.now().microsecondsSinceEpoch,
+          separator: block.separator,
+        ),
+      );
+      block.separator = '\n\n';
+      return _ranges[hit.index + 1].start;
+    }
     if (block.style == TyLogBlockStyle.bulletList) {
       final units = _units(block.parts);
       final local = (offset - hit.start).clamp(0, units.length);
@@ -668,6 +811,68 @@ class TyLogEditingController extends TextEditingController {
         _redo.clear();
         onSourceChanged(source);
         return;
+      }
+      if (change.replacement.isEmpty && change.oldEnd - change.start == 1) {
+        // Backspace at the start of a task's text (deleting inside its 2-char
+        // "☐ "/"☑ " prefix) demotes the whole line to a plain paragraph
+        // rather than mangling the checkbox glyph.
+        final hit = document._blockAt(change.start, preferPrevious: true);
+        if (hit != null &&
+            document.blocks[hit.index].style == TyLogBlockStyle.taskLine &&
+            change.start - hit.start >= 0 &&
+            change.oldEnd - hit.start <= 2) {
+          final offset = document.setBlockStyle(
+            hit.start + 2,
+            TyLogBlockStyle.paragraph,
+          );
+          _updating = true;
+          value = TextEditingValue(
+            text: document.visibleText,
+            selection: TextSelection.collapsed(offset: offset),
+          );
+          _lastValue = value;
+          _updating = false;
+          final source = document.toSource();
+          _addUndo(_compositionStart ?? before);
+          _compositionStart = null;
+          _redo.clear();
+          onSourceChanged(source);
+          return;
+        }
+      }
+      if (change.start == change.oldEnd && change.replacement.isNotEmpty) {
+        final hit = document._blockAt(change.start, preferPrevious: true);
+        if (hit != null &&
+            document.blocks[hit.index].isProtected &&
+            (change.start == hit.end || change.start == hit.start)) {
+          // Typing at the chip's edge: open a paragraph next to the protected
+          // node and put the typed text there (before the chip at its leading
+          // edge, after it at its trailing edge).
+          final leading = change.start == hit.start;
+          final opened = document.insertNewline(change.start);
+          final start = leading ? change.start : opened;
+          document.replace(
+            start,
+            start,
+            change.replacement,
+            insertionStyle: _typingStyle,
+          );
+          _updating = true;
+          value = TextEditingValue(
+            text: document.visibleText,
+            selection: TextSelection.collapsed(
+              offset: start + change.replacement.length,
+            ),
+          );
+          _lastValue = value;
+          _updating = false;
+          final source = document.toSource();
+          _addUndo(_compositionStart ?? before);
+          _compositionStart = null;
+          _redo.clear();
+          onSourceChanged(source);
+          return;
+        }
       }
       document.replace(
         change.start,
@@ -906,8 +1111,29 @@ class TyLogEditingController extends TextEditingController {
     _updating = false;
   });
 
-  void toggleTask(String id) =>
-      replaceProtected(id, toggleTaskSource(document.sourceFor(id)));
+  void toggleTask(String id) {
+    final block = document.blocks.firstWhere((block) => block.id == id);
+    final base = block.dirty ? _serializeBlock(block) : block.originalSource;
+    final taskId = taskField(base, 'id')!;
+    final next = taskField(base, 'status') == 'done' ? 'todo' : 'done';
+    replaceProtected(id, replaceTaskStatus(base, taskId, next));
+  }
+
+  /// If the caret sits on a taskLine's checkbox glyph (its first two
+  /// characters), tapping toggles the task instead of just placing the
+  /// caret there.
+  void handleEditorTap() {
+    if (!selection.isValid || !selection.isCollapsed) return;
+    final offset = selection.baseOffset;
+    for (final range in document._ranges) {
+      final block = document.blocks[range.index];
+      if (block.style != TyLogBlockStyle.taskLine) continue;
+      if (offset < range.start || offset >= range.start + 2) continue;
+      toggleTask(block.id);
+      selection = TextSelection.collapsed(offset: range.start + 2);
+      return;
+    }
+  }
 
   void undo() {
     if (_undo.isEmpty) return;
@@ -1016,30 +1242,21 @@ class TyLogEditingController extends TextEditingController {
     for (var i = 0; i < document.blocks.length; i++) {
       final block = document.blocks[i];
       if (block.isProtected) {
-        final source = block.originalSource;
         children.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: isTaskSource(source)
-                ? _TaskChip(
-                    label: (block.protectedLabel ?? '').replaceFirst(
-                      'Task: ',
-                      '',
-                    ),
-                    done: taskStatusOf(source) == 'done',
-                    due: taskDueOf(source),
-                    onToggle: interactive ? () => toggleTask(block.id) : null,
-                    onTap: interactive ? () => onProtectedTap(block.id) : null,
-                  )
-                : _ProtectedChip(
-                    label: block.protectedLabel ?? 'Custom Typst',
-                    block: true,
-                    onTap: interactive ? () => onProtectedTap(block.id) : null,
-                  ),
+            child: _ProtectedChip(
+              label: block.protectedLabel ?? 'Custom Typst',
+              block: true,
+              onTap: interactive ? () => onProtectedTap(block.id) : null,
+            ),
           ),
         );
         global++;
       } else {
+        final taskDone =
+            block.style == TyLogBlockStyle.taskLine &&
+            block.visibleText.startsWith('☑');
         for (final part in block.parts) {
           if (part.isAtom) {
             children.add(
@@ -1054,11 +1271,18 @@ class TyLogEditingController extends TextEditingController {
             );
             global++;
           } else {
+            var partStyle = _styleFor(context, style, block.style, part.style);
+            if (taskDone) {
+              partStyle = partStyle.copyWith(
+                decoration: TextDecoration.lineThrough,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              );
+            }
             _addTextSpans(
               children,
               part.text,
               global,
-              style: _styleFor(context, style, block.style, part.style),
+              style: partStyle,
               composing: withComposing ? value.composing : TextRange.empty,
             );
             global += part.text.length;
@@ -1079,10 +1303,27 @@ class TyLogRichEditor extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onInsert,
+    this.onMentionQuery,
+    this.commandActions,
+    this.onCommandSelected,
   });
 
   final TyLogEditingController controller;
   final Future<void> Function() onInsert;
+
+  /// Resolves candidates for the inline "@" mention popup. Kept decoupled
+  /// from tylog_core's search index — the parent maps its own search
+  /// results into [MentionSuggestion]s.
+  final Future<List<MentionSuggestion>> Function(String query)?
+  onMentionQuery;
+
+  /// Actions offered by the inline "/" command palette. Defaults to the
+  /// same action set as the Magic bottom-sheet menu, in the same order.
+  final List<MagicAction> Function()? commandActions;
+
+  /// Invoked when a "/" palette entry is selected — the parent should run
+  /// the exact same handler the Magic menu uses for that action.
+  final Future<void> Function(MagicAction action)? onCommandSelected;
 
   @override
   State<TyLogRichEditor> createState() => _TyLogRichEditorState();
@@ -1126,19 +1367,54 @@ class _TyLogReadViewState extends State<TyLogReadView> {
   );
 }
 
+const _defaultAutocompleteDebounce = Duration(milliseconds: 150);
+const _autocompleteRowHeight = 48.0;
+const _autocompleteMaxVisible = 6;
+
 class _TyLogRichEditorState extends State<TyLogRichEditor> {
   late final FocusNode focusNode;
+  final LayerLink _layerLink = LayerLink();
+  final ValueNotifier<_AutocompleteState?> _autocomplete = ValueNotifier(null);
+  OverlayEntry? _overlayEntry;
+  Timer? _debounce;
+  int _mentionQueryToken = 0;
 
   @override
   void initState() {
     super.initState();
     focusNode = FocusNode(onKeyEvent: _handleKey);
     focusNode.addListener(_focusChanged);
+    if (kEnableInlineAutocomplete) {
+      widget.controller.addListener(_handleControllerChanged);
+    }
   }
 
-  void _focusChanged() => setState(() {});
+  void _focusChanged() {
+    if (!focusNode.hasFocus) _cancelAutocomplete();
+    setState(() {});
+  }
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+    if (event is KeyDownEvent && _autocomplete.value != null) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.arrowDown) {
+        _moveHighlight(1);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowUp) {
+        _moveHighlight(-1);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.enter ||
+          key == LogicalKeyboardKey.numpadEnter) {
+        _activateHighlighted();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.escape) {
+        _cancelAutocomplete();
+        return KeyEventResult.handled;
+      }
+    }
     if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.keyZ) {
       return KeyEventResult.ignored;
     }
@@ -1152,8 +1428,266 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return KeyEventResult.handled;
   }
 
+  void _handleControllerChanged() {
+    final selection = widget.controller.selection;
+    if (!selection.isValid || !selection.isCollapsed) {
+      _cancelAutocomplete();
+      return;
+    }
+    final trigger = detectTrigger(widget.controller.text, selection.baseOffset);
+    if (trigger == null) {
+      _cancelAutocomplete();
+      return;
+    }
+    if (trigger.kind == AutocompleteTriggerKind.command) {
+      _debounce?.cancel();
+      _autocomplete.value = _AutocompleteState(
+        trigger: trigger,
+        mentionItems: const [],
+        commandItems: _filterCommands(trigger.query),
+        highlighted: 0,
+        loading: false,
+      );
+      _ensureOverlay();
+      return;
+    }
+    final previous = _autocomplete.value;
+    final samePosition =
+        previous != null &&
+        previous.trigger.kind == AutocompleteTriggerKind.mention &&
+        previous.trigger.start == trigger.start;
+    _autocomplete.value = _AutocompleteState(
+      trigger: trigger,
+      mentionItems: samePosition ? previous.mentionItems : const [],
+      commandItems: const [],
+      highlighted: 0,
+      loading: true,
+    );
+    _ensureOverlay();
+    _debounce?.cancel();
+    _debounce = Timer(_defaultAutocompleteDebounce, () => _runMentionQuery(trigger));
+  }
+
+  List<MagicAction> _filterCommands(String query) {
+    final actions = widget.commandActions?.call() ?? kMagicActionDisplay.keys.toList();
+    if (query.isEmpty) return actions;
+    final normalized = query.toLowerCase();
+    return actions
+        .where(
+          (action) => (kMagicActionDisplay[action]?.$2 ?? action.name)
+              .toLowerCase()
+              .contains(normalized),
+        )
+        .toList();
+  }
+
+  Future<void> _runMentionQuery(AutocompleteTrigger trigger) async {
+    final onMentionQuery = widget.onMentionQuery;
+    if (onMentionQuery == null) return;
+    final token = ++_mentionQueryToken;
+    final results = await onMentionQuery(trigger.query);
+    if (!mounted || token != _mentionQueryToken) return;
+    final current = _autocomplete.value;
+    if (current == null ||
+        current.trigger.kind != AutocompleteTriggerKind.mention ||
+        current.trigger.start != trigger.start) {
+      return;
+    }
+    _autocomplete.value = _AutocompleteState(
+      trigger: current.trigger,
+      mentionItems: results,
+      commandItems: const [],
+      highlighted: 0,
+      loading: false,
+    );
+  }
+
+  void _moveHighlight(int delta) {
+    final state = _autocomplete.value;
+    if (state == null) return;
+    final count = state.trigger.kind == AutocompleteTriggerKind.mention
+        ? state.mentionItems.length
+        : state.commandItems.length;
+    if (count == 0) return;
+    final next = (state.highlighted + delta) % count;
+    _autocomplete.value = state.copyWith(
+      highlighted: next < 0 ? next + count : next,
+    );
+  }
+
+  void _activateHighlighted() {
+    final state = _autocomplete.value;
+    if (state == null) return;
+    if (state.trigger.kind == AutocompleteTriggerKind.mention) {
+      if (state.highlighted < state.mentionItems.length) {
+        _selectMention(state.mentionItems[state.highlighted]);
+      }
+    } else {
+      if (state.highlighted < state.commandItems.length) {
+        _selectCommand(state.commandItems[state.highlighted]);
+      }
+    }
+  }
+
+  void _selectMention(MentionSuggestion item) {
+    final trigger = _autocomplete.value?.trigger;
+    if (trigger == null) return;
+    final caret = widget.controller.selection.baseOffset;
+    _cancelAutocomplete();
+    widget.controller.selection = TextSelection(
+      baseOffset: trigger.start,
+      extentOffset: caret,
+    );
+    widget.controller.applyMagic(
+      MagicRequest(action: MagicAction.mention, id: item.id, value: item.title),
+    );
+    focusNode.requestFocus();
+  }
+
+  Future<void> _selectCommand(MagicAction action) async {
+    final trigger = _autocomplete.value?.trigger;
+    if (trigger == null) return;
+    final caret = widget.controller.selection.baseOffset;
+    _cancelAutocomplete();
+    // Remove the "/query" text first so the chosen action's own handler
+    // inserts at the trigger's position, exactly as if invoked from the
+    // Magic menu with the cursor there.
+    widget.controller.value = widget.controller.value.copyWith(
+      text: widget.controller.text.replaceRange(trigger.start, caret, ''),
+      selection: TextSelection.collapsed(offset: trigger.start),
+      composing: TextRange.empty,
+    );
+    final handler = widget.onCommandSelected;
+    if (handler != null) await handler(action);
+    if (mounted) focusNode.requestFocus();
+  }
+
+  void _cancelAutocomplete() {
+    _debounce?.cancel();
+    _debounce = null;
+    _mentionQueryToken++;
+    if (_autocomplete.value != null) _autocomplete.value = null;
+    _removeOverlay();
+  }
+
+  void _ensureOverlay() {
+    if (_overlayEntry != null) return;
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+    _overlayEntry = OverlayEntry(builder: _buildOverlayContent);
+    overlay.insert(_overlayEntry!);
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  Widget _buildOverlayContent(BuildContext context) => Positioned(
+    width: 320,
+    child: CompositedTransformFollower(
+      link: _layerLink,
+      showWhenUnlinked: false,
+      targetAnchor: Alignment.topLeft,
+      followerAnchor: Alignment.topLeft,
+      offset: const Offset(16, 44),
+      child: TextFieldTapRegion(
+        child: ValueListenableBuilder<_AutocompleteState?>(
+          valueListenable: _autocomplete,
+          builder: (context, state, _) {
+            if (state == null) return const SizedBox.shrink();
+            return Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(10),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: _autocompleteRowHeight * _autocompleteMaxVisible,
+                ),
+                child: state.trigger.kind == AutocompleteTriggerKind.mention
+                    ? _mentionList(state)
+                    : _commandList(state),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+
+  Widget _mentionList(_AutocompleteState state) {
+    if (state.loading && state.mentionItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: SizedBox(
+          height: 20,
+          width: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    if (state.mentionItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('No matches'),
+      );
+    }
+    return ListView.builder(
+      key: const Key('autocomplete-mention-list'),
+      shrinkWrap: true,
+      itemCount: state.mentionItems.length,
+      itemBuilder: (context, index) {
+        final item = state.mentionItems[index];
+        return ListTile(
+          key: Key('autocomplete-mention-${item.id}'),
+          dense: true,
+          tileColor: index == state.highlighted
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : null,
+          leading: const Icon(Icons.alternate_email),
+          title: Text(item.title),
+          subtitle: Text(item.id),
+          onTap: () => _selectMention(item),
+        );
+      },
+    );
+  }
+
+  Widget _commandList(_AutocompleteState state) {
+    if (state.commandItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('No matching commands'),
+      );
+    }
+    return ListView.builder(
+      key: const Key('autocomplete-command-list'),
+      shrinkWrap: true,
+      itemCount: state.commandItems.length,
+      itemBuilder: (context, index) {
+        final action = state.commandItems[index];
+        final display = kMagicActionDisplay[action];
+        return ListTile(
+          key: Key('autocomplete-command-${action.name}'),
+          dense: true,
+          tileColor: index == state.highlighted
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : null,
+          leading: Icon(display?.$1 ?? Icons.bolt),
+          title: Text(display?.$2 ?? action.name),
+          onTap: () => _selectCommand(action),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
+    _removeOverlay();
+    if (kEnableInlineAutocomplete) {
+      widget.controller.removeListener(_handleControllerChanged);
+    }
     focusNode.removeListener(_focusChanged);
     focusNode.dispose();
     super.dispose();
@@ -1163,54 +1697,60 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   Widget build(BuildContext context) => Column(
     children: [
       Expanded(
-        child: TextField(
-          key: const Key('rich-journal-editor'),
-          controller: widget.controller,
-          focusNode: focusNode,
-          expands: true,
-          minLines: null,
-          maxLines: null,
-          textAlignVertical: TextAlignVertical.top,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
-          decoration: const InputDecoration(
-            hintText: 'Start writing…',
-            contentPadding: EdgeInsets.all(18),
-          ),
-          onTapOutside: (_) => focusNode.unfocus(),
-          contextMenuBuilder: (context, state) => TextFieldTapRegion(
-            child: AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: state.contextMenuAnchors,
-              buttonItems: [
-                if (!widget.controller.selection.isCollapsed)
+        child: CompositedTransformTarget(
+          link: _layerLink,
+          child: TextField(
+            key: const Key('rich-journal-editor'),
+            controller: widget.controller,
+            focusNode: focusNode,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.55),
+            decoration: const InputDecoration(
+              hintText: 'Start writing…',
+              contentPadding: EdgeInsets.all(18),
+            ),
+            onTap: () => widget.controller.handleEditorTap(),
+            onTapOutside: (_) => focusNode.unfocus(),
+            contextMenuBuilder: (context, state) => TextFieldTapRegion(
+              child: AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: state.contextMenuAnchors,
+                buttonItems: [
+                  if (!widget.controller.selection.isCollapsed)
+                    ContextMenuButtonItem(
+                      type: ContextMenuButtonType.copy,
+                      onPressed: () {
+                        state.hideToolbar();
+                        widget.controller.copySelection();
+                      },
+                    ),
+                  if (!widget.controller.selection.isCollapsed)
+                    ContextMenuButtonItem(
+                      type: ContextMenuButtonType.cut,
+                      onPressed: () {
+                        state.hideToolbar();
+                        widget.controller.cutSelection();
+                      },
+                    ),
                   ContextMenuButtonItem(
-                    type: ContextMenuButtonType.copy,
+                    type: ContextMenuButtonType.paste,
                     onPressed: () {
                       state.hideToolbar();
-                      widget.controller.copySelection();
+                      widget.controller.paste();
                     },
                   ),
-                if (!widget.controller.selection.isCollapsed)
                   ContextMenuButtonItem(
-                    type: ContextMenuButtonType.cut,
+                    type: ContextMenuButtonType.selectAll,
                     onPressed: () {
-                      state.hideToolbar();
-                      widget.controller.cutSelection();
+                      state.selectAll(SelectionChangedCause.toolbar);
                     },
                   ),
-                ContextMenuButtonItem(
-                  type: ContextMenuButtonType.paste,
-                  onPressed: () {
-                    state.hideToolbar();
-                    widget.controller.paste();
-                  },
-                ),
-                ContextMenuButtonItem(
-                  type: ContextMenuButtonType.selectAll,
-                  onPressed: () {
-                    state.selectAll(SelectionChangedCause.toolbar);
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1285,73 +1825,6 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   );
 }
 
-class _TaskChip extends StatelessWidget {
-  const _TaskChip({
-    required this.label,
-    required this.done,
-    required this.due,
-    required this.onToggle,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool done;
-  final String? due;
-  final VoidCallback? onToggle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: '$label, task ${done ? 'done' : 'to do'}',
-    child: LayoutBuilder(
-      builder: (context, constraints) => Container(
-        width: constraints.hasBoundedWidth ? constraints.maxWidth : null,
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              key: const Key('task-checkbox'),
-              onPressed: onToggle,
-              icon: Icon(
-                done ? Icons.check_box : Icons.check_box_outline_blank,
-              ),
-            ),
-            Expanded(
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: done
-                          ? const TextStyle(
-                              decoration: TextDecoration.lineThrough,
-                            )
-                          : null,
-                    ),
-                    if (due != null)
-                      Text(
-                        'Due $due',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
 class _ProtectedChip extends StatelessWidget {
   const _ProtectedChip({
     required this.label,
@@ -1399,8 +1872,29 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
   final source = block.source;
   final trimmed = source.trimLeft();
   final id = 'block-$index-${source.hashCode}';
-  if (block.kind == ControlledBlockKind.task ||
-      block.kind == ControlledBlockKind.table ||
+  if (block.kind == ControlledBlockKind.task) {
+    final taskId = taskField(source, 'id');
+    final taskText = taskField(source, 'text');
+    if (taskId != null && taskText != null) {
+      final glyph = taskField(source, 'status') == 'done' ? '☑' : '☐';
+      return TyLogBlock(
+        id: id,
+        style: TyLogBlockStyle.taskLine,
+        parts: [TyLogInline.text('$glyph $taskText')],
+        originalSource: source,
+        separator: separator,
+      );
+    }
+    return TyLogBlock(
+      id: id,
+      style: TyLogBlockStyle.protected,
+      parts: const [],
+      originalSource: source,
+      separator: separator,
+      protectedLabel: 'Task: ${controlledBlockPreview(block)}',
+    );
+  }
+  if (block.kind == ControlledBlockKind.table ||
       block.kind == ControlledBlockKind.equation ||
       block.kind == ControlledBlockKind.raw) {
     return TyLogBlock(
@@ -1410,7 +1904,6 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
       originalSource: source,
       separator: separator,
       protectedLabel: switch (block.kind) {
-        ControlledBlockKind.task => 'Task: ${controlledBlockPreview(block)}',
         ControlledBlockKind.table => 'Table',
         ControlledBlockKind.equation => 'Equation',
         _ => 'Custom Typst',
@@ -1560,28 +2053,6 @@ List<TyLogInline>? _parseInline(
   }
   flush();
   return _normalize(parts);
-}
-
-bool isTaskSource(String source) =>
-    source.trimLeft().startsWith('#tylog.task(');
-
-String taskStatusOf(String source) =>
-    RegExp(r'status\s*:\s*"([^"]*)"').firstMatch(source)?.group(1) ?? 'todo';
-
-String? taskDueOf(String source) =>
-    RegExp(r'due\s*:\s*"([^"]*)"').firstMatch(source)?.group(1);
-
-/// Flips a single `#tylog.task(...)` call between done and todo.
-// ponytail: flat regex over the call source, same ceiling as
-// scanner.replaceTaskStatus; structural parse if task text ever
-// legitimately contains `status: "..."`.
-String toggleTaskSource(String source) {
-  final match = RegExp(r'status\s*:\s*"([^"]*)"').firstMatch(source);
-  if (match == null) {
-    return source.replaceFirst('#tylog.task(', '#tylog.task(status: "done", ');
-  }
-  final next = match.group(1) == 'done' ? 'todo' : 'done';
-  return source.replaceRange(match.start, match.end, 'status: "$next"');
 }
 
 String _atomLabel(String source) {
@@ -1758,6 +2229,11 @@ String _serializeBlock(TyLogBlock block) {
           .join('\n'),
     TyLogBlockStyle.paragraph => content,
     TyLogBlockStyle.protected => block.originalSource,
+    TyLogBlockStyle.taskLine => replaceTaskText(
+      block.originalSource,
+      taskField(block.originalSource, 'id')!,
+      block.visibleText.replaceFirst(RegExp('^[☐☑] '), ''),
+    ),
   };
 }
 
@@ -1852,6 +2328,30 @@ TextStyle _styleFor(
   return style.copyWith(
     fontWeight: inline.bold ? FontWeight.bold : style.fontWeight,
     fontStyle: inline.italic ? FontStyle.italic : style.fontStyle,
+  );
+}
+
+class _AutocompleteState {
+  const _AutocompleteState({
+    required this.trigger,
+    required this.mentionItems,
+    required this.commandItems,
+    required this.highlighted,
+    required this.loading,
+  });
+
+  final AutocompleteTrigger trigger;
+  final List<MentionSuggestion> mentionItems;
+  final List<MagicAction> commandItems;
+  final int highlighted;
+  final bool loading;
+
+  _AutocompleteState copyWith({int? highlighted}) => _AutocompleteState(
+    trigger: trigger,
+    mentionItems: mentionItems,
+    commandItems: commandItems,
+    highlighted: highlighted ?? this.highlighted,
+    loading: loading,
   );
 }
 

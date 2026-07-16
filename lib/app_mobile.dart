@@ -100,7 +100,8 @@ SyncStatusKind syncStatusKind({
       result.uploaded +
       result.downloaded +
       result.deletedLocal +
-      result.deletedRemote;
+      result.deletedRemote +
+      result.renamed;
   return changed == 0 ? SyncStatusKind.upToDate : SyncStatusKind.synced;
 }
 
@@ -157,6 +158,17 @@ class TyLogApp extends StatelessWidget {
   );
 }
 
+/// Note kinds that represent structural note types rather than entities
+/// (people, places, organizations, ...). Any note whose `kind` is not one
+/// of these is treated as an entity in the Entities tab / entity pickers.
+const _structuralNoteKinds = {
+  'daily',
+  'note',
+  'project',
+  'article',
+  'research',
+};
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -176,6 +188,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
   final platformFileActions = const PlatformFileActions();
+  Timer? _previewDebounceTimer;
+  String? _debouncedPreviewSource;
+  String? _pendingPreviewSource;
+  // Path/date of the daily note last opened via _openToday(), so a resume
+  // after midnight can detect the Today screen is showing a stale day.
+  String? _todayNotePath;
+  DateTime? _todayOpenedAt;
 
   Vault? get vault => workspace.vault;
   VaultIndex? get index => workspace.index;
@@ -238,6 +257,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _previewDebounceTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     workspace
       ..removeListener(_workspaceChanged)
@@ -584,6 +604,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _forgetVault(VaultEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disconnect this vault?'),
+        content: Text(
+          '${entry.name} will be removed from this list. Its files stay on disk untouched, and you can re-add the vault later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     final registry = vaultRegistry!;
     try {
       workspace.cancelPendingWork();
@@ -710,6 +750,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _startCloudPolling() => workspace.startCloudPolling();
 
+  void _stopCloudPolling() => workspace.stopCloudPolling();
+
   bool get _editingRecently => workspace.editingRecently;
 
   void _queueAutosave() {
@@ -740,6 +782,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (bib.isEmpty || bib == '{}') return source;
     if (!RegExp(r'(^|[\s\[(])@[A-Za-z0-9_-]+').hasMatch(source)) return source;
     return '$source\n#bibliography("/${Vault.bibliographyPath}")\n';
+  }
+
+  // Debounces the preview source by 400ms so a recompile isn't triggered on
+  // every keystroke; the first render after entering preview/split is
+  // immediate. Reset by `build()` whenever preview isn't visible.
+  String _debouncedPreview() {
+    final live = _previewSource();
+    if (_debouncedPreviewSource == null) {
+      _debouncedPreviewSource = live;
+      _pendingPreviewSource = live;
+      return live;
+    }
+    if (live != _pendingPreviewSource) {
+      _pendingPreviewSource = live;
+      _previewDebounceTimer?.cancel();
+      _previewDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        setState(() => _debouncedPreviewSource = live);
+      });
+    }
+    return _debouncedPreviewSource!;
   }
 
   void _loadSource(String source) {
@@ -826,7 +889,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openToday() async {
     final v = vault;
     if (v == null) return;
-    await _openNote(await v.todayNote());
+    final path = await v.todayNote();
+    await _openNote(path);
+    _todayNotePath = path;
+    _todayOpenedAt = DateTime.now();
   }
 
   Future<void> _openDay(DateTime day) async {
@@ -1374,9 +1440,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final title = TextEditingController(text: current.title);
     final tagsText = TextEditingController(text: current.tags.join(', '));
     final aliases = TextEditingController(text: current.aliases.join(', '));
-    final entityType = TextEditingController(
-      text: current.properties['type']?.toString() ?? '',
-    );
+    final kindField = TextEditingController(text: current.kind);
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1403,10 +1467,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
               TextField(
-                controller: entityType,
+                controller: kindField,
                 decoration: const InputDecoration(
-                  labelText: 'Entity type (optional)',
-                  hintText: 'person, place, castle…',
+                  labelText: 'Kind',
+                  hintText: 'note, project, person, place…',
                 ),
               ),
             ],
@@ -1425,23 +1489,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (saved == true) {
-      final properties = Map<String, Object?>.from(current.properties);
-      if (entityType.text.trim().isEmpty) {
-        properties.remove('type');
-      } else {
-        properties['type'] = entityType.text.trim();
-      }
+      final kind = kindField.text.trim();
       final updated = replaceNoteHeader(
         _currentSource(),
         NoteMetadataDraft(
           id: current.id,
           title: title.text.trim(),
-          kind: current.kind,
+          kind: kind.isEmpty ? current.kind : kind,
           project: current.project,
           date: current.date,
           tags: _csvValues(tagsText.text),
           aliases: _csvValues(aliases.text),
-          properties: properties,
+          properties: current.properties,
         ),
       );
       _loadSource(updated);
@@ -1506,6 +1565,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _rebuildIndex() async {
     await workspace.rebuildIndex();
+  }
+
+  /// One-off maintenance action: folds the legacy `properties["type"]`
+  /// entity classifier into `kind` across every note in the vault (see
+  /// [migrateEntityTypeToKind]). Safe to run multiple times.
+  Future<void> _migrateEntityTypes() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    var migrated = 0;
+    for (final note in ix.notes) {
+      final source = await v.storage.readText(note.path);
+      final updated = migrateEntityTypeToKind(source);
+      if (updated != source) {
+        await v.saveNote(note.path, updated);
+        migrated++;
+      }
+    }
+    await workspace.refreshIndex(force: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          migrated == 0
+              ? 'No notes needed entity-type migration'
+              : 'Migrated $migrated note${migrated == 1 ? '' : 's'} to '
+                    'kind-based entity types',
+        ),
+      ),
+    );
   }
 
   Future<void> _syncNow({String trigger = 'manual'}) async {
@@ -1729,18 +1818,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      // Android may kill the app inside the 700 ms autosave debounce; flush
+      // Android may kill the app inside the 400 ms autosave debounce; flush
       // pending edits now so backgrounding never loses keystrokes.
       if (dirty) unawaited(_save(syncAfter: false));
+      _stopCloudPolling();
       return;
     }
-    if (state == AppLifecycleState.resumed && (cloud?.isReady ?? false)) {
-      if (_editingRecently) {
-        _queueCloudSync();
-      } else {
-        unawaited(_syncNow(trigger: 'resume'));
+    if (state == AppLifecycleState.resumed) {
+      _startCloudPolling();
+      _rolloverTodayIfStale();
+      if (cloud?.isReady ?? false) {
+        if (_editingRecently) {
+          _queueCloudSync();
+        } else {
+          unawaited(_syncNow(trigger: 'resume'));
+        }
       }
     }
+  }
+
+  /// If the Today note was opened before the calendar day changed (app left
+  /// open or backgrounded across midnight), re-open today's note so the
+  /// Today screen and header reflect the actual current day.
+  void _rolloverTodayIfStale() {
+    final openedAt = _todayOpenedAt;
+    if (openedAt == null || note != _todayNotePath) return;
+    if (!shouldRolloverToday(openedAt: openedAt, now: DateTime.now())) return;
+    if (dirty) {
+      // ponytail: rollover skipped while dirty; edits win
+      return;
+    }
+    unawaited(_openToday());
   }
 
   void _showVaults() {
@@ -1768,6 +1876,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final vaultPath = openError
         ? [activeLocation, status].whereType<String>().join('\n')
         : activeLocation ?? status;
+
+    // Compute sync status using the same helpers as the dashboard
+    final kind = syncStatusKind(
+      vaultOpen: vault != null,
+      storageHealthy: storageHealthy ?? false,
+      cloudConfigured: cloud?.isReady ?? false,
+      desktopManaged:
+          _localVaultDirectory != null &&
+          isNextcloudManagedVault(_localVaultDirectory!),
+      syncing: syncing,
+      error: syncError,
+      conflicts: syncConflicts.length,
+      result: lastSync,
+    );
+    final syncStatusSubtitle = syncStatusTitle(kind, conflicts: syncConflicts.length);
+
     showDialog<bool>(
       context: context,
       builder: (context) => Dialog(
@@ -1777,6 +1901,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             vaultPath: vaultPath,
             cloud: cloud,
             syncing: syncing,
+            syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
             onManageVaults: () => Navigator.pop(context, true),
             onNextcloud: () {
@@ -1787,6 +1912,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               await taskScheduler.requestPermission();
               await taskScheduler.reconcile(index?.tasks ?? const []);
               if (mounted) setState(() => status = 'Task reminders enabled');
+            },
+            onMigrateEntityTypes: () async {
+              Navigator.pop(context);
+              await _migrateEntityTypes();
             },
           ),
         ),
@@ -1900,6 +2029,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mode == 'normal') sourceController.text = _currentSource();
       setState(() => mode = next);
     }
+  }
+
+  Future<void> _updateReadingPreferences(
+    double fontScale,
+    bool nightMode,
+  ) async {
+    final registry = vaultRegistry;
+    if (registry == null) return;
+    await registry.updateReadingPreferences(
+      fontScale: fontScale,
+      nightMode: nightMode,
+    );
   }
 
   Future<void> _showSyncDashboard() async {
@@ -2234,9 +2375,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   List<NoteRef> get _entities =>
       (index?.notes ?? const <NoteRef>[])
-          .where(
-            (item) => (item.properties['type']?.toString() ?? '').isNotEmpty,
-          )
+          .where((item) => !_structuralNoteKinds.contains(item.kind))
           .toList()
         ..sort((a, b) => a.title.compareTo(b.title));
 
@@ -2257,7 +2396,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ListTile(
                 leading: const Icon(Icons.alternate_email),
                 title: Text(item.title),
-                subtitle: Text(item.properties['type'].toString()),
+                subtitle: Text(item.kind),
                 onTap: () => Navigator.pop(context, item),
               ),
           ],
@@ -2270,7 +2409,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<NoteRef?> _createEntity() async {
     final title = TextEditingController();
-    final type = TextEditingController(text: 'person');
+    final kind = TextEditingController(text: 'person');
     final aliases = TextEditingController();
     final save = await showDialog<bool>(
       context: context,
@@ -2289,10 +2428,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: type,
+              controller: kind,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                labelText: 'Type',
+                labelText: 'Kind',
                 hintText: 'person, place, castle…',
               ),
             ),
@@ -2319,9 +2458,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     final name = title.text.trim();
-    final entityType = type.text.trim();
+    final entityKind = kind.text.trim();
     final v = vault;
-    if (save != true || name.isEmpty || entityType.isEmpty || v == null) {
+    if (save != true || name.isEmpty || entityKind.isEmpty || v == null) {
       return null;
     }
     final file = await v.page(name);
@@ -2335,10 +2474,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         NoteMetadataDraft(
           id: created.id,
           title: created.title,
-          kind: created.kind,
+          kind: entityKind,
           tags: created.tags,
           aliases: _csvValues(aliases.text),
-          properties: {...created.properties, 'type': entityType},
+          properties: created.properties,
         ),
       ),
     );
@@ -2431,10 +2570,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialDate: DateTime.now(),
           helpText: 'Due date (optional)',
         );
+        final taskId = await vault!.nextTaskId(text);
+        if (!mounted) return;
         _applyMagic(
           MagicRequest(
             action: action,
-            id: 'task-${DateTime.now().microsecondsSinceEpoch}',
+            id: taskId,
             value: text,
             due: due == null ? null : _isoDay(due),
           ),
@@ -2672,22 +2813,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: GridView.count(
               crossAxisCount: MediaQuery.sizeOf(context).width < 500 ? 3 : 4,
               children: [
-                for (final entry in const <MagicAction, (IconData, String)>{
-                  MagicAction.noteLink: (Icons.link, 'Note link'),
-                  MagicAction.mention: (Icons.alternate_email, 'Mention'),
-                  MagicAction.tag: (Icons.tag, 'Tag'),
-                  MagicAction.task: (Icons.task_alt, 'Task'),
-                  MagicAction.date: (Icons.event, 'Date'),
-                  MagicAction.project: (Icons.work_outline, 'Project'),
-                  MagicAction.citation: (Icons.format_quote, 'Citation'),
-                  MagicAction.attachment: (Icons.attach_file, 'Attachment'),
-                  MagicAction.heading: (Icons.title, 'Heading'),
-                  MagicAction.bold: (Icons.format_bold, 'Bold'),
-                  MagicAction.italic: (Icons.format_italic, 'Italic'),
-                  MagicAction.table: (Icons.table_chart, 'Table'),
-                  MagicAction.equation: (Icons.functions, 'Equation'),
-                  MagicAction.report: (Icons.picture_as_pdf, 'Report'),
-                }.entries)
+                for (final entry in kMagicActionDisplay.entries)
                   InkWell(
                     onTap: () => Navigator.pop(context, entry.key),
                     child: Semantics(
@@ -2765,6 +2891,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             for (final entry in const <_ShellAction, (IconData, String)>{
               _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
+              _ShellAction.settings: (Icons.settings, 'Settings'),
               _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
               _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
               _ShellAction.split: (Icons.vertical_split, 'Split editor'),
@@ -2772,7 +2899,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _ShellAction.problems: (Icons.warning_amber, 'Problems'),
               _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
               _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
-              _ShellAction.settings: (Icons.settings, 'Settings'),
             }.entries)
               ListTile(
                 leading: Icon(entry.value.$1),
@@ -2821,9 +2947,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (mode != 'preview' && mode != 'split') {
+      _previewDebounceTimer?.cancel();
+      _previewDebounceTimer = null;
+      _debouncedPreviewSource = null;
+      _pendingPreviewSource = null;
+    }
     final v = vault;
     final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
+    if (mode == 'read') {
+      return _ReadingMode(
+        source: _currentSource(),
+        fontScale: vaultRegistry?.readingFontScale ?? 1,
+        nightMode: vaultRegistry?.readingNightMode ?? false,
+        onExit: _showEditor,
+        onPreferencesChanged: _updateReadingPreferences,
+      );
+    }
     final backlinks = current == null
         ? const <String>[]
         : index?.backlinksByTarget[current] ?? const <String>[];
@@ -2897,7 +3038,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onOpenPath: _openPath,
       ),
       'preview' => TypstDocumentViewer(
-        source: _previewSource(),
+        source: _debouncedPreview(),
         files: _typstFiles(),
         loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
         errorBuilder: (_, error) => Padding(
@@ -2924,32 +3065,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onChanged: _queueAutosave,
         monospace: true,
       ),
-      'read' => SingleChildScrollView(
-        padding: const EdgeInsets.all(18),
-        child: TyLogReadView(source: _currentSource()),
-      ),
-      'split' => Row(
-        children: [
-          Expanded(
-            child: _Editor(
-              key: sourceEditorKey,
-              controller: sourceController,
-              onChanged: _queueAutosave,
-              monospace: true,
+      'split' => MediaQuery.sizeOf(context).width < 600
+          ? Column(
+              children: [
+                Expanded(
+                  child: _Editor(
+                    key: sourceEditorKey,
+                    controller: sourceController,
+                    onChanged: _queueAutosave,
+                    monospace: true,
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: TypstDocumentViewer(
+                    source: _debouncedPreview(),
+                    files: _typstFiles(),
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: _Editor(
+                    key: sourceEditorKey,
+                    controller: sourceController,
+                    onChanged: _queueAutosave,
+                    monospace: true,
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: TypstDocumentViewer(
+                    source: _debouncedPreview(),
+                    files: _typstFiles(),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: TypstDocumentViewer(
-              source: _previewSource(),
-              files: _typstFiles(),
-            ),
-          ),
-        ],
-      ),
       'normal' => TyLogRichEditor(
         controller: richController,
         onInsert: _showMagicMenu,
+        onMentionQuery: (query) async {
+          // Query the note index (populated the moment the vault opens), not
+          // the full-text search index — the latter can take a while to finish
+          // building on large SAF vaults, and mentions must resolve instantly.
+          final q = query.trim().toLowerCase();
+          if (q.isEmpty) return const <MentionSuggestion>[];
+          bool matches(String s) => s.toLowerCase().startsWith(q);
+          final notes = (index?.notes ?? const <NoteRef>[])
+              .where(
+                (n) =>
+                    matches(n.title) ||
+                    matches(n.id) ||
+                    n.aliases.any(matches),
+              )
+              .toList()
+            ..sort((a, b) => a.title.compareTo(b.title));
+          return notes
+              .take(8)
+              .map((n) => MentionSuggestion(id: n.id, title: n.title))
+              .toList();
+        },
+        onCommandSelected: _runMagic,
       ),
       _ => const SizedBox.shrink(),
     };
@@ -2959,15 +3138,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         documentModes.contains(mode) &&
         currentDaily != null &&
         _isoDay(currentDaily) == _isoDay(today);
+    final bodyContent = isTodayDocument
+        ? _TodayPage(
+            tasks: index?.tasks ?? const [],
+            editor: content,
+            onOpenPath: _openPath,
+            onSetStatus: _setTaskStatus,
+          )
+        : content;
+    final openFailed = status.startsWith('Open failed:');
+    final Widget? statusBanner = openFailed
+        ? MaterialBanner(
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            content: Text(
+              status,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => unawaited(_open()),
+                child: const Text('Retry'),
+              ),
+            ],
+          )
+        : (v != null && (index == null || rebuildProgress != null))
+        ? Material(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(status, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(value: rebuildProgress),
+                ],
+              ),
+            ),
+          )
+        : null;
     final workArea = _WorkSurface(
-      child: isTodayDocument
-          ? _TodayPage(
-              tasks: index?.tasks ?? const [],
-              editor: content,
-              onOpenPath: _openPath,
-              onSetStatus: _setTaskStatus,
-            )
-          : content,
+      child: statusBanner == null
+          ? bodyContent
+          : Column(
+              children: [statusBanner, Expanded(child: bodyContent)],
+            ),
     );
 
     final wideNavigation = MediaQuery.sizeOf(context).width >= 900;
@@ -3166,6 +3384,292 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ? 'Today'
       : index?.notesByPath[current]?.title ??
             current.split('/').last.replaceFirst('.typ', '');
+}
+
+class _ReadingMode extends StatefulWidget {
+  const _ReadingMode({
+    required this.source,
+    required this.fontScale,
+    required this.nightMode,
+    required this.onExit,
+    required this.onPreferencesChanged,
+  });
+
+  final String source;
+  final double fontScale;
+  final bool nightMode;
+  final VoidCallback onExit;
+  final Future<void> Function(double fontScale, bool nightMode)
+  onPreferencesChanged;
+
+  @override
+  State<_ReadingMode> createState() => _ReadingModeState();
+}
+
+class _ReadingModeState extends State<_ReadingMode> {
+  final scrollController = ScrollController();
+  final progress = ValueNotifier<double>(0);
+  late double fontScale = widget.fontScale.clamp(0.8, 2).toDouble();
+  late bool nightMode = widget.nightMode;
+  bool fullscreen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    scrollController.addListener(_updateProgress);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateProgress());
+  }
+
+  @override
+  void dispose() {
+    scrollController
+      ..removeListener(_updateProgress)
+      ..dispose();
+    progress.dispose();
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    super.dispose();
+  }
+
+  void _updateProgress() {
+    if (!scrollController.hasClients) return;
+    final position = scrollController.position;
+    final value = position.maxScrollExtent == 0
+        ? 1.0
+        : (position.pixels / position.maxScrollExtent).clamp(0, 1).toDouble();
+    if ((progress.value - value).abs() > 0.001) progress.value = value;
+  }
+
+  void _setFontScale(double value) {
+    final next = (value.clamp(0.8, 2) * 10).round() / 10;
+    if (next == fontScale) return;
+    final position = scrollController.hasClients
+        ? scrollController.position
+        : null;
+    final fraction = position != null && position.maxScrollExtent > 0
+        ? position.pixels / position.maxScrollExtent
+        : 0.0;
+    setState(() => fontScale = next);
+    _persistPreferences();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !scrollController.hasClients) return;
+      final max = scrollController.position.maxScrollExtent;
+      scrollController.jumpTo((fraction * max).clamp(0, max).toDouble());
+      _updateProgress();
+    });
+  }
+
+  void _setNightMode(bool value) {
+    setState(() => nightMode = value);
+    _persistPreferences();
+  }
+
+  void _persistPreferences() => unawaited(
+    widget.onPreferencesChanged(fontScale, nightMode).catchError((_) {}),
+  );
+
+  Future<void> _setFullscreen(bool value) async {
+    setState(() => fullscreen = value);
+    try {
+      await SystemChrome.setEnabledSystemUIMode(
+        value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+      );
+    } catch (_) {
+      if (mounted) setState(() => fullscreen = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final readingTheme = nightMode
+        ? ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF0F172A),
+              brightness: Brightness.dark,
+            ),
+          )
+        : Theme.of(context);
+    final iconBrightness = nightMode ? Brightness.light : Brightness.dark;
+
+    return Theme(
+      data: readingTheme,
+      child: Builder(
+        builder: (context) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarBrightness: nightMode ? Brightness.dark : Brightness.light,
+            statusBarIconBrightness: iconBrightness,
+            systemNavigationBarColor: Theme.of(context).colorScheme.surface,
+            systemNavigationBarIconBrightness: iconBrightness,
+          ),
+          child: PopScope<void>(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) widget.onExit();
+            },
+            child: Scaffold(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              body: SafeArea(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    NotificationListener<ScrollMetricsNotification>(
+                      onNotification: (_) {
+                        _updateProgress();
+                        return false;
+                      },
+                      child: SingleChildScrollView(
+                        key: const Key('reading-scroll'),
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(18, 64, 18, 22),
+                        child: MediaQuery(
+                          data: MediaQuery.of(context).copyWith(
+                            textScaler: _ReadingTextScaler(
+                              MediaQuery.textScalerOf(context),
+                              fontScale,
+                            ),
+                          ),
+                          child: TyLogReadView(
+                            key: const Key('reading-document'),
+                            source: widget.source,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 8,
+                      top: 4,
+                      child: IconButton.filledTonal(
+                        tooltip: 'Back to edit',
+                        onPressed: widget.onExit,
+                        icon: const Icon(Icons.arrow_back),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 4,
+                      child: MenuAnchor(
+                        menuChildren: [
+                          SizedBox(
+                            width: 260,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    12,
+                                    4,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      IconButton(
+                                        key: const Key('reading-font-smaller'),
+                                        tooltip: 'Decrease font size',
+                                        onPressed: fontScale > 0.8
+                                            ? () =>
+                                                  _setFontScale(fontScale - 0.1)
+                                            : null,
+                                        icon: const Icon(Icons.remove),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          '${(fontScale * 100).round()}%',
+                                          key: const Key('reading-font-scale'),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        key: const Key('reading-font-larger'),
+                                        tooltip: 'Increase font size',
+                                        onPressed: fontScale < 2
+                                            ? () =>
+                                                  _setFontScale(fontScale + 0.1)
+                                            : null,
+                                        icon: const Icon(Icons.add),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SwitchListTile(
+                                  key: const Key('reading-night-mode'),
+                                  dense: true,
+                                  secondary: const Icon(
+                                    Icons.dark_mode_outlined,
+                                  ),
+                                  title: const Text('Night mode'),
+                                  value: nightMode,
+                                  onChanged: _setNightMode,
+                                ),
+                                SwitchListTile(
+                                  key: const Key('reading-fullscreen'),
+                                  dense: true,
+                                  secondary: const Icon(Icons.fullscreen),
+                                  title: const Text('Fullscreen'),
+                                  value: fullscreen,
+                                  onChanged: (value) =>
+                                      unawaited(_setFullscreen(value)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        builder: (context, controller, _) =>
+                            IconButton.filledTonal(
+                              tooltip: 'Reading settings',
+                              onPressed: () => controller.isOpen
+                                  ? controller.close()
+                                  : controller.open(),
+                              icon: const Icon(Icons.text_fields),
+                            ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: progress,
+                        builder: (_, value, _) => LinearProgressIndicator(
+                          key: const Key('reading-progress'),
+                          value: value,
+                          minHeight: 3,
+                          semanticsLabel: 'Reading progress',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadingTextScaler extends TextScaler {
+  const _ReadingTextScaler(this.base, this.factor);
+
+  final TextScaler base;
+  final double factor;
+
+  @override
+  double scale(double fontSize) => base.scale(fontSize * factor);
+
+  @override
+  double get textScaleFactor => scale(1);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ReadingTextScaler &&
+      other.base == base &&
+      other.factor == factor;
+
+  @override
+  int get hashCode => Object.hash(base, factor);
 }
 
 enum _ShellAction {
@@ -3531,6 +4035,7 @@ class _SyncDistribution extends StatelessWidget {
       ('Downloaded', result.downloaded, colors.tertiary),
       ('Deleted here', result.deletedLocal, colors.secondary),
       ('Deleted remote', result.deletedRemote, colors.secondary),
+      ('Renamed', result.renamed, colors.secondary),
       ('Unchanged', result.skipped, colors.outlineVariant),
       ('Repaired', result.repaired, colors.secondary),
       ('Conflicts', result.conflicts, colors.error),
@@ -3904,23 +4409,26 @@ class _SettingsSheet extends StatelessWidget {
     required this.vaultPath,
     required this.cloud,
     required this.syncing,
+    required this.syncStatusSubtitle,
     required this.onNextcloud,
     required this.vaultCount,
     required this.onManageVaults,
     required this.onEnableReminders,
+    required this.onMigrateEntityTypes,
   });
 
   final String vaultPath;
   final NextcloudConfig? cloud;
   final bool syncing;
+  final String syncStatusSubtitle;
   final VoidCallback onNextcloud;
   final int vaultCount;
   final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
+  final Future<void> Function() onMigrateEntityTypes;
 
   @override
   Widget build(BuildContext context) {
-    final ready = cloud?.isReady ?? false;
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
@@ -3947,9 +4455,7 @@ class _SettingsSheet extends StatelessWidget {
               _SettingsTile(
                 icon: Icons.sync,
                 title: 'Sync',
-                subtitle: syncing
-                    ? 'Syncing...'
-                    : (ready ? cloud!.serverUrl : 'Not configured'),
+                subtitle: syncStatusSubtitle,
                 onTap: onNextcloud,
               ),
               _SettingsTile(
@@ -3957,6 +4463,12 @@ class _SettingsSheet extends StatelessWidget {
                 title: 'Task reminders',
                 subtitle: 'Enable local scheduled notifications',
                 onTap: () => unawaited(onEnableReminders()),
+              ),
+              _SettingsTile(
+                icon: Icons.build_outlined,
+                title: 'Migrate entity types',
+                subtitle: 'Fold legacy properties["type"] entities into kind',
+                onTap: () => unawaited(onMigrateEntityTypes()),
               ),
               FutureBuilder<String>(
                 future: appVersion(),
@@ -4023,13 +4535,23 @@ class _VaultsSheet extends StatelessWidget {
                 if (action == 'forget') onForgetVault(entry);
                 if (action == 'delete') onDeleteVault(entry);
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'forget', child: Text('Forget vault')),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Delete vault and files'),
-                ),
-              ],
+              itemBuilder: (context) {
+                final errorColor = Theme.of(context).colorScheme.error;
+                return [
+                  const PopupMenuItem(
+                    value: 'forget',
+                    child: Text('Disconnect (keep files)'),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(
+                      'Delete permanently…',
+                      style: TextStyle(color: errorColor),
+                    ),
+                  ),
+                ];
+              },
             ),
           ),
         _SettingsTile(
@@ -4092,6 +4614,18 @@ class _WorkSurface extends StatelessWidget {
   );
 }
 
+/// Whether [task] belongs on the Today agenda given [today] (an ISO
+/// `yyyy-MM-dd` day string): not done/cancelled, and due on-or-before today
+/// or scheduled on-or-before today. `due`/`scheduled` may carry a time
+/// component (`yyyy-MM-ddTHH:mm:ss`); only the date part is compared.
+bool isTaskInTodayAgenda(TaskRef task, String today) {
+  if (task.status == 'done' || task.status == 'cancelled') return false;
+  final due = task.due?.split('T').first;
+  final scheduled = task.scheduled?.split('T').first;
+  return (due != null && due.compareTo(today) <= 0) ||
+      (scheduled != null && scheduled.compareTo(today) <= 0);
+}
+
 class _TodayPage extends StatelessWidget {
   const _TodayPage({
     required this.tasks,
@@ -4109,12 +4643,7 @@ class _TodayPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final today = _isoDay(DateTime.now());
     final agenda =
-        tasks.where((task) {
-          if (task.status == 'done' || task.status == 'cancelled') return false;
-          final due = task.due?.split('T').first;
-          final scheduled = task.scheduled?.split('T').first;
-          return due != null && due.compareTo(today) <= 0 || scheduled == today;
-        }).toList()..sort(
+        tasks.where((task) => isTaskInTodayAgenda(task, today)).toList()..sort(
           (a, b) => (a.due ?? a.scheduled ?? '9999').compareTo(
             b.due ?? b.scheduled ?? '9999',
           ),
@@ -4246,30 +4775,39 @@ class _PrimaryTasksView extends StatelessWidget {
   Widget build(BuildContext context) {
     final sorted = tasks.toList()
       ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
-    return ListView(
+    final itemCount = 1 + (sorted.isEmpty ? 1 : sorted.length);
+    return ListView.builder(
       padding: const EdgeInsets.all(16),
-      children: [
-        Text('Tasks', style: Theme.of(context).textTheme.headlineMedium),
-        if (sorted.isEmpty) const ListTile(title: Text('No indexed tasks')),
-        for (final task in sorted)
-          CheckboxListTile(
-            value: task.status == 'done',
-            title: Text(task.text),
-            subtitle: Text(
-              [
-                if (task.project != null) task.project!,
-                if (task.due != null) 'due ${task.due}',
-              ].join(' · '),
-            ),
-            onChanged: (done) =>
-                onSetStatus(task, done == true ? 'done' : 'todo'),
-            secondary: IconButton(
-              tooltip: 'Open source note',
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () => onOpenPath(task.notePath),
-            ),
+      itemCount: itemCount,
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return Text(
+            'Tasks',
+            style: Theme.of(context).textTheme.headlineMedium,
+          );
+        }
+        if (sorted.isEmpty) {
+          return const ListTile(title: Text('No indexed tasks'));
+        }
+        final task = sorted[i - 1];
+        return CheckboxListTile(
+          value: task.status == 'done',
+          title: Text(task.text),
+          subtitle: Text(
+            [
+              if (task.project != null) task.project!,
+              if (task.due != null) 'due ${task.due}',
+            ].join(' · '),
           ),
-      ],
+          onChanged: (done) =>
+              onSetStatus(task, done == true ? 'done' : 'todo'),
+          secondary: IconButton(
+            tooltip: 'Open source note',
+            icon: const Icon(Icons.open_in_new),
+            onPressed: () => onOpenPath(task.notePath),
+          ),
+        );
+      },
     );
   }
 }
@@ -4298,6 +4836,7 @@ class _LibraryView extends StatelessWidget {
       children: [
         const TabBar(
           isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: [
             Tab(text: 'Notes'),
             Tab(text: 'Projects'),
@@ -4331,20 +4870,25 @@ class _LibraryView extends StatelessWidget {
     ),
   );
 
-  Widget _notes(String kind) => ListView(
-    children: [
-      if (kind == 'article')
-        ListTile(
-          key: const ValueKey('import-markdown-articles'),
-          leading: const Icon(Icons.file_upload_outlined),
-          title: const Text('Import Markdown articles'),
-          subtitle: const Text('Select one or more .md or .markdown files'),
-          onTap: () => unawaited(onImportMarkdownArticles()),
-        ),
-      for (final note in (index?.notes ?? const <NoteRef>[]).where(
-        (note) => note.kind == kind,
-      ))
-        ListTile(
+  Widget _notes(String kind) {
+    final notes = (index?.notes ?? const <NoteRef>[])
+        .where((note) => note.kind == kind)
+        .toList();
+    final showImport = kind == 'article';
+    return ListView.builder(
+      itemCount: (showImport ? 1 : 0) + notes.length,
+      itemBuilder: (context, i) {
+        if (showImport && i == 0) {
+          return ListTile(
+            key: const ValueKey('import-markdown-articles'),
+            leading: const Icon(Icons.file_upload_outlined),
+            title: const Text('Import Markdown articles'),
+            subtitle: const Text('Select one or more .md or .markdown files'),
+            onTap: () => unawaited(onImportMarkdownArticles()),
+          );
+        }
+        final note = notes[showImport ? i - 1 : i];
+        return ListTile(
           leading: Icon(switch (kind) {
             'project' => Icons.work_outline,
             'article' => Icons.article_outlined,
@@ -4353,42 +4897,46 @@ class _LibraryView extends StatelessWidget {
           title: Text(note.title),
           subtitle: Text(note.path),
           onTap: () => onOpenPath(note.path),
-        ),
-    ],
-  );
+        );
+      },
+    );
+  }
 
   Widget _entities() {
     final entities =
         (index?.notes ?? const <NoteRef>[])
-            .where(
-              (note) => (note.properties['type']?.toString() ?? '').isNotEmpty,
-            )
+            .where((note) => !_structuralNoteKinds.contains(note.kind))
             .toList()
           ..sort((a, b) => a.title.compareTo(b.title));
-    return ListView(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.add),
-          title: const Text('New entity'),
-          onTap: onCreateEntity,
-        ),
-        if (entities.isEmpty)
-          const ListTile(
+    final itemCount = 1 + (entities.isEmpty ? 1 : entities.length);
+    return ListView.builder(
+      itemCount: itemCount,
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return ListTile(
+            leading: const Icon(Icons.add),
+            title: const Text('New entity'),
+            onTap: onCreateEntity,
+          );
+        }
+        if (entities.isEmpty) {
+          return const ListTile(
             title: Text('No people, places, or other entities yet'),
+          );
+        }
+        final note = entities[i - 1];
+        return ListTile(
+          leading: const Icon(Icons.alternate_email),
+          title: Text(note.title),
+          subtitle: Text(
+            [
+              note.kind,
+              if (note.aliases.isNotEmpty) note.aliases.join(', '),
+            ].join(' · '),
           ),
-        for (final note in entities)
-          ListTile(
-            leading: const Icon(Icons.alternate_email),
-            title: Text(note.title),
-            subtitle: Text(
-              [
-                note.properties['type'],
-                if (note.aliases.isNotEmpty) note.aliases.join(', '),
-              ].join(' · '),
-            ),
-            onTap: () => onOpenPath(note.path),
-          ),
-      ],
+          onTap: () => onOpenPath(note.path),
+        );
+      },
     );
   }
 }
@@ -4417,35 +4965,45 @@ class _CalendarTabState extends State<_CalendarTab> {
     final items = (widget.index?.calendar ?? const <CalendarItem>[])
         .where((item) => item.date == iso)
         .toList();
-    return ListView(
+    const headerCount = 3;
+    final itemCount = headerCount + (items.isEmpty ? 1 : items.length);
+    return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      children: [
-        MonthCalendar(
-          index: widget.index,
-          initialMonth: selected,
-          onDaySelected: (day) => setState(() => selected = day),
-          onOpenDay: widget.onOpenDay,
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.edit_note),
-          title: Text('Open journal $iso'),
-          onTap: () => widget.onOpenDay(selected),
-        ),
-        if (items.isEmpty)
-          const ListTile(title: Text('Nothing on this day yet')),
-        for (final item in items)
-          ListTile(
-            leading: Icon(switch (item.kind) {
-              CalendarItemKind.daily => Icons.book_outlined,
-              CalendarItemKind.task => Icons.task_alt,
-              _ => Icons.event,
-            }),
-            title: Text(item.title),
-            subtitle: Text(item.notePath),
-            onTap: () => widget.onOpenPath(item.notePath),
-          ),
-      ],
+      itemCount: itemCount,
+      itemBuilder: (context, i) {
+        switch (i) {
+          case 0:
+            return MonthCalendar(
+              index: widget.index,
+              initialMonth: selected,
+              onDaySelected: (day) => setState(() => selected = day),
+              onOpenDay: widget.onOpenDay,
+            );
+          case 1:
+            return const Divider();
+          case 2:
+            return ListTile(
+              leading: const Icon(Icons.edit_note),
+              title: Text('Open journal $iso'),
+              onTap: () => widget.onOpenDay(selected),
+            );
+          default:
+            if (items.isEmpty) {
+              return const ListTile(title: Text('Nothing on this day yet'));
+            }
+            final item = items[i - headerCount];
+            return ListTile(
+              leading: Icon(switch (item.kind) {
+                CalendarItemKind.daily => Icons.book_outlined,
+                CalendarItemKind.task => Icons.task_alt,
+                _ => Icons.event,
+              }),
+              title: Text(item.title),
+              subtitle: Text(item.notePath),
+              onTap: () => widget.onOpenPath(item.notePath),
+            );
+        }
+      },
     );
   }
 }

@@ -58,6 +58,15 @@ Future<PkmsValidationReport> validatePkmsStorage(
   const taskStatuses = {'todo', 'doing', 'done', 'cancelled'};
   const priorities = {'low', 'normal', 'high', 'urgent'};
 
+  // One recursive listing answers every attachment-existence check; a
+  // per-attachment exists() was thousands of serial SAF binder calls on a
+  // web-clip vault (tens of minutes with the UI stuck on "building search…").
+  final listing = await storage.list(recursive: true);
+  final presentPaths = {
+    for (final entity in listing)
+      if (!entity.isDirectory) entity.path,
+  };
+
   for (final note in index.notes) {
     if (note.id.trim().isEmpty) {
       problems.add(
@@ -101,7 +110,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
             fix: 'Choose a path under assets/.',
           ),
         );
-      } else if (!await storage.exists(attachment.path)) {
+      } else if (!presentPaths.contains(attachment.path)) {
         problems.add(
           PkmsProblem(
             code: 'missing-attachment',
@@ -158,7 +167,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
     }
   }
 
-  for (final entity in await storage.list(recursive: true)) {
+  for (final entity in listing) {
     if (entity.isDirectory || !entity.path.contains('.remote-conflict-')) {
       continue;
     }

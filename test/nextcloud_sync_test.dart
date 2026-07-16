@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
@@ -9,6 +10,14 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
+  // Zero-delay single retry keeps failure-path tests fast while still
+  // exercising the transient-retry logic.
+  setUp(
+    () => NextcloudSync.connectionRetryDelays = const [Duration.zero],
+  );
+  tearDown(() => NextcloudSync.connectionRetryDelays = defaultRetryDelays);
+
   test('no-change sync skips the local index rebuild', () {
     const unchanged = SyncResult(
       trigger: 'poll',
@@ -264,6 +273,9 @@ void main() {
         interruptGetOnce: 'notes/11.typ',
         getCounts: gets,
       );
+      // Disable transient retries so the interruption aborts this run and the
+      // checkpoint/resume path is what gets exercised.
+      NextcloudSync.connectionRetryDelays = const [];
       final dir = await Directory.systemTemp.createTemp('tylog_checkpoint_');
       final storage = _CheckpointCountingStorage(dir);
       final vault = Vault.withStorage(storage);
@@ -300,6 +312,96 @@ void main() {
       expect(await vault.storage.readText('notes/13.typ'), 'remote 13');
     },
   );
+
+  test('a transient abort during folder preparation is retried', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/cloud.typ': _remoteText('cloud note'),
+    };
+    final server = await _mutableWebDavServer(remote, interruptMkcolOnce: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_mkcol_abort_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(result.downloaded, remote.length);
+    expect(await vault.storage.readText('notes/cloud.typ'), 'cloud note');
+  });
+
+  test('a transient mid-transfer abort is retried within the same run', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var index = 0; index < 5; index++)
+        'notes/$index.typ': _remoteText('remote $index'),
+    };
+    final gets = <String, int>{};
+    final server = await _mutableWebDavServer(
+      remote,
+      interruptGetOnce: 'notes/3.typ',
+      getCounts: gets,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_transient_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(result.downloaded, remote.length);
+    expect(gets['notes/3.typ'], 2);
+    expect(await vault.storage.readText('notes/3.typ'), 'remote 3');
+  });
+
+  test('resumed bootstrap with many cursor-less files uses the ZIP archive', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+    };
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(
+      remote,
+      serveArchive: true,
+      metrics: metrics,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_resume_zip_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+    await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.safeMerge);
+    final getsAfterBootstrap = metrics.individualGets;
+
+    // The bulk of the vault arrives later (interrupted bootstrap on another
+    // run, or another device uploaded) — a plain startup sync should fetch it
+    // as one archive instead of a per-file GET crawl.
+    for (var index = 0; index < 40; index++) {
+      remote['articles/$index.typ'] = _remoteText('article $index\n' * 50);
+    }
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.downloaded, 40);
+    expect(metrics.archiveGets, 1);
+    expect(metrics.individualGets, getsAfterBootstrap);
+    expect(
+      await vault.storage.readText('articles/39.typ'),
+      'article 39\n' * 50,
+    );
+  });
 
   test('legacy state upgrades and a different remote resets cursors', () async {
     final server = await _webDavServer(remoteContent: 'remote note');
@@ -1299,6 +1401,549 @@ void main() {
     expect(await loadSyncConflicts(vault), isEmpty);
   });
 
+  test(
+    'createSyncConflict replaces an existing unresolved record for the '
+    'same path instead of stacking',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_dedupe_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+
+      await createSyncConflict(
+        vault,
+        'notes/dupe.typ',
+        localBytes: utf8.encode('local v1'),
+        remoteBytes: utf8.encode('remote v1'),
+      );
+      await createSyncConflict(
+        vault,
+        'notes/dupe.typ',
+        localBytes: utf8.encode('local v2'),
+        remoteBytes: utf8.encode('remote v2'),
+      );
+
+      final conflicts = await loadSyncConflicts(vault);
+      expect(conflicts, hasLength(1));
+      final conflict = conflicts.single;
+      expect(
+        await vault.storage.readText(conflict.localSnapshot!),
+        'local v2',
+      );
+      expect(
+        await vault.storage.readText(conflict.remoteSnapshot!),
+        'remote v2',
+      );
+    },
+  );
+
+  test(
+    'loadSyncConflicts self-heals a record whose snapshots are identical',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_selfheal_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+
+      await createSyncConflict(
+        vault,
+        'notes/spurious.typ',
+        localBytes: utf8.encode('same content'),
+        remoteBytes: utf8.encode('same content'),
+      );
+      await createSyncConflict(
+        vault,
+        'notes/real.typ',
+        localBytes: utf8.encode('local content'),
+        remoteBytes: utf8.encode('remote content'),
+      );
+
+      // loadSyncConflicts is the function under test, so capture the
+      // spurious record's file paths by reading the raw .json before it
+      // self-heals (rather than duplicating its resolution logic here).
+      final rawEntries = await vault.storage.list(path: '.tylog/conflicts');
+      final spuriousJson = <String>[];
+      for (final entry in rawEntries) {
+        if (entry.isDirectory || !entry.path.endsWith('.json')) continue;
+        final json =
+            (jsonDecode(await vault.storage.readText(entry.path)) as Map)
+                .cast<String, Object?>();
+        if (json['path'] == 'notes/spurious.typ') spuriousJson.add(entry.path);
+      }
+      expect(spuriousJson, hasLength(1));
+      final spuriousBase = spuriousJson.single.substring(
+        0,
+        spuriousJson.single.length - '.json'.length,
+      );
+
+      final conflicts = await loadSyncConflicts(vault);
+
+      expect(conflicts, hasLength(1));
+      expect(conflicts.single.path, 'notes/real.typ');
+      // The spurious record and both its snapshots must be gone entirely.
+      expect(await vault.storage.exists('$spuriousBase.json'), isFalse);
+      expect(await vault.storage.exists('$spuriousBase.local'), isFalse);
+      expect(await vault.storage.exists('$spuriousBase.remote'), isFalse);
+      final remaining = (await vault.storage.list(
+        path: '.tylog/conflicts',
+        recursive: true,
+      )).where((entry) => !entry.isDirectory).toList();
+      expect(remaining, hasLength(3)); // real.typ's .json + .local + .remote
+    },
+  );
+
+  test(
+    'unresolved conflict record refreshes its etag when the remote changes '
+    'again, unblocking resolution',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/deadlock.typ': _MutableRemoteFile(
+          bytes: utf8.encode('remote v1'),
+          etag: '"remote-1"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_deadlock_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/deadlock.typ', 'local v1');
+
+      // First sync: divergent content records a conflict with remoteEtag
+      // "remote-1".
+      await NextcloudSync(_config(server)).sync(vault);
+      var conflict = (await loadSyncConflicts(
+        vault,
+      )).singleWhere((item) => item.path == 'notes/deadlock.typ');
+      expect(conflict.remoteEtag, 'remote-1');
+
+      // Another device edits the remote file again while the conflict sits
+      // unresolved; without a refresh, resolveConflict's guard would throw
+      // forever since the stored etag can never match again.
+      remote['notes/deadlock.typ'] = _MutableRemoteFile(
+        bytes: utf8.encode('remote v2'),
+        etag: '"remote-2"',
+        modified: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+      );
+
+      // Without an intervening sync, the guard still throws (unchanged).
+      await expectLater(
+        NextcloudSync(
+          _config(server),
+        ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
+        throwsA(isA<StateError>()),
+      );
+
+      // Running sync again must refresh the record in place (same path
+      // skipped as unresolved, but its etag/snapshot catch up).
+      await NextcloudSync(_config(server)).sync(vault);
+      conflict = (await loadSyncConflicts(
+        vault,
+      )).singleWhere((item) => item.path == 'notes/deadlock.typ');
+      expect(conflict.remoteEtag, 'remote-2');
+      expect(
+        await vault.storage.readText(conflict.remoteSnapshot!),
+        'remote v2',
+      );
+
+      await NextcloudSync(
+        _config(server),
+      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+
+      expect(await vault.storage.readText('notes/deadlock.typ'), 'local v1');
+      expect(utf8.decode(remote['notes/deadlock.typ']!.bytes), 'local v1');
+      expect(await loadSyncConflicts(vault), isEmpty);
+    },
+  );
+
+  test(
+    'local rename uses one conditional MOVE without retransferring',
+    () async {
+      final remote = <String, _MutableRemoteFile>{};
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(
+        remote,
+        includeChecksums: true,
+        metrics: metrics,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_local_rename_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/old.typ', 'same note');
+      await NextcloudSync(_config(server)).sync(vault);
+
+      final bytes = await vault.storage.readBytes('notes/old.typ');
+      await vault.storage.writeBytes('notes/new.typ', bytes);
+      await vault.storage.delete('notes/old.typ');
+      metrics
+        ..moves = 0
+        ..puts = 0
+        ..individualGets = 0;
+
+      final result = await NextcloudSync(_config(server)).sync(vault);
+
+      expect(result.renamed, 1);
+      expect(result.requiresIndexRefresh, isTrue);
+      expect(metrics.moves, 1);
+      expect(metrics.puts, 0);
+      expect(metrics.individualGets, 0);
+      expect(remote, isNot(contains('notes/old.typ')));
+      expect(utf8.decode(remote['notes/new.typ']!.bytes), 'same note');
+    },
+  );
+
+  test('remote rename uses checksum and migrates the local cursor', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(
+      remote,
+      includeChecksums: true,
+      metrics: metrics,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_remote_rename_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/old.typ', 'same note');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    remote['notes/new.typ'] = remote.remove('notes/old.typ')!;
+    metrics.individualGets = 0;
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.renamed, 1);
+    expect(metrics.individualGets, 0);
+    expect(await vault.storage.exists('notes/old.typ'), isFalse);
+    expect(await vault.storage.readText('notes/new.typ'), 'same note');
+    final state =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map<String, Object?>;
+    final cursors = state['cursors']! as Map<String, dynamic>;
+    expect(cursors, contains('notes/new.typ'));
+    expect(cursors, isNot(contains('notes/old.typ')));
+  });
+
+  test('both sides already renamed is completed idempotently', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote, includeChecksums: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_both_rename_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/old.typ', 'same note');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    await vault.storage.writeBytes(
+      'notes/new.typ',
+      await vault.storage.readBytes('notes/old.typ'),
+    );
+    await vault.storage.delete('notes/old.typ');
+    remote['notes/new.typ'] = remote.remove('notes/old.typ')!;
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    expect(result.renamed, 1);
+    expect(await vault.storage.exists('notes/old.typ'), isFalse);
+    expect(await vault.storage.readText('notes/new.typ'), 'same note');
+  });
+
+  test('ambiguous identical renames are not inferred', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(remote, metrics: metrics);
+    final dir = await Directory.systemTemp.createTemp('tylog_ambiguous_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    for (final path in const ['notes/a.typ', 'notes/b.typ']) {
+      await vault.storage.writeText(path, 'duplicate');
+    }
+    await NextcloudSync(_config(server)).sync(vault);
+    for (final pair in const [
+      ('notes/a.typ', 'notes/c.typ'),
+      ('notes/b.typ', 'notes/d.typ'),
+    ]) {
+      await vault.storage.writeBytes(
+        pair.$2,
+        await vault.storage.readBytes(pair.$1),
+      );
+      await vault.storage.delete(pair.$1);
+    }
+    metrics.moves = 0;
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    expect(result.renamed, 0);
+    expect(result.conflicts, 2);
+    expect(metrics.moves, 0);
+    for (final path in const ['notes/a.typ', 'notes/b.typ']) {
+      expect(remote, contains(path));
+    }
+    for (final path in const ['notes/c.typ', 'notes/d.typ']) {
+      expect(remote, contains(path));
+    }
+  });
+
+  test('a copy is uploaded and is not treated as a rename', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(remote, metrics: metrics);
+    final dir = await Directory.systemTemp.createTemp('tylog_copy_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/original.typ', 'same note');
+    await NextcloudSync(_config(server)).sync(vault);
+    await vault.storage.writeBytes(
+      'notes/copy.typ',
+      await vault.storage.readBytes('notes/original.typ'),
+    );
+    metrics
+      ..moves = 0
+      ..puts = 0;
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    expect(result.renamed, 0);
+    expect(metrics.moves, 0);
+    expect(metrics.puts, 1);
+    expect(remote, contains('notes/original.typ'));
+    expect(remote, contains('notes/copy.typ'));
+  });
+
+  test('rename plus edit preserves both versions without MOVE', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(remote, metrics: metrics);
+    final dir = await Directory.systemTemp.createTemp('tylog_rename_edit_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/old.typ', 'old body');
+    await NextcloudSync(_config(server)).sync(vault);
+    await vault.storage.delete('notes/old.typ');
+    await vault.storage.writeText('notes/new.typ', 'edited body');
+    metrics
+      ..moves = 0
+      ..puts = 0;
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+    expect(result.renamed, 0);
+    expect(result.conflicts, 1);
+    expect(metrics.moves, 0);
+    expect(metrics.puts, 1);
+    expect(utf8.decode(remote['notes/old.typ']!.bytes), 'old body');
+    expect(utf8.decode(remote['notes/new.typ']!.bytes), 'edited body');
+  });
+
+  test('a conditional MOVE race preserves both sides for Retry', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(
+      remote,
+      rejectMove: true,
+      metrics: metrics,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_move_race_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/old.typ', 'same note');
+    await NextcloudSync(_config(server)).sync(vault);
+    await vault.storage.writeBytes(
+      'notes/new.typ',
+      await vault.storage.readBytes('notes/old.typ'),
+    );
+    await vault.storage.delete('notes/old.typ');
+
+    await expectLater(
+      NextcloudSync(_config(server)).sync(vault),
+      throwsA(anything),
+    );
+    expect(metrics.moves, 1);
+    expect(remote, contains('notes/old.typ'));
+    expect(remote, isNot(contains('notes/new.typ')));
+    expect(await vault.storage.readText('notes/new.typ'), 'same note');
+  });
+
+  test('remote checksums avoid equality GETs', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_checksum_');
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/same.typ', 'same note');
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteBytes(
+        await vault.storage.readBytes('_system/tylog.typ'),
+      ),
+      'notes/same.typ': _remoteText('same note'),
+    };
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(
+      remote,
+      includeChecksums: true,
+      metrics: metrics,
+    );
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.safeMerge);
+    expect(result.conflicts, 0);
+    expect(metrics.individualGets, 0);
+  });
+
+  test(
+    'path transfers use two to four workers and one MKCOL per parent',
+    () async {
+      final remote = <String, _MutableRemoteFile>{};
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(
+        remote,
+        transferDelay: const Duration(milliseconds: 40),
+        metrics: metrics,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_parallel_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      for (var i = 0; i < 12; i++) {
+        await vault.storage.writeText('notes/$i.typ', 'note $i');
+      }
+
+      await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.uploadLocal);
+
+      expect(metrics.maxTransfers, greaterThan(1));
+      expect(metrics.maxTransfers, lessThanOrEqualTo(4));
+      expect(
+        metrics.mkcols['/remote.php/dav/files/alice/TyLogVault/notes/'],
+        1,
+      );
+    },
+  );
+
+  test(
+    '1602-file restore uses two PROPFINDs and one ZIP GET',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+        for (var i = 0; i < 1602; i++)
+          'articles/$i.typ': _remoteText('article $i'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(
+        remote,
+        includeChecksums: true,
+        serveArchive: true,
+        metrics: metrics,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_archive_');
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+      expect(result.downloaded, remote.length);
+      expect(metrics.propfinds, 2);
+      expect(metrics.archiveGets, 1);
+      expect(metrics.individualGets, 0);
+      expect(await vault.storage.readText('articles/1601.typ'), 'article 1601');
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test('unsupported ZIP restore falls back to individual transfers', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/cloud.typ': _remoteText('cloud note'),
+    };
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(remote, metrics: metrics);
+    final dir = await Directory.systemTemp.createTemp(
+      'tylog_archive_fallback_',
+    );
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(metrics.archiveGets, 1);
+    expect(metrics.individualGets, remote.length);
+    expect(await vault.storage.readText('notes/cloud.typ'), 'cloud note');
+  });
+
+  test('changed ZIP snapshot makes no user-visible local changes', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var i = 0; i < 32; i++) 'notes/$i.typ': _remoteText('note $i'),
+    };
+    final server = await _mutableWebDavServer(
+      remote,
+      serveArchive: true,
+      changeSnapshotAfterArchive: true,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_archive_race_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+    final starter = await vault.todayNote(DateTime(2026, 7, 15));
+
+    await expectLater(
+      NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote),
+      throwsStateError,
+    );
+
+    expect(await vault.storage.exists(starter), isTrue);
+    expect(await vault.storage.exists('notes/0.typ'), isFalse);
+  });
+
   test('nested configured folders are created one segment at a time', () async {
     final created = <String>[];
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -1489,6 +2134,24 @@ class _MutableRemoteFile {
   final DateTime modified;
 }
 
+class _WebDavMetrics {
+  int propfinds = 0;
+  int archiveGets = 0;
+  int moves = 0;
+  int puts = 0;
+  int individualGets = 0;
+  int activeTransfers = 0;
+  int maxTransfers = 0;
+  final mkcols = <String, int>{};
+
+  void startTransfer() {
+    activeTransfers++;
+    if (activeTransfers > maxTransfers) maxTransfers = activeTransfers;
+  }
+
+  void finishTransfer() => activeTransfers--;
+}
+
 _MutableRemoteFile _remoteText(String text) => _remoteBytes(utf8.encode(text));
 
 _MutableRemoteFile _remoteBytes(List<int> bytes) => _MutableRemoteFile(
@@ -1510,68 +2173,166 @@ Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
   bool unquotedPutEtag = false,
   bool rejectDelete = false,
+  bool rejectMove = false,
+  bool includeChecksums = false,
+  bool serveArchive = false,
+  bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
+  bool interruptMkcolOnce = false,
   Map<String, int>? getCounts,
+  Duration transferDelay = Duration.zero,
+  _WebDavMetrics? metrics,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
   var interrupted = false;
+  var mkcolInterrupted = false;
+  var archiveChanged = false;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
     final path = request.uri.path.startsWith(root)
         ? request.uri.path.substring(root.length)
         : '';
     if (request.method == 'MKCOL') {
+      metrics?.mkcols.update(
+        request.uri.path,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+      if (interruptMkcolOnce && !mkcolInterrupted) {
+        mkcolInterrupted = true;
+        final socket = await request.response.detachSocket(
+          writeHeaders: false,
+        );
+        socket.destroy();
+        return;
+      }
       request.response.statusCode = HttpStatus.methodNotAllowed;
     } else if (request.method == 'PROPFIND') {
+      metrics?.propfinds++;
       request.response.statusCode = 207;
-      request.response.write('<d:multistatus xmlns:d="DAV:">');
+      request.response.write(
+        '<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">',
+      );
       for (final entry in files.entries) {
+        final checksum = sha256.convert(entry.value.bytes);
         request.response.write(
           '<d:response><d:href>$root${entry.key}</d:href>'
           '<d:propstat><d:prop><d:getlastmodified>'
           '${HttpDate.format(entry.value.modified)}'
           '</d:getlastmodified><d:getetag>${entry.value.etag}</d:getetag>'
           '<d:getcontentlength>${entry.value.bytes.length}</d:getcontentlength>'
+          '${includeChecksums ? '<oc:checksums><oc:checksum>SHA256:$checksum</oc:checksum></oc:checksums>' : ''}'
           '</d:prop></d:propstat></d:response>',
         );
       }
       request.response.write('</d:multistatus>');
     } else if (request.method == 'GET') {
-      getCounts?.update(path, (count) => count + 1, ifAbsent: () => 1);
-      final file = files[path];
-      if (file == null) {
-        request.response.statusCode = HttpStatus.notFound;
-      } else if (!interrupted && path == interruptGetOnce) {
-        interrupted = true;
-        request.response.contentLength = file.bytes.length + 10;
-        final socket = await request.response.detachSocket(writeHeaders: true);
-        socket.add(file.bytes.take(1).toList());
-        await socket.flush();
-        socket.destroy();
+      if (path.isEmpty) {
+        metrics?.archiveGets++;
+        if (!serveArchive) {
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+          return;
+        }
+        final archive = Archive();
+        for (final entry in files.entries) {
+          archive.addFile(
+            ArchiveFile.bytes('TyLogVault/${entry.key}', entry.value.bytes),
+          );
+        }
+        final bytes = ZipEncoder().encodeBytes(archive);
+        request.response.headers.contentType = ContentType(
+          'application',
+          'zip',
+        );
+        request.response.contentLength = bytes.length;
+        request.response.add(bytes);
+        if (changeSnapshotAfterArchive && !archiveChanged && files.isNotEmpty) {
+          archiveChanged = true;
+          final first = files.entries.first;
+          files[first.key] = _MutableRemoteFile(
+            bytes: first.value.bytes,
+            etag: '"changed-after-archive"',
+            modified: first.value.modified.add(const Duration(seconds: 1)),
+          );
+        }
+        await request.response.close();
         return;
-      } else {
-        request.response.headers.set(HttpHeaders.etagHeader, file.etag);
-        request.response.add(file.bytes);
+      }
+      getCounts?.update(path, (count) => count + 1, ifAbsent: () => 1);
+      metrics?.individualGets++;
+      metrics?.startTransfer();
+      try {
+        if (transferDelay != Duration.zero) await Future.delayed(transferDelay);
+        final file = files[path];
+        if (file == null) {
+          request.response.statusCode = HttpStatus.notFound;
+        } else if (!interrupted && path == interruptGetOnce) {
+          interrupted = true;
+          request.response.contentLength = file.bytes.length + 10;
+          final socket = await request.response.detachSocket(
+            writeHeaders: true,
+          );
+          socket.add(file.bytes.take(1).toList());
+          await socket.flush();
+          socket.destroy();
+          return;
+        } else {
+          request.response.headers.set(HttpHeaders.etagHeader, file.etag);
+          request.response.add(file.bytes);
+        }
+      } finally {
+        metrics?.finishTransfer();
       }
     } else if (request.method == 'PUT') {
-      final bytes = await request.fold<List<int>>(
-        [],
-        (all, chunk) => all..addAll(chunk),
-      );
-      final etag = '"upload-${version++}"';
-      files[path] = _MutableRemoteFile(
-        bytes: bytes,
-        etag: etag,
-        modified: DateTime.now().toUtc(),
-      );
-      request.response.statusCode = HttpStatus.created;
-      // Real Nextcloud sends OC-Etag unquoted while PROPFIND getetag is quoted.
-      request.response.headers.set(
-        'OC-Etag',
-        unquotedPutEtag ? etag.replaceAll('"', '') : etag,
-      );
-      request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
+      metrics?.puts++;
+      metrics?.startTransfer();
+      try {
+        if (transferDelay != Duration.zero) await Future.delayed(transferDelay);
+        final bytes = await request.fold<List<int>>(
+          [],
+          (all, chunk) => all..addAll(chunk),
+        );
+        final etag = '"upload-${version++}"';
+        files[path] = _MutableRemoteFile(
+          bytes: bytes,
+          etag: etag,
+          modified: DateTime.now().toUtc(),
+        );
+        request.response.statusCode = HttpStatus.created;
+        // Real Nextcloud sends OC-Etag unquoted while PROPFIND getetag is quoted.
+        request.response.headers.set(
+          'OC-Etag',
+          unquotedPutEtag ? etag.replaceAll('"', '') : etag,
+        );
+        request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
+      } finally {
+        metrics?.finishTransfer();
+      }
+    } else if (request.method == 'MOVE') {
+      metrics?.moves++;
+      final source = files[path];
+      final destinationValue = request.headers.value('destination');
+      final destination = destinationValue == null
+          ? null
+          : Uri.parse(destinationValue).path;
+      final target = destination != null && destination.startsWith(root)
+          ? destination.substring(root.length)
+          : null;
+      final ifMatch = request.headers.value(HttpHeaders.ifMatchHeader);
+      if (rejectMove || source == null || ifMatch != source.etag) {
+        request.response.statusCode = HttpStatus.preconditionFailed;
+      } else if (target == null ||
+          files.containsKey(target) ||
+          request.headers.value('overwrite')?.toUpperCase() != 'F') {
+        request.response.statusCode = HttpStatus.preconditionFailed;
+      } else {
+        files.remove(path);
+        files[target] = source;
+        request.response.statusCode = HttpStatus.created;
+        request.response.headers.set('OC-Etag', source.etag);
+      }
     } else if (request.method == 'DELETE') {
       if (rejectDelete) {
         request.response.statusCode = HttpStatus.preconditionFailed;

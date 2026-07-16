@@ -197,6 +197,33 @@ void main() {
     expect(await vault.readText(note), original);
   });
 
+  test(
+    'nextTaskId avoids collisions with existing task ids so two inserted '
+    'tasks never share an id',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_task_id_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final now = DateTime(2026, 7, 15, 9, 30, 0);
+
+      final firstId = await vault.nextTaskId('Buy milk', now: now);
+      expect(firstId, '20260715-093000-buy-milk');
+
+      final note = await vault.todayNote(now);
+      await vault.saveNote(note, '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "day", title: "Day", kind: "daily")
+#tylog.task(id: "$firstId", text: "Buy milk", status: "todo")
+''');
+      await vault.rebuildIndex();
+
+      final secondId = await vault.nextTaskId('Buy milk', now: now);
+
+      expect(secondId, isNot(firstId));
+      expect(secondId, '$firstId-2');
+    },
+  );
+
   test('index is deterministic and rebuilds v5 backlinks', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_index_');
     addTearDown(() => dir.delete(recursive: true));

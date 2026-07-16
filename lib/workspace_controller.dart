@@ -69,6 +69,11 @@ class WorkspaceController extends ChangeNotifier {
 
   bool get hasSyncConflicts => syncConflicts.isNotEmpty;
 
+  /// Exposed for tests only, to verify [startCloudPolling]/[stopCloudPolling]
+  /// actually toggle the background poll timer.
+  @visibleForTesting
+  bool get hasActiveCloudPoll => _cloudPoll?.isActive ?? false;
+
   bool get editingRecently {
     if (dirty || isComposing()) return true;
     final edited = lastEditAt;
@@ -116,21 +121,54 @@ class WorkspaceController extends ChangeNotifier {
             !vaultNeedsAndroidTreeMigration(next),
       );
       final today = await opened.todayNote();
-      final built = await opened.rebuildIndex(inspector: inspector);
-      final pkms = await _readPkms(opened, built);
       final loadedFiles = <String, Uint8List>{};
+      // Load user-vendored Typst packages (e.g. @preview/<name>:<ver> dropped
+      // into _system/packages/<name>/<ver>/...) so notes can import them.
+      // Managed tylog files are loaded afterward and take precedence on any
+      // key collision. Walked one directory level at a time (never
+      // `recursive: true`) so this stays part of the fast path: a full
+      // recursive scan is the slow operation on SAF vaults that the fast
+      // path/background-index split exists to avoid.
+      if (await opened.storage.exists('_system/packages')) {
+        final directories = <String>['_system/packages'];
+        while (directories.isNotEmpty) {
+          final dir = directories.removeLast();
+          List<VaultStorageEntry> entries;
+          try {
+            entries = await opened.storage.list(path: dir);
+          } catch (_) {
+            continue;
+          }
+          for (final entry in entries) {
+            if (entry.isDirectory) {
+              directories.add(entry.path);
+              continue;
+            }
+            try {
+              final bytes = await opened.storage.readBytes(entry.path);
+              loadedFiles[entry.path] = bytes;
+              loadedFiles['/${entry.path}'] = bytes;
+            } catch (_) {
+              // Skip unreadable vendored package files; don't abort open.
+            }
+          }
+        }
+      }
       for (final asset
           in (await TylogAssets.load()).managedVaultFiles.entries) {
         final bytes = await opened.storage.readBytes(asset.key);
         loadedFiles[asset.key] = bytes;
         loadedFiles['/${asset.key}'] = bytes;
       }
+      // Fast path: assign what a handful of reads can give us right away so
+      // the UI is usable immediately, instead of waiting on a full index +
+      // search-index rebuild (thousands of sequential reads on SAF vaults).
       vault = opened;
       entry = next;
       note = today;
-      index = _retainIndex(built);
-      validation = _retainValidation(pkms.report);
-      searchIndex = pkms.search;
+      index = await opened.loadIndex();
+      validation = null;
+      searchIndex = PkmsSearchIndex.empty();
       helperSource = await opened.storage.readText(Vault.helperPath);
       typstPackageFiles = loadedFiles;
       bibliographySource = await opened.storage.exists(Vault.bibliographyPath)
@@ -147,14 +185,17 @@ class WorkspaceController extends ChangeNotifier {
       lastEditAt = null;
       dirty = false;
       source = await opened.storage.readText(today);
-      status = 'Vault: ${next.name} · ${pkms.report.summary()}';
+      status = 'Vault opened — indexing…';
       notifyListeners();
-      unawaited(_reconcileTasks(built.tasks));
       unawaited(_sweepSafBackups(opened));
       if (next.cloud?.isReady ?? false) {
         if (trigger != null) unawaited(syncNow(trigger: trigger));
         startCloudPolling();
       }
+      // Heavy index + search-index build runs in the background, using the
+      // on-disk cache/fingerprints (force: false) so it's much faster than a
+      // full rebuild.
+      unawaited(rebuildIndex(force: false));
     } catch (error) {
       close('Open failed: $error', nextCloud: next.cloud);
     }
@@ -168,7 +209,7 @@ class WorkspaceController extends ChangeNotifier {
     dirty = true;
     if (becameDirty) status = 'Autosave pending...';
     _autosave?.cancel();
-    _autosave = Timer(const Duration(milliseconds: 700), save);
+    _autosave = Timer(const Duration(milliseconds: 400), save);
     notifyListeners();
   }
 
@@ -176,7 +217,12 @@ class WorkspaceController extends ChangeNotifier {
     _autosave?.cancel();
     final opened = vault;
     final path = note;
-    if (opened == null || path == null) return;
+    if (opened == null) {
+      status = 'Waiting for vault…';
+      notifyListeners();
+      return;
+    }
+    if (path == null) return;
     final revision = editRevision;
     final value = source;
     try {
@@ -230,7 +276,7 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<void> rebuildIndex() async {
+  Future<void> rebuildIndex({bool force = true}) async {
     final opened = vault;
     if (opened == null) return;
     if (rebuilding) {
@@ -245,7 +291,7 @@ class WorkspaceController extends ChangeNotifier {
     try {
       final built = await opened.rebuildIndex(
         inspector: inspector,
-        force: true,
+        force: force,
         isCancelled: () => cancelRebuild,
         onProgress: (complete, total) {
           if (complete % 100 != 0 && complete != total) return;
@@ -254,14 +300,22 @@ class WorkspaceController extends ChangeNotifier {
           notifyListeners();
         },
       );
-      final pkms = await _readPkms(opened, built);
+      // The scan already has every note and task. Publish them to the UI now,
+      // before the much slower validation + search-index build — on SAF vaults
+      // that build reads many files and must never gate the notes the UI needs
+      // (Journal, Library, Today all read `index`).
       index = _retainIndex(built);
-      validation = _retainValidation(pkms.report);
-      searchIndex.replaceWith(pkms.search);
       indexedRevision = savedRevision;
-      status = 'Index rebuilt · ${pkms.report.summary()}';
+      status = 'Indexed · ${built.notes.length} notes · building search…';
       notifyListeners();
       unawaited(_reconcileTasks(built.tasks));
+      // Heavier pass: validation + full-text search index. Refined in place so a
+      // slow/stalled search build can't blank out the already-visible notes.
+      final pkms = await _readPkms(opened, built);
+      validation = _retainValidation(pkms.report);
+      searchIndex.replaceWith(pkms.search);
+      status = 'Index rebuilt · ${pkms.report.summary()}';
+      notifyListeners();
     } on IndexBuildCancelled {
       status = 'Index rebuild cancelled';
       notifyListeners();
@@ -295,6 +349,11 @@ class WorkspaceController extends ChangeNotifier {
     });
   }
 
+  /// Stops the background cloud poll, e.g. while the app is backgrounded.
+  void stopCloudPolling() {
+    _cloudPoll?.cancel();
+  }
+
   Future<bool> syncNow({
     String trigger = 'manual',
     NextcloudConfig? configOverride,
@@ -313,9 +372,13 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     }
+    // 'resume' included: a resume sync starts the instant the app foregrounds,
+    // and users routinely background it again mid-run — without the service
+    // Android freezes the run at its first network stage ("stuck on
+    // prepare-remote-folder") until the next foreground.
     final keepRunningOffscreen =
         Platform.isAndroid &&
-        const {'setup', 'manual', 'retry'}.contains(trigger);
+        const {'setup', 'manual', 'retry', 'resume'}.contains(trigger);
     syncing = true;
     syncError = null;
     status = 'Syncing…';
@@ -356,7 +419,9 @@ class WorkspaceController extends ChangeNotifier {
             ? await opened.storage.readText(syncedNote)
             : null;
         final editorChanged = revisionBeforeSync != editRevision || dirty;
-        if (editorChanged && diskSource != sourceBeforeSync) {
+        if (editorChanged &&
+            diskSource != sourceBeforeSync &&
+            diskSource != source) {
           await createSyncConflict(
             opened,
             syncedNote,
@@ -365,6 +430,10 @@ class WorkspaceController extends ChangeNotifier {
           );
           await opened.saveNote(syncedNote, source);
           concurrentConflict = true;
+        } else if (editorChanged && diskSource != sourceBeforeSync) {
+          // The disk already holds exactly what the editor shows: our own
+          // 400ms autosave landed mid-sync. Nothing diverged, nothing to
+          // reconcile, and no data is at risk — just move on.
         } else if (!editorChanged && diskSource != sourceBeforeSync) {
           source = diskSource ?? '';
         }
@@ -391,7 +460,8 @@ class WorkspaceController extends ChangeNotifier {
           result.downloaded +
           result.deletedLocal +
           result.deletedRemote +
-          result.repaired;
+          result.repaired +
+          result.renamed;
       status = conflicts.isNotEmpty || concurrentConflict
           ? 'Needs attention'
           : changed == 0
@@ -507,6 +577,9 @@ class WorkspaceController extends ChangeNotifier {
     VaultIndex built,
   ) async {
     final report = await validatePkmsStorage(opened.storage, built);
+    // Surface unparseable task recurrence rules (rrule lives in the app layer,
+    // not tylog_core) into the same Problems report the UI already shows.
+    report.problems.addAll(validateTaskRecurrences(built.tasks));
     final cached = await PkmsSearchIndex.loadStorage(
       opened.storage,
       Vault.searchIndexPath,
@@ -591,6 +664,14 @@ class WorkspaceController extends ChangeNotifier {
 }
 
 bool _notComposing() => false;
+
+/// Whether the Today note shown on [openedAt] should be refreshed because
+/// [now] falls on a different calendar day (day rollover while backgrounded).
+bool shouldRolloverToday({required DateTime openedAt, required DateTime now}) {
+  return openedAt.year != now.year ||
+      openedAt.month != now.month ||
+      openedAt.day != now.day;
+}
 
 String friendlySyncError(Object error) {
   if (error is SocketException || error is TimeoutException) {

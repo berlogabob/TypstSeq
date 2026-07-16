@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -76,6 +77,78 @@ void main() {
     );
   });
 
+  test('a hanging inspector times out and the scan still completes', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_hang_');
+    final previousTimeout = typstInspectTimeout;
+    typstInspectTimeout = const Duration(milliseconds: 100);
+    addTearDown(() async {
+      typstInspectTimeout = previousTimeout;
+      await root.delete(recursive: true);
+    });
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/poison.typ',
+      '#show: tylog.note.with(id: "poison", title: "Poison")',
+    );
+    await storage.writeText(
+      'notes/fine.typ',
+      '#show: tylog.note.with(id: "fine", title: "Fine")',
+    );
+    // Sorted after poison.typ: must NOT be queried once the inspector is
+    // considered dead (a wedged native worker would idle out every later
+    // query too), but still lands in the index via the source-based scan.
+    await storage.writeText(
+      'notes/z-after.typ',
+      '#show: tylog.note.with(id: "z", title: "After")',
+    );
+    final inspector = _HangingInspector('notes/poison.typ');
+
+    final index = await scanVaultStorage(
+      storage,
+      inspector: inspector,
+    ).timeout(const Duration(seconds: 10));
+
+    expect(index.notes, hasLength(3));
+    expect(
+      index.problems
+          .where((problem) => problem.code == 'metadata-query-failed')
+          .map((problem) => problem.subject),
+      ['notes/poison.typ'],
+    );
+    // fine.typ (sorted first) was queried; z-after.typ was skipped.
+    expect(inspector.queried, ['notes/fine.typ', 'notes/poison.typ']);
+    expect(
+      index.problems
+          .where((problem) => problem.code == 'metadata-fallback')
+          .map((problem) => problem.subject),
+      contains('notes/z-after.typ'),
+    );
+  });
+
+  test('inspection files exclude other note sources', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_files_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A")',
+    );
+    await storage.writeText(
+      'articles/big.typ',
+      '#show: tylog.note.with(id: "big", title: "Big")',
+    );
+    await storage.writeText('_system/tylog.typ', '// helper');
+    await storage.writeBytes('files/photo.jpg', [1, 2, 3]);
+    final inspector = _FileCapturingInspector();
+
+    await scanVaultStorage(storage, inspector: inspector);
+
+    expect(inspector.fileKeys, contains('_system/tylog.typ'));
+    expect(inspector.fileKeys, contains('files/photo.jpg'));
+    expect(inspector.fileKeys, isNot(contains('notes/a.typ')));
+    expect(inspector.fileKeys, isNot(contains('articles/big.typ')));
+  });
+
   test('local storage rejects traversal', () async {
     final root = await Directory.systemTemp.createTemp('tylog_core_paths_');
     addTearDown(() => root.delete(recursive: true));
@@ -134,3 +207,31 @@ Map<String, Object?> _stableNotes(VaultIndex index) => {
       'attachments': note.attachments.map((item) => item.toJson()).toList(),
     },
 };
+
+class _HangingInspector implements TypstInspector {
+  _HangingInspector(this.hangOn);
+  final String hangOn;
+  final queried = <String>[];
+  final _delegate = _SourceInspector();
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) {
+    queried.add(input.path);
+    if (input.path == hangOn) {
+      // Simulates a Typst compile that never terminates.
+      return Completer<List<TypstMetadataRecord>>().future;
+    }
+    return _delegate.inspect(input);
+  }
+}
+
+class _FileCapturingInspector implements TypstInspector {
+  final fileKeys = <String>{};
+  final _delegate = _SourceInspector();
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) {
+    fileKeys.addAll(input.files.keys);
+    return _delegate.inspect(input);
+  }
+}

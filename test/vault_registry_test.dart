@@ -247,6 +247,51 @@ void main() {
     expect(await file.readAsString(), contains('"onboardingComplete":true'));
   });
 
+  test('reading preferences use legacy defaults and survive reload', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_reading_prefs_');
+    addTearDown(() => base.delete(recursive: true));
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          pathProvider,
+          (call) async => call.method == 'getApplicationDocumentsDirectory'
+              ? base.path
+              : null,
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProvider, null),
+    );
+
+    final vault = await Directory('${base.path}/vault').create();
+    final file = File('${base.path}/vaults.json');
+    final entry = VaultEntry(id: 'vault', name: 'Vault', path: vault.path);
+    await file.writeAsString(
+      jsonEncode({
+        'version': 2,
+        'active': entry.id,
+        'onboardingComplete': true,
+        'vaults': [entry.toJson()],
+      }),
+    );
+
+    final legacy = await VaultRegistry.load();
+    expect(legacy.readingFontScale, 1);
+    expect(legacy.readingNightMode, isFalse);
+
+    await legacy.updateReadingPreferences(fontScale: -1, nightMode: false);
+    expect(legacy.readingFontScale, 0.8);
+    await legacy.updateReadingPreferences(fontScale: 2.4, nightMode: true);
+    final saved = jsonDecode(await file.readAsString()) as Map<String, Object?>;
+    expect(saved['version'], 3);
+    expect(saved['readingFontScale'], 2);
+    expect(saved['readingNightMode'], isTrue);
+
+    final restored = await VaultRegistry.load();
+    expect(restored.readingFontScale, 2);
+    expect(restored.readingNightMode, isTrue);
+  });
+
   test(
     'registry reads legacy paths and writes typed Android tree locations',
     () {

@@ -144,19 +144,52 @@ class PkmsSearchIndex {
     PkmsSearchIndex? previous,
   }) => buildStorage(LocalVaultStorage(root), vault, previous: previous);
 
+  static const _readConcurrency = 16;
+
   static Future<PkmsSearchIndex> buildStorage(
     VaultStorage storage,
     VaultIndex vault, {
     PkmsSearchIndex? previous,
+    void Function(int done, int total)? onProgress,
   }) async {
     final documents = <String, _SearchDocument>{};
+    final misses = <NoteRef>[];
     for (final note in vault.notes) {
       final cached = previous?._documents[note.path];
       if (cached?.fingerprint == note.fingerprint) {
         documents[note.path] = cached!;
-        continue;
+      } else {
+        misses.add(note);
       }
-      final source = await storage.readText(note.path);
+    }
+    final total = misses.length;
+    final sources = <String, String>{};
+    var done = 0;
+    for (var i = 0; i < misses.length; i += _readConcurrency) {
+      final end = i + _readConcurrency < misses.length
+          ? i + _readConcurrency
+          : misses.length;
+      final slice = misses.sublist(i, end);
+      final results = await Future.wait(
+        slice.map((note) async {
+          // A single unreadable file must not abort the whole search build —
+          // skip it (it simply won't be searchable) rather than throwing.
+          try {
+            return MapEntry(note.path, await storage.readText(note.path));
+          } catch (_) {
+            return MapEntry(note.path, null);
+          }
+        }),
+      );
+      for (final result in results) {
+        if (result.value != null) sources[result.key] = result.value!;
+      }
+      done += slice.length;
+      onProgress?.call(done, total);
+    }
+    for (final note in misses) {
+      final source = sources[note.path];
+      if (source == null) continue;
       documents[note.path] = _SearchDocument(
         id: note.id,
         path: note.path,
@@ -267,6 +300,49 @@ class PkmsSearchIndex {
         score += 600;
       }
       if (document.title.toLowerCase().startsWith(normalized)) score += 200;
+      results.add(
+        PkmsSearchResult(
+          id: document.id,
+          path: document.path,
+          title: document.title,
+          kind: document.kind,
+          tags: document.tags,
+          score: score,
+          snippet: document.snippet,
+        ),
+      );
+    }
+    results.sort((a, b) {
+      final score = b.score.compareTo(a.score);
+      return score != 0 ? score : a.title.compareTo(b.title);
+    });
+    return results.take(limit).toList();
+  }
+
+  /// Prefix search over titles, ids, and aliases — used to power inline
+  /// "@" mention autocomplete. Distinct from [search], which is a full-word
+  /// index lookup: this matches on `startsWith`, case-insensitively, and
+  /// ranks an exact title match above a title prefix above an alias/id
+  /// prefix.
+  List<PkmsSearchResult> searchPrefix(String prefix, {int limit = 8}) {
+    final normalized = prefix.trim().toLowerCase();
+    if (normalized.isEmpty) return const [];
+    final results = <PkmsSearchResult>[];
+    for (final document in _documents.values) {
+      final title = document.title.toLowerCase();
+      int score;
+      if (title == normalized) {
+        score = 1000;
+      } else if (title.startsWith(normalized)) {
+        score = 500;
+      } else if (document.id.toLowerCase().startsWith(normalized) ||
+          document.aliases.any(
+            (alias) => alias.toLowerCase().startsWith(normalized),
+          )) {
+        score = 300;
+      } else {
+        continue;
+      }
       results.add(
         PkmsSearchResult(
           id: document.id,

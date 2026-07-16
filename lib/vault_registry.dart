@@ -105,21 +105,30 @@ class VaultRegistry {
     this.entries,
     this.activeId, {
     this.onboardingComplete = true,
+    this.readingFontScale = 1,
+    this.readingNightMode = false,
   });
 
   final File file;
   final List<VaultEntry> entries;
   String activeId;
   bool onboardingComplete;
+  double readingFontScale;
+  bool readingNightMode;
+  Future<void> _pendingSave = Future.value();
 
   VaultEntry get active => entries.firstWhere((entry) => entry.id == activeId);
 
   static Future<VaultRegistry> load() async {
     final documents = await getApplicationDocumentsDirectory();
     final file = File('${documents.path}/vaults.json');
+    var readingFontScale = 1.0;
+    var readingNightMode = false;
     if (await file.exists()) {
       final json =
           jsonDecode(await file.readAsString()) as Map<String, Object?>;
+      readingFontScale = _readingFontScale(json['readingFontScale']);
+      readingNightMode = json['readingNightMode'] as bool? ?? false;
       final parsed = (json['vaults'] as List)
           .map(
             (item) =>
@@ -171,6 +180,8 @@ class VaultRegistry {
               ? active!
               : entries.first.id,
           onboardingComplete: json['onboardingComplete'] as bool? ?? true,
+          readingFontScale: readingFontScale,
+          readingNightMode: readingNightMode,
         );
         // Rewrite vaults.json without the now-migrated inline passwords.
         if (migrated) await registry.save();
@@ -179,7 +190,14 @@ class VaultRegistry {
     }
 
     if (Platform.isAndroid) {
-      final registry = VaultRegistry(file, [], '', onboardingComplete: false);
+      final registry = VaultRegistry(
+        file,
+        [],
+        '',
+        onboardingComplete: false,
+        readingFontScale: readingFontScale,
+        readingNightMode: readingNightMode,
+      );
       await registry.save();
       return registry;
     }
@@ -199,6 +217,8 @@ class VaultRegistry {
       [entry],
       entry.id,
       onboardingComplete: false,
+      readingFontScale: readingFontScale,
+      readingNightMode: readingNightMode,
     );
     await registry.save();
     return registry;
@@ -285,6 +305,15 @@ class VaultRegistry {
     await save();
   }
 
+  Future<void> updateReadingPreferences({
+    required double fontScale,
+    required bool nightMode,
+  }) {
+    readingFontScale = _readingFontScale(fontScale);
+    readingNightMode = nightMode;
+    return save();
+  }
+
   Future<void> setCloud(VaultEntry entry, NextcloudConfig cloud) async {
     await cloud.saveSecret(vaultId: entry.id);
     final index = entries.indexWhere((item) => item.id == entry.id);
@@ -324,17 +353,23 @@ class VaultRegistry {
     await forget(entry);
   }
 
-  Future<void> save() => writeFileAtomic(
-    file,
-    utf8.encode(
+  Future<void> save() {
+    final bytes = utf8.encode(
       jsonEncode({
-        'version': 2,
+        'version': 3,
         'active': activeId,
         'onboardingComplete': onboardingComplete,
+        'readingFontScale': readingFontScale,
+        'readingNightMode': readingNightMode,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),
-    ),
-  );
+    );
+    final next = _pendingSave
+        .catchError((_) {})
+        .then((_) => writeFileAtomic(file, bytes));
+    _pendingSave = next;
+    return next;
+  }
 }
 
 Future<void> copyVaultStorage(
@@ -380,3 +415,7 @@ String _name(String path) =>
 
 String _id(String path) =>
     base64Url.encode(utf8.encode(path)).replaceAll('=', '');
+
+double _readingFontScale(Object? value) => value is num && value.isFinite
+    ? value.toDouble().clamp(0.8, 2).toDouble()
+    : 1;

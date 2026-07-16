@@ -55,6 +55,16 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // Sign profile builds with the release key so a `--profile` build installs
+        // over other locally-signed builds (same signature) without an uninstall
+        // that would wipe the vault registry — enables on-device profiling.
+        // `profile` is created by the Flutter Gradle plugin (no static accessor),
+        // so resolve it by name rather than with a `profile { }` block.
+        if (keystorePropertiesFile.exists()) {
+            getByName("profile") {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 }
 

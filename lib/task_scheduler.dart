@@ -25,9 +25,55 @@ DateTime? nextTaskReminder(TaskRef task, DateTime now) {
           after: now.toUtc().copyWith(isUtc: true),
         )
         .firstOrNull;
-  } catch (_) {
+  } catch (error) {
+    debugPrint('Invalid recurrence for task ${task.id}: $error');
     return null;
   }
+}
+
+/// Checks each task's non-empty `recurrence` field for a valid RRULE.
+///
+/// This mirrors the `PkmsProblem` construction pattern used by
+/// `validatePkmsStorage` in `tylog_core`, but lives in the app layer: the
+/// `rrule` package that can parse/validate recurrence strings is an app
+/// dependency only, and `tylog_core` must not gain a new dependency just for
+/// this check.
+List<PkmsProblem> validateTaskRecurrences(Iterable<TaskRef> tasks) {
+  final problems = <PkmsProblem>[];
+  for (final task in tasks) {
+    final recurrence = task.recurrence;
+    if (recurrence == null || recurrence.isEmpty) continue;
+    try {
+      RecurrenceRule.fromString(recurrence);
+    } catch (_) {
+      problems.add(
+        PkmsProblem(
+          code: 'invalid-recurrence',
+          severity: PkmsSeverity.warning,
+          subject: task.notePath,
+          message: 'Task "${task.id}" has an unparseable recurrence rule',
+          fix: 'Fix the recurrence field of task "${task.id}" so it is a valid RRULE.',
+        ),
+      );
+    }
+  }
+  return problems;
+}
+
+/// Deterministic 31-bit positive notification id for [id].
+///
+/// Dart's `String.hashCode` is explicitly *not* guaranteed to be stable
+/// across runs/isolates/platforms, so using it for a notification id (which
+/// must stay the same across app restarts so reconciling replaces rather
+/// than duplicates a pending notification) risks silent collisions and
+/// orphaned notifications. FNV-1a is a small, well-known, stable hash.
+int stableTaskNotificationId(String id) {
+  var hash = 0x811c9dc5;
+  for (final unit in id.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return hash & 0x7fffffff;
 }
 
 class TaskScheduler {
@@ -78,7 +124,7 @@ class TaskScheduler {
       final next = nextTaskReminder(task, now);
       if (next == null) continue;
       await plugin.zonedSchedule(
-        id: task.id.hashCode & 0x7fffffff,
+        id: stableTaskNotificationId(task.id),
         title: task.project ?? 'TyLog task',
         body: task.text,
         payload: task.notePath,

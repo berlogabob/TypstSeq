@@ -361,6 +361,25 @@ impl SimpleWorld {
         }
         self.library = LazyHash::new(Library::builder().with_inputs(dict).build());
     }
+
+    /// Computes the in-memory VFS lookup key for a [FileId].
+    ///
+    /// Project-rooted files (the common case) key on their bare normalised
+    /// vpath, as before. Package-rooted files — i.e. those reached through a
+    /// Typst-Universe-style import such as `#import "@preview/name:version"`
+    /// — are remapped onto the vault's existing package-vendoring layout,
+    /// `_system/packages/{name}/{version}/{vpath}`. The namespace
+    /// (`@preview` vs `@local`) is intentionally ignored: both resolve to the
+    /// same vendored location.
+    fn vfs_key(&self, id: FileId) -> String {
+        let vpath = id.vpath().get_without_slash().replace('\\', "/");
+        match id.root() {
+            VirtualRoot::Project => vpath,
+            VirtualRoot::Package(spec) => {
+                format!("_system/packages/{}/{}/{}", spec.name, spec.version, vpath)
+            }
+        }
+    }
 }
 
 impl typst::World for SimpleWorld {
@@ -384,15 +403,14 @@ impl typst::World for SimpleWorld {
 
         // Included `.typ` files: look them up in the virtual file system,
         // parse the bytes as UTF-8, and return a fresh Source.
-        let vpath = id.vpath();
-        let key = vpath.get_without_slash().replace('\\', "/");
+        let key = self.vfs_key(id);
 
         match self.files.get(&key) {
             Some(bytes) => {
                 let text = std::str::from_utf8(bytes).map_err(|_| FileError::InvalidUtf8)?;
                 Ok(Source::new(id, text.to_string()))
             }
-            None => Err(FileError::NotFound(vpath.get_without_slash().into())),
+            None => Err(FileError::NotFound(id.vpath().get_without_slash().into())),
         }
     }
 
@@ -401,15 +419,15 @@ impl typst::World for SimpleWorld {
     }
 
     fn file(&self, id: FileId) -> Result<Bytes, FileError> {
-        // Resolve the virtual path to a normalised forward-slash string and
-        // look it up in our in-memory virtual file system.
-        let vpath = id.vpath();
-        let key = vpath.get_without_slash().replace('\\', "/");
+        // Resolve the file id to its VFS lookup key (accounting for
+        // package-rooted paths) and look it up in our in-memory virtual file
+        // system.
+        let key = self.vfs_key(id);
 
         self.files
             .get(&key)
             .cloned()
-            .ok_or_else(|| FileError::NotFound(vpath.get_without_slash().into()))
+            .ok_or_else(|| FileError::NotFound(id.vpath().get_without_slash().into()))
     }
 
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
@@ -728,6 +746,58 @@ mod tests {
         }];
         world.set_files(files.clone());
         world.set_files(files); // This should hit the 'continue'
+    }
+
+    #[test]
+    fn resolves_package_rooted_fileid_via_name_version_key() {
+        use typst::World;
+        use typst::syntax::package::{PackageSpec, PackageVersion};
+
+        let mut world = SimpleWorld::new();
+        let files = vec![VirtualFile {
+            path: "_system/packages/tylog/0.1.0/lib.typ".to_string(),
+            bytes: b"= Vendored package".to_vec(),
+        }];
+        world.set_files(files);
+
+        let spec = PackageSpec {
+            namespace: "preview".into(),
+            name: "tylog".into(),
+            version: PackageVersion { major: 0, minor: 1, patch: 0 },
+        };
+        let pkg_id = FileId::new(RootedPath::new(
+            VirtualRoot::Package(spec),
+            VirtualPath::new("lib.typ").unwrap(),
+        ));
+
+        let source = world.source(pkg_id).unwrap();
+        assert_eq!(source.text(), "= Vendored package");
+
+        let file = world.file(pkg_id).unwrap();
+        assert_eq!(file.as_slice(), b"= Vendored package");
+    }
+
+    #[test]
+    fn project_rooted_fileid_resolution_unchanged() {
+        use typst::World;
+
+        let mut world = SimpleWorld::new();
+        let files = vec![VirtualFile {
+            path: "_system/tylog.typ".to_string(),
+            bytes: b"= Project file".to_vec(),
+        }];
+        world.set_files(files);
+
+        let project_id = FileId::new(RootedPath::new(
+            VirtualRoot::Project,
+            VirtualPath::new("/_system/tylog.typ").unwrap(),
+        ));
+
+        let source = world.source(project_id).unwrap();
+        assert_eq!(source.text(), "= Project file");
+
+        let file = world.file(project_id).unwrap();
+        assert_eq!(file.as_slice(), b"= Project file");
     }
 
     #[test]
