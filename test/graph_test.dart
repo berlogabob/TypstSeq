@@ -20,7 +20,10 @@ void main() {
           outgoingLinks: ['Today'],
         ),
       },
-      backlinksByTarget: const {},
+      backlinksByTarget: const {
+        'notes/PKM.typ': ['daily/2026/07/2026-07-01.typ'],
+        'daily/2026/07/2026-07-01.typ': ['notes/PKM.typ'],
+      },
     );
 
     final graph = buildNoteGraph(index);
@@ -33,6 +36,174 @@ void main() {
       'daily/2026/07/2026-07-01.typ->notes/PKM.typ',
       'notes/PKM.typ->daily/2026/07/2026-07-01.typ',
     ]);
+  });
+
+  test('buildNoteGraph adds citation and tag co-occurrence edges', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+          citations: ['smith-2026'],
+          tags: ['ml'],
+        ),
+        'articles/b.typ': const NoteRef(
+          id: 'b',
+          path: 'articles/b.typ',
+          title: 'B',
+          outgoingLinks: [],
+          citations: ['smith-2026'],
+          tags: ['ml'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final graph = buildNoteGraph(index);
+
+    expect(graph.edges, hasLength(2));
+    final citationEdge = graph.edges.firstWhere(
+      (edge) => edge.kind == GraphEdgeKind.citation,
+    );
+    expect(citationEdge.from, 'articles/a.typ');
+    expect(citationEdge.to, 'articles/b.typ');
+    expect(citationEdge.weight, 1);
+    final tagEdge = graph.edges.firstWhere(
+      (edge) => edge.kind == GraphEdgeKind.tag,
+    );
+    expect(tagEdge.from, 'articles/a.typ');
+    expect(tagEdge.to, 'articles/b.typ');
+  });
+
+  test('buildNoteGraph flags nodes with problems', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'notes/broken.typ': const NoteRef(
+          id: 'broken',
+          path: 'notes/broken.typ',
+          title: 'Broken',
+          outgoingLinks: ['missing'],
+        ),
+      },
+      backlinksByTarget: const {},
+      problems: const [
+        PkmsProblem(
+          code: 'broken-link',
+          severity: PkmsSeverity.warning,
+          subject: 'notes/broken.typ',
+          message: 'broken link: missing',
+        ),
+      ],
+    );
+
+    final graph = buildNoteGraph(index);
+
+    expect(graph.nodes.single.problemCount, 1);
+  });
+
+  test(
+    'buildLocalNoteGraph returns only the current note when it has no edges',
+    () {
+      final index = VaultIndex(
+        notesByPath: {
+          'daily/today.typ': const NoteRef(
+            id: 'today',
+            path: 'daily/today.typ',
+            title: 'Today',
+            outgoingLinks: [],
+          ),
+          'notes/other.typ': const NoteRef(
+            id: 'other',
+            path: 'notes/other.typ',
+            title: 'Other',
+            outgoingLinks: [],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
+
+      final local = buildLocalNoteGraph(index, 'daily/today.typ');
+      expect(local.nodes.map((n) => n.path), ['daily/today.typ']);
+
+      final whole = buildNoteGraph(index);
+      expect(whole.nodes, hasLength(2));
+    },
+  );
+
+  test('buildLocalNoteGraph truncates at the given limit', () {
+    final notes = <String, NoteRef>{
+      for (var i = 0; i < 150; i++)
+        'n$i.typ': NoteRef(
+          id: 'n$i',
+          path: 'n$i.typ',
+          title: 'N$i',
+          outgoingLinks: i == 0 ? const [] : ['n${i - 1}.typ'],
+        ),
+    };
+    final backlinks = <String, List<String>>{
+      for (var i = 1; i < 150; i++) 'n${i - 1}.typ': ['n$i.typ'],
+    };
+    final index = VaultIndex(
+      notesByPath: notes,
+      backlinksByTarget: backlinks,
+    );
+
+    expect(buildNoteGraph(index).nodes, hasLength(150));
+    expect(
+      buildLocalNoteGraph(index, 'n0.typ', hops: 200, limit: 50).nodes,
+      hasLength(50),
+    );
+  });
+
+  test('buildLocalNoteGraph with no current path returns an empty graph', () {
+    final index = VaultIndex(notesByPath: const {}, backlinksByTarget: const {});
+    final local = buildLocalNoteGraph(index, null);
+    expect(local.nodes, isEmpty);
+    expect(local.edges, isEmpty);
+  });
+
+  test('restrictNoteGraph keeps only nodes/edges within the given paths', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'a', title: 'A'),
+        GraphNode(path: 'b', title: 'B'),
+        GraphNode(path: 'c', title: 'C'),
+      ],
+      edges: [
+        GraphEdge(from: 'a', to: 'b'),
+        GraphEdge(from: 'b', to: 'c'),
+      ],
+    );
+
+    final restricted = restrictNoteGraph(graph, {'a', 'b'});
+
+    expect(restricted.nodes.map((n) => n.path), ['a', 'b']);
+    expect(restricted.edges, [const GraphEdge(from: 'a', to: 'b')]);
+  });
+
+  test('computeGraphStats finds orphans and ranks hubs by degree', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'hub', title: 'Hub'),
+        GraphNode(path: 'a', title: 'A'),
+        GraphNode(path: 'b', title: 'B'),
+        GraphNode(path: 'c', title: 'C'),
+        GraphNode(path: 'orphan1', title: 'Orphan1'),
+        GraphNode(path: 'orphan2', title: 'Orphan2'),
+      ],
+      edges: [
+        GraphEdge(from: 'hub', to: 'a'),
+        GraphEdge(from: 'hub', to: 'b'),
+        GraphEdge(from: 'hub', to: 'c'),
+      ],
+    );
+
+    final stats = computeGraphStats(graph, hubLimit: 2);
+
+    expect(stats.orphanPaths, ['orphan1', 'orphan2']);
+    expect(stats.hubPaths, ['hub', 'a']);
   });
 
   test('graphPositions uses stable link-distance rings', () {

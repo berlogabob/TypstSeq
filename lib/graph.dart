@@ -1,11 +1,25 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:tylog_core/graph.dart';
 
 export 'package:tylog_core/graph.dart'
-    show GraphEdge, GraphNode, NoteGraph, buildLocalNoteGraph, buildNoteGraph;
+    show
+        GraphEdge,
+        GraphEdgeKind,
+        GraphNode,
+        GraphStats,
+        NoteGraph,
+        buildLocalNoteGraph,
+        buildNoteGraph,
+        computeGraphStats,
+        restrictNoteGraph;
+
+/// Above this many nodes, a whole-vault graph reliably turns into an
+/// unreadable "hairball" (community consensus from PKM tools like Obsidian).
+const _hairballThreshold = 180;
 
 class GraphView extends StatefulWidget {
   const GraphView({
@@ -13,11 +27,15 @@ class GraphView extends StatefulWidget {
     required this.graph,
     required this.currentPath,
     required this.onOpenPath,
+    this.isWholeVault = false,
+    this.onSwitchToFocused,
   });
 
   final NoteGraph graph;
   final String? currentPath;
   final ValueChanged<String> onOpenPath;
+  final bool isWholeVault;
+  final VoidCallback? onSwitchToFocused;
 
   @override
   State<GraphView> createState() => _GraphViewState();
@@ -28,11 +46,21 @@ class _GraphViewState extends State<GraphView> {
   String? _selectedPath;
   Size? _lastViewport;
   Size? _lastCanvas;
+  final Set<GraphEdgeKind> _visibleKinds = {
+    GraphEdgeKind.link,
+    GraphEdgeKind.citation,
+    GraphEdgeKind.tag,
+  };
+  bool _dimWeakTagEdges = false;
+  bool _bannerDismissed = false;
+  Set<String>? _focusFilter;
+  int _hubCycleIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _selectedPath = widget.currentPath;
+    _dimWeakTagEdges = widget.graph.nodes.length > _hairballThreshold;
   }
 
   @override
@@ -47,6 +75,8 @@ class _GraphViewState extends State<GraphView> {
           ? _selectedPath
           : widget.currentPath;
       _lastCanvas = null;
+      _dimWeakTagEdges = widget.graph.nodes.length > _hairballThreshold;
+      _focusFilter = null;
     }
   }
 
@@ -61,12 +91,77 @@ class _GraphViewState extends State<GraphView> {
     if (widget.graph.nodes.isEmpty) {
       return const Center(child: Text('Graph is empty'));
     }
-    final selected = widget.graph.nodes
+    final stats = computeGraphStats(widget.graph);
+    final displayGraph = _focusFilter == null
+        ? widget.graph
+        : restrictNoteGraph(widget.graph, _focusFilter!);
+    final selected = displayGraph.nodes
         .where((node) => node.path == _selectedPath)
         .firstOrNull;
     final scheme = Theme.of(context).colorScheme;
+    final showHairballBanner =
+        widget.isWholeVault &&
+        widget.graph.nodes.length > _hairballThreshold &&
+        !_bannerDismissed;
     return Column(
       children: [
+        if (showHairballBanner)
+          MaterialBanner(
+            content: Text(
+              '${widget.graph.nodes.length} notes in view — this can get '
+              'hard to read.',
+            ),
+            actions: [
+              if (widget.onSwitchToFocused != null)
+                TextButton(
+                  onPressed: widget.onSwitchToFocused,
+                  child: const Text('Focused view'),
+                ),
+              TextButton(
+                onPressed: () => setState(() => _bannerDismissed = true),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              GraphLegend(
+                visibleKinds: _visibleKinds,
+                onToggle: (kind) => setState(() {
+                  if (!_visibleKinds.remove(kind)) _visibleKinds.add(kind);
+                }),
+              ),
+              if (stats.orphanPaths.isNotEmpty)
+                ActionChip(
+                  label: Text('${stats.orphanPaths.length} orphan notes'),
+                  onPressed: () => setState(() {
+                    _focusFilter = _focusFilter == null
+                        ? stats.orphanPaths.toSet()
+                        : null;
+                  }),
+                ),
+              if (stats.hubPaths.isNotEmpty)
+                ActionChip(
+                  label: const Text('Hubs'),
+                  onPressed: () => setState(() {
+                    _selectedPath =
+                        stats.hubPaths[_hubCycleIndex % stats.hubPaths.length];
+                    _hubCycleIndex++;
+                  }),
+                ),
+              if (_focusFilter != null)
+                Chip(
+                  label: const Text('Filtered'),
+                  onDeleted: () => setState(() => _focusFilter = null),
+                ),
+            ],
+          ),
+        ),
         if (selected != null)
           Material(
             color: scheme.surfaceContainerLow,
@@ -83,22 +178,22 @@ class _GraphViewState extends State<GraphView> {
               ),
             ),
           ),
-        Expanded(child: _canvas(scheme)),
+        Expanded(child: _canvas(scheme, displayGraph)),
       ],
     );
   }
 
-  Widget _canvas(ColorScheme scheme) {
+  Widget _canvas(ColorScheme scheme, NoteGraph displayGraph) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewport = Size(constraints.maxWidth, constraints.maxHeight);
         final canvas = graphCanvasSize(
-          widget.graph,
+          displayGraph,
           widget.currentPath,
           viewport,
         );
         final positions = graphPositions(
-          widget.graph,
+          displayGraph,
           widget.currentPath,
           canvas,
         );
@@ -120,10 +215,12 @@ class _GraphViewState extends State<GraphView> {
                 child: CustomPaint(
                   size: canvas,
                   painter: GraphPainter(
-                    graph: widget.graph,
+                    graph: displayGraph,
                     positions: positions,
                     selectedPath: _selectedPath,
                     colorScheme: scheme,
+                    visibleEdgeKinds: _visibleKinds,
+                    minTagWeight: _dimWeakTagEdges ? 2 : 1,
                     onSelect: (path) => setState(() => _selectedPath = path),
                   ),
                 ),
@@ -277,6 +374,12 @@ class GraphPainter extends CustomPainter {
     required this.selectedPath,
     required this.colorScheme,
     required this.onSelect,
+    this.visibleEdgeKinds = const {
+      GraphEdgeKind.link,
+      GraphEdgeKind.citation,
+      GraphEdgeKind.tag,
+    },
+    this.minTagWeight = 1,
   });
 
   static const nodeRadius = 22.0;
@@ -287,27 +390,38 @@ class GraphPainter extends CustomPainter {
   final String? selectedPath;
   final ColorScheme colorScheme;
   final ValueChanged<String> onSelect;
+  final Set<GraphEdgeKind> visibleEdgeKinds;
+  final int minTagWeight;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final edge in graph.edges) {
+      if (!visibleEdgeKinds.contains(edge.kind)) continue;
+      if (edge.kind == GraphEdgeKind.tag && edge.weight < minTagWeight) {
+        continue;
+      }
       final from = positions[edge.from];
       final to = positions[edge.to];
       if (from == null || to == null) continue;
       final connected = edge.from == selectedPath || edge.to == selectedPath;
-      canvas.drawLine(
-        from,
-        to,
-        Paint()
-          ..color = connected
-              ? colorScheme.primary
-              : colorScheme.outlineVariant.withValues(alpha: 0.45)
-          ..strokeWidth = connected ? 2.5 : 1,
-      );
+      final paint = Paint()
+        ..color = connected
+            ? colorScheme.primary
+            : _edgeColor(edge.kind).withValues(alpha: connected ? 1 : 0.45)
+        ..strokeWidth = connected ? 2.5 : 1;
+      if (edge.kind == GraphEdgeKind.citation) {
+        _drawDashedLine(canvas, from, to, paint);
+      } else {
+        canvas.drawLine(from, to, paint);
+      }
     }
 
     final neighbors = <String>{};
     for (final edge in graph.edges) {
+      if (!visibleEdgeKinds.contains(edge.kind)) continue;
+      if (edge.kind == GraphEdgeKind.tag && edge.weight < minTagWeight) {
+        continue;
+      }
       if (edge.from == selectedPath) neighbors.add(edge.to);
       if (edge.to == selectedPath) neighbors.add(edge.from);
     }
@@ -328,6 +442,16 @@ class GraphPainter extends CustomPainter {
         ..strokeWidth = selected ? 3 : 1;
       canvas.drawCircle(center, nodeRadius, fill);
       canvas.drawCircle(center, nodeRadius, stroke);
+      if (node.problemCount > 0) {
+        canvas.drawCircle(
+          center,
+          nodeRadius + 3,
+          Paint()
+            ..color = colorScheme.error
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+      }
 
       if (!related) continue;
       final label = node.title.length > 18
@@ -361,7 +485,9 @@ class GraphPainter extends CustomPainter {
             CustomPainterSemantics(
               rect: Rect.fromCircle(center: center, radius: nodeRadius + 8),
               properties: SemanticsProperties(
-                label: node.title,
+                label: node.problemCount > 0
+                    ? '${node.title} (${node.problemCount} problems)'
+                    : node.title,
                 textDirection: TextDirection.ltr,
                 button: true,
                 selected: node.path == selectedPath,
@@ -375,11 +501,133 @@ class GraphPainter extends CustomPainter {
       graph != oldDelegate.graph ||
       positions != oldDelegate.positions ||
       selectedPath != oldDelegate.selectedPath ||
-      colorScheme != oldDelegate.colorScheme;
+      colorScheme != oldDelegate.colorScheme ||
+      !setEquals(visibleEdgeKinds, oldDelegate.visibleEdgeKinds) ||
+      minTagWeight != oldDelegate.minTagWeight;
 
   @override
   bool shouldRebuildSemantics(covariant GraphPainter oldDelegate) =>
       graph != oldDelegate.graph ||
       positions != oldDelegate.positions ||
       selectedPath != oldDelegate.selectedPath;
+}
+
+Color _edgeColor(GraphEdgeKind kind) => switch (kind) {
+  GraphEdgeKind.link => const Color(0xFF9E9E9E),
+  GraphEdgeKind.citation => const Color(0xFF7986CB),
+  GraphEdgeKind.tag => const Color(0xFF4DB6AC),
+};
+
+void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
+  const dashLength = 6.0;
+  const gapLength = 4.0;
+  final total = (to - from).distance;
+  if (total == 0) return;
+  final direction = (to - from) / total;
+  var drawn = 0.0;
+  while (drawn < total) {
+    final segmentEnd = math.min(drawn + dashLength, total);
+    canvas.drawLine(
+      from + direction * drawn,
+      from + direction * segmentEnd,
+      paint,
+    );
+    drawn = segmentEnd + gapLength;
+  }
+}
+
+/// Tappable legend that doubles as an edge-kind visibility filter.
+class GraphLegend extends StatelessWidget {
+  const GraphLegend({super.key, required this.visibleKinds, required this.onToggle});
+
+  final Set<GraphEdgeKind> visibleKinds;
+  final ValueChanged<GraphEdgeKind> onToggle;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      _LegendEntry(
+        kind: GraphEdgeKind.link,
+        color: const Color(0xFF9E9E9E),
+        label: 'Link',
+        selected: visibleKinds.contains(GraphEdgeKind.link),
+        onToggle: onToggle,
+      ),
+      _LegendEntry(
+        kind: GraphEdgeKind.citation,
+        color: const Color(0xFF7986CB),
+        label: 'Citation',
+        dashed: true,
+        selected: visibleKinds.contains(GraphEdgeKind.citation),
+        onToggle: onToggle,
+      ),
+      _LegendEntry(
+        kind: GraphEdgeKind.tag,
+        color: const Color(0xFF4DB6AC),
+        label: 'Shared tag',
+        selected: visibleKinds.contains(GraphEdgeKind.tag),
+        onToggle: onToggle,
+      ),
+    ],
+  );
+}
+
+class _LegendEntry extends StatelessWidget {
+  const _LegendEntry({
+    required this.kind,
+    required this.color,
+    required this.label,
+    required this.selected,
+    required this.onToggle,
+    this.dashed = false,
+  });
+
+  final GraphEdgeKind kind;
+  final Color color;
+  final String label;
+  final bool selected;
+  final bool dashed;
+  final ValueChanged<GraphEdgeKind> onToggle;
+
+  @override
+  Widget build(BuildContext context) => FilterChip(
+    avatar: SizedBox(
+      width: 16,
+      height: 10,
+      child: CustomPaint(painter: _SwatchPainter(color: color, dashed: dashed)),
+    ),
+    label: Text(label),
+    labelStyle: Theme.of(context).textTheme.labelSmall,
+    visualDensity: VisualDensity.compact,
+    selected: selected,
+    onSelected: (_) => onToggle(kind),
+  );
+}
+
+class _SwatchPainter extends CustomPainter {
+  const _SwatchPainter({required this.color, required this.dashed});
+
+  final Color color;
+  final bool dashed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2;
+    final y = size.height / 2;
+    final from = Offset(0, y);
+    final to = Offset(size.width, y);
+    if (dashed) {
+      _drawDashedLine(canvas, from, to, paint);
+    } else {
+      canvas.drawLine(from, to, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwatchPainter oldDelegate) =>
+      color != oldDelegate.color || dashed != oldDelegate.dashed;
 }

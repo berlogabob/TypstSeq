@@ -538,6 +538,32 @@ String? resolveLinkPath(VaultIndex index, String target) {
 LinkResolution resolveLink(VaultIndex index, String target) =>
     LinkResolver(index.notes).resolve(target);
 
+/// Other vault notes [note] plausibly relates to, found by matching its
+/// own tags/citations/string properties against the same exact-match
+/// id/alias/title/stem maps [LinkResolver] already uses to resolve
+/// `#tylog.ref-note(...)` targets. No fuzzy matching.
+List<String> suggestLinkTargets(NoteRef note, VaultIndex index) {
+  final resolver = LinkResolver(index.notes);
+  final candidates = <String>{
+    ...note.tags,
+    ...note.citations,
+    for (final value in note.properties.values)
+      if (value is String)
+        value
+      else if (value is List)
+        ...value.whereType<String>(),
+  };
+  final targets = <String>{};
+  for (final candidate in candidates) {
+    final resolved = resolver.resolve(candidate);
+    if (resolved.status == LinkResolutionStatus.resolved &&
+        resolved.path != note.path) {
+      targets.add(resolved.path!);
+    }
+  }
+  return targets.toList()..sort();
+}
+
 String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   final header = serializeNoteHeader(draft);
   final call = _noteHeader(source);
@@ -596,6 +622,90 @@ String migrateEntityTypeToKind(String source) {
     properties: newProperties,
   );
   return replaceNoteHeader(source, draft);
+}
+
+/// The `[start, end)` byte range of a `"key": value` entry inside a
+/// dictionary's source text (parens included), trimmed of any leading
+/// whitespace/newline so callers can replace it without disturbing
+/// formatting around it.
+class _DictEntry {
+  const _DictEntry(this.start, this.end);
+  final int start;
+  final int end;
+}
+
+/// Locates the top-level `"key": value` entry for [key] inside [dictSource]
+/// (a full `(...)` dictionary literal, quoted keys only — see
+/// [_typstDictionary]). Reuses [_splitTopLevel], the same nesting-aware
+/// comma splitter [_parseProperties] already relies on to read this shape,
+/// so strings/comments/nested `(...)`/`[...]` can't be mistaken for a
+/// top-level boundary. Returns null if [key] isn't present.
+_DictEntry? _locateDictEntry(String dictSource, String key) {
+  if (!dictSource.startsWith('(') || !dictSource.endsWith(')')) return null;
+  final inner = dictSource.substring(1, dictSource.length - 1);
+  final keyPattern = RegExp(r'^(\s*)"((?:\\.|[^"\\])*)"\s*:', dotAll: true);
+  var offset = 1;
+  for (final part in _splitTopLevel(inner)) {
+    final match = keyPattern.firstMatch(part);
+    if (match != null) {
+      final decodedKey = match
+          .group(2)!
+          .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+      if (decodedKey == key) {
+        final leading = match.group(1)!.length;
+        return _DictEntry(offset + leading, offset + part.length);
+      }
+    }
+    offset += part.length + 1;
+  }
+  return null;
+}
+
+/// Surgically sets `properties[key] = value` inside a note header's
+/// `properties: (...)` dictionary, leaving the rest of the header
+/// (including comments/formatting on unrelated fields) untouched — unlike
+/// [replaceNoteHeader], which regenerates the whole call.
+String replaceNoteProperty(String source, String key, Object? value) {
+  final call = _noteHeader(source);
+  if (call == null) {
+    throw StateError('No tylog.note header found');
+  }
+  final header = call.source;
+  final encodedValue = _typstValue(value);
+  final propsField = _locateTopLevelField(header, 'properties');
+  if (propsField == null) {
+    final newHeader = header.replaceFirst(
+      RegExp(r'\)\s*$'),
+      '  properties: (${_typstString(key)}: $encodedValue,),\n)',
+    );
+    return source.replaceRange(call.start, call.end, newHeader);
+  }
+  final dictSource = header.substring(
+    propsField.valueStart,
+    propsField.valueEnd,
+  );
+  final entry = _locateDictEntry(dictSource, key);
+  final String newDict;
+  if (entry != null) {
+    newDict = dictSource.replaceRange(
+      entry.start,
+      entry.end,
+      '${_typstString(key)}: $encodedValue',
+    );
+  } else if (dictSource.trim() == '(:)') {
+    newDict = '(${_typstString(key)}: $encodedValue,)';
+  } else {
+    newDict = dictSource.replaceFirst(
+      RegExp(r'\)\s*$'),
+      '${_typstString(key)}: $encodedValue,)',
+    );
+  }
+  final newHeader = header.replaceRange(
+    propsField.valueStart,
+    propsField.valueEnd,
+    newDict,
+  );
+  return source.replaceRange(call.start, call.end, newHeader);
 }
 
 /// Parses the `properties: (...)` dictionary out of a `tylog.note.with(...)`

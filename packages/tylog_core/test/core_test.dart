@@ -242,6 +242,77 @@ void main() {
     expect(() => storage.writeText('../outside', 'no'), throwsArgumentError);
     expect(await File('${root.parent.path}/outside').exists(), isFalse);
   });
+
+  test(
+    'suggestLinkTargets matches tags/citations/properties against note ids and titles',
+    () {
+      final index = VaultIndex(
+        notesByPath: {
+          'articles/new.typ': const NoteRef(
+            id: 'md-new',
+            path: 'articles/new.typ',
+            title: 'New import',
+            outgoingLinks: [],
+            tags: ['PKM'],
+            citations: ['old'],
+            properties: {'related': 'Related Target'},
+          ),
+          'notes/pkm.typ': const NoteRef(
+            id: 'PKM',
+            path: 'notes/pkm.typ',
+            title: 'PKM Concept',
+            outgoingLinks: [],
+          ),
+          'articles/old.typ': const NoteRef(
+            id: 'old',
+            path: 'articles/old.typ',
+            title: 'Old Note',
+            outgoingLinks: [],
+          ),
+          'notes/related-target.typ': const NoteRef(
+            id: 'related-target',
+            path: 'notes/related-target.typ',
+            title: 'Related Target',
+            outgoingLinks: [],
+          ),
+          'notes/unrelated.typ': const NoteRef(
+            id: 'unrelated',
+            path: 'notes/unrelated.typ',
+            title: 'Unrelated',
+            outgoingLinks: [],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
+
+      final note = index.notesByPath['articles/new.typ']!;
+      final targets = suggestLinkTargets(note, index);
+
+      expect(targets, [
+        'articles/old.typ',
+        'notes/pkm.typ',
+        'notes/related-target.typ',
+      ]);
+    },
+  );
+
+  test('suggestLinkTargets never suggests the note itself', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+          tags: ['a'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final note = index.notesByPath['articles/a.typ']!;
+    expect(suggestLinkTargets(note, index), isEmpty);
+  });
 }
 
 class _SourceInspector implements TypstInspector {

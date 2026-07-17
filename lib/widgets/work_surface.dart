@@ -6,6 +6,7 @@ import '../models.dart';
 import 'calendar_tab.dart';
 import 'constants.dart';
 import 'date_format.dart';
+import 'property_select_chip.dart';
 
 class WorkSurface extends StatelessWidget {
   const WorkSurface({super.key, required this.child});
@@ -261,7 +262,7 @@ class LibraryView extends StatelessWidget {
   }
 
   Widget _articleTrailing(NoteRef note) {
-    final status = note.properties['status'] as String?;
+    final status = note.properties['status'] as String? ?? 'unread';
     final progress = progressByPath[note.path] ?? 0;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -270,16 +271,12 @@ class LibraryView extends StatelessWidget {
           SizedBox(width: 40, child: LinearProgressIndicator(value: progress)),
           const SizedBox(width: 8),
         ],
-        ChoiceChip(
-          label: Text(switch (status) {
-            'read' => 'Read',
-            'unread' => 'Unread',
-            _ => 'Mark read',
-          }),
-          selected: status == 'read',
-          onSelected: (_) => unawaited(
-            onSetReadStatus(note, status == 'read' ? 'unread' : 'read'),
-          ),
+        PropertySelectChip(
+          value: status,
+          options: articleStatusOptions,
+          labels: articleStatusLabels,
+          tooltip: 'Change status',
+          onChanged: (next) => unawaited(onSetReadStatus(note, next)),
         ),
       ],
     );

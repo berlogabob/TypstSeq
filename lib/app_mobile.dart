@@ -118,6 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
+  bool _graphWholeVault = true;
   int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
@@ -958,6 +959,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .where((note) => note.kind == 'article')
         .toList();
     var wroteFiles = false;
+    final writtenPaths = <String>{};
     for (final item in prepared) {
       final draft = item.draft;
       try {
@@ -974,6 +976,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             await opened.saveNote(path, draft.typstSource);
             articles.add(_noteForImportedArticle(path, draft));
             wroteFiles = true;
+            writtenPaths.add(path);
             report.add(
               _MarkdownImportReportItem(
                 name: item.name,
@@ -1045,6 +1048,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (wroteFiles) {
       await workspace.refreshIndex(updateStatus: false, force: true);
+      await _autoLinkImportedArticles(writtenPaths);
       _queueCloudSync();
     }
     if (!mounted) return;
@@ -1072,6 +1076,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         properties: draft.properties,
         metadataSource: 'typst-query',
       );
+
+  /// Appends a clearly-labeled links section to freshly imported articles
+  /// whose tags/citations/properties match existing vault notes. Only
+  /// touches notes just written by this import — never edits pre-existing
+  /// files silently.
+  Future<void> _autoLinkImportedArticles(Set<String> paths) async {
+    final opened = vault;
+    final currentIndex = index;
+    if (opened == null || currentIndex == null || paths.isEmpty) return;
+    var appended = false;
+    for (final path in paths) {
+      final note = currentIndex.notesByPath[path];
+      if (note == null) continue;
+      final targets = suggestLinkTargets(note, currentIndex);
+      if (targets.isEmpty) continue;
+      final lines = [
+        for (final targetPath in targets)
+          if (currentIndex.notesByPath[targetPath] case final target?)
+            '#tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
+      ];
+      if (lines.isEmpty) continue;
+      final source = await opened.readText(path);
+      final section =
+          '\n\n// Suggested links (auto-generated on import)\n== Related\n'
+          '${lines.join('\n')}\n';
+      await opened.saveNote(path, source + section);
+      appended = true;
+    }
+    if (appended) {
+      await workspace.refreshIndex(updateStatus: false, force: true);
+    }
+  }
 
   Future<_MarkdownDuplicateDecision> _resolveMarkdownDuplicate({
     required String existing,
@@ -1453,22 +1489,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return;
     final source = await v.storage.readText(note.path);
-    await v.saveNote(
-      note.path,
-      replaceNoteHeader(
-        source,
-        NoteMetadataDraft(
-          id: note.id,
-          title: note.title,
-          kind: note.kind,
-          project: note.project,
-          date: note.date,
-          tags: note.tags,
-          aliases: note.aliases,
-          properties: {...note.properties, 'status': status},
-        ),
-      ),
-    );
+    await v.saveNote(note.path, replaceNoteProperty(source, 'status', status));
     await _rebuildIndex();
   }
 
@@ -2904,7 +2925,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? const <String>[]
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
-    final graph = index == null ? null : buildLocalNoteGraph(index!, current);
+    final graph = index == null
+        ? null
+        : (_graphWholeVault
+              ? buildNoteGraph(index!)
+              : buildLocalNoteGraph(index!, current));
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
@@ -2972,6 +2997,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
         currentPath: current,
         onOpenPath: _openPath,
+        isWholeVault: _graphWholeVault,
+        onSwitchToFocused: () => setState(() => _graphWholeVault = false),
       ),
       'preview' => TypstDocumentViewer(
         source: _debouncedPreview(),
@@ -3225,6 +3252,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               tooltip: 'Choose journal date',
               onPressed: () => unawaited(_showCalendarPicker()),
               icon: const Icon(Icons.calendar_month),
+            ),
+          if (mode == 'graph')
+            IconButton(
+              tooltip: _graphWholeVault
+                  ? 'Show focused view'
+                  : 'Show whole vault',
+              icon: Icon(
+                _graphWholeVault ? Icons.hub : Icons.center_focus_strong,
+              ),
+              onPressed: () =>
+                  setState(() => _graphWholeVault = !_graphWholeVault),
             ),
           if (documentModes.contains(mode))
             PopupMenuButton<String>(
