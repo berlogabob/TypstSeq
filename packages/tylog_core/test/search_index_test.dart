@@ -8,8 +8,14 @@ Future<PkmsSearchIndex> _buildIndex(
   Map<String, String> notes,
 ) async {
   final storage = LocalVaultStorage(root);
+  // scanVaultStorage only needs the files to exist on disk, so fixtures
+  // write directly instead of through storage.writeText's atomic (fsync'd
+  // write + rename) path -- correct for real vault saves, but at 10k+
+  // notes the per-file fsync makes fixture setup slow enough to flirt
+  // with `dart test`'s 30s default timeout on CI's slower disk.
+  final notesDir = await Directory('${root.path}/notes').create();
   for (final entry in notes.entries) {
-    await storage.writeText('notes/${entry.key}.typ', entry.value);
+    await File('${notesDir.path}/${entry.key}.typ').writeAsString(entry.value);
   }
   final vault = await scanVaultStorage(storage);
   return PkmsSearchIndex.buildStorage(storage, vault);
