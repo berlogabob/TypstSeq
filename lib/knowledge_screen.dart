@@ -29,7 +29,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late KnowledgeView view = widget.initialView;
   String query = '';
   String? selectedTag;
-  String tagFilter = '';
   final _searchController = TextEditingController();
   // Codes with more than 5 problems collapse to one summary tile (a single
   // failing inspector can dead-mark itself for the rest of a scan and flood
@@ -77,10 +76,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
       }
     }
-    final tags = tagCounts.keys
-        .where((tag) => tagFilter.isEmpty || tag.contains(tagFilter))
-        .toList()
-      ..sort((a, b) => tagCounts[b]!.compareTo(tagCounts[a]!));
+    final tagSuggestions = query.isEmpty
+        ? const <String>[]
+        : (tagCounts.keys.where((tag) => tag.contains(query)).toList()
+                ..sort((a, b) => tagCounts[b]!.compareTo(tagCounts[a]!)))
+              .take(8)
+              .toList();
     final results = widget.search.search(query, tag: selectedTag);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -100,35 +101,33 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ),
                 onChanged: (value) => setState(() => query = value),
               ),
-              if (tagCounts.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.tag),
-                    hintText: 'Filter tags',
-                  ),
-                  onChanged: (value) => setState(() => tagFilter = value),
-                ),
+              if (tagSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    ChoiceChip(
-                      label: const Text('All'),
-                      selected: selectedTag == null,
-                      onSelected: (_) => setState(() => selectedTag = null),
-                    ),
-                    for (final tag in tags)
+                    for (final tag in tagSuggestions)
                       ChoiceChip(
                         label: Text('#$tag'),
-                        selected: selectedTag == tag,
-                        onSelected: (_) => setState(() => selectedTag = tag),
+                        selected: false,
+                        onSelected: (_) => setState(() {
+                          selectedTag = tag;
+                          query = '';
+                          _searchController.clear();
+                        }),
                       ),
                   ],
                 ),
               ],
+              if (selectedTag != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: InputChip(
+                    label: Text('#$selectedTag'),
+                    onDeleted: () => setState(() => selectedTag = null),
+                  ),
+                ),
               const SizedBox(height: 8),
             ],
           );

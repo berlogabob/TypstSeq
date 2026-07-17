@@ -7,6 +7,7 @@ import 'package:tylog_core/scanner.dart';
 
 import 'controlled_editor.dart';
 import 'editor_autocomplete.dart';
+import 'widgets/loading.dart';
 
 export 'editor_autocomplete.dart' show MentionSuggestion;
 
@@ -1926,11 +1927,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (state.loading && state.mentionItems.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: SizedBox(
-          height: 20,
-          width: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: LoadingIndicator(size: 20, strokeWidth: 2),
       );
     }
     if (state.mentionItems.isEmpty) {
