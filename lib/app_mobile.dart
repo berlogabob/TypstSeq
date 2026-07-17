@@ -2905,7 +2905,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null ? null : buildLocalNoteGraph(index!, current);
-    final syncConflictCount = syncConflicts.length;
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
@@ -3086,60 +3085,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onSetStatus: _setTaskStatus,
           )
         : content;
-    final openFailed = status.startsWith('Open failed:');
-    final Widget? statusBanner = openFailed
-        ? MaterialBanner(
-            backgroundColor: Theme.of(context).colorScheme.errorContainer,
-            content: Text(
-              status,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => unawaited(_open()),
-                child: const Text('Retry'),
-              ),
-            ],
-          )
-        : (v != null && (index == null || rebuildProgress != null))
-        ? Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(status, style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 4),
-                  LinearProgressIndicator(value: rebuildProgress),
+    final statusBanner = ListenableBuilder(
+      listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
+      builder: (context, _) {
+        final openFailed = status.startsWith('Open failed:');
+        return openFailed
+            ? MaterialBanner(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                content: Text(
+                  status,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => unawaited(_open()),
+                    child: const Text('Retry'),
+                  ),
                 ],
-              ),
-            ),
-          )
-        : (syncing && syncStage != null)
-        ? Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                syncStage!,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          )
-        : null;
+              )
+            : (v != null && (index == null || rebuildProgress != null))
+            ? Material(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        status,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      LinearProgressIndicator(value: rebuildProgress),
+                    ],
+                  ),
+                ),
+              )
+            : (syncing && syncStage != null)
+            ? Material(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Text(
+                    syncStage!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              )
+            : const SizedBox.shrink();
+      },
+    );
     final workArea = WorkSurface(
-      child: statusBanner == null
-          ? bodyContent
-          : Column(
-              children: [
-                statusBanner,
-                Expanded(child: bodyContent),
-              ],
-            ),
+      child: Column(
+        children: [statusBanner, Expanded(child: bodyContent)],
+      ),
     );
 
     final wideNavigation = MediaQuery.sizeOf(context).width >= 900;
@@ -3182,10 +3184,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             horizontal: 6,
                             vertical: 8,
                           ),
-                          child: Text(
-                            '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: workspace.dirtyNotifier,
+                            builder: (context, dirty, _) => Text(
+                              '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                       ),
@@ -3206,10 +3211,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ],
               )
-            : Text(
-                dirty ? '$currentTitle •' : currentTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            : ValueListenableBuilder<bool>(
+                valueListenable: workspace.dirtyNotifier,
+                builder: (context, dirty, _) => Text(
+                  dirty ? '$currentTitle •' : currentTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
         actions: [
           if (mode == 'journal')
@@ -3235,16 +3243,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(value: 'source', child: Text('Source')),
               ],
             ),
-          SyncIconButton(
-            syncing: syncing,
-            vaultOpen: v != null,
-            storageHealthy: storageHealthy ?? true,
-            configured: cloud?.isReady ?? false,
-            desktopManaged: desktopManaged,
-            error: syncError,
-            conflicts: syncConflictCount,
-            result: lastSync,
-            onPressed: _showSyncDashboard,
+          ListenableBuilder(
+            listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
+            builder: (context, _) => SyncIconButton(
+              syncing: syncing,
+              vaultOpen: v != null,
+              storageHealthy: storageHealthy ?? true,
+              configured: cloud?.isReady ?? false,
+              desktopManaged: desktopManaged,
+              error: syncError,
+              conflicts: syncConflicts.length,
+              result: lastSync,
+              onPressed: _showSyncDashboard,
+            ),
           ),
         ],
       ),

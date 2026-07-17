@@ -327,6 +327,75 @@ void main() {
     },
   );
 
+  test(
+    'edit() drives dirtyNotifier without notifying general listeners',
+    () async {
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      final original = controller.source;
+
+      var notifyCount = 0;
+      controller.addListener(() => notifyCount++);
+      var dirtyFlips = 0;
+      controller.dirtyNotifier.addListener(() => dirtyFlips++);
+
+      controller.edit('$original\nfirst edit\n');
+      controller.edit('$original\nsecond edit\n'); // already dirty
+
+      expect(notifyCount, 0, reason: 'keystrokes must not trigger a rebuild');
+      expect(
+        dirtyFlips,
+        1,
+        reason: 'only the false->true transition should fire',
+      );
+    },
+  );
+
+  test(
+    'sync progress ticks notify syncProgressTick, not the general listener',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+
+      var notifyCount = 0;
+      controller.addListener(() => notifyCount++);
+      var tickCount = 0;
+      controller.syncProgressTick.addListener(() => tickCount++);
+
+      expect(await controller.syncNow(trigger: 'setup'), isTrue);
+
+      expect(tickCount, greaterThan(0));
+      // Bounded: only the handful of once-per-run transitions (start, maybe
+      // index-rebuild-stage, success, finally) should hit the general
+      // channel -- not once per file/stage transition.
+      expect(notifyCount, lessThanOrEqualTo(5));
+    },
+  );
+
   test('sync errors explain resumable network and authentication failures', () {
     expect(
       friendlySyncError(const SocketException('offline')),

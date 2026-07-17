@@ -39,6 +39,23 @@ class WorkspaceController extends ChangeNotifier {
   String source = '';
   String status = 'Opening vault...';
   bool dirty = false;
+
+  /// Mirrors [dirty] so the title bar's "•" indicator can rebuild on its
+  /// own without the whole screen (incl. the rich editor) rebuilding on
+  /// every keystroke via the general [ChangeNotifier] channel.
+  final ValueNotifier<bool> dirtyNotifier = ValueNotifier<bool>(false);
+
+  void _setDirty(bool value) {
+    dirty = value;
+    dirtyNotifier.value = value;
+  }
+
+  /// Fires once per sync-progress tick (see [syncNow]'s `onProgress`),
+  /// separately from the general channel — a sync run can tick tens to
+  /// hundreds of times and would otherwise force a full-screen rebuild
+  /// on every file/stage transition.
+  final ChangeNotifier syncProgressTick = ChangeNotifier();
+
   int editRevision = 0;
   int savedRevision = 0;
   int indexedRevision = 0;
@@ -98,7 +115,7 @@ class WorkspaceController extends ChangeNotifier {
     lastSyncAt = null;
     syncError = null;
     storageHealthy = false;
-    dirty = false;
+    _setDirty(false);
     savedRevision = editRevision;
     indexedRevision = editRevision;
     lastEditAt = null;
@@ -183,7 +200,7 @@ class WorkspaceController extends ChangeNotifier {
       savedRevision = editRevision;
       indexedRevision = editRevision;
       lastEditAt = null;
-      dirty = false;
+      _setDirty(false);
       source = await opened.storage.readText(today);
       status = 'Vault opened — indexing…';
       notifyListeners();
@@ -206,11 +223,10 @@ class WorkspaceController extends ChangeNotifier {
     editRevision++;
     lastEditAt = DateTime.now();
     final becameDirty = !dirty;
-    dirty = true;
+    _setDirty(true);
     if (becameDirty) status = 'Autosave pending...';
     _autosave?.cancel();
     _autosave = Timer(const Duration(milliseconds: 400), save);
-    notifyListeners();
   }
 
   Future<void> save({bool syncAfter = true}) async {
@@ -229,7 +245,7 @@ class WorkspaceController extends ChangeNotifier {
       await opened.saveNote(path, value);
       if (revision == editRevision && path == note) {
         savedRevision = revision;
-        dirty = false;
+        _setDirty(false);
         status = 'Saved $path';
         if (syncAfter) queueCloudSync();
         notifyListeners();
@@ -434,7 +450,7 @@ class WorkspaceController extends ChangeNotifier {
           if (keepRunningOffscreen && syncStage != null) {
             unawaited(_updateSyncForeground(syncStage!));
           }
-          notifyListeners();
+          syncProgressTick.notifyListeners();
         },
         canReplaceLocal: (path) =>
             path != syncedNote ||
@@ -604,7 +620,7 @@ class WorkspaceController extends ChangeNotifier {
   void replaceNote(String path, String value) {
     note = path;
     source = value;
-    dirty = false;
+    _setDirty(false);
     savedRevision = editRevision;
     notifyListeners();
   }
@@ -695,6 +711,8 @@ class WorkspaceController extends ChangeNotifier {
 
   @override
   void dispose() {
+    dirtyNotifier.dispose();
+    syncProgressTick.dispose();
     _cancelTimers();
     super.dispose();
   }
