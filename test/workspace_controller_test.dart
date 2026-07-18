@@ -448,6 +448,29 @@ void main() {
     expect(controller.hasActiveCloudPoll, isFalse);
   });
 
+  test('poll gate skips only a clean, known, unchanged root etag', () {
+    expect(
+      canSkipPoll(dirty: false, lastEtag: '"same"', currentEtag: 'same'),
+      isTrue,
+    );
+    expect(
+      canSkipPoll(dirty: true, lastEtag: '"same"', currentEtag: '"same"'),
+      isFalse,
+    );
+    expect(
+      canSkipPoll(dirty: false, lastEtag: '"before"', currentEtag: '"after"'),
+      isFalse,
+    );
+    expect(
+      canSkipPoll(dirty: false, lastEtag: null, currentEtag: '"same"'),
+      isFalse,
+    );
+    expect(
+      canSkipPoll(dirty: false, lastEtag: '"same"', currentEtag: null),
+      isFalse,
+    );
+  });
+
   test(
     'a poll tick clears a phantom conflict instead of staying stuck forever',
     () async {

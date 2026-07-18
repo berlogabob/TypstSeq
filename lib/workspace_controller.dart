@@ -395,6 +395,16 @@ class WorkspaceController extends ChangeNotifier {
       await refreshSyncConflicts();
       return;
     }
+    final opened = vault;
+    final config = cloud;
+    if (opened != null && config != null && config.isReady) {
+      final unchanged = await NextcloudSync(
+        config,
+      ).pollIsUnchanged(opened, dirty: dirty || isComposing());
+      // State may have changed while the network probe was in flight.
+      if (syncing || editingRecently) return;
+      if (unchanged) return;
+    }
     await syncNow(trigger: 'poll');
   }
 
@@ -536,16 +546,29 @@ class WorkspaceController extends ChangeNotifier {
           concurrentConflict ||
           indexedRevision < savedRevision) {
         syncStage = 'index-local-changes';
+        rebuildProgress = 0;
         notifyListeners();
-        final built = await opened.rebuildIndex(inspector: inspector);
-        final pkms = await _readPkms(opened, built);
-        index = _retainIndex(built);
-        validation = _retainValidation(pkms.report);
-        searchIndex.replaceWith(pkms.search);
-        indexedRevision = indexedThroughRevision;
-        // A pulled _system/reading/<device>.json flips requiresIndexRefresh
-        // too, so this is the reload point for cross-device progress.
-        await reloadReadingState();
+        try {
+          final built = await opened.rebuildIndex(
+            inspector: inspector,
+            onProgress: (complete, total) {
+              if (complete % 100 != 0 && complete != total) return;
+              rebuildProgress = total == 0 ? 1 : complete / total;
+              syncProgressTick.notifyListeners();
+            },
+          );
+          final pkms = await _readPkms(opened, built);
+          index = _retainIndex(built);
+          validation = _retainValidation(pkms.report);
+          searchIndex.replaceWith(pkms.search);
+          indexedRevision = indexedThroughRevision;
+          // A pulled _system/reading/<device>.json flips requiresIndexRefresh
+          // too, so this is the reload point for cross-device progress.
+          await reloadReadingState();
+        } finally {
+          rebuildProgress = null;
+          syncProgressTick.notifyListeners();
+        }
       }
       lastSync = result;
       lastSyncAt = DateTime.now();

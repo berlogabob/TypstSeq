@@ -6,6 +6,7 @@ import '../models.dart';
 import 'calendar_tab.dart';
 import 'constants.dart';
 import 'date_format.dart';
+import 'loading.dart';
 import 'property_select_chip.dart';
 import 'task_checkbox.dart';
 
@@ -133,11 +134,13 @@ class TodayPage extends StatelessWidget {
 class _PrimaryTasksView extends StatelessWidget {
   const _PrimaryTasksView({
     required this.tasks,
+    required this.indexing,
     required this.onOpenPath,
     required this.onSetStatus,
   });
 
   final List<TaskRef> tasks;
+  final bool indexing;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
 
@@ -158,7 +161,12 @@ class _PrimaryTasksView extends StatelessWidget {
           );
         }
         if (sorted.isEmpty) {
-          return const ListTile(title: Text('No indexed tasks'));
+          return ListTile(
+            leading: indexing
+                ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                : null,
+            title: Text(indexing ? 'Indexing…' : 'No indexed tasks'),
+          );
         }
         final task = sorted[i - 1];
         final overdue = isTaskOverdue(task, today);
@@ -197,6 +205,7 @@ class LibraryView extends StatelessWidget {
   const LibraryView({
     super.key,
     required this.index,
+    this.indexing = false,
     required this.progressByPath,
     required this.onOpenPath,
     required this.onOpenDay,
@@ -210,6 +219,7 @@ class LibraryView extends StatelessWidget {
   });
 
   final VaultIndex? index;
+  final bool indexing;
   final Map<String, double> progressByPath;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
@@ -245,6 +255,7 @@ class LibraryView extends StatelessWidget {
               _notes('project'),
               _ArticlesShelf(
                 index: index,
+                indexing: indexing,
                 progressByPath: progressByPath,
                 onReadPath: onReadPath,
                 onSetReadStatus: onSetReadStatus,
@@ -253,12 +264,14 @@ class LibraryView extends StatelessWidget {
               ),
               _PrimaryTasksView(
                 tasks: index?.tasks ?? const <TaskRef>[],
+                indexing: indexing,
                 onSetStatus: onSetTaskStatus,
                 onOpenPath: onOpenPath,
               ),
               _entities(),
               CalendarTab(
                 index: index,
+                indexing: indexing,
                 onOpenPath: onOpenPath,
                 onOpenDay: onOpenDay,
               ),
@@ -278,7 +291,16 @@ class LibraryView extends StatelessWidget {
       return ListView(
         children: [
           ListTile(
-            title: Text(project ? 'No projects yet' : 'No notes yet'),
+            leading: indexing
+                ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                : null,
+            title: Text(
+              indexing
+                  ? 'Indexing…'
+                  : project
+                  ? 'No projects yet'
+                  : 'No notes yet',
+            ),
             trailing: TextButton.icon(
               onPressed: () => onCreateNote(kind),
               icon: const Icon(Icons.add),
@@ -322,8 +344,15 @@ class LibraryView extends StatelessWidget {
           );
         }
         if (entities.isEmpty) {
-          return const ListTile(
-            title: Text('No people, places, or other entities yet'),
+          return ListTile(
+            leading: indexing
+                ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                : null,
+            title: Text(
+              indexing
+                  ? 'Indexing…'
+                  : 'No people, places, or other entities yet',
+            ),
           );
         }
         final note = entities[i - 1];
@@ -350,6 +379,7 @@ class LibraryView extends StatelessWidget {
 class _ArticlesShelf extends StatefulWidget {
   const _ArticlesShelf({
     required this.index,
+    required this.indexing,
     required this.progressByPath,
     required this.onReadPath,
     required this.onSetReadStatus,
@@ -358,6 +388,7 @@ class _ArticlesShelf extends StatefulWidget {
   });
 
   final VaultIndex? index;
+  final bool indexing;
   final Map<String, double> progressByPath;
   final ValueChanged<String> onReadPath;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
@@ -598,10 +629,21 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Center(
-                    child: Text(
-                      q.isNotEmpty || statusFilter != null
-                          ? 'Nothing matches'
-                          : 'No articles yet — import one above',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.indexing && all.isEmpty) ...[
+                          const LoadingIndicator(size: 20, strokeWidth: 2),
+                          const SizedBox(width: 8),
+                        ],
+                        Text(
+                          widget.indexing && all.isEmpty
+                              ? 'Indexing…'
+                              : q.isNotEmpty || statusFilter != null
+                              ? 'Nothing matches'
+                              : 'No articles yet — import one above',
+                        ),
+                      ],
                     ),
                   ),
                 ),

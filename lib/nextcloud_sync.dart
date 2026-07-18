@@ -198,6 +198,23 @@ Future<LocalSyncInspection> inspectLocalSync(Vault vault) async {
   );
 }
 
+/// A poll is skippable only when both collection etags are known and match,
+/// and the caller knows there are no unsaved local edits.
+bool canSkipPoll({
+  required bool dirty,
+  required String? lastEtag,
+  required String? currentEtag,
+}) {
+  if (dirty) return false;
+  final previous = NextcloudSync._normEtag(lastEtag);
+  final current = NextcloudSync._normEtag(currentEtag);
+  return previous != null &&
+      previous.isNotEmpty &&
+      current != null &&
+      current.isNotEmpty &&
+      previous == current;
+}
+
 class NextcloudSync {
   NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
 
@@ -212,6 +229,35 @@ class NextcloudSync {
     Duration(seconds: 1),
     Duration(seconds: 3),
   ];
+
+  /// Cheap, conservative preflight for a background poll. Uncertain remote
+  /// state or any local cursor mismatch falls through to a full sync.
+  Future<bool> pollIsUnchanged(Vault vault, {required bool dirty}) async {
+    try {
+      if (dirty) return false;
+      final state = await _loadSyncState(vault);
+      if (state.recovered ||
+          state.remoteMismatch ||
+          state.rootEtag == null ||
+          (await loadSyncConflicts(vault)).isNotEmpty) {
+        return false;
+      }
+      final currentEtag = await _retryTransient(_rootEtag);
+      if (!canSkipPoll(
+        dirty: dirty,
+        lastEtag: state.rootEtag,
+        currentEtag: currentEtag,
+      )) {
+        return false;
+      }
+      final local = await _localFiles(vault.storage);
+      return _matchesLocalCursorSnapshot(local.syncable, state.cursors);
+    } catch (_) {
+      return false;
+    } finally {
+      _client.close(force: true);
+    }
+  }
 
   Future<RemoteVaultInspection> inspectRemoteVault() async {
     try {
@@ -327,14 +373,14 @@ class NextcloudSync {
         final unresolvedForShortcut = await loadSyncConflicts(vault);
         if (unresolvedForShortcut.isEmpty) {
           final probedEtag = await _retryTransient(_rootEtag);
-          if (probedEtag != null &&
-              _normEtag(probedEtag) == _normEtag(loadedState.rootEtag)) {
+          if (canSkipPoll(
+            dirty: false,
+            lastEtag: loadedState.rootEtag,
+            currentEtag: probedEtag,
+          )) {
             progress('scan-local-shortcut');
             final localListing = await _localFiles(vault.storage);
-            if (_matchesLocalCursorSnapshot(
-              localListing.syncable,
-              syncState,
-            )) {
+            if (_matchesLocalCursorSnapshot(localListing.syncable, syncState)) {
               remoteCount = syncState.length;
               traceEvents.add({
                 'timestamp': DateTime.now().toUtc().toIso8601String(),

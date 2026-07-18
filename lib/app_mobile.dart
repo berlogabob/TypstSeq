@@ -524,6 +524,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             allowEmpty && inspection.kind == VaultStorageKind.empty;
         if (acceptedKind &&
             (requiredUri == null || selection.uri == requiredUri)) {
+          if (inspection.kind == VaultStorageKind.empty) {
+            if (!mounted) return null;
+            if (!await showConfirmDialog(
+              context,
+              title: 'Empty folder selected',
+              message:
+                  'This folder looks empty — is this the right vault? '
+                  'You can re-pick it or use this folder anyway.',
+              confirmLabel: 'Use anyway',
+              cancelLabel: 'Choose another folder',
+              barrierDismissible: false,
+            )) {
+              continue;
+            }
+          }
           await storage.persistAccess();
           return (selection: selection, inspection: inspection);
         }
@@ -550,6 +565,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       title: 'Allow vault folder access',
       message:
           'TyLog needs access to one folder to read and save your notes. '
+          'An existing synced vault is usually where your sync app stores it. '
           'Android will open its folder picker. Choose your vault, then tap '
           '“Use this folder”. TyLog cannot access other folders.',
       confirmLabel: 'Choose folder',
@@ -3270,6 +3286,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         index: index,
+        indexing: rebuilding || syncing,
         // Insertion order stays newest-opened-first — the shelf's
         // continue-reading card takes the first in-progress entry.
         progressByPath: {for (final r in _mergedRecent()) r.path: r.progress},
@@ -3439,7 +3456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        status,
+                        syncing && syncStage != null ? syncStage! : status,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 4),

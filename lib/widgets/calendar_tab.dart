@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../month_calendar.dart';
 import 'date_format.dart';
+import 'loading.dart';
 
 class CalendarTab extends StatefulWidget {
   const CalendarTab({
     super.key,
     required this.index,
+    this.indexing = false,
     required this.onOpenPath,
     required this.onOpenDay,
   });
 
   final VaultIndex? index;
+  final bool indexing;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
 
@@ -53,7 +56,14 @@ class _CalendarTabState extends State<CalendarTab> {
             );
           default:
             if (items.isEmpty) {
-              return const ListTile(title: Text('Nothing on this day yet'));
+              return ListTile(
+                leading: widget.indexing
+                    ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                    : null,
+                title: Text(
+                  widget.indexing ? 'Indexing…' : 'Nothing on this day yet',
+                ),
+              );
             }
             final item = items[i - headerCount];
             return ListTile(
