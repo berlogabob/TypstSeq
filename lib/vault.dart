@@ -25,6 +25,7 @@ class Vault {
   static const themePath = TylogVaultPaths.theme;
   static const exportPath = TylogVaultPaths.export;
   static const bibliographyPath = TylogVaultPaths.bibliography;
+  static const zoteroBibPath = TylogVaultPaths.zoteroBib;
   static const settingsPath = TylogVaultPaths.settings;
 
   static Future<Vault> openDefault() async {

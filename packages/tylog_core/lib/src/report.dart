@@ -62,26 +62,35 @@ List<NoteRef> selectReportNotes(VaultIndex index, ReportFilter filter) {
   });
 }
 
-String generateReportSource(String title, List<NoteRef> notes) =>
+String generateReportSource(
+  String title,
+  List<NoteRef> notes, {
+  bool includeZotero = false,
+}) =>
     '''#import "/_system/export.typ" as export
 
 #export.report(${_typstString(title)}, [
 ${notes.map((note) => '#include "/${note.path}"\n#pagebreak()').join('\n')}
-${notes.any((note) => note.citations.isNotEmpty) ? '#bibliography("/_system/bibliography.yml")\n' : ''}])
+${notes.any((note) => note.citations.isNotEmpty) ? '${includeZotero ? '#bibliography(("/_system/bibliography.yml", "/_system/zotero.bib"))' : '#bibliography("/_system/bibliography.yml")'}\n' : ''}])
 ''';
 
 Future<String> writeReportStorage(
   VaultStorage storage,
   String title,
   VaultIndex index,
-  ReportFilter filter,
-) async {
+  ReportFilter filter, {
+  bool includeZotero = false,
+}) async {
   final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
   if (safe.isEmpty) throw ArgumentError('Report title is empty');
   final output = 'outputs/$safe.typ';
   await storage.writeText(
     output,
-    generateReportSource(title, selectReportNotes(index, filter)),
+    generateReportSource(
+      title,
+      selectReportNotes(index, filter),
+      includeZotero: includeZotero,
+    ),
   );
   return output;
 }

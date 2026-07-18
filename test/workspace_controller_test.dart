@@ -92,10 +92,14 @@ void main() {
       // files), then drop a user-vendored package in and reopen — this
       // mirrors a user copying a package into an existing vault.
       await controller.openVault(entry, storage: storage);
-      await _waitUntil(() => controller.index != null && !controller.rebuilding);
+      await _waitUntil(
+        () => controller.index != null && !controller.rebuilding,
+      );
       await storage.writeBytes('_system/packages/foo/1.0.0/lib.typ', bytes);
       await controller.openVault(entry, storage: storage);
-      await _waitUntil(() => controller.index != null && !controller.rebuilding);
+      await _waitUntil(
+        () => controller.index != null && !controller.rebuilding,
+      );
 
       expect(
         controller.typstPackageFiles['_system/packages/foo/1.0.0/lib.typ'],
@@ -411,7 +415,9 @@ void main() {
     // message, since the fallback path is the only thing that surfaces it.
     expect(
       friendlySyncError(
-        StateError('Nextcloud changed again; run sync and review the new conflict'),
+        StateError(
+          'Nextcloud changed again; run sync and review the new conflict',
+        ),
       ),
       contains('Nextcloud changed again; run sync and review the new conflict'),
     );
@@ -476,6 +482,66 @@ void main() {
       expect(controller.syncConflicts, isEmpty);
     },
   );
+
+  test('reloadReadingState merges device files, newest openedAt wins, '
+      'corrupt files are skipped', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    const entry = VaultEntry(id: 'fake', name: 'Fake', path: '/not-used');
+    await controller.openVault(entry, storage: storage);
+    await _waitUntil(() => controller.index != null && !controller.rebuilding);
+
+    // Missing directory → empty merged state, no throw.
+    await controller.reloadReadingState();
+    expect(controller.mergedReading, isEmpty);
+
+    await storage.writeText(
+      '_system/reading/aaaa.json',
+      jsonEncode({
+        'schema': 1,
+        'recent': [
+          {
+            'path': 'articles/a.typ',
+            'openedAt': '2026-07-17T10:00:00Z',
+            'progress': 0.4,
+          },
+          {
+            'path': 'articles/b.typ',
+            'openedAt': '2026-07-18T09:00:00Z',
+            'progress': 0.2,
+          },
+        ],
+      }),
+    );
+    await storage.writeText(
+      '_system/reading/bbbb.json',
+      jsonEncode({
+        'schema': 1,
+        'recent': [
+          {
+            'path': 'articles/a.typ',
+            'openedAt': '2026-07-18T08:00:00Z',
+            'progress': 0.9,
+          },
+        ],
+      }),
+    );
+    await storage.writeText('_system/reading/broken.json', 'not json{');
+
+    await controller.reloadReadingState();
+    expect(controller.mergedReading, hasLength(2));
+    // Sorted newest-first; per-path newest openedAt wins (device bbbb's
+    // fresher read of a.typ at 0.9 beats aaaa's 0.4).
+    expect(controller.mergedReading.first.path, 'articles/b.typ');
+    final a = controller.mergedReading.last;
+    expect(a.path, 'articles/a.typ');
+    expect(a.progress, 0.9);
+  });
 
   test('shouldRolloverToday detects a calendar day change', () {
     final openedAt = DateTime(2026, 7, 15, 23, 55);
@@ -695,10 +761,7 @@ class _GatedWebDavServer {
           if (bytes == null) {
             request.response.statusCode = HttpStatus.notFound;
           } else {
-            request.response.headers.set(
-              HttpHeaders.etagHeader,
-              _etags[path]!,
-            );
+            request.response.headers.set(HttpHeaders.etagHeader, _etags[path]!);
             request.response.add(bytes);
           }
         case 'PUT':

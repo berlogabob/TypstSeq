@@ -10,6 +10,7 @@ abstract final class TylogVaultPaths {
   static const theme = '_system/theme.typ';
   static const export = '_system/export.typ';
   static const bibliography = '_system/bibliography.yml';
+  static const zoteroBib = '_system/zotero.bib';
   static const settings = '.tylog/settings.json';
 
   static const directories = [

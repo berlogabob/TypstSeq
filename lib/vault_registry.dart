@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -8,7 +9,11 @@ import 'vault.dart';
 import 'vault_storage.dart';
 
 class RecentNote {
-  const RecentNote({required this.path, required this.openedAt, this.progress = 0});
+  const RecentNote({
+    required this.path,
+    required this.openedAt,
+    this.progress = 0,
+  });
 
   final String path;
   final DateTime openedAt;
@@ -106,7 +111,11 @@ class VaultEntry {
           : null,
       recent: json['recent'] is List
           ? (json['recent'] as List)
-                .map((item) => RecentNote.fromJson((item as Map).cast<String, Object?>()))
+                .map(
+                  (item) => RecentNote.fromJson(
+                    (item as Map).cast<String, Object?>(),
+                  ),
+                )
                 .toList()
           : const [],
     );
@@ -137,7 +146,8 @@ class VaultRegistry {
     this.onboardingComplete = true,
     this.readingFontScale = 1,
     this.readingNightMode = false,
-  });
+    String? deviceId,
+  }) : deviceId = deviceId ?? newDeviceId();
 
   final File file;
   final List<VaultEntry> entries;
@@ -145,7 +155,19 @@ class VaultRegistry {
   bool onboardingComplete;
   double readingFontScale;
   bool readingNightMode;
+
+  /// Stable per-install identifier, used to name this device's reading-state
+  /// file inside the vault (`_system/reading/<deviceId>.json`).
+  final String deviceId;
   Future<void> _pendingSave = Future.value();
+
+  static String newDeviceId() {
+    final random = Random.secure();
+    return List.generate(
+      16,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
+  }
 
   VaultEntry get active => entries.firstWhere((entry) => entry.id == activeId);
 
@@ -203,6 +225,8 @@ class VaultRegistry {
       }
       if (entries.isNotEmpty) {
         final active = json['active'] as String?;
+        final storedDeviceId = json['deviceId'] as String?;
+        if (storedDeviceId == null || storedDeviceId.isEmpty) migrated = true;
         final registry = VaultRegistry(
           file,
           entries,
@@ -212,8 +236,12 @@ class VaultRegistry {
           onboardingComplete: json['onboardingComplete'] as bool? ?? true,
           readingFontScale: readingFontScale,
           readingNightMode: readingNightMode,
+          deviceId: storedDeviceId == null || storedDeviceId.isEmpty
+              ? null
+              : storedDeviceId,
         );
-        // Rewrite vaults.json without the now-migrated inline passwords.
+        // Rewrite vaults.json without the now-migrated inline passwords
+        // (and persist a freshly generated deviceId).
         if (migrated) await registry.save();
         return registry;
       }
@@ -353,13 +381,28 @@ class VaultRegistry {
 
   static const _maxRecentNotes = 30;
 
-  Future<void> recordOpen(VaultEntry entry, String path) async {
+  /// [fallbackProgress] seeds the position when this device has no record of
+  /// [path] yet (e.g. the article was read partway on another device).
+  Future<void> recordOpen(
+    VaultEntry entry,
+    String path, {
+    double fallbackProgress = 0,
+  }) async {
     final index = entries.indexWhere((item) => item.id == entry.id);
     if (index == -1) return;
+    // Keep the known reading position — reopening a note must not zero it.
+    var progress = fallbackProgress;
+    for (final r in entry.recent) {
+      if (r.path == path) {
+        progress = r.progress;
+        break;
+      }
+    }
     final without = entry.recent.where((r) => r.path != path);
-    final next = [RecentNote(path: path, openedAt: DateTime.now()), ...without]
-        .take(_maxRecentNotes)
-        .toList();
+    final next = [
+      RecentNote(path: path, openedAt: DateTime.now(), progress: progress),
+      ...without,
+    ].take(_maxRecentNotes).toList();
     entries[index] = entry.copyWith(recent: next);
     await save();
   }
@@ -375,7 +418,11 @@ class VaultRegistry {
       recent: [
         for (final r in entry.recent)
           r.path == path
-              ? RecentNote(path: r.path, openedAt: r.openedAt, progress: progress)
+              ? RecentNote(
+                  path: r.path,
+                  openedAt: r.openedAt,
+                  progress: progress,
+                )
               : r,
       ],
     );
@@ -419,6 +466,7 @@ class VaultRegistry {
       jsonEncode({
         'version': 3,
         'active': activeId,
+        'deviceId': deviceId,
         'onboardingComplete': onboardingComplete,
         'readingFontScale': readingFontScale,
         'readingNightMode': readingNightMode,

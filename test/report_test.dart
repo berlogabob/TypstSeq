@@ -87,4 +87,24 @@ void main() {
     final source = generateReportSource('Cited report', const [cited]);
     expect(source, contains('#bibliography("/_system/bibliography.yml")'));
   });
+
+  test('report with a Zotero snapshot cites both bibliography files', () {
+    const cited = NoteRef(
+      id: 'paper',
+      path: 'articles/paper.typ',
+      title: 'Paper',
+      kind: 'article',
+      citations: ['smith:2026word'],
+      outgoingLinks: [],
+    );
+    final source = generateReportSource('Cited report', const [
+      cited,
+    ], includeZotero: true);
+    expect(
+      source,
+      contains(
+        '#bibliography(("/_system/bibliography.yml", "/_system/zotero.bib"))',
+      ),
+    );
+  });
 }

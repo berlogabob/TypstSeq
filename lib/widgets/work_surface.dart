@@ -43,6 +43,7 @@ class TodayPage extends StatelessWidget {
     required this.editor,
     required this.onOpenPath,
     required this.onSetStatus,
+    this.onReadPath,
   });
 
   final List<TaskRef> tasks;
@@ -50,6 +51,7 @@ class TodayPage extends StatelessWidget {
   final Widget editor;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
+  final ValueChanged<String>? onReadPath;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +104,7 @@ class TodayPage extends StatelessWidget {
                   subtitle: progress > 0
                       ? LinearProgressIndicator(value: progress)
                       : Text(note.path),
-                  onTap: () => onOpenPath(note.path),
+                  onTap: () => (onReadPath ?? onOpenPath)(note.path),
                 ),
             ],
           ),
@@ -176,6 +178,8 @@ class LibraryView extends StatelessWidget {
     required this.onSetReadStatus,
     required this.onCreateEntity,
     required this.onImportMarkdownArticles,
+    required this.onReadPath,
+    required this.onDeleteArticle,
   });
 
   final VaultIndex? index;
@@ -186,6 +190,8 @@ class LibraryView extends StatelessWidget {
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
   final VoidCallback onCreateEntity;
   final Future<void> Function() onImportMarkdownArticles;
+  final ValueChanged<String> onReadPath;
+  final Future<void> Function(NoteRef note) onDeleteArticle;
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
@@ -209,7 +215,14 @@ class LibraryView extends StatelessWidget {
             children: [
               _notes('note'),
               _notes('project'),
-              _notes('article'),
+              _ArticlesShelf(
+                index: index,
+                progressByPath: progressByPath,
+                onReadPath: onReadPath,
+                onSetReadStatus: onSetReadStatus,
+                onDeleteArticle: onDeleteArticle,
+                onImportMarkdownArticles: onImportMarkdownArticles,
+              ),
               _PrimaryTasksView(
                 tasks: index?.tasks ?? const <TaskRef>[],
                 onSetStatus: onSetTaskStatus,
@@ -232,53 +245,20 @@ class LibraryView extends StatelessWidget {
     final notes = (index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == kind)
         .toList();
-    final showImport = kind == 'article';
     return ListView.builder(
-      itemCount: (showImport ? 1 : 0) + notes.length,
+      itemCount: notes.length,
       itemBuilder: (context, i) {
-        if (showImport && i == 0) {
-          return ListTile(
-            key: const ValueKey('import-markdown-articles'),
-            leading: const Icon(Icons.file_upload_outlined),
-            title: const Text('Import Markdown articles'),
-            subtitle: const Text('Select one or more .md or .markdown files'),
-            onTap: () => unawaited(onImportMarkdownArticles()),
-          );
-        }
-        final note = notes[showImport ? i - 1 : i];
+        final note = notes[i];
         return ListTile(
           leading: Icon(switch (kind) {
             'project' => Icons.work_outline,
-            'article' => Icons.article_outlined,
             _ => Icons.notes,
           }),
           title: Text(note.title),
           subtitle: Text(note.path),
-          trailing: kind != 'article' ? null : _articleTrailing(note),
           onTap: () => onOpenPath(note.path),
         );
       },
-    );
-  }
-
-  Widget _articleTrailing(NoteRef note) {
-    final status = note.properties['status'] as String? ?? 'unread';
-    final progress = progressByPath[note.path] ?? 0;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (progress > 0 && progress < 1) ...[
-          SizedBox(width: 40, child: LinearProgressIndicator(value: progress)),
-          const SizedBox(width: 8),
-        ],
-        PropertySelectChip(
-          value: status,
-          options: articleStatusOptions,
-          labels: articleStatusLabels,
-          tooltip: 'Change status',
-          onChanged: (next) => unawaited(onSetReadStatus(note, next)),
-        ),
-      ],
     );
   }
 
@@ -317,6 +297,329 @@ class LibraryView extends StatelessWidget {
           onTap: () => onOpenPath(note.path),
         );
       },
+    );
+  }
+}
+
+/// The Articles tab as a reading shelf: status filter (Inbox/Reading/Read),
+/// search, sort, and metadata-based grouping over the indexed articles.
+/// All state is derived in-memory from [VaultIndex]; only the status property
+/// write goes back to disk (via [onSetReadStatus]).
+class _ArticlesShelf extends StatefulWidget {
+  const _ArticlesShelf({
+    required this.index,
+    required this.progressByPath,
+    required this.onReadPath,
+    required this.onSetReadStatus,
+    required this.onDeleteArticle,
+    required this.onImportMarkdownArticles,
+  });
+
+  final VaultIndex? index;
+  final Map<String, double> progressByPath;
+  final ValueChanged<String> onReadPath;
+  final Future<void> Function(NoteRef note, String status) onSetReadStatus;
+  final Future<void> Function(NoteRef note) onDeleteArticle;
+  final Future<void> Function() onImportMarkdownArticles;
+
+  @override
+  State<_ArticlesShelf> createState() => _ArticlesShelfState();
+}
+
+class _ArticlesShelfState extends State<_ArticlesShelf> {
+  // ponytail: last-choice memory is per app run only; persist to vaults.json
+  // if users ask for it to survive restarts.
+  static String? _lastStatusFilter;
+  static String _lastSort = 'recent';
+  static String _lastGroupBy = 'none';
+
+  final _query = TextEditingController();
+  String? statusFilter = _lastStatusFilter;
+  String sort = _lastSort;
+  String groupBy = _lastGroupBy;
+
+  static const _sortLabels = {
+    'recent': 'Recently updated',
+    'progress': 'Reading progress',
+    'title': 'Title',
+  };
+  static const _groupLabels = {
+    'none': 'No grouping',
+    'tag': 'Group by tag',
+    'year': 'Group by year',
+    'source': 'Group by source',
+  };
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  /// Collapses the free-form status property into the three shelf buckets;
+  /// custom values like `summarized` count as read.
+  static String _bucket(NoteRef note) =>
+      switch (note.properties['status'] as String? ?? 'unread') {
+        'unread' => 'unread',
+        'reading' => 'reading',
+        _ => 'read',
+      };
+
+  String? _source(NoteRef note) {
+    final url = note.properties['url'] as String?;
+    final host = url == null ? null : Uri.tryParse(url)?.host;
+    if (host != null && host.isNotEmpty) return host;
+    final name = note.properties['import_source_name'] as String?;
+    return name == null || name.isEmpty ? null : name;
+  }
+
+  String _groupKey(NoteRef note) => switch (groupBy) {
+    'tag' => note.tags.isEmpty ? 'Untagged' : note.tags.first,
+    'year' => _year(note),
+    _ => _source(note) ?? 'Unknown source',
+  };
+
+  String _year(NoteRef note) {
+    final fromDate = note.date?.split('-').first;
+    if (fromDate != null && fromDate.length == 4) return fromDate;
+    final millis = note.modifiedMillis;
+    if (millis != null) {
+      return '${DateTime.fromMillisecondsSinceEpoch(millis).year}';
+    }
+    return 'Undated';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final all = (widget.index?.notes ?? const <NoteRef>[])
+        .where((note) => note.kind == 'article')
+        .toList();
+    final q = _query.text.trim().toLowerCase();
+    final searched = q.isEmpty
+        ? all
+        : all
+              .where(
+                (note) =>
+                    note.title.toLowerCase().contains(q) ||
+                    note.tags.any((tag) => tag.toLowerCase().contains(q)),
+              )
+              .toList();
+    final counts = {'unread': 0, 'reading': 0, 'read': 0};
+    for (final note in searched) {
+      counts[_bucket(note)] = counts[_bucket(note)]! + 1;
+    }
+    final filtered = statusFilter == null
+        ? searched
+        : searched.where((note) => _bucket(note) == statusFilter).toList();
+    filtered.sort(switch (sort) {
+      'progress' => (a, b) => (widget.progressByPath[b.path] ?? 0).compareTo(
+        widget.progressByPath[a.path] ?? 0,
+      ),
+      'title' => (a, b) => a.title.toLowerCase().compareTo(
+        b.title.toLowerCase(),
+      ),
+      _ => (a, b) => (b.modifiedMillis ?? 0).compareTo(a.modifiedMillis ?? 0),
+    });
+    final groups = <(String, List<NoteRef>)>[];
+    if (groupBy == 'none') {
+      groups.add(('', filtered));
+    } else {
+      final byKey = <String, List<NoteRef>>{};
+      for (final note in filtered) {
+        byKey.putIfAbsent(_groupKey(note), () => []).add(note);
+      }
+      final entries = byKey.entries.toList()
+        ..sort((a, b) => b.value.length.compareTo(a.value.length));
+      groups.addAll([for (final e in entries) (e.key, e.value)]);
+    }
+
+    // Most recently opened unfinished article, for the resume card. The
+    // progress map preserves recents order (most recently opened first).
+    NoteRef? continueNote;
+    var continueProgress = 0.0;
+    for (final entry in widget.progressByPath.entries) {
+      if (entry.value <= 0 || entry.value >= 0.98) continue;
+      final note = widget.index?.notesByPath[entry.key];
+      if (note == null || note.kind != 'article') continue;
+      continueNote = note;
+      continueProgress = entry.value;
+      break;
+    }
+
+    const statusChips = <(String?, String)>[
+      (null, 'All'),
+      ('unread', 'Inbox'),
+      ('reading', 'Reading'),
+      ('read', 'Read'),
+    ];
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('articles-search'),
+                  controller: _query,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: 'Search articles',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _query.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _query.clear();
+                              setState(() {});
+                            },
+                          ),
+                  ),
+                ),
+              ),
+              PopupMenuButton<String>(
+                key: const Key('articles-sort'),
+                tooltip: 'Sort: ${_sortLabels[sort]}',
+                icon: const Icon(Icons.sort),
+                initialValue: sort,
+                onSelected: (value) => setState(() => sort = _lastSort = value),
+                itemBuilder: (_) => [
+                  for (final entry in _sortLabels.entries)
+                    PopupMenuItem(value: entry.key, child: Text(entry.value)),
+                ],
+              ),
+              PopupMenuButton<String>(
+                key: const Key('articles-group'),
+                tooltip: 'Grouping: ${_groupLabels[groupBy]}',
+                icon: const Icon(Icons.workspaces_outline),
+                initialValue: groupBy,
+                onSelected: (value) =>
+                    setState(() => groupBy = _lastGroupBy = value),
+                itemBuilder: (_) => [
+                  for (final entry in _groupLabels.entries)
+                    PopupMenuItem(value: entry.key, child: Text(entry.value)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final (value, label) in statusChips)
+                  ChoiceChip(
+                    label: Text(
+                      '$label · ${value == null ? searched.length : counts[value]}',
+                    ),
+                    selected: statusFilter == value,
+                    onSelected: (_) => setState(
+                      () => statusFilter = _lastStatusFilter = value,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              ListTile(
+                key: const ValueKey('import-markdown-articles'),
+                leading: const Icon(Icons.file_upload_outlined),
+                title: const Text('Import Markdown articles'),
+                subtitle: const Text(
+                  'Select one or more .md or .markdown files',
+                ),
+                onTap: () => unawaited(widget.onImportMarkdownArticles()),
+              ),
+              if (continueNote != null)
+                Card(
+                  key: const Key('articles-continue-reading'),
+                  child: ListTile(
+                    leading: const Icon(Icons.auto_stories),
+                    title: Text('Continue reading · ${continueNote.title}'),
+                    subtitle: LinearProgressIndicator(value: continueProgress),
+                    trailing: Text('${(continueProgress * 100).round()}%'),
+                    onTap: () => widget.onReadPath(continueNote!.path),
+                  ),
+                ),
+              if (filtered.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      q.isNotEmpty || statusFilter != null
+                          ? 'Nothing matches'
+                          : 'No articles yet — import one above',
+                    ),
+                  ),
+                ),
+              for (final (header, notes) in groups) ...[
+                if (header.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Text(
+                      '$header · ${notes.length}',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                for (final note in notes) _row(note),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _row(NoteRef note) {
+    final subtitle = [
+      ?_source(note),
+      if (note.tags.isNotEmpty) note.tags.map((tag) => '#$tag').join(' '),
+    ].join(' · ');
+    return ListTile(
+      leading: const Icon(Icons.article_outlined),
+      title: Text(note.title),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: _trailing(note),
+      onTap: () => widget.onReadPath(note.path),
+      onLongPress: () => unawaited(widget.onDeleteArticle(note)),
+    );
+  }
+
+  Widget _trailing(NoteRef note) {
+    final status = note.properties['status'] as String? ?? 'unread';
+    final progress = widget.progressByPath[note.path] ?? 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (progress > 0 && progress < 1) ...[
+          Text(
+            '${(progress * 100).round()}%',
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+          const SizedBox(width: 4),
+          SizedBox(width: 40, child: LinearProgressIndicator(value: progress)),
+          const SizedBox(width: 8),
+        ],
+        PropertySelectChip(
+          value: status,
+          options: articleStatusOptions,
+          labels: articleStatusLabels,
+          tooltip: 'Change status',
+          onChanged: (next) => unawaited(widget.onSetReadStatus(note, next)),
+        ),
+      ],
     );
   }
 }

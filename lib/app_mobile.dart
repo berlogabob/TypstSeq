@@ -158,6 +158,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, Uint8List> get typstPackageFiles => workspace.typstPackageFiles;
   String get bibliographySource => workspace.bibliographySource;
   set bibliographySource(String value) => workspace.bibliographySource = value;
+  String get zoteroBibSource => workspace.zoteroBibSource;
+  set zoteroBibSource(String value) => workspace.zoteroBibSource = value;
   NextcloudConfig? get cloud => workspace.cloud;
   set cloud(NextcloudConfig? value) => workspace.cloud = value;
   PkmsSearchIndex get searchIndex => workspace.searchIndex;
@@ -683,6 +685,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         utf8.encode(bibliographySource),
       ),
     },
+    if (zoteroBibSource.trim().isNotEmpty) ...{
+      Vault.zoteroBibPath: Uint8List.fromList(utf8.encode(zoteroBibSource)),
+      '/${Vault.zoteroBibPath}': Uint8List.fromList(
+        utf8.encode(zoteroBibSource),
+      ),
+    },
   });
 
   /// Preview-only source: cited notes get a bibliography section appended so
@@ -690,9 +698,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _previewSource() {
     final source = sourceController.text;
     final bib = bibliographySource.trim();
-    if (bib.isEmpty || bib == '{}') return source;
-    if (!RegExp(r'(^|[\s\[(])@[A-Za-z0-9_-]+').hasMatch(source)) return source;
-    return '$source\n#bibliography("/${Vault.bibliographyPath}")\n';
+    final hasYml = bib.isNotEmpty && bib != '{}';
+    final hasZotero = zoteroBibSource.trim().isNotEmpty;
+    if (!hasYml && !hasZotero) return source;
+    if (!RegExp(r'(^|[\s\[(])@[A-Za-z0-9_.:-]+').hasMatch(source)) {
+      return source;
+    }
+    final directive = hasYml && hasZotero
+        ? '#bibliography(("/${Vault.bibliographyPath}", "/${Vault.zoteroBibPath}"))'
+        : hasZotero
+        ? '#bibliography("/${Vault.zoteroBibPath}")'
+        : '#bibliography("/${Vault.bibliographyPath}")';
+    return '$source\n$directive\n';
   }
 
   // Debounces the preview source by 400ms so a recompile isn't triggered on
@@ -796,7 +813,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       status = 'Opened $path';
     });
     final entry = _activeRegistryEntry;
-    if (entry != null) unawaited(vaultRegistry!.recordOpen(entry, path));
+    if (entry != null) {
+      // Adopt another device's position on the first local open of a note
+      // this device has never read (recordOpen keeps a local record if any).
+      var synced = 0.0;
+      for (final r in workspace.mergedReading) {
+        if (r.path == path) {
+          synced = r.progress;
+          break;
+        }
+      }
+      unawaited(
+        vaultRegistry!
+            .recordOpen(entry, path, fallbackProgress: synced)
+            .then((_) => _writeReadingFile()),
+      );
+    }
   }
 
   Future<void> _openToday() async {
@@ -1971,23 +2003,161 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Mirrors this device's recents/progress into the vault at
+  /// `_system/reading/<deviceId>.json` so it syncs across devices. Best
+  /// effort — vaults.json stays the offline source of truth for this device.
+  Future<void> _writeReadingFile() async {
+    final v = vault;
+    final entry = _activeRegistryEntry;
+    final id = vaultRegistry?.deviceId;
+    if (v == null || entry == null || id == null || id.isEmpty) return;
+    try {
+      await v.storage.writeText(
+        '_system/reading/$id.json',
+        jsonEncode({
+          'schema': 1,
+          'recent': [for (final r in entry.recent) r.toJson()],
+        }),
+      );
+    } catch (_) {}
+  }
+
+  /// Cross-device recents: the synced merged view overlaid by this device's
+  /// in-memory registry (registry wins ties, so the local session stays
+  /// authoritative). Degrades to exactly the registry list when no reading
+  /// files exist in the vault.
+  List<RecentNote> _mergedRecent() {
+    final byPath = {for (final r in workspace.mergedReading) r.path: r};
+    for (final r in _activeRegistryEntry?.recent ?? const <RecentNote>[]) {
+      final existing = byPath[r.path];
+      if (existing == null || !r.openedAt.isBefore(existing.openedAt)) {
+        byPath[r.path] = r;
+      }
+    }
+    return byPath.values.toList()
+      ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+  }
+
   Future<void> _recordReadingProgress(String path, double progress) async {
     final entry = _activeRegistryEntry;
     if (entry == null) return;
     await vaultRegistry!.recordProgress(entry, path, progress);
+    unawaited(_writeReadingFile());
+    if (progress < 0.98) return;
+    // Finishing an article marks it read; richer custom statuses
+    // (e.g. "summarized") are left alone.
+    final finished = index?.notesByPath[path];
+    final status = finished?.properties['status'] as String?;
+    if (finished != null &&
+        finished.kind == 'article' &&
+        (status == null || status == 'unread' || status == 'reading')) {
+      await _logReading(finished.title);
+      await _setReadStatus(finished, 'read');
+    }
+  }
+
+  /// Appends a reading-log line to today's daily note so "what I read"
+  /// survives even after the article file itself is deleted. Plain text on
+  /// purpose — a link would dangle once the article is gone.
+  Future<void> _logReading(String title, {String? rating}) async {
+    final v = vault;
+    if (v == null || title.trim().isEmpty) return;
+    try {
+      final dayPath = await v.todayNote();
+      final safeTitle = typstContent(title.trim());
+      final stars = int.tryParse(rating ?? '');
+      final line = rating == null
+          ? '- Read: $safeTitle'
+          : stars != null
+          ? '- Read: $safeTitle — ${'★' * stars}${'☆' * (5 - stars)}'
+          : '- Read: $safeTitle — 🗑';
+      // The daily note may be the currently-open (possibly dirty) document;
+      // writing to disk behind the editor's back would be clobbered by the
+      // next autosave, so route through the editor buffer in that case.
+      final isOpen = note == dayPath;
+      final source = isOpen
+          ? _currentSource()
+          : await v.storage.readText(dayPath);
+      final String updated;
+      if (rating != null && source.contains('- Read: $safeTitle\n')) {
+        // Finish-then-rate upgrades the existing line instead of duplicating.
+        updated = source.replaceFirst('- Read: $safeTitle\n', '$line\n');
+      } else if (source.contains(': $safeTitle')) {
+        return; // already logged today
+      } else {
+        final header = source.contains('== Reading') ? '' : '\n\n== Reading';
+        updated = '${source.trimRight()}$header\n$line\n';
+      }
+      if (isOpen) {
+        _loadSource(updated);
+        _queueAutosave();
+      } else {
+        await v.saveNote(dayPath, updated);
+      }
+    } catch (_) {
+      // Logging must never break the reading/rating flow.
+    }
   }
 
   List<(NoteRef note, double progress)> _recentNotes() {
     final notesByPath = index?.notesByPath;
     if (notesByPath == null) return const [];
     final result = <(NoteRef, double)>[];
-    for (final recent in _activeRegistryEntry?.recent ?? const []) {
+    for (final recent in _mergedRecent()) {
+      if (recent.progress >= 0.98) continue; // finished — nothing to continue
       final note = notesByPath[recent.path];
       if (note == null) continue;
       result.add((note, recent.progress));
       if (result.length == 8) break;
     }
     return result;
+  }
+
+  /// Opens [path] straight into reading mode (the shelf/rail "resume" tap).
+  void _readPath(String path) {
+    primaryDestination = 2;
+    unawaited(
+      _openPath(path).then((_) {
+        if (mounted) setState(() => mode = 'read');
+      }),
+    );
+  }
+
+  Future<void> _deleteArticle(NoteRef ref) async {
+    final v = vault;
+    if (v == null) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete article?',
+      message:
+          '"${ref.title}" will be removed from the vault. '
+          'There is no recovery.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    if (note == ref.path) {
+      // Move the editor off the doomed file first, so a dirty autosave
+      // can't resurrect it; then return to the library shelf.
+      await _openToday();
+      if (mounted) setState(() => mode = 'library');
+    }
+    await v.storage.delete(ref.path);
+    await _rebuildIndex();
+    if (mounted) setState(() => status = 'Deleted ${ref.title}');
+  }
+
+  Future<void> _rateArticle(String path, String value) async {
+    final v = vault;
+    if (v == null) return;
+    final source = await v.storage.readText(path);
+    await v.saveNote(path, replaceNoteProperty(source, 'rating', value));
+    final title = index?.notesByPath[path]?.title;
+    if (title != null) await _logReading(title, rating: value);
+    await _rebuildIndex();
+    if (value != 'shit' || !mounted) return;
+    final rated = index?.notesByPath[path];
+    if (rated != null) await _deleteArticle(rated);
   }
 
   Future<void> _showSyncDashboard() async {
@@ -2657,33 +2827,97 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<String?> _chooseCitation() async {
     final v = vault;
-    if (v == null || !await v.storage.exists(Vault.bibliographyPath)) {
+    if (v == null) return null;
+    final hasYml = await v.storage.exists(Vault.bibliographyPath);
+    final hasZotero = await v.storage.exists(Vault.zoteroBibPath);
+    if (!hasYml && !hasZotero) {
       _magicFeedback('No bibliography entries');
       return null;
     }
-    final bib = await v.storage.readText(Vault.bibliographyPath);
-    bibliographySource = bib;
-    final entries = parseHayagrivaBibliography(bib);
+    final entries = <HayagrivaEntry>[];
+    if (hasYml) {
+      final bib = await v.storage.readText(Vault.bibliographyPath);
+      bibliographySource = bib;
+      entries.addAll(parseHayagrivaBibliography(bib));
+    }
+    if (hasZotero) {
+      final bib = await v.storage.readText(Vault.zoteroBibPath);
+      zoteroBibSource = bib;
+      entries.addAll(parseBibtexBibliography(bib));
+    }
     if (!mounted) return null;
     return showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            if (entries.isEmpty)
-              const ListTile(title: Text('No bibliography entries')),
-            for (final entry in entries)
-              ListTile(
-                leading: const Icon(Icons.format_quote),
-                title: Text(entry.title),
-                subtitle: Text('${entry.key} · ${entry.type}'),
-                onTap: () => Navigator.pop(context, entry.key),
-              ),
-          ],
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (context) {
+        var query = '';
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              final q = query.trim().toLowerCase();
+              final filtered = q.isEmpty
+                  ? entries
+                  : entries
+                        .where(
+                          (entry) =>
+                              entry.title.toLowerCase().contains(q) ||
+                              entry.key.toLowerCase().contains(q) ||
+                              (entry.author ?? '').toLowerCase().contains(q),
+                        )
+                        .toList();
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: TextField(
+                        key: const Key('citation-search'),
+                        autofocus: entries.length > 8,
+                        onChanged: (value) =>
+                            setSheetState(() => query = value),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          prefixIcon: Icon(Icons.search),
+                          hintText: 'Search citations',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          if (filtered.isEmpty)
+                            const ListTile(
+                              title: Text('No bibliography entries'),
+                            ),
+                          for (final entry in filtered)
+                            ListTile(
+                              leading: const Icon(Icons.format_quote),
+                              title: Text(entry.title),
+                              subtitle: Text(
+                                '${entry.key} · '
+                                '${entry.author ?? entry.type}'
+                                '${entry.year == null ? '' : ' ${entry.year}'}'
+                                '${entry.source == 'zotero' ? ' · Zotero' : ''}',
+                              ),
+                              onTap: () => Navigator.pop(context, entry.key),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -2738,6 +2972,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       v.storage,
       title,
       ix,
+      includeZotero: await v.storage.exists(Vault.zoteroBibPath),
       ReportFilter(
         project: project?.id,
         from: range == null ? null : isoDay(range.start),
@@ -2908,6 +3143,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
     if (mode == 'read') {
+      final currentNote = current == null ? null : index?.notesByPath[current];
+      var savedProgress = 0.0;
+      for (final r in _mergedRecent()) {
+        if (r.path == current) {
+          savedProgress = r.progress;
+          break;
+        }
+      }
       return ReadingMode(
         source: _currentSource(),
         path: current,
@@ -2916,6 +3159,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onExit: _showEditor,
         onPreferencesChanged: _updateReadingPreferences,
         onProgress: _recordReadingProgress,
+        // A finished article reopens at the top, not the last line.
+        initialProgress: savedProgress >= 0.98 ? 0 : savedProgress,
+        canRate:
+            currentNote?.kind == 'article' &&
+            currentNote?.properties['rating'] == null,
+        onRate: current == null
+            ? null
+            : (value) => _rateArticle(current, value),
       );
     }
     final backlinks = current == null
@@ -2976,10 +3227,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         index: index,
-        progressByPath: {
-          for (final r in _activeRegistryEntry?.recent ?? const [])
-            r.path: r.progress,
-        },
+        // Insertion order stays newest-opened-first — the shelf's
+        // continue-reading card takes the first in-progress entry.
+        progressByPath: {for (final r in _mergedRecent()) r.path: r.progress},
         onOpenPath: (path) {
           primaryDestination = 2;
           unawaited(_openPath(path));
@@ -2992,6 +3242,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onSetReadStatus: _setReadStatus,
         onCreateEntity: () => unawaited(_createEntity()),
         onImportMarkdownArticles: _importMarkdownArticles,
+        onReadPath: _readPath,
+        onDeleteArticle: _deleteArticle,
       ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
@@ -3110,6 +3362,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             editor: content,
             onOpenPath: _openPath,
             onSetStatus: _setTaskStatus,
+            onReadPath: _readPath,
           )
         : content;
     final statusBanner = ListenableBuilder(
@@ -3167,7 +3420,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     final workArea = WorkSurface(
       child: Column(
-        children: [statusBanner, Expanded(child: bodyContent)],
+        children: [
+          statusBanner,
+          Expanded(child: bodyContent),
+        ],
       ),
     );
 
@@ -3282,7 +3538,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ListenableBuilder(
-            listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
+            listenable: Listenable.merge([
+              workspace,
+              workspace.syncProgressTick,
+            ]),
             builder: (context, _) => SyncIconButton(
               syncing: syncing,
               vaultOpen: v != null,

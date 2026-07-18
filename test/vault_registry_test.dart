@@ -361,4 +361,31 @@ void main() {
       '/external/TyLogVault',
     );
   });
+
+  test(
+    'deviceId is generated once, persisted, and honored when supplied',
+    () async {
+      final base = await Directory.systemTemp.createTemp('tylog_registry_');
+      addTearDown(() => base.delete(recursive: true));
+      final file = File('${base.path}/vaults.json');
+
+      final generated = VaultRegistry(file, [], '');
+      expect(generated.deviceId, matches(RegExp(r'^[0-9a-f]{16}$')));
+      await generated.save();
+      final stored =
+          jsonDecode(await file.readAsString()) as Map<String, Object?>;
+      expect(stored['deviceId'], generated.deviceId);
+
+      final restored = VaultRegistry(
+        file,
+        [],
+        '',
+        deviceId: stored['deviceId'] as String,
+      );
+      expect(restored.deviceId, generated.deviceId);
+
+      // Two fresh installs never collide on the same id.
+      expect(VaultRegistry(file, [], '').deviceId, isNot(generated.deviceId));
+    },
+  );
 }

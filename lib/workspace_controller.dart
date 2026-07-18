@@ -63,6 +63,11 @@ class WorkspaceController extends ChangeNotifier {
   String helperSource = '';
   Map<String, Uint8List> typstPackageFiles = const {};
   String bibliographySource = '';
+  String zoteroBibSource = '';
+
+  /// Reading recents/progress merged from every device's
+  /// `_system/reading/<deviceId>.json` (newest openedAt wins per path).
+  List<RecentNote> mergedReading = const [];
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
@@ -109,6 +114,8 @@ class WorkspaceController extends ChangeNotifier {
     helperSource = '';
     typstPackageFiles = const {};
     bibliographySource = '';
+    zoteroBibSource = '';
+    mergedReading = const [];
     cloud = nextCloud;
     lastSync = null;
     syncConflicts = const [];
@@ -191,6 +198,9 @@ class WorkspaceController extends ChangeNotifier {
       bibliographySource = await opened.storage.exists(Vault.bibliographyPath)
           ? await opened.storage.readText(Vault.bibliographyPath)
           : '';
+      zoteroBibSource = await opened.storage.exists(Vault.zoteroBibPath)
+          ? await opened.storage.readText(Vault.zoteroBibPath)
+          : '';
       cloud = next.cloud;
       lastSync = null;
       syncConflicts = await loadSyncConflicts(opened);
@@ -205,6 +215,7 @@ class WorkspaceController extends ChangeNotifier {
       status = 'Vault opened — indexing…';
       notifyListeners();
       unawaited(_sweepSafBackups(opened));
+      unawaited(reloadReadingState());
       if (next.cloud?.isReady ?? false) {
         if (trigger != null) unawaited(syncNow(trigger: trigger));
         startCloudPolling();
@@ -398,6 +409,43 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Rebuilds [mergedReading] from every `_system/reading/*.json` device
+  /// file in the vault: union of all recents, newest openedAt wins per path.
+  /// Corrupt or unreadable files are skipped — reading state is best-effort.
+  Future<void> reloadReadingState() async {
+    final opened = vault;
+    if (opened == null) return;
+    final byPath = <String, RecentNote>{};
+    List<VaultStorageEntry> files;
+    try {
+      files = await opened.storage.list(path: '_system/reading');
+    } catch (_) {
+      files = const [];
+    }
+    for (final file in files) {
+      if (file.isDirectory || !file.path.endsWith('.json')) continue;
+      try {
+        final json =
+            jsonDecode(await opened.storage.readText(file.path))
+                as Map<String, Object?>;
+        for (final item in json['recent'] as List? ?? const []) {
+          final recent = RecentNote.fromJson(
+            (item as Map).cast<String, Object?>(),
+          );
+          final existing = byPath[recent.path];
+          if (existing == null || recent.openedAt.isAfter(existing.openedAt)) {
+            byPath[recent.path] = recent;
+          }
+        }
+      } catch (_) {
+        // Skip this device file; the rest still merge.
+      }
+    }
+    mergedReading = byPath.values.toList()
+      ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+    notifyListeners();
+  }
+
   Future<bool> syncNow({
     String trigger = 'manual',
     NextcloudConfig? configOverride,
@@ -495,6 +543,9 @@ class WorkspaceController extends ChangeNotifier {
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         indexedRevision = indexedThroughRevision;
+        // A pulled _system/reading/<device>.json flips requiresIndexRefresh
+        // too, so this is the reload point for cross-device progress.
+        await reloadReadingState();
       }
       lastSync = result;
       lastSyncAt = DateTime.now();

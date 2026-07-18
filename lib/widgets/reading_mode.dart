@@ -15,6 +15,9 @@ class ReadingMode extends StatefulWidget {
     required this.onExit,
     required this.onPreferencesChanged,
     required this.onProgress,
+    this.initialProgress = 0,
+    this.canRate = false,
+    this.onRate,
   });
 
   final String source;
@@ -26,6 +29,15 @@ class ReadingMode extends StatefulWidget {
   onPreferencesChanged;
   final Future<void> Function(String path, double progress) onProgress;
 
+  /// Scroll fraction to resume at (0 = start from the top).
+  final double initialProgress;
+
+  /// When true, over-scrolling twice at the end offers the rating sheet.
+  final bool canRate;
+
+  /// Receives the chosen rating: '1'..'5' or 'shit'.
+  final Future<void> Function(String value)? onRate;
+
   @override
   State<ReadingMode> createState() => _ReadingModeState();
 }
@@ -36,12 +48,24 @@ class _ReadingModeState extends State<ReadingMode> {
   late double fontScale = widget.fontScale.clamp(0.8, 2).toDouble();
   late bool nightMode = widget.nightMode;
   bool fullscreen = false;
+  DateTime? _lastOverscroll;
+  bool _ratingSheetOpen = false;
 
   @override
   void initState() {
     super.initState();
     scrollController.addListener(_updateProgress);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateProgress());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          widget.initialProgress > 0 &&
+          scrollController.hasClients) {
+        final max = scrollController.position.maxScrollExtent;
+        scrollController.jumpTo(
+          (widget.initialProgress * max).clamp(0, max).toDouble(),
+        );
+      }
+      _updateProgress();
+    });
   }
 
   @override
@@ -65,6 +89,85 @@ class _ReadingModeState extends State<ReadingMode> {
         ? 1.0
         : (position.pixels / position.maxScrollExtent).clamp(0, 1).toDouble();
     if ((progress.value - value).abs() > 0.001) progress.value = value;
+  }
+
+  /// Two distinct over-scroll pulls at the end of the document open the
+  /// rating sheet. Clamping physics (Android) reports OverscrollNotification;
+  /// bouncing physics (iOS/macOS) instead lets pixels exceed maxScrollExtent.
+  /// Events inside one drag arrive every frame, so a gap above 300ms means a
+  /// new pull; a pull more than 4s after the last re-arms instead of
+  /// triggering.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (!widget.canRate || widget.onRate == null || _ratingSheetOpen) {
+      return false;
+    }
+    final overscrolled = switch (notification) {
+      OverscrollNotification(:final overscroll, :final metrics) =>
+        overscroll > 0 && metrics.pixels >= metrics.maxScrollExtent,
+      ScrollUpdateNotification(:final metrics) =>
+        metrics.pixels > metrics.maxScrollExtent + 24,
+      _ => false,
+    };
+    if (!overscrolled) return false;
+    final now = DateTime.now();
+    final last = _lastOverscroll;
+    _lastOverscroll = now;
+    if (last == null) return false;
+    final gap = now.difference(last);
+    if (gap < const Duration(milliseconds: 300) ||
+        gap > const Duration(seconds: 4)) {
+      return false;
+    }
+    unawaited(_showRatingSheet());
+    return false;
+  }
+
+  Future<void> _showRatingSheet() async {
+    _ratingSheetOpen = true;
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Rate this article',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var stars = 1; stars <= 5; stars++)
+                  IconButton(
+                    key: Key('rate-$stars'),
+                    iconSize: 36,
+                    tooltip: '$stars star${stars == 1 ? '' : 's'}',
+                    onPressed: () => Navigator.pop(context, '$stars'),
+                    icon: const Icon(Icons.star_border),
+                  ),
+              ],
+            ),
+            TextButton.icon(
+              key: const Key('rate-shit'),
+              onPressed: () => Navigator.pop(context, 'shit'),
+              icon: const Icon(Icons.thumb_down_outlined),
+              label: const Text('Shit'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (value == null) {
+      // Dismissed without rating — allow another double-pull later.
+      _ratingSheetOpen = false;
+      _lastOverscroll = null;
+      return;
+    }
+    await widget.onRate?.call(value);
   }
 
   void _setFontScale(double value) {
@@ -146,20 +249,23 @@ class _ReadingModeState extends State<ReadingMode> {
                         _updateProgress();
                         return false;
                       },
-                      child: SingleChildScrollView(
-                        key: const Key('reading-scroll'),
-                        controller: scrollController,
-                        padding: const EdgeInsets.fromLTRB(18, 64, 18, 22),
-                        child: MediaQuery(
-                          data: MediaQuery.of(context).copyWith(
-                            textScaler: _ReadingTextScaler(
-                              MediaQuery.textScalerOf(context),
-                              fontScale,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onScrollNotification,
+                        child: SingleChildScrollView(
+                          key: const Key('reading-scroll'),
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(18, 64, 18, 22),
+                          child: MediaQuery(
+                            data: MediaQuery.of(context).copyWith(
+                              textScaler: _ReadingTextScaler(
+                                MediaQuery.textScalerOf(context),
+                                fontScale,
+                              ),
                             ),
-                          ),
-                          child: TyLogReadView(
-                            key: const Key('reading-document'),
-                            source: widget.source,
+                            child: TyLogReadView(
+                              key: const Key('reading-document'),
+                              source: widget.source,
+                            ),
                           ),
                         ),
                       ),
@@ -253,6 +359,26 @@ class _ReadingModeState extends State<ReadingMode> {
                             ),
                       ),
                     ),
+                    // Desktop mouse wheels clamp at the end without any
+                    // overscroll signal, so the pull gesture never fires
+                    // there — a visible button covers every input method.
+                    if (widget.canRate && widget.onRate != null)
+                      Positioned(
+                        right: 16,
+                        bottom: 24,
+                        child: ValueListenableBuilder<double>(
+                          valueListenable: progress,
+                          builder: (_, value, _) => value < 0.98
+                              ? const SizedBox.shrink()
+                              : FloatingActionButton.extended(
+                                  key: const Key('reading-rate'),
+                                  onPressed: () =>
+                                      unawaited(_showRatingSheet()),
+                                  icon: const Icon(Icons.star_border),
+                                  label: const Text('Rate'),
+                                ),
+                        ),
+                      ),
                     Positioned(
                       left: 0,
                       right: 0,

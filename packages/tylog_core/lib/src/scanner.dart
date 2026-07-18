@@ -635,22 +635,27 @@ class _DictEntry {
 }
 
 /// Locates the top-level `"key": value` entry for [key] inside [dictSource]
-/// (a full `(...)` dictionary literal, quoted keys only — see
-/// [_typstDictionary]). Reuses [_splitTopLevel], the same nesting-aware
-/// comma splitter [_parseProperties] already relies on to read this shape,
-/// so strings/comments/nested `(...)`/`[...]` can't be mistaken for a
-/// top-level boundary. Returns null if [key] isn't present.
+/// (a full `(...)` dictionary literal). TyLog writes quoted keys (see
+/// [_typstDictionary]), but hand-edited Typst commonly uses bare identifier
+/// keys (`status: "read"`), so both spellings match — otherwise a write
+/// would append a duplicate key. Reuses [_splitTopLevel], the same
+/// nesting-aware comma splitter [_parseProperties] already relies on to read
+/// this shape, so strings/comments/nested `(...)`/`[...]` can't be mistaken
+/// for a top-level boundary. Returns null if [key] isn't present.
 _DictEntry? _locateDictEntry(String dictSource, String key) {
   if (!dictSource.startsWith('(') || !dictSource.endsWith(')')) return null;
   final inner = dictSource.substring(1, dictSource.length - 1);
-  final keyPattern = RegExp(r'^(\s*)"((?:\\.|[^"\\])*)"\s*:', dotAll: true);
+  final quotedPattern = RegExp(r'^(\s*)"((?:\\.|[^"\\])*)"\s*:', dotAll: true);
+  final barePattern = RegExp(r'^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*:');
   var offset = 1;
   for (final part in _splitTopLevel(inner)) {
-    final match = keyPattern.firstMatch(part);
+    final quoted = quotedPattern.firstMatch(part);
+    final match = quoted ?? barePattern.firstMatch(part);
     if (match != null) {
-      final decodedKey = match
-          .group(2)!
-          .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+      final rawKey = match.group(2)!;
+      final decodedKey = quoted != null
+          ? rawKey.replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!)
+          : rawKey;
       if (decodedKey == key) {
         final leading = match.group(1)!.length;
         return _DictEntry(offset + leading, offset + part.length);

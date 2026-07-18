@@ -128,6 +128,22 @@ void main() {
         ).text,
         '@smith-2026',
       );
+      // Better BibTeX keys carry ':' and '.' (Typst label charset).
+      expect(
+        edit(
+          const MagicRequest(
+            action: MagicAction.citation,
+            value: 'smith:2026.ab',
+          ),
+        ).text,
+        '@smith:2026.ab',
+      );
+      expect(
+        () => edit(
+          const MagicRequest(action: MagicAction.citation, value: 'bad key'),
+        ),
+        throwsArgumentError,
+      );
       expect(
         edit(
           const MagicRequest(

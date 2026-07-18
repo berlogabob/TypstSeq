@@ -417,11 +417,9 @@ SourceEdit applyMagicEdit(
     MagicAction.bold when selected.isEmpty => start + '#strong['.length,
     MagicAction.italic when selected.isEmpty => start + '#emph['.length,
     MagicAction.strike when selected.isEmpty => start + '#strike['.length,
-    MagicAction.underline when selected.isEmpty =>
-      start + '#underline['.length,
+    MagicAction.underline when selected.isEmpty => start + '#underline['.length,
     MagicAction.mono when selected.isEmpty => start + '`'.length,
-    MagicAction.highlight when selected.isEmpty =>
-      start + '#highlight['.length,
+    MagicAction.highlight when selected.isEmpty => start + '#highlight['.length,
     _ => start + replacement.length,
   };
   return SourceEdit(
@@ -457,8 +455,9 @@ String typstContent(String value) => value.replaceAllMapped(
 );
 
 String _citationKey(String value) {
+  // Typst label charset; Better BibTeX keys commonly contain ':' and '.'.
   final key = value.trim();
-  if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(key)) {
+  if (!RegExp(r'^[A-Za-z0-9_.:-]+$').hasMatch(key)) {
     throw ArgumentError.value(value, 'value', 'Invalid citation key');
   }
   return key;
