@@ -296,7 +296,6 @@ void main() {
     await tester.tapAt(paintBox.localToGlobal(painter.positions['b.typ']!));
     await tester.pump();
     expect(find.text('Beta'), findsOneWidget);
-    expect(find.text('b.typ'), findsOneWidget);
     expect(opened, isNull);
 
     await tester.tap(find.byKey(const Key('graph-open')));

@@ -11,6 +11,7 @@ void main() {
     kind: 'article',
     outgoingLinks: [],
     tags: ['ai'],
+    properties: {'status': 'processed'},
     modifiedMillis: 3000,
   );
   const reading = NoteRef(
@@ -56,6 +57,7 @@ void main() {
         onOpenDay: (_) {},
         onSetTaskStatus: (_, _) async {},
         onSetReadStatus: (_, _) async {},
+        onCreateNote: (_) {},
         onCreateEntity: () {},
         onImportMarkdownArticles: () async {},
         onReadPath: (_) {},
@@ -76,6 +78,11 @@ void main() {
     expect(find.text('Inbox · 1'), findsOneWidget);
     expect(find.text('Reading · 1'), findsOneWidget);
     expect(find.text('Read · 1'), findsOneWidget);
+    expect(find.text('Inbox'), findsOneWidget);
+    expect(find.text('Reading'), findsOneWidget);
+    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('processed'), findsNothing);
+    expect(find.text('summarized'), findsNothing);
 
     // Default sort is recently modified, not alphabetical/path order.
     final freshY = tester.getTopLeft(find.text('Fresh')).dy;

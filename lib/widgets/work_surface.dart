@@ -7,6 +7,7 @@ import 'calendar_tab.dart';
 import 'constants.dart';
 import 'date_format.dart';
 import 'property_select_chip.dart';
+import 'task_checkbox.dart';
 
 class WorkSurface extends StatelessWidget {
   const WorkSurface({super.key, required this.child});
@@ -33,6 +34,12 @@ bool isTaskInTodayAgenda(TaskRef task, String today) {
   final scheduled = task.scheduled?.split('T').first;
   return (due != null && due.compareTo(today) <= 0) ||
       (scheduled != null && scheduled.compareTo(today) <= 0);
+}
+
+bool isTaskOverdue(TaskRef task, String today) {
+  if (task.status == 'done' || task.status == 'cancelled') return false;
+  final due = task.due?.split('T').first;
+  return due != null && due.compareTo(today) < 0;
 }
 
 class TodayPage extends StatelessWidget {
@@ -74,16 +81,24 @@ class TodayPage extends StatelessWidget {
               : null,
           children: [
             for (final task in agenda)
-              CheckboxListTile(
-                value: false,
+              ListTile(
+                leading: TaskCheckbox(
+                  value: task.status == 'done',
+                  onChanged: (done) {
+                    if (done == true) unawaited(onSetStatus(task, 'done'));
+                  },
+                ),
                 title: Text(task.text),
                 subtitle: Text(
-                  task.due == null ? 'Scheduled today' : 'Due ${task.due}',
+                  task.due == null
+                      ? 'Scheduled today'
+                      : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
+                  style: isTaskOverdue(task, today)
+                      ? TextStyle(color: Theme.of(context).colorScheme.error)
+                      : null,
                 ),
-                onChanged: (done) {
-                  if (done == true) unawaited(onSetStatus(task, 'done'));
-                },
-                secondary: IconButton(
+                onTap: () => unawaited(onSetStatus(task, 'done')),
+                trailing: IconButton(
                   tooltip: 'Open source note',
                   onPressed: () => onOpenPath(task.notePath),
                   icon: const Icon(Icons.open_in_new),
@@ -103,7 +118,7 @@ class TodayPage extends StatelessWidget {
                   title: Text(note.title),
                   subtitle: progress > 0
                       ? LinearProgressIndicator(value: progress)
-                      : Text(note.path),
+                      : null,
                   onTap: () => (onReadPath ?? onOpenPath)(note.path),
                 ),
             ],
@@ -128,6 +143,7 @@ class _PrimaryTasksView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final today = isoDay(DateTime.now());
     final sorted = tasks.toList()
       ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
     final itemCount = 1 + (sorted.isEmpty ? 1 : sorted.length);
@@ -145,18 +161,28 @@ class _PrimaryTasksView extends StatelessWidget {
           return const ListTile(title: Text('No indexed tasks'));
         }
         final task = sorted[i - 1];
-        return CheckboxListTile(
-          value: task.status == 'done',
+        final overdue = isTaskOverdue(task, today);
+        return ListTile(
+          leading: TaskCheckbox(
+            value: task.status == 'done',
+            onChanged: (done) =>
+                onSetStatus(task, done == true ? 'done' : 'todo'),
+          ),
           title: Text(task.text),
           subtitle: Text(
             [
               if (task.project != null) task.project!,
-              if (task.due != null) 'due ${task.due}',
+              if (task.due != null)
+                'due ${task.due}${overdue ? ' · overdue' : ''}',
             ].join(' · '),
+            style: overdue
+                ? TextStyle(color: Theme.of(context).colorScheme.error)
+                : null,
           ),
-          onChanged: (done) =>
-              onSetStatus(task, done == true ? 'done' : 'todo'),
-          secondary: IconButton(
+          onTap: () => unawaited(
+            onSetStatus(task, task.status == 'done' ? 'todo' : 'done'),
+          ),
+          trailing: IconButton(
             tooltip: 'Open source note',
             icon: const Icon(Icons.open_in_new),
             onPressed: () => onOpenPath(task.notePath),
@@ -176,6 +202,7 @@ class LibraryView extends StatelessWidget {
     required this.onOpenDay,
     required this.onSetTaskStatus,
     required this.onSetReadStatus,
+    required this.onCreateNote,
     required this.onCreateEntity,
     required this.onImportMarkdownArticles,
     required this.onReadPath,
@@ -188,6 +215,7 @@ class LibraryView extends StatelessWidget {
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
+  final ValueChanged<String> onCreateNote;
   final VoidCallback onCreateEntity;
   final Future<void> Function() onImportMarkdownArticles;
   final ValueChanged<String> onReadPath;
@@ -245,6 +273,21 @@ class LibraryView extends StatelessWidget {
     final notes = (index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == kind)
         .toList();
+    if (notes.isEmpty) {
+      final project = kind == 'project';
+      return ListView(
+        children: [
+          ListTile(
+            title: Text(project ? 'No projects yet' : 'No notes yet'),
+            trailing: TextButton.icon(
+              onPressed: () => onCreateNote(kind),
+              icon: const Icon(Icons.add),
+              label: Text(project ? 'New project' : 'New note'),
+            ),
+          ),
+        ],
+      );
+    }
     return ListView.builder(
       itemCount: notes.length,
       itemBuilder: (context, i) {
@@ -255,7 +298,6 @@ class LibraryView extends StatelessWidget {
             _ => Icons.notes,
           }),
           title: Text(note.title),
-          subtitle: Text(note.path),
           onTap: () => onOpenPath(note.path),
         );
       },
@@ -357,10 +399,11 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   }
 
   /// Collapses the free-form status property into the three shelf buckets;
-  /// custom values like `summarized` count as read.
+  /// import-only `processed` stays in the inbox, while custom completion
+  /// values like `summarized` count as read.
   static String _bucket(NoteRef note) =>
       switch (note.properties['status'] as String? ?? 'unread') {
-        'unread' => 'unread',
+        'unread' || 'processed' => 'unread',
         'reading' => 'reading',
         _ => 'read',
       };
@@ -598,8 +641,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   }
 
   Widget _trailing(NoteRef note) {
-    final status = note.properties['status'] as String? ?? 'unread';
+    final status = _bucket(note);
     final progress = widget.progressByPath[note.path] ?? 0;
+    final scheme = Theme.of(context).colorScheme;
+    final (background, foreground) = switch (status) {
+      'reading' => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
+      'read' => (scheme.secondaryContainer, scheme.onSecondaryContainer),
+      _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
+    };
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -617,6 +666,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           options: articleStatusOptions,
           labels: articleStatusLabels,
           tooltip: 'Change status',
+          backgroundColor: background,
+          foregroundColor: foreground,
           onChanged: (next) => unawaited(widget.onSetReadStatus(note, next)),
         ),
       ],

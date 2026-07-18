@@ -206,14 +206,17 @@ void main() {
       await tester.pumpWidget(const TyLogApp());
       await tester.pumpAndSettle();
       await openJournal(tester);
+      expect(find.text('Start writing…'), findsOneWidget);
       // The bootstrap growth needs a second day card; give it the same wait.
       final second = DateTime.now().add(const Duration(seconds: 10));
-      while (find.byType(TyLogReadView).evaluate().length < 2 &&
-          DateTime.now().isBefore(second)) {
+      int renderedDays() =>
+          find.byType(TyLogReadView).evaluate().length +
+          find.text('Start writing…').evaluate().length;
+      while (renderedDays() < 2 && DateTime.now().isBefore(second)) {
         await tester.pump(const Duration(milliseconds: 100));
       }
 
-      final rendered = find.byType(TyLogReadView).evaluate().length;
+      final rendered = renderedDays();
       expect(rendered, greaterThanOrEqualTo(2));
       expect(rendered, lessThan(5));
     },

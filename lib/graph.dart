@@ -169,7 +169,6 @@ class _GraphViewState extends State<GraphView> {
               dense: true,
               leading: const Icon(Icons.description_outlined),
               title: Text(selected.title, maxLines: 1),
-              subtitle: Text(selected.path, maxLines: 1),
               trailing: FilledButton.tonalIcon(
                 key: const Key('graph-open'),
                 onPressed: () => widget.onOpenPath(selected.path),
@@ -548,7 +547,11 @@ void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
 
 /// Tappable legend that doubles as an edge-kind visibility filter.
 class GraphLegend extends StatelessWidget {
-  const GraphLegend({super.key, required this.visibleKinds, required this.onToggle});
+  const GraphLegend({
+    super.key,
+    required this.visibleKinds,
+    required this.onToggle,
+  });
 
   final Set<GraphEdgeKind> visibleKinds;
   final ValueChanged<GraphEdgeKind> onToggle;
@@ -606,7 +609,9 @@ class _LegendEntry extends StatelessWidget {
     avatar: SizedBox(
       width: 16,
       height: 10,
-      child: CustomPaint(painter: _SwatchPainter(color: color, dashed: dashed)),
+      child: CustomPaint(
+        painter: _SwatchPainter(color: color, dashed: dashed),
+      ),
     ),
     label: Text(label),
     labelStyle: Theme.of(context).textTheme.labelSmall,

@@ -63,7 +63,6 @@ class _CalendarTabState extends State<CalendarTab> {
                 _ => Icons.event,
               }),
               title: Text(item.title),
-              subtitle: Text(item.notePath),
               onTap: () => widget.onOpenPath(item.notePath),
             );
         }

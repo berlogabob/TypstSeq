@@ -32,18 +32,12 @@ void main() {
 
   test('excludes tasks due or scheduled strictly in the future', () {
     expect(isTaskInTodayAgenda(_task(due: '2026-07-16'), today), isFalse);
-    expect(
-      isTaskInTodayAgenda(_task(scheduled: '2026-07-20'), today),
-      isFalse,
-    );
+    expect(isTaskInTodayAgenda(_task(scheduled: '2026-07-20'), today), isFalse);
   });
 
   test('excludes done and cancelled tasks even if due/scheduled today', () {
     expect(
-      isTaskInTodayAgenda(
-        _task(status: 'done', due: '2026-07-15'),
-        today,
-      ),
+      isTaskInTodayAgenda(_task(status: 'done', due: '2026-07-15'), today),
       isFalse,
     );
     expect(
@@ -51,6 +45,15 @@ void main() {
         _task(status: 'cancelled', scheduled: '2026-07-15'),
         today,
       ),
+      isFalse,
+    );
+  });
+
+  test('only unfinished tasks due before today are overdue', () {
+    expect(isTaskOverdue(_task(due: '2026-07-14T23:00:00'), today), isTrue);
+    expect(isTaskOverdue(_task(due: today), today), isFalse);
+    expect(
+      isTaskOverdue(_task(status: 'done', due: '2026-07-14'), today),
       isFalse,
     );
   });

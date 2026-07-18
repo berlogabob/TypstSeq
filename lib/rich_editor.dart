@@ -8,6 +8,7 @@ import 'package:tylog_core/scanner.dart';
 import 'controlled_editor.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
+import 'widgets/task_checkbox.dart';
 
 export 'editor_autocomplete.dart' show MentionSuggestion;
 
@@ -1520,7 +1521,7 @@ class TyLogEditingController extends TextEditingController {
       } else {
         final taskDone =
             block.style == TyLogBlockStyle.taskLine &&
-            block.visibleText.startsWith('☑');
+            block.visibleText.startsWith(taskCheckedGlyph);
         for (final part in block.parts) {
           if (part.isAtom) {
             // Read mode never writes back to source, so an unknown wrapper
@@ -1624,8 +1625,7 @@ class TyLogRichEditor extends StatefulWidget {
   /// Resolves candidates for the inline "@" mention popup. Kept decoupled
   /// from tylog_core's search index — the parent maps its own search
   /// results into [MentionSuggestion]s.
-  final Future<List<MentionSuggestion>> Function(String query)?
-  onMentionQuery;
+  final Future<List<MentionSuggestion>> Function(String query)? onMentionQuery;
 
   /// Actions offered by the inline "/" command palette. Defaults to the
   /// same action set as the Magic bottom-sheet menu, in the same order.
@@ -1777,11 +1777,15 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     );
     _ensureOverlay();
     _debounce?.cancel();
-    _debounce = Timer(_defaultAutocompleteDebounce, () => _runMentionQuery(trigger));
+    _debounce = Timer(
+      _defaultAutocompleteDebounce,
+      () => _runMentionQuery(trigger),
+    );
   }
 
   List<MagicAction> _filterCommands(String query) {
-    final actions = widget.commandActions?.call() ?? kMagicActionDisplay.keys.toList();
+    final actions =
+        widget.commandActions?.call() ?? kMagicActionDisplay.keys.toList();
     if (query.isEmpty) return actions;
     final normalized = query.toLowerCase();
     return actions
@@ -2271,7 +2275,9 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     final taskId = taskField(source, 'id');
     final taskText = taskField(source, 'text');
     if (taskId != null && taskText != null) {
-      final glyph = taskField(source, 'status') == 'done' ? '☑' : '☐';
+      final glyph = taskField(source, 'status') == 'done'
+          ? taskCheckedGlyph
+          : taskUncheckedGlyph;
       return TyLogBlock(
         id: id,
         style: TyLogBlockStyle.taskLine,
@@ -2759,7 +2765,10 @@ String _serializeBlock(TyLogBlock block) {
     TyLogBlockStyle.taskLine => replaceTaskText(
       block.originalSource,
       taskField(block.originalSource, 'id')!,
-      block.visibleText.replaceFirst(RegExp('^[☐☑] '), ''),
+      block.visibleText.replaceFirst(
+        RegExp('^[$taskUncheckedGlyph$taskCheckedGlyph] '),
+        '',
+      ),
     ),
   };
 }

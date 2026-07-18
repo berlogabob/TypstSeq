@@ -46,7 +46,7 @@ import 'workspace_controller.dart';
 export 'widgets/app_version.dart';
 export 'widgets/date_format.dart';
 export 'widgets/sync_status.dart';
-export 'widgets/work_surface.dart' show isTaskInTodayAgenda;
+export 'widgets/work_surface.dart' show isTaskInTodayAgenda, isTaskOverdue;
 
 enum _MarkdownImportOutcome { imported, replaced, kept, unchanged, failed }
 
@@ -912,14 +912,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => status = 'Created $file');
   }
 
-  Future<void> _newPage() async {
+  Future<void> _newPage({String kind = 'note'}) async {
     final v = vault;
     if (v == null) return;
     final title = await _askPageTitle();
     if (title == null || title.trim().isEmpty) return;
     final template = await _chooseTemplate(v);
     if (dirty) await _save();
-    final file = await v.page(title, template: template);
+    final file = await v.page(title, kind: kind, template: template);
     await workspace.refreshIndex(force: true);
     await _openNote(file);
     setState(() {
@@ -3263,6 +3263,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
         onSetTaskStatus: _setTaskStatus,
         onSetReadStatus: _setReadStatus,
+        onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
         onCreateEntity: () => unawaited(_createEntity()),
         onImportMarkdownArticles: _importMarkdownArticles,
         onReadPath: _readPath,

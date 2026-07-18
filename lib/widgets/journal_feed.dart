@@ -170,9 +170,21 @@ class _JournalFeedState extends State<JournalFeed> {
                   const Divider(),
                   FutureBuilder<String>(
                     future: source,
-                    builder: (context, snapshot) => snapshot.hasData
-                        ? TyLogReadView(source: snapshot.data!)
-                        : const LinearProgressIndicator(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const LinearProgressIndicator();
+                      }
+                      if (TyLogDocument.parse(
+                        snapshot.data!,
+                      ).visibleText.trim().isEmpty) {
+                        return TextButton.icon(
+                          onPressed: () => widget.onOpenPath(day.path),
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Start writing…'),
+                        );
+                      }
+                      return TyLogReadView(source: snapshot.data!);
+                    },
                   ),
                 ],
               ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 const articleStatusOptions = ['unread', 'reading', 'read'];
 const articleStatusLabels = {
-  'unread': 'Unread',
+  'unread': 'Inbox',
   'reading': 'Reading',
   'read': 'Read',
 };
@@ -18,6 +18,8 @@ class PropertySelectChip extends StatelessWidget {
     required this.labels,
     required this.onChanged,
     this.tooltip,
+    this.backgroundColor,
+    this.foregroundColor,
   });
 
   final String? value;
@@ -25,6 +27,8 @@ class PropertySelectChip extends StatelessWidget {
   final Map<String, String> labels;
   final ValueChanged<String> onChanged;
   final String? tooltip;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
@@ -35,6 +39,27 @@ class PropertySelectChip extends StatelessWidget {
       for (final option in options)
         PopupMenuItem(value: option, child: Text(labels[option] ?? option)),
     ],
-    child: Chip(label: Text(labels[value] ?? value ?? labels[options.first]!)),
+    child: Builder(
+      builder: (context) {
+        final foreground =
+            foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color:
+                backgroundColor ??
+                Theme.of(context).colorScheme.surfaceContainerHighest,
+            border: Border.all(color: foreground.withValues(alpha: 0.2)),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            labels[value] ?? value ?? labels[options.first]!,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: foreground),
+          ),
+        );
+      },
+    ),
   );
 }
