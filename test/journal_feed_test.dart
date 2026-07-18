@@ -135,6 +135,24 @@ Future<void> pumpUntilFound(
   }
 }
 
+/// Switches to the journal destination and waits for the feed. The tap can
+/// land while the app is still finishing its boot (dirty-save in
+/// `_selectDestination` and friends), so it is retried until day cards show.
+Future<void> openJournal(WidgetTester tester) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 30));
+  while (find.byType(TyLogReadView).evaluate().isEmpty &&
+      DateTime.now().isBefore(deadline)) {
+    await tester.tap(find.text('Journal').last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    final retryAt = DateTime.now().add(const Duration(seconds: 2));
+    while (find.byType(TyLogReadView).evaluate().isEmpty &&
+        DateTime.now().isBefore(retryAt)) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+  await pumpUntilFound(tester, find.byType(TyLogReadView));
+}
+
 void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
@@ -151,9 +169,7 @@ void main() {
 
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Journal').last);
-    await tester.pumpAndSettle();
-    await pumpUntilFound(tester, find.byType(TyLogReadView));
+    await openJournal(tester);
 
     expect(find.byType(TyLogReadView), findsOneWidget);
     expect(find.text(humanDate(days[0])), findsOneWidget);
@@ -189,9 +205,7 @@ void main() {
 
       await tester.pumpWidget(const TyLogApp());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Journal').last);
-      await tester.pumpAndSettle();
-      await pumpUntilFound(tester, find.byType(TyLogReadView));
+      await openJournal(tester);
       // The bootstrap growth needs a second day card; give it the same wait.
       final second = DateTime.now().add(const Duration(seconds: 10));
       while (find.byType(TyLogReadView).evaluate().length < 2 &&
