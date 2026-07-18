@@ -79,29 +79,31 @@ if [ "$(uname -s)" = "Darwin" ]; then
   done
   rm -rf "$ios_staging"
 
-  if ! command -v cargo-ndk >/dev/null 2>&1; then
-    "$cargo_bin" install cargo-ndk --version 4.1.2 --locked
+  if [ -z "${TYLOG_SKIP_ANDROID:-}" ]; then
+    if ! command -v cargo-ndk >/dev/null 2>&1; then
+      "$cargo_bin" install cargo-ndk --version 4.1.2 --locked
+    fi
+    android_sdk=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
+    android_ndk=${ANDROID_NDK_HOME:-}
+    if [ -z "$android_ndk" ]; then
+      for candidate in "$android_sdk"/ndk/*; do
+        [ -d "$candidate" ] && android_ndk=$candidate
+      done
+    fi
+    if [ -z "$android_ndk" ] || [ ! -d "$android_ndk" ]; then
+      echo "Android NDK is required to build typst_flutter locally." >&2
+      exit 1
+    fi
+    echo "Building typst_flutter for Android with $(basename "$android_ndk")..."
+    PATH="$HOME/.cargo/bin:$PATH" \
+      ANDROID_NDK_HOME="$android_ndk" \
+      CARGO_TARGET_DIR="$package/.native-build-$toolchain-rustup-android" \
+      RUSTC="$rustc_bin" \
+      "$cargo_bin" ndk \
+        -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 \
+        -o "$package/.typst_flutter_prebuilt/android" \
+        build --release
   fi
-  android_sdk=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
-  android_ndk=${ANDROID_NDK_HOME:-}
-  if [ -z "$android_ndk" ]; then
-    for candidate in "$android_sdk"/ndk/*; do
-      [ -d "$candidate" ] && android_ndk=$candidate
-    done
-  fi
-  if [ -z "$android_ndk" ] || [ ! -d "$android_ndk" ]; then
-    echo "Android NDK is required to build typst_flutter locally." >&2
-    exit 1
-  fi
-  echo "Building typst_flutter for Android with $(basename "$android_ndk")..."
-  PATH="$HOME/.cargo/bin:$PATH" \
-    ANDROID_NDK_HOME="$android_ndk" \
-    CARGO_TARGET_DIR="$package/.native-build-$toolchain-rustup-android" \
-    RUSTC="$rustc_bin" \
-    "$cargo_bin" ndk \
-      -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 \
-      -o "$package/.typst_flutter_prebuilt/android" \
-      build --release
 fi
 
 echo "typst_flutter native libraries are ready."

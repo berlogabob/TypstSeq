@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  android:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: packages/typst_flutter/.typst_flutter_prebuilt
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+      - run: ./tool/setup_typst_native.sh
+      - name: Configure release signing
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/tylog-release.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=tylog-release.jks\n' \
+            "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+      - run: flutter build apk --release
+      - run: cp build/app/outputs/flutter-apk/app-release.apk tylog-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tylog-android
+          path: tylog-android.apk
+
+  linux-appimage:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: packages/typst_flutter/.typst_flutter_prebuilt
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+      - run: ./tool/setup_typst_native.sh
+      - run: flutter build linux --release
+      - run: tar czf TyLog-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir
+          cp -r build/linux/x64/release/bundle/. AppDir/
+          ln -s tylog AppDir/AppRun
+          printf '[Desktop Entry]\nName=TyLog\nExec=tylog\nIcon=tylog\nType=Application\nCategories=Office;\n' > AppDir/tylog.desktop
+          cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png AppDir/tylog.png
+          curl -Lo appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir TyLog-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tylog-linux
+          path: |
+            TyLog-x86_64.AppImage
+            TyLog-linux-x64.tar.gz
+
+  apple:
+    runs-on: macos-14
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-mac-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: 'packages/typst_flutter/.native-build-*'
+          key: native-mac-1.92.0-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: packages/typst_flutter/.typst_flutter_prebuilt
+          key: prebuilt-macos-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+      - run: TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh
+      - run: flutter build macos --release
+      - run: ditto -c -k --keepParent build/macos/Build/Products/Release/*.app TyLog-macos.zip
+      - run: flutter build ios --release --no-codesign
+      - run: ditto -c -k --keepParent build/ios/iphoneos/Runner.app TyLog-ios-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tylog-apple
+          path: |
+            TyLog-macos.zip
+            TyLog-ios-unsigned.zip
+
+  windows:
+    runs-on: windows-latest
+    needs: test
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/typst_flutter/rust/target
+          key: cargo-win-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+      - run: cargo build --release --manifest-path packages/typst_flutter/rust/Cargo.toml
+      - run: |
+          New-Item -ItemType Directory -Force packages/typst_flutter/.typst_flutter_prebuilt/windows
+          Copy-Item packages/typst_flutter/rust/target/release/typst_flutter.dll packages/typst_flutter/.typst_flutter_prebuilt/windows/
+      - run: flutter build windows --release
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath TyLog-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tylog-windows
+          path: TyLog-windows-x64.zip
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [android, linux-appimage, apple, windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/tylog-android.apk
+            dist/TyLog-x86_64.AppImage
+            dist/TyLog-linux-x64.tar.gz
+            dist/TyLog-macos.zip
+            dist/TyLog-ios-unsigned.zip
+            dist/TyLog-windows-x64.zip

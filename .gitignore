@@ -68,3 +68,8 @@ android/app/*.jks
 
 # Local test/debug secrets
 .secrets/
+
+# Agent/session artifacts
+.claude/
+.codex/
+/2026-*.txt

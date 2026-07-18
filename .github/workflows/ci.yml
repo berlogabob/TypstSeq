@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: typst-community/setup-typst@v5
+        with:
+          typst-version: 0.15.0
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/tylog_import_core/target
+          key: cargo-ci-${{ runner.os }}-${{ hashFiles('packages/tylog_import_core/Cargo.lock') }}
+          restore-keys: cargo-ci-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: packages/typst_flutter/.typst_flutter_prebuilt
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+      - run: ./tool/setup_typst_native.sh
+      - run: make test-typst
+      - run: make test-core
+      - run: flutter analyze
+      - run: flutter test

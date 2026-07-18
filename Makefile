@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
-RELEASE_GIT_PATHS ?= .github .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android docs integration_test ios lib linux macos packages spec tool typst sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
+RELEASE_GIT_PATHS ?= .github .gitignore .graphifyignore .metadata Makefile README.md PLAN.md USER_MANUAL.md analysis_options.yaml pubspec.yaml pubspec.lock android docs integration_test ios lib linux macos windows packages spec tool typst sample_vault test graphify-out/GRAPH_REPORT.md graphify-out/graph.html graphify-out/graph.json
 OWNER_REPO ?= berlogabob/TypstSeq
 
 .PHONY: help setup-native test-core test-typst test verify build-android publish-release release clean
