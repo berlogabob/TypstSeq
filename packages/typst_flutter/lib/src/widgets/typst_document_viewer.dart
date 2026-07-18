@@ -39,7 +39,7 @@ class TypstDocumentViewer extends StatefulWidget {
     this.fonts,
     this.files,
     this.date,
-    this.renderMode = TypstRenderMode.raster,
+    this.renderMode = TypstRenderMode.svg,
     this.pixelsPerPt = 2.0,
     this.loadingBuilder,
     this.errorBuilder,
@@ -56,7 +56,7 @@ class TypstDocumentViewer extends StatefulWidget {
   const TypstDocumentViewer.document({
     required this.document,
     super.key,
-    this.renderMode = TypstRenderMode.raster,
+    this.renderMode = TypstRenderMode.svg,
     this.pixelsPerPt = 2.0,
     this.loadingBuilder,
     this.errorBuilder,

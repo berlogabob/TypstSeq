@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -18,6 +20,21 @@ enum TypstRenderMode {
 
   /// Render as a rasterized pixel image.
   raster,
+}
+
+/// Whether raw RGBA pixels contain content beyond white or transparent pixels.
+bool svgRasterHasContent(Uint8List rgba, {int threshold = 12}) {
+  for (var i = 0; i + 3 < rgba.length; i += 4) {
+    final alpha = rgba[i + 3];
+    if (alpha > threshold &&
+        (rgba[i] < 255 - threshold ||
+            rgba[i + 1] < 255 - threshold ||
+            rgba[i + 2] < 255 - threshold ||
+            alpha < 255 - threshold)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// A widget that renders a single page of a Typst document.
@@ -110,6 +127,8 @@ class _TypstViewState extends State<TypstView> {
   ui.Image? _image;
   String? _svgString;
   api.PageInfo? _pageInfo;
+  final _svgContentCache = <int, bool>{};
+  TypstDocument? _svgCacheDocument;
 
   bool _loading = true;
   TypstException? _error;
@@ -236,14 +255,51 @@ class _TypstViewState extends State<TypstView> {
       });
 
       if (widget.renderMode == TypstRenderMode.svg) {
-        final svg = await doc.renderSvg(widget.pageIndex);
+        if (!identical(_svgCacheDocument, doc)) {
+          _svgCacheDocument = doc;
+          _svgContentCache.clear();
+        }
+
+        String? svg;
+        Object? fallbackReason;
+        try {
+          svg = await doc.renderSvg(widget.pageIndex);
+          if (!mounted) return;
+          if (!await _svgRendersNonBlank(svg)) {
+            fallbackReason = 'SVG was blank or could not be decoded';
+          }
+        } on Object catch (e) {
+          fallbackReason = e;
+        }
         if (!mounted) return;
-        setState(() {
-          _svgString = svg;
-          _image?.dispose();
-          _image = null;
-          _loading = false;
-        });
+        if (fallbackReason == null) {
+          setState(() {
+            _svgString = svg;
+            _image?.dispose();
+            _image = null;
+            _loading = false;
+          });
+        } else {
+          debugPrint(
+            'TypstView: SVG render failed; falling back to raster: '
+            '$fallbackReason',
+          );
+          final result = await doc.renderRaster(
+            pageIndex: widget.pageIndex,
+            pixelsPerPt: widget.pixelsPerPt,
+          );
+          final image = await result.toImage();
+          if (!mounted) {
+            image.dispose();
+            return;
+          }
+          setState(() {
+            _image?.dispose();
+            _image = image;
+            _svgString = null;
+            _loading = false;
+          });
+        }
       } else {
         final result = await doc.renderRaster(
           pageIndex: widget.pageIndex,
@@ -274,6 +330,55 @@ class _TypstViewState extends State<TypstView> {
         _loading = false;
       });
     }
+  }
+
+  Future<bool> _svgRendersNonBlank(String svg) async {
+    final cacheKey = svg.hashCode;
+    final cached = _svgContentCache[cacheKey];
+    if (cached != null) return cached;
+
+    PictureInfo? info;
+    ui.Picture? scaledPicture;
+    ui.Image? image;
+    var hasContent = false;
+    try {
+      info = await vg.loadPicture(SvgStringLoader(svg), context);
+      if (info.size.isEmpty ||
+          !info.size.width.isFinite ||
+          !info.size.height.isFinite) {
+        throw const FormatException('SVG has invalid dimensions');
+      }
+
+      final longestSide = math.max(info.size.width, info.size.height);
+      final scale = math.min(1.0, 96 / longestSide);
+      final width = math.min(96, math.max(1, (info.size.width * scale).ceil()));
+      final height = math.min(
+        96,
+        math.max(1, (info.size.height * scale).ceil()),
+      );
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder)
+        ..scale(scale)
+        ..drawPicture(info.picture);
+      scaledPicture = recorder.endRecording();
+      image = await scaledPicture.toImage(width, height);
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      hasContent =
+          data != null &&
+          svgRasterHasContent(
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          );
+    } on Object {
+      hasContent = false;
+    } finally {
+      image?.dispose();
+      scaledPicture?.dispose();
+      info?.picture.dispose();
+    }
+
+    if (_svgContentCache.length >= 100) _svgContentCache.clear();
+    _svgContentCache[cacheKey] = hasContent;
+    return hasContent;
   }
 
   @override

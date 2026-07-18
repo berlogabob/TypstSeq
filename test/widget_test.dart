@@ -175,7 +175,7 @@ void main() {
       tester
           .widget<TypstDocumentViewer>(find.byType(TypstDocumentViewer))
           .renderMode,
-      TypstRenderMode.raster,
+      TypstRenderMode.svg,
     );
     await setViewMode(tester, 'Source');
 
