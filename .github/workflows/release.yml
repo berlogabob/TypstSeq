@@ -119,6 +119,11 @@ jobs:
           path: packages/typst_flutter/.typst_flutter_prebuilt
           key: prebuilt-macos-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
       - run: TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh
+      # typst_flutter's Package.swift links the .a via a relative -Xlinker
+      # path that xcodebuild resolves against the repo parent on CI runners
+      # (locally it resolves against the package dir). Mirror the prebuilt
+      # dir there so both resolutions find it.
+      - run: cp -R packages/typst_flutter/.typst_flutter_prebuilt "$GITHUB_WORKSPACE/../.typst_flutter_prebuilt"
       - run: flutter build macos --release
       - run: ditto -c -k --keepParent build/macos/Build/Products/Release/*.app TyLog-macos.zip
       - run: flutter build ios --release --no-codesign
