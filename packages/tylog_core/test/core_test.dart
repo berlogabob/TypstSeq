@@ -71,9 +71,19 @@ void main() {
     );
 
     expect(index.notes.single.outgoingLinks, ['target']);
+    final problem = index.problems.singleWhere(
+      (problem) => problem.code == 'metadata-query-failed',
+    );
+    expect(problem.message, "A note's formatting couldn't be read.");
     expect(
-      index.problems.map((problem) => problem.code),
-      contains('metadata-query-failed'),
+      problem.detail,
+      'Typst metadata query failed: Bad state: fixture does not compile',
+    );
+    expect(
+      VaultIndex.fromJson(index.toJson()).problems
+          .singleWhere((problem) => problem.code == 'metadata-query-failed')
+          .detail,
+      problem.detail,
     );
   });
 

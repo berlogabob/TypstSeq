@@ -43,6 +43,33 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.report: (Icons.picture_as_pdf, 'Report'),
 };
 
+const Map<String, List<MagicAction>> kMagicActionGroups = {
+  'Insert': [
+    MagicAction.noteLink,
+    MagicAction.mention,
+    MagicAction.tag,
+    MagicAction.date,
+    MagicAction.citation,
+    MagicAction.attachment,
+    MagicAction.equation,
+  ],
+  'Text style': [
+    MagicAction.bold,
+    MagicAction.italic,
+    MagicAction.underline,
+    MagicAction.strike,
+    MagicAction.highlight,
+    MagicAction.mono,
+  ],
+  'Structure': [
+    MagicAction.task,
+    MagicAction.project,
+    MagicAction.heading,
+    MagicAction.table,
+    MagicAction.report,
+  ],
+};
+
 enum TyLogBlockStyle {
   paragraph,
   heading,

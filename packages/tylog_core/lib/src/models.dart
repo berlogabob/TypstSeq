@@ -7,6 +7,7 @@ class PkmsProblem {
     required this.subject,
     required this.message,
     this.fix,
+    this.detail,
   });
 
   final String code;
@@ -14,6 +15,7 @@ class PkmsProblem {
   final String subject;
   final String message;
   final String? fix;
+  final String? detail;
 
   Map<String, Object?> toJson() => {
     'code': code,
@@ -21,6 +23,7 @@ class PkmsProblem {
     'subject': subject,
     'message': message,
     if (fix != null) 'fix': fix,
+    if (detail != null) 'detail': detail,
   };
 
   factory PkmsProblem.fromJson(Map<String, Object?> json) => PkmsProblem(
@@ -32,6 +35,7 @@ class PkmsProblem {
     subject: json['subject'] as String,
     message: json['message'] as String,
     fix: json['fix'] as String?,
+    detail: json['detail'] as String?,
   );
 }
 

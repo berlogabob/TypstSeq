@@ -441,8 +441,9 @@ Future<VaultIndex> scanVaultStorage(
           code: 'metadata-query-failed',
           severity: PkmsSeverity.warning,
           subject: relative,
-          message: 'Typst metadata query failed: $error',
+          message: "A note's formatting couldn't be read.",
           fix: 'Fix the metadata header or convert it to managed metadata.',
+          detail: 'Typst metadata query failed: $error',
         ),
       );
     }

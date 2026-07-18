@@ -144,12 +144,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           }),
           title: Text(result.title),
           subtitle: Text(
-            [
-              result.kind,
-              result.path,
-              if (result.snippet != null) result.snippet!,
-            ].join(' · '),
-            maxLines: 2,
+            result.kind,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           onTap: result.kind == 'file'
@@ -203,23 +199,46 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     );
   }
 
-  Widget _problemTile(PkmsProblem problem) => ListTile(
-    leading: Icon(_problemIcon(problem.severity)),
-    title: Text(problem.message),
-    subtitle: Text(
-      '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
-    ),
-    isThreeLine: problem.fix != null,
-    onTap: null,
+  Widget _problemTile(PkmsProblem problem) => Column(
+    children: [
+      ListTile(
+        leading: Icon(
+          _problemIcon(problem.severity),
+          color: _problemColor(problem.severity),
+        ),
+        title: Text(problem.message),
+        subtitle: Text(
+          '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
+        ),
+        isThreeLine: problem.fix != null,
+        onTap: () {
+          widget.onOpenNote(problem.subject);
+          Navigator.pop(context);
+        },
+      ),
+      if (problem.detail != null)
+        ExpansionTile(
+          title: const Text('Technical details'),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [SelectableText(problem.detail!)],
+        ),
+    ],
   );
 
   Widget _problemGroupTile(List<PkmsProblem> group) {
     final code = group.first.code;
     final expanded = _expandedCodes.contains(code);
     return ListTile(
-      leading: Icon(_problemIcon(group.first.severity)),
+      leading: Icon(
+        _problemIcon(group.first.severity),
+        color: _problemColor(group.first.severity),
+      ),
       title: Text(group.first.message),
-      subtitle: Text('· ${group.length} notes'),
+      subtitle: Text(
+        expanded
+            ? group.map((problem) => problem.subject).join('\n')
+            : '${group.length} notes · ${group.take(2).map((problem) => problem.subject).join(', ')}…',
+      ),
       trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
       onTap: () => setState(() {
         if (expanded) {
@@ -235,5 +254,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     PkmsSeverity.error => Icons.error_outline,
     PkmsSeverity.warning => Icons.warning_amber,
     PkmsSeverity.info => Icons.info_outline,
+  };
+
+  Color _problemColor(PkmsSeverity severity) => switch (severity) {
+    PkmsSeverity.error => Theme.of(context).colorScheme.error,
+    PkmsSeverity.warning => Colors.amber,
+    PkmsSeverity.info => Theme.of(context).colorScheme.onSurfaceVariant,
   };
 }

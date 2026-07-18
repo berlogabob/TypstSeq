@@ -618,19 +618,26 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final label in const [
+      'Insert',
       'Note link',
       'Mention',
       'Tag',
-      'Task',
       'Date',
-      'Project',
       'Citation',
       'Attachment',
-      'Heading',
+      'Equation',
+      'Text style',
       'Bold',
       'Italic',
+      'Underline',
+      'Strikethrough',
+      'Highlight',
+      'Monospace',
+      'Structure',
+      'Task',
+      'Project',
+      'Heading',
       'Table',
-      'Equation',
       'Report',
     ]) {
       await tester.scrollUntilVisible(
@@ -773,25 +780,40 @@ void main() {
     expect(find.text('Search notes, tasks, and attachments'), findsNothing);
   });
 
-  testWidgets('knowledge problems does not resolve sync conflicts', (
+  testWidgets('knowledge problems show details and open the affected note', (
     tester,
   ) async {
+    String? opened;
     const conflict = PkmsProblem(
       code: 'sync-conflict',
-      severity: PkmsSeverity.warning,
+      severity: PkmsSeverity.error,
       subject: 'daily/2026/07/today.typ.remote-conflict-1',
       message: 'Both copies changed.',
+      detail: 'Raw compiler output',
     );
     await tester.pumpWidget(
       MaterialApp(
         home: _knowledgeScreen(
           initialView: KnowledgeView.problems,
           problems: const [conflict],
+          onOpenNote: (path) => opened = path,
         ),
       ),
     );
     expect(find.text('Both copies changed.'), findsOneWidget);
-    expect(tester.widget<ListTile>(find.byType(ListTile).last).onTap, isNull);
+    expect(find.text('Raw compiler output'), findsNothing);
+    await tester.tap(find.text('Technical details'));
+    await tester.pumpAndSettle();
+    expect(find.text('Raw compiler output'), findsOneWidget);
+    final icon = tester.widget<Icon>(find.byIcon(Icons.error_outline));
+    expect(
+      icon.color,
+      Theme.of(tester.element(find.byType(KnowledgeScreen))).colorScheme.error,
+    );
+
+    await tester.tap(find.widgetWithText(ListTile, 'Both copies changed.'));
+    await tester.pumpAndSettle();
+    expect(opened, conflict.subject);
   });
 
   testWidgets('knowledge problems groups a large same-code flood', (
@@ -811,13 +833,15 @@ void main() {
         code: 'metadata-query-failed',
         severity: PkmsSeverity.warning,
         subject: 'notes/broken-a.typ',
-        message: 'Typst metadata query failed: boom',
+        message: "A note's formatting couldn't be read.",
+        detail: 'Typst metadata query failed: boom',
       ),
       PkmsProblem(
         code: 'metadata-query-failed',
         severity: PkmsSeverity.warning,
         subject: 'notes/broken-b.typ',
-        message: 'Typst metadata query failed: boom',
+        message: "A note's formatting couldn't be read.",
+        detail: 'Typst metadata query failed: boom',
       ),
     ];
     await tester.pumpWidget(
@@ -835,12 +859,12 @@ void main() {
       find.text('Typst metadata was unavailable; using legacy parsing.'),
       findsOneWidget,
     );
-    expect(find.text('· 8 notes'), findsOneWidget);
+    expect(find.textContaining('8 notes · notes/note-0.typ'), findsOneWidget);
     expect(find.text('notes/broken-a.typ'), findsOneWidget);
     expect(find.text('notes/broken-b.typ'), findsOneWidget);
     expect(find.text('notes/note-0.typ'), findsNothing);
 
-    await tester.tap(find.text('· 8 notes'));
+    await tester.tap(find.textContaining('8 notes · notes/note-0.typ'));
     await tester.pumpAndSettle();
 
     expect(find.text('notes/note-0.typ'), findsOneWidget);
@@ -856,10 +880,11 @@ void main() {
 KnowledgeScreen _knowledgeScreen({
   KnowledgeView initialView = KnowledgeView.search,
   List<PkmsProblem> problems = const [],
+  ValueChanged<String>? onOpenNote,
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
   problems: problems,
-  onOpenNote: (_) {},
+  onOpenNote: onOpenNote ?? (_) {},
 );

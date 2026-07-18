@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
-  bool _graphWholeVault = true;
+  bool _graphWholeVault = false;
   int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
@@ -3016,38 +3016,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         context: context,
         showDragHandle: true,
         isScrollControlled: true,
-        builder: (context) => SafeArea(
-          child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * 0.8,
-            child: GridView.count(
-              crossAxisCount: MediaQuery.sizeOf(context).width < 500 ? 3 : 4,
-              children: [
-                for (final entry in kMagicActionDisplay.entries)
-                  InkWell(
-                    onTap: () => Navigator.pop(context, entry.key),
-                    child: Semantics(
-                      button: true,
-                      label: entry.value.$2,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (entry.key == MagicAction.heading)
-                            Text(
-                              'H1',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            )
-                          else
-                            Icon(entry.value.$1),
-                          const SizedBox(height: 6),
-                          Text(entry.value.$2, textAlign: TextAlign.center),
-                        ],
+        builder: (context) {
+          final columns = MediaQuery.sizeOf(context).width < 500 ? 3 : 4;
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.8,
+              child: CustomScrollView(
+                slivers: [
+                  for (final group in kMagicActionGroups.entries) ...[
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      sliver: SliverToBoxAdapter(
+                        child: Text(
+                          group.key,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                    SliverGrid.count(
+                      crossAxisCount: columns,
+                      children: group.value.map((action) {
+                        final display = kMagicActionDisplay[action]!;
+                        return InkWell(
+                          onTap: () => Navigator.pop(context, action),
+                          child: Semantics(
+                            button: true,
+                            label: display.$2,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (action == MagicAction.heading)
+                                  Text(
+                                    'H1',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleLarge,
+                                  )
+                                else
+                                  Icon(display.$1),
+                                const SizedBox(height: 6),
+                                Text(display.$2, textAlign: TextAlign.center),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       );
       if (action != null) {
         try {
