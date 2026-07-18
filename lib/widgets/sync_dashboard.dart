@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../nextcloud_sync.dart';
+import '../vault_registry.dart';
 import 'loading.dart';
 import 'sync_status.dart';
 
@@ -171,7 +172,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                       title: Text(value.storageName),
                       subtitle: Text(
                         [
-                          value.storageLocation,
+                          readableVaultLocation(value.storageLocation),
                           value.storageHealthy
                               ? 'Permission and safe writes verified'
                               : 'Folder access or safe writes unavailable',

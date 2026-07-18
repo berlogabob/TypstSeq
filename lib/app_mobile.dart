@@ -1844,6 +1844,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showSettings() {
+    final initialStorageHealth = vault == null ? false : storageHealthy;
+    final storageHealth = initialStorageHealth == null
+        ? workspace.probeStorage()
+        : Future.value(initialStorageHealth);
     final registry = vaultRegistry;
     final activeLocation = vaultEntryLocation(_activeRegistryEntry);
     final openError = status.startsWith('Open failed:');
@@ -1851,46 +1855,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? [activeLocation, status].whereType<String>().join('\n')
         : activeLocation ?? status;
 
-    // Compute sync status using the same helpers as the dashboard
-    final kind = syncStatusKind(
-      vaultOpen: vault != null,
-      storageHealthy: storageHealthy ?? false,
-      cloudConfigured: cloud?.isReady ?? false,
-      desktopManaged:
-          _localVaultDirectory != null &&
-          isNextcloudManagedVault(_localVaultDirectory!),
-      syncing: syncing,
-      error: syncError,
-      conflicts: syncConflicts.length,
-      result: lastSync,
-    );
-    final syncStatusSubtitle = syncStatusTitle(
-      kind,
-      conflicts: syncConflicts.length,
-    );
-
     showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SettingsSheet(
-        vaultPath: vaultPath,
-        cloud: cloud,
-        syncing: syncing,
-        syncStatusSubtitle: syncStatusSubtitle,
-        vaultCount: registry?.entries.length ?? 0,
-        onManageVaults: () => Navigator.pop(context, true),
-        onNextcloud: () {
-          Navigator.pop(context);
-          unawaited(_showSyncDashboard());
-        },
-        onEnableReminders: () async {
-          await taskScheduler.requestPermission();
-          await taskScheduler.reconcile(index?.tasks ?? const []);
-          if (mounted) setState(() => status = 'Task reminders enabled');
-        },
-        onMigrateEntityTypes: () async {
-          Navigator.pop(context);
-          await _migrateEntityTypes();
+      builder: (context) => FutureBuilder<bool>(
+        future: storageHealth,
+        initialData: initialStorageHealth,
+        builder: (context, snapshot) {
+          final healthy = snapshot.data;
+          final syncStatusSubtitle = healthy == null
+              ? 'Checking folder access…'
+              : syncStatusTitle(
+                  syncStatusKind(
+                    vaultOpen: vault != null,
+                    storageHealthy: healthy,
+                    cloudConfigured: cloud?.isReady ?? false,
+                    desktopManaged:
+                        _localVaultDirectory != null &&
+                        isNextcloudManagedVault(_localVaultDirectory!),
+                    syncing: syncing,
+                    error: syncError,
+                    conflicts: syncConflicts.length,
+                    result: lastSync,
+                  ),
+                  conflicts: syncConflicts.length,
+                );
+          return SettingsSheet(
+            vaultPath: vaultPath,
+            cloud: cloud,
+            syncing: syncing,
+            syncStatusSubtitle: syncStatusSubtitle,
+            vaultCount: registry?.entries.length ?? 0,
+            onManageVaults: () => Navigator.pop(context, true),
+            onNextcloud: () {
+              Navigator.pop(context);
+              unawaited(_showSyncDashboard());
+            },
+            onEnableReminders: () async {
+              await taskScheduler.requestPermission();
+              await taskScheduler.reconcile(index?.tasks ?? const []);
+              if (mounted) setState(() => status = 'Task reminders enabled');
+            },
+            onMigrateEntityTypes: () async {
+              Navigator.pop(context);
+              await _migrateEntityTypes();
+            },
+          );
         },
       ),
     ).then((manageVaults) {

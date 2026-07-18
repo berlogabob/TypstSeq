@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../nextcloud_sync.dart';
+import '../vault_registry.dart';
 import 'app_version.dart';
 
 class SettingsSheet extends StatelessWidget {
@@ -31,6 +32,7 @@ class SettingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final readableVaultPath = readableVaultLocation(vaultPath);
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
@@ -47,7 +49,8 @@ class SettingsSheet extends StatelessWidget {
               SettingsTile(
                 icon: Icons.folder_open,
                 title: 'Local folder',
-                subtitle: vaultPath,
+                subtitle: readableVaultPath,
+                singleLineSubtitle: !readableVaultPath.contains('\n'),
               ),
               SettingsTile(
                 icon: Icons.create_new_folder,
@@ -70,7 +73,7 @@ class SettingsSheet extends StatelessWidget {
               SettingsTile(
                 icon: Icons.build_outlined,
                 title: 'Migrate entity types',
-                subtitle: 'Fold legacy properties["type"] entities into kind',
+                subtitle: 'Update older notes to the current format',
                 onTap: () => unawaited(onMigrateEntityTypes()),
               ),
               FutureBuilder<String>(
@@ -96,12 +99,14 @@ class SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.singleLineSubtitle = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+  final bool singleLineSubtitle;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -115,7 +120,12 @@ class SettingsTile extends StatelessWidget {
         child: Icon(icon),
       ),
       title: Text(title),
-      subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        subtitle,
+        softWrap: !singleLineSubtitle,
+        maxLines: singleLineSubtitle ? 1 : 2,
+        overflow: TextOverflow.ellipsis,
+      ),
       onTap: onTap,
     ),
   );

@@ -8,6 +8,27 @@ import 'nextcloud_sync.dart';
 import 'vault.dart';
 import 'vault_storage.dart';
 
+String readableVaultLocation(String location) {
+  if (!location.startsWith('content://')) return location;
+  final tree = location.indexOf('/tree/');
+  final candidates = [
+    if (tree >= 0) location.substring(tree + 6).split('/').first,
+    location.split('/').last,
+  ];
+  for (final candidate in candidates) {
+    if (candidate.isEmpty) continue;
+    try {
+      final decoded = Uri.decodeComponent(candidate)
+          .replaceFirst(RegExp(r'^(?:raw|primary|msf):/*'), '')
+          .replaceFirst(RegExp(r'^/?storage/emulated/0/+'), '');
+      if (decoded.isNotEmpty) return decoded;
+    } on FormatException {
+      // Try the last path segment, then fall back to the original URI.
+    }
+  }
+  return location;
+}
+
 class RecentNote {
   const RecentNote({
     required this.path,
