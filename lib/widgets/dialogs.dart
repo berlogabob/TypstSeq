@@ -22,15 +22,20 @@ Future<bool> showConfirmDialog(
           onPressed: () => Navigator.pop(context, false),
           child: Text(cancelLabel),
         ),
-        FilledButton(
-          style: destructive
-              ? FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                )
-              : null,
-          onPressed: () => Navigator.pop(context, true),
-          child: Text(confirmLabel),
-        ),
+        if (destructive)
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+              side: BorderSide(color: Theme.of(context).colorScheme.error),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel),
+          )
+        else
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel),
+          ),
       ],
     ),
   );

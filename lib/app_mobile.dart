@@ -590,7 +590,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       title: 'Delete vault and files?',
       message:
           'This permanently deletes all notes, pages, assets, metadata, and sync state in ${entry.name}. There is no recovery.',
-      confirmLabel: 'Continue',
+      confirmLabel: 'Delete permanently',
       destructive: true,
     );
     if (!warned || !mounted) return;
@@ -1869,33 +1869,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       conflicts: syncConflicts.length,
     );
 
-    showDialog<bool>(
+    showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: SettingsSheet(
-            vaultPath: vaultPath,
-            cloud: cloud,
-            syncing: syncing,
-            syncStatusSubtitle: syncStatusSubtitle,
-            vaultCount: registry?.entries.length ?? 0,
-            onManageVaults: () => Navigator.pop(context, true),
-            onNextcloud: () {
-              Navigator.pop(context);
-              unawaited(_showSyncDashboard());
-            },
-            onEnableReminders: () async {
-              await taskScheduler.requestPermission();
-              await taskScheduler.reconcile(index?.tasks ?? const []);
-              if (mounted) setState(() => status = 'Task reminders enabled');
-            },
-            onMigrateEntityTypes: () async {
-              Navigator.pop(context);
-              await _migrateEntityTypes();
-            },
-          ),
-        ),
+      showDragHandle: true,
+      builder: (context) => SettingsSheet(
+        vaultPath: vaultPath,
+        cloud: cloud,
+        syncing: syncing,
+        syncStatusSubtitle: syncStatusSubtitle,
+        vaultCount: registry?.entries.length ?? 0,
+        onManageVaults: () => Navigator.pop(context, true),
+        onNextcloud: () {
+          Navigator.pop(context);
+          unawaited(_showSyncDashboard());
+        },
+        onEnableReminders: () async {
+          await taskScheduler.requestPermission();
+          await taskScheduler.reconcile(index?.tasks ?? const []);
+          if (mounted) setState(() => status = 'Task reminders enabled');
+        },
+        onMigrateEntityTypes: () async {
+          Navigator.pop(context);
+          await _migrateEntityTypes();
+        },
       ),
     ).then((manageVaults) {
       if (manageVaults == true && mounted) _showVaults();
@@ -3448,7 +3444,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        titleSpacing: 0,
+        centerTitle: false,
         title: mode == 'journal'
             ? const Text('Journal')
             : mode == 'library'
@@ -3479,17 +3475,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(8),
                         onTap: () => unawaited(_showCalendarPicker()),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 8,
-                          ),
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: workspace.dirtyNotifier,
-                            builder: (context, dirty, _) => Text(
-                              '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Center(
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: workspace.dirtyNotifier,
+                                builder: (context, dirty, _) => Text(
+                                  '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
                           ),
                         ),

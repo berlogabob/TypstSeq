@@ -102,6 +102,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
     final busy = running || (value?.syncing ?? false);
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
         title: const Text('Sync'),
         actions: [
           IconButton(
