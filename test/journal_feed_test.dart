@@ -123,6 +123,15 @@ Future<void> pumpUntilFound(
   while (finder.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  if (finder.evaluate().isEmpty) {
+    // CI-only diagnosis aid: show what actually rendered instead.
+    final texts = find
+        .byType(Text)
+        .evaluate()
+        .map((e) => (e.widget as Text).data ?? '<rich>')
+        .toList();
+    debugPrint('pumpUntilFound timed out; visible Text widgets: $texts');
+  }
 }
 
 void main() {
