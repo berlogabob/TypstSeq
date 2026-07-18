@@ -110,6 +110,21 @@ String longJournalBody() => List.generate(
   (i) => 'Filler journal line $i padding the day well past viewport height.',
 ).join('\n\n');
 
+/// The real vault open + background index run on real I/O, which
+/// `pumpAndSettle` does not wait for — on slow CI runners the feed is still
+/// empty when it settles. Polls the real clock until [finder] matches (the
+/// index landing triggers a rebuild that the next pump picks up).
+Future<void> pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 30),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (finder.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
 void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
@@ -128,6 +143,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Journal').last);
     await tester.pumpAndSettle();
+    await pumpUntilFound(tester, find.byType(TyLogReadView));
 
     expect(find.byType(TyLogReadView), findsOneWidget);
     expect(find.text(humanDate(days[0])), findsOneWidget);
@@ -165,6 +181,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Journal').last);
       await tester.pumpAndSettle();
+      await pumpUntilFound(tester, find.byType(TyLogReadView));
+      // The bootstrap growth needs a second day card; give it the same wait.
+      final second = DateTime.now().add(const Duration(seconds: 10));
+      while (find.byType(TyLogReadView).evaluate().length < 2 &&
+          DateTime.now().isBefore(second)) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       final rendered = find.byType(TyLogReadView).evaluate().length;
       expect(rendered, greaterThanOrEqualTo(2));
