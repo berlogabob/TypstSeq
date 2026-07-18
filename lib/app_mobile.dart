@@ -86,22 +86,39 @@ class TyLogApp extends StatelessWidget {
   const TyLogApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'TyLog',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF0F172A),
-        brightness: Brightness.light,
-        surface: const Color(0xFFF8FAFC),
+  Widget build(BuildContext context) {
+    final darkColorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0F172A),
+      brightness: Brightness.dark,
+    );
+    return MaterialApp(
+      title: 'TyLog',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0F172A),
+          brightness: Brightness.light,
+          surface: const Color(0xFFF8FAFC),
+          onSurfaceVariant: const Color(0xFF3F414A),
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        hintColor: const Color(0xFF5F616A),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: InputBorder.none,
+        ),
       ),
-      scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: InputBorder.none,
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: darkColorScheme,
+        scaffoldBackgroundColor: darkColorScheme.surface,
+        inputDecorationTheme: const InputDecorationTheme(
+          border: InputBorder.none,
+        ),
       ),
-    ),
-    home: const HomeScreen(),
-  );
+      themeMode: ThemeMode.system,
+      home: const HomeScreen(),
+    );
+  }
 }
 
 class HomeScreen extends StatefulWidget {

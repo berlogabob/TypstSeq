@@ -75,8 +75,12 @@ const Map<String, Color> _highlightPalette = {
 
 /// Unknown/custom fill expressions (round-tripped verbatim but not in the
 /// palette) render with a neutral tint rather than no highlight at all.
-Color _highlightColor(String fill) =>
-    _highlightPalette[fill] ?? const Color(0x339E9E9E);
+Color _highlightColor(String fill, Brightness brightness) {
+  final color = _highlightPalette[fill] ?? const Color(0x339E9E9E);
+  return brightness == Brightness.dark
+      ? Color.lerp(Colors.black.withValues(alpha: color.a), color, 0.4)!
+      : color;
+}
 
 class TyLogInlineStyle {
   const TyLogInlineStyle({
@@ -2887,7 +2891,7 @@ TextStyle _styleFor(
         ? style.fontSize! * 0.9
         : style.fontSize,
     backgroundColor: inline.highlight != null
-        ? _highlightColor(inline.highlight!)
+        ? _highlightColor(inline.highlight!, Theme.of(context).brightness)
         : style.backgroundColor,
   );
 }

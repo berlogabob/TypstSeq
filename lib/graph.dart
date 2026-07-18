@@ -407,7 +407,10 @@ class GraphPainter extends CustomPainter {
       final paint = Paint()
         ..color = connected
             ? colorScheme.primary
-            : _edgeColor(edge.kind).withValues(alpha: connected ? 1 : 0.45)
+            : _edgeColor(
+                edge.kind,
+                colorScheme.brightness,
+              ).withValues(alpha: connected ? 1 : 0.45)
         ..strokeWidth = connected ? 2.5 : 1;
       if (edge.kind == GraphEdgeKind.citation) {
         _drawDashedLine(canvas, from, to, paint);
@@ -512,11 +515,18 @@ class GraphPainter extends CustomPainter {
       selectedPath != oldDelegate.selectedPath;
 }
 
-Color _edgeColor(GraphEdgeKind kind) => switch (kind) {
-  GraphEdgeKind.link => const Color(0xFF9E9E9E),
-  GraphEdgeKind.citation => const Color(0xFF7986CB),
-  GraphEdgeKind.tag => const Color(0xFF4DB6AC),
-};
+Color _edgeColor(GraphEdgeKind kind, Brightness brightness) =>
+    brightness == Brightness.dark
+    ? switch (kind) {
+        GraphEdgeKind.link => const Color(0xFFE0E0E0),
+        GraphEdgeKind.citation => const Color(0xFFC5CAE9),
+        GraphEdgeKind.tag => const Color(0xFFB2DFDB),
+      }
+    : switch (kind) {
+        GraphEdgeKind.link => const Color(0xFF9E9E9E),
+        GraphEdgeKind.citation => const Color(0xFF7986CB),
+        GraphEdgeKind.tag => const Color(0xFF4DB6AC),
+      };
 
 void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
   const dashLength = 6.0;
@@ -550,14 +560,14 @@ class GraphLegend extends StatelessWidget {
     children: [
       _LegendEntry(
         kind: GraphEdgeKind.link,
-        color: const Color(0xFF9E9E9E),
+        color: _edgeColor(GraphEdgeKind.link, Theme.of(context).brightness),
         label: 'Link',
         selected: visibleKinds.contains(GraphEdgeKind.link),
         onToggle: onToggle,
       ),
       _LegendEntry(
         kind: GraphEdgeKind.citation,
-        color: const Color(0xFF7986CB),
+        color: _edgeColor(GraphEdgeKind.citation, Theme.of(context).brightness),
         label: 'Citation',
         dashed: true,
         selected: visibleKinds.contains(GraphEdgeKind.citation),
@@ -565,7 +575,7 @@ class GraphLegend extends StatelessWidget {
       ),
       _LegendEntry(
         kind: GraphEdgeKind.tag,
-        color: const Color(0xFF4DB6AC),
+        color: _edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
         label: 'Shared tag',
         selected: visibleKinds.contains(GraphEdgeKind.tag),
         onToggle: onToggle,

@@ -48,6 +48,16 @@ void main() {
   testWidgets('TyLog shell renders', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.themeMode, ThemeMode.system);
+    expect(app.theme!.colorScheme.surface, const Color(0xFFF8FAFC));
+    expect(app.theme!.colorScheme.onSurfaceVariant, const Color(0xFF3F414A));
+    expect(app.theme!.hintColor, const Color(0xFF5F616A));
+    expect(app.darkTheme!.brightness, Brightness.dark);
+    expect(
+      app.darkTheme!.scaffoldBackgroundColor,
+      app.darkTheme!.colorScheme.surface,
+    );
     // AppBar leads with the note title (a human-readable date once a daily
     // note is open) instead of an app title. No vault opens in tests, so the
     // fallback title shows here.
