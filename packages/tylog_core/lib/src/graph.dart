@@ -2,19 +2,23 @@ import 'models.dart';
 
 enum GraphEdgeKind { link, citation, tag }
 
-/// Co-occurrence keys shared by more than this many notes are skipped —
-/// a generic tag shouldn't fan out into an O(n^2) edge cloud.
-const _coOccurrenceCap = 30;
+/// What a node represents. Notes are documents; concepts are tags promoted to
+/// hubs; works are cited bibliographic entries. Concept/work nodes turn a tag
+/// or citekey shared by k notes into a single k-spoke star instead of a
+/// k*(k-1)/2 note-to-note edge cloud.
+enum GraphNodeKind { note, concept, work }
 
 class GraphNode {
   const GraphNode({
     required this.path,
     required this.title,
+    this.kind = GraphNodeKind.note,
     this.problemCount = 0,
   });
 
   final String path;
   final String title;
+  final GraphNodeKind kind;
   final int problemCount;
 }
 
@@ -48,27 +52,40 @@ NoteGraph buildNoteGraph(VaultIndex index) {
       ifAbsent: () => 1,
     );
   }
-  final nodes = index.notes
-      .map(
-        (note) => GraphNode(
-          path: note.path,
-          title: note.title,
-          problemCount: problemCounts[note.path] ?? 0,
-        ),
-      )
-      .toList();
+  final nodes = <GraphNode>[
+    for (final note in index.notes)
+      GraphNode(
+        path: note.path,
+        title: note.title,
+        problemCount: problemCounts[note.path] ?? 0,
+      ),
+  ];
 
   final edges = <GraphEdge>[
     for (final entry in index.backlinksByTarget.entries)
       for (final source in entry.value)
         GraphEdge(from: source, to: entry.key),
-    ..._coOccurrenceEdges(
-      index.notes,
-      (note) => note.citations,
-      GraphEdgeKind.citation,
-    ),
-    ..._coOccurrenceEdges(index.notes, (note) => note.tags, GraphEdgeKind.tag),
   ];
+  // Tags and citations become their own hub nodes with note->entity spokes,
+  // rather than fanning every co-occurring pair of notes into a clique.
+  _addEntityNodes(
+    index.notes,
+    (note) => note.tags,
+    GraphNodeKind.concept,
+    'concept',
+    GraphEdgeKind.tag,
+    nodes,
+    edges,
+  );
+  _addEntityNodes(
+    index.notes,
+    (note) => note.citations,
+    GraphNodeKind.work,
+    'cite',
+    GraphEdgeKind.citation,
+    nodes,
+    edges,
+  );
   edges.sort((a, b) {
     final byFrom = a.from.compareTo(b.from);
     if (byFrom != 0) return byFrom;
@@ -79,43 +96,31 @@ NoteGraph buildNoteGraph(VaultIndex index) {
   return NoteGraph(nodes: nodes, edges: edges);
 }
 
-/// Emits one edge per pair of notes that share a key returned by
-/// [keyOf] (e.g. a tag or citation), weighted by how many keys they share.
-List<GraphEdge> _coOccurrenceEdges(
+/// Adds one hub node per distinct key returned by [keyOf] (a tag or citekey)
+/// plus a note->hub edge per note carrying it. A key on k notes yields k edges,
+/// not k*(k-1)/2. Hub node path is `<idPrefix>:<key>`; appended deterministically
+/// (keys sorted) after the note nodes so ordering stays stable.
+void _addEntityNodes(
   Iterable<NoteRef> notes,
   Iterable<String> Function(NoteRef note) keyOf,
-  GraphEdgeKind kind,
+  GraphNodeKind nodeKind,
+  String idPrefix,
+  GraphEdgeKind edgeKind,
+  List<GraphNode> nodes,
+  List<GraphEdge> edges,
 ) {
-  final pathsByKey = <String, Set<String>>{};
+  final notesByKey = <String, Set<String>>{};
   for (final note in notes) {
     for (final key in keyOf(note)) {
-      pathsByKey.putIfAbsent(key, () => {}).add(note.path);
+      notesByKey.putIfAbsent(key, () => {}).add(note.path);
     }
   }
-  final weightByPair = <(String, String), int>{};
-  for (final paths in pathsByKey.values) {
-    if (paths.length < 2 || paths.length > _coOccurrenceCap) continue;
-    final sorted = paths.toList()..sort();
-    for (var i = 0; i < sorted.length; i++) {
-      for (var j = i + 1; j < sorted.length; j++) {
-        final pairKey = (sorted[i], sorted[j]);
-        weightByPair.update(
-          pairKey,
-          (value) => value + 1,
-          ifAbsent: () => 1,
-        );
-      }
+  for (final key in notesByKey.keys.toList()..sort()) {
+    nodes.add(GraphNode(path: '$idPrefix:$key', title: key, kind: nodeKind));
+    for (final notePath in notesByKey[key]!.toList()..sort()) {
+      edges.add(GraphEdge(from: notePath, to: '$idPrefix:$key', kind: edgeKind));
     }
   }
-  return [
-    for (final entry in weightByPair.entries)
-      GraphEdge(
-        from: entry.key.$1,
-        to: entry.key.$2,
-        kind: kind,
-        weight: entry.value,
-      ),
-  ];
 }
 
 NoteGraph buildLocalNoteGraph(

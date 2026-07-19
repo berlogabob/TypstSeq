@@ -10,6 +10,7 @@ export 'package:tylog_core/graph.dart'
         GraphEdge,
         GraphEdgeKind,
         GraphNode,
+        GraphNodeKind,
         GraphStats,
         NoteGraph,
         buildLocalNoteGraph,
@@ -51,7 +52,6 @@ class _GraphViewState extends State<GraphView> {
     GraphEdgeKind.citation,
     GraphEdgeKind.tag,
   };
-  bool _dimWeakTagEdges = false;
   bool _bannerDismissed = false;
   Set<String>? _focusFilter;
   int _hubCycleIndex = 0;
@@ -60,7 +60,6 @@ class _GraphViewState extends State<GraphView> {
   void initState() {
     super.initState();
     _selectedPath = widget.currentPath;
-    _dimWeakTagEdges = widget.graph.nodes.length > _hairballThreshold;
   }
 
   @override
@@ -75,7 +74,6 @@ class _GraphViewState extends State<GraphView> {
           ? _selectedPath
           : widget.currentPath;
       _lastCanvas = null;
-      _dimWeakTagEdges = widget.graph.nodes.length > _hairballThreshold;
       _focusFilter = null;
     }
   }
@@ -219,7 +217,6 @@ class _GraphViewState extends State<GraphView> {
                     selectedPath: _selectedPath,
                     colorScheme: scheme,
                     visibleEdgeKinds: _visibleKinds,
-                    minTagWeight: _dimWeakTagEdges ? 2 : 1,
                     onSelect: (path) => setState(() => _selectedPath = path),
                   ),
                 ),
@@ -378,7 +375,6 @@ class GraphPainter extends CustomPainter {
       GraphEdgeKind.citation,
       GraphEdgeKind.tag,
     },
-    this.minTagWeight = 1,
   });
 
   static const nodeRadius = 22.0;
@@ -390,15 +386,15 @@ class GraphPainter extends CustomPainter {
   final ColorScheme colorScheme;
   final ValueChanged<String> onSelect;
   final Set<GraphEdgeKind> visibleEdgeKinds;
-  final int minTagWeight;
+
+  /// Concept/work hubs render larger than note dots so they read as hubs.
+  static double _radiusFor(GraphNode node) =>
+      node.kind == GraphNodeKind.note ? 12.0 : nodeRadius;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final edge in graph.edges) {
       if (!visibleEdgeKinds.contains(edge.kind)) continue;
-      if (edge.kind == GraphEdgeKind.tag && edge.weight < minTagWeight) {
-        continue;
-      }
       final from = positions[edge.from];
       final to = positions[edge.to];
       if (from == null || to == null) continue;
@@ -421,9 +417,6 @@ class GraphPainter extends CustomPainter {
     final neighbors = <String>{};
     for (final edge in graph.edges) {
       if (!visibleEdgeKinds.contains(edge.kind)) continue;
-      if (edge.kind == GraphEdgeKind.tag && edge.weight < minTagWeight) {
-        continue;
-      }
       if (edge.from == selectedPath) neighbors.add(edge.to);
       if (edge.to == selectedPath) neighbors.add(edge.from);
     }
@@ -432,22 +425,29 @@ class GraphPainter extends CustomPainter {
       if (center == null) continue;
       final selected = node.path == selectedPath;
       final related = selected || neighbors.contains(node.path);
+      final isEntity = node.kind != GraphNodeKind.note;
+      final radius = _radiusFor(node);
+      final baseColor = isEntity
+          ? colorScheme.tertiaryContainer
+          : colorScheme.secondaryContainer;
       final fill = Paint()
         ..color = selected
             ? colorScheme.primary
-            : colorScheme.secondaryContainer.withValues(
+            : baseColor.withValues(
                 alpha: selectedPath == null || related ? 1 : 0.35,
               );
       final stroke = Paint()
-        ..color = selected ? colorScheme.primary : colorScheme.outline
+        ..color = selected
+            ? colorScheme.primary
+            : (isEntity ? colorScheme.tertiary : colorScheme.outline)
         ..style = PaintingStyle.stroke
         ..strokeWidth = selected ? 3 : 1;
-      canvas.drawCircle(center, nodeRadius, fill);
-      canvas.drawCircle(center, nodeRadius, stroke);
+      canvas.drawCircle(center, radius, fill);
+      canvas.drawCircle(center, radius, stroke);
       if (node.problemCount > 0) {
         canvas.drawCircle(
           center,
-          nodeRadius + 3,
+          radius + 3,
           Paint()
             ..color = colorScheme.error
             ..style = PaintingStyle.stroke
@@ -455,7 +455,9 @@ class GraphPainter extends CustomPainter {
         );
       }
 
-      if (!related) continue;
+      // Note labels appear only near the selection to cut clutter; concept/work
+      // hubs are always labelled so the map reads as a set of named topics.
+      if (!related && !isEntity) continue;
       final label = node.title.length > 18
           ? '${node.title.substring(0, 17)}…'
           : node.title;
@@ -474,7 +476,7 @@ class GraphPainter extends CustomPainter {
       )..layout(maxWidth: 96);
       textPainter.paint(
         canvas,
-        center + Offset(-textPainter.width / 2, nodeRadius + 4),
+        center + Offset(-textPainter.width / 2, radius + 4),
       );
     }
   }
@@ -504,8 +506,7 @@ class GraphPainter extends CustomPainter {
       positions != oldDelegate.positions ||
       selectedPath != oldDelegate.selectedPath ||
       colorScheme != oldDelegate.colorScheme ||
-      !setEquals(visibleEdgeKinds, oldDelegate.visibleEdgeKinds) ||
-      minTagWeight != oldDelegate.minTagWeight;
+      !setEquals(visibleEdgeKinds, oldDelegate.visibleEdgeKinds);
 
   @override
   bool shouldRebuildSemantics(covariant GraphPainter oldDelegate) =>
@@ -579,7 +580,7 @@ class GraphLegend extends StatelessWidget {
       _LegendEntry(
         kind: GraphEdgeKind.tag,
         color: _edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
-        label: 'Shared tag',
+        label: 'Tag',
         selected: visibleKinds.contains(GraphEdgeKind.tag),
         onToggle: onToggle,
       ),

@@ -1024,7 +1024,11 @@ NoteRef _queriedNote(
     kind: _text(note['kind']) ?? _kindFromPath(path),
     project: _text(note['project']),
     date: _text(note['date']),
-    tags: _sorted({..._strings(note['tags']), ...metadata.tags}),
+    tags: _sorted({
+      ..._strings(note['tags']),
+      ...metadata.tags,
+      ..._legacyTags(source),
+    }),
     aliases: _sorted(_strings(note['aliases']).toSet()),
     outgoingLinks: _sorted(metadata.links.toSet()),
     fileRefs: _sorted(
@@ -1083,6 +1087,7 @@ NoteRef _fallbackNote(
     tags: _sorted({
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tylog.tag'),
+      ..._legacyTags(source),
     }),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
     outgoingLinks: _sorted({..._firstArguments(calls, 'tylog.ref-note')}),
@@ -1167,6 +1172,32 @@ String? _field(String source, String name) =>
         .firstMatch(source)
         ?.group(1)
         ?.replaceAllMapped(RegExp(r'\\(.)'), (match) => match.group(1)!);
+
+final _legacyTagLine = RegExp(r'^\s*tags::\s*(.+)$', multiLine: true);
+final _wikiLink = RegExp(r'\[\[([^\]]+)\]\]');
+
+/// Recovers tags from legacy Logseq-style `tags:: [[A]] [[B]]` (or
+/// `tags:: A, B`) lines that the Typst parser never sees. Imported articles keep
+/// these instead of canonical `tylog.note.with(tags: ...)`, so without this
+/// their tags are silently lost and never reach the concept graph.
+Set<String> _legacyTags(String source) {
+  final result = <String>{};
+  for (final line in _legacyTagLine.allMatches(source)) {
+    final value = line.group(1)!;
+    final links = _wikiLink
+        .allMatches(value)
+        .map((match) => match.group(1)!.trim())
+        .where((tag) => tag.isNotEmpty);
+    if (links.isNotEmpty) {
+      result.addAll(links);
+    } else {
+      result.addAll(
+        value.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty),
+      );
+    }
+  }
+  return result;
+}
 
 List<String> _parseList(String source, String field) {
   final match = RegExp(

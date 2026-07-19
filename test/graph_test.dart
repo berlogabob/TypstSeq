@@ -38,7 +38,7 @@ void main() {
     ]);
   });
 
-  test('buildNoteGraph adds citation and tag co-occurrence edges', () {
+  test('buildNoteGraph links notes to concept and work hubs, not each other', () {
     final index = VaultIndex(
       notesByPath: {
         'articles/a.typ': const NoteRef(
@@ -63,18 +63,98 @@ void main() {
 
     final graph = buildNoteGraph(index);
 
-    expect(graph.edges, hasLength(2));
-    final citationEdge = graph.edges.firstWhere(
-      (edge) => edge.kind == GraphEdgeKind.citation,
+    // A concept hub for the shared tag and a work hub for the shared citekey.
+    final concept = graph.nodes.singleWhere(
+      (node) => node.kind == GraphNodeKind.concept,
     );
-    expect(citationEdge.from, 'articles/a.typ');
-    expect(citationEdge.to, 'articles/b.typ');
-    expect(citationEdge.weight, 1);
-    final tagEdge = graph.edges.firstWhere(
-      (edge) => edge.kind == GraphEdgeKind.tag,
+    expect(concept.path, 'concept:ml');
+    expect(concept.title, 'ml');
+    final work = graph.nodes.singleWhere(
+      (node) => node.kind == GraphNodeKind.work,
     );
-    expect(tagEdge.from, 'articles/a.typ');
-    expect(tagEdge.to, 'articles/b.typ');
+    expect(work.path, 'cite:smith-2026');
+
+    // Both notes spoke into each hub; no direct note<->note edges.
+    final tagEdges = graph.edges.where((e) => e.kind == GraphEdgeKind.tag);
+    expect(
+      tagEdges.map((e) => '${e.from}->${e.to}'),
+      containsAll([
+        'articles/a.typ->concept:ml',
+        'articles/b.typ->concept:ml',
+      ]),
+    );
+    final citationEdges = graph.edges.where(
+      (e) => e.kind == GraphEdgeKind.citation,
+    );
+    expect(
+      citationEdges.map((e) => '${e.from}->${e.to}'),
+      containsAll([
+        'articles/a.typ->cite:smith-2026',
+        'articles/b.typ->cite:smith-2026',
+      ]),
+    );
+    expect(
+      graph.edges.any(
+        (e) => e.from == 'articles/a.typ' && e.to == 'articles/b.typ',
+      ),
+      isFalse,
+    );
+  });
+
+  test('a tag on k notes yields one concept hub and k spokes, not k*(k-1)/2', () {
+    const k = 5;
+    final index = VaultIndex(
+      notesByPath: {
+        for (var i = 0; i < k; i++)
+          'articles/n$i.typ': NoteRef(
+            id: 'n$i',
+            path: 'articles/n$i.typ',
+            title: 'N$i',
+            outgoingLinks: const [],
+            tags: const ['esp32'],
+          ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final graph = buildNoteGraph(index);
+
+    expect(
+      graph.nodes.where((n) => n.kind == GraphNodeKind.concept),
+      hasLength(1),
+    );
+    expect(
+      graph.edges.where((e) => e.kind == GraphEdgeKind.tag),
+      hasLength(k),
+    );
+  });
+
+  test('buildLocalNoteGraph reaches a co-tagged note through its concept', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'daily/today.typ': const NoteRef(
+          id: 'today',
+          path: 'daily/today.typ',
+          title: 'Today',
+          outgoingLinks: [],
+          tags: ['esp32'],
+        ),
+        'articles/panel.typ': const NoteRef(
+          id: 'panel',
+          path: 'articles/panel.typ',
+          title: 'ESP32 panel',
+          outgoingLinks: [],
+          tags: ['esp32'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final local = buildLocalNoteGraph(index, 'daily/today.typ');
+
+    // daily -> concept:esp32 (hop 1) -> articles/panel.typ (hop 2)
+    expect(local.nodes.map((n) => n.path), contains('concept:esp32'));
+    expect(local.nodes.map((n) => n.path), contains('articles/panel.typ'));
   });
 
   test('buildNoteGraph flags nodes with problems', () {
