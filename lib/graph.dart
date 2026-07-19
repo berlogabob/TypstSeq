@@ -16,6 +16,7 @@ export 'package:tylog_core/graph.dart'
         buildConceptMap,
         buildLocalNoteGraph,
         buildNoteGraph,
+        buildTimelineGraph,
         computeGraphStats,
         restrictNoteGraph,
         kConceptMapMinNotes,
@@ -54,6 +55,7 @@ class _GraphViewState extends State<GraphView> {
     GraphEdgeKind.link,
     GraphEdgeKind.citation,
     GraphEdgeKind.tag,
+    GraphEdgeKind.read,
   };
   bool _bannerDismissed = false;
   Set<String>? _focusFilter;
@@ -84,6 +86,11 @@ class _GraphViewState extends State<GraphView> {
   void _ensureLayout(NoteGraph graph, Size viewport) {
     if (_positions != null || _laying) return;
     final canvas = graphCanvasSize(graph, widget.currentPath, viewport);
+    if (isTimelineGraph(graph)) {
+      _positions = timelinePositions(graph, canvas);
+      _positionsCanvas = canvas;
+      return;
+    }
     final edges = edgeIndexPairs(graph);
     final n = graph.nodes.length;
     final iters = iterationsFor(n);
@@ -341,6 +348,56 @@ class _GraphViewState extends State<GraphView> {
 
 /// Positions for a graph via a force-directed layout, keyed by node path.
 /// `focalPath` is accepted for API stability but the layout self-centres.
+/// True when the graph is a Timeline projection (contains day nodes), which
+/// uses a chronological layout instead of the force-directed one.
+bool isTimelineGraph(NoteGraph graph) =>
+    graph.nodes.any((n) => n.kind == GraphNodeKind.day);
+
+/// Chronological layout: day nodes on the x-axis by date, articles pulled toward
+/// the day(s) they connect to and staggered vertically to reduce overlap. O(n),
+/// deterministic — no physics needed for a timeline.
+Map<String, Offset> timelinePositions(NoteGraph graph, Size size) {
+  final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
+  final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
+  const margin = 90.0;
+  final innerW = math.max(1.0, w - 2 * margin);
+  final days = graph.nodes.where((n) => n.kind == GraphNodeKind.day).toList()
+    ..sort((a, b) => a.title.compareTo(b.title));
+  final dayX = <String, double>{};
+  for (var i = 0; i < days.length; i++) {
+    dayX[days[i].path] = days.length == 1
+        ? w / 2
+        : margin + innerW * i / (days.length - 1);
+  }
+  final neighbourDayX = <String, List<double>>{};
+  for (final e in graph.edges) {
+    if (dayX[e.from] case final x?) {
+      neighbourDayX.putIfAbsent(e.to, () => []).add(x);
+    }
+    if (dayX[e.to] case final x?) {
+      neighbourDayX.putIfAbsent(e.from, () => []).add(x);
+    }
+  }
+  final pos = <String, Offset>{
+    for (final day in days) day.path: Offset(dayX[day.path]!, h / 2),
+  };
+  final laneCount = <int, int>{}; // per x-bucket, for vertical stagger
+  for (final node in graph.nodes) {
+    if (node.kind == GraphNodeKind.day) continue;
+    final xs = neighbourDayX[node.path];
+    final x = (xs == null || xs.isEmpty)
+        ? w / 2
+        : xs.reduce((a, b) => a + b) / xs.length;
+    final bucket = (x / 44).round();
+    final used = laneCount[bucket] ?? 0;
+    laneCount[bucket] = used + 1;
+    final ring = (used ~/ 2) + 1;
+    final y = h / 2 + (used.isEven ? 1 : -1) * ring * 48.0;
+    pos[node.path] = Offset(x, y.clamp(24.0, h - 24));
+  }
+  return pos;
+}
+
 Map<String, Offset> graphPositions(
   NoteGraph graph,
   String? focalPath,
@@ -348,6 +405,7 @@ Map<String, Offset> graphPositions(
 ) {
   final nodes = graph.nodes;
   if (nodes.isEmpty) return const {};
+  if (isTimelineGraph(graph)) return timelinePositions(graph, size);
   final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
   final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
   final flat = forceDirectedFlat(
@@ -368,6 +426,13 @@ Map<String, Offset> graphPositions(
 Size graphCanvasSize(NoteGraph graph, String? focalPath, Size viewport) {
   final n = graph.nodes.length;
   if (n == 0) return viewport;
+  if (isTimelineGraph(graph)) {
+    final days = graph.nodes.where((x) => x.kind == GraphNodeKind.day).length;
+    return Size(
+      math.max(viewport.width, days * 150 + 200),
+      math.max(viewport.height, 900),
+    );
+  }
   final dim = math.max(
     math.max(viewport.width, viewport.height),
     math.sqrt(n) * 160,
@@ -507,6 +572,7 @@ class GraphPainter extends CustomPainter {
       GraphEdgeKind.link,
       GraphEdgeKind.citation,
       GraphEdgeKind.tag,
+      GraphEdgeKind.read,
     },
   });
 
@@ -656,11 +722,13 @@ Color _edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         GraphEdgeKind.link => const Color(0xFFE0E0E0),
         GraphEdgeKind.citation => const Color(0xFFC5CAE9),
         GraphEdgeKind.tag => const Color(0xFFB2DFDB),
+        GraphEdgeKind.read => const Color(0xFF80CBC4), // read-on-day = teal
       }
     : switch (kind) {
         GraphEdgeKind.link => const Color(0xFF9E9E9E),
         GraphEdgeKind.citation => const Color(0xFF7986CB),
         GraphEdgeKind.tag => const Color(0xFF4DB6AC),
+        GraphEdgeKind.read => const Color(0xFF00897B),
       };
 
 void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {

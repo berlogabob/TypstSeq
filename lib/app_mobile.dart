@@ -3254,6 +3254,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : switch (_graphMode) {
             'conceptMap' => buildConceptMap(index!),
             'allFiles' => buildNoteGraph(index!),
+            'timeline' => buildTimelineGraph(index!, {
+              for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
+            }),
             _ => buildLocalNoteGraph(index!, _graphFocusPath ?? current),
           };
     final desktopManaged =
@@ -3629,6 +3632,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               icon: Icon(switch (_graphMode) {
                 'conceptMap' => Icons.bubble_chart,
                 'allFiles' => Icons.hub,
+                'timeline' => Icons.timeline,
                 _ => Icons.center_focus_strong,
               }),
               onSelected: (value) => setState(() {
@@ -3639,6 +3643,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(value: 'conceptMap', child: Text('Concept map')),
                 PopupMenuItem(value: 'local', child: Text('Focused')),
                 PopupMenuItem(value: 'allFiles', child: Text('All files')),
+                PopupMenuItem(value: 'timeline', child: Text('Timeline')),
               ],
             ),
           if (documentModes.contains(mode))

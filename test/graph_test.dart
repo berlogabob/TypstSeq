@@ -385,6 +385,95 @@ void main() {
     expect(graphCanvasSize(g(4), null, const Size.square(900)).width, 900);
   });
 
+  test('buildTimelineGraph links articles to their added and read days', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          kind: 'article',
+          outgoingLinks: [],
+          date: '2026-07-10',
+        ),
+        'articles/b.typ': const NoteRef(
+          id: 'b',
+          path: 'articles/b.typ',
+          title: 'B',
+          kind: 'article',
+          outgoingLinks: [],
+          date: '2026-07-11',
+        ),
+        'notes/n.typ': const NoteRef(
+          id: 'n',
+          path: 'notes/n.typ',
+          title: 'N',
+          kind: 'note',
+          outgoingLinks: [],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final graph = buildTimelineGraph(index, {'articles/a.typ': '2026-07-15'});
+
+    final days = graph.nodes
+        .where((n) => n.kind == GraphNodeKind.day)
+        .map((n) => n.title)
+        .toSet();
+    expect(days, {'2026-07-10', '2026-07-11', '2026-07-15'});
+    expect(
+      graph.edges.any(
+        (e) =>
+            e.from == 'day:2026-07-10' &&
+            e.to == 'articles/a.typ' &&
+            e.kind == GraphEdgeKind.link,
+      ),
+      isTrue, // added on 07-10
+    );
+    expect(
+      graph.edges.any(
+        (e) =>
+            e.from == 'day:2026-07-15' &&
+            e.to == 'articles/a.typ' &&
+            e.kind == GraphEdgeKind.read,
+      ),
+      isTrue, // read on 07-15
+    );
+    // Non-articles are excluded from the timeline.
+    expect(graph.nodes.any((n) => n.path == 'notes/n.typ'), isFalse);
+  });
+
+  test('timelinePositions orders day nodes chronologically on the x-axis', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(
+          path: 'day:2026-07-11',
+          title: '2026-07-11',
+          kind: GraphNodeKind.day,
+        ),
+        GraphNode(
+          path: 'day:2026-07-09',
+          title: '2026-07-09',
+          kind: GraphNodeKind.day,
+        ),
+        GraphNode(path: 'articles/a.typ', title: 'A'),
+      ],
+      edges: [GraphEdge(from: 'day:2026-07-09', to: 'articles/a.typ')],
+    );
+
+    expect(isTimelineGraph(graph), isTrue);
+    final pos = timelinePositions(graph, const Size(1000, 900));
+    // Earlier day is left of the later day, both on the centre line.
+    expect(pos['day:2026-07-09']!.dx, lessThan(pos['day:2026-07-11']!.dx));
+    expect(pos['day:2026-07-09']!.dy, pos['day:2026-07-11']!.dy);
+    // The article sits at its connected day's x.
+    expect(
+      (pos['articles/a.typ']!.dx - pos['day:2026-07-09']!.dx).abs(),
+      lessThan(1),
+    );
+  });
+
   testWidgets('graph selects before opening and resets its viewport', (
     tester,
   ) async {
