@@ -91,18 +91,15 @@ class _GraphViewState extends State<GraphView> {
       _positionsCanvas = canvas;
       return;
     }
-    final edges = edgeIndexPairs(graph);
     final n = graph.nodes.length;
-    final iters = iterationsFor(n);
     if (n <= 400) {
-      final flat = forceDirectedFlat(n, edges, canvas.width, canvas.height, iters);
-      _positions = {
-        for (var i = 0; i < n; i++)
-          graph.nodes[i].path: Offset(flat[2 * i], flat[2 * i + 1]),
-      };
-      _positionsCanvas = canvas;
+      final pos = forceLayoutPositions(graph, canvas);
+      _positions = pos;
+      _positionsCanvas = boundsCanvas(pos);
       return;
     }
+    final edges = edgeIndexPairs(graph);
+    final iters = iterationsFor(n);
     _laying = true;
     final token = _layoutToken;
     final paths = [for (final node in graph.nodes) node.path];
@@ -111,13 +108,14 @@ class _GraphViewState extends State<GraphView> {
       LayoutRequest(n, edges, canvas.width, canvas.height, iters),
     ).then((flat) {
       if (!mounted || token != _layoutToken) return;
+      final pos = normalizePositions({
+        for (var i = 0; i < n; i++)
+          paths[i]: Offset(flat[2 * i], flat[2 * i + 1]),
+      });
       setState(() {
         _laying = false;
-        _positions = {
-          for (var i = 0; i < n; i++)
-            paths[i]: Offset(flat[2 * i], flat[2 * i + 1]),
-        };
-        _positionsCanvas = canvas;
+        _positions = pos;
+        _positionsCanvas = boundsCanvas(pos);
       });
     });
   }
@@ -408,17 +406,85 @@ Map<String, Offset> graphPositions(
   if (isTimelineGraph(graph)) return timelinePositions(graph, size);
   final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
   final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
+  return forceLayoutPositions(graph, Size(w, h));
+}
+
+/// Force-directs only the *connected* nodes (edge-less "isolated" ones would
+/// otherwise be flung to the frame border), and lays the isolated nodes in a
+/// tidy grid strip at the bottom — so the view reads as a clustered core plus a
+/// labelled shelf of unrelated topics.
+Map<String, Offset> forceLayoutPositions(NoteGraph graph, Size canvas) {
+  final w = canvas.width;
+  final h = canvas.height;
+  final degree = <String, int>{};
+  for (final e in graph.edges) {
+    degree[e.from] = (degree[e.from] ?? 0) + 1;
+    degree[e.to] = (degree[e.to] ?? 0) + 1;
+  }
+  final connected = [
+    for (final n in graph.nodes)
+      if ((degree[n.path] ?? 0) > 0) n,
+  ];
+  final isolated = [
+    for (final n in graph.nodes)
+      if ((degree[n.path] ?? 0) == 0) n,
+  ]..sort((a, b) => a.path.compareTo(b.path));
+
+  final cols = math.max(1, (w / 96).floor());
+  final gridRows = isolated.isEmpty ? 0 : (isolated.length / cols).ceil();
+  final gridH = gridRows == 0 ? 0.0 : gridRows * 46.0 + 24;
+  final mainH = math.max(240.0, h - gridH);
+
+  final index = {for (var i = 0; i < connected.length; i++) connected[i].path: i};
+  final edges = <(int, int)>[
+    for (final e in graph.edges)
+      if (index[e.from] case final a?)
+        if (index[e.to] case final b?) (a, b),
+  ];
   final flat = forceDirectedFlat(
-    nodes.length,
-    edgeIndexPairs(graph),
+    connected.length,
+    edges,
     w,
-    h,
-    iterationsFor(nodes.length),
+    mainH,
+    iterationsFor(connected.length),
   );
-  return {
-    for (var i = 0; i < nodes.length; i++)
-      nodes[i].path: Offset(flat[2 * i], flat[2 * i + 1]),
+  final pos = <String, Offset>{
+    for (var i = 0; i < connected.length; i++)
+      connected[i].path: Offset(flat[2 * i], flat[2 * i + 1]),
   };
+  for (var i = 0; i < isolated.length; i++) {
+    final r = i ~/ cols;
+    final c = i % cols;
+    pos[isolated[i].path] = Offset(48 + c * 96, mainH + 24 + r * 46);
+  }
+  return normalizePositions(pos);
+}
+
+/// Shifts positions so the top-left of the layout sits at a fixed pad — keeps
+/// everything positive and lets [boundsCanvas] size the canvas to the content.
+Map<String, Offset> normalizePositions(Map<String, Offset> pos) {
+  if (pos.isEmpty) return pos;
+  var minX = double.infinity, minY = double.infinity;
+  for (final o in pos.values) {
+    minX = math.min(minX, o.dx);
+    minY = math.min(minY, o.dy);
+  }
+  const pad = 60.0;
+  return {
+    for (final e in pos.entries)
+      e.key: Offset(e.value.dx - minX + pad, e.value.dy - minY + pad),
+  };
+}
+
+/// A canvas that just encloses normalized [pos] (top-left already padded).
+Size boundsCanvas(Map<String, Offset> pos) {
+  if (pos.isEmpty) return const Size(1000, 1000);
+  var maxX = 0.0, maxY = 0.0;
+  for (final o in pos.values) {
+    maxX = math.max(maxX, o.dx);
+    maxY = math.max(maxY, o.dy);
+  }
+  return Size(maxX + 60, maxY + 60);
 }
 
 /// A square canvas that grows with node count so a force layout has room to
@@ -476,6 +542,8 @@ Float64List forceDirectedFlat(
   }
   final rng = math.Random(42);
   final k = math.sqrt(width * height / n); // ideal node spacing
+  final cx = width / 2;
+  final cy = height / 2;
   final px = Float64List(n);
   final py = Float64List(n);
   for (var i = 0; i < n; i++) {
@@ -523,12 +591,21 @@ Float64List forceDirectedFlat(
       dx[b] += fx;
       dy[b] += fy;
     }
+    // Gentle centre gravity so edge-less nodes settle in a loose cloud around
+    // the connected core instead of being flung to the frame border.
+    const gravity = 0.04;
+    for (var i = 0; i < n; i++) {
+      dx[i] += (cx - px[i]) * gravity;
+      dy[i] += (cy - py[i]) * gravity;
+    }
     for (var i = 0; i < n; i++) {
       final d = math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]);
       if (d > 0) {
         final lim = math.min(d, temp);
-        px[i] = (px[i] + dx[i] / d * lim).clamp(0.0, width);
-        py[i] = (py[i] + dy[i] / d * lim).clamp(0.0, height);
+        // No clamp: centre gravity keeps the layout bounded, and the caller
+        // fits the canvas to the actual result (so nothing piles on a border).
+        px[i] += dx[i] / d * lim;
+        py[i] += dy[i] / d * lim;
       }
     }
     temp *= 0.95; // cool
