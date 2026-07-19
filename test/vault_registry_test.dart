@@ -292,6 +292,42 @@ void main() {
     expect(restored.readingNightMode, isTrue);
   });
 
+  test('article-shelf prefs persist through save and reload', () async {
+    final base = await Directory.systemTemp.createTemp('tylog_shelf_prefs_');
+    addTearDown(() => base.delete(recursive: true));
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          pathProvider,
+          (call) async => call.method == 'getApplicationDocumentsDirectory'
+              ? base.path
+              : null,
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProvider, null),
+    );
+
+    final vault = await Directory('${base.path}/vault').create();
+    final file = File('${base.path}/vaults.json');
+    final entry = VaultEntry(id: 'vault', name: 'Vault', path: vault.path);
+    await file.writeAsString(
+      jsonEncode({
+        'version': 3,
+        'active': entry.id,
+        'onboardingComplete': true,
+        'vaults': [entry.toJson()],
+      }),
+    );
+
+    final registry = await VaultRegistry.load();
+    expect(registry.shelfPrefs, isEmpty);
+    await registry.updateShelfPrefs({'status': 'unread', 'sort': 'relevance'});
+
+    final restored = await VaultRegistry.load();
+    expect(restored.shelfPrefs, {'status': 'unread', 'sort': 'relevance'});
+  });
+
   test(
     'registry reads legacy paths and writes typed Android tree locations',
     () {

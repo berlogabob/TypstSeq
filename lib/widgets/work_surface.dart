@@ -211,20 +211,26 @@ class LibraryView extends StatelessWidget {
     required this.onOpenDay,
     required this.onSetTaskStatus,
     required this.onSetReadStatus,
+    required this.onSetRelevance,
     required this.onCreateNote,
     required this.onCreateEntity,
     required this.onImportMarkdownArticles,
     required this.onReadPath,
     required this.onDeleteArticle,
+    this.shelfPrefs = const {},
+    this.onShelfPrefsChanged,
   });
 
   final VaultIndex? index;
   final bool indexing;
   final Map<String, double> progressByPath;
+  final Map<String, String> shelfPrefs;
+  final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
+  final Future<void> Function(NoteRef note, String relevance) onSetRelevance;
   final ValueChanged<String> onCreateNote;
   final VoidCallback onCreateEntity;
   final Future<void> Function() onImportMarkdownArticles;
@@ -259,8 +265,11 @@ class LibraryView extends StatelessWidget {
                 progressByPath: progressByPath,
                 onReadPath: onReadPath,
                 onSetReadStatus: onSetReadStatus,
+                onSetRelevance: onSetRelevance,
                 onDeleteArticle: onDeleteArticle,
                 onImportMarkdownArticles: onImportMarkdownArticles,
+                shelfPrefs: shelfPrefs,
+                onShelfPrefsChanged: onShelfPrefsChanged,
               ),
               _PrimaryTasksView(
                 tasks: index?.tasks ?? const <TaskRef>[],
@@ -383,15 +392,21 @@ class _ArticlesShelf extends StatefulWidget {
     required this.progressByPath,
     required this.onReadPath,
     required this.onSetReadStatus,
+    required this.onSetRelevance,
     required this.onDeleteArticle,
     required this.onImportMarkdownArticles,
+    required this.shelfPrefs,
+    required this.onShelfPrefsChanged,
   });
 
   final VaultIndex? index;
   final bool indexing;
   final Map<String, double> progressByPath;
+  final Map<String, String> shelfPrefs;
+  final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final ValueChanged<String> onReadPath;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
+  final Future<void> Function(NoteRef note, String relevance) onSetRelevance;
   final Future<void> Function(NoteRef note) onDeleteArticle;
   final Future<void> Function() onImportMarkdownArticles;
 
@@ -400,21 +415,35 @@ class _ArticlesShelf extends StatefulWidget {
 }
 
 class _ArticlesShelfState extends State<_ArticlesShelf> {
-  // ponytail: last-choice memory is per app run only; persist to vaults.json
-  // if users ask for it to survive restarts.
-  static String? _lastStatusFilter;
-  static String _lastSort = 'recent';
-  static String _lastGroupBy = 'none';
-
   final _query = TextEditingController();
-  String? statusFilter = _lastStatusFilter;
-  String sort = _lastSort;
-  String groupBy = _lastGroupBy;
+  String? statusFilter;
+  String? relevanceFilter;
+  String sort = 'recent';
+  String groupBy = 'none';
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.shelfPrefs; // hydrate persisted choices
+    statusFilter = p['status'];
+    relevanceFilter = p['relevance'];
+    sort = p['sort'] ?? 'recent';
+    groupBy = p['group'] ?? 'none';
+  }
+
+  /// Persist the current filter/sort/group so they survive an app restart.
+  void _persist() => widget.onShelfPrefsChanged?.call({
+    'status': ?statusFilter,
+    'relevance': ?relevanceFilter,
+    'sort': sort,
+    'group': groupBy,
+  });
 
   static const _sortLabels = {
     'recent': 'Recently updated',
     'progress': 'Reading progress',
     'title': 'Title',
+    'relevance': 'Relevance',
   };
   static const _groupLabels = {
     'none': 'No grouping',
@@ -433,6 +462,15 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   /// (unread → skimmed → read → extracted → cited).
   static String _bucket(NoteRef note) =>
       articleStatusStage(note.properties['status'] as String?);
+
+  /// high > medium > low > unrated, for the relevance sort.
+  static int _relevanceRank(NoteRef note) =>
+      switch (note.properties['relevance']) {
+        'high' => 3,
+        'medium' => 2,
+        'low' => 1,
+        _ => 0,
+      };
 
   String? _source(NoteRef note) {
     final url = note.properties['url'] as String?;
@@ -479,9 +517,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     for (final note in searched) {
       counts[_bucket(note)] = (counts[_bucket(note)] ?? 0) + 1;
     }
-    final filtered = statusFilter == null
-        ? searched
-        : searched.where((note) => _bucket(note) == statusFilter).toList();
+    final filtered = searched.where((note) {
+      if (statusFilter != null && _bucket(note) != statusFilter) return false;
+      if (relevanceFilter != null &&
+          note.properties['relevance'] != relevanceFilter) {
+        return false;
+      }
+      return true;
+    }).toList();
     filtered.sort(switch (sort) {
       'progress' => (a, b) => (widget.progressByPath[b.path] ?? 0).compareTo(
         widget.progressByPath[a.path] ?? 0,
@@ -489,6 +532,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       'title' => (a, b) => a.title.toLowerCase().compareTo(
         b.title.toLowerCase(),
       ),
+      'relevance' => (a, b) => _relevanceRank(b).compareTo(_relevanceRank(a)),
       _ => (a, b) => (b.modifiedMillis ?? 0).compareTo(a.modifiedMillis ?? 0),
     });
     final groups = <(String, List<NoteRef>)>[];
@@ -556,7 +600,10 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 tooltip: 'Sort: ${_sortLabels[sort]}',
                 icon: const Icon(Icons.sort),
                 initialValue: sort,
-                onSelected: (value) => setState(() => sort = _lastSort = value),
+                onSelected: (value) {
+                  setState(() => sort = value);
+                  _persist();
+                },
                 itemBuilder: (_) => [
                   for (final entry in _sortLabels.entries)
                     PopupMenuItem(value: entry.key, child: Text(entry.value)),
@@ -567,8 +614,10 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 tooltip: 'Grouping: ${_groupLabels[groupBy]}',
                 icon: const Icon(Icons.workspaces_outline),
                 initialValue: groupBy,
-                onSelected: (value) =>
-                    setState(() => groupBy = _lastGroupBy = value),
+                onSelected: (value) {
+                  setState(() => groupBy = value);
+                  _persist();
+                },
                 itemBuilder: (_) => [
                   for (final entry in _groupLabels.entries)
                     PopupMenuItem(value: entry.key, child: Text(entry.value)),
@@ -590,9 +639,33 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                       '$label · ${value == null ? searched.length : counts[value]}',
                     ),
                     selected: statusFilter == value,
-                    onSelected: (_) => setState(
-                      () => statusFilter = _lastStatusFilter = value,
-                    ),
+                    onSelected: (_) {
+                      setState(() => statusFilter = value);
+                      _persist();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final (value, label) in <(String?, String)>[
+                  (null, 'Any relevance'),
+                  for (final r in relevanceOptions) (r, relevanceLabels[r]!),
+                ])
+                  ChoiceChip(
+                    label: Text(label),
+                    selected: relevanceFilter == value,
+                    onSelected: (_) {
+                      setState(() => relevanceFilter = value);
+                      _persist();
+                    },
                   ),
               ],
             ),
@@ -707,6 +780,15 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           backgroundColor: background,
           foregroundColor: foreground,
           onChanged: (next) => unawaited(widget.onSetReadStatus(note, next)),
+        ),
+        const SizedBox(width: 6),
+        PropertySelectChip(
+          value: note.properties['relevance'] as String?,
+          options: relevanceOptions,
+          labels: relevanceLabels,
+          tooltip: 'Set relevance',
+          placeholder: '★',
+          onChanged: (next) => unawaited(widget.onSetRelevance(note, next)),
         ),
       ],
     );

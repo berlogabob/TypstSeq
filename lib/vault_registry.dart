@@ -167,6 +167,7 @@ class VaultRegistry {
     this.onboardingComplete = true,
     this.readingFontScale = 1,
     this.readingNightMode = false,
+    this.shelfPrefs = const {},
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
 
@@ -176,6 +177,10 @@ class VaultRegistry {
   bool onboardingComplete;
   double readingFontScale;
   bool readingNightMode;
+
+  /// Article-shelf filter/sort/group choices, persisted so they survive an app
+  /// restart (e.g. `{'status': 'unread', 'sort': 'relevance'}`).
+  Map<String, String> shelfPrefs;
 
   /// Stable per-install identifier, used to name this device's reading-state
   /// file inside the vault (`_system/reading/<deviceId>.json`).
@@ -257,6 +262,11 @@ class VaultRegistry {
           onboardingComplete: json['onboardingComplete'] as bool? ?? true,
           readingFontScale: readingFontScale,
           readingNightMode: readingNightMode,
+          shelfPrefs:
+              (json['shelfPrefs'] as Map?)?.map(
+                (k, v) => MapEntry('$k', '$v'),
+              ) ??
+              const {},
           deviceId: storedDeviceId == null || storedDeviceId.isEmpty
               ? null
               : storedDeviceId,
@@ -393,6 +403,11 @@ class VaultRegistry {
     return save();
   }
 
+  Future<void> updateShelfPrefs(Map<String, String> prefs) {
+    shelfPrefs = prefs;
+    return save();
+  }
+
   Future<void> setCloud(VaultEntry entry, NextcloudConfig cloud) async {
     await cloud.saveSecret(vaultId: entry.id);
     final index = entries.indexWhere((item) => item.id == entry.id);
@@ -491,6 +506,7 @@ class VaultRegistry {
         'onboardingComplete': onboardingComplete,
         'readingFontScale': readingFontScale,
         'readingNightMode': readingNightMode,
+        'shelfPrefs': shelfPrefs,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),
     );

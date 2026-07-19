@@ -17,6 +17,10 @@ const articleStatusLabels = {
   'cited': 'Cited',
 };
 
+/// Relevance rating for triage — how much an article matters to the user's work.
+const relevanceOptions = ['high', 'medium', 'low'];
+const relevanceLabels = {'high': 'High', 'medium': 'Medium', 'low': 'Low'};
+
 /// Collapses any stored status string onto one of the five pipeline stages.
 /// Legacy import default `processed` and empty status are unread; the older
 /// `reading` in-progress state and unknown completion values count as read;
@@ -40,6 +44,7 @@ class PropertySelectChip extends StatelessWidget {
     required this.labels,
     required this.onChanged,
     this.tooltip,
+    this.placeholder,
     this.backgroundColor,
     this.foregroundColor,
   });
@@ -49,6 +54,10 @@ class PropertySelectChip extends StatelessWidget {
   final Map<String, String> labels;
   final ValueChanged<String> onChanged;
   final String? tooltip;
+
+  /// Shown when [value] is null/unknown (e.g. an unrated article), instead of
+  /// defaulting to the first option's label.
+  final String? placeholder;
   final Color? backgroundColor;
   final Color? foregroundColor;
 
@@ -75,7 +84,7 @@ class PropertySelectChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
-            labels[value] ?? value ?? labels[options.first]!,
+            labels[value] ?? value ?? placeholder ?? labels[options.first]!,
             style: Theme.of(
               context,
             ).textTheme.labelMedium?.copyWith(color: foreground),

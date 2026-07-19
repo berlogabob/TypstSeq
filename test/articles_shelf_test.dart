@@ -26,7 +26,7 @@ void main() {
     kind: 'article',
     outgoingLinks: [],
     tags: ['ai'],
-    properties: {'status': 'processed'},
+    properties: {'status': 'processed', 'relevance': 'high'},
     modifiedMillis: 3000,
   );
   const reading = NoteRef(
@@ -72,6 +72,7 @@ void main() {
         onOpenDay: (_) {},
         onSetTaskStatus: (_, _) async {},
         onSetReadStatus: (_, _) async {},
+        onSetRelevance: (_, _) async {},
         onCreateNote: (_) {},
         onCreateEntity: () {},
         onImportMarkdownArticles: () async {},
@@ -115,6 +116,22 @@ void main() {
     await tester.tap(find.text('Unread · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Fresh'), findsOneWidget);
+    expect(find.text('Done'), findsNothing);
+  });
+
+  testWidgets('articles shelf: relevance filter narrows to matching articles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(shelf());
+    await tester.tap(find.text('Articles'));
+    await tester.pumpAndSettle();
+
+    // Only Fresh is relevance:high. The filter ChoiceChip is distinct from the
+    // per-row relevance PropertySelectChip, so target the ChoiceChip.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'High'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fresh'), findsOneWidget);
+    expect(find.text('Halfway'), findsNothing);
     expect(find.text('Done'), findsNothing);
   });
 }

@@ -1561,6 +1561,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _rebuildIndex();
   }
 
+  Future<void> _setRelevance(NoteRef note, String relevance) async {
+    final v = vault;
+    if (v == null) return;
+    final source = await v.storage.readText(note.path);
+    await v.saveNote(
+      note.path,
+      replaceNoteProperty(source, 'relevance', relevance),
+    );
+    await _rebuildIndex();
+  }
+
   String? _pathForLink(String title) {
     final ix = index;
     return ix == null ? null : resolveLinkPath(ix, title);
@@ -3305,6 +3316,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
         onSetTaskStatus: _setTaskStatus,
         onSetReadStatus: _setReadStatus,
+        onSetRelevance: _setRelevance,
+        shelfPrefs: vaultRegistry?.shelfPrefs ?? const {},
+        onShelfPrefsChanged: (prefs) =>
+            unawaited(vaultRegistry?.updateShelfPrefs(prefs) ?? Future.value()),
         onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
         onCreateEntity: () => unawaited(_createEntity()),
         onImportMarkdownArticles: _importMarkdownArticles,
