@@ -346,60 +346,43 @@ void main() {
     expect(stats.hubPaths, ['hub', 'a']);
   });
 
-  test('graphPositions uses stable link-distance rings', () {
+  test('graphPositions is deterministic and clusters connected nodes', () {
     const graph = NoteGraph(
-      nodes: [
-        GraphNode(path: 'a.typ', title: 'A'),
-        GraphNode(path: 'b.typ', title: 'B'),
-        GraphNode(path: 'c.typ', title: 'C'),
-        GraphNode(path: 'd.typ', title: 'D'),
-      ],
-      edges: [
-        GraphEdge(from: 'a.typ', to: 'b.typ'),
-        GraphEdge(from: 'b.typ', to: 'c.typ'),
-      ],
-    );
-
-    final positions = graphPositions(graph, 'a.typ', const Size(800, 800));
-    const center = Offset(400, 400);
-
-    expect(positions['a.typ'], center);
-    expect((positions['b.typ']! - center).distance, 110);
-    expect((positions['c.typ']! - center).distance, 220);
-    expect((positions['d.typ']! - center).distance, 330);
-    expect(positions.values.toSet(), hasLength(4));
-  });
-
-  test('graph canvas grows for crowded and deep rings', () {
-    final crowded = NoteGraph(
-      nodes: [
-        const GraphNode(path: 'root', title: 'Root'),
-        for (var i = 0; i < 20; i++) GraphNode(path: '$i', title: '$i'),
-      ],
-      edges: [for (var i = 0; i < 20; i++) GraphEdge(from: 'root', to: '$i')],
-    );
-    const deep = NoteGraph(
       nodes: [
         GraphNode(path: 'a', title: 'A'),
         GraphNode(path: 'b', title: 'B'),
         GraphNode(path: 'c', title: 'C'),
-        GraphNode(path: 'd', title: 'D'),
+        GraphNode(path: 'x', title: 'X'), // isolated — no edges
       ],
       edges: [
         GraphEdge(from: 'a', to: 'b'),
         GraphEdge(from: 'b', to: 'c'),
-        GraphEdge(from: 'c', to: 'd'),
+        GraphEdge(from: 'a', to: 'c'),
       ],
     );
+    const size = Size(1000, 1000);
 
-    expect(
-      graphCanvasSize(crowded, 'root', const Size.square(300)).width,
-      greaterThan(500),
+    // Deterministic (seeded) so it never jitters between rebuilds.
+    final p1 = graphPositions(graph, null, size);
+    final p2 = graphPositions(graph, null, size);
+    expect(p1, p2);
+    expect(p1.values.toSet(), hasLength(4)); // no overlaps
+
+    // The connected triangle clusters tighter than the isolated node.
+    double d(String u, String v) => (p1[u]! - p1[v]!).distance;
+    expect(d('a', 'b'), lessThan(d('a', 'x')));
+    expect(d('b', 'c'), lessThan(d('c', 'x')));
+  });
+
+  test('graphCanvasSize grows with node count, never below the viewport', () {
+    NoteGraph g(int n) => NoteGraph(
+      nodes: [for (var i = 0; i < n; i++) GraphNode(path: '$i', title: '$i')],
+      edges: const [],
     );
-    expect(
-      graphCanvasSize(deep, 'a', const Size.square(300)).width,
-      greaterThan(700),
-    );
+    final small = graphCanvasSize(g(10), null, const Size.square(300)).width;
+    final big = graphCanvasSize(g(400), null, const Size.square(300)).width;
+    expect(big, greaterThan(small));
+    expect(graphCanvasSize(g(4), null, const Size.square(900)).width, 900);
   });
 
   testWidgets('graph selects before opening and resets its viewport', (

@@ -59,6 +59,62 @@ class _GraphViewState extends State<GraphView> {
   Set<String>? _focusFilter;
   int _hubCycleIndex = 0;
 
+  // Cached force-directed layout — recomputed only when the node set changes,
+  // so a tap/chip toggle never re-simulates (and never jitters).
+  Map<String, Offset>? _positions;
+  Size? _positionsCanvas;
+  bool _laying = false;
+  int _layoutToken = 0;
+
+  bool get _isConceptGraph =>
+      widget.graph.nodes.isNotEmpty &&
+      widget.graph.nodes.every((n) => n.kind == GraphNodeKind.concept);
+
+  void _invalidateLayout() {
+    _positions = null;
+    _positionsCanvas = null;
+    _lastCanvas = null;
+    _laying = false;
+    _layoutToken++;
+  }
+
+  /// Computes positions once per node-set: synchronously for small graphs
+  /// (instant, no spinner), in a background isolate for large ones (`All files`
+  /// ~1700+) so the UI thread never blocks.
+  void _ensureLayout(NoteGraph graph, Size viewport) {
+    if (_positions != null || _laying) return;
+    final canvas = graphCanvasSize(graph, widget.currentPath, viewport);
+    final edges = edgeIndexPairs(graph);
+    final n = graph.nodes.length;
+    final iters = iterationsFor(n);
+    if (n <= 400) {
+      final flat = forceDirectedFlat(n, edges, canvas.width, canvas.height, iters);
+      _positions = {
+        for (var i = 0; i < n; i++)
+          graph.nodes[i].path: Offset(flat[2 * i], flat[2 * i + 1]),
+      };
+      _positionsCanvas = canvas;
+      return;
+    }
+    _laying = true;
+    final token = _layoutToken;
+    final paths = [for (final node in graph.nodes) node.path];
+    compute(
+      runForceLayout,
+      LayoutRequest(n, edges, canvas.width, canvas.height, iters),
+    ).then((flat) {
+      if (!mounted || token != _layoutToken) return;
+      setState(() {
+        _laying = false;
+        _positions = {
+          for (var i = 0; i < n; i++)
+            paths[i]: Offset(flat[2 * i], flat[2 * i + 1]),
+        };
+        _positionsCanvas = canvas;
+      });
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -70,14 +126,14 @@ class _GraphViewState extends State<GraphView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentPath != widget.currentPath) {
       _selectedPath = widget.currentPath;
-      _lastCanvas = null;
+      _invalidateLayout();
     } else if (!_sameNodes(oldWidget.graph.nodes, widget.graph.nodes)) {
       _selectedPath =
           widget.graph.nodes.any((node) => node.path == _selectedPath)
           ? _selectedPath
           : widget.currentPath;
-      _lastCanvas = null;
       _focusFilter = null;
+      _invalidateLayout();
     }
   }
 
@@ -139,11 +195,16 @@ class _GraphViewState extends State<GraphView> {
               ),
               if (stats.orphanPaths.isNotEmpty)
                 ActionChip(
-                  label: Text('${stats.orphanPaths.length} orphan notes'),
+                  // "topics" when the graph is concepts (Concept map), else notes.
+                  label: Text(
+                    '${stats.orphanPaths.length} '
+                    '${_isConceptGraph ? 'isolated topics' : 'orphan notes'}',
+                  ),
                   onPressed: () => setState(() {
                     _focusFilter = _focusFilter == null
                         ? stats.orphanPaths.toSet()
                         : null;
+                    _invalidateLayout();
                   }),
                 ),
               if (stats.hubPaths.isNotEmpty)
@@ -158,7 +219,10 @@ class _GraphViewState extends State<GraphView> {
               if (_focusFilter != null)
                 Chip(
                   label: const Text('Filtered'),
-                  onDeleted: () => setState(() => _focusFilter = null),
+                  onDeleted: () => setState(() {
+                    _focusFilter = null;
+                    _invalidateLayout();
+                  }),
                 ),
             ],
           ),
@@ -187,16 +251,12 @@ class _GraphViewState extends State<GraphView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewport = Size(constraints.maxWidth, constraints.maxHeight);
-        final canvas = graphCanvasSize(
-          displayGraph,
-          widget.currentPath,
-          viewport,
-        );
-        final positions = graphPositions(
-          displayGraph,
-          widget.currentPath,
-          canvas,
-        );
+        _ensureLayout(displayGraph, viewport);
+        final positions = _positions;
+        final canvas = _positionsCanvas;
+        if (positions == null || canvas == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
         _fitWhenLayoutChanges(viewport, canvas);
         return Stack(
           children: [
@@ -279,92 +339,162 @@ class _GraphViewState extends State<GraphView> {
       List.generate(a.length, (i) => a[i].path == b[i].path).every((v) => v);
 }
 
+/// Positions for a graph via a force-directed layout, keyed by node path.
+/// `focalPath` is accepted for API stability but the layout self-centres.
 Map<String, Offset> graphPositions(
   NoteGraph graph,
   String? focalPath,
   Size size,
 ) {
   final nodes = graph.nodes;
-  final usableWidth = size.width.isFinite ? size.width : 0.0;
-  final usableHeight = size.height.isFinite ? size.height : 0.0;
-  final center = Offset(usableWidth / 2, usableHeight / 2);
   if (nodes.isEmpty) return const {};
-
-  final rings = _graphRings(graph, focalPath);
-  final root = rings[0]!.single;
-  final positions = <String, Offset>{root: center};
-  for (final entry in rings.entries.where((entry) => entry.key > 0)) {
-    final ring = entry.value;
-    final radius = _ringRadius(entry.key, ring.length);
-    for (var i = 0; i < ring.length; i++) {
-      final angle = -math.pi / 2 + 2 * math.pi * i / ring.length;
-      positions[ring[i]] = center + Offset.fromDirection(angle, radius);
-    }
-  }
-  return positions;
+  final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
+  final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
+  final flat = forceDirectedFlat(
+    nodes.length,
+    edgeIndexPairs(graph),
+    w,
+    h,
+    iterationsFor(nodes.length),
+  );
+  return {
+    for (var i = 0; i < nodes.length; i++)
+      nodes[i].path: Offset(flat[2 * i], flat[2 * i + 1]),
+  };
 }
 
+/// A square canvas that grows with node count so a force layout has room to
+/// spread (no ring radii any more).
 Size graphCanvasSize(NoteGraph graph, String? focalPath, Size viewport) {
-  if (graph.nodes.isEmpty) return viewport;
-  final rings = _graphRings(graph, focalPath);
-  final radius = rings.entries.fold(
-    0.0,
-    (largest, entry) =>
-        math.max(largest, _ringRadius(entry.key, entry.value.length)),
-  );
-  final dimension = math.max(
+  final n = graph.nodes.length;
+  if (n == 0) return viewport;
+  final dim = math.max(
     math.max(viewport.width, viewport.height),
-    2 * (radius + GraphPainter.nodeRadius + 60),
+    math.sqrt(n) * 160,
   );
-  return Size.square(dimension);
+  return Size.square(dim);
 }
 
-Map<int, List<String>> _graphRings(NoteGraph graph, String? focalPath) {
-  final paths = graph.nodes.map((node) => node.path).toSet();
-  final root = paths.contains(focalPath)
-      ? focalPath!
-      : (paths.toList()..sort()).first;
-  final neighbors = {for (final path in paths) path: <String>{}};
-  for (final edge in graph.edges) {
-    if (paths.contains(edge.from) && paths.contains(edge.to)) {
-      neighbors[edge.from]!.add(edge.to);
-      neighbors[edge.to]!.add(edge.from);
-    }
-  }
+/// Fewer iterations for big graphs so `All files` (~1700+) stays affordable.
+int iterationsFor(int n) => n > 600 ? 60 : 120;
 
-  final distances = <String, int>{root: 0};
-  var frontier = <String>{root};
-  while (frontier.isNotEmpty) {
-    final next = <String>{};
-    for (final path in frontier) {
-      for (final neighbor in neighbors[path]!) {
-        if (!distances.containsKey(neighbor)) {
-          distances[neighbor] = distances[path]! + 1;
-          next.add(neighbor);
+/// Edges as index pairs into `graph.nodes` (isolate-safe; drops dangling edges).
+List<(int, int)> edgeIndexPairs(NoteGraph graph) {
+  final index = {
+    for (var i = 0; i < graph.nodes.length; i++) graph.nodes[i].path: i,
+  };
+  return [
+    for (final e in graph.edges)
+      if (index[e.from] case final a?)
+        if (index[e.to] case final b?) (a, b),
+  ];
+}
+
+/// Fruchterman–Reingold layout. Pure + deterministically seeded, so it can run
+/// in a background isolate and never jitters between rebuilds. O(n²·iterations);
+/// returns a flat `[x0,y0,x1,y1,…]` (isolate-sendable) for `n` nodes in a
+/// `width × height` frame. `edges` are index pairs into the node list.
+/// ponytail: O(n²) repulsion; fine to ~2k nodes. For 10k, switch to Barnes–Hut.
+Float64List forceDirectedFlat(
+  int n,
+  List<(int, int)> edges,
+  double width,
+  double height,
+  int iterations,
+) {
+  final out = Float64List(2 * n);
+  if (n == 0) return out;
+  if (n == 1) {
+    out[0] = width / 2;
+    out[1] = height / 2;
+    return out;
+  }
+  final rng = math.Random(42);
+  final k = math.sqrt(width * height / n); // ideal node spacing
+  final px = Float64List(n);
+  final py = Float64List(n);
+  for (var i = 0; i < n; i++) {
+    final a = 2 * math.pi * i / n;
+    px[i] = width / 2 + math.cos(a) * width / 3 + rng.nextDouble();
+    py[i] = height / 2 + math.sin(a) * height / 3 + rng.nextDouble();
+  }
+  final dx = Float64List(n);
+  final dy = Float64List(n);
+  var temp = width / 10;
+  for (var iter = 0; iter < iterations; iter++) {
+    for (var i = 0; i < n; i++) {
+      dx[i] = 0;
+      dy[i] = 0;
+    }
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 1; j < n; j++) {
+        var ddx = px[i] - px[j];
+        var ddy = py[i] - py[j];
+        var dist = math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist < 0.01) {
+          ddx = rng.nextDouble() - 0.5;
+          ddy = rng.nextDouble() - 0.5;
+          dist = 0.01;
         }
+        final rep = k * k / dist; // repulsion
+        final fx = ddx / dist * rep;
+        final fy = ddy / dist * rep;
+        dx[i] += fx;
+        dy[i] += fy;
+        dx[j] -= fx;
+        dy[j] -= fy;
       }
     }
-    frontier = next;
+    for (final (a, b) in edges) {
+      var ddx = px[a] - px[b];
+      var ddy = py[a] - py[b];
+      var dist = math.sqrt(ddx * ddx + ddy * ddy);
+      if (dist < 0.01) dist = 0.01;
+      final att = dist * dist / k; // attraction along edges
+      final fx = ddx / dist * att;
+      final fy = ddy / dist * att;
+      dx[a] -= fx;
+      dy[a] -= fy;
+      dx[b] += fx;
+      dy[b] += fy;
+    }
+    for (var i = 0; i < n; i++) {
+      final d = math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]);
+      if (d > 0) {
+        final lim = math.min(d, temp);
+        px[i] = (px[i] + dx[i] / d * lim).clamp(0.0, width);
+        py[i] = (py[i] + dy[i] / d * lim).clamp(0.0, height);
+      }
+    }
+    temp *= 0.95; // cool
   }
-  final disconnectedRing = (distances.values.fold(0, math.max)) + 1;
-  for (final path in paths) {
-    distances.putIfAbsent(path, () => disconnectedRing);
+  for (var i = 0; i < n; i++) {
+    out[2 * i] = px[i];
+    out[2 * i + 1] = py[i];
   }
-
-  final rings = <int, List<String>>{};
-  for (final entry in distances.entries) {
-    rings.putIfAbsent(entry.value, () => []).add(entry.key);
-  }
-  for (final ring in rings.values) {
-    ring.sort();
-  }
-  return rings;
+  return out;
 }
 
-double _ringRadius(int depth, int nodes) => math.max(
-  110.0 * depth,
-  nodes * GraphPainter.minimumNodeSpacing / (2 * math.pi),
-);
+/// Isolate-sendable layout request (primitives only).
+@immutable
+class LayoutRequest {
+  const LayoutRequest(
+    this.nodeCount,
+    this.edges,
+    this.width,
+    this.height,
+    this.iterations,
+  );
+  final int nodeCount;
+  final List<(int, int)> edges;
+  final double width;
+  final double height;
+  final int iterations;
+}
+
+/// Top-level entry for `compute()` — runs the layout off the UI thread.
+Float64List runForceLayout(LayoutRequest r) =>
+    forceDirectedFlat(r.nodeCount, r.edges, r.width, r.height, r.iterations);
 
 class GraphPainter extends CustomPainter {
   const GraphPainter({
