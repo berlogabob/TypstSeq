@@ -10,7 +10,8 @@ import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
 
-export 'editor_autocomplete.dart' show MentionSuggestion;
+export 'editor_autocomplete.dart'
+    show MentionSuggestion, MentionKind, AutocompleteTriggerKind;
 
 const _object = '\uFFFC';
 
@@ -1652,7 +1653,11 @@ class TyLogRichEditor extends StatefulWidget {
   /// Resolves candidates for the inline "@" mention popup. Kept decoupled
   /// from tylog_core's search index — the parent maps its own search
   /// results into [MentionSuggestion]s.
-  final Future<List<MentionSuggestion>> Function(String query)? onMentionQuery;
+  final Future<List<MentionSuggestion>> Function(
+    String query,
+    AutocompleteTriggerKind kind,
+  )?
+  onMentionQuery;
 
   /// Actions offered by the inline "/" command palette. Defaults to the
   /// same action set as the Magic bottom-sheet menu, in the same order.
@@ -1793,7 +1798,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final previous = _autocomplete.value;
     final samePosition =
         previous != null &&
-        previous.trigger.kind == AutocompleteTriggerKind.mention &&
+        _isMentionLike(previous.trigger.kind) &&
         previous.trigger.start == trigger.start;
     _autocomplete.value = _AutocompleteState(
       trigger: trigger,
@@ -1828,11 +1833,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final onMentionQuery = widget.onMentionQuery;
     if (onMentionQuery == null) return;
     final token = ++_mentionQueryToken;
-    final results = await onMentionQuery(trigger.query);
+    final results = await onMentionQuery(trigger.query, trigger.kind);
     if (!mounted || token != _mentionQueryToken) return;
     final current = _autocomplete.value;
     if (current == null ||
-        current.trigger.kind != AutocompleteTriggerKind.mention ||
+        !_isMentionLike(current.trigger.kind) ||
         current.trigger.start != trigger.start) {
       return;
     }
@@ -1848,7 +1853,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void _moveHighlight(int delta) {
     final state = _autocomplete.value;
     if (state == null) return;
-    final count = state.trigger.kind == AutocompleteTriggerKind.mention
+    final count = _isMentionLike(state.trigger.kind)
         ? state.mentionItems.length
         : state.commandItems.length;
     if (count == 0) return;
@@ -1861,7 +1866,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void _activateHighlighted() {
     final state = _autocomplete.value;
     if (state == null) return;
-    if (state.trigger.kind == AutocompleteTriggerKind.mention) {
+    if (_isMentionLike(state.trigger.kind)) {
       if (state.highlighted < state.mentionItems.length) {
         _selectMention(state.mentionItems[state.highlighted]);
       }
@@ -1872,18 +1877,45 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     }
   }
 
+  // Wiki-links (`[[`) share the mention popup, query, and state machine.
+  static bool _isMentionLike(AutocompleteTriggerKind kind) =>
+      kind == AutocompleteTriggerKind.mention ||
+      kind == AutocompleteTriggerKind.wikiLink;
+
   void _selectMention(MentionSuggestion item) {
     final trigger = _autocomplete.value?.trigger;
     if (trigger == null) return;
     final caret = widget.controller.selection.baseOffset;
     _cancelAutocomplete();
-    widget.controller.selection = TextSelection(
-      baseOffset: trigger.start,
-      extentOffset: caret,
+    // Drop the "@query" / "[[query" text and insert on a collapsed caret so the
+    // snippet body comes from the chosen title, not the raw typed query (which
+    // would otherwise embed a literal "[[..." for a note link).
+    widget.controller.value = widget.controller.value.copyWith(
+      text: widget.controller.text.replaceRange(trigger.start, caret, ''),
+      selection: TextSelection.collapsed(offset: trigger.start),
+      composing: TextRange.empty,
     );
-    widget.controller.applyMagic(
-      MagicRequest(action: MagicAction.mention, id: item.id, value: item.title),
-    );
+    // `@` keeps its "@name" mention rendering; `[[` writes a plain note
+    // reference or a tag, so a wiki-link never leaves the "@" prefix behind.
+    final request = switch (item.kind) {
+      MentionKind.concept => MagicRequest(
+        action: MagicAction.tag,
+        value: item.id,
+      ),
+      MentionKind.note =>
+        trigger.kind == AutocompleteTriggerKind.wikiLink
+            ? MagicRequest(
+                action: MagicAction.noteLink,
+                id: item.id,
+                value: item.title,
+              )
+            : MagicRequest(
+                action: MagicAction.mention,
+                id: item.id,
+                value: item.title,
+              ),
+    };
+    widget.controller.applyMagic(request);
     focusNode.requestFocus();
   }
 
@@ -1947,7 +1979,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 constraints: const BoxConstraints(
                   maxHeight: _autocompleteRowHeight * _autocompleteMaxVisible,
                 ),
-                child: state.trigger.kind == AutocompleteTriggerKind.mention
+                child: _isMentionLike(state.trigger.kind)
                     ? _mentionList(state)
                     : _commandList(state),
               ),
@@ -1983,7 +2015,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           tileColor: index == state.highlighted
               ? Theme.of(context).colorScheme.surfaceContainerHighest
               : null,
-          leading: const Icon(Icons.alternate_email),
+          leading: Icon(
+            item.kind == MentionKind.concept
+                ? Icons.tag
+                : Icons.alternate_email,
+          ),
           title: Text(item.title),
           subtitle: Text(item.id),
           onTap: () => _selectMention(item),

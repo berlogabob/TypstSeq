@@ -85,4 +85,52 @@ void main() {
       expect(detectTrigger('/foo bar', 8), isNull);
     });
   });
+
+  group('detectTrigger wiki-links', () {
+    test('[[ alone triggers a wiki-link with an empty query', () {
+      final trigger = detectTrigger('[[', 2);
+      expect(trigger, isNotNull);
+      expect(trigger!.kind, AutocompleteTriggerKind.wikiLink);
+      expect(trigger.query, '');
+      expect(trigger.start, 0);
+    });
+
+    test('[[ESP32 triggers with query "ESP32"', () {
+      final trigger = detectTrigger('[[ESP32', 7);
+      expect(trigger!.kind, AutocompleteTriggerKind.wikiLink);
+      expect(trigger.query, 'ESP32');
+      expect(trigger.start, 0);
+    });
+
+    test('the query may contain spaces (Home Assistant)', () {
+      final trigger = detectTrigger('see [[Home Assist', 17);
+      expect(trigger!.kind, AutocompleteTriggerKind.wikiLink);
+      expect(trigger.query, 'Home Assist');
+      expect(trigger.start, 4);
+    });
+
+    test('the query may contain Unicode (Cyrillic)', () {
+      const text = '[[игровые движ';
+      final trigger = detectTrigger(text, text.length);
+      expect(trigger!.query, 'игровые движ');
+    });
+
+    test('a completed [[link]] does not re-trigger from after it', () {
+      expect(detectTrigger('[[ESP32]]', 9), isNull);
+    });
+
+    test('a newline between [[ and the caret cancels', () {
+      expect(detectTrigger('[[ESP32\nmore', 12), isNull);
+    });
+
+    test('a ] before the caret cancels', () {
+      expect(detectTrigger('[[ESP32] ', 9), isNull);
+    });
+
+    test('wiki-link takes precedence over @ inside the brackets', () {
+      final trigger = detectTrigger('[[@Fer', 6);
+      expect(trigger!.kind, AutocompleteTriggerKind.wikiLink);
+      expect(trigger.query, '@Fer');
+    });
+  });
 }

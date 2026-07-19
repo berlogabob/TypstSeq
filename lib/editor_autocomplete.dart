@@ -1,9 +1,13 @@
-/// Pure trigger-detection logic for the rich editor's inline "@"/"/"
+/// Pure trigger-detection logic for the rich editor's inline "@"/"/"/"[["
 /// autocomplete. Kept Flutter-widget-free so it can be unit tested without
 /// pumping a widget tree.
 library;
 
-enum AutocompleteTriggerKind { mention, command }
+enum AutocompleteTriggerKind { mention, command, wikiLink }
+
+/// What a wiki-link/mention candidate resolves to, so selection can emit the
+/// right Typst — `#tylog.ref-note(...)` for a note, `#tylog.tag(...)` for a tag.
+enum MentionKind { note, concept }
 
 class AutocompleteTrigger {
   const AutocompleteTrigger({
@@ -41,17 +45,27 @@ class AutocompleteTrigger {
 /// the rich editor only needs an id and a display title to build the
 /// `#tylog.ref-note(...)` snippet via [applyMagicEdit].
 class MentionSuggestion {
-  const MentionSuggestion({required this.id, required this.title});
+  const MentionSuggestion({
+    required this.id,
+    required this.title,
+    this.kind = MentionKind.note,
+  });
 
+  /// For a note, its note id; for a concept, the tag key (what goes inside
+  /// `#tylog.tag(...)`).
   final String id;
   final String title;
+  final MentionKind kind;
 
   @override
   bool operator ==(Object other) =>
-      other is MentionSuggestion && id == other.id && title == other.title;
+      other is MentionSuggestion &&
+      id == other.id &&
+      title == other.title &&
+      kind == other.kind;
 
   @override
-  int get hashCode => Object.hash(id, title);
+  int get hashCode => Object.hash(id, title, kind);
 }
 
 /// Scans backward from [caret] in [text] to see whether the caret is
@@ -67,6 +81,8 @@ class MentionSuggestion {
 ///   word characters immediately after the caret, the trigger is cancelled.
 AutocompleteTrigger? detectTrigger(String text, int caret) {
   if (caret < 0 || caret > text.length) return null;
+  final wiki = _detectWikiLink(text, caret);
+  if (wiki != null) return wiki;
   if (caret < text.length && _isWordChar(text.codeUnitAt(caret))) {
     // Caret sits inside a word, not at its end.
     return null;
@@ -89,6 +105,31 @@ AutocompleteTrigger? detectTrigger(String text, int caret) {
     query: text.substring(index + 1, caret),
     start: index,
   );
+}
+
+/// Detects an open `[[` wiki-link the caret sits inside, e.g. `[[Home Ass`.
+/// Unlike `@`/`/`, the query may contain spaces and Unicode (`[[игровые движки`),
+/// so it is delimited structurally, not by a word-char class.
+///
+/// Returns null unless, scanning back from [caret] on the current line, an
+/// unclosed `[[` is found first: a newline, a `]` (the link is closing/closed),
+/// or a stray `[` inside the query cancels it. The replaced range is
+/// `[start, caret)` where start is the `[[`.
+AutocompleteTrigger? _detectWikiLink(String text, int caret) {
+  for (var i = caret - 1; i >= 1; i--) {
+    final code = text.codeUnitAt(i);
+    if (code == 0x0a || code == 0x0d || code == 0x5d) return null; // \n \r ]
+    if (code == 0x5b && text.codeUnitAt(i - 1) == 0x5b) {
+      final query = text.substring(i + 1, caret);
+      if (query.contains('[')) return null;
+      return AutocompleteTrigger(
+        kind: AutocompleteTriggerKind.wikiLink,
+        query: query,
+        start: i - 1,
+      );
+    }
+  }
+  return null;
 }
 
 bool _isWordChar(int code) =>

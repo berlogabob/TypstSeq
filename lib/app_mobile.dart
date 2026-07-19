@@ -3384,15 +3384,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'normal' => TyLogRichEditor(
         controller: richController,
         onInsert: _showMagicMenu,
-        onMentionQuery: (query) async {
+        onMentionQuery: (query, kind) async {
           // Query the note index (populated the moment the vault opens), not
           // the full-text search index — the latter can take a while to finish
           // building on large SAF vaults, and mentions must resolve instantly.
           final q = query.trim().toLowerCase();
           if (q.isEmpty) return const <MentionSuggestion>[];
           bool matches(String s) => s.toLowerCase().startsWith(q);
-          final notes =
-              (index?.notes ?? const <NoteRef>[])
+          final notes = index?.notes ?? const <NoteRef>[];
+          final matchedNotes =
+              notes
                   .where(
                     (n) =>
                         matches(n.title) ||
@@ -3401,10 +3402,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   )
                   .toList()
                 ..sort((a, b) => a.title.compareTo(b.title));
-          return notes
+          final suggestions = matchedNotes
               .take(8)
               .map((n) => MentionSuggestion(id: n.id, title: n.title))
               .toList();
+          // `[[` also completes existing tags into concepts; `@` stays notes.
+          if (kind == AutocompleteTriggerKind.wikiLink) {
+            final tags =
+                <String>{for (final n in notes) ...n.tags}.where(matches).toList()
+                  ..sort();
+            suggestions.addAll(
+              tags.take(8).map(
+                (t) => MentionSuggestion(
+                  id: t,
+                  title: t,
+                  kind: MentionKind.concept,
+                ),
+              ),
+            );
+          }
+          return suggestions;
         },
         onCommandSelected: _runMagic,
       ),

@@ -1224,7 +1224,7 @@ void main() {
             body: TyLogRichEditor(
               controller: controller,
               onInsert: () async {},
-              onMentionQuery: (query) async {
+              onMentionQuery: (query, kind) async {
                 queries.add(query);
                 return const [
                   MentionSuggestion(
@@ -1275,6 +1275,109 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'typing [[ completes a note into a plain ref-note (no @ prefix)',
+    (tester) async {
+      String? saved;
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      AutocompleteTriggerKind? seenKind;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (query, kind) async {
+                seenKind = kind;
+                return const [
+                  MentionSuggestion(id: 'esp32-panel', title: 'ESP32 panel'),
+                  MentionSuggestion(
+                    id: 'esp32',
+                    title: 'esp32',
+                    kind: MentionKind.concept,
+                  ),
+                ];
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('rich-journal-editor')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('rich-journal-editor')),
+        '[[ESP',
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump();
+
+      expect(seenKind, AutocompleteTriggerKind.wikiLink);
+      await tester.tap(
+        find.byKey(const Key('autocomplete-mention-esp32-panel')),
+      );
+      await tester.pumpAndSettle();
+
+      // Plain note reference — no leftover "[[" and no "@" prefix.
+      expect(saved, contains('#tylog.ref-note("esp32-panel")[ESP32 panel]'));
+      expect(saved, isNot(contains('[[')));
+      expect(saved, isNot(contains('@')));
+    },
+  );
+
+  testWidgets('typing [[ completes an existing tag into #tylog.tag', (
+    tester,
+  ) async {
+    String? saved;
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(
+            controller: controller,
+            onInsert: () async {},
+            onMentionQuery: (query, kind) async => const [
+              MentionSuggestion(
+                id: 'esp32',
+                title: 'esp32',
+                kind: MentionKind.concept,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('rich-journal-editor')),
+      '[[esp',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('autocomplete-mention-esp32')));
+    await tester.pumpAndSettle();
+
+    expect(saved, contains('#tylog.tag("esp32")'));
+    expect(saved, isNot(contains('[[')));
+  });
 
   test('collapsed strike/underline/mono style subsequently typed text', () {
     void checkPrefix(void Function(TyLogEditingController) toggle, String open) {
