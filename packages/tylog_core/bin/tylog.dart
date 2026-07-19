@@ -28,8 +28,39 @@ Future<int> runTylog(List<String> arguments) async {
     'index' => _index(args),
     'doctor' => _doctor(args),
     'export' => _export(args),
+    'normalize-links' => _normalizeLinks(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _normalizeLinks(List<String> args) async {
+  final apply = args.remove('--apply');
+  if (args.length > 1 || args.any((arg) => arg.startsWith('--'))) {
+    throw _UsageException('normalize-links accepts [vault] [--apply]');
+  }
+  final root = Directory(args.firstOrNull ?? '.').absolute;
+  final storage = LocalVaultStorage(root);
+  final entries = await storage.list(recursive: true);
+  var changed = 0;
+  for (final entry in entries) {
+    if (entry.isDirectory ||
+        !entry.path.endsWith('.typ') ||
+        entry.path.startsWith('_')) {
+      continue; // skip _system/_index and non-notes
+    }
+    final source = await storage.readText(entry.path);
+    final migrated = migrateLegacyLinks(source);
+    if (migrated == source) continue;
+    changed++;
+    stdout.writeln('${apply ? 'migrated' : 'would migrate'}: ${entry.path}');
+    if (apply) await storage.writeText(entry.path, migrated);
+  }
+  stdout.writeln(
+    apply
+        ? 'Migrated $changed file(s).'
+        : 'Would migrate $changed file(s). Re-run with --apply to write.',
+  );
+  return 0;
 }
 
 Future<int> _init(List<String> args) async {
@@ -255,4 +286,5 @@ Usage:
   tylog init [vault=.]
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
-  tylog export <file.typ> [output.pdf]''';
+  tylog export <file.typ> [output.pdf]
+  tylog normalize-links [vault=.] [--apply]''';

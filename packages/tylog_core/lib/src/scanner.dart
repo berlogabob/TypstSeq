@@ -1030,7 +1030,7 @@ NoteRef _queriedNote(
       ..._legacyTags(source),
     }),
     aliases: _sorted(_strings(note['aliases']).toSet()),
-    outgoingLinks: _sorted(metadata.links.toSet()),
+    outgoingLinks: _sorted({...metadata.links, ..._legacySources(source)}),
     fileRefs: _sorted(
       metadata.attachments
           .map((item) => item['path']?.toString() ?? '')
@@ -1038,15 +1038,17 @@ NoteRef _queriedNote(
           .toSet(),
     ),
     citations: _citations(source),
-    dateRefs: metadata.dates
-        .where((item) => item['date'] != null)
-        .map(
-          (item) => DateRef(
-            date: item['date'].toString(),
-            text: _cleanContentText(item['text']),
+    dateRefs: [
+      ...metadata.dates
+          .where((item) => item['date'] != null)
+          .map(
+            (item) => DateRef(
+              date: item['date'].toString(),
+              text: _cleanContentText(item['text']),
+            ),
           ),
-        )
-        .toList(),
+      ..._legacyDates(source),
+    ],
     attachments: [
       for (final item in metadata.attachments)
         if (item['path'] != null)
@@ -1090,18 +1092,23 @@ NoteRef _fallbackNote(
       ..._legacyTags(source),
     }),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
-    outgoingLinks: _sorted({..._firstArguments(calls, 'tylog.ref-note')}),
+    outgoingLinks: _sorted({
+      ..._firstArguments(calls, 'tylog.ref-note'),
+      ..._legacySources(source),
+    }),
     fileRefs: _sorted({..._firstArguments(calls, 'tylog.attachment')}),
     citations: _citations(source),
-    dateRefs: dateCalls
-        .map(
-          (call) => DateRef(
-            date: _quoted.firstMatch(call.source)?.group(1) ?? '',
-            text: _bracketBody(call.source),
-          ),
-        )
-        .where((item) => item.date.isNotEmpty)
-        .toList(),
+    dateRefs: [
+      ...dateCalls
+          .map(
+            (call) => DateRef(
+              date: _quoted.firstMatch(call.source)?.group(1) ?? '',
+              text: _bracketBody(call.source),
+            ),
+          )
+          .where((item) => item.date.isNotEmpty),
+      ..._legacyDates(source),
+    ],
     attachments: [
       for (final call in attachmentCalls)
         if (_quoted.firstMatch(call.source)?.group(1) case final path?)
@@ -1174,7 +1181,37 @@ String? _field(String source, String name) =>
         ?.replaceAllMapped(RegExp(r'\\(.)'), (match) => match.group(1)!);
 
 final _legacyTagLine = RegExp(r'^\s*tags::\s*(.+)$', multiLine: true);
+final _legacyDateLine = RegExp(r'^\s*journal-day::\s*(.+)$', multiLine: true);
+final _legacySourceLine = RegExp(r'^\s*source::\s*(.+)$', multiLine: true);
 final _wikiLink = RegExp(r'\[\[([^\]]+)\]\]');
+final _isoDate = RegExp(r'\d{4}-\d{2}-\d{2}');
+
+/// Recovers date refs from legacy `journal-day:: [[YYYY-MM-DD]]` lines so an
+/// imported article still shows up on that day's calendar/timeline.
+List<DateRef> _legacyDates(String source) => [
+  for (final line in _legacyDateLine.allMatches(source))
+    for (final m in _isoDate.allMatches(line.group(1)!))
+      DateRef(date: m.group(0)!),
+];
+
+/// Recovers `source:: [[origin]]` legacy lines as outgoing links (an article's
+/// source entity), so the relationship is not lost.
+Set<String> _legacySources(String source) {
+  final result = <String>{};
+  for (final line in _legacySourceLine.allMatches(source)) {
+    final value = line.group(1)!;
+    final links = _wikiLink
+        .allMatches(value)
+        .map((m) => m.group(1)!.trim())
+        .where((s) => s.isNotEmpty);
+    if (links.isNotEmpty) {
+      result.addAll(links);
+    } else if (value.trim().isNotEmpty) {
+      result.add(value.trim());
+    }
+  }
+  return result;
+}
 
 /// Recovers tags from legacy Logseq-style `tags:: [[A]] [[B]]` (or
 /// `tags:: A, B`) lines that the Typst parser never sees. Imported articles keep
@@ -1197,6 +1234,29 @@ Set<String> _legacyTags(String source) {
     }
   }
   return result;
+}
+
+/// Migrates legacy Logseq `tags:: [[..]]` lines into the canonical note header:
+/// merges the recovered tags into `tags: (...)` and strips the legacy lines.
+/// Returns the source unchanged if there is nothing to migrate or no `tags:`
+/// field to merge into (`source::`/`journal-day::` are left for read-side
+/// recovery). Pure and idempotent, so it is safe to re-run.
+String migrateLegacyLinks(String source) {
+  final legacy = _legacyTags(source);
+  if (legacy.isEmpty) return source;
+  final header = RegExp(r'tags\s*:\s*\(([^)]*)\)').firstMatch(source);
+  if (header == null) return source;
+  final existing = _quoted
+      .allMatches(header.group(1)!)
+      .map((m) => m.group(1)!)
+      .toSet();
+  final merged = {...existing, ...legacy}.toList()..sort();
+  final rendered = 'tags: (${merged.map((t) => '"$t"').join(', ')},)';
+  final withTags = source.replaceRange(header.start, header.end, rendered);
+  return withTags.replaceAll(
+    RegExp(r'^[ \t]*tags::.*(?:\r?\n)?', multiLine: true),
+    '',
+  );
 }
 
 List<String> _parseList(String source, String field) {
