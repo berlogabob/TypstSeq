@@ -135,7 +135,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
-  bool _graphWholeVault = false;
+  // Graph overview mode: 'conceptMap' (default), 'local', or 'allFiles'.
+  String _graphMode = 'conceptMap';
+  // Concept/note path the local graph is rooted at when expanded from the map.
+  String? _graphFocusPath;
   int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
@@ -3237,9 +3240,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final resolver = index == null ? null : LinkResolver(index!.notes);
     final graph = index == null
         ? null
-        : (_graphWholeVault
-              ? buildNoteGraph(index!)
-              : buildLocalNoteGraph(index!, current));
+        : switch (_graphMode) {
+            'conceptMap' => buildConceptMap(index!),
+            'allFiles' => buildNoteGraph(index!),
+            _ => buildLocalNoteGraph(index!, _graphFocusPath ?? current),
+          };
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
@@ -3308,10 +3313,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
-        currentPath: current,
-        onOpenPath: _openPath,
-        isWholeVault: _graphWholeVault,
-        onSwitchToFocused: () => setState(() => _graphWholeVault = false),
+        currentPath: _graphFocusPath ?? current,
+        // Opening a concept/work hub expands it into a rooted local view rather
+        // than opening a file; opening a note opens the file as usual.
+        onOpenPath: (path) {
+          if (path.startsWith('concept:') || path.startsWith('cite:')) {
+            setState(() {
+              _graphMode = 'local';
+              _graphFocusPath = path;
+            });
+          } else {
+            unawaited(_openPath(path));
+          }
+        },
+        isWholeVault: _graphMode == 'allFiles',
+        onSwitchToFocused: () => setState(() {
+          _graphMode = 'local';
+          _graphFocusPath = null;
+        }),
       ),
       'preview' => TypstDocumentViewer(
         source: _debouncedPreview(),
@@ -3590,15 +3609,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               icon: const Icon(Icons.calendar_month),
             ),
           if (mode == 'graph')
-            IconButton(
-              tooltip: _graphWholeVault
-                  ? 'Show focused view'
-                  : 'Show whole vault',
-              icon: Icon(
-                _graphWholeVault ? Icons.hub : Icons.center_focus_strong,
-              ),
-              onPressed: () =>
-                  setState(() => _graphWholeVault = !_graphWholeVault),
+            PopupMenuButton<String>(
+              tooltip: 'Graph view',
+              icon: Icon(switch (_graphMode) {
+                'conceptMap' => Icons.bubble_chart,
+                'allFiles' => Icons.hub,
+                _ => Icons.center_focus_strong,
+              }),
+              onSelected: (value) => setState(() {
+                _graphMode = value;
+                _graphFocusPath = null;
+              }),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'conceptMap', child: Text('Concept map')),
+                PopupMenuItem(value: 'local', child: Text('Focused')),
+                PopupMenuItem(value: 'allFiles', child: Text('All files')),
+              ],
             ),
           if (documentModes.contains(mode))
             PopupMenuButton<String>(

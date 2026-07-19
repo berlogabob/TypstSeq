@@ -13,10 +13,13 @@ export 'package:tylog_core/graph.dart'
         GraphNodeKind,
         GraphStats,
         NoteGraph,
+        buildConceptMap,
         buildLocalNoteGraph,
         buildNoteGraph,
         computeGraphStats,
-        restrictNoteGraph;
+        restrictNoteGraph,
+        kConceptMapMinNotes,
+        kConceptMinNotes;
 
 /// Above this many nodes, a whole-vault graph reliably turns into an
 /// unreadable "hairball" (community consensus from PKM tools like Obsidian).
@@ -458,9 +461,11 @@ class GraphPainter extends CustomPainter {
       // Note labels appear only near the selection to cut clutter; concept/work
       // hubs are always labelled so the map reads as a set of named topics.
       if (!related && !isEntity) continue;
-      final label = node.title.length > 18
+      final title = node.title.length > 18
           ? '${node.title.substring(0, 17)}…'
           : node.title;
+      // Concept/work hubs carry an article-count badge (e.g. "esp32 · 31").
+      final label = isEntity && node.count > 0 ? '$title · ${node.count}' : title;
       final textPainter = TextPainter(
         text: TextSpan(
           text: label,

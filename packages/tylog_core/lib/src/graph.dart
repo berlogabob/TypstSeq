@@ -2,6 +2,16 @@ import 'models.dart';
 
 enum GraphEdgeKind { link, citation, tag }
 
+/// A tag on fewer notes than this is a pure leaf (a hub node wired to a single
+/// note connects nothing), so it is not promoted to a concept node in the note
+/// graph. Real vaults carry thousands of one-off tags; dropping the leaves keeps
+/// the graph about connections without losing any actual connectivity.
+const kConceptMinNotes = 2;
+
+/// Threshold for the aggregated concept-map overview — higher than
+/// [kConceptMinNotes] so the map shows only substantial topics, not every pair.
+const kConceptMapMinNotes = 5;
+
 /// What a node represents. Notes are documents; concepts are tags promoted to
 /// hubs; works are cited bibliographic entries. Concept/work nodes turn a tag
 /// or citekey shared by k notes into a single k-spoke star instead of a
@@ -14,12 +24,17 @@ class GraphNode {
     required this.title,
     this.kind = GraphNodeKind.note,
     this.problemCount = 0,
+    this.count = 0,
   });
 
   final String path;
   final String title;
   final GraphNodeKind kind;
   final int problemCount;
+
+  /// For concept/work hubs: how many notes carry this tag/citekey (drives the
+  /// count badge and the concept-map overview). 0 for note nodes.
+  final int count;
 }
 
 class GraphEdge {
@@ -67,7 +82,8 @@ NoteGraph buildNoteGraph(VaultIndex index) {
         GraphEdge(from: source, to: entry.key),
   ];
   // Tags and citations become their own hub nodes with note->entity spokes,
-  // rather than fanning every co-occurring pair of notes into a clique.
+  // rather than fanning every co-occurring pair of notes into a clique. Single-
+  // note tags are dropped (leaf hubs that connect nothing).
   _addEntityNodes(
     index.notes,
     (note) => note.tags,
@@ -76,6 +92,7 @@ NoteGraph buildNoteGraph(VaultIndex index) {
     GraphEdgeKind.tag,
     nodes,
     edges,
+    minNotes: kConceptMinNotes,
   );
   _addEntityNodes(
     index.notes,
@@ -107,8 +124,9 @@ void _addEntityNodes(
   String idPrefix,
   GraphEdgeKind edgeKind,
   List<GraphNode> nodes,
-  List<GraphEdge> edges,
-) {
+  List<GraphEdge> edges, {
+  int minNotes = 1,
+}) {
   final notesByKey = <String, Set<String>>{};
   for (final note in notes) {
     for (final key in keyOf(note)) {
@@ -116,11 +134,70 @@ void _addEntityNodes(
     }
   }
   for (final key in notesByKey.keys.toList()..sort()) {
-    nodes.add(GraphNode(path: '$idPrefix:$key', title: key, kind: nodeKind));
-    for (final notePath in notesByKey[key]!.toList()..sort()) {
+    final notePaths = notesByKey[key]!;
+    if (notePaths.length < minNotes) continue;
+    nodes.add(
+      GraphNode(
+        path: '$idPrefix:$key',
+        title: key,
+        kind: nodeKind,
+        count: notePaths.length,
+      ),
+    );
+    for (final notePath in notePaths.toList()..sort()) {
       edges.add(GraphEdge(from: notePath, to: '$idPrefix:$key', kind: edgeKind));
     }
   }
+}
+
+/// Aggregated concept-map overview: nodes are substantial concepts (tags on
+/// >= [minNotes] notes) badged by article count; edges connect concepts that
+/// co-occur on >= [minCoOccur] notes. Articles are not shown — the UI expands a
+/// concept into its notes via [buildLocalNoteGraph] rooted at `concept:<tag>`.
+/// At ~hundreds of concepts the O(concepts^2) co-occurrence pass is cheap.
+/// ponytail: O(concepts^2); revisit only if the promoted-concept count explodes.
+NoteGraph buildConceptMap(
+  VaultIndex index, {
+  int minNotes = kConceptMapMinNotes,
+  int minCoOccur = 3,
+}) {
+  final notesByTag = <String, Set<String>>{};
+  for (final note in index.notes) {
+    for (final tag in note.tags) {
+      notesByTag.putIfAbsent(tag, () => {}).add(note.path);
+    }
+  }
+  final promoted = {
+    for (final entry in notesByTag.entries)
+      if (entry.value.length >= minNotes) entry.key: entry.value,
+  };
+  final keys = promoted.keys.toList()..sort();
+  final nodes = [
+    for (final key in keys)
+      GraphNode(
+        path: 'concept:$key',
+        title: key,
+        kind: GraphNodeKind.concept,
+        count: promoted[key]!.length,
+      ),
+  ];
+  final edges = <GraphEdge>[];
+  for (var i = 0; i < keys.length; i++) {
+    for (var j = i + 1; j < keys.length; j++) {
+      final shared = promoted[keys[i]]!.intersection(promoted[keys[j]]!).length;
+      if (shared >= minCoOccur) {
+        edges.add(
+          GraphEdge(
+            from: 'concept:${keys[i]}',
+            to: 'concept:${keys[j]}',
+            kind: GraphEdgeKind.tag,
+            weight: shared,
+          ),
+        );
+      }
+    }
+  }
+  return NoteGraph(nodes: nodes, edges: edges);
 }
 
 NoteGraph buildLocalNoteGraph(

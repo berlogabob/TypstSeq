@@ -129,6 +129,66 @@ void main() {
     );
   });
 
+  test('a single-note (leaf) tag is not promoted to a concept node', () {
+    final index = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+          tags: ['shared', 'unique-to-a'],
+        ),
+        'articles/b.typ': const NoteRef(
+          id: 'b',
+          path: 'articles/b.typ',
+          title: 'B',
+          outgoingLinks: [],
+          tags: ['shared'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final concepts = buildNoteGraph(index).nodes
+        .where((n) => n.kind == GraphNodeKind.concept)
+        .toList();
+
+    // 'shared' (2 notes) promoted; 'unique-to-a' (1 note) dropped.
+    expect(concepts.map((n) => n.path), ['concept:shared']);
+    expect(concepts.single.count, 2);
+  });
+
+  test('buildConceptMap yields badged concept hubs and co-occurrence edges', () {
+    NoteRef article(String id, List<String> tags) => NoteRef(
+      id: id,
+      path: 'articles/$id.typ',
+      title: id.toUpperCase(),
+      outgoingLinks: const [],
+      tags: tags,
+    );
+    // esp32 on 5 notes, home-assistant on 5 notes (co-occur on 5), rare on 1.
+    final notes = <String, NoteRef>{};
+    for (var i = 0; i < 5; i++) {
+      notes['articles/n$i.typ'] = article('n$i', ['esp32', 'home-assistant']);
+    }
+    notes['articles/z.typ'] = article('z', ['rare']);
+    final index = VaultIndex(notesByPath: notes, backlinksByTarget: const {});
+
+    final map = buildConceptMap(index, minNotes: 5, minCoOccur: 3);
+
+    // Only the two substantial concepts appear; 'rare' (1 note) is excluded.
+    expect(
+      map.nodes.map((n) => n.path).toSet(),
+      {'concept:esp32', 'concept:home-assistant'},
+    );
+    expect(map.nodes.every((n) => n.count == 5), isTrue);
+    // Concept-to-concept co-occurrence edge (shared on 5 notes >= 3).
+    expect(map.edges, hasLength(1));
+    expect(map.edges.single.weight, 5);
+    expect(map.nodes.any((n) => n.path.startsWith('articles/')), isFalse);
+  });
+
   test('buildLocalNoteGraph reaches a co-tagged note through its concept', () {
     final index = VaultIndex(
       notesByPath: {
