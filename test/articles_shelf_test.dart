@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog/widgets/property_select_chip.dart';
 import 'package:tylog/widgets/work_surface.dart';
 
 void main() {
+  group('articleStatusStage', () {
+    test('folds legacy and custom status values onto the five stages', () {
+      expect(articleStatusStage(null), 'unread');
+      expect(articleStatusStage(''), 'unread');
+      expect(articleStatusStage('processed'), 'unread'); // import default
+      expect(articleStatusStage('skimmed'), 'skimmed');
+      expect(articleStatusStage('reading'), 'read'); // legacy in-progress
+      expect(articleStatusStage('read'), 'read');
+      expect(articleStatusStage('summarized'), 'extracted'); // custom
+      expect(articleStatusStage('extracted'), 'extracted');
+      expect(articleStatusStage('cited'), 'cited');
+    });
+  });
+
   const unread = NoteRef(
     id: 'a1',
     path: 'articles/Fresh.typ',
@@ -24,7 +39,7 @@ void main() {
     properties: {'status': 'reading'},
     modifiedMillis: 2000,
   );
-  // Custom status values beyond read/reading/unread count as read.
+  // `summarized` is a custom extraction value → maps to the Extracted stage.
   const summarized = NoteRef(
     id: 'a3',
     path: 'articles/Done.typ',
@@ -73,14 +88,15 @@ void main() {
     await tester.tap(find.text('Articles'));
     await tester.pumpAndSettle();
 
-    // Status chips with counts from the three articles only.
+    // 5-stage pipeline chips with counts from the three articles:
+    // processed→Unread, reading→Read, summarized→Extracted.
     expect(find.text('All · 3'), findsOneWidget);
-    expect(find.text('Inbox · 1'), findsOneWidget);
-    expect(find.text('Reading · 1'), findsOneWidget);
+    expect(find.text('Unread · 1'), findsOneWidget);
+    expect(find.text('Skimmed · 0'), findsOneWidget);
     expect(find.text('Read · 1'), findsOneWidget);
-    expect(find.text('Inbox'), findsOneWidget);
-    expect(find.text('Reading'), findsOneWidget);
-    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('Extracted · 1'), findsOneWidget);
+    expect(find.text('Cited · 0'), findsOneWidget);
+    // Per-row pickers show the stage label, never the raw stored status value.
     expect(find.text('processed'), findsNothing);
     expect(find.text('summarized'), findsNothing);
 
@@ -95,8 +111,8 @@ void main() {
     expect(find.text('Continue reading · Halfway'), findsOneWidget);
     expect(find.text('40%'), findsWidgets);
 
-    // Inbox filter hides everything but the unread article.
-    await tester.tap(find.text('Inbox · 1'));
+    // Unread filter hides everything but the unread article.
+    await tester.tap(find.text('Unread · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Fresh'), findsOneWidget);
     expect(find.text('Done'), findsNothing);

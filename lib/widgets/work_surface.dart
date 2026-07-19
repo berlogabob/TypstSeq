@@ -429,15 +429,10 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     super.dispose();
   }
 
-  /// Collapses the free-form status property into the three shelf buckets;
-  /// import-only `processed` stays in the inbox, while custom completion
-  /// values like `summarized` count as read.
+  /// Maps a note onto one of the five reading-triage stages
+  /// (unread → skimmed → read → extracted → cited).
   static String _bucket(NoteRef note) =>
-      switch (note.properties['status'] as String? ?? 'unread') {
-        'unread' || 'processed' => 'unread',
-        'reading' => 'reading',
-        _ => 'read',
-      };
+      articleStatusStage(note.properties['status'] as String?);
 
   String? _source(NoteRef note) {
     final url = note.properties['url'] as String?;
@@ -478,9 +473,11 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     note.tags.any((tag) => tag.toLowerCase().contains(q)),
               )
               .toList();
-    final counts = {'unread': 0, 'reading': 0, 'read': 0};
+    final counts = {
+      for (final stage in articleStatusOptions) stage: 0,
+    };
     for (final note in searched) {
-      counts[_bucket(note)] = counts[_bucket(note)]! + 1;
+      counts[_bucket(note)] = (counts[_bucket(note)] ?? 0) + 1;
     }
     final filtered = statusFilter == null
         ? searched
@@ -520,11 +517,10 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       break;
     }
 
-    const statusChips = <(String?, String)>[
+    final statusChips = <(String?, String)>[
       (null, 'All'),
-      ('unread', 'Inbox'),
-      ('reading', 'Reading'),
-      ('read', 'Read'),
+      for (final stage in articleStatusOptions)
+        (stage, articleStatusLabels[stage]!),
     ];
     return Column(
       children: [

@@ -1,10 +1,32 @@
 import 'package:flutter/material.dart';
 
-const articleStatusOptions = ['unread', 'reading', 'read'];
+/// Reading-triage pipeline stages, in order. Free-form legacy/custom status
+/// values are folded onto these five by `articleStatusStage`.
+const articleStatusOptions = [
+  'unread',
+  'skimmed',
+  'read',
+  'extracted',
+  'cited',
+];
 const articleStatusLabels = {
-  'unread': 'Inbox',
-  'reading': 'Reading',
+  'unread': 'Unread',
+  'skimmed': 'Skimmed',
   'read': 'Read',
+  'extracted': 'Extracted',
+  'cited': 'Cited',
+};
+
+/// Collapses any stored status string onto one of the five pipeline stages.
+/// Legacy import default `processed` and empty status are unread; the older
+/// `reading` in-progress state and unknown completion values count as read;
+/// `summarized` (a custom extraction value) maps to extracted.
+String articleStatusStage(String? status) => switch (status ?? 'unread') {
+  'unread' || 'processed' || '' => 'unread',
+  'skimmed' => 'skimmed',
+  'extracted' || 'summarized' => 'extracted',
+  'cited' => 'cited',
+  _ => 'read',
 };
 
 /// A tappable chip that opens a popup menu to pick one of [options] — the
