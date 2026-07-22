@@ -2500,7 +2500,12 @@ class _ProtectedChip extends StatelessWidget {
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                // Inline chips are one line — center the icon with the text so
+                // it doesn't float above the baseline. Block chips can wrap to
+                // several lines, so keep their icon aligned to the first line.
+                crossAxisAlignment: block
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
                 children: [
                   Icon(icon, size: 16),
                   const SizedBox(width: 5),
