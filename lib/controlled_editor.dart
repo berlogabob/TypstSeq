@@ -135,6 +135,33 @@ String controlledBlockPreview(ControlledBlock block) {
   };
 }
 
+/// The display-text excerpts of every block in [source] that mentions one of
+/// [targets] (a page's lowercased id / title / aliases) — via a
+/// `#tylog.ref-note("id")`, a bare `@id`, or a `[[title]]` wiki-link. Used to
+/// show *where* a backlink references the current page (Logseq linked-references).
+List<String> mentionExcerpts(String source, Set<String> targets) {
+  if (targets.isEmpty) return const [];
+  final result = <String>[];
+  for (final block in parseControlledTypst(source).blocks) {
+    if (!_blockMentions(block.source, targets)) continue;
+    final text = controlledBlockPreview(block).trim();
+    if (text.isNotEmpty) result.add(text);
+  }
+  return result;
+}
+
+final _refNoteTarget = RegExp(r'#tylog\.ref-note\("((?:\\.|[^"])*)"');
+final _atMention = RegExp(r'(?:^|[\s\[(])@([A-Za-z0-9_.:+-]+)');
+final _wikiTarget = RegExp(r'\[\[([^\]]+)\]\]');
+
+bool _blockMentions(String blockSource, Set<String> targets) {
+  bool hit(Iterable<RegExpMatch> matches) =>
+      matches.any((m) => targets.contains(m.group(1)!.trim().toLowerCase()));
+  return hit(_refNoteTarget.allMatches(blockSource)) ||
+      hit(_atMention.allMatches(blockSource)) ||
+      hit(_wikiTarget.allMatches(blockSource));
+}
+
 ControlledBlock _block(String source, int start, int end) {
   final raw = source.substring(start, end);
   final trimmed = raw.trimLeft();
@@ -242,6 +269,8 @@ String _inlinePreview(String source) {
         (match) => '${match.group(1)}${match.group(2)}',
       )
       .replaceAllMapped(RegExp(r'#cite\(([^)]*)\)'), (match) => match.group(1)!)
+      // Legacy `[[wiki]]` links show as their target text.
+      .replaceAllMapped(RegExp(r'\[\[([^\]]+)\]\]'), (match) => match.group(1)!)
       .replaceAll(RegExp(r'#image\([^)]*\)'), 'Image')
       .replaceAllMapped(
         RegExp(r'\\([\\#\[\]\$*_@])'),

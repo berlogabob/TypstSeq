@@ -57,6 +57,27 @@ void main() {
     expect(document.blocks[1].source, endsWith(')'));
   });
 
+  test('mentionExcerpts finds ref-note, @mention and [[wiki]] lines', () {
+    const source = '''met #tylog.ref-note("fernando")[Fernando] about the launch
+
+random note with no mention
+
+owner is @fernando for this project
+
+see [[Fernando Marson]] notes
+
+unrelated @someone else''';
+    final targets = {'fernando', 'fernando marson'};
+    final excerpts = mentionExcerpts(source, targets);
+    expect(excerpts, [
+      'met Fernando about the launch',
+      'owner is fernando for this project',
+      'see Fernando Marson notes',
+    ]);
+    expect(mentionExcerpts(source, const {}), isEmpty);
+    expect(mentionExcerpts('nothing here', targets), isEmpty);
+  });
+
   test('source-mode preview keeps a bare email but strips a citation @', () {
     final document = parseControlledTypst('mail a@b.com and cite @knuth');
     expect(controlledBlockPreview(document.blocks.single), 'mail a@b.com and cite knuth');

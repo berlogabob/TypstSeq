@@ -30,6 +30,8 @@ import 'vault_storage.dart';
 import 'widgets/app_version.dart';
 import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
+import 'widgets/entity_header.dart';
+import 'widgets/linked_references.dart';
 import 'widgets/dialogs.dart';
 import 'widgets/editor_panel.dart';
 import 'widgets/journal_feed.dart';
@@ -733,6 +735,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return path == null ? null : ix.notesByPath[path]?.kind;
   }
 
+  /// Opens a `mailto:`/`http(s)` URL (e.g. an entity's email) in the OS handler.
+  void _openUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    unawaited(
+      canLaunchUrl(uri).then((ok) {
+        if (ok) launchUrl(uri);
+      }),
+    );
+  }
+
   /// Reads a vault asset (e.g. an article image) for inline rendering; null on
   /// any failure so the editor falls back to the path chip.
   Future<Uint8List?> _readAsset(String path) async {
@@ -875,6 +888,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => status = "Couldn't open ${link.group(1)}");
       }
       return;
+    }
+    // Tapping a note reference (`@mention` / `[[link]]`) navigates to the note.
+    final ref = RegExp(
+      r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
+    ).firstMatch(source);
+    if (ref != null) {
+      final target = ref
+          .group(1)!
+          .replaceAll(r'\"', '"')
+          .replaceAll(r'\\', r'\');
+      final path = _pathForLink(target);
+      if (path != null) {
+        await _openNote(path);
+        return;
+      }
     }
     await _editProtectedBlock(id);
   }
@@ -1532,6 +1560,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final tagsText = TextEditingController(text: current.tags.join(', '));
     final aliases = TextEditingController(text: current.aliases.join(', '));
     final kindField = TextEditingController(text: current.kind);
+    final email = TextEditingController(
+      text: '${current.properties['email'] ?? ''}',
+    );
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1564,6 +1595,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   hintText: 'note, project, person, place…',
                 ),
               ),
+              TextField(
+                controller: email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
             ],
           ),
         ),
@@ -1581,6 +1617,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (saved == true) {
       final kind = kindField.text.trim();
+      final properties = Map<String, Object?>.from(current.properties);
+      final emailText = email.text.trim();
+      if (emailText.isEmpty) {
+        properties.remove('email');
+      } else {
+        properties['email'] = emailText;
+      }
       final updated = replaceNoteHeader(
         _currentSource(),
         NoteMetadataDraft(
@@ -1591,7 +1634,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           date: current.date,
           tags: _csvValues(tagsText.text),
           aliases: _csvValues(aliases.text),
-          properties: current.properties,
+          properties: properties,
         ),
       );
       _loadSource(updated);
@@ -2672,6 +2715,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final title = TextEditingController();
     final kind = TextEditingController(text: 'person');
     final aliases = TextEditingController();
+    final email = TextEditingController();
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2702,6 +2746,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 labelText: 'Aliases, comma-separated',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Email (optional)',
               ),
             ),
           ],
@@ -2738,7 +2791,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           kind: entityKind,
           tags: created.tags,
           aliases: _csvValues(aliases.text),
-          properties: created.properties,
+          properties: {
+            ...created.properties,
+            if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
+          },
         ),
       ),
     );
@@ -3561,6 +3617,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         documentModes.contains(mode) &&
         currentDaily != null &&
         isoDay(currentDaily) == isoDay(today);
+    // A person/place/… note gets a Logseq-style page: an info header above the
+    // body and a linked-references (backlinks) block below it. Any note that is
+    // mentioned elsewhere gets the references block too.
+    final currentNote = current == null ? null : index?.notesByPath[current];
+    final isEntity =
+        currentNote != null && !structuralNoteKinds.contains(currentNote.kind);
+    Widget documentContent = content;
+    if (mode == 'normal' &&
+        currentNote != null &&
+        (isEntity || backlinks.isNotEmpty)) {
+      final v = vault;
+      documentContent = Column(
+        children: [
+          if (isEntity)
+            EntityHeader(
+              note: currentNote,
+              imageResolver: _readAsset,
+              onOpenUrl: _openUrl,
+            ),
+          Expanded(child: content),
+          if (backlinks.isNotEmpty && v != null)
+            LinkedReferences(
+              backlinks: backlinks,
+              index: index,
+              targets: {
+                currentNote.id,
+                currentNote.title,
+                ...currentNote.aliases,
+              }.map((t) => t.toLowerCase()).toSet(),
+              readSource: (path) async {
+                try {
+                  return await v.storage.readText(path);
+                } catch (_) {
+                  return '';
+                }
+              },
+              onOpenPath: _openPath,
+            ),
+        ],
+      );
+    }
     final bodyContent = isTodayDocument
         ? TodayPage(
             tasks: index?.tasks ?? const [],
@@ -3570,7 +3667,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onSetStatus: _setTaskStatus,
             onReadPath: _readPath,
           )
-        : content;
+        : documentContent;
     final statusBanner = ListenableBuilder(
       listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
       builder: (context, _) {
