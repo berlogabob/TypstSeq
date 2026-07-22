@@ -2,6 +2,7 @@ import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:tylog_core/scanner.dart' show resolveLinkPath;
 
 import '../models.dart';
 import '../rich_editor.dart';
@@ -34,6 +35,13 @@ class _JournalFeedState extends State<JournalFeed> {
     } catch (_) {
       return null;
     }
+  }
+
+  String? _resolveKind(String target) {
+    final idx = widget.index;
+    if (idx == null) return null;
+    final path = resolveLinkPath(idx, target);
+    return path == null ? null : idx.notesByPath[path]?.kind;
   }
 
   final sources = <String, Future<String>>{};
@@ -197,6 +205,7 @@ class _JournalFeedState extends State<JournalFeed> {
                       return TyLogReadView(
                         source: snapshot.data!,
                         imageResolver: _readAsset,
+                        resolveKind: _resolveKind,
                       );
                     },
                   ),

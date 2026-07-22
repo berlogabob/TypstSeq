@@ -426,6 +426,30 @@ void main() {
     expect(find.textContaining('/assets/x.png'), findsOneWidget);
   });
 
+  testWidgets('inline chips show a type-specific icon', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source:
+                'a #link("mailto:me@x.com")[me\\@x.com] '
+                'b #link("https://x.com")[site] '
+                'c #tylog.ref-note("p")[Ann] '
+                'd #tylog.ref-note("q")[Rome] '
+                'e #tylog.tag("topic")',
+            resolveKind: (id) => const {'p': 'person', 'q': 'place'}[id],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byIcon(Icons.alternate_email), findsOneWidget); // email
+    expect(find.byIcon(Icons.link), findsOneWidget); // http link
+    expect(find.byIcon(Icons.person_outline), findsOneWidget); // person
+    expect(find.byIcon(Icons.location_on_outlined), findsOneWidget); // place
+    expect(find.byIcon(Icons.tag), findsOneWidget); // tag
+  });
+
   test('list toggles one line, continues, and empty Enter exits', () {
     final saved = <String>[];
     final controller = TyLogEditingController(

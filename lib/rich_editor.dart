@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:tylog_core/scanner.dart';
 
 import 'controlled_editor.dart';
+import 'widgets/constants.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
@@ -932,12 +933,14 @@ class TyLogEditingController extends TextEditingController {
     required ValueChanged<Object> onError,
     required ValueChanged<String> onProtectedTap,
     Future<Uint8List?> Function(String path)? imageResolver,
+    String? Function(String target)? resolveKind,
   }) : this._(
          TyLogDocument.parse(source),
          onSourceChanged,
          onError,
          onProtectedTap,
          imageResolver,
+         resolveKind,
        );
 
   TyLogEditingController._(
@@ -946,6 +949,7 @@ class TyLogEditingController extends TextEditingController {
     this.onError,
     this.onProtectedTap,
     this.imageResolver,
+    this.resolveKind,
   ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
@@ -955,6 +959,11 @@ class TyLogEditingController extends TextEditingController {
   final ValueChanged<String> onSourceChanged;
   final ValueChanged<Object> onError;
   final ValueChanged<String> onProtectedTap;
+
+  /// Resolves a `#tylog.ref-note("target")` reference to the target note's
+  /// `kind` (person/place/project/…) so the chip shows a matching icon. Null
+  /// (no vault index) falls back to a generic note icon.
+  final String? Function(String target)? resolveKind;
 
   /// Resolves a vault-relative asset path to its bytes so `#image(...)` atoms
   /// render as real pictures. Null (e.g. read-only previews without a vault)
@@ -1638,6 +1647,7 @@ class TyLogEditingController extends TextEditingController {
               label: block.protectedLabel ?? 'Custom Typst',
               block: true,
               onTap: interactive ? () => onProtectedTap(block.id) : null,
+              icon: Icons.code,
             ),
           ),
         );
@@ -1665,6 +1675,10 @@ class TyLogEditingController extends TextEditingController {
                         label: nestedPart.label!,
                         block: false,
                         onTap: null,
+                        icon: _atomIcon(
+                          nestedPart.source!,
+                          resolveKind: resolveKind,
+                        ),
                       ),
                     ),
                   );
@@ -1693,6 +1707,7 @@ class TyLogEditingController extends TextEditingController {
               label: part.label!,
               block: false,
               onTap: onTap,
+              icon: _atomIcon(part.source!, resolveKind: resolveKind),
             );
             final imagePath = _imageAtomPath(part.source!);
             children.add(
@@ -1777,10 +1792,16 @@ class TyLogRichEditor extends StatefulWidget {
 }
 
 class TyLogReadView extends StatefulWidget {
-  const TyLogReadView({super.key, required this.source, this.imageResolver});
+  const TyLogReadView({
+    super.key,
+    required this.source,
+    this.imageResolver,
+    this.resolveKind,
+  });
 
   final String source;
   final Future<Uint8List?> Function(String path)? imageResolver;
+  final String? Function(String target)? resolveKind;
 
   @override
   State<TyLogReadView> createState() => _TyLogReadViewState();
@@ -1793,6 +1814,7 @@ class _TyLogReadViewState extends State<TyLogReadView> {
     onError: (_) {},
     onProtectedTap: (_) {},
     imageResolver: widget.imageResolver,
+    resolveKind: widget.resolveKind,
   );
 
   @override
@@ -2444,11 +2466,13 @@ class _ProtectedChip extends StatelessWidget {
     required this.label,
     required this.block,
     required this.onTap,
+    required this.icon,
   });
 
   final String label;
   final bool block;
   final VoidCallback? onTap;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -2478,7 +2502,7 @@ class _ProtectedChip extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(block ? Icons.code : Icons.link, size: 16),
+                  Icon(icon, size: 16),
                   const SizedBox(width: 5),
                   Flexible(child: Text(label)),
                 ],
@@ -2819,6 +2843,32 @@ String _atomLabel(String source) {
     return source.substring(6, source.length - 1);
   }
   return source.startsWith('#image') ? 'Image' : 'Reference';
+}
+
+/// The chip icon for an inline atom, by what it points at: email vs web link,
+/// tag, date, attachment, citation, and — via [resolveKind] against the vault
+/// index — the referenced note's kind (person/place/project/…).
+IconData _atomIcon(String source, {String? Function(String id)? resolveKind}) {
+  if (source.startsWith('#link(')) {
+    final url =
+        RegExp(r'^#link\("((?:\\.|[^"])*)"').firstMatch(source)?.group(1) ?? '';
+    return url.startsWith('mailto:') ? Icons.alternate_email : Icons.link;
+  }
+  if (source.startsWith('#tylog.tag(')) return Icons.tag;
+  if (source.startsWith('#tylog.date-ref(')) return Icons.event_outlined;
+  if (source.startsWith('#tylog.attachment(')) return Icons.attach_file;
+  if (source.startsWith('#cite(') || source.startsWith('@')) {
+    return Icons.format_quote;
+  }
+  if (source.startsWith('#tylog.ref-note(')) {
+    final id = RegExp(
+      r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
+    ).firstMatch(source)?.group(1);
+    return iconForKind(
+      id == null ? null : resolveKind?.call(_unescapeTypstString(id)),
+    );
+  }
+  return Icons.link;
 }
 
 int? _squareEnd(String source, int open) {

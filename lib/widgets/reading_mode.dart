@@ -19,11 +19,13 @@ class ReadingMode extends StatefulWidget {
     this.canRate = false,
     this.onRate,
     this.imageResolver,
+    this.resolveKind,
   });
 
   final String source;
   final String? path;
   final Future<Uint8List?> Function(String path)? imageResolver;
+  final String? Function(String target)? resolveKind;
   final double fontScale;
   final bool nightMode;
   final VoidCallback onExit;
@@ -268,6 +270,7 @@ class _ReadingModeState extends State<ReadingMode> {
                               key: const Key('reading-document'),
                               source: widget.source,
                               imageResolver: widget.imageResolver,
+                              resolveKind: widget.resolveKind,
                             ),
                           ),
                         ),

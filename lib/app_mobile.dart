@@ -211,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onError: _richEditorError,
       onProtectedTap: (id) => unawaited(_tapProtected(id)),
       imageResolver: _readAsset,
+      resolveKind: _resolveKind,
     );
     workspace = WorkspaceController(
       taskScheduler: taskScheduler,
@@ -714,6 +715,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Vault-relative asset bytes for the open note, loaded by [_loadNoteAssets]
   /// so the synchronous [_typstFiles] can hand them to the Typst compiler.
   final Map<String, Uint8List> _noteAssetFiles = {};
+
+  /// The `kind` of the note a `#tylog.ref-note("target")` points at, so its chip
+  /// shows a person/place/project icon; null when the index or target is absent.
+  String? _resolveKind(String target) {
+    final ix = index;
+    if (ix == null) return null;
+    final path = resolveLinkPath(ix, target);
+    return path == null ? null : ix.notesByPath[path]?.kind;
+  }
 
   /// Reads a vault asset (e.g. an article image) for inline rendering; null on
   /// any failure so the editor falls back to the path chip.
@@ -3299,6 +3309,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         source: _currentSource(),
         path: current,
         imageResolver: _readAsset,
+        resolveKind: _resolveKind,
         fontScale: vaultRegistry?.readingFontScale ?? 1,
         nightMode: vaultRegistry?.readingNightMode ?? false,
         onExit: _showEditor,
