@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:tylog_core/models.dart';
@@ -155,6 +157,103 @@ Future<MarkdownArticleDraft> buildMarkdownArticleDraft({
         '#import "/_system/tylog.typ" as tylog\n\n$header\n\n${nativeResult.typst}',
     diagnostics: diagnostics,
   );
+}
+
+/// Downloads the images the converter marked as `#link("<url>")[Image: <alt>]`,
+/// saves them under `assets/articles/<articleId>/<n>.<ext>`, and rewrites those
+/// references to `#image("/assets/...")` so the article renders. A download
+/// that fails leaves the original link in place and adds a `remote-image-failed`
+/// diagnostic — the article still imports, just without that picture.
+Future<({String typst, List<MarkdownArticleDiagnostic> diagnostics})>
+downloadArticleImages({
+  required String typst,
+  required String articleId,
+  required VaultStorage storage,
+  HttpClient? client,
+}) async {
+  final matches = _imageLinkPattern.allMatches(typst).toList();
+  if (matches.isEmpty) {
+    return (typst: typst, diagnostics: const <MarkdownArticleDiagnostic>[]);
+  }
+  final http = client ?? HttpClient();
+  final diagnostics = <MarkdownArticleDiagnostic>[];
+  final out = StringBuffer();
+  var cursor = 0;
+  var index = 0;
+  try {
+    for (final match in matches) {
+      out.write(typst.substring(cursor, match.start));
+      cursor = match.end;
+      final url = _unescapeTypstString(match.group(1)!);
+      try {
+        final (bytes, contentType) = await _fetchBytes(http, url);
+        index++;
+        final relative =
+            'assets/articles/$articleId/$index.${_imageExtension(url, contentType)}';
+        await storage.writeBytes(relative, bytes);
+        out.write('#image("/$relative")');
+      } catch (error) {
+        out.write(match.group(0));
+        diagnostics.add(
+          MarkdownArticleDiagnostic(
+            code: 'remote-image-failed',
+            message: 'Could not download image $url: $error',
+          ),
+        );
+      }
+    }
+    out.write(typst.substring(cursor));
+  } finally {
+    if (client == null) http.close(force: true);
+  }
+  return (typst: out.toString(), diagnostics: diagnostics);
+}
+
+final _imageLinkPattern = RegExp(
+  r'#link\("((?:\\.|[^"])*)"\)\[Image: ?([^\]]*)\]',
+);
+
+String _unescapeTypstString(String value) =>
+    value.replaceAllMapped(RegExp(r'\\(.)'), (match) => match.group(1)!);
+
+Future<(Uint8List, String?)> _fetchBytes(HttpClient client, String url) async {
+  final request = await client.getUrl(Uri.parse(url));
+  final response = await request.close();
+  if (response.statusCode != 200) {
+    throw HttpException('HTTP ${response.statusCode}');
+  }
+  final builder = BytesBuilder(copy: false);
+  await for (final chunk in response) {
+    builder.add(chunk);
+  }
+  final bytes = builder.takeBytes();
+  if (bytes.isEmpty) throw const HttpException('Empty response');
+  return (bytes, response.headers.contentType?.mimeType);
+}
+
+String _imageExtension(String url, String? contentType) {
+  switch (contentType) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/gif':
+      return 'gif';
+    case 'image/webp':
+      return 'webp';
+    case 'image/svg+xml':
+      return 'svg';
+    case 'image/bmp':
+      return 'bmp';
+  }
+  final path = Uri.tryParse(url)?.path ?? url;
+  final match = RegExp(
+    r'\.(png|jpe?g|gif|webp|svg|bmp)$',
+    caseSensitive: false,
+  ).firstMatch(path);
+  if (match == null) return 'png';
+  final ext = match.group(1)!.toLowerCase();
+  return ext == 'jpeg' ? 'jpg' : ext;
 }
 
 enum MarkdownDuplicateKind { newArticle, unchanged, changed }

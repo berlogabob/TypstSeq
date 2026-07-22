@@ -18,10 +18,12 @@ class ReadingMode extends StatefulWidget {
     this.initialProgress = 0,
     this.canRate = false,
     this.onRate,
+    this.imageResolver,
   });
 
   final String source;
   final String? path;
+  final Future<Uint8List?> Function(String path)? imageResolver;
   final double fontScale;
   final bool nightMode;
   final VoidCallback onExit;
@@ -265,6 +267,7 @@ class _ReadingModeState extends State<ReadingMode> {
                             child: TyLogReadView(
                               key: const Key('reading-document'),
                               source: widget.source,
+                              imageResolver: widget.imageResolver,
                             ),
                           ),
                         ),

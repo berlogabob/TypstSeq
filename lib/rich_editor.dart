@@ -931,11 +931,13 @@ class TyLogEditingController extends TextEditingController {
     required ValueChanged<String> onSourceChanged,
     required ValueChanged<Object> onError,
     required ValueChanged<String> onProtectedTap,
+    Future<Uint8List?> Function(String path)? imageResolver,
   }) : this._(
          TyLogDocument.parse(source),
          onSourceChanged,
          onError,
          onProtectedTap,
+         imageResolver,
        );
 
   TyLogEditingController._(
@@ -943,6 +945,7 @@ class TyLogEditingController extends TextEditingController {
     this.onSourceChanged,
     this.onError,
     this.onProtectedTap,
+    this.imageResolver,
   ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
@@ -952,6 +955,18 @@ class TyLogEditingController extends TextEditingController {
   final ValueChanged<String> onSourceChanged;
   final ValueChanged<Object> onError;
   final ValueChanged<String> onProtectedTap;
+
+  /// Resolves a vault-relative asset path to its bytes so `#image(...)` atoms
+  /// render as real pictures. Null (e.g. read-only previews without a vault)
+  /// keeps the old path chip.
+  final Future<Uint8List?> Function(String path)? imageResolver;
+  final Map<String, Future<Uint8List?>> _imageCache = {};
+
+  /// Cached bytes for [path] — loaded at most once per note so a rebuild on
+  /// every keystroke doesn't re-hit SAF/disk.
+  Future<Uint8List?> imageBytes(String path) => imageResolver == null
+      ? Future.value(null)
+      : _imageCache.putIfAbsent(path, () => imageResolver!(path));
   final List<_Snapshot> _undo = [];
   final List<_Snapshot> _redo = [];
   static _RichClipboard? _richClipboard;
@@ -969,6 +984,7 @@ class TyLogEditingController extends TextEditingController {
 
   void loadSource(String source) {
     _updating = true;
+    _imageCache.clear();
     document = TyLogDocument.parse(source);
     value = TextEditingValue(
       text: document.visibleText,
@@ -1672,14 +1688,23 @@ class TyLogEditingController extends TextEditingController {
               }
               continue;
             }
+            final onTap = interactive ? () => onProtectedTap(part.id!) : null;
+            final chip = _ProtectedChip(
+              label: part.label!,
+              block: false,
+              onTap: onTap,
+            );
+            final imagePath = _imageAtomPath(part.source!);
             children.add(
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
-                child: _ProtectedChip(
-                  label: part.label!,
-                  block: false,
-                  onTap: interactive ? () => onProtectedTap(part.id!) : null,
-                ),
+                child: imagePath != null && imageResolver != null
+                    ? _InlineImage(
+                        bytes: imageBytes(imagePath),
+                        fallback: chip,
+                        onTap: onTap,
+                      )
+                    : chip,
               ),
             );
             global++;
@@ -1752,9 +1777,10 @@ class TyLogRichEditor extends StatefulWidget {
 }
 
 class TyLogReadView extends StatefulWidget {
-  const TyLogReadView({super.key, required this.source});
+  const TyLogReadView({super.key, required this.source, this.imageResolver});
 
   final String source;
+  final Future<Uint8List?> Function(String path)? imageResolver;
 
   @override
   State<TyLogReadView> createState() => _TyLogReadViewState();
@@ -1766,6 +1792,7 @@ class _TyLogReadViewState extends State<TyLogReadView> {
     onSourceChanged: (_) {},
     onError: (_) {},
     onProtectedTap: (_) {},
+    imageResolver: widget.imageResolver,
   );
 
   @override
@@ -2358,6 +2385,60 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   );
 }
 
+/// Renders an image atom (`#image(...)`) as a real inline picture, loaded from
+/// the vault via the controller's cached [bytes] future. While loading it shows
+/// a compact placeholder; on a missing file / decode error it falls back to
+/// [fallback] (the original path chip) so a dead reference is still visible.
+class _InlineImage extends StatelessWidget {
+  const _InlineImage({
+    required this.bytes,
+    required this.fallback,
+    required this.onTap,
+  });
+
+  final Future<Uint8List?> bytes;
+  final Widget fallback;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
+    future: bytes,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: SizedBox(
+            height: 18,
+            width: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      final data = snapshot.data;
+      if (data == null || data.isEmpty) return fallback;
+      final image = ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(
+            data,
+            fit: BoxFit.contain,
+            errorBuilder: (context, _, _) => fallback,
+          ),
+        ),
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: onTap == null
+            ? image
+            : GestureDetector(onTap: onTap, child: image),
+      );
+    },
+  );
+}
+
 class _ProtectedChip extends StatelessWidget {
   const _ProtectedChip({
     required this.label,
@@ -2696,6 +2777,23 @@ bool _isReferenceAtom(String source) =>
     source.startsWith('#cite(') ||
     source.startsWith('#image(') ||
     source.startsWith('#Image(');
+
+/// The vault asset path an atom points at when it is an image — a bare
+/// `#image("path")` or a `#tylog.attachment("path", kind: "image")[...]` — else
+/// null. Used to draw the atom as a real picture instead of a link chip.
+String? _imageAtomPath(String source) {
+  final image = RegExp(r'^#[iI]mage\("((?:\\.|[^"])*)"').firstMatch(source);
+  if (image != null) return _unescapeTypstString(image.group(1)!);
+  if (source.startsWith('#tylog.attachment(') &&
+      RegExp(r'kind:\s*"image"').hasMatch(source)) {
+    final path = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
+    if (path != null) return _unescapeTypstString(path);
+  }
+  return null;
+}
+
+String _unescapeTypstString(String value) =>
+    value.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
 
 /// Inner content of a `#name(...)?[body]` call's trailing bracket group, or
 /// the raw source unchanged if it has no bracket body.

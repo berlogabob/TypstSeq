@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/markdown_article_import.dart';
@@ -153,6 +154,56 @@ Body
       await nextMarkdownArticlePath(storage, 'Title'),
       'articles/Title (3).typ',
     );
+  });
+  group('downloadArticleImages', () {
+    test('downloads images, writes assets, and rewrites to #image', () async {
+      final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        if (request.uri.path == '/miss') {
+          request.response.statusCode = 404;
+        } else {
+          request.response.headers.contentType = ContentType('image', 'png');
+          request.response.add(png);
+        }
+        await request.response.close();
+      });
+      addTearDown(() => server.close(force: true));
+      final base = 'http://${server.address.host}:${server.port}';
+
+      final root = await Directory.systemTemp.createTemp('tylog-md-img-');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+
+      final result = await downloadArticleImages(
+        typst:
+            'a #link("$base/one.png")[Image: first] b '
+            '#link("$base/miss")[Image: gone] c',
+        articleId: 'md-abc',
+        storage: storage,
+      );
+
+      // First image downloaded and rewritten; second (404) left as a link.
+      expect(result.typst, contains('#image("/assets/articles/md-abc/1.png")'));
+      expect(result.typst, contains('#link("$base/miss")[Image: gone]'));
+      expect(result.typst, isNot(contains('[Image: first]')));
+      expect(await storage.readBytes('assets/articles/md-abc/1.png'), png);
+      expect(result.diagnostics.single.code, 'remote-image-failed');
+    });
+
+    test('leaves typst untouched when there are no image links', () async {
+      final storage = LocalVaultStorage(
+        await Directory.systemTemp.createTemp('tylog-md-noimg-'),
+      );
+      const typst = 'Just #link("https://x.example")[a real link].';
+      final result = await downloadArticleImages(
+        typst: typst,
+        articleId: 'md-x',
+        storage: storage,
+      );
+      expect(result.typst, typst);
+      expect(result.diagnostics, isEmpty);
+    });
   });
 }
 

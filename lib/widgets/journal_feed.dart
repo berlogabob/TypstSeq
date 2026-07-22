@@ -1,4 +1,5 @@
 import 'dart:math' show min;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -25,6 +26,16 @@ class JournalFeed extends StatefulWidget {
 }
 
 class _JournalFeedState extends State<JournalFeed> {
+  Future<Uint8List?> _readAsset(String path) async {
+    final v = widget.vault;
+    if (v == null) return null;
+    try {
+      return await v.storage.readBytes(path.replaceFirst(RegExp(r'^/+'), ''));
+    } catch (_) {
+      return null;
+    }
+  }
+
   final sources = <String, Future<String>>{};
   final _loadedPaths = <String>{};
   final _scroll = ScrollController();
@@ -183,7 +194,10 @@ class _JournalFeedState extends State<JournalFeed> {
                           label: const Text('Start writing…'),
                         );
                       }
-                      return TyLogReadView(source: snapshot.data!);
+                      return TyLogReadView(
+                        source: snapshot.data!,
+                        imageResolver: _readAsset,
+                      );
                     },
                   ),
                 ],

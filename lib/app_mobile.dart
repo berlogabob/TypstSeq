@@ -210,6 +210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onSourceChanged: _acceptRichSource,
       onError: _richEditorError,
       onProtectedTap: (id) => unawaited(_tapProtected(id)),
+      imageResolver: _readAsset,
     );
     workspace = WorkspaceController(
       taskScheduler: taskScheduler,
@@ -710,9 +711,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String _currentSource() => sourceController.text;
 
+  /// Vault-relative asset bytes for the open note, loaded by [_loadNoteAssets]
+  /// so the synchronous [_typstFiles] can hand them to the Typst compiler.
+  final Map<String, Uint8List> _noteAssetFiles = {};
+
+  /// Reads a vault asset (e.g. an article image) for inline rendering; null on
+  /// any failure so the editor falls back to the path chip.
+  Future<Uint8List?> _readAsset(String path) async {
+    final v = vault;
+    if (v == null) return null;
+    try {
+      return await v.storage.readBytes(path.replaceFirst(RegExp(r'^/+'), ''));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Loads every `assets/...` image referenced by [source] into
+  /// [_noteAssetFiles] (keyed with and without a leading slash) so `#image(...)`
+  /// resolves at compile time. Async; triggers a rebuild when it finishes.
+  Future<void> _loadNoteAssets(String source) async {
+    _noteAssetFiles.clear();
+    final v = vault;
+    if (v == null) return;
+    final paths = RegExp(
+      r'"(/?assets/[^"]+\.(?:png|jpe?g|gif|svg|webp|bmp))"',
+      caseSensitive: false,
+    ).allMatches(source).map((m) => m.group(1)!).toSet();
+    for (final path in paths) {
+      final relative = path.replaceFirst(RegExp(r'^/+'), '');
+      try {
+        final bytes = await v.storage.readBytes(relative);
+        _noteAssetFiles[relative] = bytes;
+        _noteAssetFiles['/$relative'] = bytes;
+      } catch (_) {
+        // Missing asset: leave it out; the compiler reports file-not-found.
+      }
+    }
+    if (mounted && _noteAssetFiles.isNotEmpty) setState(() {});
+  }
+
   FileSource _typstFiles() => FileSource.bytes({
     '_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
     '/_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
+    ..._noteAssetFiles,
     ...typstPackageFiles,
     if (bibliographySource.isNotEmpty) ...{
       Vault.bibliographyPath: Uint8List.fromList(
@@ -773,6 +815,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _loadSource(String source) {
     sourceController.text = source;
     richController.loadSource(source);
+    unawaited(_loadNoteAssets(source));
   }
 
   void _acceptRichSource(String source) {
@@ -1046,16 +1089,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final draft = item.draft;
       try {
         final duplicate = classifyMarkdownDuplicate(draft, articles);
-        final warningDetail = draft.diagnostics.isEmpty
+        // Fetch remote images into the vault (except for unchanged articles,
+        // which are not rewritten) so #image(...) references resolve.
+        final assets = duplicate.kind == MarkdownDuplicateKind.unchanged
+            ? (
+                typst: draft.typstSource,
+                diagnostics: const <MarkdownArticleDiagnostic>[],
+              )
+            : await downloadArticleImages(
+                typst: draft.typstSource,
+                articleId: draft.id,
+                storage: opened.storage,
+              );
+        final typstSource = assets.typst;
+        final warningCount = draft.diagnostics.length + assets.diagnostics.length;
+        final warningDetail = warningCount == 0
             ? null
-            : '${draft.diagnostics.length} conversion warning${draft.diagnostics.length == 1 ? '' : 's'}';
+            : '$warningCount conversion warning${warningCount == 1 ? '' : 's'}';
         switch (duplicate.kind) {
           case MarkdownDuplicateKind.newArticle:
             final path = await nextMarkdownArticlePath(
               opened.storage,
               draft.title,
             );
-            await opened.saveNote(path, draft.typstSource);
+            await opened.saveNote(path, typstSource);
             articles.add(_noteForImportedArticle(path, draft));
             wroteFiles = true;
             writtenPaths.add(path);
@@ -1081,7 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final existingSource = await opened.readText(existing.path);
             final decision = await _resolveMarkdownDuplicate(
               existing: existingSource,
-              incoming: draft.typstSource,
+              incoming: typstSource,
               title: draft.title,
             );
             if (decision.choice == _MarkdownDuplicateChoice.keepExisting) {
@@ -1096,7 +1153,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
             final source = decision.choice == _MarkdownDuplicateChoice.merged
                 ? decision.source!
-                : draft.typstSource;
+                : typstSource;
             await opened.saveNote(existing.path, source);
             final position = articles.indexOf(existing);
             if (position >= 0) {
@@ -3241,6 +3298,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return ReadingMode(
         source: _currentSource(),
         path: current,
+        imageResolver: _readAsset,
         fontScale: vaultRegistry?.readingFontScale ?? 1,
         nightMode: vaultRegistry?.readingNightMode ?? false,
         onExit: _showEditor,

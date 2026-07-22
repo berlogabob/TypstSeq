@@ -1,7 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
+
+final _tinyPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
 
 const _source = '''#import "/_system/tylog.typ" as tylog
 #show: tylog.note.with(
@@ -379,6 +385,45 @@ void main() {
     );
     expect(controller.text, '1. a\n2. \n3. b');
     expect(saved.last, '+ a\n+ \n+ b');
+  });
+
+  testWidgets('an #image atom renders as a real picture when bytes resolve', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source: 'See #image("/assets/x.png") end',
+            imageResolver: (path) async =>
+                path == '/assets/x.png' ? _tinyPng : null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump(); // resolve the bytes future
+    await tester.pump();
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.textContaining('/assets/x.png'), findsNothing);
+  });
+
+  testWidgets('an #image atom falls back to a chip when bytes are missing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source: 'See #image("/assets/x.png") end',
+            imageResolver: (path) async => null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(Image), findsNothing);
+    expect(find.textContaining('/assets/x.png'), findsOneWidget);
   });
 
   test('list toggles one line, continues, and empty Enter exits', () {
