@@ -236,8 +236,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _workspaceChanged() {
     if (!mounted) return;
     if (sourceController.text != workspace.source) {
+      // A save/sync round-trip can hand back a cosmetically different but
+      // semantically identical source — e.g. trailing blank lines left by an
+      // exited list. Reloading the rich editor then would clobber its live
+      // state, wiping the empty line the user just opened to type on. Only
+      // reload on a genuine visible-content change.
+      final changed =
+          TyLogDocument.parse(workspace.source).visibleText !=
+          TyLogDocument.parse(sourceController.text).visibleText;
       sourceController.text = workspace.source;
-      richController.loadSource(workspace.source);
+      if (changed) richController.loadSource(workspace.source);
     }
     _maybeSnackNewSyncTrouble();
     setState(() {});
