@@ -1,0 +1,6 @@
+{
+  "available": false,
+  "reason": "Flutter release build exposes no accessibility/semantics tree; both Maestro (Android) and macOS AX returned SystemUI-only hierarchies. measure.py is hierarchy-driven — tap-target sizing (Fitts), group-size (Miller 7±2), alignment near-misses, and WCAG contrast are all keyed off element bounds that are unavailable here. No deterministic numbers could be computed for this run.",
+  "guidance_for_subagents": "Judge tap-target size, spacing/alignment, and text contrast VISUALLY from the screenshots. Do not cite measurement values; state that measurements were unavailable when a criterion would normally rely on them.",
+  "screens": []
+}

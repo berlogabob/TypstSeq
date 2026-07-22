@@ -1,0 +1,53 @@
+{
+  "note": "Journeys executed live via coordinate driving (Flutter release build exposes no a11y tree, so Maestro element-matching was unavailable; taps were by pixel coordinate). Durations are wall-clock estimates from the driven sessions. Success = journey reached its goal screen with expected content.",
+  "flows": [
+    {
+      "name": "cold-start-today-macos",
+      "platform": "macos",
+      "passed": true,
+      "duration_s": 26,
+      "steps": ["launch flutter run -d macos --release", "wait for window", "Today renders with Agenda/Continue-reading/today-note"],
+      "errors": []
+    },
+    {
+      "name": "onboarding-vault-grant-android",
+      "platform": "android",
+      "passed": true,
+      "duration_s": 120,
+      "steps": ["cold start", "first-run 'Allow vault folder access' dialog shown", "user granted folder via SAF picker", "Today renders"],
+      "errors": ["Granted folder was an empty /storage/emulated/0/Download/TyLog, not the synced vault — app gives no guidance toward the real vault and shows the raw content:// URI afterward."]
+    },
+    {
+      "name": "navigate-all-destinations-macos",
+      "platform": "macos",
+      "passed": true,
+      "duration_s": 48,
+      "steps": ["Today", "Journal", "Library", "Library inner tabs x6 (Notes/Projects/Articles/Tasks/Entities/Calendar)", "Search", "back", "More"],
+      "errors": []
+    },
+    {
+      "name": "editor-view-modes-macos",
+      "platform": "macos",
+      "passed": true,
+      "duration_s": 22,
+      "steps": ["open note FernandoMarson", "open view-mode popup", "switch to Source", "Magic FAB palette opens"],
+      "errors": []
+    },
+    {
+      "name": "settings-and-sync-macos",
+      "platform": "macos",
+      "passed": true,
+      "duration_s": 18,
+      "steps": ["More", "Settings", "open Sync detail"],
+      "errors": ["Settings row 'Sync' subtitle reads 'Folder access unavailable' even though Sync detail reports 'Permission and safe writes verified' — contradictory status."]
+    },
+    {
+      "name": "destructive-confirm-cancel-macos",
+      "platform": "macos",
+      "passed": true,
+      "duration_s": 20,
+      "steps": ["More", "Vaults", "vault overflow ⋯", "Delete permanently…", "confirm dialog shown", "Cancel"],
+      "errors": []
+    }
+  ]
+}
