@@ -803,6 +803,12 @@ class TyLogDocument {
       final nextNumber = (int.tryParse(match?.group(1) ?? '0') ?? 0) + 1;
       final insertion = '\n$nextNumber. ';
       replace(offset, offset, insertion);
+      // Trailing items keep their old numbers after the splice (…2. \n2. b),
+      // but Typst `+` enums auto-number 1..n, so the reparse renumbers and
+      // `toSource` validation would reject the edit. Renumber to match.
+      // ponytail: assumes single→double digit width stays stable for the caret
+      // offset; a 9→10 rollover mid-list could shift the caret by one.
+      _renumberBlock(_blockAt(offset, preferPrevious: true)?.index);
       return offset + insertion.length;
     }
     if (block.style != TyLogBlockStyle.heading) {
@@ -821,6 +827,22 @@ class TyLogDocument {
     paragraph.separator = block.separator;
     blocks.replaceRange(hit.index, hit.index + 1, [heading, paragraph]);
     return _ranges[hit.index + 1].start;
+  }
+
+  /// Rewrites a numbered-list block's visible numbers to a contiguous 1..n
+  /// (what a Typst `+` enum renders and what the reparse produces) by round-
+  /// tripping just that block through the serializer/parser.
+  void _renumberBlock(int? index) {
+    if (index == null || index < 0 || index >= blocks.length) return;
+    final block = blocks[index];
+    if (block.style != TyLogBlockStyle.numberedList) return;
+    final parsed = parseControlledTypst(_serializeBlock(block));
+    if (parsed.blocks.length != 1) return;
+    final rebuilt = _parseBlock(parsed.blocks.first, block.separator, index);
+    if (rebuilt.style != TyLogBlockStyle.numberedList) return;
+    block
+      ..parts = rebuilt.parts
+      ..dirty = true;
   }
 
   void _replaceWithParts(TextRange selection, List<TyLogInline> inserted) {
@@ -984,10 +1006,11 @@ class TyLogEditingController extends TextEditingController {
             ? previousCaret
             : change.start;
         final offset = document.insertNewline(enterOffset);
+        final delinked = _autolinkEmailAt(enterOffset);
         _updating = true;
         value = TextEditingValue(
           text: document.visibleText,
-          selection: TextSelection.collapsed(offset: offset),
+          selection: TextSelection.collapsed(offset: offset - delinked),
         );
         _lastValue = value;
         _updating = false;
@@ -1085,6 +1108,29 @@ class TyLogEditingController extends TextEditingController {
         );
         accepted = value;
         _updating = false;
+      }
+      // Typing a break char right after an address turns it into a link chip.
+      if (!composing &&
+          change.replacement.isNotEmpty &&
+          _isEmailBreak(
+            change.replacement.codeUnitAt(change.replacement.length - 1),
+          )) {
+        final breakOffset = change.start + change.replacement.length - 1;
+        final delinked = _autolinkEmailAt(breakOffset);
+        if (delinked > 0) {
+          _updating = true;
+          value = TextEditingValue(
+            text: document.visibleText,
+            selection: TextSelection.collapsed(
+              offset: (accepted.selection.baseOffset - delinked).clamp(
+                0,
+                document.visibleText.length,
+              ),
+            ),
+          );
+          accepted = value;
+          _updating = false;
+        }
       }
       _lastValue = accepted;
       if (composing) return;
@@ -1499,6 +1545,40 @@ class TyLogEditingController extends TextEditingController {
       selection: TextSelection.collapsed(offset: start + pasted.length),
       composing: TextRange.empty,
     );
+  }
+
+  /// A character that ends a just-typed email so it can be auto-linked
+  /// (whitespace or common trailing punctuation; newline is handled on Enter).
+  static bool _isEmailBreak(int c) =>
+      c == 32 || c == 9 || c == 44 || c == 59 || c == 41 || c == 93;
+
+  /// If a bare email ends exactly at [endOffset] in the visible text, replace
+  /// it in place with a mailto link atom (instant "type an address → chip").
+  /// Returns how many characters shorter the visible text became so the caller
+  /// can shift the caret; 0 if nothing was converted.
+  int _autolinkEmailAt(int endOffset) {
+    final text = document.visibleText;
+    if (endOffset <= 0 || endOffset > text.length) return 0;
+    var start = endOffset;
+    while (start > 0 &&
+        (_emailLocalChar(text.codeUnitAt(start - 1)) ||
+            text.codeUnitAt(start - 1) == 64)) {
+      start--;
+    }
+    final token = text.substring(start, endOffset);
+    if (token.contains(_object)) return 0;
+    final match = _emailPattern.matchAsPrefix(token);
+    if (match == null || match.end != token.length) return 0;
+    final hit = document._blockAt(start, preferPrevious: true);
+    if (hit == null || document.blocks[hit.index].isProtected) return 0;
+    document._replaceWithParts(TextRange(start: start, end: endOffset), [
+      TyLogInline.atom(
+        source: mailtoLinkSource(token),
+        label: token,
+        id: 'atom-email-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    ]);
+    return token.length - 1;
   }
 
   _Snapshot _snapshot() => _Snapshot(document.copy(), value);
@@ -2418,6 +2498,33 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
   );
 }
 
+/// Pragmatic email matcher (not full RFC 5322): a local part, `@`, a dotted
+/// domain with a 2+ letter TLD. Shared by parse-time and type-time detection.
+final _emailPattern = RegExp(
+  r'[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}',
+);
+
+/// A character allowed in an email local part — used to find the true start of
+/// an address so detection never begins mid-token.
+bool _emailLocalChar(int c) =>
+    (c >= 48 && c <= 57) ||
+    (c >= 65 && c <= 90) ||
+    (c >= 97 && c <= 122) ||
+    c == 46 || // .
+    c == 95 || // _
+    c == 37 || // %
+    c == 43 || // +
+    c == 45; // -
+
+/// Whether [c] ends a token such that a following `@key` is a Typst citation
+/// (start-of-line, whitespace, `[`, or `(`).
+bool _citationBreakBefore(int c) =>
+    c == 32 || c == 9 || c == 10 || c == 13 || c == 91 || c == 40;
+
+/// The Typst source for a bare email rendered as a clickable mailto link chip.
+String mailtoLinkSource(String address) =>
+    '#link("mailto:$address")[${address.replaceAll('@', r'\@')}]';
+
 List<TyLogInline>? _parseInline(
   String source, {
   TyLogInlineStyle inherited = const TyLogInlineStyle(),
@@ -2505,21 +2612,50 @@ List<TyLogInline>? _parseInline(
       continue;
     }
 
+    // Bare email -> a clickable mailto link chip. Detected only at a true
+    // local-part boundary so we grab the whole address (and never a fragment
+    // of a longer token). A bare `@domain` in Typst is a dangling reference —
+    // this is why unescaped emails used to split into a broken chip.
+    if (i == 0 || !_emailLocalChar(source.codeUnitAt(i - 1))) {
+      final email = _emailPattern.matchAsPrefix(source, i);
+      if (email != null) {
+        final address = email.group(0)!;
+        flush();
+        parts.add(
+          TyLogInline.atom(
+            source: mailtoLinkSource(address),
+            label: address,
+            id: 'atom-${source.hashCode}-${atom++}',
+          ),
+        );
+        i = email.end;
+        continue;
+      }
+    }
+
     final atomMatch = RegExp(
       r'^(#(?:link|tylog\.(?:ref-note|date-ref|attachment))\([^\n]*?\)\[[^\]]*\]|#tylog\.tag\("(?:\\.|[^"])*"\)|#cite\([^)]*\)|#[iI]mage\([^)]*\)|@[A-Za-z0-9_.:+-]+)',
     ).firstMatch(source.substring(i));
     if (atomMatch != null) {
       final raw = atomMatch.group(0)!;
-      flush();
-      parts.add(
-        TyLogInline.atom(
-          source: raw,
-          label: _atomLabel(raw),
-          id: 'atom-${source.hashCode}-${atom++}',
-        ),
-      );
-      i += raw.length;
-      continue;
+      // A citation `@key` is only a reference at a break (start, whitespace,
+      // `[`, `(`) — mirroring `_previewSource`. Without this guard the `@domain`
+      // half of an email `foo@bar.com` is swallowed as a citation.
+      final isCitation = raw.startsWith('@');
+      if (!isCitation ||
+          i == 0 ||
+          _citationBreakBefore(source.codeUnitAt(i - 1))) {
+        flush();
+        parts.add(
+          TyLogInline.atom(
+            source: raw,
+            label: _atomLabel(raw),
+            id: 'atom-${source.hashCode}-${atom++}',
+          ),
+        );
+        i += raw.length;
+        continue;
+      }
     }
     if (source.codeUnitAt(i) == 35) {
       // Any other cleanly delimited call (e.g. #footnote[…], #link("url"))
@@ -2808,6 +2944,25 @@ TyLogBlock _blockFrom(
   headingLevel: headingLevel ?? original.headingLevel,
 );
 
+/// A paragraph line that begins with a Typst block marker (`= ` heading,
+/// `- `/`+ ` list, `N. ` enum, or a whole-line `$…$` equation) is a *paragraph*
+/// here, not that construct — but serialized verbatim it would re-parse as the
+/// other kind, so `toSource` validation fails and the edit silently reverts
+/// (the "can't press Enter / paste a list" bug). Escaping the first char keeps
+/// the visible text identical (`_parseInline` unescapes any `\x`) while making
+/// the line parse — and Typst-render — as literal prose.
+final _leadingBlockMarker = RegExp(r'^(?:=+ |[-+] |\d+\. )');
+String _escapeParagraphMarkers(String content) => content
+    .split('\n')
+    .map(
+      (line) =>
+          _leadingBlockMarker.hasMatch(line) ||
+              (line.length >= 2 && line.startsWith(r'$') && line.endsWith(r'$'))
+          ? '\\$line'
+          : line,
+    )
+    .join('\n');
+
 String _serializeBlock(TyLogBlock block) {
   if (block.isProtected) return block.originalSource;
   final content = block.parts.map(_serializePart).join();
@@ -2823,7 +2978,7 @@ String _serializeBlock(TyLogBlock block) {
           .split('\n')
           .map((line) => '+ ${line.replaceFirst(RegExp(r'^\d+\.\s*'), '')}')
           .join('\n'),
-    TyLogBlockStyle.paragraph => content,
+    TyLogBlockStyle.paragraph => _escapeParagraphMarkers(content),
     TyLogBlockStyle.protected => block.originalSource,
     TyLogBlockStyle.taskLine => replaceTaskText(
       block.originalSource,

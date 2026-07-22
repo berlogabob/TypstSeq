@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:typst_flutter/typst_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'bibliography.dart';
 import 'controlled_editor.dart';
@@ -788,9 +789,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Logseq behavior: tapping a date reference navigates to that day's journal
   // page; every other protected chip opens the raw Typst editor.
   Future<void> _tapProtected(String id) async {
+    final source = richController.protectedSource(id).trim();
     final match = RegExp(
       r'^#tylog\.date-ref\("(\d{4})-(\d{2})-(\d{2})"',
-    ).firstMatch(richController.protectedSource(id).trim());
+    ).firstMatch(source);
     if (match != null) {
       await _openDay(
         DateTime(
@@ -799,6 +801,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           int.parse(match.group(3)!),
         ),
       );
+      return;
+    }
+    final link = RegExp(
+      r'^#link\("(mailto:[^"]+|https?://[^"]+)"\)',
+    ).firstMatch(source);
+    if (link != null) {
+      final uri = Uri.tryParse(link.group(1)!);
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        setState(() => status = "Couldn't open ${link.group(1)}");
+      }
       return;
     }
     await _editProtectedBlock(id);

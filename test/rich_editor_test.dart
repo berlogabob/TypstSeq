@@ -261,6 +261,126 @@ void main() {
     expect(controller.document.blocks[2].style, TyLogBlockStyle.paragraph);
   });
 
+  test('a bare email parses as a mailto link atom and round-trips', () {
+    final document = TyLogDocument.parse('Email: andre.berloga@gmail.com now');
+    final atoms = document.blocks
+        .expand((block) => block.parts)
+        .where((part) => part.isAtom)
+        .toList();
+    expect(atoms.length, 1);
+    expect(atoms.single.source, '#link("mailto:andre.berloga@gmail.com")[andre.berloga\\@gmail.com]');
+    expect(atoms.single.label, 'andre.berloga@gmail.com');
+    // Untouched, the bare source is preserved verbatim (no bulk rewrite)...
+    expect(document.toSource(), 'Email: andre.berloga@gmail.com now');
+    expect(
+      TyLogDocument.parse(document.toSource()).visibleText,
+      document.visibleText,
+    );
+  });
+
+  test('editing an email note migrates the bare address to #link on save', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'Reach me: a@b.com',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    // Append a character to the paragraph so the block becomes dirty.
+    controller.value = TextEditingValue(
+      text: '${controller.text}!',
+      selection: TextSelection.collapsed(offset: controller.text.length + 1),
+    );
+    expect(saved.last, contains('#link("mailto:a@b.com")[a\\@b.com]'));
+  });
+
+  test('a citation @key stays a citation; an email @domain does not', () {
+    final document = TyLogDocument.parse('write user@host.com see @knuth1984');
+    final sources = document.blocks
+        .expand((block) => block.parts)
+        .where((part) => part.isAtom)
+        .map((part) => part.source)
+        .toList();
+    expect(sources, [
+      '#link("mailto:user@host.com")[user\\@host.com]',
+      '@knuth1984',
+    ]);
+  });
+
+  test('typing an email then space converts it to a mailto link chip', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'Contact ',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection.collapsed(offset: 8);
+    for (final ch in 'me@x.com '.split('')) {
+      final at = controller.selection.baseOffset;
+      controller.value = TextEditingValue(
+        text: controller.text.replaceRange(at, at, ch),
+        selection: TextSelection.collapsed(offset: at + 1),
+      );
+    }
+    expect(saved.last, 'Contact #link("mailto:me@x.com")[me\\@x.com] ');
+    expect(
+      controller.document.blocks
+          .expand((block) => block.parts)
+          .where((part) => part.isAtom)
+          .length,
+      1,
+    );
+  });
+
+  test('a paragraph line starting with a list marker round-trips (paste)', () {
+    // Pasting "- item" lands as a paragraph; without escaping it re-parses as a
+    // list, fails toSource validation, and the edit reverts.
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'note',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    const pasted = '\n\n- one\n- two';
+    controller.value = TextEditingValue(
+      text: 'note$pasted',
+      selection: TextSelection.collapsed(offset: 'note$pasted'.length),
+    );
+    expect(controller.text, 'note\n\n- one\n- two');
+    // A trailing newline (Enter) still applies rather than being reverted.
+    controller.value = TextEditingValue(
+      text: '${controller.text}\n',
+      selection: TextSelection.collapsed(offset: controller.text.length + 1),
+    );
+    expect(controller.text, 'note\n\n- one\n- two\n');
+    expect(saved.last, contains('\\- one'));
+  });
+
+  test('Enter in the middle of a numbered list renumbers, not reverts', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: '+ a\n+ b',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    expect(controller.text, '1. a\n2. b');
+    final at = controller.text.indexOf('1. a') + '1. a'.length;
+    controller.selection = TextSelection.collapsed(offset: at);
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(at, at, '\n'),
+      selection: TextSelection.collapsed(offset: at + 1),
+    );
+    expect(controller.text, '1. a\n2. \n3. b');
+    expect(saved.last, '+ a\n+ \n+ b');
+  });
+
   test('list toggles one line, continues, and empty Enter exits', () {
     final saved = <String>[];
     final controller = TyLogEditingController(

@@ -235,9 +235,11 @@ String _inlinePreview(String source) {
         RegExp(r'#tylog\.tag\("((?:\\.|[^"])*)"\)'),
         (match) => _unescapeString(match.group(1)!),
       )
+      // Only a citation `@key` at a break loses its `@`; an email's `@domain`
+      // (preceded by a word char or an escaping `\`) is kept intact.
       .replaceAllMapped(
-        RegExp(r'@([A-Za-z0-9_.:+-]+)'),
-        (match) => match.group(1)!,
+        RegExp(r'(^|[\s\[(])@([A-Za-z0-9_.:+-]+)'),
+        (match) => '${match.group(1)}${match.group(2)}',
       )
       .replaceAllMapped(RegExp(r'#cite\(([^)]*)\)'), (match) => match.group(1)!)
       .replaceAll(RegExp(r'#image\([^)]*\)'), 'Image')

@@ -57,6 +57,11 @@ void main() {
     expect(document.blocks[1].source, endsWith(')'));
   });
 
+  test('source-mode preview keeps a bare email but strips a citation @', () {
+    final document = parseControlledTypst('mail a@b.com and cite @knuth');
+    expect(controlledBlockPreview(document.blocks.single), 'mail a@b.com and cite knuth');
+  });
+
   test('Magic actions emit escaped valid TyLog Typst', () {
     final linked = applyMagicEdit(
       'Amazon',
