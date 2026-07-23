@@ -31,6 +31,7 @@ class KnowledgeScreen extends StatefulWidget {
   /// Codes this screen offers a one-tap "Fix" for.
   static const fixableCodes = {
     'metadata-fallback',
+    'metadata-query-failed',
     'duplicate-note-id',
     'duplicate-alias',
   };
@@ -56,8 +57,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       widget.onFixProblems != null &&
       KnowledgeScreen.fixableCodes.contains(code);
 
-  String _fixLabel(String code) =>
-      code == 'metadata-fallback' ? 'Convert' : 'Open files';
+  String _fixLabel(String code) => switch (code) {
+    'metadata-fallback' => 'Convert',
+    'metadata-query-failed' => 'Repair',
+    _ => 'Open files',
+  };
 
   Future<void> _runFix(List<PkmsProblem> toFix) async {
     if (_fixing || widget.onFixProblems == null) return;

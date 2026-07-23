@@ -598,6 +598,40 @@ String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   return '#import "/_system/tylog.typ" as tylog\n\n$withHeader';
 }
 
+/// Repairs markdown-import artifacts that break Typst compilation — so a note's
+/// metadata query stops failing (`metadata-query-failed` / "formatting couldn't
+/// be read"). Conservative and idempotent: only rewrites the exact patterns the
+/// vault audit found, never touching well-formed content.
+String repairArticleTypst(String source) {
+  var out = source;
+  // Inline-function field access: a closing `]`/`)` immediately followed by
+  // `.<letter>` (e.g. `#emph[confident guessing].Instead`) re-parses as member
+  // access on the function. Insert a space after the dot so the period is prose.
+  out = out.replaceAllMapped(
+    RegExp(r'([\]\)])\.(\p{L}|_)', unicode: true),
+    (m) => '${m[1]}. ${m[2]}',
+  );
+  // A content block `]` abutting `(` or `[` (e.g. `#link("u")[label](2024)`)
+  // re-parses as a call/second-content on the function. Space them apart.
+  // (Only `]` — never `)`, so legit `#link("u")[label]` call syntax is kept.)
+  out = out.replaceAllMapped(
+    RegExp(r'\]([(\[])'),
+    (m) => '] ${m[1]}',
+  );
+  // Bare `word@domain.tld` in prose parses as a Typst `@label` ref (e.g.
+  // `20251186@iade.pt` -> `<iade.pt>` does not exist). Escape the `@` outside
+  // quoted strings (mailto: URLs stay intact) and skip already-escaped `\@`.
+  out = out.splitMapJoin(
+    RegExp(r'"(?:\\.|[^"\\])*"'),
+    onMatch: (m) => m[0]!,
+    onNonMatch: (text) => text.replaceAllMapped(
+      RegExp(r'(\w)@(\w[\w.-]*\.\w+)'),
+      (m) => '${m[1]}\\@${m[2]}',
+    ),
+  );
+  return out;
+}
+
 String serializeNoteHeader(NoteMetadataDraft draft) {
   final fields = <String>[
     '  id: ${_typstString(draft.id)},',

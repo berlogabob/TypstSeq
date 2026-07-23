@@ -1908,6 +1908,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (toFix.first.code) {
       case 'metadata-fallback':
         return _convertToManagedHeader(toFix);
+      case 'metadata-query-failed':
+        return _repairArticles(toFix);
       case 'duplicate-note-id':
       case 'duplicate-alias':
         await _openDuplicateOwners(toFix.first);
@@ -1915,6 +1917,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       default:
         return null;
     }
+  }
+
+  /// Repairs markdown-import artifacts that break a note's Typst metadata query
+  /// ("formatting couldn't be read") so it re-parses as verified metadata.
+  Future<List<PkmsProblem>?> _repairArticles(
+    List<PkmsProblem> problems,
+  ) async {
+    final v = vault;
+    if (v == null) return null;
+    var fixed = 0;
+    for (final problem in problems) {
+      final source = await v.storage.readText(problem.subject);
+      final repaired = repairArticleTypst(source);
+      if (repaired != source) {
+        await v.saveNote(problem.subject, repaired);
+        fixed++;
+      }
+    }
+    await workspace.refreshIndex(force: true);
+    if (!mounted) return null;
+    showSnack(
+      context,
+      fixed == 0
+          ? 'Nothing to repair'
+          : 'Repaired $fixed note${fixed == 1 ? '' : 's'}',
+    );
+    return _knowledgeProblems();
   }
 
   /// Upgrades legacy/fallback-parsed notes to a managed `tylog.note.with(...)`

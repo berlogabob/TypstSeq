@@ -2,6 +2,7 @@ import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  _repairTests();
   group('convert a legacy note to a managed header', () {
     test('rebuilds tylog.note.with(...) from a NoteRef, body untouched', () {
       // A fallback-parsed note: no managed header, just body content.
@@ -78,6 +79,34 @@ void main() {
       expect('#show: tylog.note.with('.allMatches(updated).length, 1);
       expect(updated, contains('title: "New Title"'));
       expect(updated, contains('kind: "article"'));
+    });
+  });
+}
+
+void _repairTests() {
+  group('repairArticleTypst', () {
+    test('breaks inline-function field access (.word)', () {
+      expect(repairArticleTypst('#emph[confident guessing].Instead of'),
+          '#emph[confident guessing]. Instead of');
+      expect(repairArticleTypst('#strong[x].Нужно'), '#strong[x]. Нужно');
+    });
+    test('spaces a content block abutting ( or [ (not legit )[ )', () {
+      expect(repairArticleTypst('#link("u")[label](2024).'),
+          '#link("u")[label] (2024).');
+      // Legit link call syntax `)[` must be untouched.
+      expect(repairArticleTypst('#link("u")[label]'), '#link("u")[label]');
+    });
+    test('escapes bare emails but not those inside strings', () {
+      expect(repairArticleTypst('write to andre@x.com please'),
+          r'write to andre\@x.com please');
+      expect(repairArticleTypst('#link("mailto:a@x.com")[a\\@x.com]'),
+          '#link("mailto:a@x.com")[a\\@x.com]');
+    });
+    test('is idempotent and leaves clean prose alone', () {
+      const clean = 'Just #emph[some] prose with a #link("u")[link] and text.';
+      expect(repairArticleTypst(clean), clean);
+      final once = repairArticleTypst('#emph[x].Word');
+      expect(repairArticleTypst(once), once);
     });
   });
 }
