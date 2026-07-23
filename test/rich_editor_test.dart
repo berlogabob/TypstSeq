@@ -1781,4 +1781,49 @@ void main() {
       expect(saved, contains('== '));
     },
   );
+
+  test(
+    'Enter at the end of a paragraph before another block adds a blank line '
+    'without reverting (trailing-newline round-trip)',
+    () {
+      // A note whose paragraphs sit between blocks (a bullet list above, more
+      // paragraphs below with escaped "- " lines). Pressing Enter at the end of
+      // the middle paragraph used to serialize to 3+ newlines, which Typst
+      // collapses on reparse, so toSource validation reverted the edit — the
+      // "can't type a new line after pasting a list" bug.
+      const source = '- list 01\n- list 02\n\n'
+          'tqwe\n\n'
+          'Do we need it? Yes — keep it.\n'
+          '\\- pubspec references it: adaptive\\_icon\\_foreground: "x".\n'
+          '\\- Both are committed in the v0.1.0+71 release.';
+      final saved = <String>[];
+      final errors = <Object>[];
+      final controller = TyLogEditingController(
+        source: source,
+        onSourceChanged: saved.add,
+        onError: errors.add,
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final caret = controller.text.indexOf('tqwe') + 'tqwe'.length;
+      controller.selection = TextSelection.collapsed(offset: caret);
+      final before = controller.text.length;
+      controller.value = TextEditingValue(
+        text: controller.text.replaceRange(caret, caret, '\n'),
+        selection: TextSelection.collapsed(offset: caret + 1),
+      );
+
+      expect(errors, isEmpty, reason: 'newline must not revert');
+      expect(controller.text.length, before + 1, reason: 'newline applied');
+
+      // Typing on the freshly opened line persists (it becomes real content).
+      controller.value = TextEditingValue(
+        text: controller.text.replaceRange(caret + 1, caret + 1, 'z'),
+        selection: TextSelection.collapsed(offset: caret + 2),
+      );
+      expect(errors, isEmpty);
+      expect(controller.document.visibleText, contains('tqwe\nz'));
+    },
+  );
 }

@@ -105,13 +105,16 @@ UpdateInfo? parseLatestRelease(
   );
 }
 
-/// Checks GitHub for a newer macOS release. Returns null off macOS, on network
-/// error, or when already up to date. [currentVersion] defaults to [appVersion].
-Future<UpdateInfo?> checkForUpdate({
+/// Checks GitHub for a newer macOS release. `info` is the newer release (or null
+/// when already current / off macOS); `failed` is true only when the check
+/// itself couldn't complete (network error or non-200) — distinct from "up to
+/// date" so the caller can report accurately. [currentVersion] defaults to
+/// [appVersion].
+Future<({UpdateInfo? info, bool failed})> checkForUpdate({
   HttpClient? client,
   String? currentVersion,
 }) async {
-  if (!Platform.isMacOS) return null;
+  if (!Platform.isMacOS) return (info: null, failed: false);
   final current = currentVersion ?? await appVersion();
   final http = client ?? HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
@@ -120,11 +123,14 @@ Future<UpdateInfo?> checkForUpdate({
     request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
     request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     final response = await request.close();
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) return (info: null, failed: true);
     final body = await response.transform(utf8.decoder).join();
-    return parseLatestRelease(body, currentVersion: current);
+    return (
+      info: parseLatestRelease(body, currentVersion: current),
+      failed: false,
+    );
   } on Exception {
-    return null;
+    return (info: null, failed: true);
   } finally {
     if (client == null) http.close(force: true);
   }

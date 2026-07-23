@@ -814,15 +814,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// unless an update exists (used for the once-per-launch check); otherwise it
   /// also reports "up to date"/errors (the Settings button).
   Future<void> _checkForUpdates({required bool silent}) async {
-    updater.UpdateInfo? info;
-    try {
-      info = await updater.checkForUpdate();
-    } on Exception {
-      info = null;
-    }
+    final result = await updater.checkForUpdate();
     if (!mounted) return;
+    final info = result.info;
     if (info == null) {
-      if (!silent) showSnack(context, "You're up to date");
+      // Distinguish a real failure from "already current" so the manual check
+      // doesn't falsely claim you're up to date when the network call failed.
+      if (!silent) {
+        showSnack(
+          context,
+          result.failed
+              ? "Couldn't check for updates"
+              : "You're up to date",
+        );
+      }
       return;
     }
     final update = info;
@@ -2526,6 +2531,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (recent.progress >= 0.98) continue; // finished — nothing to continue
       final note = notesByPath[recent.path];
       if (note == null) continue;
+      // "Continue reading" is for readable content: articles and plain notes.
+      // Entity pages (person/organization/tag/date) and daily notes get an
+      // open recorded too, but shouldn't surface here.
+      if (note.kind != 'article' && note.kind != 'note') continue;
       result.add((note, recent.progress));
       if (result.length == 8) break;
     }

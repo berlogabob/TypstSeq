@@ -900,9 +900,15 @@ class TyLogDocument {
     final source = buffer.toString();
     if (validate) {
       final reparsed = TyLogDocument.parse(source);
+      // A block's trailing newline (e.g. Enter at the end of a paragraph that
+      // sits right before another block) can't survive a round-trip: it merges
+      // with the `\n\n` separator into 3+ newlines, which Typst collapses back
+      // to a single paragraph break. Strip it here so this transient "blank
+      // line before an existing block" state validates instead of reverting
+      // (it re-persists as soon as the user types on the new line).
       final persistedVisible = blocks
           .where((block) => block.isProtected || block.visibleText.isNotEmpty)
-          .map((block) => block.visibleText)
+          .map((block) => block.visibleText.replaceFirst(RegExp(r'\n+$'), ''))
           .join('\n\n');
       if ((reparsed.visibleText != visibleText &&
               reparsed.visibleText != persistedVisible) ||
