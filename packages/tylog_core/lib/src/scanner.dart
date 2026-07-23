@@ -181,6 +181,13 @@ Duration typstInspectTimeout = const Duration(seconds: 30);
 /// sync. Capped, the backlog drains a slice per scan instead.
 int maxMetadataReinspectionsPerScan = 50;
 
+/// Consecutive inspect timeouts tolerated before the native worker is
+/// treated as wedged and abandoned for the rest of the pass. A single
+/// transient timeout skips only its own note (it still records a
+/// metadata-query-failed problem); only a sustained run of timeouts trips
+/// the source-scan fallback. Test-overridable.
+int maxConsecutiveInspectTimeouts = 3;
+
 List<TypstMetadataRecord> decodeTypstMetadataRecords(String json) {
   final elements = (jsonDecode(json) as List).cast<Object?>();
   return [
@@ -360,11 +367,15 @@ Future<VaultIndex> scanVaultStorage(
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   Map<String, Uint8List>? inspectionFiles;
-  // A poisoned note can wedge the inspector's single native worker; after the
-  // first timeout every later query would idle out too (30 s × hundreds of
-  // notes). Drop to the source-based scan for the rest of this pass instead.
+  // A poisoned note can wedge the inspector's single native worker, so a
+  // single timeout only skips its own note (still recorded as a
+  // metadata-query-failed problem). Only after
+  // [maxConsecutiveInspectTimeouts] consecutive timeouts do we treat the
+  // worker as genuinely wedged and drop to the source-based scan for the
+  // rest of this pass.
   var activeInspector = inspector;
   var reinspected = 0;
+  var consecutiveTimeouts = 0;
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -418,6 +429,7 @@ Future<VaultIndex> scanVaultStorage(
                   )
                   .timeout(typstInspectTimeout),
             );
+      if (activeInspector != null) consecutiveTimeouts = 0;
       notes[relative] = queried?.note == null
           ? _fallbackNote(
               relative,
@@ -441,7 +453,12 @@ Future<VaultIndex> scanVaultStorage(
         problems.add(_fallbackProblem(relative));
       }
     } catch (error) {
-      if (error is TimeoutException) activeInspector = null;
+      if (error is TimeoutException) {
+        consecutiveTimeouts++;
+        if (consecutiveTimeouts >= maxConsecutiveInspectTimeouts) {
+          activeInspector = null;
+        }
+      }
       final fallback = _fallbackNote(
         relative,
         source,
@@ -1173,7 +1190,7 @@ NoteRef _fallbackNote(
             title: _bracketBody(call.source),
           ),
     ],
-    properties: const {},
+    properties: _parseProperties(header),
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
     metadataSource: 'fallback',

@@ -55,6 +55,28 @@ void main() {
     },
   );
 
+  test('fallback note preserves custom header properties', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_props_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/entity.typ',
+      '''#show: tylog.note.with(
+  id: "entity",
+  title: "Entity",
+  properties: ("email": "a@b.com", "rating": "4"),
+)''',
+    );
+
+    final index = await scanVaultStorage(storage);
+
+    final note = index.notes.singleWhere(
+      (note) => note.path == 'notes/entity.typ',
+    );
+    expect(note.properties['email'], 'a@b.com');
+    expect(note.properties['rating'], '4');
+  });
+
   test('inspector failure warns and retains fallback backlinks', () async {
     final root = await Directory.systemTemp.createTemp('tylog_core_bad_');
     addTearDown(() => root.delete(recursive: true));
@@ -87,53 +109,106 @@ void main() {
     );
   });
 
-  test('a hanging inspector times out and the scan still completes', () async {
-    final root = await Directory.systemTemp.createTemp('tylog_core_hang_');
-    final previousTimeout = typstInspectTimeout;
-    typstInspectTimeout = const Duration(milliseconds: 100);
-    addTearDown(() async {
-      typstInspectTimeout = previousTimeout;
-      await root.delete(recursive: true);
-    });
-    final storage = LocalVaultStorage(root);
-    await storage.writeText(
-      'notes/poison.typ',
-      '#show: tylog.note.with(id: "poison", title: "Poison")',
-    );
-    await storage.writeText(
-      'notes/fine.typ',
-      '#show: tylog.note.with(id: "fine", title: "Fine")',
-    );
-    // Sorted after poison.typ: must NOT be queried once the inspector is
-    // considered dead (a wedged native worker would idle out every later
-    // query too), but still lands in the index via the source-based scan.
-    await storage.writeText(
-      'notes/z-after.typ',
-      '#show: tylog.note.with(id: "z", title: "After")',
-    );
-    final inspector = _HangingInspector('notes/poison.typ');
+  test(
+    'a single hung note times out but does not poison later notes',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog_core_hang_');
+      final previousTimeout = typstInspectTimeout;
+      typstInspectTimeout = const Duration(milliseconds: 100);
+      addTearDown(() async {
+        typstInspectTimeout = previousTimeout;
+        await root.delete(recursive: true);
+      });
+      final storage = LocalVaultStorage(root);
+      await storage.writeText(
+        'notes/poison.typ',
+        '#show: tylog.note.with(id: "poison", title: "Poison")',
+      );
+      await storage.writeText(
+        'notes/fine.typ',
+        '#show: tylog.note.with(id: "fine", title: "Fine")',
+      );
+      // Sorted after poison.typ: a lone transient timeout must not poison
+      // the rest of the pass — this note should still be queried
+      // successfully by the delegate.
+      await storage.writeText(
+        'notes/z-after.typ',
+        '#show: tylog.note.with(id: "z", title: "After")',
+      );
+      final inspector = _HangingInspector('notes/poison.typ');
 
-    final index = await scanVaultStorage(
-      storage,
-      inspector: inspector,
-    ).timeout(const Duration(seconds: 10));
+      final index = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+      ).timeout(const Duration(seconds: 10));
 
-    expect(index.notes, hasLength(3));
-    expect(
-      index.problems
-          .where((problem) => problem.code == 'metadata-query-failed')
-          .map((problem) => problem.subject),
-      ['notes/poison.typ'],
-    );
-    // fine.typ (sorted first) was queried; z-after.typ was skipped.
-    expect(inspector.queried, ['notes/fine.typ', 'notes/poison.typ']);
-    expect(
-      index.problems
-          .where((problem) => problem.code == 'metadata-fallback')
-          .map((problem) => problem.subject),
-      contains('notes/z-after.typ'),
-    );
-  });
+      expect(index.notes, hasLength(3));
+      expect(
+        index.problems
+            .where((problem) => problem.code == 'metadata-query-failed')
+            .map((problem) => problem.subject),
+        ['notes/poison.typ'],
+      );
+      // All three notes went through the inspector: one timeout does not
+      // drop it for the rest of the pass.
+      expect(
+        inspector.queried,
+        ['notes/fine.typ', 'notes/poison.typ', 'notes/z-after.typ'],
+      );
+      // z-after.typ was queried successfully by the delegate, so it is
+      // neither a fallback note nor a failed query.
+      expect(
+        index.problems
+            .where((problem) => problem.subject == 'notes/z-after.typ'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'sustained consecutive timeouts still abandon the worker for the rest '
+    'of the pass',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog_core_wedge_');
+      final previousTimeout = typstInspectTimeout;
+      final previousMaxConsecutive = maxConsecutiveInspectTimeouts;
+      typstInspectTimeout = const Duration(milliseconds: 100);
+      maxConsecutiveInspectTimeouts = 2;
+      addTearDown(() async {
+        typstInspectTimeout = previousTimeout;
+        maxConsecutiveInspectTimeouts = previousMaxConsecutive;
+        await root.delete(recursive: true);
+      });
+      final storage = LocalVaultStorage(root);
+      for (var i = 0; i < 4; i++) {
+        await storage.writeText(
+          'notes/n$i.typ',
+          '#show: tylog.note.with(id: "n$i", title: "N$i")',
+        );
+      }
+      // Hangs on every note: with the threshold at 2, the first two notes
+      // each record their own timeout before the worker is abandoned; the
+      // remaining notes then fall back without ever being queried.
+      final inspector = _HangingInspector('', matchAll: true);
+
+      final index = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+      ).timeout(const Duration(seconds: 10));
+
+      expect(index.notes, hasLength(4));
+      expect(
+        index.problems
+            .where((problem) => problem.code == 'metadata-query-failed'),
+        isNotEmpty,
+      );
+      expect(
+        index.problems
+            .where((problem) => problem.code == 'metadata-fallback'),
+        isNotEmpty,
+      );
+    },
+  );
 
   test(
     'a fallback note is re-inspected once a healthy inspector is available',
@@ -142,9 +217,15 @@ void main() {
         'tylog_core_reinspect_',
       );
       final previousTimeout = typstInspectTimeout;
+      final previousMaxConsecutive = maxConsecutiveInspectTimeouts;
       typstInspectTimeout = const Duration(milliseconds: 100);
+      // A single timeout must still be able to wedge the worker for a whole
+      // pass (the scenario this test cares about), so drop the threshold to
+      // 1 rather than relying on several consecutive timeouts.
+      maxConsecutiveInspectTimeouts = 1;
       addTearDown(() async {
         typstInspectTimeout = previousTimeout;
+        maxConsecutiveInspectTimeouts = previousMaxConsecutive;
         await root.delete(recursive: true);
       });
       final storage = LocalVaultStorage(root);
@@ -375,15 +456,18 @@ Map<String, Object?> _stableNotes(VaultIndex index) => {
 };
 
 class _HangingInspector implements TypstInspector {
-  _HangingInspector(this.hangOn);
+  _HangingInspector(this.hangOn, {this.matchAll = false});
   final String hangOn;
+  // When true, every query hangs regardless of [hangOn] — simulates a
+  // worker that is wedged outright rather than choking on one note.
+  final bool matchAll;
   final queried = <String>[];
   final _delegate = _SourceInspector();
 
   @override
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) {
     queried.add(input.path);
-    if (input.path == hangOn) {
+    if (matchAll || input.path == hangOn) {
       // Simulates a Typst compile that never terminates.
       return Completer<List<TypstMetadataRecord>>().future;
     }
