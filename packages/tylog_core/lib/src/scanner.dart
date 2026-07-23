@@ -168,6 +168,17 @@ abstract interface class TypstInspector {
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input);
 }
 
+/// An inspector whose underlying worker can be torn down and rebuilt after it
+/// wedges. The device inspector shares one stateful native Typst engine behind
+/// a write lock; a single compile that spins forever holds that lock and makes
+/// every later note time out too (a contiguous fallback tail). Recreating the
+/// engine gives the rest of the pass a fresh, unlocked worker. A separate
+/// interface so the CLI/test inspectors (which spawn per note and never wedge)
+/// don't have to implement it.
+abstract interface class RecoverableInspector {
+  Future<void> recover();
+}
+
 /// Upper bound for a single note's metadata query. A pathological document
 /// can make the Typst compile spin forever (device-verified: one synced
 /// article froze the whole scan, and with it index + search, until app
@@ -182,11 +193,20 @@ Duration typstInspectTimeout = const Duration(seconds: 30);
 int maxMetadataReinspectionsPerScan = 50;
 
 /// Consecutive inspect timeouts tolerated before the native worker is
-/// treated as wedged and abandoned for the rest of the pass. A single
-/// transient timeout skips only its own note (it still records a
-/// metadata-query-failed problem); only a sustained run of timeouts trips
+/// treated as wedged. A single transient timeout skips only its own note (it
+/// still records a metadata-query-failed problem); on a sustained run the
+/// worker is recovered ([RecoverableInspector.recover]) so the rest of the
+/// pass keeps querying, or — for a non-recoverable inspector — abandoned to
 /// the source-scan fallback. Test-overridable.
 int maxConsecutiveInspectTimeouts = 3;
+
+/// How many times a wedged worker is rebuilt within one scan before the
+/// inspector is abandoned outright. Bounds the pathological case where every
+/// note wedges even a fresh engine (each recovery still burns
+/// [maxConsecutiveInspectTimeouts] × [typstInspectTimeout]); the counter
+/// resets whenever any query succeeds, so a vault with a few bad notes
+/// recovers indefinitely. Test-overridable.
+int maxInspectorRecoveriesPerScan = 3;
 
 List<TypstMetadataRecord> decodeTypstMetadataRecords(String json) {
   final elements = (jsonDecode(json) as List).cast<Object?>();
@@ -369,13 +389,15 @@ Future<VaultIndex> scanVaultStorage(
   Map<String, Uint8List>? inspectionFiles;
   // A poisoned note can wedge the inspector's single native worker, so a
   // single timeout only skips its own note (still recorded as a
-  // metadata-query-failed problem). Only after
-  // [maxConsecutiveInspectTimeouts] consecutive timeouts do we treat the
-  // worker as genuinely wedged and drop to the source-based scan for the
-  // rest of this pass.
+  // metadata-query-failed problem). After [maxConsecutiveInspectTimeouts]
+  // consecutive timeouts the worker is treated as wedged: a recoverable
+  // inspector is rebuilt so the rest of the pass keeps querying (a wedged
+  // native engine holds its lock forever, so nulling alone would strand the
+  // whole tail as fallback); a non-recoverable one drops to the source scan.
   var activeInspector = inspector;
   var reinspected = 0;
   var consecutiveTimeouts = 0;
+  var recoveries = 0;
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -429,7 +451,13 @@ Future<VaultIndex> scanVaultStorage(
                   )
                   .timeout(typstInspectTimeout),
             );
-      if (activeInspector != null) consecutiveTimeouts = 0;
+      if (activeInspector != null) {
+        // A query got through: the worker is healthy, so reset both the
+        // timeout streak and the recovery budget (a handful of bad notes
+        // scattered through the vault should each get the full allowance).
+        consecutiveTimeouts = 0;
+        recoveries = 0;
+      }
       notes[relative] = queried?.note == null
           ? _fallbackNote(
               relative,
@@ -456,7 +484,18 @@ Future<VaultIndex> scanVaultStorage(
       if (error is TimeoutException) {
         consecutiveTimeouts++;
         if (consecutiveTimeouts >= maxConsecutiveInspectTimeouts) {
-          activeInspector = null;
+          if (activeInspector is RecoverableInspector &&
+              recoveries < maxInspectorRecoveriesPerScan) {
+            recoveries++;
+            consecutiveTimeouts = 0;
+            try {
+              await (activeInspector as RecoverableInspector).recover();
+            } catch (_) {
+              activeInspector = null;
+            }
+          } else {
+            activeInspector = null;
+          }
         }
       }
       final fallback = _fallbackNote(

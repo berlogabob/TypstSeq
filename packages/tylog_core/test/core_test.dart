@@ -211,6 +211,50 @@ void main() {
   );
 
   test(
+    'a wedged recoverable worker is rebuilt so the rest of the pass is queried',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog_core_recov_');
+      final previousTimeout = typstInspectTimeout;
+      final previousMaxConsecutive = maxConsecutiveInspectTimeouts;
+      typstInspectTimeout = const Duration(milliseconds: 100);
+      maxConsecutiveInspectTimeouts = 2;
+      addTearDown(() async {
+        typstInspectTimeout = previousTimeout;
+        maxConsecutiveInspectTimeouts = previousMaxConsecutive;
+        await root.delete(recursive: true);
+      });
+      final storage = LocalVaultStorage(root);
+      for (var i = 0; i < 4; i++) {
+        await storage.writeText(
+          'notes/n$i.typ',
+          '#show: tylog.note.with(id: "n$i", title: "N$i")',
+        );
+      }
+      // Wedges until recovery: n0/n1 time out (threshold 2), then the worker
+      // is rebuilt once and n2/n3 query cleanly — no more fallbacks after the
+      // wedge, unlike the non-recoverable case which strands the whole tail.
+      final inspector = _RecoverableHangingInspector();
+
+      final index = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+      ).timeout(const Duration(seconds: 10));
+
+      expect(inspector.recoverCount, 1);
+      // The two tail notes recovered — queried, not fallback.
+      final tailProblems = index.problems
+          .where((p) => p.subject == 'notes/n2.typ' || p.subject == 'notes/n3.typ')
+          .toList();
+      expect(tailProblems, isEmpty);
+      // Only the two pre-recovery notes remained as query failures.
+      expect(
+        index.problems.where((p) => p.code == 'metadata-query-failed'),
+        hasLength(2),
+      );
+    },
+  );
+
+  test(
     'a fallback note is re-inspected once a healthy inspector is available',
     () async {
       final root = await Directory.systemTemp.createTemp(
@@ -483,5 +527,29 @@ class _FileCapturingInspector implements TypstInspector {
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) {
     fileKeys.addAll(input.files.keys);
     return _delegate.inspect(input);
+  }
+}
+
+/// Hangs on every query until [recover] is called, then delegates normally —
+/// modelling the device inspector whose wedged native engine is cleared by
+/// swapping in a fresh one.
+class _RecoverableHangingInspector
+    implements TypstInspector, RecoverableInspector {
+  bool wedged = true;
+  int recoverCount = 0;
+  final queried = <String>[];
+  final _delegate = _SourceInspector();
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) {
+    queried.add(input.path);
+    if (wedged) return Completer<List<TypstMetadataRecord>>().future;
+    return _delegate.inspect(input);
+  }
+
+  @override
+  Future<void> recover() async {
+    recoverCount++;
+    wedged = false;
   }
 }
