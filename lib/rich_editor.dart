@@ -844,6 +844,10 @@ class TyLogDocument {
     final glyph = switch (prev.style) {
       TyLogBlockStyle.bulletList => '\n• ',
       TyLogBlockStyle.numberedList => '\n0. ',
+      // A heading is a single line — join the text directly onto it
+      // (`= Titlebody`) rather than with a `\n`, which would re-parse as a
+      // separate paragraph and fail the round-trip.
+      TyLogBlockStyle.heading => '',
       _ => '\n',
     };
     final merged = [
@@ -946,22 +950,17 @@ class TyLogDocument {
     final source = buffer.toString();
     if (validate) {
       final reparsed = TyLogDocument.parse(source);
-      // A block's trailing newline (e.g. Enter at the end of a paragraph that
-      // sits right before another block) can't survive a round-trip: it merges
-      // with the `\n\n` separator into 3+ newlines, which Typst collapses back
-      // to a single paragraph break. Strip it here so this transient "blank
-      // line before an existing block" state validates instead of reverting
-      // (it re-persists as soon as the user types on the new line).
-      final persistedVisible = blocks
-          .where((block) => block.isProtected || block.visibleText.isNotEmpty)
-          .map((block) => block.visibleText.replaceFirst(RegExp(r'\n+$'), ''))
-          .join('\n\n');
-      if ((reparsed.visibleText != visibleText &&
-              reparsed.visibleText != persistedVisible) ||
-          !_sameProtectedSources(reparsed, this)) {
-        throw const FormatException(
-          'Rich editor could not validate Typst output.',
-        );
+      // Accept-and-tolerate: a reparse that differs from the live model ONLY in
+      // block-structure newlines — a trailing blank line, or a 3+ newline run
+      // Typst collapses back to one paragraph break — is a benign
+      // normalization, not corruption. The model keeps the user's transient
+      // state (e.g. the blank line they just opened with Enter, which re-
+      // persists on the next keystroke); the emitted source is its canonical
+      // form. Reject only a real content change or a lost protected node.
+      if (!_sameProtectedSources(reparsed, this) ||
+          _canonicalNewlines(reparsed.visibleText) !=
+              _canonicalNewlines(visibleText)) {
+        throw const FormatException(_validateFailMessage);
       }
     }
     return source;
@@ -1139,6 +1138,7 @@ class TyLogEditingController extends TextEditingController {
           TyLogBlockStyle.paragraph,
           TyLogBlockStyle.bulletList,
           TyLogBlockStyle.numberedList,
+          TyLogBlockStyle.heading,
         };
         for (var i = 1; i < ranges.length; i++) {
           final gapStart = ranges[i - 1].end;
@@ -1152,7 +1152,19 @@ class TyLogEditingController extends TextEditingController {
           if (prev.isProtected ||
               document.blocks[i].isProtected ||
               !mergeable.contains(prev.style)) {
-            break;
+            // Boundary backspace that can't merge (next to a protected node or
+            // a task line) — consume it as a no-op instead of falling through
+            // to the "crossed a protected node" guard, which would revert with
+            // an error. The separator char isn't real content, so the model is
+            // already correct; just discard the keystroke and keep the caret.
+            _updating = true;
+            value = TextEditingValue(
+              text: _lastValue.text,
+              selection: TextSelection.collapsed(offset: gapEnd),
+            );
+            _lastValue = value;
+            _updating = false;
+            return;
           }
           final offset = document.mergeBackward(i);
           _updating = true;
@@ -1260,6 +1272,44 @@ class TyLogEditingController extends TextEditingController {
       _compositionStart = null;
       _redo.clear();
       onSourceChanged(source);
+    } on FormatException catch (error) {
+      // Accept-and-resync — ONLY for the round-trip validation failure (a benign
+      // normalization: a char repositioned relative to a list glyph, a
+      // paragraph line that re-parses as a list). If the canonical reparse keeps
+      // every protected node the *pre-edit* document had, adopt it and remap the
+      // caret. Task-integrity and protected-crossing guards raise their own
+      // FormatExceptions and must still revert.
+      var resynced = false;
+      if (error.message == _validateFailMessage) {
+        final raw = document.toSource(validate: false);
+        final reparsed = TyLogDocument.parse(raw);
+        if (_sameProtectedSources(reparsed, before.document)) {
+          document.blocks = reparsed.blocks;
+          document.prefix = reparsed.prefix;
+          _updating = true;
+          value = TextEditingValue(
+            text: document.visibleText,
+            selection: TextSelection.collapsed(
+              offset: math.min(
+                next.selection.baseOffset,
+                document.visibleText.length,
+              ),
+            ),
+          );
+          _lastValue = value;
+          _updating = false;
+          _addUndo(_compositionStart ?? before);
+          _compositionStart = null;
+          _redo.clear();
+          onSourceChanged(raw);
+          resynced = true;
+        }
+      }
+      if (!resynced) {
+        _restore(_compositionStart ?? before, emit: false);
+        _compositionStart = null;
+        onError(error);
+      }
     } catch (error) {
       _restore(_compositionStart ?? before, emit: false);
       _compositionStart = null;
@@ -3263,6 +3313,20 @@ String _serializePart(TyLogInline part) {
   }
   return value;
 }
+
+/// The round-trip validation failure — the one FormatException the commit path
+/// treats as a benign normalization candidate for accept-and-resync (all other
+/// guards, e.g. task integrity / protected crossing, must revert).
+const _validateFailMessage = 'Rich editor could not validate Typst output.';
+
+/// Normalizes away the newline differences a Typst round-trip is allowed to
+/// introduce: a run of 3+ newlines collapses to the `\n\n` block separator, and
+/// trailing newlines are dropped. Single (intra-paragraph) and double
+/// (block-separator) newlines are preserved, so this treats block-structure
+/// whitespace as benign while still catching any real content change.
+String _canonicalNewlines(String s) => s
+    .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+    .replaceFirst(RegExp(r'\n+$'), '');
 
 bool _sameProtectedSources(TyLogDocument a, TyLogDocument b) {
   final aSources = [

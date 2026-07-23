@@ -1877,4 +1877,80 @@ void main() {
     expect(errors, isEmpty);
     expect(c.document.visibleText, 'alpha\nbeta');
   });
+
+  // Option 1 (accept-and-resync): the audit's whole boundary-edit revert class.
+  test('Enter at the end of a heading no longer reverts', () {
+    final errors = <Object>[];
+    final c = backspaceController('= Title\n\nbody', errors);
+    addTearDown(c.dispose);
+    final end = c.document.blocks.first.visibleText.length; // end of heading
+    c.selection = TextSelection.collapsed(offset: end);
+    final before = c.text.length;
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(end, end, '\n'),
+      selection: TextSelection.collapsed(offset: end + 1),
+    );
+    expect(errors, isEmpty, reason: 'no revert');
+    expect(c.text.length, greaterThan(before), reason: 'a new line opened');
+  });
+
+  test('Backspace before a paragraph after a heading merges into the heading',
+      () {
+    final errors = <Object>[];
+    final c = backspaceController('= Title\n\nbody', errors);
+    addTearDown(c.dispose);
+    final at = c.text.indexOf('body');
+    c.selection = TextSelection.collapsed(offset: at);
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(at - 1, at, ''),
+      selection: TextSelection.collapsed(offset: at - 1),
+    );
+    expect(errors, isEmpty);
+    expect(c.document.visibleText, 'Titlebody');
+  });
+
+  test('typing before a list glyph resyncs instead of reverting', () {
+    final errors = <Object>[];
+    final c = backspaceController('- a\n- b', errors);
+    addTearDown(c.dispose);
+    c.selection = const TextSelection.collapsed(offset: 0);
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(0, 0, 'x'),
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+    expect(errors, isEmpty, reason: 'accepted via resync');
+    expect(c.document.visibleText, contains('x')); // char preserved
+    // Still a well-formed document that round-trips.
+    expect(
+      TyLogDocument.parse(c.document.toSource(validate: false)).visibleText,
+      c.document.visibleText,
+    );
+  });
+
+  // Must-reject: a benign edit adjacent to a chip keeps the chip's source
+  // (accept-and-resync must never silently corrupt a protected node). The
+  // audit harness additionally proves the ~0.1% residual reverts are exactly
+  // the protected-altering edits.
+  test('typing next to a link chip preserves the chip source', () {
+    final errors = <Object>[];
+    final c = TyLogEditingController(
+      source: 'see #link("https://x.com")[x] end',
+      onSourceChanged: (_) {},
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(c.dispose);
+    final end = c.text.length;
+    c.selection = TextSelection.collapsed(offset: end);
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(end, end, '!'),
+      selection: TextSelection.collapsed(offset: end + 1),
+    );
+    expect(errors, isEmpty);
+    expect(
+      c.document.toSource(validate: false),
+      contains('#link("https://x.com")'),
+      reason: 'the protected link must survive an adjacent edit',
+    );
+  });
 }
