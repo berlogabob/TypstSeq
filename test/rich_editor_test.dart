@@ -1826,4 +1826,55 @@ void main() {
       expect(controller.document.visibleText, contains('tqwe\nz'));
     },
   );
+
+  TyLogEditingController backspaceController(
+    String source,
+    List<Object> errors,
+  ) => TyLogEditingController(
+    source: source,
+    onSourceChanged: (_) {},
+    onError: errors.add,
+    onProtectedTap: (_) {},
+  );
+
+  // Backspace at the start of a block deletes the inter-block separator (which
+  // no block owns) — it must merge into the previous block instead of silently
+  // reverting ("can't delete the blank line / merge up before a paragraph").
+  test(
+    'backspace before a paragraph after a bullet list merges it into the list',
+    () {
+      final errors = <Object>[];
+      final c = backspaceController('- a\n- b\n\nt\n\n', errors);
+      addTearDown(c.dispose);
+
+      final caret = c.text.indexOf('\n\nt') + 2; // just before the standalone t
+      c.selection = TextSelection.collapsed(offset: caret);
+      final before = c.text.length;
+      c.value = TextEditingValue(
+        text: c.text.replaceRange(caret - 1, caret, ''),
+        selection: TextSelection.collapsed(offset: caret - 1),
+      );
+
+      expect(errors, isEmpty, reason: 'no revert');
+      expect(c.text.length, lessThan(before), reason: 'the blank line is gone');
+      // "t" became a third list item; the note round-trips.
+      expect(c.document.visibleText, contains('• b\n• t'));
+    },
+  );
+
+  test('backspace before a paragraph after a paragraph merges the two', () {
+    final errors = <Object>[];
+    final c = backspaceController('alpha\n\nbeta', errors);
+    addTearDown(c.dispose);
+
+    final caret = c.text.indexOf('beta');
+    c.selection = TextSelection.collapsed(offset: caret);
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(caret - 1, caret, ''),
+      selection: TextSelection.collapsed(offset: caret - 1),
+    );
+
+    expect(errors, isEmpty);
+    expect(c.document.visibleText, 'alpha\nbeta');
+  });
 }

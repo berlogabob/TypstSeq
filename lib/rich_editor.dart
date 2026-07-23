@@ -830,6 +830,52 @@ class TyLogDocument {
     return _ranges[hit.index + 1].start;
   }
 
+  /// Merges `blocks[index]` into the block before it — the inverse of
+  /// [insertNewline], for Backspace at a block's start (deleting the inter-block
+  /// separator, which no block owns as editable text). The merged content
+  /// adopts the previous block's style so it round-trips: joined to a list it
+  /// becomes a new item (glyph kept in the visible text to match the serialized
+  /// `- `/`+ ` prefix), otherwise it joins with a plain line break. Returns the
+  /// caret offset at the join (right before the merged-in content).
+  int mergeBackward(int index) {
+    final prev = blocks[index - 1];
+    final cur = blocks[index];
+    final joinOffset = _ranges[index - 1].end;
+    final glyph = switch (prev.style) {
+      TyLogBlockStyle.bulletList => '\n• ',
+      TyLogBlockStyle.numberedList => '\n0. ',
+      _ => '\n',
+    };
+    final merged = [
+      ...prev.parts,
+      TyLogInline.text(glyph),
+      ...cur.parts.map((part) => part.copy()),
+    ];
+    // Drop a trailing newline-only tail (the last block often carries the
+    // file's trailing blank line) so a list block doesn't emit empty `- `
+    // items when serialized.
+    while (merged.isNotEmpty) {
+      final last = merged.last;
+      final trimmed = last.text.replaceFirst(RegExp(r'\n+$'), '');
+      if (trimmed == last.text) break;
+      if (trimmed.isEmpty) {
+        merged.removeLast();
+      } else {
+        merged[merged.length - 1] = TyLogInline.text(
+          trimmed,
+          style: last.style,
+        );
+        break;
+      }
+    }
+    prev.parts = merged;
+    prev.dirty = true;
+    if (index == blocks.length - 1) prev.separator = cur.separator;
+    blocks.removeAt(index);
+    if (prev.style == TyLogBlockStyle.numberedList) _renumberBlock(index - 1);
+    return joinOffset + glyph.length;
+  }
+
   /// Rewrites a numbered-list block's visible numbers to a contiguous 1..n
   /// (what a Typst `+` enum renders and what the reparse produces) by round-
   /// tripping just that block through the serializer/parser.
@@ -1065,6 +1111,50 @@ class TyLogEditingController extends TextEditingController {
             hit.start + 2,
             TyLogBlockStyle.paragraph,
           );
+          _updating = true;
+          value = TextEditingValue(
+            text: document.visibleText,
+            selection: TextSelection.collapsed(offset: offset),
+          );
+          _lastValue = value;
+          _updating = false;
+          final source = document.toSource();
+          _addUndo(_compositionStart ?? before);
+          _compositionStart = null;
+          _redo.clear();
+          onSourceChanged(source);
+          return;
+        }
+      }
+      // Backspace deleting a newline that sits in the inter-block separator (no
+      // block owns it) — merge this block into the previous one. Without this
+      // the generic replace no-ops on the separator, the visible text doesn't
+      // shrink, and the mismatch trips the crossed-protected-node guard and
+      // reverts ("Backspace does nothing before a paragraph after a blank line").
+      if (change.replacement.isEmpty &&
+          change.oldEnd - change.start == 1 &&
+          _lastValue.text.codeUnitAt(change.start) == 10) {
+        final ranges = document._ranges;
+        const mergeable = {
+          TyLogBlockStyle.paragraph,
+          TyLogBlockStyle.bulletList,
+          TyLogBlockStyle.numberedList,
+        };
+        for (var i = 1; i < ranges.length; i++) {
+          final gapStart = ranges[i - 1].end;
+          final gapEnd = ranges[i].start;
+          if (gapEnd <= gapStart ||
+              change.start < gapStart ||
+              change.oldEnd > gapEnd) {
+            continue;
+          }
+          final prev = document.blocks[i - 1];
+          if (prev.isProtected ||
+              document.blocks[i].isProtected ||
+              !mergeable.contains(prev.style)) {
+            break;
+          }
+          final offset = document.mergeBackward(i);
           _updating = true;
           value = TextEditingValue(
             text: document.visibleText,
