@@ -15,9 +15,12 @@ class SettingsSheet extends StatelessWidget {
     required this.syncStatusSubtitle,
     required this.onNextcloud,
     required this.vaultCount,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     required this.onManageVaults,
     required this.onEnableReminders,
     required this.onMigrateEntityTypes,
+    this.onCheckForUpdates,
   });
 
   final String vaultPath;
@@ -26,9 +29,14 @@ class SettingsSheet extends StatelessWidget {
   final String syncStatusSubtitle;
   final VoidCallback onNextcloud;
   final int vaultCount;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
   final Future<void> Function() onMigrateEntityTypes;
+
+  /// Desktop-only: check GitHub Releases for a newer build. Null hides the tile.
+  final VoidCallback? onCheckForUpdates;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +52,11 @@ class SettingsSheet extends StatelessWidget {
               Text(
                 'Settings',
                 style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 12),
+              _ThemeModeSelector(
+                themeMode: themeMode,
+                onChanged: onThemeModeChanged,
               ),
               const SizedBox(height: 8),
               SettingsTile(
@@ -84,6 +97,13 @@ class SettingsSheet extends StatelessWidget {
                   subtitle: snapshot.data ?? '...',
                 ),
               ),
+              if (onCheckForUpdates case final onTap?)
+                SettingsTile(
+                  icon: Icons.system_update,
+                  title: 'Check for updates',
+                  subtitle: 'Download the latest release from GitHub',
+                  onTap: onTap,
+                ),
             ],
           ),
         ),
@@ -129,4 +149,62 @@ class SettingsTile extends StatelessWidget {
       onTap: onTap,
     ),
   );
+}
+
+/// Light / Dark / System appearance picker. Tracks the pressed segment locally
+/// so it updates instantly inside the sheet while reporting up via [onChanged].
+class _ThemeModeSelector extends StatefulWidget {
+  const _ThemeModeSelector({required this.themeMode, required this.onChanged});
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  State<_ThemeModeSelector> createState() => _ThemeModeSelectorState();
+}
+
+class _ThemeModeSelectorState extends State<_ThemeModeSelector> {
+  late ThemeMode _mode = widget.themeMode;
+
+  static const _options = <(ThemeMode, String)>[
+    (ThemeMode.system, 'Auto'),
+    (ThemeMode.light, 'Light'),
+    (ThemeMode.dark, 'Dark'),
+  ];
+
+  void _select(ThemeMode mode) {
+    setState(() => _mode = mode);
+    widget.onChanged(mode);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ChoiceChips (the app's existing selection idiom) rather than
+    // SegmentedButton: the latter's selection animation does not reliably
+    // settle under pumpAndSettle in this app's widget tests.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.brightness_6_outlined,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          const Expanded(child: Text('Appearance')),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final (mode, label) in _options)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _mode == mode,
+                  onSelected: (_) => _select(mode),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

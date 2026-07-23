@@ -70,63 +70,83 @@ class TodayPage extends StatelessWidget {
             b.due ?? b.scheduled ?? '9999',
           ),
         );
-    return Column(
-      children: [
-        ExpansionTile(
-          key: const PageStorageKey('today-agenda'),
-          initiallyExpanded: agenda.isNotEmpty,
-          leading: const Icon(Icons.event_note),
-          title: Text('Agenda${agenda.isEmpty ? '' : ' · ${agenda.length}'}'),
-          subtitle: agenda.isEmpty
-              ? const Text('Nothing actionable today')
-              : null,
-          children: [
-            for (final task in agenda)
-              ListTile(
-                leading: TaskCheckbox(
-                  value: task.status == 'done',
-                  onChanged: (done) {
-                    if (done == true) unawaited(onSetStatus(task, 'done'));
-                  },
-                ),
-                title: Text(task.text),
-                subtitle: Text(
-                  task.due == null
-                      ? 'Scheduled today'
-                      : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
-                  style: isTaskOverdue(task, today)
-                      ? TextStyle(color: Theme.of(context).colorScheme.error)
-                      : null,
-                ),
-                onTap: () => unawaited(onSetStatus(task, 'done')),
-                trailing: IconButton(
-                  tooltip: 'Open source note',
-                  onPressed: () => onOpenPath(task.notePath),
-                  icon: const Icon(Icons.open_in_new),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          // Agenda + Continue reading share a bounded, scroll-if-tall region so
+          // a long recent list can never starve the editor and overflow.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight * 0.6),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ExpansionTile(
+                    key: const PageStorageKey('today-agenda'),
+                    initiallyExpanded: agenda.isNotEmpty,
+                    leading: const Icon(Icons.event_note),
+                    title: Text(
+                      'Agenda${agenda.isEmpty ? '' : ' · ${agenda.length}'}',
+                    ),
+                    subtitle: agenda.isEmpty
+                        ? const Text('Nothing actionable today')
+                        : null,
+                    children: [
+                      for (final task in agenda)
+                        ListTile(
+                          leading: TaskCheckbox(
+                            value: task.status == 'done',
+                            onChanged: (done) {
+                              if (done == true) {
+                                unawaited(onSetStatus(task, 'done'));
+                              }
+                            },
+                          ),
+                          title: Text(task.text),
+                          subtitle: Text(
+                            task.due == null
+                                ? 'Scheduled today'
+                                : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
+                            style: isTaskOverdue(task, today)
+                                ? TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  )
+                                : null,
+                          ),
+                          onTap: () => unawaited(onSetStatus(task, 'done')),
+                          trailing: IconButton(
+                            tooltip: 'Open source note',
+                            onPressed: () => onOpenPath(task.notePath),
+                            icon: const Icon(Icons.open_in_new),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (recent.isNotEmpty)
+                    ExpansionTile(
+                      key: const PageStorageKey('today-continue-reading'),
+                      initiallyExpanded: true,
+                      leading: const Icon(Icons.history),
+                      title: const Text('Continue reading'),
+                      children: [
+                        for (final (note, progress) in recent)
+                          ListTile(
+                            title: Text(note.title),
+                            subtitle: progress > 0
+                                ? LinearProgressIndicator(value: progress)
+                                : null,
+                            onTap: () => (onReadPath ?? onOpenPath)(note.path),
+                          ),
+                      ],
+                    ),
+                ],
               ),
-          ],
-        ),
-        if (recent.isNotEmpty)
-          ExpansionTile(
-            key: const PageStorageKey('today-continue-reading'),
-            initiallyExpanded: true,
-            leading: const Icon(Icons.history),
-            title: const Text('Continue reading'),
-            children: [
-              for (final (note, progress) in recent)
-                ListTile(
-                  title: Text(note.title),
-                  subtitle: progress > 0
-                      ? LinearProgressIndicator(value: progress)
-                      : null,
-                  onTap: () => (onReadPath ?? onOpenPath)(note.path),
-                ),
-            ],
+            ),
           ),
-        const Divider(height: 1),
-        Expanded(child: editor),
-      ],
+          const Divider(height: 1),
+          Expanded(child: editor),
+        ],
+      ),
     );
   }
 }
@@ -217,6 +237,7 @@ class LibraryView extends StatelessWidget {
     required this.onImportMarkdownArticles,
     required this.onReadPath,
     required this.onDeleteArticle,
+    this.noteToCluster = const {},
     this.shelfPrefs = const {},
     this.onShelfPrefsChanged,
   });
@@ -224,6 +245,7 @@ class LibraryView extends StatelessWidget {
   final VaultIndex? index;
   final bool indexing;
   final Map<String, double> progressByPath;
+  final Map<String, String> noteToCluster;
   final Map<String, String> shelfPrefs;
   final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final ValueChanged<String> onOpenPath;
@@ -268,6 +290,7 @@ class LibraryView extends StatelessWidget {
                 onSetRelevance: onSetRelevance,
                 onDeleteArticle: onDeleteArticle,
                 onImportMarkdownArticles: onImportMarkdownArticles,
+                noteToCluster: noteToCluster,
                 shelfPrefs: shelfPrefs,
                 onShelfPrefsChanged: onShelfPrefsChanged,
               ),
@@ -395,6 +418,7 @@ class _ArticlesShelf extends StatefulWidget {
     required this.onSetRelevance,
     required this.onDeleteArticle,
     required this.onImportMarkdownArticles,
+    this.noteToCluster = const {},
     required this.shelfPrefs,
     required this.onShelfPrefsChanged,
   });
@@ -402,6 +426,7 @@ class _ArticlesShelf extends StatefulWidget {
   final VaultIndex? index;
   final bool indexing;
   final Map<String, double> progressByPath;
+  final Map<String, String> noteToCluster;
   final Map<String, String> shelfPrefs;
   final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final ValueChanged<String> onReadPath;
@@ -450,6 +475,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     'tag': 'Group by tag',
     'year': 'Group by year',
     'source': 'Group by source',
+    'cluster': 'Group by cluster',
   };
 
   @override
@@ -483,6 +509,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   String _groupKey(NoteRef note) => switch (groupBy) {
     'tag' => note.tags.isEmpty ? 'Untagged' : note.tags.first,
     'year' => _year(note),
+    'cluster' => widget.noteToCluster[note.path] ?? 'Uncategorized',
     _ => _source(note) ?? 'Unknown source',
   };
 
@@ -511,9 +538,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     note.tags.any((tag) => tag.toLowerCase().contains(q)),
               )
               .toList();
-    final counts = {
-      for (final stage in articleStatusOptions) stage: 0,
-    };
+    final counts = {for (final stage in articleStatusOptions) stage: 0};
     for (final note in searched) {
       counts[_bucket(note)] = (counts[_bucket(note)] ?? 0) + 1;
     }

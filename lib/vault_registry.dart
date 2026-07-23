@@ -167,6 +167,7 @@ class VaultRegistry {
     this.onboardingComplete = true,
     this.readingFontScale = 1,
     this.readingNightMode = false,
+    this.themeMode = 'system',
     this.shelfPrefs = const {},
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
@@ -177,6 +178,10 @@ class VaultRegistry {
   bool onboardingComplete;
   double readingFontScale;
   bool readingNightMode;
+
+  /// App-wide appearance: 'system' | 'light' | 'dark'. Stored as a string so
+  /// this Flutter-free file stays independent of `ThemeMode`.
+  String themeMode;
 
   /// Article-shelf filter/sort/group choices, persisted so they survive an app
   /// restart (e.g. `{'status': 'unread', 'sort': 'relevance'}`).
@@ -202,11 +207,13 @@ class VaultRegistry {
     final file = File('${documents.path}/vaults.json');
     var readingFontScale = 1.0;
     var readingNightMode = false;
+    var themeMode = 'system';
     if (await file.exists()) {
       final json =
           jsonDecode(await file.readAsString()) as Map<String, Object?>;
       readingFontScale = _readingFontScale(json['readingFontScale']);
       readingNightMode = json['readingNightMode'] as bool? ?? false;
+      themeMode = json['themeMode'] as String? ?? 'system';
       final parsed = (json['vaults'] as List)
           .map(
             (item) =>
@@ -262,6 +269,7 @@ class VaultRegistry {
           onboardingComplete: json['onboardingComplete'] as bool? ?? true,
           readingFontScale: readingFontScale,
           readingNightMode: readingNightMode,
+          themeMode: themeMode,
           shelfPrefs:
               (json['shelfPrefs'] as Map?)?.map(
                 (k, v) => MapEntry('$k', '$v'),
@@ -403,6 +411,11 @@ class VaultRegistry {
     return save();
   }
 
+  Future<void> setThemeMode(String mode) {
+    themeMode = mode;
+    return save();
+  }
+
   Future<void> updateShelfPrefs(Map<String, String> prefs) {
     shelfPrefs = prefs;
     return save();
@@ -506,6 +519,7 @@ class VaultRegistry {
         'onboardingComplete': onboardingComplete,
         'readingFontScale': readingFontScale,
         'readingNightMode': readingNightMode,
+        'themeMode': themeMode,
         'shelfPrefs': shelfPrefs,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),

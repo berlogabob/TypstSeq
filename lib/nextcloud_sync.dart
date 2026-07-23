@@ -215,6 +215,14 @@ bool canSkipPoll({
       previous == current;
 }
 
+/// A WebDAV request that completed with a definitive error status. Unlike a
+/// dropped connection (a plain [HttpException]/[SocketException]), retrying
+/// cannot change the outcome, so [NextcloudSync._retryTransient] rethrows these
+/// at once instead of burning the retry budget at every sync stage.
+class WebDavStatusException extends HttpException {
+  WebDavStatusException(super.message);
+}
+
 class NextcloudSync {
   NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
 
@@ -830,7 +838,7 @@ class NextcloudSync {
       }
       if (status >= 400) {
         await response.drain<void>();
-        throw HttpException('GET archive $status');
+        throw WebDavStatusException('GET archive $status');
       }
       await response
           .pipe(temporary.openWrite())
@@ -1515,7 +1523,9 @@ class NextcloudSync {
         .timeout(propfindBodyTimeout);
     if (allowMissing && response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
-      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+      throw WebDavStatusException(
+        'PROPFIND unexpected status ${response.statusCode}',
+      );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
@@ -1607,7 +1617,9 @@ class NextcloudSync {
         .join()
         .timeout(propfindBodyTimeout);
     if (response.statusCode != 207) {
-      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+      throw WebDavStatusException(
+        'PROPFIND unexpected status ${response.statusCode}',
+      );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
@@ -1641,7 +1653,9 @@ class NextcloudSync {
         .timeout(propfindBodyTimeout);
     if (response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
-      throw HttpException('PROPFIND unexpected status ${response.statusCode}');
+      throw WebDavStatusException(
+        'PROPFIND unexpected status ${response.statusCode}',
+      );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
@@ -1719,7 +1733,7 @@ class NextcloudSync {
       throw const _RemoteChanged();
     }
     if (response.statusCode >= 400) {
-      throw HttpException('PUT $path ${response.statusCode}');
+      throw WebDavStatusException('PUT $path ${response.statusCode}');
     }
     final remoteHash = response.headers.value('x-hash-sha256');
     if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
@@ -1756,7 +1770,7 @@ class NextcloudSync {
     request.headers.set('X-Hash', 'sha256');
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
-      throw HttpException('GET $path ${response.statusCode}');
+      throw WebDavStatusException('GET $path ${response.statusCode}');
     }
     final etag =
         response.headers.value(HttpHeaders.etagHeader) ??
@@ -2033,7 +2047,7 @@ class NextcloudSync {
     )).close().timeout(const Duration(seconds: 20));
     await response.drain<void>();
     if (response.statusCode >= 400 && response.statusCode != 405) {
-      throw HttpException('MKCOL ${response.statusCode}');
+      throw WebDavStatusException('MKCOL ${response.statusCode}');
     }
   }
 
@@ -2060,7 +2074,9 @@ class NextcloudSync {
         status == HttpStatus.conflict) {
       throw const _RemoteChanged();
     }
-    if (status >= 400) throw HttpException('MOVE $from ${response.statusCode}');
+    if (status >= 400) {
+      throw WebDavStatusException('MOVE $from ${response.statusCode}');
+    }
     return _RemoteFile(
       modified: DateTime.now().toUtc(),
       etag: etag,
@@ -2078,7 +2094,7 @@ class NextcloudSync {
     }
     if (response.statusCode >= 400 &&
         response.statusCode != HttpStatus.notFound) {
-      throw HttpException('DELETE $path ${response.statusCode}');
+      throw WebDavStatusException('DELETE $path ${response.statusCode}');
     }
   }
 
@@ -2089,6 +2105,14 @@ class NextcloudSync {
     for (var attempt = 0; ; attempt++) {
       try {
         return await run();
+      } on WebDavStatusException {
+        // A completed HTTP error response means the server was reached and
+        // answered definitively; retrying just burns the retry budget at
+        // every sync stage. A dropped connection instead surfaces as a plain
+        // IOException below and is still retried.
+        // NB: WebDavStatusException extends HttpException/IOException, so this
+        // clause must precede the IOException catch.
+        rethrow;
       } on IOException {
         if (attempt >= connectionRetryDelays.length) rethrow;
       } on TimeoutException {

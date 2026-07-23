@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g>
+    <path d="M 442.1 251.2 A 270 270 0 0 0 251.2 442.1" fill="none" stroke="#0FA3A5" stroke-width="14" stroke-linecap="round" />
+    <path d="M 772.8 442.1 A 270 270 0 0 0 581.9 251.2" fill="none" stroke="#0FA3A5" stroke-width="14" stroke-linecap="round" />
+    <path d="M 251.2 581.9 A 270 270 0 0 0 442.1 772.8" fill="none" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <path d="M 581.9 772.8 A 270 270 0 0 0 772.8 581.9" fill="none" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="242.0" x2="278.2" y2="377.0" stroke="#167D86" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="242.0" x2="745.8" y2="377.0" stroke="#167D86" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="242.0" x2="585.0" y2="420.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="278.2" y1="377.0" x2="420.0" y2="435.0" stroke="#167D86" stroke-width="14" stroke-linecap="round" />
+    <line x1="745.8" y1="377.0" x2="585.0" y2="420.0" stroke="#167D86" stroke-width="14" stroke-linecap="round" />
+    <line x1="420.0" y1="435.0" x2="585.0" y2="420.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="420.0" y1="435.0" x2="512.0" y2="560.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="585.0" y1="420.0" x2="512.0" y2="560.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="420.0" y1="435.0" x2="278.2" y2="647.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="560.0" x2="278.2" y2="647.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="560.0" x2="745.8" y2="647.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="585.0" y1="420.0" x2="745.8" y2="647.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="512.0" y1="560.0" x2="512.0" y2="782.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="278.2" y1="647.0" x2="512.0" y2="782.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <line x1="745.8" y1="647.0" x2="512.0" y2="782.0" stroke="#0B1D2A" stroke-width="14" stroke-linecap="round" />
+    <circle cx="559.0" cy="448.0" r="7" fill="#63E1D6" stroke="none" stroke-width="0" />
+    <circle cx="533.0" cy="476.0" r="7" fill="#63E1D6" stroke="none" stroke-width="0" />
+    <circle cx="507.0" cy="504.0" r="7" fill="#63E1D6" stroke="none" stroke-width="0" />
+    <circle cx="481.0" cy="532.0" r="7" fill="#63E1D6" stroke="none" stroke-width="0" />
+    <circle cx="512.0" cy="242.0" r="34" fill="#63E1D6" stroke="none" stroke-width="0" />
+    <circle cx="278.2" cy="377.0" r="30" fill="#0FA3A5" stroke="none" stroke-width="0" />
+    <circle cx="745.8" cy="377.0" r="30" fill="#0FA3A5" stroke="none" stroke-width="0" />
+    <circle cx="278.2" cy="647.0" r="30" fill="#0B1D2A" stroke="none" stroke-width="0" />
+    <circle cx="745.8" cy="647.0" r="30" fill="#0B1D2A" stroke="none" stroke-width="0" />
+    <circle cx="512.0" cy="782.0" r="34" fill="#0B1D2A" stroke="none" stroke-width="0" />
+    <circle cx="420.0" cy="435.0" r="34" fill="#0E6B73" stroke="none" stroke-width="0" />
+    <circle cx="585.0" cy="420.0" r="28" fill="#0F7E88" stroke="none" stroke-width="0" />
+    <circle cx="512.0" cy="560.0" r="34" fill="#0B1D2A" stroke="none" stroke-width="0" />
+  </g>
+</svg>

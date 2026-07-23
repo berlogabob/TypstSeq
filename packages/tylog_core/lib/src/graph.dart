@@ -161,12 +161,7 @@ NoteGraph buildConceptMap(
   int minNotes = kConceptMapMinNotes,
   int minCoOccur = 3,
 }) {
-  final notesByTag = <String, Set<String>>{};
-  for (final note in index.notes) {
-    for (final tag in note.tags) {
-      notesByTag.putIfAbsent(tag, () => {}).add(note.path);
-    }
-  }
+  final notesByTag = tagToNotes(index);
   final promoted = {
     for (final entry in notesByTag.entries)
       if (entry.value.length >= minNotes) entry.key: entry.value,
@@ -198,6 +193,155 @@ NoteGraph buildConceptMap(
     }
   }
   return NoteGraph(nodes: nodes, edges: edges);
+}
+
+/// Maps each tag to the set of note paths carrying it — one cheap pass, shared
+/// by the concept map and community detection.
+/// ponytail: plain helper, not a memoized field — `VaultIndex` is a const model
+/// and this runs once per graph rebuild, not in a hot loop.
+Map<String, Set<String>> tagToNotes(VaultIndex index) {
+  final byTag = <String, Set<String>>{};
+  for (final note in index.notesByPath.values) {
+    for (final tag in note.tags) {
+      byTag.putIfAbsent(tag, () => {}).add(note.path);
+    }
+  }
+  return byTag;
+}
+
+/// A `note -> community` assignment plus the tag grouping behind it. `clusterOrder`
+/// is a stable label order (biggest community first) so callers can index a color
+/// or a seed position off it deterministically.
+class CommunityMap {
+  const CommunityMap({
+    required this.tagToCluster,
+    required this.noteToCluster,
+    required this.clusterOrder,
+  });
+
+  /// Promoted tag -> its community label (the community's human-readable name).
+  final Map<String, String> tagToCluster;
+
+  /// Note path -> its community label. Notes with no promoted tag are absent.
+  final Map<String, String> noteToCluster;
+
+  /// Distinct community labels, largest (by note count) first — the index a
+  /// caller uses for a per-community color/seed.
+  final List<String> clusterOrder;
+}
+
+/// Groups tags into communities by **label propagation** over the tag
+/// co-occurrence graph (only tags on >= [minNotes] notes participate; an edge
+/// exists when two tags share >= [minCoOccur] notes, weighted by that count).
+/// Each note is then assigned the community of its dominant tag — the promoted
+/// tag it carries that spans the most notes. Deterministic (sorted iteration,
+/// lexicographic tie-breaks) so it is safe to run in a background isolate.
+/// ponytail: label propagation; swap for Louvain only if communities come out too coarse.
+CommunityMap computeCommunities(
+  VaultIndex index, {
+  int minNotes = kConceptMapMinNotes,
+  int minCoOccur = 3,
+}) {
+  final byTag = tagToNotes(index);
+  final promoted = {
+    for (final e in byTag.entries)
+      if (e.value.length >= minNotes) e.key: e.value,
+  };
+  final tags = promoted.keys.toList()..sort();
+
+  // Weighted adjacency: tag -> {neighbor: sharedNoteCount}.
+  final adj = {for (final t in tags) t: <String, int>{}};
+  for (var i = 0; i < tags.length; i++) {
+    for (var j = i + 1; j < tags.length; j++) {
+      final shared = promoted[tags[i]]!.intersection(promoted[tags[j]]!).length;
+      if (shared >= minCoOccur) {
+        adj[tags[i]]![tags[j]] = shared;
+        adj[tags[j]]![tags[i]] = shared;
+      }
+    }
+  }
+
+  // Seed each tag with its own label; each pass a tag adopts the neighbor label
+  // carrying the greatest incident weight (ties -> lexicographically smallest).
+  final label = {for (final t in tags) t: t};
+  for (var pass = 0; pass < 10; pass++) {
+    var changed = false;
+    for (final t in tags) {
+      final neighbors = adj[t]!;
+      if (neighbors.isEmpty) continue;
+      final weightByLabel = <String, int>{};
+      neighbors.forEach((n, w) {
+        weightByLabel.update(label[n]!, (v) => v + w, ifAbsent: () => w);
+      });
+      var best = label[t]!;
+      var bestW = weightByLabel[best] ?? 0;
+      weightByLabel.forEach((lbl, w) {
+        if (w > bestW || (w == bestW && lbl.compareTo(best) < 0)) {
+          best = lbl;
+          bestW = w;
+        }
+      });
+      if (best != label[t]) {
+        label[t] = best;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  // Group tags by their final label, then name each community by its
+  // highest-note-count member (tie -> smallest tag).
+  final members = <String, List<String>>{};
+  for (final t in tags) {
+    members.putIfAbsent(label[t]!, () => []).add(t);
+  }
+  final tagToCluster = <String, String>{};
+  for (final group in members.values) {
+    group.sort((a, b) {
+      final byCount = promoted[b]!.length.compareTo(promoted[a]!.length);
+      return byCount != 0 ? byCount : a.compareTo(b);
+    });
+    final name = group.first;
+    for (final t in group) {
+      tagToCluster[t] = name;
+    }
+  }
+
+  // Each note -> community of its dominant promoted tag (most notes; tie ->
+  // smallest tag). Notes with no promoted tag stay unassigned.
+  final noteToCluster = <String, String>{};
+  for (final note in index.notesByPath.values) {
+    String? bestTag;
+    var bestCount = -1;
+    for (final tag in note.tags) {
+      final count = promoted[tag]?.length;
+      if (count == null) continue;
+      if (count > bestCount ||
+          (count == bestCount &&
+              (bestTag == null || tag.compareTo(bestTag) < 0))) {
+        bestTag = tag;
+        bestCount = count;
+      }
+    }
+    if (bestTag != null) noteToCluster[note.path] = tagToCluster[bestTag]!;
+  }
+
+  // Stable order: biggest community (by note count) first, then by name.
+  final sizeByCluster = <String, int>{};
+  noteToCluster.forEach(
+    (_, c) => sizeByCluster.update(c, (v) => v + 1, ifAbsent: () => 1),
+  );
+  final clusterOrder = sizeByCluster.keys.toList()
+    ..sort((a, b) {
+      final bySize = sizeByCluster[b]!.compareTo(sizeByCluster[a]!);
+      return bySize != 0 ? bySize : a.compareTo(b);
+    });
+
+  return CommunityMap(
+    tagToCluster: tagToCluster,
+    noteToCluster: noteToCluster,
+    clusterOrder: clusterOrder,
+  );
 }
 
 String _isoDay(DateTime dt) =>

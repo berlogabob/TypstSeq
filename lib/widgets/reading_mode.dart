@@ -219,7 +219,7 @@ class _ReadingModeState extends State<ReadingMode> {
         ? ThemeData(
             useMaterial3: true,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF0F172A),
+              seedColor: const Color(0xFF0B2F44),
               brightness: Brightness.dark,
             ),
           )

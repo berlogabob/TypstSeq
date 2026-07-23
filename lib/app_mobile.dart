@@ -40,6 +40,7 @@ import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
 import 'widgets/settings_sheet.dart';
 import 'widgets/snack.dart';
+import 'desktop_updater.dart' as updater;
 import 'widgets/sync_dashboard.dart';
 import 'widgets/sync_status.dart';
 import 'widgets/vaults_sheet.dart';
@@ -50,6 +51,18 @@ export 'widgets/app_version.dart';
 export 'widgets/date_format.dart';
 export 'widgets/sync_status.dart';
 export 'widgets/work_surface.dart' show isTaskInTodayAgenda, isTaskOverdue;
+
+const _autoRelatedMarker = '// tylog:auto-related';
+
+String stripAutoRelated(String source) {
+  final marker = RegExp(
+    '(?:^|\\n)${RegExp.escape(_autoRelatedMarker)}(?:\\r?\\n|\$)',
+  ).firstMatch(source);
+  if (marker == null) return source;
+  return source
+      .substring(0, marker.start)
+      .replaceFirst(RegExp(r'[\r\n]+$'), '');
+}
 
 enum _MarkdownImportOutcome { imported, replaced, kept, unchanged, failed }
 
@@ -85,13 +98,41 @@ String? vaultEntryLocation(VaultEntry? entry) =>
     entry?.treeUri ??
     (entry == null || entry.path.isEmpty ? entry?.name : entry.path);
 
-class TyLogApp extends StatelessWidget {
+ThemeMode themeModeFromName(String name) => switch (name) {
+  'light' => ThemeMode.light,
+  'dark' => ThemeMode.dark,
+  _ => ThemeMode.system,
+};
+
+String themeModeName(ThemeMode mode) => switch (mode) {
+  ThemeMode.light => 'light',
+  ThemeMode.dark => 'dark',
+  ThemeMode.system => 'system',
+};
+
+class TyLogApp extends StatefulWidget {
   const TyLogApp({super.key});
+
+  @override
+  State<TyLogApp> createState() => _TyLogAppState();
+}
+
+class _TyLogAppState extends State<TyLogApp> {
+  // App-wide light/dark/system selection. Held in the tree (not a global) so it
+  // is disposed with the app and cannot leak state between widget tests. The
+  // persisted value in [VaultRegistry.themeMode] flows up from HomeScreen once
+  // the registry has loaded, via [_setThemeMode].
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void _setThemeMode(ThemeMode mode) {
+    if (mode == _themeMode) return;
+    setState(() => _themeMode = mode);
+  }
 
   @override
   Widget build(BuildContext context) {
     final darkColorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0F172A),
+      seedColor: const Color(0xFF0B2F44),
       brightness: Brightness.dark,
     );
     return MaterialApp(
@@ -99,7 +140,7 @@ class TyLogApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F172A),
+          seedColor: const Color(0xFF0B2F44),
           brightness: Brightness.light,
           surface: const Color(0xFFF8FAFC),
           onSurfaceVariant: const Color(0xFF3F414A),
@@ -118,14 +159,26 @@ class TyLogApp extends StatelessWidget {
           border: InputBorder.none,
         ),
       ),
-      themeMode: ThemeMode.system,
-      home: const HomeScreen(),
+      themeMode: _themeMode,
+      home: HomeScreen(
+        themeMode: _themeMode,
+        onThemeModeChanged: _setThemeMode,
+      ),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.themeMode = ThemeMode.system,
+    this.onThemeModeChanged,
+  });
+
+  /// Current app-wide appearance and the callback to change it, both owned by
+  /// [TyLogApp]. Optional so tests can mount HomeScreen without wiring theming.
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -221,6 +274,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     )..addListener(_workspaceChanged);
     WidgetsBinding.instance.addObserver(this);
     _open();
+    // One silent update check per launch on macOS (only prompts if newer).
+    // Skipped under `flutter test`: it would hit GitHub and leave an unawaited
+    // rootBundle/HTTP load pending past teardown, wedging the asset channel for
+    // the next test (appVersion hangs).
+    if (Platform.isMacOS &&
+        !Platform.environment.containsKey('FLUTTER_TEST')) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => unawaited(_checkForUpdates(silent: true)),
+      );
+    }
   }
 
   @override
@@ -298,6 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
+      widget.onThemeModeChanged?.call(themeModeFromName(registry.themeMode));
       if (Platform.isAndroid) {
         if (registry.entries.isEmpty) {
           if (!await _pickVault(closeCurrent: false)) {
@@ -744,6 +808,97 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (ok) launchUrl(uri);
       }),
     );
+  }
+
+  /// macOS: check GitHub Releases for a newer build. When [silent], stays quiet
+  /// unless an update exists (used for the once-per-launch check); otherwise it
+  /// also reports "up to date"/errors (the Settings button).
+  Future<void> _checkForUpdates({required bool silent}) async {
+    updater.UpdateInfo? info;
+    try {
+      info = await updater.checkForUpdate();
+    } on Exception {
+      info = null;
+    }
+    if (!mounted) return;
+    if (info == null) {
+      if (!silent) showSnack(context, "You're up to date");
+      return;
+    }
+    final update = info;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Update available · ${update.version}'),
+        content: SingleChildScrollView(
+          child: Text(
+            update.notes.isEmpty ? 'A newer version is available.' : update.notes,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, false);
+              _openUrl(update.htmlUrl);
+            },
+            child: const Text('View release'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Update & restart'),
+          ),
+        ],
+      ),
+    );
+    if (go == true) await _applyUpdate(update);
+  }
+
+  /// Downloads and applies [update] behind a progress dialog. On success the app
+  /// quits and relaunches itself; on a non-writable location it falls back to
+  /// opening the release page for a manual install.
+  Future<void> _applyUpdate(updater.UpdateInfo update) async {
+    final progress = ValueNotifier<double>(0);
+    if (!mounted) return;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Updating…'),
+          content: ValueListenableBuilder<double>(
+            valueListenable: progress,
+            builder: (_, value, _) => LinearProgressIndicator(
+              value: value == 0 ? null : value,
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      // On success this never returns — the process exits and relaunches.
+      await updater.downloadAndApply(update, onProgress: (p) => progress.value = p);
+    } on updater.UpdateNotWritable {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        showSnack(
+          context,
+          "Can't replace the app here — opening the release page",
+        );
+        _openUrl(update.htmlUrl);
+      }
+    } on Exception {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        showSnack(context, 'Update failed — opening the release page');
+        _openUrl(update.htmlUrl);
+      }
+    } finally {
+      progress.dispose();
+    }
   }
 
   /// Reads a vault asset (e.g. an article image) for inline rendering; null on
@@ -1262,6 +1417,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         metadataSource: 'typst-query',
       );
 
+  Future<int> _appendRelatedSection(
+    String path,
+    List<String> targetPaths,
+  ) async {
+    final source = await vault!.readText(path);
+    final stripped = stripAutoRelated(source);
+    final lines = [
+      for (final targetPath in targetPaths)
+        if (index!.notesByPath[targetPath] case final target?)
+          '#tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
+    ];
+    if (lines.isNotEmpty) {
+      await vault!.saveNote(
+        path,
+        '$stripped\n\n$_autoRelatedMarker\n== Related\n${lines.join('\n')}\n',
+      );
+      return 1;
+    }
+    if (stripped != source) await vault!.saveNote(path, stripped);
+    return 0;
+  }
+
   /// Appends a clearly-labeled links section to freshly imported articles
   /// whose tags/citations/properties match existing vault notes. Only
   /// touches notes just written by this import — never edits pre-existing
@@ -1275,23 +1452,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final note = currentIndex.notesByPath[path];
       if (note == null) continue;
       final targets = suggestLinkTargets(note, currentIndex);
-      if (targets.isEmpty) continue;
-      final lines = [
-        for (final targetPath in targets)
-          if (currentIndex.notesByPath[targetPath] case final target?)
-            '#tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
-      ];
-      if (lines.isEmpty) continue;
-      final source = await opened.readText(path);
-      final section =
-          '\n\n// Suggested links (auto-generated on import)\n== Related\n'
-          '${lines.join('\n')}\n';
-      await opened.saveNote(path, source + section);
-      appended = true;
+      appended = await _appendRelatedSection(path, targets) > 0 || appended;
     }
     if (appended) {
       await workspace.refreshIndex(updateStatus: false, force: true);
     }
+  }
+
+  Future<void> _relinkVault() async {
+    if (vault == null || index == null) return;
+    final idx = index!;
+    final communities = computeCommunities(idx);
+    final articles = idx.notes.where((n) => n.kind == 'article').toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Relink vault'),
+        content: Text(
+          'Rescan ${articles.length} articles and refresh their suggested links?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Relink'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    try {
+      for (final note in articles) {
+        final sourceCluster = communities.noteToCluster[note.path];
+        final targets = suggestLinkTargets(note, idx).where((targetPath) {
+          final targetCluster = communities.noteToCluster[targetPath];
+          return sourceCluster == null ||
+              targetCluster == null ||
+              sourceCluster == targetCluster;
+        }).toList();
+        await _appendRelatedSection(note.path, targets);
+      }
+    } finally {
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+    await workspace.refreshIndex(force: true);
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text('Relinked ${articles.length} articles')),
+    );
   }
 
   Future<_MarkdownDuplicateDecision> _resolveMarkdownDuplicate({
@@ -2048,6 +2270,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
+            themeMode: widget.themeMode,
+            onThemeModeChanged: (mode) {
+              widget.onThemeModeChanged?.call(mode);
+              unawaited(registry?.setThemeMode(themeModeName(mode)) ??
+                  Future.value());
+            },
             onManageVaults: () => Navigator.pop(context, true),
             onNextcloud: () {
               Navigator.pop(context);
@@ -2062,6 +2290,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Navigator.pop(context);
               await _migrateEntityTypes();
             },
+            onCheckForUpdates: Platform.isMacOS
+                ? () {
+                    Navigator.pop(context);
+                    unawaited(_checkForUpdates(silent: false));
+                  }
+                : null,
           );
         },
       ),
@@ -3302,6 +3536,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _ShellAction.backlinks: (Icons.link, 'Context'),
               _ShellAction.problems: (Icons.warning_amber, 'Problems'),
               _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
+              _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
               _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
             }.entries)
               ListTile(
@@ -3342,6 +3577,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _showKnowledge(initialView: KnowledgeView.problems);
       case _ShellAction.rebuild:
         await _rebuildIndex();
+      case _ShellAction.relink:
+        await _relinkVault();
       case _ShellAction.typstHelp:
         await _showTypstHelp();
       case _ShellAction.settings:
@@ -3406,6 +3643,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }),
             _ => buildLocalNoteGraph(index!, _graphFocusPath ?? current),
           };
+    // One community assignment feeds both the graph (agglomerations + color) and
+    // the library's group-by-cluster. O(concepts^2), same as the builders above.
+    // ponytail: recomputed per build like `graph`; memoize on the index only if a profile flags it.
+    final communities = index == null ? null : computeCommunities(index!);
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
@@ -3467,6 +3708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onSetTaskStatus: _setTaskStatus,
         onSetReadStatus: _setReadStatus,
         onSetRelevance: _setRelevance,
+        noteToCluster: communities?.noteToCluster ?? const {},
         shelfPrefs: vaultRegistry?.shelfPrefs ?? const {},
         onShelfPrefsChanged: (prefs) =>
             unawaited(vaultRegistry?.updateShelfPrefs(prefs) ?? Future.value()),
@@ -3496,6 +3738,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _graphMode = 'local';
           _graphFocusPath = null;
         }),
+        communities: communities,
       ),
       'preview' => TypstDocumentViewer(
         source: _debouncedPreview(),
@@ -3970,6 +4213,7 @@ enum _ShellAction {
   backlinks,
   problems,
   rebuild,
+  relink,
   typstHelp,
   settings,
 }
