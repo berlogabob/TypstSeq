@@ -54,7 +54,19 @@ Future<PkmsValidationReport> validatePkmsStorage(
     );
   }
 
-  const standardKinds = {'note', 'daily', 'project', 'article', 'research'};
+  const standardKinds = {
+    'note',
+    'daily',
+    'project',
+    'article',
+    'research',
+    // Entity-page kinds (knowledge graph): first-class, not "unknown".
+    'person',
+    'organization',
+    'place',
+    'website',
+    'event',
+  };
   const taskStatuses = {'todo', 'doing', 'done', 'cancelled'};
   const priorities = {'low', 'normal', 'high', 'urgent'};
 
@@ -223,13 +235,15 @@ void _duplicates(
     }
   }
   for (final entry in owners.entries.where((entry) => entry.value.length > 1)) {
+    final targets = entry.value.toList()..sort();
     problems.add(
       PkmsProblem(
         code: code,
         severity: PkmsSeverity.error,
         subject: entry.key,
-        message: '${entry.key} is owned by ${entry.value.join(', ')}',
+        message: '${entry.key} is owned by ${targets.join(', ')}',
         fix: 'Keep one canonical owner and rename or merge the others.',
+        targets: targets,
       ),
     );
   }

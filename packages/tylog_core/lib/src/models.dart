@@ -8,6 +8,7 @@ class PkmsProblem {
     required this.message,
     this.fix,
     this.detail,
+    this.targets = const [],
   });
 
   final String code;
@@ -17,6 +18,10 @@ class PkmsProblem {
   final String? fix;
   final String? detail;
 
+  /// Vault paths this problem concerns beyond [subject] — e.g. every file that
+  /// claims a duplicated id/date, so a fixer can open them all to merge.
+  final List<String> targets;
+
   Map<String, Object?> toJson() => {
     'code': code,
     'severity': severity.name,
@@ -24,6 +29,7 @@ class PkmsProblem {
     'message': message,
     if (fix != null) 'fix': fix,
     if (detail != null) 'detail': detail,
+    if (targets.isNotEmpty) 'targets': targets,
   };
 
   factory PkmsProblem.fromJson(Map<String, Object?> json) => PkmsProblem(
@@ -36,6 +42,9 @@ class PkmsProblem {
     message: json['message'] as String,
     fix: json['fix'] as String?,
     detail: json['detail'] as String?,
+    targets:
+        (json['targets'] as List?)?.map((e) => e as String).toList() ??
+        const [],
   );
 }
 

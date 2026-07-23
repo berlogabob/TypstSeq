@@ -13,6 +13,7 @@ class KnowledgeScreen extends StatefulWidget {
     required this.search,
     required this.problems,
     required this.onOpenNote,
+    this.onFixProblems,
   });
 
   final KnowledgeView initialView;
@@ -20,6 +21,19 @@ class KnowledgeScreen extends StatefulWidget {
   final PkmsSearchIndex search;
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
+
+  /// Resolves the given problems (a single tile or a whole group). Returns the
+  /// refreshed problem list to redraw when the fix changes the vault, or null
+  /// when the fix only navigates (e.g. opening duplicate owners to merge).
+  final Future<List<PkmsProblem>?> Function(List<PkmsProblem> problems)?
+  onFixProblems;
+
+  /// Codes this screen offers a one-tap "Fix" for.
+  static const fixableCodes = {
+    'metadata-fallback',
+    'duplicate-note-id',
+    'duplicate-alias',
+  };
 
   @override
   State<KnowledgeScreen> createState() => _KnowledgeScreenState();
@@ -34,6 +48,35 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   // failing inspector can dead-mark itself for the rest of a scan and flood
   // this list with one unactionable row per article otherwise).
   final Set<String> _expandedCodes = {};
+  // Local copy so a fix can redraw the list without popping the screen.
+  late List<PkmsProblem> _problemList = widget.problems;
+  bool _fixing = false;
+
+  bool _canFix(String code) =>
+      widget.onFixProblems != null &&
+      KnowledgeScreen.fixableCodes.contains(code);
+
+  String _fixLabel(String code) =>
+      code == 'metadata-fallback' ? 'Convert' : 'Open files';
+
+  Future<void> _runFix(List<PkmsProblem> toFix) async {
+    if (_fixing || widget.onFixProblems == null) return;
+    setState(() => _fixing = true);
+    try {
+      final updated = await widget.onFixProblems!(toFix);
+      if (!mounted) return;
+      if (updated != null) {
+        setState(() {
+          _problemList = updated;
+          _expandedCodes.removeWhere(
+            (code) => !updated.any((p) => p.code == code),
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _fixing = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -160,7 +203,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   }
 
   Widget _problems() {
-    final problems = widget.problems;
+    final problems = _problemList;
     if (problems.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(12),
@@ -211,6 +254,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           '${problem.subject}${problem.fix == null ? '' : '\n${problem.fix}'}',
         ),
         isThreeLine: problem.fix != null,
+        trailing: _canFix(problem.code)
+            ? TextButton(
+                onPressed: _fixing ? null : () => _runFix([problem]),
+                child: Text(_fixLabel(problem.code)),
+              )
+            : null,
         onTap: () {
           widget.onOpenNote(problem.subject);
           Navigator.pop(context);
@@ -239,7 +288,17 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             ? group.map((problem) => problem.subject).join('\n')
             : '${group.length} notes · ${group.take(2).map((problem) => problem.subject).join(', ')}…',
       ),
-      trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_canFix(code))
+            TextButton(
+              onPressed: _fixing ? null : () => _runFix(group),
+              child: Text('Fix all ${group.length}'),
+            ),
+          Icon(expanded ? Icons.expand_less : Icons.expand_more),
+        ],
+      ),
       onTap: () => setState(() {
         if (expanded) {
           _expandedCodes.remove(code);

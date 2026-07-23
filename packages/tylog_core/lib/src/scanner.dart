@@ -111,6 +111,20 @@ class NoteMetadataDraft {
   final List<String> tags;
   final List<String> aliases;
   final Map<String, Object?> properties;
+
+  /// Rebuilds a managed-header draft from an already-parsed [NoteRef] — used to
+  /// upgrade a legacy/fallback-parsed note to a `tylog.note.with(...)` header
+  /// (`replaceNoteHeader`) without changing its metadata.
+  factory NoteMetadataDraft.fromNote(NoteRef note) => NoteMetadataDraft(
+    id: note.id,
+    title: note.title,
+    kind: note.kind,
+    project: note.project,
+    date: note.date,
+    tags: note.tags,
+    aliases: note.aliases,
+    properties: note.properties,
+  );
 }
 
 class QueriedMetadata {
@@ -568,13 +582,20 @@ List<String> suggestLinkTargets(NoteRef note, VaultIndex index) {
 String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   final header = serializeNoteHeader(draft);
   final call = _noteHeader(source);
+  final String withHeader;
   if (call != null) {
-    return source.replaceRange(call.start, call.end, header);
+    withHeader = source.replaceRange(call.start, call.end, header);
+  } else {
+    final importEnd = source.startsWith('#import ')
+        ? source.indexOf('\n') + 1
+        : 0;
+    withHeader = source.replaceRange(importEnd, importEnd, '$header\n\n');
   }
-  final importEnd = source.startsWith('#import ')
-      ? source.indexOf('\n') + 1
-      : 0;
-  return source.replaceRange(importEnd, importEnd, '$header\n\n');
+  // `tylog.note.with(...)` is meaningless without the helper import — a legacy
+  // note that never had it (e.g. a hand-authored `.typ`) would fail to compile
+  // once we add the managed header. Guarantee the import is present.
+  if (withHeader.contains('/_system/tylog.typ')) return withHeader;
+  return '#import "/_system/tylog.typ" as tylog\n\n$withHeader';
 }
 
 String serializeNoteHeader(NoteMetadataDraft draft) {

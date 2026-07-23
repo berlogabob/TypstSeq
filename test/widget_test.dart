@@ -875,16 +875,61 @@ void main() {
     );
     expect(find.text('notes/note-7.typ'), findsOneWidget);
   });
+
+  testWidgets('problems show a Fix button only for fixable codes', (
+    tester,
+  ) async {
+    final fixed = <List<PkmsProblem>>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _knowledgeScreen(
+          initialView: KnowledgeView.problems,
+          problems: const [
+            PkmsProblem(
+              code: 'metadata-fallback',
+              severity: PkmsSeverity.warning,
+              subject: 'notes/legacy.typ',
+              message: 'Typst metadata was unavailable; using legacy parsing.',
+            ),
+            PkmsProblem(
+              code: 'unverified-note-metadata',
+              severity: PkmsSeverity.info,
+              subject: 'notes/fallback.typ',
+              message: 'Typst metadata was read by the safe fallback scanner.',
+            ),
+          ],
+          onFixProblems: (list) async {
+            fixed.add(list);
+            return const []; // pretend everything got resolved
+          },
+        ),
+      ),
+    );
+
+    // Fixable code gets a Convert button; the info-only one does not.
+    expect(find.widgetWithText(TextButton, 'Convert'), findsOneWidget);
+    expect(find.byType(TextButton), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Convert'));
+    await tester.pumpAndSettle();
+
+    expect(fixed, hasLength(1));
+    expect(fixed.single.single.subject, 'notes/legacy.typ');
+    // The list redrew from the callback's result (empty → "No vault problems").
+    expect(find.text('No vault problems'), findsOneWidget);
+  });
 }
 
 KnowledgeScreen _knowledgeScreen({
   KnowledgeView initialView = KnowledgeView.search,
   List<PkmsProblem> problems = const [],
   ValueChanged<String>? onOpenNote,
+  Future<List<PkmsProblem>?> Function(List<PkmsProblem>)? onFixProblems,
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
   search: PkmsSearchIndex.empty(),
   problems: problems,
   onOpenNote: onOpenNote ?? (_) {},
+  onFixProblems: onFixProblems,
 );

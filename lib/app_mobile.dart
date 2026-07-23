@@ -1885,13 +1885,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialView: initialView,
           index: ix,
           search: searchIndex,
-          problems: (validation?.problems ?? ix.problems)
-              .where((problem) => !problem.code.startsWith('sync-'))
-              .toList(),
+          problems: _knowledgeProblems(),
           onOpenNote: _openPath,
+          onFixProblems: _fixProblems,
         ),
       ),
     );
+  }
+
+  /// The Problems-screen view: everything except sync conflicts (which route to
+  /// their own resolver).
+  List<PkmsProblem> _knowledgeProblems() =>
+      (validation?.problems ?? index?.problems ?? const <PkmsProblem>[])
+          .where((problem) => !problem.code.startsWith('sync-'))
+          .toList();
+
+  /// Resolves a tile's (or a whole group's) problems from the Problems screen.
+  /// Returns the refreshed problem list when the vault changed, or null when
+  /// the fix only navigates (opening duplicate owners to merge by hand).
+  Future<List<PkmsProblem>?> _fixProblems(List<PkmsProblem> toFix) async {
+    if (toFix.isEmpty) return null;
+    switch (toFix.first.code) {
+      case 'metadata-fallback':
+        return _convertToManagedHeader(toFix);
+      case 'duplicate-note-id':
+      case 'duplicate-alias':
+        await _openDuplicateOwners(toFix.first);
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  /// Upgrades legacy/fallback-parsed notes to a managed `tylog.note.with(...)`
+  /// header, rebuilt from the already-parsed metadata (body untouched).
+  Future<List<PkmsProblem>?> _convertToManagedHeader(
+    List<PkmsProblem> problems,
+  ) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return null;
+    var fixed = 0;
+    for (final problem in problems) {
+      final note = ix.notesByPath[problem.subject];
+      if (note == null) continue;
+      final source = await v.storage.readText(problem.subject);
+      final updated = replaceNoteHeader(
+        source,
+        NoteMetadataDraft.fromNote(note),
+      );
+      if (updated != source) {
+        await v.saveNote(problem.subject, updated);
+        fixed++;
+      }
+    }
+    await workspace.refreshIndex(force: true);
+    if (!mounted) return null;
+    showSnack(
+      context,
+      fixed == 0
+          ? 'Nothing to convert'
+          : 'Converted $fixed note${fixed == 1 ? '' : 's'} to managed metadata',
+    );
+    return _knowledgeProblems();
+  }
+
+  /// A duplicated id/date can only be resolved by a human merge, so list every
+  /// file that claims it and open the tapped one.
+  Future<void> _openDuplicateOwners(PkmsProblem problem) async {
+    final owners = problem.targets.isNotEmpty
+        ? problem.targets
+        : [problem.subject];
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text('“${problem.subject}” is claimed by ${owners.length} files'),
+              subtitle: const Text('Open each to compare, then merge or delete one.'),
+            ),
+            for (final path in owners)
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: Text(path),
+                onTap: () => Navigator.pop(context, path),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    Navigator.pop(context); // leave the Problems screen
+    await _openPath(choice);
   }
 
   Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
