@@ -5,7 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_linux
   flutter_timezone
-  open_file_linux
   url_launcher_linux
 )
 

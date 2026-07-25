@@ -199,7 +199,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? selectedTag;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
-  final platformFileActions = const PlatformFileActions();
   Timer? _previewDebounceTimer;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
@@ -942,26 +941,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted && _noteAssetFiles.isNotEmpty) setState(() {});
   }
 
-  FileSource _typstFiles() => FileSource.bytes({
-    '_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
-    '/_system/tylog.typ': Uint8List.fromList(utf8.encode(helperSource)),
-    ..._noteAssetFiles,
-    ...typstPackageFiles,
-    if (bibliographySource.isNotEmpty) ...{
-      Vault.bibliographyPath: Uint8List.fromList(
-        utf8.encode(bibliographySource),
-      ),
-      '/${Vault.bibliographyPath}': Uint8List.fromList(
-        utf8.encode(bibliographySource),
-      ),
-    },
-    if (zoteroBibSource.trim().isNotEmpty) ...{
-      Vault.zoteroBibPath: Uint8List.fromList(utf8.encode(zoteroBibSource)),
-      '/${Vault.zoteroBibPath}': Uint8List.fromList(
-        utf8.encode(zoteroBibSource),
-      ),
-    },
-  });
+  Map<String, Uint8List> _typstFiles() {
+    final files = <String, Uint8List>{};
+    // Typst resolves both root-relative and absolute forms; register each.
+    void put(String path, String text) {
+      final bytes = Uint8List.fromList(utf8.encode(text));
+      files[path] = bytes;
+      files['/$path'] = bytes;
+    }
+
+    put('_system/tylog.typ', helperSource);
+    files.addAll(_noteAssetFiles);
+    files.addAll(typstPackageFiles);
+    if (bibliographySource.isNotEmpty) {
+      put(Vault.bibliographyPath, bibliographySource);
+    }
+    if (zoteroBibSource.trim().isNotEmpty) {
+      put(Vault.zoteroBibPath, zoteroBibSource);
+    }
+    return files;
+  }
 
   /// Preview-only source: cited notes get a bibliography section appended so
   /// `@key` references resolve; the stored note is never modified.
@@ -2486,11 +2485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null || !isSafeVaultPath(path)) return;
     try {
-      await platformFileActions.openExternal(
-        v.storage,
-        path,
-        localRoot: _localVaultDirectory,
-      );
+      await openPlatformFile(v.storage, path, localRoot: _localVaultDirectory);
     } catch (error) {
       if (mounted) setState(() => status = 'Could not open file: $error');
     }
@@ -3495,7 +3490,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final extension = dot < 0 ? '' : base.substring(dot);
       target = 'assets/$stem-${suffix++}$extension';
     }
-    await platformFileActions.importFile(v.storage, target, source);
+    await importPlatformFile(v.storage, target, source);
     final relative = target;
     const imageExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'};
     final lower = target.toLowerCase();

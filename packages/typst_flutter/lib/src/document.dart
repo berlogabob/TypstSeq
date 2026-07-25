@@ -38,12 +38,6 @@ class TypstDocument {
   /// The total number of pages in the compiled document.
   int get pageCount => _inner.pageCount().toInt();
 
-  /// Any compiler warnings emitted during compilation.
-  ///
-  /// These are non-fatal diagnostics (e.g. deprecated syntax, ambiguous layout)
-  /// that did not prevent compilation but may indicate issues.
-  List<api.TypstDiagnostic> get warnings => _inner.warnings();
-
   void _checkNotDisposed() {
     if (_disposed) {
       throw StateError(
@@ -159,25 +153,6 @@ class TypstRenderResult {
     if (_cachedImage != null) return _cachedImage!;
     _cachedImage = await _decodeImage();
     return _cachedImage!;
-  }
-
-  /// Encodes the raw RGBA pixels as a PNG and returns the PNG bytes.
-  ///
-  /// This method is self-contained: if no cached [ui.Image] exists, it
-  /// creates a temporary one, encodes it, and disposes it immediately —
-  /// no leak even if [dispose] is never called. If a cached image already
-  /// exists (from a prior [toImage] call), it reuses that image without
-  /// disposing it.
-  Future<Uint8List> toPng() async {
-    final hadCached = _cachedImage != null;
-    final image = hadCached ? _cachedImage! : await _decodeImage();
-    try {
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData!.buffer.asUint8List();
-    } finally {
-      // Only dispose the image if we created it ad-hoc for this call.
-      if (!hadCached) image.dispose();
-    }
   }
 
   /// Releases the cached [ui.Image] if it exists.

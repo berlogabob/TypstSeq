@@ -38,7 +38,6 @@ dependencies:
     path: packages/tylog_core
   typst_flutter:
     path: packages/typst_flutter
-  open_file: ^4.0.0
   flutter_local_notifications: ^22.0.1
   flutter_timezone: ^5.1.0
   rrule: ^0.2.18
