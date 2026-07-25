@@ -153,14 +153,9 @@ InitialSyncMode initialSyncModeFor({
     : InitialSyncMode.safeMerge;
 
 class RemoteVaultInspection {
-  const RemoteVaultInspection(
-    this.kind, {
-    this.fileCount = 0,
-    this.userFileCount = 0,
-  });
+  const RemoteVaultInspection(this.kind, {this.userFileCount = 0});
 
   final RemoteVaultKind kind;
-  final int fileCount;
   final int userFileCount;
 }
 
@@ -289,7 +284,6 @@ class NextcloudSync {
         remote.containsKey('_system/tylog.typ')
             ? RemoteVaultKind.validVault
             : RemoteVaultKind.nonVault,
-        fileCount: remote.length,
         userFileCount: userFiles,
       );
     } finally {
@@ -2697,30 +2691,6 @@ class SyncResult {
       'Sync($trigger): ↑$uploaded ↓$downloaded ↪$renamed =$skipped !$conflicts, remote $remoteCount';
 }
 
-SyncAction decideSyncAction({
-  required bool localExists,
-  required bool remoteExists,
-  required bool localChanged,
-  required bool remoteChanged,
-  bool hasSyncCursor = true,
-  int? localMillis,
-  int? remoteMillis,
-}) {
-  if (localExists && !remoteExists) return SyncAction.upload;
-  if (!localExists && remoteExists) return SyncAction.download;
-  if (!localExists && !remoteExists) return SyncAction.skip;
-  if (localChanged && remoteChanged) {
-    if (!hasSyncCursor && localMillis != null && remoteMillis != null) {
-      if (localMillis > remoteMillis) return SyncAction.upload;
-      if (remoteMillis > localMillis) return SyncAction.download;
-    }
-    return SyncAction.conflict;
-  }
-  if (remoteChanged) return SyncAction.download;
-  if (localChanged) return SyncAction.upload;
-  return SyncAction.skip;
-}
-
 class SyncCursor {
   const SyncCursor({
     this.localMillis,
@@ -2774,38 +2744,5 @@ class SyncDecision {
     'reason': reason,
     'localMillis': localMillis,
     'remoteMillis': remoteMillis,
-  };
-}
-
-class SyncTrace {
-  const SyncTrace({
-    required this.timestamp,
-    required this.trigger,
-    required this.uploaded,
-    required this.downloaded,
-    required this.skipped,
-    required this.conflicts,
-    required this.remoteCount,
-    required this.decisions,
-  });
-
-  final String timestamp;
-  final String trigger;
-  final int uploaded;
-  final int downloaded;
-  final int skipped;
-  final int conflicts;
-  final int remoteCount;
-  final List<SyncDecision> decisions;
-
-  Map<String, Object?> toJson() => {
-    'timestamp': timestamp,
-    'trigger': trigger,
-    'uploaded': uploaded,
-    'downloaded': downloaded,
-    'skipped': skipped,
-    'conflicts': conflicts,
-    'remoteCount': remoteCount,
-    'decisions': decisions.map((d) => d.toJson()).toList(),
   };
 }

@@ -220,15 +220,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String get status => workspace.status;
   set status(String value) => workspace.status = value;
   bool get dirty => workspace.dirty;
-  set dirty(bool value) => workspace.dirty = value;
-  int get editRevision => workspace.editRevision;
-  set editRevision(int value) => workspace.editRevision = value;
-  int get savedRevision => workspace.savedRevision;
-  set savedRevision(int value) => workspace.savedRevision = value;
-  int get indexedRevision => workspace.indexedRevision;
-  set indexedRevision(int value) => workspace.indexedRevision = value;
-  DateTime? get lastEditAt => workspace.lastEditAt;
-  set lastEditAt(DateTime? value) => workspace.lastEditAt = value;
   String get helperSource => workspace.helperSource;
   Map<String, Uint8List> get typstPackageFiles => workspace.typstPackageFiles;
   String get bibliographySource => workspace.bibliographySource;
@@ -239,21 +230,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   set cloud(NextcloudConfig? value) => workspace.cloud = value;
   PkmsSearchIndex get searchIndex => workspace.searchIndex;
   PkmsValidationReport? get validation => workspace.validation;
-  set validation(PkmsValidationReport? value) => workspace.validation = value;
   SyncResult? get lastSync => workspace.lastSync;
   List<SyncConflict> get syncConflicts => workspace.syncConflicts;
-  set syncConflicts(List<SyncConflict> value) =>
-      workspace.syncConflicts = value;
   DateTime? get lastSyncAt => workspace.lastSyncAt;
   String? get syncError => workspace.syncError;
   set syncError(String? value) => workspace.syncError = value;
   bool get syncing => workspace.syncing;
   String? get syncStage => workspace.syncStage;
   bool? get storageHealthy => workspace.storageHealthy;
-  set storageHealthy(bool? value) => workspace.storageHealthy = value;
   bool get rebuilding => workspace.rebuilding;
-  bool get cancelRebuild => workspace.cancelRebuild;
-  set cancelRebuild(bool value) => workspace.cancelRebuild = value;
   double? get rebuildProgress => workspace.rebuildProgress;
 
   @override
@@ -2028,24 +2013,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _rebuildIndex();
   }
 
-  Future<void> _setReadStatus(NoteRef note, String status) async {
+  Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
     final v = vault;
     if (v == null) return;
     final source = await v.storage.readText(note.path);
-    await v.saveNote(note.path, replaceNoteProperty(source, 'status', status));
+    await v.saveNote(note.path, replaceNoteProperty(source, name, value));
     await _rebuildIndex();
   }
 
-  Future<void> _setRelevance(NoteRef note, String relevance) async {
-    final v = vault;
-    if (v == null) return;
-    final source = await v.storage.readText(note.path);
-    await v.saveNote(
-      note.path,
-      replaceNoteProperty(source, 'relevance', relevance),
-    );
-    await _rebuildIndex();
-  }
+  Future<void> _setReadStatus(NoteRef note, String status) =>
+      _setNoteProperty(note, 'status', status);
+
+  Future<void> _setRelevance(NoteRef note, String relevance) =>
+      _setNoteProperty(note, 'relevance', relevance);
 
   String? _pathForLink(String title) {
     final ix = index;
@@ -3889,46 +3869,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onChanged: _queueAutosave,
         monospace: true,
       ),
-      'split' =>
-        MediaQuery.sizeOf(context).width < 600
-            ? Column(
-                children: [
-                  Expanded(
-                    child: Editor(
-                      key: sourceEditorKey,
-                      controller: sourceController,
-                      onChanged: _queueAutosave,
-                      monospace: true,
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: TypstDocumentViewer(
-                      source: _debouncedPreview(),
-                      files: _typstFiles(),
-                    ),
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(
-                    child: Editor(
-                      key: sourceEditorKey,
-                      controller: sourceController,
-                      onChanged: _queueAutosave,
-                      monospace: true,
-                    ),
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(
-                    child: TypstDocumentViewer(
-                      source: _debouncedPreview(),
-                      files: _typstFiles(),
-                    ),
-                  ),
-                ],
+      'split' => () {
+        final stacked = MediaQuery.sizeOf(context).width < 600;
+        return Flex(
+          direction: stacked ? Axis.vertical : Axis.horizontal,
+          children: [
+            Expanded(
+              child: Editor(
+                key: sourceEditorKey,
+                controller: sourceController,
+                onChanged: _queueAutosave,
+                monospace: true,
               ),
+            ),
+            if (stacked)
+              const Divider(height: 1)
+            else
+              const VerticalDivider(width: 1),
+            Expanded(
+              child: TypstDocumentViewer(
+                source: _debouncedPreview(),
+                files: _typstFiles(),
+              ),
+            ),
+          ],
+        );
+      }(),
       'normal' => TyLogRichEditor(
         controller: richController,
         onInsert: _showMagicMenu,

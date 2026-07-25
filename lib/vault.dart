@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
 import 'package:tylog_core/vault.dart';
 
 import 'flutter_typst_inspector.dart';
+import 'widgets/date_format.dart';
 import 'tylog_assets.dart';
 
 export 'package:tylog_core/vault.dart'
@@ -28,13 +28,6 @@ class Vault {
   static const zoteroBibPath = TylogVaultPaths.zoteroBib;
   static const settingsPath = TylogVaultPaths.settings;
 
-  static Future<Vault> openDefault() async {
-    final base = await getApplicationDocumentsDirectory();
-    final vault = Vault(defaultVaultDirectory(base));
-    await vault.ensureCreated();
-    return vault;
-  }
-
   Future<void> ensureCreated({bool createIfMissing = true}) async {
     final bundled = await TylogAssets.load();
     await initializeVaultStorage(
@@ -48,7 +41,7 @@ class Vault {
 
   Future<String> todayNote([DateTime? now]) async {
     final instant = now ?? DateTime.now();
-    final day = _day(instant);
+    final day = isoDay(instant);
     final month =
         'daily/${instant.year.toString().padLeft(4, '0')}/${instant.month.toString().padLeft(2, '0')}';
     await storage.createDirectory(month);
@@ -239,9 +232,6 @@ Directory defaultVaultDirectory(
 
   return Directory('${appDocuments.path}/TyLogVault');
 }
-
-String _day(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 String _noteSource({
   required String id,

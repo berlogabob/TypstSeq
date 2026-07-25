@@ -1586,9 +1586,17 @@ void main() {
         selection: const TextSelection.collapsed(offset: 3),
       );
 
-      expect(saved, contains('$open' 'Да '));
+      expect(
+        saved,
+        contains(
+          '$open'
+          'Да ',
+        ),
+      );
     }
 
+    checkPrefix((c) => c.toggleBold(), '#strong[');
+    checkPrefix((c) => c.toggleItalic(), '#emph[');
     checkPrefix((c) => c.toggleStrike(), '#strike[');
     checkPrefix((c) => c.toggleUnderline(), '#underline[');
     checkPrefix((c) => c.toggleMono(), '`');
@@ -1951,6 +1959,59 @@ void main() {
       c.document.toSource(validate: false),
       contains('#link("https://x.com")'),
       reason: 'the protected link must survive an adjacent edit',
+    );
+  });
+
+  testWidgets('toolbar keeps its button order after the loop rewrite', (
+    tester,
+  ) async {
+    // Wide surface so the horizontal ListView builds every button, not just
+    // the ones that would fit on a phone.
+    tester.view.physicalSize = const Size(3000, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final controller = TyLogEditingController(
+      source: _source,
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+
+    // The toolbar only exists while the field has focus.
+    await tester.tap(find.byType(EditableText).first);
+    await tester.pumpAndSettle();
+
+    // The uniform buttons are emitted by two loops around the highlight
+    // button; this pins the on-screen order so a future merge of those loops
+    // cannot silently reshuffle the toolbar.
+    final tooltips = tester
+        .widgetList<Tooltip>(find.byType(Tooltip))
+        .map((t) => t.message)
+        .toList();
+    expect(
+      tooltips,
+      containsAllInOrder(<String>[
+        'Bold',
+        'Italic',
+        'Strikethrough',
+        'Underline',
+        'Monospace',
+        'Highlight (long-press for colors)',
+        'Bulleted list',
+        'Numbered list',
+        'Clear formatting',
+        'Insert',
+      ]),
     );
   });
 }

@@ -1341,80 +1341,56 @@ class TyLogEditingController extends TextEditingController {
   static bool _isComposing(TextEditingValue value) =>
       value.composing.isValid && !value.composing.isCollapsed;
 
-  void toggleBold() {
+  /// Flips one inline-style flag: on a collapsed caret it only moves the
+  /// pending typing style, otherwise it rewrites the selected runs.
+  ///
+  /// ponytail: three closures because `copyWith` and `document.toggle` take
+  /// named args, so the flag can't be passed as a value. Flatten back into
+  /// per-flag methods if that ever reads better than the indirection.
+  void _toggleFlag({
+    required bool Function(TyLogInlineStyle style) read,
+    required TyLogInlineStyle Function(TyLogInlineStyle style, bool value)
+    write,
+    required void Function(bool value) apply,
+  }) {
     _clearComposition();
     if (selection.isCollapsed) {
-      _typingStyle = _typingStyle.copyWith(bold: !_typingStyle.bold);
+      _typingStyle = write(_typingStyle, !read(_typingStyle));
       notifyListeners();
       return;
     }
-    _format(
-      () => document.toggle(
-        selection,
-        bold: !_selectionHas((style) => style.bold),
-      ),
-    );
+    _format(() => apply(!_selectionHas(read)));
   }
 
-  void toggleItalic() {
-    _clearComposition();
-    if (selection.isCollapsed) {
-      _typingStyle = _typingStyle.copyWith(italic: !_typingStyle.italic);
-      notifyListeners();
-      return;
-    }
-    _format(
-      () => document.toggle(
-        selection,
-        italic: !_selectionHas((style) => style.italic),
-      ),
-    );
-  }
+  void toggleBold() => _toggleFlag(
+    read: (style) => style.bold,
+    write: (style, value) => style.copyWith(bold: value),
+    apply: (value) => document.toggle(selection, bold: value),
+  );
 
-  void toggleStrike() {
-    _clearComposition();
-    if (selection.isCollapsed) {
-      _typingStyle = _typingStyle.copyWith(strike: !_typingStyle.strike);
-      notifyListeners();
-      return;
-    }
-    _format(
-      () => document.toggle(
-        selection,
-        strike: !_selectionHas((style) => style.strike),
-      ),
-    );
-  }
+  void toggleItalic() => _toggleFlag(
+    read: (style) => style.italic,
+    write: (style, value) => style.copyWith(italic: value),
+    apply: (value) => document.toggle(selection, italic: value),
+  );
 
-  void toggleUnderline() {
-    _clearComposition();
-    if (selection.isCollapsed) {
-      _typingStyle = _typingStyle.copyWith(underline: !_typingStyle.underline);
-      notifyListeners();
-      return;
-    }
-    _format(
-      () => document.toggle(
-        selection,
-        underline: !_selectionHas((style) => style.underline),
-      ),
-    );
-  }
+  void toggleStrike() => _toggleFlag(
+    read: (style) => style.strike,
+    write: (style, value) => style.copyWith(strike: value),
+    apply: (value) => document.toggle(selection, strike: value),
+  );
 
-  void toggleMono() {
-    _clearComposition();
-    if (selection.isCollapsed) {
-      _typingStyle = _typingStyle.copyWith(mono: !_typingStyle.mono);
-      notifyListeners();
-      return;
-    }
-    _format(
-      () => document.toggle(
-        selection,
-        mono: !_selectionHas((style) => style.mono),
-      ),
-    );
-  }
+  void toggleUnderline() => _toggleFlag(
+    read: (style) => style.underline,
+    write: (style, value) => style.copyWith(underline: value),
+    apply: (value) => document.toggle(selection, underline: value),
+  );
+
+  void toggleMono() => _toggleFlag(
+    read: (style) => style.mono,
+    write: (style, value) => style.copyWith(mono: value),
+    apply: (value) => document.toggle(selection, mono: value),
+  );
 
   /// Sets the highlight fill explicitly — `null` clears it, `''` is Typst's
   /// default fill, anything else is a verbatim `fill:` expression. Used by
@@ -1563,26 +1539,14 @@ class TyLogEditingController extends TextEditingController {
           TextSelection(baseOffset: 0, extentOffset: selected.length),
           request,
         );
+        // The formatting actions all returned early above, so only the
+        // insert-style actions reach here.
         final label = switch (request.action) {
-          MagicAction.noteLink ||
-          MagicAction.mention ||
-          MagicAction.project => request.value ?? selected,
-          MagicAction.tag => request.value ?? selected,
-          MagicAction.task => request.value ?? selected,
-          MagicAction.date => request.value ?? selected,
-          MagicAction.citation => request.value ?? selected,
           MagicAction.attachment =>
             request.value?.split('/').last ?? 'Attachment',
           MagicAction.table => 'Table',
-          MagicAction.equation => request.value ?? selected,
           MagicAction.report => 'Report',
-          MagicAction.bold ||
-          MagicAction.italic ||
-          MagicAction.heading ||
-          MagicAction.strike ||
-          MagicAction.underline ||
-          MagicAction.mono ||
-          MagicAction.highlight => '',
+          _ => request.value ?? selected,
         };
         final before = _snapshot();
         try {
@@ -1909,7 +1873,6 @@ class TyLogRichEditor extends StatefulWidget {
     required this.controller,
     required this.onInsert,
     this.onMentionQuery,
-    this.commandActions,
     this.onCommandSelected,
   });
 
@@ -1927,7 +1890,6 @@ class TyLogRichEditor extends StatefulWidget {
 
   /// Actions offered by the inline "/" command palette. Defaults to the
   /// same action set as the Magic bottom-sheet menu, in the same order.
-  final List<MagicAction> Function()? commandActions;
 
   /// Invoked when a "/" palette entry is selected — the parent should run
   /// the exact same handler the Magic menu uses for that action.
@@ -2091,8 +2053,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   List<MagicAction> _filterCommands(String query) {
-    final actions =
-        widget.commandActions?.call() ?? kMagicActionDisplay.keys.toList();
+    final actions = kMagicActionDisplay.keys.toList();
     if (query.isEmpty) return actions;
     final normalized = query.toLowerCase();
     return actions
@@ -2485,31 +2446,42 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Bold',
-                      onPressed: widget.controller.toggleBold,
-                      icon: const Icon(Icons.format_bold),
-                    ),
-                    IconButton(
-                      tooltip: 'Italic',
-                      onPressed: widget.controller.toggleItalic,
-                      icon: const Icon(Icons.format_italic),
-                    ),
-                    IconButton(
-                      tooltip: 'Strikethrough',
-                      onPressed: widget.controller.toggleStrike,
-                      icon: const Icon(Icons.format_strikethrough),
-                    ),
-                    IconButton(
-                      tooltip: 'Underline',
-                      onPressed: widget.controller.toggleUnderline,
-                      icon: const Icon(Icons.format_underline),
-                    ),
-                    IconButton(
-                      tooltip: 'Monospace',
-                      onPressed: widget.controller.toggleMono,
-                      icon: const Icon(Icons.code),
-                    ),
+                    // ponytail: two loops, not one — the highlight button sits
+                    // mid-row and carries a key + onLongPress. Order here is
+                    // the on-screen order; do not merge the loops.
+                    for (final (tip, press, icon)
+                        in <(String, VoidCallback, IconData)>[
+                          (
+                            'Bold',
+                            widget.controller.toggleBold,
+                            Icons.format_bold,
+                          ),
+                          (
+                            'Italic',
+                            widget.controller.toggleItalic,
+                            Icons.format_italic,
+                          ),
+                          (
+                            'Strikethrough',
+                            widget.controller.toggleStrike,
+                            Icons.format_strikethrough,
+                          ),
+                          (
+                            'Underline',
+                            widget.controller.toggleUnderline,
+                            Icons.format_underline,
+                          ),
+                          (
+                            'Monospace',
+                            widget.controller.toggleMono,
+                            Icons.code,
+                          ),
+                        ])
+                      IconButton(
+                        tooltip: tip,
+                        onPressed: press,
+                        icon: Icon(icon),
+                      ),
                     IconButton(
                       key: _highlightButtonKey,
                       tooltip: 'Highlight (long-press for colors)',
@@ -2517,21 +2489,29 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       onLongPress: () => _showHighlightMenu(context),
                       icon: const Icon(Icons.border_color),
                     ),
-                    IconButton(
-                      tooltip: 'Bulleted list',
-                      onPressed: widget.controller.setBulletList,
-                      icon: const Icon(Icons.format_list_bulleted),
-                    ),
-                    IconButton(
-                      tooltip: 'Numbered list',
-                      onPressed: widget.controller.setNumberedList,
-                      icon: const Icon(Icons.format_list_numbered),
-                    ),
-                    IconButton(
-                      tooltip: 'Clear formatting',
-                      onPressed: widget.controller.clearFormatting,
-                      icon: const Icon(Icons.format_clear),
-                    ),
+                    for (final (tip, press, icon)
+                        in <(String, VoidCallback, IconData)>[
+                          (
+                            'Bulleted list',
+                            widget.controller.setBulletList,
+                            Icons.format_list_bulleted,
+                          ),
+                          (
+                            'Numbered list',
+                            widget.controller.setNumberedList,
+                            Icons.format_list_numbered,
+                          ),
+                          (
+                            'Clear formatting',
+                            widget.controller.clearFormatting,
+                            Icons.format_clear,
+                          ),
+                        ])
+                      IconButton(
+                        tooltip: tip,
+                        onPressed: press,
+                        icon: Icon(icon),
+                      ),
                     IconButton(
                       tooltip: 'Insert',
                       onPressed: () async {
@@ -2958,17 +2938,14 @@ bool _isReferenceAtom(String source) =>
 /// null. Used to draw the atom as a real picture instead of a link chip.
 String? _imageAtomPath(String source) {
   final image = RegExp(r'^#[iI]mage\("((?:\\.|[^"])*)"').firstMatch(source);
-  if (image != null) return _unescapeTypstString(image.group(1)!);
+  if (image != null) return unescapeTypstString(image.group(1)!);
   if (source.startsWith('#tylog.attachment(') &&
       RegExp(r'kind:\s*"image"').hasMatch(source)) {
     final path = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
-    if (path != null) return _unescapeTypstString(path);
+    if (path != null) return unescapeTypstString(path);
   }
   return null;
 }
-
-String _unescapeTypstString(String value) =>
-    value.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
 
 /// Inner content of a `#name(...)?[body]` call's trailing bracket group, or
 /// the raw source unchanged if it has no bracket body.
@@ -3016,7 +2993,7 @@ IconData _atomIcon(String source, {String? Function(String id)? resolveKind}) {
       r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
     ).firstMatch(source)?.group(1);
     return iconForKind(
-      id == null ? null : resolveKind?.call(_unescapeTypstString(id)),
+      id == null ? null : resolveKind?.call(unescapeTypstString(id)),
     );
   }
   return Icons.link;

@@ -595,48 +595,6 @@ void main() {
     expect(result.conflicts, 1);
   });
 
-  test('sync action prefers conflict when both changed', () {
-    expect(
-      decideSyncAction(
-        localExists: true,
-        remoteExists: true,
-        localChanged: true,
-        remoteChanged: true,
-      ),
-      SyncAction.conflict,
-    );
-  });
-
-  test('sync action covers one-sided updates and missing files', () {
-    expect(
-      decideSyncAction(
-        localExists: false,
-        remoteExists: true,
-        localChanged: false,
-        remoteChanged: true,
-      ),
-      SyncAction.download,
-    );
-    expect(
-      decideSyncAction(
-        localExists: true,
-        remoteExists: false,
-        localChanged: true,
-        remoteChanged: false,
-      ),
-      SyncAction.upload,
-    );
-    expect(
-      decideSyncAction(
-        localExists: true,
-        remoteExists: true,
-        localChanged: false,
-        remoteChanged: false,
-      ),
-      SyncAction.skip,
-    );
-  });
-
   test('sync excludes operational state and keeps durable v5 roots', () {
     expect(isSyncInternalPath('_index/index.json'), isTrue);
     expect(isSyncInternalPath('_index/search-index.json.gz'), isTrue);
