@@ -76,7 +76,6 @@ flutter:
   assets:
     - pubspec.yaml
     - typst/tylog/
-    - typst/tylog/examples/
     - typst/vault/
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -113,8 +112,5 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   ios: true
   macos:
-    generate: true
-    image_path: "docs/brand/tylog-app-icon.png"
-  windows:
     generate: true
     image_path: "docs/brand/tylog-app-icon.png"
