@@ -1,5 +1,6 @@
 import 'models.dart';
 import 'storage.dart';
+import 'values.dart';
 
 class ReportFilter {
   const ReportFilter({
@@ -9,7 +10,6 @@ class ReportFilter {
     this.kinds = const {},
     this.tags = const {},
     this.articleStatus,
-    this.taskStatus,
   });
 
   final String? project;
@@ -18,16 +18,9 @@ class ReportFilter {
   final Set<String> kinds;
   final Set<String> tags;
   final String? articleStatus;
-  final String? taskStatus;
 }
 
 List<NoteRef> selectReportNotes(VaultIndex index, ReportFilter filter) {
-  final taskPaths = filter.taskStatus == null
-      ? const <String>{}
-      : index.tasks
-            .where((task) => task.status == filter.taskStatus)
-            .map((task) => task.notePath)
-            .toSet();
   return index.notes.where((note) {
     if (filter.project != null &&
         note.project != filter.project &&
@@ -52,9 +45,6 @@ List<NoteRef> selectReportNotes(VaultIndex index, ReportFilter filter) {
         note.properties['status'] != filter.articleStatus) {
       return false;
     }
-    if (filter.taskStatus != null && !taskPaths.contains(note.path)) {
-      return false;
-    }
     return true;
   }).toList()..sort((a, b) {
     final byDate = (a.date ?? '').compareTo(b.date ?? '');
@@ -69,7 +59,7 @@ String generateReportSource(
 }) =>
     '''#import "/_system/export.typ" as export
 
-#export.report(${_typstString(title)}, [
+#export.report(${typstString(title)}, [
 ${notes.map((note) => '#include "/${note.path}"\n#pagebreak()').join('\n')}
 ${notes.any((note) => note.citations.isNotEmpty) ? '${includeZotero ? '#bibliography(("/_system/bibliography.yml", "/_system/zotero.bib"))' : '#bibliography("/_system/bibliography.yml")'}\n' : ''}])
 ''';
@@ -94,6 +84,3 @@ Future<String> writeReportStorage(
   );
   return output;
 }
-
-String _typstString(String value) =>
-    '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';

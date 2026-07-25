@@ -161,7 +161,7 @@ NoteGraph buildConceptMap(
   int minNotes = kConceptMapMinNotes,
   int minCoOccur = 3,
 }) {
-  final notesByTag = tagToNotes(index);
+  final notesByTag = _tagToNotes(index);
   final promoted = {
     for (final entry in notesByTag.entries)
       if (entry.value.length >= minNotes) entry.key: entry.value,
@@ -199,7 +199,7 @@ NoteGraph buildConceptMap(
 /// by the concept map and community detection.
 /// ponytail: plain helper, not a memoized field — `VaultIndex` is a const model
 /// and this runs once per graph rebuild, not in a hot loop.
-Map<String, Set<String>> tagToNotes(VaultIndex index) {
+Map<String, Set<String>> _tagToNotes(VaultIndex index) {
   final byTag = <String, Set<String>>{};
   for (final note in index.notesByPath.values) {
     for (final tag in note.tags) {
@@ -242,7 +242,7 @@ CommunityMap computeCommunities(
   int minNotes = kConceptMapMinNotes,
   int minCoOccur = 3,
 }) {
-  final byTag = tagToNotes(index);
+  final byTag = _tagToNotes(index);
   final promoted = {
     for (final e in byTag.entries)
       if (e.value.length >= minNotes) e.key: e.value,
@@ -344,11 +344,6 @@ CommunityMap computeCommunities(
   );
 }
 
-String _isoDay(DateTime dt) =>
-    '${dt.year.toString().padLeft(4, '0')}-'
-    '${dt.month.toString().padLeft(2, '0')}-'
-    '${dt.day.toString().padLeft(2, '0')}';
-
 final _isoDayPattern = RegExp(r'^\d{4}-\d{2}-\d{2}');
 
 /// A time-perspective projection: day nodes linked to the articles *added* on
@@ -366,7 +361,9 @@ NoteGraph buildTimelineGraph(
     if (date != null && _isoDayPattern.hasMatch(date)) return date.substring(0, 10);
     final millis = note.modifiedMillis;
     if (millis != null) {
-      return _isoDay(DateTime.fromMillisecondsSinceEpoch(millis));
+      return DateTime.fromMillisecondsSinceEpoch(
+        millis,
+      ).toIso8601String().split('T').first;
     }
     return null;
   }

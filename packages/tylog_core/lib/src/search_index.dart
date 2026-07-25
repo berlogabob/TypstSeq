@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'models.dart';
 import 'storage.dart';
+import 'values.dart';
 
 class PkmsSearchResult {
   const PkmsSearchResult({
@@ -71,8 +72,8 @@ class _SearchDocument {
         path: json['path'] as String,
         title: json['title'] as String,
         kind: json['kind'] as String,
-        tags: _strings(json['tags']),
-        aliases: _strings(json['aliases']),
+        tags: stringList(json['tags']),
+        aliases: stringList(json['aliases']),
         terms: (json['terms'] as Map).map<String, int>(
           (key, value) => MapEntry(key.toString(), (value as num).toInt()),
         ),
@@ -109,14 +110,6 @@ class PkmsSearchIndex {
       });
   }
 
-  static Future<PkmsSearchIndex> load(File file) async {
-    final root = file.parent.parent;
-    final path = file.absolute.path
-        .substring(root.absolute.path.length + 1)
-        .replaceAll(Platform.pathSeparator, '/');
-    return loadStorage(LocalVaultStorage(root), path);
-  }
-
   static Future<PkmsSearchIndex> loadStorage(
     VaultStorage storage,
     String path,
@@ -137,12 +130,6 @@ class PkmsSearchIndex {
       return empty();
     }
   }
-
-  static Future<PkmsSearchIndex> build(
-    Directory root,
-    VaultIndex vault, {
-    PkmsSearchIndex? previous,
-  }) => buildStorage(LocalVaultStorage(root), vault, previous: previous);
 
   static const _readConcurrency = 16;
 
@@ -241,14 +228,6 @@ class PkmsSearchIndex {
       }
     }
     return PkmsSearchIndex._(documents);
-  }
-
-  Future<void> save(File file) async {
-    final root = file.parent.parent;
-    final path = file.absolute.path
-        .substring(root.absolute.path.length + 1)
-        .replaceAll(Platform.pathSeparator, '/');
-    await saveStorage(LocalVaultStorage(root), path);
   }
 
   Future<void> saveStorage(VaultStorage storage, String path) async {
@@ -386,6 +365,3 @@ Iterable<String> _tokens(String text) => RegExp(
   r'[\p{L}\p{N}]+',
   unicode: true,
 ).allMatches(text.toLowerCase()).map((match) => match.group(0)!);
-
-List<String> _strings(Object? value) =>
-    (value as List? ?? const []).map((item) => item.toString()).toList();

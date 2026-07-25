@@ -1,3 +1,5 @@
+import 'values.dart';
+
 enum PkmsSeverity { info, warning, error }
 
 class PkmsProblem {
@@ -153,11 +155,11 @@ class NoteRef {
     kind: json['kind'] as String? ?? 'note',
     project: json['project'] as String?,
     date: json['date'] as String?,
-    tags: _strings(json['tags']),
-    aliases: _strings(json['aliases']),
-    outgoingLinks: _strings(json['outgoingLinks']),
-    fileRefs: _strings(json['fileRefs']),
-    citations: _strings(json['citations']),
+    tags: stringList(json['tags']),
+    aliases: stringList(json['aliases']),
+    outgoingLinks: stringList(json['outgoingLinks']),
+    fileRefs: stringList(json['fileRefs']),
+    citations: stringList(json['citations']),
     dateRefs: (json['dateRefs'] as List? ?? const [])
         .cast<Map>()
         .map((item) => DateRef.fromJson(item.cast<String, Object?>()))
@@ -293,10 +295,10 @@ class TaskRef {
     remind: json['remind'] as String?,
     timezone: json['timezone'] as String?,
     recurrence: json['recurrence'] as String?,
-    dependencies: _strings(json['dependencies']),
-    assignees: _strings(json['assignees']),
-    tags: _strings(json['tags']),
-    completed: _strings(json['completed']),
+    dependencies: stringList(json['dependencies']),
+    assignees: stringList(json['assignees']),
+    tags: stringList(json['tags']),
+    completed: stringList(json['completed']),
     properties: (json['properties'] as Map? ?? const {})
         .cast<String, Object?>(),
   );
@@ -396,12 +398,9 @@ class VaultIndex {
   }
 }
 
-List<String> _strings(Object? value) =>
-    (value as List? ?? const []).map((item) => item.toString()).toList();
-
 Map<String, List<String>> _stringLists(Object? value) => {
   for (final entry in (value as Map? ?? const {}).entries)
-    entry.key.toString(): _strings(entry.value),
+    entry.key.toString(): stringList(entry.value),
 };
 
 Map<String, List<String>> _sortedLists(Map<String, List<String>> value) => {

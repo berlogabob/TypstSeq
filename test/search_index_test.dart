@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/search_index.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   test('search index persists, ranks titles, and filters tags', () async {
@@ -32,10 +33,13 @@ void main() {
       },
       backlinksByTarget: const {},
     );
-    final search = await PkmsSearchIndex.build(dir, index);
+    final search = await PkmsSearchIndex.buildStorage(LocalVaultStorage(dir), index);
     final file = File('${dir.path}/search.json.gz');
-    await search.save(file);
-    final loaded = await PkmsSearchIndex.load(file);
+    await search.saveStorage(LocalVaultStorage(dir), 'search.json.gz');
+    final loaded = await PkmsSearchIndex.loadStorage(
+      LocalVaultStorage(dir),
+      'search.json.gz',
+    );
 
     expect(loaded.search('alpha').first.id, 'a');
     expect(loaded.search('body', tag: 'pkms').single.id, 'a');

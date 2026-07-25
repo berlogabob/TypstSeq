@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'models.dart';
 import 'scanner.dart';
 import 'storage.dart';
@@ -16,9 +14,6 @@ class PkmsValidationReport {
       'validation errors=${problems.where((p) => p.severity == PkmsSeverity.error).length} '
       'warnings=${problems.where((p) => p.severity == PkmsSeverity.warning).length}';
 }
-
-Future<PkmsValidationReport> validatePkms(Directory root, VaultIndex index) =>
-    validatePkmsStorage(LocalVaultStorage(root), index);
 
 Future<PkmsValidationReport> validatePkmsStorage(
   VaultStorage storage,

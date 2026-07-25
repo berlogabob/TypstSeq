@@ -26,7 +26,7 @@ void main() {
       // Build the vault index with plain (fast) local storage; only the
       // search-index build below is timed against simulated per-file
       // latency, mirroring a slow Android SAF `readBytes` round trip.
-      final index = await scanVault(dir, force: true);
+      final index = await scanVaultStorage(LocalVaultStorage(dir), force: true);
       expect(index.notes, hasLength(noteCount));
 
       final latencyStorage = _LatencyStorage(dir);

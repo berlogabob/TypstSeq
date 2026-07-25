@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/scanner.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   test(
@@ -37,7 +38,7 @@ void main() {
 ''',
       );
 
-      final index = await scanVault(dir);
+      final index = await scanVaultStorage(LocalVaultStorage(dir));
       final note = index.notesByPath['notes/A.typ']!;
 
       expect(note.id, 'a-id');
@@ -80,7 +81,7 @@ void main() {
       '${dir.path}/notes/B.typ',
     ).writeAsString('#show: tylog.note.with(id: "b", title: "B")');
 
-    final index = await scanVault(dir, force: true);
+    final index = await scanVaultStorage(LocalVaultStorage(dir), force: true);
     expect(index.backlinksByTarget['notes/B.typ'], ['notes/A.typ']);
   });
 
@@ -244,7 +245,11 @@ Text "#tylog.tag(\"ignored\")"
       '${dir.path}/notes/a.typ',
     ).writeAsString('#show: tylog.note.with(id: "a", title: "A")');
     await expectLater(
-      scanVault(dir, force: true, isCancelled: () => true),
+      scanVaultStorage(
+        LocalVaultStorage(dir),
+        force: true,
+        isCancelled: () => true,
+      ),
       throwsA(isA<IndexBuildCancelled>()),
     );
   });
