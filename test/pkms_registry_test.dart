@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/pkms_registry.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   test('v5 validator reports missing and unsafe Typst attachments', () async {
@@ -25,7 +26,7 @@ void main() {
       tasks: const [TaskRef(id: '', notePath: 'notes/a.typ', text: '')],
     );
 
-    final report = await validatePkms(dir, index);
+    final report = await validatePkmsStorage(LocalVaultStorage(dir), index);
     expect(report.count('missing-attachment'), 1);
     expect(report.count('unsafe-attachment-path'), 1);
     expect(report.count('invalid-note-id'), 1);
@@ -42,8 +43,8 @@ void main() {
     const customTheme = '#let document(body) = body';
     await File('${dir.path}/_system/theme.typ').writeAsString(customTheme);
 
-    final report = await validatePkms(
-      dir,
+    final report = await validatePkmsStorage(
+      LocalVaultStorage(dir),
       const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
     );
 

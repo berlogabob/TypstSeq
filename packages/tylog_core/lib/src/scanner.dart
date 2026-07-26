@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'models.dart';
 import 'storage.dart';
+import 'values.dart';
 
 enum TylogHelperKind { current, legacy, custom }
 
@@ -272,12 +272,12 @@ List<TypstCall> locateTypstCalls(
   final calls = <TypstCall>[];
   var i = 0;
   while (i < source.length) {
-    if (_starts(source, i, '//')) {
+    if (source.startsWith('//', i)) {
       i = source.indexOf('\n', i);
       if (i < 0) break;
       continue;
     }
-    if (_starts(source, i, '/*')) {
+    if (source.startsWith('/*', i)) {
       i = _skipBlockComment(source, i);
       continue;
     }
@@ -351,22 +351,6 @@ TypstCall? _noteHeader(String source) {
 
 NoteRef scanNote(String relativePath, String source, {String? fingerprint}) =>
     _fallbackNote(relativePath, source, fingerprint: fingerprint);
-
-Future<VaultIndex> scanVault(
-  Directory root, {
-  TypstInspector? inspector,
-  VaultIndex? previous,
-  bool force = false,
-  void Function(int complete, int total)? onProgress,
-  bool Function()? isCancelled,
-}) => scanVaultStorage(
-  LocalVaultStorage(root),
-  inspector: inspector,
-  previous: previous,
-  force: force,
-  onProgress: onProgress,
-  isCancelled: isCancelled,
-);
 
 Future<VaultIndex> scanVaultStorage(
   VaultStorage storage, {
@@ -519,7 +503,7 @@ Future<VaultIndex> scanVaultStorage(
     }
     onProgress?.call(fileIndex + 1, files.length);
   }
-  return buildVaultIndex(notes, problems: problems, tasks: tasks);
+  return _buildVaultIndex(notes, problems: problems, tasks: tasks);
 }
 
 const _noteRoots = ['daily/', 'notes/', 'projects/', 'articles/'];
@@ -556,7 +540,7 @@ PkmsProblem _fallbackProblem(String path) => PkmsProblem(
   fix: 'Convert this note to the managed metadata header.',
 );
 
-VaultIndex buildVaultIndex(
+VaultIndex _buildVaultIndex(
   Map<String, NoteRef> notes, {
   List<PkmsProblem> problems = const [],
   List<TaskRef> tasks = const [],
@@ -690,13 +674,13 @@ String repairArticleTypst(String source) {
 
 String serializeNoteHeader(NoteMetadataDraft draft) {
   final fields = <String>[
-    '  id: ${_typstString(draft.id)},',
-    '  title: ${_typstString(draft.title)},',
-    '  kind: ${_typstString(draft.kind)},',
-    '  date: ${draft.date == null || draft.date!.isEmpty ? 'none' : _typstString(draft.date!)},',
+    '  id: ${typstString(draft.id)},',
+    '  title: ${typstString(draft.title)},',
+    '  kind: ${typstString(draft.kind)},',
+    '  date: ${draft.date == null || draft.date!.isEmpty ? 'none' : typstString(draft.date!)},',
     '  tags: ${_typstList(draft.tags)},',
     '  aliases: ${_typstList(draft.aliases)},',
-    '  project: ${draft.project == null || draft.project!.isEmpty ? 'none' : _typstString(draft.project!)},',
+    '  project: ${draft.project == null || draft.project!.isEmpty ? 'none' : typstString(draft.project!)},',
     '  properties: ${_typstDictionary(draft.properties)},',
   ];
   return '#show: tylog.note.with(\n${fields.join('\n')}\n)';
@@ -793,7 +777,7 @@ String replaceNoteProperty(String source, String key, Object? value) {
   if (propsField == null) {
     final newHeader = header.replaceFirst(
       RegExp(r'\)\s*$'),
-      '  properties: (${_typstString(key)}: $encodedValue,),\n)',
+      '  properties: (${typstString(key)}: $encodedValue,),\n)',
     );
     return source.replaceRange(call.start, call.end, newHeader);
   }
@@ -807,14 +791,14 @@ String replaceNoteProperty(String source, String key, Object? value) {
     newDict = dictSource.replaceRange(
       entry.start,
       entry.end,
-      '${_typstString(key)}: $encodedValue',
+      '${typstString(key)}: $encodedValue',
     );
   } else if (dictSource.trim() == '(:)') {
-    newDict = '(${_typstString(key)}: $encodedValue,)';
+    newDict = '(${typstString(key)}: $encodedValue,)';
   } else {
     newDict = dictSource.replaceFirst(
       RegExp(r'\)\s*$'),
-      '${_typstString(key)}: $encodedValue,)',
+      '${typstString(key)}: $encodedValue,)',
     );
   }
   final newHeader = header.replaceRange(
@@ -861,12 +845,12 @@ List<String> _splitTopLevel(String source) {
   var start = 0;
   var i = 0;
   while (i < source.length) {
-    if (_starts(source, i, '//')) {
+    if (source.startsWith('//', i)) {
       final nl = source.indexOf('\n', i);
       i = nl < 0 ? source.length : nl;
       continue;
     }
-    if (_starts(source, i, '/*')) {
+    if (source.startsWith('/*', i)) {
       i = _skipBlockComment(source, i);
       continue;
     }
@@ -1024,12 +1008,12 @@ _TopLevelField? _locateTopLevelField(String callSource, String name) {
   const outerDepth = 1;
   var depth = outerDepth;
   while (i < callSource.length && depth > 0) {
-    if (_starts(callSource, i, '//')) {
+    if (callSource.startsWith('//', i)) {
       final nl = callSource.indexOf('\n', i);
       i = nl < 0 ? callSource.length : nl;
       continue;
     }
-    if (_starts(callSource, i, '/*')) {
+    if (callSource.startsWith('/*', i)) {
       i = _skipBlockComment(callSource, i);
       continue;
     }
@@ -1072,12 +1056,12 @@ _TopLevelField? _locateTopLevelField(String callSource, String name) {
       final valueStart = k;
       var valueDepth = outerDepth;
       while (k < callSource.length) {
-        if (_starts(callSource, k, '//')) {
+        if (callSource.startsWith('//', k)) {
           final nl = callSource.indexOf('\n', k);
           k = nl < 0 ? callSource.length : nl;
           continue;
         }
-        if (_starts(callSource, k, '/*')) {
+        if (callSource.startsWith('/*', k)) {
           k = _skipBlockComment(callSource, k);
           continue;
         }
@@ -1136,11 +1120,11 @@ NoteRef _queriedNote(
     project: _text(note['project']),
     date: _text(note['date']),
     tags: _sorted({
-      ..._strings(note['tags']),
+      ...stringList(note['tags']),
       ...metadata.tags,
       ..._legacyTags(source),
     }),
-    aliases: _sorted(_strings(note['aliases']).toSet()),
+    aliases: _sorted(stringList(note['aliases']).toSet()),
     outgoingLinks: _sorted({...metadata.links, ..._legacySources(source)}),
     fileRefs: _sorted(
       metadata.attachments
@@ -1251,10 +1235,10 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
             remind: _text(value['remind']),
             timezone: _text(value['timezone']),
             recurrence: _text(value['recurrence']),
-            dependencies: _strings(value['dependencies']),
-            assignees: _strings(value['assignees']),
-            tags: _strings(value['tags']),
-            completed: _strings(value['completed']),
+            dependencies: stringList(value['dependencies']),
+            assignees: stringList(value['assignees']),
+            tags: stringList(value['tags']),
+            completed: stringList(value['completed']),
             properties: (value['properties'] as Map? ?? const {})
                 .cast<String, Object?>(),
           ),
@@ -1347,29 +1331,6 @@ Set<String> _legacyTags(String source) {
   return result;
 }
 
-/// Migrates legacy Logseq `tags:: [[..]]` lines into the canonical note header:
-/// merges the recovered tags into `tags: (...)` and strips the legacy lines.
-/// Returns the source unchanged if there is nothing to migrate or no `tags:`
-/// field to merge into (`source::`/`journal-day::` are left for read-side
-/// recovery). Pure and idempotent, so it is safe to re-run.
-String migrateLegacyLinks(String source) {
-  final legacy = _legacyTags(source);
-  if (legacy.isEmpty) return source;
-  final header = RegExp(r'tags\s*:\s*\(([^)]*)\)').firstMatch(source);
-  if (header == null) return source;
-  final existing = _quoted
-      .allMatches(header.group(1)!)
-      .map((m) => m.group(1)!)
-      .toSet();
-  final merged = {...existing, ...legacy}.toList()..sort();
-  final rendered = 'tags: (${merged.map((t) => '"$t"').join(', ')},)';
-  final withTags = source.replaceRange(header.start, header.end, rendered);
-  return withTags.replaceAll(
-    RegExp(r'^[ \t]*tags::.*(?:\r?\n)?', multiLine: true),
-    '',
-  );
-}
-
 List<String> _parseList(String source, String field) {
   final match = RegExp(
     '$field\\s*:\\s*\\(([^)]*)\\)',
@@ -1393,11 +1354,11 @@ List<String> _citations(String source) {
   final masked = StringBuffer();
   var i = 0;
   while (i < source.length) {
-    if (_starts(source, i, '//')) {
+    if (source.startsWith('//', i)) {
       final end = source.indexOf('\n', i);
       masked.write(''.padRight((end < 0 ? source.length : end) - i));
       i = end < 0 ? source.length : end;
-    } else if (_starts(source, i, '/*')) {
+    } else if (source.startsWith('/*', i)) {
       final end = _skipBlockComment(source, i);
       masked.write(''.padRight(end - i));
       i = end;
@@ -1466,9 +1427,6 @@ String? _cleanContentText(Object? value) {
   return text;
 }
 
-List<String> _strings(Object? value) =>
-    (value as List? ?? const []).map((item) => item.toString()).toList();
-
 String? _text(Object? value) => value?.toString();
 
 List<String> _sorted(Set<String> values) => values.toList()..sort();
@@ -1504,12 +1462,12 @@ int? _balancedEnd(String source, int open) {
   var depth = 0;
   var i = open;
   while (i < source.length) {
-    if (_starts(source, i, '//')) {
+    if (source.startsWith('//', i)) {
       i = source.indexOf('\n', i);
       if (i < 0) return null;
       continue;
     }
-    if (_starts(source, i, '/*')) {
+    if (source.startsWith('/*', i)) {
       i = _skipBlockComment(source, i);
       continue;
     }
@@ -1532,12 +1490,12 @@ int? _balancedContentEnd(String source, int open) {
   var depth = 0;
   var i = open;
   while (i < source.length) {
-    if (_starts(source, i, '//')) {
+    if (source.startsWith('//', i)) {
       i = source.indexOf('\n', i);
       if (i < 0) return null;
       continue;
     }
-    if (_starts(source, i, '/*')) {
+    if (source.startsWith('/*', i)) {
       i = _skipBlockComment(source, i);
       continue;
     }
@@ -1579,10 +1537,10 @@ int _skipBlockComment(String source, int start) {
   var depth = 1;
   var i = start + 2;
   while (i < source.length && depth > 0) {
-    if (_starts(source, i, '/*')) {
+    if (source.startsWith('/*', i)) {
       depth++;
       i += 2;
-    } else if (_starts(source, i, '*/')) {
+    } else if (source.startsWith('*/', i)) {
       depth--;
       i += 2;
     } else {
@@ -1591,9 +1549,6 @@ int _skipBlockComment(String source, int start) {
   }
   return i;
 }
-
-bool _starts(String source, int at, String value) =>
-    at + value.length <= source.length && source.startsWith(value, at);
 
 bool _identifier(int code) =>
     code >= 65 && code <= 90 ||
@@ -1604,24 +1559,21 @@ bool _identifier(int code) =>
 
 bool _space(int code) => code == 9 || code == 10 || code == 13 || code == 32;
 
-String _typstString(String value) =>
-    '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
-
 String _typstList(List<String> values) =>
-    values.isEmpty ? '()' : '(${values.map(_typstString).join(', ')},)';
+    values.isEmpty ? '()' : '(${values.map(typstString).join(', ')},)';
 
 String _typstDictionary(Map<String, Object?> values) {
   if (values.isEmpty) return '(:)';
-  return '(${values.entries.map((entry) => '${_typstString(entry.key)}: ${_typstValue(entry.value)}').join(', ')},)';
+  return '(${values.entries.map((entry) => '${typstString(entry.key)}: ${_typstValue(entry.value)}').join(', ')},)';
 }
 
 String _typstValue(Object? value) => switch (value) {
   null => 'none',
   bool() || num() => value.toString(),
-  String() => _typstString(value),
+  String() => typstString(value),
   List() => value.isEmpty ? '()' : '(${value.map(_typstValue).join(', ')},)',
   Map() => _typstDictionary({
     for (final entry in value.entries) entry.key.toString(): entry.value,
   }),
-  _ => _typstString(value.toString()),
+  _ => typstString(value.toString()),
 };

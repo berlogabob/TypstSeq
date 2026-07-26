@@ -39,7 +39,7 @@ Future<String> exportReportPdfStorage(
   try {
     final document = await compiler.compile(
       source: await storage.readText(report),
-      files: FileSource.bytes(virtual),
+      files: virtual,
     );
     try {
       final output = '${report.substring(0, report.length - 4)}.pdf';

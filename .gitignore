@@ -37,8 +37,11 @@ packages/typst_flutter/ios/typst_flutter/.build/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+build/
 /coverage/
+
+# Windows is not a shipped target; Flutter still regenerates windows/ locally.
+windows/
 
 # Symbolication related
 app.*.symbols
@@ -54,13 +57,27 @@ app.*.map.json
 # Local reference screenshots / prompts
 .ref/
 
-# Rebuildable Graphify state; published graph outputs stay tracked.
+# Rebuildable Graphify state; only GRAPH_REPORT.md stays tracked.
 graphify-out/.graphify_*
 graphify-out/cache/
 graphify-out/cost.json
 graphify-out/manifest.json
 graphify-out/.vocab.txt
 graphify-out/20*/
+graphify-out/graph.json
+graphify-out/graph.html
+
+# Maestro UX-audit runs; keep local or publish as CI artifacts.
+audit/
+
+# Local fixture vault; tests use test/fixtures/tylog_format_v1
+sample_vault/
+
+# Brand source assets live on the design drive, not in git.
+# Exception: the two icon sources flutter_launcher_icons reads (pubspec.yaml:109,112).
+docs/brand/*
+!docs/brand/tylog-app-icon.png
+!docs/brand/tylog-symbol-foreground.png
 
 # Android release signing secrets
 android/key.properties

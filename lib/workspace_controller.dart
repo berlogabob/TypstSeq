@@ -665,11 +665,6 @@ class WorkspaceController extends ChangeNotifier {
 
   void cancelPendingWork() => _cancelTimers();
 
-  void updateCloud(NextcloudConfig? value) {
-    cloud = value;
-    notifyListeners();
-  }
-
   Future<void> _startSyncForeground(String detail) => _syncForeground(
     () => AndroidTreeVaultStorage.startSyncForeground(detail: detail),
   );

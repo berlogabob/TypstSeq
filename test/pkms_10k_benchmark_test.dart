@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/search_index.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   test(
@@ -25,22 +26,34 @@ void main() {
       }
 
       final full = Stopwatch()..start();
-      final index = await scanVault(dir, force: true);
-      final search = await PkmsSearchIndex.build(dir, index);
+      final index = await scanVaultStorage(LocalVaultStorage(dir), force: true);
+      final search = await PkmsSearchIndex.buildStorage(
+        LocalVaultStorage(dir),
+        index,
+      );
       final searchFile = File('${dir.path}/_index/search-index.json.gz');
-      await search.save(searchFile);
+      await search.saveStorage(
+        LocalVaultStorage(dir),
+        '_index/search-index.json.gz',
+      );
       final firstSearchBytes = await searchFile.readAsBytes();
       full.stop();
 
       final warm = Stopwatch()..start();
-      final second = await scanVault(dir, previous: index);
-      final loadedSearch = await PkmsSearchIndex.load(searchFile);
-      final warmSearch = await PkmsSearchIndex.build(
-        dir,
+      final second = await scanVaultStorage(LocalVaultStorage(dir), previous: index);
+      final loadedSearch = await PkmsSearchIndex.loadStorage(
+        LocalVaultStorage(dir),
+        '_index/search-index.json.gz',
+      );
+      final warmSearch = await PkmsSearchIndex.buildStorage(
+        LocalVaultStorage(dir),
         second,
         previous: loadedSearch,
       );
-      await warmSearch.save(searchFile);
+      await warmSearch.saveStorage(
+        LocalVaultStorage(dir),
+        '_index/search-index.json.gz',
+      );
       warm.stop();
 
       final queryTimes = <int>[];

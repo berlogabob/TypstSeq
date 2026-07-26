@@ -25,7 +25,7 @@ class FlutterTypstInspector
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
     final document = await _compiler.compile(
       source: input.source,
-      files: FileSource.bytes(input.files),
+      files: input.files,
     );
     try {
       return decodeTypstMetadataRecords(

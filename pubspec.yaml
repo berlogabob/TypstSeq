@@ -38,7 +38,6 @@ dependencies:
     path: packages/tylog_core
   typst_flutter:
     path: packages/typst_flutter
-  open_file: ^4.0.0
   flutter_local_notifications: ^22.0.1
   flutter_timezone: ^5.1.0
   rrule: ^0.2.18
@@ -76,7 +75,6 @@ flutter:
   assets:
     - pubspec.yaml
     - typst/tylog/
-    - typst/tylog/examples/
     - typst/vault/
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -113,8 +111,5 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   ios: true
   macos:
-    generate: true
-    image_path: "docs/brand/tylog-app-icon.png"
-  windows:
     generate: true
     image_path: "docs/brand/tylog-app-icon.png"

@@ -25,10 +25,6 @@ void main() {
       'Visible and topic',
       'Keep exactly',
     ]);
-    expect(
-      document.replaceBlock(1, '#strong[Changed]'),
-      contains('#custom-function()[Keep exactly]'),
-    );
   });
 
   test('adjacent heading and task remain separate styled blocks', () {

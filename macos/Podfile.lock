@@ -10,8 +10,6 @@ PODS:
   - flutter_timezone (0.1.0):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - open_file_mac (1.0.3):
-    - FlutterMacOS
   - typst_flutter (1.0.0):
     - FlutterMacOS
   - url_launcher_macos (0.0.1):
@@ -23,7 +21,6 @@ DEPENDENCIES:
   - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - flutter_timezone (from `Flutter/ephemeral/.symlinks/plugins/flutter_timezone/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
-  - open_file_mac (from `Flutter/ephemeral/.symlinks/plugins/open_file_mac/macos`)
   - typst_flutter (from `Flutter/ephemeral/.symlinks/plugins/typst_flutter/macos`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
 
@@ -38,8 +35,6 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_timezone/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
-  open_file_mac:
-    :path: Flutter/ephemeral/.symlinks/plugins/open_file_mac/macos
   typst_flutter:
     :path: Flutter/ephemeral/.symlinks/plugins/typst_flutter/macos
   url_launcher_macos:
@@ -51,7 +46,6 @@ SPEC CHECKSUMS:
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_timezone: d272288c69082ad571630e0d17140b3d6b93dc0c
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  open_file_mac: 76f06c8597551249bdb5e8fd8827a98eae0f4585
   typst_flutter: a85b5f6014f54a1f7eedda15caf33dbf9a719cdd
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
 

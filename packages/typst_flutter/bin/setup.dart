@@ -7,8 +7,30 @@ import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+
+/// Minimal GET over `dart:io`. ponytail: a setup script does not need a
+/// package for two requests; HttpClient already follows redirects.
+class _Response {
+  _Response(this.statusCode, this.bodyBytes);
+  final int statusCode;
+  final List<int> bodyBytes;
+  String get body => utf8.decode(bodyBytes);
+}
+
+Future<_Response> _httpGet(String url) async {
+  final client = HttpClient();
+  try {
+    final response = await (await client.getUrl(Uri.parse(url))).close();
+    final bytes = await response.fold<List<int>>(
+      <int>[],
+      (buffer, chunk) => buffer..addAll(chunk),
+    );
+    return _Response(response.statusCode, bytes);
+  } finally {
+    client.close();
+  }
+}
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
@@ -246,7 +268,7 @@ class _Setup {
     if (!destDir.existsSync()) destDir.createSync(recursive: true);
 
     // Download to memory
-    final response = await http.get(Uri.parse(url));
+    final response = await _httpGet(url);
 
     if (response.statusCode == 404) {
       throw Exception(
@@ -296,7 +318,7 @@ class _Setup {
     final baseUrl =
         'https://github.com/$_repoOwner/$_repoName'
         '/releases/download/v$_version/SHA256SUMS';
-    final response = await http.get(Uri.parse(baseUrl));
+    final response = await _httpGet(baseUrl);
 
     if (response.statusCode != 200) {
       print(

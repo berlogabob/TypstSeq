@@ -5,13 +5,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:typst_flutter/src/compiler.dart';
 import 'package:typst_flutter/src/document.dart';
 import 'package:typst_flutter/src/exceptions.dart';
-import 'package:typst_flutter/src/files.dart';
-import 'package:typst_flutter/src/fonts.dart';
 import 'package:typst_flutter/src/rust/api/typst.dart' as api;
-import 'package:typst_flutter/src/widgets/typst_compiler_provider.dart';
 
 /// How the Typst document should be rendered.
 enum TypstRenderMode {
@@ -37,10 +33,10 @@ bool svgRasterHasContent(Uint8List rgba, {int threshold = 12}) {
   return false;
 }
 
-/// A widget that renders a single page of a Typst document.
+/// A widget that renders a single page of an already-compiled Typst document.
 ///
-/// If [document] is provided, it renders directly from that handle.
-/// If [source] is provided, it manages its own compilation lifecycle.
+/// Compilation is the caller's job — use [TypstDocumentViewer] for a widget
+/// that owns a compiler.
 class TypstView extends StatefulWidget {
   /// Creates a [TypstView] from an already-compiled [TypstDocument].
   const TypstView({
@@ -52,42 +48,10 @@ class TypstView extends StatefulWidget {
     this.fit = BoxFit.contain,
     this.loadingBuilder,
     this.errorBuilder,
-  }) : source = null,
-       fonts = null,
-       files = null,
-       date = null;
-
-  /// Creates a [TypstView] that compiles and renders the given [source].
-  ///
-  /// This constructor maintains its own internal compiler.
-  const TypstView.source({
-    required this.source,
-    super.key,
-    this.fonts,
-    this.files,
-    this.date,
-    this.pageIndex = 0,
-    this.renderMode = TypstRenderMode.svg,
-    this.pixelsPerPt = 2.0,
-    this.fit = BoxFit.contain,
-    this.loadingBuilder,
-    this.errorBuilder,
-  }) : document = null;
+  });
 
   /// The compiled document to render.
-  final TypstDocument? document;
-
-  /// The source markup (if not providing a compiled document).
-  final String? source;
-
-  /// Font files for compilation (if providing [source]).
-  final FontSource? fonts;
-
-  /// Virtual files for compilation (if providing [source]).
-  final FileSource? files;
-
-  /// The date to inject for `#datetime.today()` (if providing [source]).
-  final DateTime? date;
+  final TypstDocument document;
 
   /// The 0-based index of the page to render.
   final int pageIndex;
@@ -118,12 +82,6 @@ class TypstView extends StatefulWidget {
 }
 
 class _TypstViewState extends State<TypstView> {
-  // If managing our own compiler:
-  TypstCompiler? _compiler;
-  bool _ownsCompiler = false;
-  TypstDocument? _ownedDocument;
-
-  // Render state:
   ui.Image? _image;
   String? _svgString;
   api.PageInfo? _pageInfo;
@@ -134,11 +92,6 @@ class _TypstViewState extends State<TypstView> {
   TypstException? _error;
 
   bool _didInit = false;
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   void didChangeDependencies() {
@@ -152,36 +105,10 @@ class _TypstViewState extends State<TypstView> {
   @override
   void didUpdateWidget(TypstView old) {
     super.didUpdateWidget(old);
-    var needsRender = false;
-
-    if (widget.document != null) {
-      if (widget.document != old.document ||
-          widget.pageIndex != old.pageIndex ||
-          widget.renderMode != old.renderMode ||
-          widget.pixelsPerPt != old.pixelsPerPt) {
-        needsRender = true;
-      }
-    } else if (widget.source != null) {
-      if (widget.source != old.source ||
-          widget.fonts != old.fonts ||
-          widget.files != old.files ||
-          widget.date != old.date) {
-        if (widget.fonts != old.fonts) {
-          if (_ownsCompiler) {
-            _compiler?.dispose();
-          }
-          _compiler = null;
-          _ownsCompiler = false;
-        }
-        needsRender = true;
-      } else if (widget.pageIndex != old.pageIndex ||
-          widget.renderMode != old.renderMode ||
-          widget.pixelsPerPt != old.pixelsPerPt) {
-        needsRender = true;
-      }
-    }
-
-    if (needsRender) {
+    if (widget.document != old.document ||
+        widget.pageIndex != old.pageIndex ||
+        widget.renderMode != old.renderMode ||
+        widget.pixelsPerPt != old.pixelsPerPt) {
       unawaited(_prepareAndRender());
     }
   }
@@ -189,10 +116,6 @@ class _TypstViewState extends State<TypstView> {
   @override
   void dispose() {
     _image?.dispose();
-    _ownedDocument?.dispose();
-    if (_ownsCompiler) {
-      _compiler?.dispose();
-    }
     super.dispose();
   }
 
@@ -203,46 +126,7 @@ class _TypstViewState extends State<TypstView> {
     });
 
     try {
-      TypstDocument doc;
-      if (widget.document != null) {
-        doc = widget.document!;
-      } else {
-        final providedCompiler = TypstCompilerProvider.maybeOf(context);
-        if (providedCompiler != null) {
-          if (_ownsCompiler) {
-            _compiler?.dispose();
-            _ownsCompiler = false;
-          }
-          _compiler = providedCompiler;
-          if (widget.fonts != null && widget.fonts != const FontSource.none()) {
-            await _compiler!.addFonts(widget.fonts!);
-          }
-        } else {
-          if (_compiler == null) {
-            _compiler = await TypstCompiler.create(
-              fonts: widget.fonts ?? const FontSource.none(),
-            );
-            _ownsCompiler = true;
-          }
-        }
-        // Capture the previous document before the async gap so we can
-        // dispose it after the new one is safely stored.
-        final previousDoc = _ownedDocument;
-        final compiledDoc = await _compiler!.compile(
-          source: widget.source!,
-          files: widget.files,
-          date: widget.date,
-        );
-        // If the widget was disposed while we were compiling, release the
-        // newly compiled document immediately and bail out.
-        if (!mounted) {
-          compiledDoc.dispose();
-          return;
-        }
-        previousDoc?.dispose();
-        _ownedDocument = compiledDoc;
-        doc = compiledDoc;
-      }
+      final doc = widget.document;
 
       if (widget.pageIndex >= doc.pageCount) {
         throw const TypstCompileException('Page index out of bounds');

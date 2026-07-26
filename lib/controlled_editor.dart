@@ -31,11 +31,6 @@ class ControlledDocument {
 
   final String source;
   final List<ControlledBlock> blocks;
-
-  String replaceBlock(int index, String replacement) {
-    final block = blocks[index];
-    return source.replaceRange(block.start, block.end, replacement);
-  }
 }
 
 ControlledDocument parseControlledTypst(String source) {
@@ -260,7 +255,7 @@ String _inlinePreview(String source) {
   value = value
       .replaceAllMapped(
         RegExp(r'#tylog\.tag\("((?:\\.|[^"])*)"\)'),
-        (match) => _unescapeString(match.group(1)!),
+        (match) => unescapeTypstString(match.group(1)!),
       )
       // Only a citation `@key` at a break loses its `@`; an email's `@domain`
       // (preceded by a word char or an escaping `\`) is kept intact.
@@ -281,10 +276,10 @@ String _inlinePreview(String source) {
 
 String? _namedString(String source, String name) {
   final match = RegExp('$name\\s*:\\s*"((?:\\\\.|[^"])*)"').firstMatch(source);
-  return match == null ? null : _unescapeString(match.group(1)!);
+  return match == null ? null : unescapeTypstString(match.group(1)!);
 }
 
-String _unescapeString(String value) =>
+String unescapeTypstString(String value) =>
     value.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
 
 int _bodyStart(String source) {

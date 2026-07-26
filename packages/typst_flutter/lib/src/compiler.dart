@@ -3,8 +3,6 @@ import 'dart:ffi';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:typst_flutter/src/document.dart';
 import 'package:typst_flutter/src/exceptions.dart';
-import 'package:typst_flutter/src/files.dart';
-import 'package:typst_flutter/src/fonts.dart';
 import 'package:typst_flutter/src/rust/api/typst.dart' as api;
 import 'package:typst_flutter/src/rust/frb_generated.dart';
 
@@ -15,9 +13,7 @@ import 'package:typst_flutter/src/rust/frb_generated.dart';
 /// when [RustLib.init] is called.
 ///
 /// ```dart
-/// final compiler = await TypstCompiler.create(
-///   fonts: FontSource.assets(['assets/fonts/Roboto.ttf']),
-/// );
+/// final compiler = await TypstCompiler.create();
 ///
 /// // Compile to a lightweight document handle
 /// final doc = await compiler.compile(source: myMarkup);
@@ -42,13 +38,14 @@ class TypstCompiler implements Finalizable {
 
   /// Creates a [TypstCompiler] and initialises the native bridge.
   ///
-  /// [fonts] — additional font files to make available to the Typst compiler.
-  /// These are added on top of the bundled core fonts (`Libertinus Serif`,
+  /// The compiler uses the bundled core fonts (`Libertinus Serif`,
   /// `DejaVu Sans Mono`, and `NewCM Math`).
   ///
   /// This is safe to call multiple times; the native library is only
   /// initialised once.
-  static Future<TypstCompiler> create({FontSource? fonts}) async {
+  // ponytail: no custom-font hook; the engine's addFonts() is still there if a
+  // caller ever needs one.
+  static Future<TypstCompiler> create() async {
     try {
       await RustLib.init();
       // flutter_rust_bridge throws a StateError if init() is called more than
@@ -58,25 +55,10 @@ class TypstCompiler implements Finalizable {
       if (!e.message.contains('twice')) rethrow;
     }
 
-    final engine = api.TypstEngine();
-    if (fonts != null) {
-      final fontBytes = await fonts.load();
-      if (fontBytes.isNotEmpty) {
-        await engine.addFonts(fontData: fontBytes);
-      }
-    }
-    return TypstCompiler._(engine: engine);
+    return TypstCompiler._(engine: api.TypstEngine());
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
-
-  /// Adds more fonts to this compiler instance.
-  Future<void> addFonts(FontSource fonts) async {
-    final fontBytes = await fonts.load();
-    if (fontBytes.isNotEmpty) {
-      await _engine.addFonts(fontData: fontBytes);
-    }
-  }
 
   PlatformInt64? _dateTimeToSysTime(DateTime? date) {
     if (date == null) return null;
@@ -85,15 +67,21 @@ class TypstCompiler implements Finalizable {
 
   /// Compiles Typst [source] markup into a lightweight document handle.
   ///
+  /// [files] maps virtual path (exactly the string used in markup, e.g.
+  /// `logo.png` for `#image("logo.png")`) to raw file bytes.
+  ///
   /// Returns a [TypstDocument] which can be used to query page dimensions,
   /// lazily render raster/SVG pages, or export the full document to PDF.
   Future<TypstDocument> compile({
     required String source,
-    FileSource? files,
+    Map<String, Uint8List>? files,
     DateTime? date,
     Map<String, String>? inputs,
   }) async {
-    final virtualFiles = await _buildVirtualFiles(files);
+    final virtualFiles = <api.VirtualFile>[
+      for (final e in (files ?? const {}).entries)
+        api.VirtualFile(path: e.key, bytes: e.value),
+    ];
     try {
       final inner = await _engine.compile(
         markup: source,
@@ -112,9 +100,6 @@ class TypstCompiler implements Finalizable {
     }
   }
 
-  /// Returns the version string of the embedded Typst compiler engine.
-  String get compilerVersion => api.getTypstVersion();
-
   /// Queries the compiled [document] using a Typst [selector] string.
   ///
   /// Returns a JSON string containing the queried elements (e.g. headings).
@@ -122,14 +107,4 @@ class TypstCompiler implements Finalizable {
     required TypstDocument document,
     required String selector,
   }) async => _engine.query(document: document.inner, selector: selector);
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  Future<List<api.VirtualFile>> _buildVirtualFiles(FileSource? source) async {
-    final effectiveSource = source ?? const FileSource.none();
-    final map = await effectiveSource.load();
-    return map.entries
-        .map((e) => api.VirtualFile(path: e.key, bytes: e.value))
-        .toList();
-  }
 }

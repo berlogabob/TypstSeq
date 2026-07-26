@@ -18,29 +18,6 @@ source:: [[shazoo.ru]]
     expect(note.outgoingLinks, contains('shazoo.ru'));
   });
 
-  test('migrateLegacyLinks merges legacy tags into the header idempotently', () {
-    const source = '''
-#import "/_system/tylog.typ" as tylog
-
-#show: tylog.note.with(
-  id: "godot",
-  title: "Godot",
-  tags: ("kept",),
-)
-
-= Godot
-
-tags:: [[Godot]] [[Unity]]
-source:: [[shazoo.ru]]
-''';
-
-    final out = migrateLegacyLinks(source);
-    expect(out, contains('tags: ("Godot", "Unity", "kept",)'));
-    expect(out, isNot(contains('tags::'))); // legacy tag line stripped
-    expect(out, contains('source:: [[shazoo.ru]]')); // left for read-side
-    expect(migrateLegacyLinks(out), out); // idempotent
-  });
-
   test('scanNote recovers legacy Logseq `tags:: [[..]]` wiki-link tags', () {
     const source = '''
 #show: tylog.note.with(id: "godot", title: "Godot vs Unity", tags: ())
