@@ -33,6 +33,20 @@ String articleStatusStage(String? status) => switch (status ?? 'unread') {
   _ => 'read',
 };
 
+/// The further-along of two stored status values, folded onto the pipeline.
+///
+/// Imports can carry two competing claims — a bookkeeping `status` and a
+/// separate `read_status` — and they disagree in both directions in real data.
+/// Taking the later stage means merging them never walks a genuinely-read
+/// article back to unread.
+String laterArticleStatusStage(String? a, String? b) {
+  final left = articleStatusStage(a);
+  final right = articleStatusStage(b);
+  return articleStatusOptions.indexOf(left) >= articleStatusOptions.indexOf(right)
+      ? left
+      : right;
+}
+
 /// A tappable chip that opens a popup menu to pick one of [options] — the
 /// Notion-style "select" property control, generalized beyond article
 /// status so any single-value enum property can reuse it.

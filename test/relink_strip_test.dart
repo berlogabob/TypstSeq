@@ -1,5 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/app_mobile.dart';
+import 'package:tylog_core/models.dart';
+
+NoteRef _article(String id, {Map<String, Object?> properties = const {}}) =>
+    NoteRef(
+      id: id,
+      path: 'articles/$id.typ',
+      title: id,
+      kind: 'article',
+      outgoingLinks: const [],
+      properties: properties,
+    );
 
 void main() {
   // Must match the private _autoRelatedMarker in app_mobile.dart.
@@ -25,5 +36,28 @@ void main() {
   test('stripAutoRelated leaves marker-free source untouched', () {
     const plain = '= Note\n\nNo related block here.';
     expect(stripAutoRelated(plain), plain);
+  });
+
+  test('relinkCandidates skips articles article-pipeline linked with an LLM', () {
+    final notes = [
+      _article('plain'),
+      _article('llm', properties: {'llm_provider': 'ollama'}),
+      _article('empty-provider', properties: {'llm_provider': ''}),
+      // A non-string value must not throw the way a bare `as String?` would.
+      _article('odd-provider', properties: {'llm_provider': 42}),
+      const NoteRef(
+        id: 'n',
+        path: 'notes/n.typ',
+        title: 'N',
+        kind: 'note',
+        outgoingLinks: [],
+      ),
+    ];
+
+    expect(
+      relinkCandidates(notes).map((n) => n.id),
+      ['plain', 'empty-provider', 'odd-provider'],
+      reason: 'only articles, and only those without real LLM-written links',
+    );
   });
 }

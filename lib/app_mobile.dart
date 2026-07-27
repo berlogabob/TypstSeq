@@ -64,6 +64,23 @@ String stripAutoRelated(String source) {
       .replaceFirst(RegExp(r'[\r\n]+$'), '');
 }
 
+/// The articles a "Relink vault" pass may rewrite.
+///
+/// An `llm_provider` property means article-pipeline generated that note's
+/// auto-related block from a language model. Those suggestions beat
+/// [suggestLinkTargets], which only matches tags/citations/titles exactly, and
+/// both write the same `// tylog:auto-related` block — so relinking such a
+/// note would silently replace better links with worse ones. Leave them alone.
+List<NoteRef> relinkCandidates(Iterable<NoteRef> notes) => [
+  for (final note in notes)
+    if (note.kind == 'article' && !_hasLlmLinks(note)) note,
+];
+
+bool _hasLlmLinks(NoteRef note) {
+  final provider = note.properties['llm_provider'];
+  return provider is String && provider.isNotEmpty;
+}
+
 enum _MarkdownImportOutcome { imported, replaced, kept, unchanged, failed }
 
 class _MarkdownImportReportItem {
@@ -345,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
+      workspace.deviceId = registry.deviceId;
       widget.onThemeModeChanged?.call(themeModeFromName(registry.themeMode));
       if (Platform.isAndroid) {
         if (registry.entries.isEmpty) {
@@ -1415,7 +1433,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final lines = [
       for (final targetPath in targetPaths)
         if (index!.notesByPath[targetPath] case final target?)
-          '#tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
+          // Bulleted so the block renders as a list, and so article-pipeline
+          // (which writes the same marked block from its LLM suggestions)
+          // produces byte-identical markup.
+          '- #tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
     ];
     if (lines.isNotEmpty) {
       await vault!.saveNote(
@@ -1452,13 +1473,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (vault == null || index == null) return;
     final idx = index!;
     final communities = computeCommunities(idx);
-    final articles = idx.notes.where((n) => n.kind == 'article').toList();
+    final articles = relinkCandidates(idx.notes);
+    final skipped =
+        idx.notes.where((n) => n.kind == 'article').length - articles.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Relink vault'),
         content: Text(
-          'Rescan ${articles.length} articles and refresh their suggested links?',
+          'Rescan ${articles.length} articles and refresh their suggested links?'
+          '${skipped > 0 ? '\n\n$skipped already linked by a language model are left unchanged.' : ''}',
         ),
         actions: [
           TextButton(

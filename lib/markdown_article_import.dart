@@ -9,6 +9,8 @@ import 'package:tylog_core/storage.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 import 'package:yaml/yaml.dart';
 
+import 'widgets/property_select_chip.dart' show laterArticleStatusStage, articleStatusStage;
+
 class MarkdownArticleDiagnostic {
   const MarkdownArticleDiagnostic({
     required this.code,
@@ -100,6 +102,20 @@ Future<MarkdownArticleDraft> buildMarkdownArticleDraft({
       properties[entry.key] = entry.value;
     }
   }
+  // Frontmatter keys are copied through verbatim, so a Logseq/Obsidian source
+  // brings whatever reading vocabulary it was written with — "processed",
+  // "summarized", a stale "read_status" pair. Fold it onto the app's five
+  // stages here, at the one place source data enters the vault, so the shelf
+  // never has to guess and a one-off data migration can't decay on re-import.
+  if (properties.remove('read_status') case final legacy?) {
+    properties['status'] = laterArticleStatusStage(
+      _firstText(properties['status']),
+      _firstText(legacy),
+    );
+  } else if (properties['status'] case final raw?) {
+    properties['status'] = articleStatusStage(_firstText(raw));
+  }
+
   final sourceType = _firstText(metadata['type']);
   if (sourceType != null && sourceType.toLowerCase() != 'article') {
     properties['source_type'] = sourceType;
