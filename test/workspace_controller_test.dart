@@ -65,7 +65,7 @@ void main() {
         contains('Controller edit.'),
       );
 
-      await controller.refreshIndex(force: true);
+      await controller.refreshIndex(always: true);
       expect(controller.index?.notes.single.metadataSource, 'typst-query');
       expect(inspector.calls, 2);
     },

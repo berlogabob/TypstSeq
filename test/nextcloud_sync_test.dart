@@ -2126,7 +2126,7 @@ void main() {
   );
 
   test(
-    'path transfers use two to four workers and one MKCOL per parent',
+    'path transfers use two to eight workers and one MKCOL per parent',
     () async {
       final remote = <String, _MutableRemoteFile>{};
       final metrics = _WebDavMetrics();
@@ -2151,7 +2151,7 @@ void main() {
       ).sync(vault, initialMode: InitialSyncMode.uploadLocal);
 
       expect(metrics.maxTransfers, greaterThan(1));
-      expect(metrics.maxTransfers, lessThanOrEqualTo(4));
+      expect(metrics.maxTransfers, lessThanOrEqualTo(8));
       expect(
         metrics.mkcols['/remote.php/dav/files/alice/TyLogVault/notes/'],
         1,
@@ -2278,6 +2278,114 @@ void main() {
       '/remote.php/dav/files/alice/Research/',
       '/remote.php/dav/files/alice/Research/TyLog/',
     ]);
+  });
+
+  group('pollIsUnchanged', () {
+    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})>
+    synced() async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_poll_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      // Twice: the first run uploads the vault scaffolding, and the etag it
+      // saves is the pre-upload one. The second settles into steady state.
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault);
+      return (vault: vault, server: server, remote: remote);
+    }
+
+    test('skips a poll when the remote root etag is unchanged', () async {
+      final s = await synced();
+
+      expect(
+        await NextcloudSync(_config(s.server)).pollIsUnchanged(
+          s.vault,
+          dirty: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('falls through when the remote root etag moved', () async {
+      final s = await synced();
+      s.remote['notes/b.typ'] = _remoteText('note b');
+
+      expect(
+        await NextcloudSync(_config(s.server)).pollIsUnchanged(
+          s.vault,
+          dirty: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('falls through while the editor is dirty', () async {
+      final s = await synced();
+
+      expect(
+        await NextcloudSync(_config(s.server)).pollIsUnchanged(
+          s.vault,
+          dirty: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('falls through when a conflict is pending', () async {
+      final s = await synced();
+      await createSyncConflict(
+        s.vault,
+        'notes/a.typ',
+        localBytes: utf8.encode('local'),
+        remoteBytes: utf8.encode('remote'),
+      );
+
+      expect(
+        await NextcloudSync(_config(s.server)).pollIsUnchanged(
+          s.vault,
+          dirty: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('falls through when the server is unreachable', () async {
+      final s = await synced();
+      final config = _config(s.server);
+      await s.server.close(force: true);
+
+      expect(
+        await NextcloudSync(config).pollIsUnchanged(s.vault, dirty: false),
+        isFalse,
+      );
+    });
+
+    // The deliberate trade: a local-only change is NOT detected by the poll,
+    // because verifying it costs a full recursive listing every 25s. Local
+    // edits reach the cloud via queueCloudSync, and sync() still runs the
+    // local cursor check on every startup, resume and manual run.
+    test('does not detect a local-only change (sync() still does)', () async {
+      final s = await synced();
+      await s.vault.storage.writeText('notes/a.typ', 'edited locally');
+
+      expect(
+        await NextcloudSync(_config(s.server)).pollIsUnchanged(
+          s.vault,
+          dirty: false,
+        ),
+        isTrue,
+      );
+
+      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(result.uploaded, 1);
+    });
   });
 }
 

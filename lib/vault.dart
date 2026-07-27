@@ -19,6 +19,11 @@ class Vault {
 
   final VaultStorage storage;
 
+  /// Notes written through [saveNote] since the last completed scan. The scan
+  /// cache keys on mtime+size, which SAF reports at second granularity, so a
+  /// same-size edit landing in the same second would otherwise be skipped.
+  final _staleNotes = <String>{};
+
   static const indexPath = TylogVaultPaths.index;
   static const searchIndexPath = TylogVaultPaths.searchIndex;
   static const helperPath = TylogVaultPaths.helper;
@@ -104,6 +109,7 @@ class Vault {
     bool Function()? isCancelled,
   }) async {
     final previous = await loadIndex();
+    final stale = Set<String>.of(_staleNotes);
     FlutterTypstInspector? ownedInspector;
     if (inspector == null) {
       try {
@@ -120,12 +126,16 @@ class Vault {
         inspector: inspector,
         previous: previous,
         force: force,
+        stale: stale,
         onProgress: onProgress,
         isCancelled: isCancelled,
       );
     } finally {
       ownedInspector?.dispose();
     }
+    // Only the paths this scan actually covered; a save landing mid-scan stays
+    // queued for the next one.
+    _staleNotes.removeAll(stale);
     await storage.writeText(
       indexPath,
       const JsonEncoder.withIndent('  ').convert(index.toJson()),
@@ -198,6 +208,7 @@ class Vault {
       throw ArgumentError('A TyLog note cannot be empty');
     }
     await storage.writeText(path, text);
+    _staleNotes.add(path);
   }
 
   Future<String> readText(String path) => storage.readText(path);

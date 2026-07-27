@@ -233,8 +233,17 @@ class NextcloudSync {
     Duration(seconds: 3),
   ];
 
-  /// Cheap, conservative preflight for a background poll. Uncertain remote
-  /// state or any local cursor mismatch falls through to a full sync.
+  /// Cheap, conservative preflight for a background poll: uncertain remote
+  /// state falls through to a full sync.
+  ///
+  /// Deliberately does *not* verify the local tree against the cursors. That
+  /// check costs a full recursive listing (~2.3s of the storage thread on a
+  /// 1700-note SAF vault, every 25s) and this is not the path local edits
+  /// travel: an edit schedules its own sync through
+  /// `WorkspaceController.queueCloudSync`, and `sync()` still runs the local
+  /// check on every startup, resume and manual run. What this gives up is
+  /// noticing a local change made by *another app* during a poll — that now
+  /// waits for the next real sync instead.
   Future<bool> pollIsUnchanged(Vault vault, {required bool dirty}) async {
     try {
       if (dirty) return false;
@@ -253,8 +262,7 @@ class NextcloudSync {
       )) {
         return false;
       }
-      final local = await _localFiles(vault.storage);
-      return _matchesLocalCursorSnapshot(local.syncable, state.cursors);
+      return true;
     } catch (_) {
       return false;
     } finally {
@@ -582,9 +590,12 @@ class NextcloudSync {
         }
       }
 
+      // 8 in-flight requests: local I/O behind these is capped lower anyway
+      // (SafBridge runs 4 read threads and 1 write thread), so this mainly
+      // buys overlap on network latency. Archive bootstrap stays serial.
       await Future.wait(
         List.generate(
-          math.min(archiveSnapshot == null ? 4 : 1, allPaths.length),
+          math.min(archiveSnapshot == null ? 8 : 1, allPaths.length),
           (_) => worker(),
         ),
       );
@@ -985,6 +996,7 @@ class NextcloudSync {
     final remoteTime = remoteFile?.modified;
     Uint8List? localBytes;
     String? localHash;
+    String? downloadedHash;
     if (localExists) {
       final millis = localStat.modified?.millisecondsSinceEpoch;
       if (previous?.localSha256 != null &&
@@ -994,8 +1006,11 @@ class NextcloudSync {
           localStat.size == previous.localSize) {
         localHash = previous.localSha256;
       } else {
-        localBytes = await vault.storage.readBytes(path);
-        localHash = sha256.convert(localBytes).toString();
+        // Native streaming digest: hashing here used to pull the whole file
+        // across the platform channel for every changed path, even the ones
+        // that turn out to be downloads or skips. _uploadStorage reads the
+        // bytes itself on the paths that actually upload.
+        localHash = await vault.storage.hash(path);
       }
     }
     final localChanged = previous == null
@@ -1045,6 +1060,7 @@ class NextcloudSync {
           throw StateError('Cloud file $path is empty; local copy kept.');
         }
         observedRemoteEtag = download.etag;
+        downloadedHash = download.localSha256;
         downloaded++;
         reason = localExists ? 'initial-cloud-copy' : 'initial-download';
       } else {
@@ -1155,6 +1171,7 @@ class NextcloudSync {
         remoteFile: remoteFile,
       );
       observedRemoteEtag = download.etag;
+      downloadedHash = download.localSha256;
       if (download.protected) {
         action = SyncAction.upload;
         uploadedRemoteEtag = await _uploadStorage(
@@ -1252,7 +1269,7 @@ class NextcloudSync {
           localSize: nextLocal?.size,
           remoteMillis: nextRemote?.millisecondsSinceEpoch,
           localSha256: wasDownloaded
-              ? await vault.storage.hash(path)
+              ? (downloadedHash ?? await vault.storage.hash(path))
               : localHash,
           remoteEtag: _normEtag(
             uploadedRemoteEtag ?? observedRemoteEtag ?? remoteFile?.etag,
@@ -1823,7 +1840,11 @@ class NextcloudSync {
       }
       _requireLocalReplacementAllowed(path);
       await storage.writeBytes(path, bytes);
-      return _DownloadResult(protected: false, etag: remoteFile?.etag);
+      return _DownloadResult(
+        protected: false,
+        etag: remoteFile?.etag,
+        localSha256: sha256.convert(bytes).toString(),
+      );
     }
     final temporary = await File(
       '${Directory.systemTemp.path}/tylog-${DateTime.now().microsecondsSinceEpoch}.tmp',
@@ -1842,8 +1863,13 @@ class NextcloudSync {
         return _DownloadResult(protected: true, etag: result.etag);
       }
       _requireLocalReplacementAllowed(path);
-      await storage.writeBytes(path, await temporary.readAsBytes());
-      return result;
+      final bytes = await temporary.readAsBytes();
+      await storage.writeBytes(path, bytes);
+      return _DownloadResult(
+        protected: result.protected,
+        etag: result.etag,
+        localSha256: sha256.convert(bytes).toString(),
+      );
     } finally {
       if (await temporary.exists()) await temporary.delete();
     }
@@ -2445,7 +2471,11 @@ class _PathResult {
 }
 
 class _DownloadResult {
-  const _DownloadResult({required this.protected, this.etag});
+  const _DownloadResult({required this.protected, this.etag, this.localSha256});
+
+  /// sha256 of the bytes just written, computed while they were already in
+  /// hand — saves re-reading the whole file back to build the sync cursor.
+  final String? localSha256;
 
   final bool protected;
   final String? etag;
