@@ -102,13 +102,22 @@ class Vault {
   Future<String> article(String title, {DateTime? now}) =>
       page(title, kind: 'article', now: now);
 
+  /// [deviceId] enables the cross-device cache: this device's notes are
+  /// published to `_system/index/<deviceId>.json` after the scan, and a scan
+  /// that has no usable local index seeds itself from the other devices'
+  /// donors instead of re-querying Typst for every note. Omit it and the
+  /// rebuild is purely local.
   Future<VaultIndex> rebuildIndex({
     TypstInspector? inspector,
     bool force = false,
+    String? deviceId,
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final previous = await loadIndex();
+    var previous = await loadIndex();
+    if (previous == null || previous.version != kVaultIndexVersion) {
+      previous = await _loadDonatedIndex(deviceId) ?? previous;
+    }
     final stale = Set<String>.of(_staleNotes);
     FlutterTypstInspector? ownedInspector;
     if (inspector == null) {
@@ -140,7 +149,89 @@ class Vault {
       indexPath,
       const JsonEncoder.withIndent('  ').convert(index.toJson()),
     );
+    if (deviceId != null && deviceId.isNotEmpty) {
+      await _writeIndexDonor(deviceId, index);
+    }
     return index;
+  }
+
+  /// Publishes this device's notes for its peers.
+  ///
+  /// [VaultIndex.notes] is path-sorted and [NoteRef.toJson] is stable, so an
+  /// unchanged vault re-renders to identical bytes — and those bytes are
+  /// compared before writing. Skipping the write, not just producing equal
+  /// content, is what keeps this quiet: on desktop the vault belongs to the
+  /// Nextcloud client, which detects changes by mtime+size, and an atomic
+  /// write renames a fresh temp file into place. Rewriting an identical donor
+  /// would re-upload megabytes after every save.
+  ///
+  /// Only `notes` — backlinks, problems and tasks are recomputed from scratch
+  /// on every scan anyway, so shipping them would be dead weight.
+  Future<void> _writeIndexDonor(String deviceId, VaultIndex index) async {
+    try {
+      final path = '${TylogVaultPaths.indexDonors}/$deviceId.json';
+      // Compact, unlike index.json: nothing reads this by eye, and it is the
+      // one index artifact that crosses the network.
+      final donor = jsonEncode({
+        'schema': 1,
+        'indexVersion': index.version,
+        'notes': [for (final note in index.notes) note.toJson()],
+      });
+      if (await storage.exists(path) && await storage.readText(path) == donor) {
+        return;
+      }
+      await storage.writeText(path, donor);
+    } catch (_) {
+      // A donor is a cache. Failing to publish one must never fail a rebuild.
+    }
+  }
+
+  /// Merges every *other* device's donor into one index the scanner can use as
+  /// its cache. Best-effort throughout: an unreadable, corrupt or
+  /// wrong-version donor is skipped, never fatal.
+  ///
+  /// ponytail: merged by path only. A note renamed on another device arrives
+  /// already renamed (sync issues a MOVE), so a content-hash reverse map would
+  /// buy nothing yet — add one if renames start showing up as cache misses.
+  Future<VaultIndex?> _loadDonatedIndex(String? deviceId) async {
+    final own = deviceId == null || deviceId.isEmpty
+        ? null
+        : '${TylogVaultPaths.indexDonors}/$deviceId.json';
+    List<VaultStorageEntry> files;
+    try {
+      files = await storage.list(path: TylogVaultPaths.indexDonors);
+    } catch (_) {
+      return null;
+    }
+    final notes = <String, NoteRef>{};
+    for (final file in files) {
+      if (file.isDirectory ||
+          !file.path.endsWith('.json') ||
+          file.path == own) {
+        continue;
+      }
+      try {
+        final json =
+            (jsonDecode(await storage.readText(file.path)) as Map)
+                .cast<String, Object?>();
+        if (json['indexVersion'] != kVaultIndexVersion) continue;
+        for (final item in (json['notes'] as List).cast<Map>()) {
+          final note = NoteRef.fromJson(item.cast<String, Object?>());
+          final existing = notes[note.path];
+          // Whichever device saw the note last wins. The scanner verifies
+          // every entry against the bytes on disk regardless, so a wrong guess
+          // costs one re-parse, not a wrong index.
+          if (existing == null ||
+              (note.modifiedMillis ?? 0) >= (existing.modifiedMillis ?? 0)) {
+            notes[note.path] = note;
+          }
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    if (notes.isEmpty) return null;
+    return VaultIndex(notesByPath: notes, backlinksByTarget: const {});
   }
 
   Future<VaultIndex?> loadIndex() async {

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
+import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
 
@@ -36,7 +37,36 @@ class _CountingStorage extends VaultStorage {
   @override
   Future<void> delete(String path) => inner.delete(path);
   @override
-  Future<String> hash(String path) => inner.hash(path);
+  Future<String> hash(String path) {
+    hashes.add(path);
+    return inner.hash(path);
+  }
+
+  final hashes = <String>[];
+}
+
+/// Counts Typst queries. Skipping *those* is what the content-hash gate buys —
+/// a re-read is milliseconds, an inspection is a Typst compile.
+class _CountingInspector implements TypstInspector {
+  final inspected = <String>[];
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
+    inspected.add(input.path);
+    final title = RegExp(r'title: "([^"]*)"').firstMatch(input.source)?.group(1);
+    return [
+      TypstMetadataRecord(
+        label: '<tylog-note>',
+        value: {
+          'schema': 1,
+          'entity': 'note',
+          'id': input.path.split('/').last.replaceFirst('.typ', ''),
+          'title': title ?? 'Untitled',
+          'kind': 'note',
+        },
+      ),
+    ];
+  }
 }
 
 String _note(String title) =>
@@ -104,5 +134,105 @@ void main() {
     await scanVaultStorage(storage, previous: first, stale: {'notes/a.typ'});
 
     expect(storage.reads, ['notes/a.typ']);
+  });
+
+  group('content hash', () {
+    /// Restamps every fingerprint the way another device would: same bytes,
+    /// different mtime. This is what a laptop-built index looks like to the
+    /// phone, where SAF reports its own mtimes.
+    VaultIndex asIfBuiltElsewhere(VaultIndex index) => VaultIndex(
+      version: index.version,
+      notesByPath: {
+        for (final entry in index.notesByPath.entries)
+          entry.key: entry.value.copyWith(fingerprint: 'foreign-mtime:0'),
+      },
+      backlinksByTarget: index.backlinksByTarget,
+      tasks: index.tasks,
+    );
+
+    test('a foreign index is reused without re-querying Typst', () async {
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      expect(inspector.inspected, hasLength(2), reason: 'cold build inspects');
+
+      inspector.inspected.clear();
+      storage.reads.clear();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: asIfBuiltElsewhere(first),
+      );
+
+      expect(
+        inspector.inspected,
+        isEmpty,
+        reason: 'the bytes are unchanged, so no note needs a Typst query',
+      );
+      expect(storage.reads, isEmpty, reason: 'hashing does not read via readBytes');
+      expect(storage.hashes, containsAll(['notes/a.typ', 'notes/b.typ']));
+      expect(second.notesByPath['notes/a.typ']?.title, 'Alpha');
+    });
+
+    test('the reused entry re-stamps the cheap gate, so the next scan is free', () async {
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      final second = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: asIfBuiltElsewhere(first),
+      );
+
+      storage.hashes.clear();
+      storage.reads.clear();
+      await scanVaultStorage(storage, inspector: inspector, previous: second);
+
+      expect(storage.hashes, isEmpty, reason: 'mtime+size gate hits first');
+      expect(storage.reads, isEmpty);
+    });
+
+    test('changed bytes still fall through to a full re-parse', () async {
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      final beforeHash = first.notesByPath['notes/a.typ']!.contentHash;
+      expect(beforeHash, isNotNull);
+
+      await storage.writeText('notes/a.typ', _note('Alpry'));
+
+      inspector.inspected.clear();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: asIfBuiltElsewhere(first),
+      );
+
+      expect(inspector.inspected, ['notes/a.typ']);
+      expect(second.notesByPath['notes/a.typ']?.title, 'Alpry');
+      expect(
+        second.notesByPath['notes/a.typ']?.contentHash,
+        isNot(beforeHash),
+        reason: 'the stored hash must follow the new bytes',
+      );
+      expect(second.notesByPath['notes/b.typ']?.contentHash, isNotNull);
+    });
+
+    test('an index from an older schema is a total miss', () async {
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      final legacy = VaultIndex(
+        version: kVaultIndexVersion - 1,
+        notesByPath: first.notesByPath,
+        backlinksByTarget: first.backlinksByTarget,
+      );
+
+      inspector.inspected.clear();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: legacy,
+      );
+
+      expect(inspector.inspected, hasLength(2));
+      expect(second.version, kVaultIndexVersion);
+    });
   });
 }

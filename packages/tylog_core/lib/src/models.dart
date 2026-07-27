@@ -67,6 +67,7 @@ class NoteRef {
     this.attachments = const [],
     this.properties = const {},
     this.fingerprint,
+    this.contentHash,
     this.modifiedMillis,
     this.metadataSource = 'fallback',
   });
@@ -85,7 +86,18 @@ class NoteRef {
   final List<DateRef> dateRefs;
   final List<AttachmentRef> attachments;
   final Map<String, Object?> properties;
+
+  /// Cheap local staleness gate: `mtime:size`. Device-local by construction —
+  /// SAF and APFS report different mtimes for the same bytes — so it can only
+  /// decide "unchanged since *this* device last scanned".
   final String? fingerprint;
+
+  /// sha256 of the note's bytes. Unlike [fingerprint] this identifies the
+  /// content itself, so a scan can recognise a note another device already
+  /// inspected and skip re-querying Typst for it. Null on entries written
+  /// before index version 6; treated as a miss.
+  final String? contentHash;
+
   final int? modifiedMillis;
   final String metadataSource;
 
@@ -104,6 +116,7 @@ class NoteRef {
     List<AttachmentRef>? attachments,
     Map<String, Object?>? properties,
     String? fingerprint,
+    String? contentHash,
     int? modifiedMillis,
     String? metadataSource,
   }) => NoteRef(
@@ -122,6 +135,7 @@ class NoteRef {
     attachments: attachments ?? this.attachments,
     properties: properties ?? this.properties,
     fingerprint: fingerprint ?? this.fingerprint,
+    contentHash: contentHash ?? this.contentHash,
     modifiedMillis: modifiedMillis ?? this.modifiedMillis,
     metadataSource: metadataSource ?? this.metadataSource,
   );
@@ -142,6 +156,7 @@ class NoteRef {
     'attachments': attachments.map((item) => item.toJson()).toList(),
     'properties': properties,
     'fingerprint': fingerprint,
+    'contentHash': contentHash,
     'modifiedMillis': modifiedMillis,
     'metadataSource': metadataSource,
   };
@@ -171,6 +186,7 @@ class NoteRef {
     properties: (json['properties'] as Map? ?? const {})
         .cast<String, Object?>(),
     fingerprint: json['fingerprint'] as String?,
+    contentHash: json['contentHash'] as String?,
     modifiedMillis: (json['modifiedMillis'] as num?)?.toInt(),
     metadataSource: json['metadataSource'] as String? ?? 'legacy',
   );
@@ -304,9 +320,20 @@ class TaskRef {
   );
 }
 
+/// Schema version of `_index/index.json`. Bumping it invalidates every cached
+/// [NoteRef] (see the version gate in `scanVaultStorage`), so raise it only
+/// when a field the scanner reads back has changed shape.
+///
+/// Distinct from the vault marker version in `.tylog/settings.json`, which
+/// gates whether a build will open the vault at all — do not bump that one for
+/// an index change.
+///
+/// 6: added [NoteRef.contentHash].
+const kVaultIndexVersion = 6;
+
 class VaultIndex {
   const VaultIndex({
-    this.version = 5,
+    this.version = kVaultIndexVersion,
     required this.notesByPath,
     required this.backlinksByTarget,
     this.attachmentBacklinksByPath = const {},
