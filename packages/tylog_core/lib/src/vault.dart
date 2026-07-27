@@ -13,6 +13,16 @@ abstract final class TylogVaultPaths {
   static const zoteroBib = '_system/zotero.bib';
   static const settings = '.tylog/settings.json';
 
+  /// Per-device index donors: `<indexDonors>/<deviceId>.json`.
+  ///
+  /// `_index/` stays local and disposable — its mtime+size fingerprints mean
+  /// nothing on another device. A donor is the portable half: the same
+  /// [NoteRef] list, keyed by content hash, published so a peer can skip
+  /// re-querying Typst for notes this device already inspected. It lives under
+  /// `_system/` because that prefix already syncs, and one file per device
+  /// means two devices can never write the same path — no conflicts.
+  static const indexDonors = '_system/index';
+
   static const directories = [
     'daily',
     'notes',

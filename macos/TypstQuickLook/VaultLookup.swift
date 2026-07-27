@@ -77,8 +77,10 @@ enum VaultLookup {
             if relative.hasPrefix(rootPath + "/") {
                 relative = String(relative.dropFirst(rootPath.count + 1))
             }
-            if relative.hasPrefix("_index/") || relative.hasPrefix(".tylog/")
-                || relative.hasSuffix(".tmp")
+            // "_system/index/" is TylogVaultPaths.indexDonors: per-device index
+            // caches, megabytes each, never a compile input.
+            if relative.hasPrefix("_index/") || relative.hasPrefix("_system/index/")
+                || relative.hasPrefix(".tylog/") || relative.hasSuffix(".tmp")
             {
                 continue
             }

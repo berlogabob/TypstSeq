@@ -160,6 +160,105 @@ void main() {
   );
 
   test(
+    'a cold index waits for the first sync, which carries peer donors',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      // Stall the sync's remote listing so "sync still running" is a state we
+      // can observe rather than a wall-clock race.
+      server.armGate();
+      await controller.openVault(
+        VaultEntry(
+          id: 'cold',
+          name: 'Cold vault',
+          path: '/not-used',
+          cloud: server.config,
+        ),
+        storage: _MemoryStorage(),
+        trigger: 'setup',
+      );
+      await server.gateReached.future;
+
+      // Long enough that a rebuild started in parallel would have finished
+      // against this in-memory vault. It has not started: with no usable
+      // index on disk, the expensive pass is chained behind the sync that
+      // would deliver another device's donor. The UI is already usable.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.vault, isNotNull);
+      expect(controller.source, isNotEmpty);
+      expect(
+        controller.index,
+        isNull,
+        reason: 'the cold rebuild must not race the donor-carrying sync',
+      );
+
+      server.releaseGate.complete();
+      await _waitUntil(() => controller.index != null);
+    },
+  );
+
+  test(
+    'a warm index rebuilds without waiting for the sync',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _MemoryStorage();
+
+      // First open with no cloud: leaves a current index.json behind.
+      final warmup = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      await warmup.openVault(
+        const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => warmup.index != null);
+      warmup.dispose();
+
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      server.armGate();
+      await controller.openVault(
+        VaultEntry(
+          id: 'warm',
+          name: 'Warm vault',
+          path: '/not-used',
+          cloud: server.config,
+        ),
+        storage: storage,
+        trigger: 'resume',
+      );
+      await server.gateReached.future;
+
+      // The cache is current, so there is nothing a donor could add — the
+      // rebuild runs concurrently with the sync exactly as it always did.
+      await _waitUntil(() => controller.index != null);
+      expect(server.releaseGate.isCompleted, isFalse);
+      server.releaseGate.complete();
+    },
+  );
+
+  test(
     'registered Android vault is never recreated when access is empty',
     () async {
       final storage = _MemoryStorage();

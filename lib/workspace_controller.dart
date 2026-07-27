@@ -68,6 +68,12 @@ class WorkspaceController extends ChangeNotifier {
   /// Reading recents/progress merged from every device's
   /// `_system/reading/<deviceId>.json` (newest openedAt wins per path).
   List<RecentNote> mergedReading = const [];
+
+  /// This install's [VaultRegistry.deviceId], set once the registry loads.
+  /// Names the index donor this device publishes and the one it must not read
+  /// back as a peer's. Null before the registry is available — the rebuild
+  /// then just stays local.
+  String? deviceId;
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
   PkmsValidationReport? validation;
@@ -217,14 +223,32 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       unawaited(_sweepSafBackups(opened));
       unawaited(reloadReadingState());
+      // No usable cache on disk: this open faces a full Typst pass over the
+      // whole vault unless another device's index donor is already here.
+      final coldIndex = index == null || index!.version != kVaultIndexVersion;
+      Future<void>? firstSync;
       if (next.cloud?.isReady ?? false) {
-        if (trigger != null) unawaited(syncNow(trigger: trigger));
+        if (trigger != null) {
+          firstSync = syncNow(trigger: trigger);
+          unawaited(firstSync);
+        }
         startCloudPolling();
       }
       // Heavy index + search-index build runs in the background, using the
       // on-disk cache/fingerprints (force: false) so it's much faster than a
       // full rebuild.
-      unawaited(rebuildIndex(force: false));
+      //
+      // A cold index waits for that first sync, because the sync is what
+      // carries the peers' donors. Started in parallel it would read an empty
+      // donor directory and spend ~17 minutes re-querying Typst for notes
+      // another device already inspected. The UI is already usable from the
+      // fast path above, so the wait costs nothing visible. whenComplete, not
+      // then: a failed sync must still leave the vault indexed.
+      unawaited(
+        coldIndex && firstSync != null
+            ? firstSync.whenComplete(() => rebuildIndex(force: false))
+            : rebuildIndex(force: false),
+      );
     } catch (error) {
       close('Open failed: $error', nextCloud: next.cloud);
     }
@@ -288,7 +312,10 @@ class WorkspaceController extends ChangeNotifier {
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
     final revision = savedRevision;
     try {
-      final built = await opened.rebuildIndex(inspector: inspector);
+      final built = await opened.rebuildIndex(
+        inspector: inspector,
+        deviceId: deviceId,
+      );
       final pkms = await _readPkms(opened, built);
       if (opened != vault) return;
       index = _retainIndex(built);
@@ -324,6 +351,7 @@ class WorkspaceController extends ChangeNotifier {
       final built = await opened.rebuildIndex(
         inspector: inspector,
         force: force,
+        deviceId: deviceId,
         isCancelled: () => cancelRebuild,
         onProgress: (complete, total) {
           if (complete % 100 != 0 && complete != total) return;

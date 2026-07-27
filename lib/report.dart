@@ -28,7 +28,11 @@ Future<String> exportReportPdfStorage(
   for (final entity in await storage.list(recursive: true)) {
     if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
     final relative = entity.path;
-    if (relative.startsWith('_index/') || relative.startsWith('.tylog/')) {
+    if (relative.startsWith('_index/') ||
+        // TylogVaultPaths.indexDonors: index caches, megabytes each, and never
+        // referenced by a report.
+        relative.startsWith('_system/index/') ||
+        relative.startsWith('.tylog/')) {
       continue;
     }
     final bytes = await storage.readBytes(relative);

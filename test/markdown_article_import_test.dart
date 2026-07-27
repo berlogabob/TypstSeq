@@ -53,6 +53,48 @@ Body.
     expect(draft.typstSource, contains('"custom": ("nested":'));
   });
 
+  group('reading status is normalized at the vault boundary', () {
+    Future<Map<String, Object?>> importWith(String frontmatter) async {
+      final draft = await buildMarkdownArticleDraft(
+        bytes: utf8.encode('---\ntitle: T\n$frontmatter---\n# T\n\nBody.\n'),
+        sourceName: 'a.md',
+        converter: fakeConverter,
+      );
+      return draft.properties;
+    }
+
+    test('the legacy processed/read_status pair collapses to one stage', () async {
+      final props = await importWith('status: processed\nread_status: unread\n');
+      expect(props['status'], 'unread');
+      expect(props.containsKey('read_status'), isFalse);
+    });
+
+    test('a real reading state survives the merge, in either slot', () async {
+      // read_status is the truthful one here...
+      expect(
+        (await importWith('status: processed\nread_status: read\n'))['status'],
+        'read',
+      );
+      // ...and here it is status. Taking the later stage is what stops a merge
+      // from walking a read article back to unread.
+      expect(
+        (await importWith('status: read\nread_status: unread\n'))['status'],
+        'read',
+      );
+    });
+
+    test('a lone legacy status is folded too', () async {
+      expect((await importWith('status: processed\n'))['status'], 'unread');
+      expect((await importWith('status: summarized\n'))['status'], 'extracted');
+    });
+
+    test('an article with no status keys gains none', () async {
+      final props = await importWith('');
+      expect(props.containsKey('status'), isFalse);
+      expect(props.containsKey('read_status'), isFalse);
+    });
+  });
+
   test('uses H1 and filename fallbacks and normalizes compact date', () async {
     final fromHeading = await buildMarkdownArticleDraft(
       bytes: utf8.encode('''---

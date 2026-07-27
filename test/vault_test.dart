@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/tylog_assets.dart';
 import 'package:tylog/vault.dart';
+import 'package:tylog_core/models.dart';
 
 void main() {
   test('default vault prefers Nextcloud on desktop', () async {
@@ -246,9 +247,145 @@ void main() {
     final second = await vault.rebuildIndex();
     final secondJson = await vault.storage.readText(Vault.indexPath);
 
-    expect(first.version, 5);
+    expect(first.version, kVaultIndexVersion);
     expect(first.backlinksByTarget['notes/Child.typ'], ['notes/Root.typ']);
     expect(second.backlinksByTarget, first.backlinksByTarget);
     expect(secondJson, firstJson);
+  });
+
+  group('index donors', () {
+    const source = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "root", title: "Root", kind: "note")
+= Root
+''';
+
+    Future<Vault> newVault(String prefix) async {
+      final dir = await Directory.systemTemp.createTemp(prefix);
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      return vault;
+    }
+
+    test('a rebuild publishes this device, and only this device', () async {
+      final vault = await newVault('tylog_donor_write_');
+      await vault.storage.writeText('notes/Root.typ', source);
+
+      final index = await vault.rebuildIndex(deviceId: 'laptop');
+      final donor =
+          jsonDecode(await vault.storage.readText('_system/index/laptop.json'))
+              as Map<String, Object?>;
+
+      expect(donor['indexVersion'], kVaultIndexVersion);
+      expect((donor['notes'] as List), hasLength(index.notes.length));
+      expect(
+        (donor['notes'] as List).first,
+        containsPair('contentHash', isNotNull),
+        reason: 'a donor without hashes is useless to the other device',
+      );
+      // An unchanged vault must not touch the donor at all. Identical bytes
+      // are not enough: on desktop the Nextcloud client owns this folder and
+      // detects changes by mtime+size, and an atomic write renames a fresh
+      // temp file into place — so a redundant rewrite re-uploads megabytes.
+      const donorPath = '_system/index/laptop.json';
+      final beforeBytes = await vault.storage.readText(donorPath);
+      final beforeStamp = (await vault.storage.stat(donorPath))?.modified;
+      expect(beforeStamp, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+
+      await vault.rebuildIndex(deviceId: 'laptop');
+
+      expect(await vault.storage.readText(donorPath), beforeBytes);
+      expect(
+        (await vault.storage.stat(donorPath))?.modified,
+        beforeStamp,
+        reason: 'an unchanged donor must not be rewritten',
+      );
+
+      // No deviceId (CLI, tests, pre-registry startup) publishes nothing.
+      final anonymous = await newVault('tylog_donor_none_');
+      await anonymous.storage.writeText('notes/Root.typ', source);
+      await anonymous.rebuildIndex();
+      expect(await anonymous.storage.exists('_system/index'), isFalse);
+    });
+
+    test("a peer's donor is reused rather than re-parsed", () async {
+      final laptop = await newVault('tylog_donor_laptop_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+
+      // Mark the donor's cached entry so a reuse is distinguishable from a
+      // re-parse: the content hash still matches the bytes, only the derived
+      // title differs from what parsing would produce.
+      final donor =
+          jsonDecode(await laptop.storage.readText('_system/index/laptop.json'))
+              as Map<String, Object?>;
+      for (final note in (donor['notes'] as List).cast<Map>()) {
+        note['title'] = 'FROM DONOR';
+      }
+
+      // The phone receives the same bytes through sync — storage writes, not
+      // saveNote, so nothing is marked stale — plus the laptop's donor.
+      final phone = await newVault('tylog_donor_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        jsonEncode(donor),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(
+        index.notesByPath['notes/Root.typ']?.title,
+        'FROM DONOR',
+        reason: 'the phone reused the laptop entry instead of re-parsing',
+      );
+      expect(
+        await phone.storage.exists('_system/index/phone.json'),
+        isTrue,
+        reason: 'the phone publishes its own donor too',
+      );
+    });
+
+    test('a donor is ignored when it no longer matches the bytes', () async {
+      final laptop = await newVault('tylog_donor_stale_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+      final donor =
+          jsonDecode(await laptop.storage.readText('_system/index/laptop.json'))
+              as Map<String, Object?>;
+      for (final note in (donor['notes'] as List).cast<Map>()) {
+        note['title'] = 'FROM DONOR';
+      }
+
+      final phone = await newVault('tylog_donor_stale_phone_');
+      // Same path, different content from the one the donor describes.
+      await phone.storage.writeText(
+        'notes/Root.typ',
+        source.replaceFirst('title: "Root"', 'title: "Edited"'),
+      );
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        jsonEncode(donor),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.notesByPath['notes/Root.typ']?.title, 'Edited');
+    });
+
+    test('a corrupt or wrong-version donor never fails the rebuild', () async {
+      final phone = await newVault('tylog_donor_corrupt_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText('_system/index/bad.json', 'not json {');
+      await phone.storage.writeText(
+        '_system/index/old.json',
+        jsonEncode({'schema': 1, 'indexVersion': 1, 'notes': []}),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.notesByPath['notes/Root.typ']?.title, 'Root');
+    });
   });
 }

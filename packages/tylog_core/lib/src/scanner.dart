@@ -394,26 +394,52 @@ Future<VaultIndex> scanVaultStorage(
     final fingerprint =
         '${file.modified?.millisecondsSinceEpoch ?? 0}:${file.size ?? 0}';
     final cached = previous?.notesByPath[relative];
+    // [stale] carries the paths this process just wrote. SAF reports mtime at
+    // second granularity, so a same-size edit inside the same second as the
+    // previous scan looks unchanged to both gates below — a writer must never
+    // depend on the clock to be seen.
+    final reusable =
+        !force &&
+        previous?.version == kVaultIndexVersion &&
+        cached != null &&
+        !stale.contains(relative);
+
+    // Does the cached entry still describe the bytes on disk? mtime+size is
+    // the cheap answer, but it is device-local — SAF and APFS stamp the same
+    // bytes differently — so an index seeded from another device misses on
+    // every note. Falling back to the content hash costs one streamed read
+    // and saves a Typst query, which is orders of magnitude more expensive.
+    String? contentHash;
+    var matchesDisk = false;
+    if (reusable) {
+      if (cached.fingerprint == fingerprint) {
+        matchesDisk = true;
+      } else if (cached.contentHash != null) {
+        contentHash = await storage.hash(relative);
+        matchesDisk = contentHash == cached.contentHash;
+      }
+    }
+
     // A cached fallback note (dead inspector during some earlier scan) is
     // re-queried when an inspector is available so it can upgrade to real
     // metadata and drop its metadata-fallback problem — but only up to
     // [maxMetadataReinspectionsPerScan] per pass: each re-query is a Typst
-    // compile, and an uncapped backlog pins the device CPU for hours.
+    // compile, and an uncapped backlog pins the device CPU for hours. Only
+    // otherwise-reusable notes count against the cap; a genuinely changed note
+    // is re-read regardless, so charging it here would starve the upgrades.
     final reinspect =
-        cached?.metadataSource != 'typst-query' &&
+        matchesDisk &&
+        cached!.metadataSource != 'typst-query' &&
         activeInspector != null &&
         reinspected < maxMetadataReinspectionsPerScan;
-    if (reinspect && cached?.fingerprint == fingerprint) reinspected++;
-    // The fingerprint is mtime+size, and SAF reports mtime at second
-    // granularity — a same-size edit inside the same second as the previous
-    // scan would look unchanged. [stale] carries the paths this process just
-    // wrote, so a writer never depends on the clock to be seen.
-    if (!force &&
-        previous?.version == 5 &&
-        cached?.fingerprint == fingerprint &&
-        !stale.contains(relative) &&
-        !reinspect) {
-      notes[relative] = cached!;
+    if (reinspect) reinspected++;
+
+    if (matchesDisk && !reinspect) {
+      // Re-stamp the cheap gate so the next scan on this device short-circuits
+      // without hashing again.
+      notes[relative] = cached!.fingerprint == fingerprint
+          ? cached
+          : cached.copyWith(fingerprint: fingerprint);
       tasks.addAll(
         previous?.tasks.where((task) => task.notePath == relative) ?? const [],
       );
@@ -424,6 +450,7 @@ Future<VaultIndex> scanVaultStorage(
       continue;
     }
     final source = await storage.readText(relative);
+    contentHash ??= await storage.hash(relative);
     inspectionFiles ??= activeInspector == null
         ? const <String, Uint8List>{}
         : await _inspectionFiles(storage);
@@ -507,6 +534,9 @@ Future<VaultIndex> scanVaultStorage(
         ),
       );
     }
+    // Stamped once here rather than threaded through _queriedNote and
+    // _fallbackNote: every branch above has just parsed exactly these bytes.
+    notes[relative] = notes[relative]!.copyWith(contentHash: contentHash);
     onProgress?.call(fileIndex + 1, files.length);
   }
   return _buildVaultIndex(notes, problems: problems, tasks: tasks);
@@ -519,6 +549,10 @@ Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
   for (final entry in await storage.list(recursive: true)) {
     if (entry.isDirectory ||
         entry.path.startsWith('_index/') ||
+        // TylogVaultPaths.indexDonors — index caches, not compile inputs, and
+        // megabytes each. Held twice in this map, they are the same
+        // whole-vault-in-RAM stall the note filter below exists to prevent.
+        entry.path.startsWith('_system/index/') ||
         entry.path.startsWith('.tylog/')) {
       continue;
     }
