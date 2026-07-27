@@ -357,6 +357,7 @@ Future<VaultIndex> scanVaultStorage(
   TypstInspector? inspector,
   VaultIndex? previous,
   bool force = false,
+  Set<String> stale = const {},
   void Function(int complete, int total)? onProgress,
   bool Function()? isCancelled,
 }) async {
@@ -403,9 +404,14 @@ Future<VaultIndex> scanVaultStorage(
         activeInspector != null &&
         reinspected < maxMetadataReinspectionsPerScan;
     if (reinspect && cached?.fingerprint == fingerprint) reinspected++;
+    // The fingerprint is mtime+size, and SAF reports mtime at second
+    // granularity — a same-size edit inside the same second as the previous
+    // scan would look unchanged. [stale] carries the paths this process just
+    // wrote, so a writer never depends on the clock to be seen.
     if (!force &&
         previous?.version == 5 &&
         cached?.fingerprint == fingerprint &&
+        !stale.contains(relative) &&
         !reinspect) {
       notes[relative] = cached!;
       tasks.addAll(

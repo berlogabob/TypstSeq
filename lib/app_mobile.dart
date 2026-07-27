@@ -1186,7 +1186,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final template = await _chooseTemplate(v);
     if (dirty) await _save();
     final file = await v.page(title, kind: kind, template: template);
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     await _openNote(file);
     setState(() {
       status = 'Created $file';
@@ -1376,7 +1376,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (wroteFiles) {
-      await workspace.refreshIndex(updateStatus: false, force: true);
+      await workspace.refreshIndex(updateStatus: false, always: true);
       await _autoLinkImportedArticles(writtenPaths);
       _queueCloudSync();
     }
@@ -1444,7 +1444,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appended = await _appendRelatedSection(path, targets) > 0 || appended;
     }
     if (appended) {
-      await workspace.refreshIndex(updateStatus: false, force: true);
+      await workspace.refreshIndex(updateStatus: false, always: true);
     }
   }
 
@@ -1498,7 +1498,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Navigator.of(context, rootNavigator: true).pop();
       }
     }
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     if (!mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text('Relinked ${articles.length} articles')),
@@ -1919,7 +1919,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         fixed++;
       }
     }
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     if (!mounted) return null;
     showSnack(
       context,
@@ -1952,7 +1952,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         fixed++;
       }
     }
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     if (!mounted) return null;
     showSnack(
       context,
@@ -2039,8 +2039,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : resolveLink(ix, title);
   }
 
-  Future<void> _rebuildIndex() async {
-    await workspace.rebuildIndex();
+  Future<void> _rebuildIndex({bool force = false}) async {
+    await workspace.rebuildIndex(force: force);
   }
 
   /// One-off maintenance action: folds the legacy `properties["type"]`
@@ -2059,7 +2059,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         migrated++;
       }
     }
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     if (!mounted) return;
     showSnack(
       context,
@@ -3008,7 +3008,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (title == null || title.isEmpty || vault == null) return null;
     final file = await vault!.page(title, kind: kind ?? 'note');
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     return index?.notesByPath[file];
   }
 
@@ -3113,7 +3113,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return null;
     }
     final file = await v.page(name);
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     final created = index?.notesByPath[file];
     if (created == null) return null;
     await v.saveNote(
@@ -3133,7 +3133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    await workspace.refreshIndex(force: true);
+    await workspace.refreshIndex(always: true);
     return index?.notesByPath[file];
   }
 
@@ -3677,7 +3677,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case _ShellAction.problems:
         await _showKnowledge(initialView: KnowledgeView.problems);
       case _ShellAction.rebuild:
-        await _rebuildIndex();
+        await _rebuildIndex(force: true);
       case _ShellAction.relink:
         await _relinkVault();
       case _ShellAction.typstHelp:

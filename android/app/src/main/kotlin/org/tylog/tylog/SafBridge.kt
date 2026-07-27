@@ -16,7 +16,10 @@ import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.withLock
 
 class SafBridge(
     private val activity: Activity,
@@ -30,8 +33,39 @@ class SafBridge(
 
     private val resolver = activity.contentResolver
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newSingleThreadExecutor()
+    // Reads fan out; mutations stay on one thread.
+    private val readExecutor = Executors.newFixedThreadPool(4)
+    private val writeExecutor = Executors.newSingleThreadExecutor()
+
+    // ...but a mutation must still never be *observed* half-done, which is
+    // what the old single executor guaranteed for free. writeAtomic renames
+    // the target to `.backup` before renaming the temp into place, and in that
+    // window the file does not exist under its own name. A concurrent `list`
+    // there makes sync conclude the note was deleted locally and propagate
+    // that as a remote delete; a concurrent `stat` returns null and means the
+    // same thing. So: readers run in parallel with each other, and never with
+    // a writer. Held for one operation, taken in exactly one place
+    // (runStorage), so there is no lock ordering to get wrong.
+    // Fair: a full-vault scan is a long burst of reads, and a non-fair lock
+    // would let it starve the autosave write queued behind it.
+    private val storageLock = ReentrantReadWriteLock(true)
+
+    private val mutatingMethods = setOf(
+        "createDirectory", "write", "delete", "deleteRoot", "releaseAccess", "import",
+    )
     private val channel = MethodChannel(messenger, CHANNEL)
+
+    // Resolving "articles/foo.typ" without this means a full child-directory
+    // cursor scan per path segment — enumerating all ~1700 entries of
+    // articles/ on every single read. The recursive listing that starts every
+    // scan warms this for the whole tree for free (see listInto).
+    //
+    // ponytail: process-lifetime memo, no size bound — one entry per vault
+    // file. Evicted on our own writes/deletes; an external app replacing a
+    // file is caught by the retry in withResolved and the existence checks in
+    // exists/stat. Add an LRU only if a vault ever gets big enough to care.
+    private val uriCache = ConcurrentHashMap<Pair<String, String>, Uri>()
+
     private var pendingPick: MethodChannel.Result? = null
     @Volatile private var disposed = false
 
@@ -124,18 +158,36 @@ class SafBridge(
             result.notImplemented()
             return
         }
-        runStorage(result) {
+        runStorage(result, call.method in mutatingMethods) {
             val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
             when (call.method) {
-                "exists" -> resolve(tree, path(call)) != null
+                // A cached uri can outlive its document, so existence is
+                // answered by querying the document, not by having found a
+                // cache entry for it.
+                "exists" -> resolve(tree, path(call))?.let { document ->
+                    documentExists(document) || run {
+                        invalidate(tree, path(call))
+                        resolve(tree, path(call)) != null
+                    }
+                } ?: false
                 "createDirectory" -> ensureDirectory(tree, path(call)).let { null }
                 "list" -> list(
                     tree,
                     path(call),
                     call.argument<Boolean>("recursive") == true,
                 )
-                "stat" -> resolve(tree, path(call))?.let(::metadata)
-                "read" -> read(resolveRequired(tree, path(call)))
+                // Absent still means null, but a *failure* must never be
+                // reported as null: sync reads a null stat as "deleted
+                // locally" and would propagate that as a remote delete. So
+                // only a stale cache entry is retried; a second failure
+                // propagates as an error.
+                "stat" -> resolve(tree, path(call))?.let { document ->
+                    runCatching { metadata(document) }.getOrElse {
+                        invalidate(tree, path(call))
+                        resolve(tree, path(call))?.let(::metadata)
+                    }
+                }
+                "read" -> withResolved(tree, path(call), ::read)
                 "write" -> writeAtomic(
                     tree,
                     path(call),
@@ -143,6 +195,7 @@ class SafBridge(
                 ).let { null }
                 "delete" -> resolve(tree, path(call))
                     ?.let { DocumentsContract.deleteDocument(resolver, it) }
+                    .also { invalidate(tree, path(call)) }
                     .let { null }
                 "deleteRoot" -> {
                     val document = root(tree)
@@ -151,19 +204,20 @@ class SafBridge(
                             "Storage provider could not delete the vault folder"
                         }
                     }
+                    invalidate(tree, "")
                     null
                 }
                 "releaseAccess" -> resolver.releasePersistableUriPermission(
                     tree,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                ).let { null }
-                "hash" -> hash(resolveRequired(tree, path(call)))
+                ).also { invalidate(tree, "") }.let { null }
+                "hash" -> withResolved(tree, path(call), ::hash)
                 "import" -> writeAtomic(
                     tree,
                     path(call),
                     File(call.argument<String>("source") ?: error("Missing source")),
                 ).let { null }
-                "materialize" -> materialize(resolveRequired(tree, path(call))).path
+                "materialize" -> withResolved(tree, path(call), ::materialize).path
                 "open" -> {
                     val document = resolveRequired(tree, path(call))
                     val extension = path(call).substringAfterLast('.', "")
@@ -176,10 +230,15 @@ class SafBridge(
         }
     }
 
-    private fun runStorage(result: MethodChannel.Result, work: () -> Any?) {
-        executor.execute {
+    private fun runStorage(
+        result: MethodChannel.Result,
+        mutating: Boolean,
+        work: () -> Any?,
+    ) {
+        val lock = if (mutating) storageLock.writeLock() else storageLock.readLock()
+        (if (mutating) writeExecutor else readExecutor).execute {
             try {
-                val value = work()
+                val value = lock.withLock { work() }
                 postMain {
                     if (value is OpenRequest) {
                         activity.startActivity(
@@ -216,7 +275,7 @@ class SafBridge(
             return true
         }
         val uri = data.data!!
-        executor.execute {
+        readExecutor.execute {
             try {
                 val name = displayName(root(uri))
                 postMain { result.success(mapOf("uri" to uri.toString(), "name" to name)) }
@@ -238,7 +297,9 @@ class SafBridge(
         pendingPick = null
         channel.setMethodCallHandler(null)
         mainHandler.removeCallbacksAndMessages(null)
-        executor.shutdownNow()
+        readExecutor.shutdownNow()
+        writeExecutor.shutdownNow()
+        uriCache.clear()
     }
 
     private fun path(call: MethodCall): String = safePath(call.argument<String>("path") ?: "")
@@ -257,19 +318,61 @@ class SafBridge(
     private fun resolveRequired(tree: Uri, path: String): Uri =
         resolve(tree, path) ?: error("Vault item not found: $path")
 
+    private fun cacheKey(tree: Uri, path: String) = tree.toString() to path
+
+    /**
+     * Drops [path] and everything beneath it — a deleted folder takes its
+     * subtree's document ids with it. An empty path clears the whole vault.
+     */
+    private fun invalidate(tree: Uri, path: String) {
+        val safe = safePath(path)
+        val vault = tree.toString()
+        uriCache.keys.removeAll { (owner, cached) ->
+            owner == vault &&
+                (safe.isEmpty() || cached == safe || cached.startsWith("$safe/"))
+        }
+    }
+
     private fun resolve(tree: Uri, path: String): Uri? {
+        val safe = safePath(path)
+        if (safe.isEmpty()) return root(tree)
+        uriCache[cacheKey(tree, safe)]?.let { return it }
         var current = root(tree)
-        if (path.isEmpty()) return current
-        for (part in safePath(path).split('/')) {
+        var walked = ""
+        for (part in safe.split('/')) {
             current = child(tree, current, part) ?: return null
+            walked = if (walked.isEmpty()) part else "$walked/$part"
+            uriCache[cacheKey(tree, walked)] = current
         }
         return current
+    }
+
+    /**
+     * Runs [work] against [path]'s document, retrying once against a freshly
+     * walked uri if the cached document id turned out to be dead — an external
+     * app replacing a file is the case our own invalidation misses.
+     */
+    private fun <T> withResolved(tree: Uri, path: String, work: (Uri) -> T): T {
+        val uri = resolveRequired(tree, path)
+        return try {
+            work(uri)
+        } catch (error: FileNotFoundException) {
+            invalidate(tree, path)
+            work(resolveRequired(tree, path))
+        }
     }
 
     private fun ensureDirectory(tree: Uri, path: String): Uri {
         var current = root(tree)
         if (path.isEmpty()) return current
+        var walked = ""
         for (part in safePath(path).split('/')) {
+            walked = if (walked.isEmpty()) part else "$walked/$part"
+            val cached = uriCache[cacheKey(tree, walked)]
+            if (cached != null) {
+                current = cached
+                continue
+            }
             val existing = child(tree, current, part)
             current = if (existing == null) {
                 DocumentsContract.createDocument(resolver, current, DIRECTORY_MIME, part)
@@ -278,6 +381,7 @@ class SafBridge(
                 require(isDirectory(existing)) { "$part is not a folder" }
                 existing
             }
+            uriCache[cacheKey(tree, walked)] = current
         }
         return current
     }
@@ -329,6 +433,9 @@ class SafBridge(
                 val name = cursor.getString(nameColumn)
                 val childPath = if (prefix.isEmpty()) name else "$prefix/$name"
                 val directory = cursor.getString(mimeColumn) == DIRECTORY_MIME
+                // Free cache warming: every scan starts with a recursive list,
+                // so the reads that follow never re-enumerate a directory.
+                uriCache[cacheKey(tree, childPath)] = uri
                 out += mapOf(
                     "path" to childPath,
                     "isDirectory" to directory,
@@ -410,7 +517,10 @@ class SafBridge(
         val name = safe.substringAfterLast('/')
         val parentPath = safe.substringBeforeLast('/', "")
         val parent = ensureDirectory(tree, parentPath)
-        val target = child(tree, parent, name)
+        val target = resolve(tree, safe)
+        // Every write mints a new document id, so the old one is dead from
+        // here on. Dropped up front: any failure below then just re-walks.
+        invalidate(tree, safe)
         val temporaryName = ".$name.tylog-${System.nanoTime()}.tmp"
         val temporary = DocumentsContract.createDocument(
             resolver,
@@ -429,18 +539,18 @@ class SafBridge(
                 }
             } ?: error("Could not write temporary document")
             if (target == null) {
-                require(DocumentsContract.renameDocument(resolver, temporary, name) != null) {
-                    "Storage provider cannot rename documents safely"
-                }
+                val created = DocumentsContract.renameDocument(resolver, temporary, name)
+                requireNotNull(created) { "Storage provider cannot rename documents safely" }
+                uriCache[cacheKey(tree, safe)] = created
                 return
             }
             val backupName = ".$name.tylog-${System.nanoTime()}.backup"
             val backup = DocumentsContract.renameDocument(resolver, target, backupName)
                 ?: error("Storage provider cannot replace documents safely")
             try {
-                require(DocumentsContract.renameDocument(resolver, temporary, name) != null) {
-                    "Storage provider could not commit document"
-                }
+                val committed = DocumentsContract.renameDocument(resolver, temporary, name)
+                requireNotNull(committed) { "Storage provider could not commit document" }
+                uriCache[cacheKey(tree, safe)] = committed
                 DocumentsContract.deleteDocument(resolver, backup)
             } catch (error: Throwable) {
                 runCatching { DocumentsContract.renameDocument(resolver, backup, name) }

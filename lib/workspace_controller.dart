@@ -85,6 +85,7 @@ class WorkspaceController extends ChangeNotifier {
   Timer? _autosave;
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
+  DateTime? _lastForegroundNotice;
 
   Directory? get localDirectory =>
       entry?.storageKind == 'local-path' ? Directory(entry!.path) : null;
@@ -274,18 +275,20 @@ class WorkspaceController extends ChangeNotifier {
     await refreshIndex();
   }
 
+  /// [always] runs the scan even when the editor-revision guard says nothing
+  /// was saved — for vault mutations the editor never sees (imports, deletes,
+  /// bulk repairs). It does *not* disable the mtime+size scan cache: an
+  /// unchanged note must never be re-compiled just because some other note
+  /// changed. `Vault.saveNote` tracks its own writes, so nothing is missed.
   Future<void> refreshIndex({
     bool updateStatus = true,
-    bool force = false,
+    bool always = false,
   }) async {
     final opened = vault;
-    if (opened == null || (!force && indexedRevision >= savedRevision)) return;
+    if (opened == null || (!always && indexedRevision >= savedRevision)) return;
     final revision = savedRevision;
     try {
-      final built = await opened.rebuildIndex(
-        inspector: inspector,
-        force: force,
-      );
+      final built = await opened.rebuildIndex(inspector: inspector);
       final pkms = await _readPkms(opened, built);
       if (opened != vault) return;
       index = _retainIndex(built);
@@ -303,7 +306,9 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<void> rebuildIndex({bool force = true}) async {
+  /// [force] discards the scan cache and re-compiles every note — the manual
+  /// escape hatch for a suspected-bad index, not the routine path.
+  Future<void> rebuildIndex({bool force = false}) async {
     final opened = vault;
     if (opened == null) return;
     if (rebuilding) {
@@ -505,8 +510,16 @@ class WorkspaceController extends ChangeNotifier {
               : path == null
               ? stage
               : '$stage · $path';
+          // onProgress fires twice per file; a notification nobody can read
+          // that fast isn't worth a platform-channel hop each time.
           if (keepRunningOffscreen && syncStage != null) {
-            unawaited(_updateSyncForeground(syncStage!));
+            final now = DateTime.now();
+            final last = _lastForegroundNotice;
+            if (last == null ||
+                now.difference(last) >= const Duration(milliseconds: 500)) {
+              _lastForegroundNotice = now;
+              unawaited(_updateSyncForeground(syncStage!));
+            }
           }
           syncProgressTick.notifyListeners();
         },
@@ -598,7 +611,7 @@ class WorkspaceController extends ChangeNotifier {
         stackTrace: stack,
       );
       syncConflicts = await loadSyncConflicts(opened);
-      await refreshIndex(updateStatus: false, force: true);
+      await refreshIndex(updateStatus: false, always: true);
       syncError = syncConflicts.isEmpty ? friendlySyncError(error) : null;
       status = syncConflicts.isEmpty ? syncError! : 'Needs attention';
       notifyListeners();
@@ -623,7 +636,7 @@ class WorkspaceController extends ChangeNotifier {
       await NextcloudSync(
         config,
       ).resolveConflict(opened, conflict, resolution, mergedText: mergedText);
-      await refreshIndex(updateStatus: false, force: true);
+      await refreshIndex(updateStatus: false, always: true);
       // Refresh from disk rather than just filtering out this one id: a
       // resolve can also self-heal other now-matching records.
       syncConflicts = await loadSyncConflicts(opened);

@@ -32,9 +32,9 @@ class AndroidTreeVaultStorage extends VaultStorage {
   static Future<void> stopSyncForeground() =>
       channel.invokeMethod<void>('stopSyncForeground');
 
-  // ponytail: Dart-side watchdog only; the native single-thread executor in
-  // SafBridge stays wedged until app restart. Per-call native watchdogs if
-  // a stalled DocumentsProvider recurs in practice.
+  // ponytail: Dart-side watchdog only. A stalled DocumentsProvider call ties
+  // up one of SafBridge's four read threads (or its single write thread)
+  // until app restart. Per-call native watchdogs if that recurs in practice.
   static Duration safCallTimeout = const Duration(seconds: 120);
 
   static Future<T> invoke<T>(Future<T> call, String op) async {
