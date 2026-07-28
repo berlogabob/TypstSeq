@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
@@ -189,6 +190,9 @@ class Vault {
       final donor = jsonEncode({
         'schema': 1,
         'indexVersion': index.version,
+        // Which synonym map produced these tags. A peer whose map differs must
+        // re-derive rather than inherit tags folded by rules it no longer uses.
+        'synonymsHash': await _synonymsHash(),
         'notes': [for (final note in index.notes) note.toJson()],
       });
       // Second guard, for the cases the note comparison can't settle: a first
@@ -200,6 +204,20 @@ class Vault {
       await storage.writeText(path, donor);
     } catch (_) {
       // A donor is a cache. Failing to publish one must never fail a rebuild.
+    }
+  }
+
+  /// Fingerprint of `_system/tag-synonyms.json`, or '' when there is none.
+  ///
+  /// Cheap and read once per rebuild; it only gates donor reuse.
+  Future<String> _synonymsHash() async {
+    try {
+      if (!await storage.exists(TylogVaultPaths.tagSynonyms)) return '';
+      return sha256
+          .convert(await storage.readBytes(TylogVaultPaths.tagSynonyms))
+          .toString();
+    } catch (_) {
+      return '';
     }
   }
 
@@ -254,6 +272,10 @@ class Vault {
             (jsonDecode(await storage.readText(file.path)) as Map)
                 .cast<String, Object?>();
         if (json['indexVersion'] != kVaultIndexVersion) continue;
+        // The donor's tags were folded by whatever map its author had. If ours
+        // differs, its NoteRefs are as stale as an old-schema entry — the
+        // content hashes would still match and the change would be invisible.
+        if (json['synonymsHash'] != await _synonymsHash()) continue;
         for (final item in (json['notes'] as List).cast<Map>()) {
           final note = NoteRef.fromJson(item.cast<String, Object?>());
           final existing = notes[note.path];

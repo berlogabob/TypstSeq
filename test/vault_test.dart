@@ -374,6 +374,44 @@ void main() {
       expect(index.notesByPath['notes/Root.typ']?.title, 'Edited');
     });
 
+    test('a donor built with a different synonym map is ignored', () async {
+      // The donor carries *derived* tags. If the map changed, its NoteRefs are
+      // as stale as an old-schema entry — and because the content hashes still
+      // match, the change would otherwise be silently invisible.
+      final laptop = await newVault('tylog_donor_syn_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.storage.writeText(
+        '_system/tag-synonyms.json',
+        '{"synonyms":{"a":"b"}}',
+      );
+      await laptop.rebuildIndex(deviceId: 'laptop');
+      final donor = await laptop.storage.readText(
+        '_system/index/laptop.json',
+      );
+
+      final phone = await newVault('tylog_donor_syn_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText('_system/index/laptop.json', donor);
+      // A different map: this device folds tags by other rules.
+      await phone.storage.writeText(
+        '_system/tag-synonyms.json',
+        '{"synonyms":{"a":"c"}}',
+      );
+
+      final seeded = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(seeded.notesByPath['notes/Root.typ'], isNotNull);
+      final own = jsonDecode(
+        await phone.storage.readText('_system/index/phone.json'),
+      ) as Map<String, Object?>;
+      final theirs = jsonDecode(donor) as Map<String, Object?>;
+      expect(
+        own['synonymsHash'],
+        isNot(theirs['synonymsHash']),
+        reason: 'each device stamps the map it actually used',
+      );
+    });
+
     test('a corrupt or wrong-version donor never fails the rebuild', () async {
       final phone = await newVault('tylog_donor_corrupt_');
       await phone.storage.writeText('notes/Root.typ', source);
