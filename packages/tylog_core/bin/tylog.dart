@@ -75,7 +75,7 @@ Future<int> _index(List<String> args) async {
   );
   await storage.writeText(
     TylogVaultPaths.index,
-    const JsonEncoder.withIndent('  ').convert(index.toJson()),
+    jsonEncode(index.toJson()),
   );
   final search = await PkmsSearchIndex.buildStorage(
     storage,

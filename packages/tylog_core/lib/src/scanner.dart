@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+
 import 'models.dart';
 import 'storage.dart';
 import 'values.dart';
@@ -28,6 +30,7 @@ TylogHelperKind classifyTylogHelper(
 }
 
 final _quoted = RegExp(r'"((?:\\.|[^"\\])*)"');
+final _typExtension = RegExp(r'\.typ$');
 
 enum LinkResolutionStatus { resolved, unresolved, ambiguous }
 
@@ -52,7 +55,7 @@ class LinkResolver {
       _add(_titles, note.title, note.path);
       _add(
         _stems,
-        note.path.split('/').last.replaceFirst(RegExp(r'\.typ$'), ''),
+        note.path.split('/').last.replaceFirst(_typExtension, ''),
         note.path,
       );
       for (final alias in note.aliases) {
@@ -333,10 +336,10 @@ List<TypstCall> locateTypstCalls(
   return calls;
 }
 
+final _noteHeaderStart = RegExp(r'#show\s*:\s*tylog\.note\.with\s*\(');
+
 TypstCall? _noteHeader(String source) {
-  final match = RegExp(
-    r'#show\s*:\s*tylog\.note\.with\s*\(',
-  ).firstMatch(source);
+  final match = _noteHeaderStart.firstMatch(source);
   if (match == null) return null;
   final open = source.indexOf('(', match.start);
   final end = _balancedEnd(source, open);
@@ -397,11 +400,22 @@ Future<VaultIndex> scanVaultStorage(
   // simply means no merges.
   final synonyms = await loadTagSynonyms(storage);
 
+  // Grouped once. Filtering `previous.tasks` per note made the cached path
+  // quadratic — a full pass over every task in the vault, 1700 times.
+  final cachedTasks = <String, List<TaskRef>>{};
+  for (final task in previous?.tasks ?? const <TaskRef>[]) {
+    (cachedTasks[task.notePath] ??= <TaskRef>[]).add(task);
+  }
+
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
   for (var fileIndex = 0; fileIndex < files.length; fileIndex++) {
     if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
+    // The cached branch below returns without awaiting anything, so a warm
+    // rebuild would otherwise run every note in one synchronous stretch and
+    // render no frames at all — onProgress fires but can never pump one.
+    if (fileIndex % 32 == 0) await Future<void>.delayed(Duration.zero);
     final file = files[fileIndex];
     final relative = file.path;
     final fingerprint =
@@ -453,17 +467,20 @@ Future<VaultIndex> scanVaultStorage(
       notes[relative] = cached!.fingerprint == fingerprint
           ? cached
           : cached.copyWith(fingerprint: fingerprint);
-      tasks.addAll(
-        previous?.tasks.where((task) => task.notePath == relative) ?? const [],
-      );
+      tasks.addAll(cachedTasks[relative] ?? const []);
       if (cached.metadataSource != 'typst-query') {
         problems.add(_fallbackProblem(relative));
       }
       onProgress?.call(fileIndex + 1, files.length);
       continue;
     }
-    final source = await storage.readText(relative);
-    contentHash ??= await storage.hash(relative);
+    // One read, not two. `readText` followed by `storage.hash` meant two full
+    // SAF round trips per note; the bytes needed for both are the same bytes.
+    // Byte-compatible with storage.hash: LocalVaultStorage and SafBridge both
+    // emit lowercase-hex sha256, so cached hashes still match.
+    final bytes = await storage.readBytes(relative);
+    final source = utf8.decode(bytes);
+    contentHash ??= sha256.convert(bytes).toString();
     inspectionFiles ??= activeInspector == null
         ? const <String, Uint8List>{}
         : await _inspectionFiles(storage);
@@ -590,9 +607,12 @@ Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
     if (_noteRoots.any(entry.path.startsWith) && entry.path.endsWith('.typ')) {
       continue;
     }
-    final bytes = await storage.readBytes(entry.path);
-    files[entry.path] = bytes;
-    files['/${entry.path}'] = bytes;
+    // One key, not two. The Rust side resolves via `get_without_slash()`
+    // (rust/src/api/typst.rs vfs_key), so the '/'-prefixed duplicate was never
+    // looked up — but flutter_rust_bridge serialises the whole map
+    // synchronously on this isolate for *every* note, so it was copying the
+    // vault's assets twice per inspect.
+    files[entry.path] = await storage.readBytes(entry.path);
   }
   return files;
 }
@@ -1177,7 +1197,7 @@ NoteRef _queriedNote(
   Map<String, String> synonyms = const {},
 ]) {
   final note = metadata.note!;
-  final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+  final stem = path.split('/').last.replaceFirst(_typExtension, '');
   return NoteRef(
     id: _text(note['id']) ?? '',
     path: path,
@@ -1234,7 +1254,7 @@ NoteRef _fallbackNote(
   int? modifiedMillis,
   Map<String, String> synonyms = const {},
 }) {
-  final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+  final stem = path.split('/').last.replaceFirst(_typExtension, '');
   final calls = locateTypstCalls(source);
   final header = _noteHeader(source)?.source ?? '';
   final dateCalls = calls.where((call) => call.name == 'tylog.date-ref');
@@ -1336,11 +1356,17 @@ List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
     .where((task) => task.id.isNotEmpty && task.text.isNotEmpty)
     .toList();
 
+/// Patterns are keyed by field name rather than hoisted, because the pattern
+/// depends on the name. _field runs ~6 times per note and ~10 times per task,
+/// and compiling a RegExp each time is not free.
+final _fieldPatterns = <String, RegExp>{};
+final _escapedChar = RegExp(r'\\(.)');
+
 String? _field(String source, String name) =>
-    RegExp('$name\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"')
+    (_fieldPatterns[name] ??= RegExp('$name\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"'))
         .firstMatch(source)
         ?.group(1)
-        ?.replaceAllMapped(RegExp(r'\\(.)'), (match) => match.group(1)!);
+        ?.replaceAllMapped(_escapedChar, (match) => match.group(1)!);
 
 final _legacyTagLine = RegExp(r'^\s*tags::\s*(.+)$', multiLine: true);
 final _legacyDateLine = RegExp(r'^\s*journal-day::\s*(.+)$', multiLine: true);

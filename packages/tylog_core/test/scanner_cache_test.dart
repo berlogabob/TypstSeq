@@ -77,6 +77,8 @@ String _note(String title) =>
     ')\n';
 
 void main() {
+  group('single read', _singleReadTests);
+
   late Directory root;
   late _CountingStorage storage;
 
@@ -234,5 +236,47 @@ void main() {
       expect(inspector.inspected, hasLength(2));
       expect(second.version, kVaultIndexVersion);
     });
+  });
+}
+
+/// The scan reads each note once and hashes those same bytes. If that hash
+/// ever disagreed with `storage.hash`, every cached entry would miss and the
+/// whole vault would silently re-parse on the next scan.
+void _singleReadTests() {
+  test('the scanned content hash matches storage.hash exactly', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_hash_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText('notes/a.typ', _note('Alpha'));
+    // Non-ASCII: the bytes hashed must be the file's bytes, not a re-encoding.
+    await storage.writeText('notes/b.typ', _note('Приве́т — ünïcode'));
+
+    final index = await scanVaultStorage(storage);
+
+    for (final note in index.notes) {
+      expect(
+        note.contentHash,
+        await storage.hash(note.path),
+        reason: '${note.path} would miss its cache on the next scan',
+      );
+    }
+  });
+
+  test('a note is read once per scan, not twice', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_reads_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = _CountingStorage(LocalVaultStorage(root));
+    await storage.writeText('notes/a.typ', _note('Alpha'));
+
+    storage.reads.clear();
+    storage.hashes.clear();
+    await scanVaultStorage(storage);
+
+    expect(
+      storage.reads.where((p) => p == 'notes/a.typ'),
+      hasLength(1),
+      reason: 'readText + storage.hash was two full reads per note',
+    );
+    expect(storage.hashes, isEmpty, reason: 'the bytes in hand are hashed');
   });
 }

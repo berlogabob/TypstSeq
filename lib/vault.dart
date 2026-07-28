@@ -150,10 +150,9 @@ class Vault {
     // Only the paths this scan actually covered; a save landing mid-scan stays
     // queued for the next one.
     _staleNotes.removeAll(stale);
-    await storage.writeText(
-      indexPath,
-      const JsonEncoder.withIndent('  ').convert(index.toJson()),
-    );
+    // Compact: nothing reads index.json by eye, and pretty-printing roughly
+    // doubled the bytes encoded and written for a ~2.5 MB file.
+    await storage.writeText(indexPath, jsonEncode(index.toJson()));
     if (deviceId != null && deviceId.isNotEmpty) {
       await _writeIndexDonor(deviceId, index, ownPrevious);
     }
