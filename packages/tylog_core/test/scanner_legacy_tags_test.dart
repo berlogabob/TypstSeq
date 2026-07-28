@@ -6,6 +6,7 @@ import 'package:tylog_core/tylog_core.dart';
 void main() {
   group('tag synonyms', _synonymTests);
   group('tag synonym file', _synonymFileTests);
+  group('stale cache', _staleCacheTests);
 
   test('scanNote recovers legacy journal-day:: dates and source:: links', () {
     const source = '''
@@ -217,5 +218,90 @@ void _synonymFileTests() {
     final index = await scanVaultStorage(storage);
 
     expect(index.notes.single.tags, ['ai']);
+  });
+}
+
+/// A note whose Typst query fails keeps its cached entry, which is right for a
+/// transient hiccup and wrong across a schema bump: the cached tags were
+/// derived by rules that no longer apply.
+class _FailingInspector implements TypstInspector {
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async =>
+      throw StateError('inspect failed');
+}
+
+void _staleCacheTests() {
+  Future<VaultStorage> vaultWith(String tags) async {
+    final root = await Directory.systemTemp.createTemp('tylog_stale_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'articles/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A", tags: ($tags))\n',
+    );
+    return storage;
+  }
+
+  test('an old-schema cached note is re-derived, not resurrected', () async {
+    final storage = await vaultWith('"ии"');
+    // Stands in for an index written before the synonym map existed.
+    final old = VaultIndex(
+      version: kVaultIndexVersion - 1,
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+          tags: ['ии'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    await storage.writeText(
+      '_system/tag-synonyms.json',
+      '{"synonyms":{"ии":"ai"}}',
+    );
+
+    final index = await scanVaultStorage(
+      storage,
+      previous: old,
+      inspector: _FailingInspector(),
+    );
+
+    expect(
+      index.notes.single.tags,
+      ['ai'],
+      reason: 'the failed query must not bring back pre-merge tags',
+    );
+  });
+
+  test('a current-schema cached note still survives a failed query', () async {
+    final storage = await vaultWith('"kept"');
+    final current = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'Queried title',
+          outgoingLinks: [],
+          tags: ['kept'],
+          metadataSource: 'typst-query',
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final index = await scanVaultStorage(
+      storage,
+      previous: current,
+      inspector: _FailingInspector(),
+    );
+
+    expect(
+      index.notes.single.title,
+      'Queried title',
+      reason: 'a transient failure must not downgrade a good queried note',
+    );
   });
 }

@@ -537,7 +537,16 @@ Future<VaultIndex> scanVaultStorage(
         modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
         synonyms: synonyms,
       );
-      notes[relative] = cached?.copyWith(fingerprint: fingerprint) ?? fallback;
+      // Keeping the cached note is right for a *transient* inspect failure: a
+      // previously-queried note should not be downgraded to a worse source
+      // parse just because Typst hiccuped. But only when the cache is still
+      // valid. On a schema bump or a forced rebuild the cached entry was
+      // derived by rules that no longer apply — it kept pre-merge tags through
+      // two version bumps, which quietly un-clustered the notes that carried
+      // them.
+      notes[relative] =
+          (reusable ? cached.copyWith(fingerprint: fingerprint) : null) ??
+          fallback;
       tasks.addAll(_fallbackTasks(relative, locateTypstCalls(source)));
       problems.add(
         PkmsProblem(
