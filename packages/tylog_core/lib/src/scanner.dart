@@ -349,8 +349,17 @@ TypstCall? _noteHeader(String source) {
   );
 }
 
-NoteRef scanNote(String relativePath, String source, {String? fingerprint}) =>
-    _fallbackNote(relativePath, source, fingerprint: fingerprint);
+NoteRef scanNote(
+  String relativePath,
+  String source, {
+  String? fingerprint,
+  Map<String, String> synonyms = const {},
+}) => _fallbackNote(
+  relativePath,
+  source,
+  fingerprint: fingerprint,
+  synonyms: synonyms,
+);
 
 Future<VaultIndex> scanVaultStorage(
   VaultStorage storage, {
@@ -383,6 +392,10 @@ Future<VaultIndex> scanVaultStorage(
   var reinspected = 0;
   var consecutiveTimeouts = 0;
   var recoveries = 0;
+
+  // One read per scan, shared by every note. Absent or unusable is normal and
+  // simply means no merges.
+  final synonyms = await loadTagSynonyms(storage);
 
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
@@ -481,6 +494,7 @@ Future<VaultIndex> scanVaultStorage(
               source,
               fingerprint: fingerprint,
               modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
+              synonyms: synonyms,
             )
           : _queriedNote(
               relative,
@@ -488,6 +502,7 @@ Future<VaultIndex> scanVaultStorage(
               queried!,
               fingerprint,
               file.modified?.millisecondsSinceEpoch ?? 0,
+              synonyms,
             );
       tasks.addAll(
         queried == null
@@ -520,6 +535,7 @@ Future<VaultIndex> scanVaultStorage(
         source,
         fingerprint: fingerprint,
         modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
+        synonyms: synonyms,
       );
       notes[relative] = cached?.copyWith(fingerprint: fingerprint) ?? fallback;
       tasks.addAll(_fallbackTasks(relative, locateTypstCalls(source)));
@@ -1148,8 +1164,9 @@ NoteRef _queriedNote(
   String source,
   QueriedMetadata metadata,
   String fingerprint,
-  int modifiedMillis,
-) {
+  int modifiedMillis, [
+  Map<String, String> synonyms = const {},
+]) {
   final note = metadata.note!;
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
   return NoteRef(
@@ -1163,7 +1180,7 @@ NoteRef _queriedNote(
       ...stringList(note['tags']),
       ...metadata.tags,
       ..._legacyTags(source),
-    }),
+    }, synonyms),
     aliases: _sorted(stringList(note['aliases']).toSet()),
     outgoingLinks: _sorted({...metadata.links, ..._legacySources(source)}),
     fileRefs: _sorted(
@@ -1206,6 +1223,7 @@ NoteRef _fallbackNote(
   String source, {
   String? fingerprint,
   int? modifiedMillis,
+  Map<String, String> synonyms = const {},
 }) {
   final stem = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
   final calls = locateTypstCalls(source);
@@ -1225,7 +1243,7 @@ NoteRef _fallbackNote(
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tylog.tag'),
       ..._legacyTags(source),
-    }),
+    }, synonyms),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
     outgoingLinks: _sorted({
       ..._firstArguments(calls, 'tylog.ref-note'),
@@ -1498,12 +1516,51 @@ List<String> _sorted(Set<String> values) => values.toList()..sort();
 /// Tags are compared by exact string everywhere downstream — promotion into a
 /// concept, community assignment, the shelf's group-by-cluster — so `AI` and
 /// `ai` used to be two unrelated concepts that each fell short of the promotion
-/// threshold. Folding is index-only: the note's own text is never rewritten.
-List<String> _normalizedTags(Set<String> values) =>
-    _sorted({for (final tag in values) _normalizeTag(tag)}..remove(''));
+/// threshold. [synonyms] extends that to spellings a string comparison cannot
+/// reconcile: `искусственный-интеллект` and `ии` are the same concept as `ai`.
+///
+/// Index-only, both of them: the note's own text is never rewritten, so undoing
+/// a bad merge means editing the synonym file, not hundreds of notes.
+List<String> _normalizedTags(
+  Set<String> values, [
+  Map<String, String> synonyms = const {},
+]) => _sorted({
+  for (final tag in values) _normalizeTag(tag, synonyms),
+}..remove(''));
 
-String _normalizeTag(String tag) =>
-    tag.trim().toLowerCase().replaceAll(RegExp(r'[\s_]+'), '-');
+String _normalizeTag(String tag, [Map<String, String> synonyms = const {}]) {
+  final folded = tag.trim().toLowerCase().replaceAll(RegExp(r'[\s_]+'), '-');
+  // One hop only. A map that happens to contain `a -> b` and `b -> c` must not
+  // drag `a` all the way to `c`: chained merges are how a synonym set drifts
+  // into a neighbouring concept, and the proposer never emits chains anyway.
+  return synonyms[folded] ?? folded;
+}
+
+/// Reads `_system/tag-synonyms.json`, or an empty map if it is absent or
+/// unusable. Tag folding is an enhancement, never a reason to fail a scan.
+Future<Map<String, String>> loadTagSynonyms(VaultStorage storage) async {
+  try {
+    // TylogVaultPaths.tagSynonyms — inlined because vault.dart imports this
+    // file, so importing it back would be a cycle.
+    const path = '_system/tag-synonyms.json';
+    if (!await storage.exists(path)) return const {};
+    final decoded = jsonDecode(await storage.readText(path));
+    if (decoded is! Map) return const {};
+    final entries = decoded['synonyms'];
+    if (entries is! Map) return const {};
+    final synonyms = <String, String>{};
+    for (final entry in entries.entries) {
+      final from = entry.key.toString().trim().toLowerCase();
+      final to = entry.value.toString().trim().toLowerCase();
+      // A tag mapped to itself, or to nothing, is a no-op worth dropping so
+      // the map stays a statement about real merges.
+      if (from.isNotEmpty && to.isNotEmpty && from != to) synonyms[from] = to;
+    }
+    return synonyms;
+  } catch (_) {
+    return const {};
+  }
+}
 
 Map<String, List<String>> _setsToSortedLists(Map<String, Set<String>> value) =>
     {

@@ -23,6 +23,11 @@ abstract final class TylogVaultPaths {
   /// means two devices can never write the same path — no conflicts.
   static const indexDonors = '_system/index';
 
+  /// `{"schema": 1, "synonyms": {"ии": "ai", "llms": "llm"}}` — variant tags
+  /// folded onto a canonical one when the index is built. Under `_system/` so
+  /// it syncs to every device on its own.
+  static const tagSynonyms = '_system/tag-synonyms.json';
+
   static const directories = [
     'daily',
     'notes',
