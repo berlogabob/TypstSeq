@@ -1159,7 +1159,7 @@ NoteRef _queriedNote(
     kind: _text(note['kind']) ?? _kindFromPath(path),
     project: _text(note['project']),
     date: _text(note['date']),
-    tags: _sorted({
+    tags: _normalizedTags({
       ...stringList(note['tags']),
       ...metadata.tags,
       ..._legacyTags(source),
@@ -1221,7 +1221,7 @@ NoteRef _fallbackNote(
     kind: _field(header, 'kind') ?? _kindFromPath(path),
     project: _field(header, 'project'),
     date: _field(header, 'date'),
-    tags: _sorted({
+    tags: _normalizedTags({
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tylog.tag'),
       ..._legacyTags(source),
@@ -1348,25 +1348,47 @@ Set<String> _legacySources(String source) {
   return result;
 }
 
-/// Recovers tags from legacy Logseq-style `tags:: [[A]] [[B]]` (or
-/// `tags:: A, B`) lines that the Typst parser never sees. Imported articles keep
-/// these instead of canonical `tylog.note.with(tags: ...)`, so without this
-/// their tags are silently lost and never reach the concept graph.
+/// Undoes `tylog_import_core`'s markup escaping.
+///
+/// The importer escapes Typst's special characters when it writes body text, so
+/// a recovered `tags::` line arrives as `\#Python \#разработка`. Left in place
+/// the backslashes become part of the tag and it matches nothing.
+String _unescapeMarkup(String value) =>
+    value.replaceAllMapped(RegExp(r'\\([\\#$*_`<>@\[\]~=\-+/])'), (m) => m[1]!);
+
+/// Recovers tags from legacy Logseq-style `tags::` lines that the Typst parser
+/// never sees. Imported articles keep these instead of canonical
+/// `tylog.note.with(tags: ...)`, so without this their tags are silently lost
+/// and never reach the concept graph.
+///
+/// Three forms, in the order Logseq actually emits them:
+/// `tags:: [[A]] [[B]]`, `tags:: #A #B`, and `tags:: A, B`.
 Set<String> _legacyTags(String source) {
   final result = <String>{};
   for (final line in _legacyTagLine.allMatches(source)) {
-    final value = line.group(1)!;
+    final value = _unescapeMarkup(line.group(1)!);
     final links = _wikiLink
         .allMatches(value)
         .map((match) => match.group(1)!.trim())
         .where((tag) => tag.isNotEmpty);
     if (links.isNotEmpty) {
       result.addAll(links);
-    } else {
-      result.addAll(
-        value.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty),
-      );
+      continue;
     }
+    if (value.trimLeft().startsWith('#')) {
+      // Split on the '#' delimiter, not on whitespace: Logseq tags may contain
+      // spaces, so `#библиотеки Python #разработка` is two tags, not three.
+      result.addAll(
+        value
+            .split('#')
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty),
+      );
+      continue;
+    }
+    result.addAll(
+      value.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty),
+    );
   }
   return result;
 }
@@ -1470,6 +1492,18 @@ String? _cleanContentText(Object? value) {
 String? _text(Object? value) => value?.toString();
 
 List<String> _sorted(Set<String> values) => values.toList()..sort();
+
+/// Tags, folded to one canonical spelling before they are indexed.
+///
+/// Tags are compared by exact string everywhere downstream — promotion into a
+/// concept, community assignment, the shelf's group-by-cluster — so `AI` and
+/// `ai` used to be two unrelated concepts that each fell short of the promotion
+/// threshold. Folding is index-only: the note's own text is never rewritten.
+List<String> _normalizedTags(Set<String> values) =>
+    _sorted({for (final tag in values) _normalizeTag(tag)}..remove(''));
+
+String _normalizeTag(String tag) =>
+    tag.trim().toLowerCase().replaceAll(RegExp(r'[\s_]+'), '-');
 
 Map<String, List<String>> _setsToSortedLists(Map<String, Set<String>> value) =>
     {

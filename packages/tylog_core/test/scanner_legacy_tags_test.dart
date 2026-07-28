@@ -27,7 +27,9 @@ tags:: [[Godot]] [[Unity]] [[игровые движки]]
 
     final note = scanNote('articles/godot.typ', source);
 
-    expect(note.tags, containsAll(['Godot', 'Unity', 'игровые движки']));
+    // Tags are folded to one canonical spelling when indexed, so clustering
+    // does not see `Godot` and `godot` as unrelated concepts.
+    expect(note.tags, containsAll(['godot', 'unity', 'игровые-движки']));
   });
 
   test('scanNote recovers comma-separated legacy tags', () {
@@ -39,7 +41,51 @@ tags:: ESP32, Home-Assistant
 
     final note = scanNote('articles/a.typ', source);
 
-    expect(note.tags, containsAll(['kept', 'ESP32', 'Home-Assistant']));
+    expect(note.tags, containsAll(['kept', 'esp32', 'home-assistant']));
+  });
+
+  test('scanNote recovers `tags:: #A #B` hashtag tags', () {
+    // Logseq's most common form. It has no wiki-links and no commas, so it
+    // used to fall through to the comma split and become ONE tag holding the
+    // whole line — which then matched nothing and left the note unclustered.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: #Python #разработка
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['python', 'разработка']);
+  });
+
+  test('a hashtag tag may contain spaces', () {
+    // Split on the '#' delimiter, not on whitespace: Logseq tags are free text
+    // up to the next '#', so this is two tags rather than four.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: #библиотеки Python #советы для разработчиков
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['библиотеки-python', 'советы-для-разработчиков']);
+  });
+
+  test('markdown-import escaping is stripped before tags are parsed', () {
+    // tylog_import_core escapes Typst's specials when it writes body text, so
+    // the recovered line arrives as `\\#Python`. Left in, the backslash becomes
+    // part of the tag and it matches nothing.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: \\#Python \\#машинное\\-обучение
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['python', 'машинное-обучение']);
   });
 
   test(
@@ -59,7 +105,7 @@ tags:: ESP32, Home-Assistant
         inspector: _EmptyTagsInspector(),
       );
 
-      expect(index.notes.single.tags, containsAll(['Godot', 'Unity']));
+      expect(index.notes.single.tags, containsAll(['godot', 'unity']));
     },
   );
 }
