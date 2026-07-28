@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:tylog_core/graph.dart';
+
 import 'models.dart';
 import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
@@ -68,6 +70,50 @@ class WorkspaceController extends ChangeNotifier {
   /// Reading recents/progress merged from every device's
   /// `_system/reading/<deviceId>.json` (newest openedAt wins per path).
   List<RecentNote> mergedReading = const [];
+
+  /// Increments on every index assignment. The invalidation key for everything
+  /// derived from the index — see [_retainIndex]. Distinct from
+  /// [indexedRevision], which tracks *editor* revisions, not index content.
+  int indexRevision = 0;
+
+  /// Community assignment for the current index, or null until the first one
+  /// finishes. Computed once per index in a background isolate rather than per
+  /// build: it is O(promoted tags²) and the shell rebuilds on every notify.
+  CommunityMap? communities;
+
+  /// Link resolver for the current index, rebuilt once per index. O(n), so it
+  /// stays on the main thread — it just must not run on every frame.
+  LinkResolver? linkResolver;
+
+  int _derivedRevision = -1;
+
+  /// The isolate in [refreshDerived] can land after the controller is gone —
+  /// closing a vault, or a hot restart. Notifying then throws.
+  bool _disposed = false;
+
+  /// Refreshes [communities] and [linkResolver] for the current index.
+  ///
+  /// Cheap to call repeatedly: it returns immediately once the current
+  /// revision has been derived. Fire-and-forget — callers do not await it, and
+  /// the UI renders with the previous (or null) values until it lands.
+  Future<void> refreshDerived() async {
+    final revision = indexRevision;
+    final current = index;
+    if (_disposed || current == null || _derivedRevision == revision) return;
+    linkResolver = LinkResolver(current.notes);
+    final CommunityMap next;
+    try {
+      next = await compute(computeCommunitiesIsolate, current);
+    } catch (_) {
+      return; // Derived state is an optimization; the UI degrades to null.
+    }
+    // A newer index landed while the isolate was working — its own
+    // refreshDerived call owns the result now, so drop this one.
+    if (_disposed || indexRevision != revision || index == null) return;
+    communities = next;
+    _derivedRevision = revision;
+    notifyListeners();
+  }
 
   /// This install's [VaultRegistry.deviceId], set once the registry loads.
   /// Names the index donor this device publishes and the one it must not read
@@ -319,6 +365,7 @@ class WorkspaceController extends ChangeNotifier {
       final pkms = await _readPkms(opened, built);
       if (opened != vault) return;
       index = _retainIndex(built);
+      unawaited(refreshDerived());
       validation = _retainValidation(pkms.report);
       searchIndex.replaceWith(pkms.search);
       indexedRevision = revision;
@@ -365,6 +412,7 @@ class WorkspaceController extends ChangeNotifier {
       // that build reads many files and must never gate the notes the UI needs
       // (Journal, Library, Today all read `index`).
       index = _retainIndex(built);
+      unawaited(refreshDerived());
       indexedRevision = savedRevision;
       status = 'Indexed · ${built.notes.length} notes · building search…';
       notifyListeners();
@@ -600,6 +648,7 @@ class WorkspaceController extends ChangeNotifier {
           );
           final pkms = await _readPkms(opened, built);
           index = _retainIndex(built);
+          unawaited(refreshDerived());
           validation = _retainValidation(pkms.report);
           searchIndex.replaceWith(pkms.search);
           indexedRevision = indexedThroughRevision;
@@ -766,6 +815,12 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   VaultIndex _retainIndex(VaultIndex next) {
+    // Bumped for every index assignment, including the in-place path below.
+    // Anything derived from the index caches against this, and must not cache
+    // against the index *object*: the whole point of retaining is that the
+    // identity never changes, so `identical(index, cached)` would be true
+    // forever and the cache would never invalidate.
+    indexRevision++;
     final current = index;
     if (current == null || current.version != next.version) return next;
     current.notesByPath
@@ -821,6 +876,7 @@ class WorkspaceController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     dirtyNotifier.dispose();
     syncProgressTick.dispose();
     _cancelTimers();
@@ -863,3 +919,9 @@ String friendlySyncError(Object error) {
   if (text.contains('507')) return 'Nextcloud is out of storage space.';
   return 'Sync stopped before completion: $text';
 }
+
+/// Top-level entry for `compute()` — runs community detection off the UI
+/// thread. Mirrors `runForceLayout` in lib/graph.dart. `computeCommunities` is
+/// deterministic and touches nothing but its argument, so it is isolate-safe.
+CommunityMap computeCommunitiesIsolate(VaultIndex index) =>
+    computeCommunities(index);

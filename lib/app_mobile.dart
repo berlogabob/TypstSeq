@@ -212,6 +212,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _graphMode = 'conceptMap';
   // Concept/note path the local graph is rooted at when expanded from the map.
   String? _graphFocusPath;
+
+  NoteGraph? _graphCache;
+  ({int revision, String mode, String? focus, String? current})? _graphKey;
+
+  /// The graph for the current pane, built at most once per set of inputs.
+  ///
+  /// Keyed on [WorkspaceController.indexRevision] rather than the index object:
+  /// the controller retains the index in place, so its identity never changes
+  /// and an `identical` check would cache the first graph forever.
+  NoteGraph _memoizedGraph(String? current) {
+    final key = (
+      revision: workspace.indexRevision,
+      mode: _graphMode,
+      focus: _graphFocusPath,
+      current: current,
+    );
+    final cached = _graphCache;
+    if (cached != null && _graphKey == key) return cached;
+    final idx = index!;
+    final built = switch (_graphMode) {
+      'conceptMap' => buildConceptMap(idx),
+      'allFiles' => buildNoteGraph(idx),
+      'timeline' => buildTimelineGraph(idx, {
+        for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
+      }),
+      _ => buildLocalNoteGraph(idx, _graphFocusPath ?? current),
+    };
+    _graphCache = built;
+    _graphKey = key;
+    return built;
+  }
   int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
@@ -3757,21 +3788,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final outgoing = current == null
         ? const <String>[]
         : index?.notesByPath[current]?.outgoingLinks ?? const <String>[];
-    final resolver = index == null ? null : LinkResolver(index!.notes);
-    final graph = index == null
-        ? null
-        : switch (_graphMode) {
-            'conceptMap' => buildConceptMap(index!),
-            'allFiles' => buildNoteGraph(index!),
-            'timeline' => buildTimelineGraph(index!, {
-              for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
-            }),
-            _ => buildLocalNoteGraph(index!, _graphFocusPath ?? current),
-          };
-    // One community assignment feeds both the graph (agglomerations + color) and
-    // the library's group-by-cluster. O(concepts^2), same as the builders above.
-    // ponytail: recomputed per build like `graph`; memoize on the index only if a profile flags it.
-    final communities = index == null ? null : computeCommunities(index!);
+    // Both derived once per index by the controller, not per build. The shell
+    // rebuilds on every notifyListeners() — 20 swipes used to cost ~4s of CPU
+    // because each rebuild re-derived the whole vault. Null until the first
+    // derivation lands; every consumer below already handles that.
+    final resolver = workspace.linkResolver;
+    final communities = workspace.communities;
+    // Only the graph pane consumes this, and `mode` defaults to 'normal', so
+    // building it unconditionally was pure waste on every other screen.
+    final graph = mode == 'graph' && index != null
+        ? _memoizedGraph(current)
+        : null;
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
