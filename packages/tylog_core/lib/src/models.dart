@@ -329,7 +329,15 @@ class TaskRef {
 /// an index change.
 ///
 /// 6: added [NoteRef.contentHash].
-const kVaultIndexVersion = 6;
+/// 7: tags are parsed from `tags:: #A #B` and folded to one canonical
+///    spelling. Cached entries hold the old, unusable tag values, and no
+///    fingerprint changes when only the parser does — so the version is the
+///    only thing that can invalidate them.
+/// 8: tag synonyms from `_system/tag-synonyms.json` are folded in. Same
+///    reasoning as 7 — the mapping changes derived tags without touching a
+///    single byte of any note. Editing the map *after* this ships invalidates
+///    nothing on its own; use "Rebuild index" (force) then.
+const kVaultIndexVersion = 8;
 
 class VaultIndex {
   const VaultIndex({

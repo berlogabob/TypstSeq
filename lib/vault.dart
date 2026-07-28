@@ -115,6 +115,11 @@ class Vault {
     bool Function()? isCancelled,
   }) async {
     var previous = await loadIndex();
+    // Only *our own* last index says anything about what our donor holds; a
+    // peer's donated index does not, so it must not suppress a republish.
+    final ownPrevious = previous?.version == kVaultIndexVersion
+        ? previous
+        : null;
     if (previous == null || previous.version != kVaultIndexVersion) {
       previous = await _loadDonatedIndex(deviceId) ?? previous;
     }
@@ -150,7 +155,7 @@ class Vault {
       const JsonEncoder.withIndent('  ').convert(index.toJson()),
     );
     if (deviceId != null && deviceId.isNotEmpty) {
-      await _writeIndexDonor(deviceId, index);
+      await _writeIndexDonor(deviceId, index, ownPrevious);
     }
     return index;
   }
@@ -167,9 +172,19 @@ class Vault {
   ///
   /// Only `notes` — backlinks, problems and tasks are recomputed from scratch
   /// on every scan anyway, so shipping them would be dead weight.
-  Future<void> _writeIndexDonor(String deviceId, VaultIndex index) async {
+  Future<void> _writeIndexDonor(
+    String deviceId,
+    VaultIndex index,
+    VaultIndex? previous,
+  ) async {
     try {
       final path = '${TylogVaultPaths.indexDonors}/$deviceId.json';
+      final published = await storage.exists(path);
+      // Cheapest early-out, and the one that matters most on a phone: if we
+      // already published and the scan changed nothing, don't encode ~2 MB of
+      // JSON and read the same amount back over SAF just to discover the bytes
+      // are identical. O(n) over maps already in memory.
+      if (published && _sameNotes(previous, index)) return;
       // Compact, unlike index.json: nothing reads this by eye, and it is the
       // one index artifact that crosses the network.
       final donor = jsonEncode({
@@ -177,13 +192,38 @@ class Vault {
         'indexVersion': index.version,
         'notes': [for (final note in index.notes) note.toJson()],
       });
-      if (await storage.exists(path) && await storage.readText(path) == donor) {
-        return;
-      }
+      // Second guard, for the cases the note comparison can't settle: a first
+      // publish after a version bump, or a donor whose file drifted from what
+      // the index says. Byte-identical means don't touch the file at all —
+      // on desktop the Nextcloud client watches mtime, so a redundant rewrite
+      // re-uploads megabytes.
+      if (published && await storage.readText(path) == donor) return;
       await storage.writeText(path, donor);
     } catch (_) {
       // A donor is a cache. Failing to publish one must never fail a rebuild.
     }
+  }
+
+  /// Whether two indexes describe the same notes, as far as a donor cares.
+  ///
+  /// Only path and content hash matter: those are what a peer matches against
+  /// its own files. A note whose mtime moved but whose bytes did not is the
+  /// same note to everyone else.
+  static bool _sameNotes(VaultIndex? previous, VaultIndex next) {
+    if (previous == null) return false;
+    if (previous.version != next.version) return false;
+    if (previous.notesByPath.length != next.notesByPath.length) return false;
+    for (final entry in next.notesByPath.entries) {
+      final before = previous.notesByPath[entry.key];
+      if (before == null) return false;
+      // A null hash on either side means "unknown", which is never a match —
+      // republish so the peer gets an entry it can actually use.
+      if (before.contentHash == null ||
+          before.contentHash != entry.value.contentHash) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Merges every *other* device's donor into one index the scanner can use as

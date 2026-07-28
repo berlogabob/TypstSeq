@@ -258,6 +258,66 @@ void main() {
     },
   );
 
+  test('index-derived state is computed once per index, not per build', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.openVault(
+      const VaultEntry(id: 'derived', name: 'Derived', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    await _waitUntil(() => controller.communities != null);
+
+    final revisionAfterOpen = controller.indexRevision;
+    expect(revisionAfterOpen, greaterThan(0));
+    expect(controller.linkResolver, isNotNull);
+    final derived = controller.communities;
+
+    // Re-deriving at the same revision is a no-op: the object is reused, not
+    // recomputed. This is what stops the shell paying for it on every notify.
+    await controller.refreshDerived();
+    expect(identical(controller.communities, derived), isTrue);
+
+    // A real rebuild bumps the revision even though _retainIndex hands back
+    // the *same* VaultIndex object — the reason the cache cannot key on
+    // index identity.
+    final indexBefore = controller.index;
+    await controller.rebuildIndex();
+    await _waitUntil(() => controller.indexRevision > revisionAfterOpen);
+    expect(
+      identical(controller.index, indexBefore),
+      isTrue,
+      reason: 'the index is retained in place, so identity never changes',
+    );
+    await _waitUntil(() => controller.communities != null);
+  });
+
+  test('a derivation landing after dispose does not throw', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    await controller.openVault(
+      const VaultEntry(id: 'disposed', name: 'Disposed', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+
+    // Kick off a derivation and tear the controller down underneath it, the
+    // way closing a vault or a hot restart does.
+    final pending = controller.refreshDerived();
+    controller.dispose();
+    await expectLater(pending, completes);
+  });
+
   test(
     'registered Android vault is never recreated when access is empty',
     () async {

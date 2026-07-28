@@ -4,6 +4,10 @@ import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  group('tag synonyms', _synonymTests);
+  group('tag synonym file', _synonymFileTests);
+  group('stale cache', _staleCacheTests);
+
   test('scanNote recovers legacy journal-day:: dates and source:: links', () {
     const source = '''
 #show: tylog.note.with(id: "a", title: "A", tags: ())
@@ -27,7 +31,9 @@ tags:: [[Godot]] [[Unity]] [[игровые движки]]
 
     final note = scanNote('articles/godot.typ', source);
 
-    expect(note.tags, containsAll(['Godot', 'Unity', 'игровые движки']));
+    // Tags are folded to one canonical spelling when indexed, so clustering
+    // does not see `Godot` and `godot` as unrelated concepts.
+    expect(note.tags, containsAll(['godot', 'unity', 'игровые-движки']));
   });
 
   test('scanNote recovers comma-separated legacy tags', () {
@@ -39,7 +45,51 @@ tags:: ESP32, Home-Assistant
 
     final note = scanNote('articles/a.typ', source);
 
-    expect(note.tags, containsAll(['kept', 'ESP32', 'Home-Assistant']));
+    expect(note.tags, containsAll(['kept', 'esp32', 'home-assistant']));
+  });
+
+  test('scanNote recovers `tags:: #A #B` hashtag tags', () {
+    // Logseq's most common form. It has no wiki-links and no commas, so it
+    // used to fall through to the comma split and become ONE tag holding the
+    // whole line — which then matched nothing and left the note unclustered.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: #Python #разработка
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['python', 'разработка']);
+  });
+
+  test('a hashtag tag may contain spaces', () {
+    // Split on the '#' delimiter, not on whitespace: Logseq tags are free text
+    // up to the next '#', so this is two tags rather than four.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: #библиотеки Python #советы для разработчиков
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['библиотеки-python', 'советы-для-разработчиков']);
+  });
+
+  test('markdown-import escaping is stripped before tags are parsed', () {
+    // tylog_import_core escapes Typst's specials when it writes body text, so
+    // the recovered line arrives as `\\#Python`. Left in, the backslash becomes
+    // part of the tag and it matches nothing.
+    const source = '''
+#show: tylog.note.with(id: "a", title: "A", tags: ())
+
+tags:: \\#Python \\#машинное\\-обучение
+''';
+
+    final note = scanNote('articles/a.typ', source);
+
+    expect(note.tags, ['python', 'машинное-обучение']);
   });
 
   test(
@@ -59,7 +109,7 @@ tags:: ESP32, Home-Assistant
         inspector: _EmptyTagsInspector(),
       );
 
-      expect(index.notes.single.tags, containsAll(['Godot', 'Unity']));
+      expect(index.notes.single.tags, containsAll(['godot', 'unity']));
     },
   );
 }
@@ -80,4 +130,178 @@ class _EmptyTagsInspector implements TypstInspector {
       },
     ),
   ];
+}
+
+/// Synonym folding: variants of one concept must land on one tag, or each
+/// spelling clusters separately (`ai` / `искусственный-интеллект` / `ии` were
+/// 270 notes in three clusters).
+void _synonymTests() {
+  const synonyms = {'искусственный-интеллект': 'ai', 'ии': 'ai', 'llms': 'llm'};
+
+  NoteRef scan(String tags, {Map<String, String> map = synonyms}) => scanNote(
+    'articles/a.typ',
+    '#show: tylog.note.with(id: "a", title: "A", tags: ($tags))\n',
+    synonyms: map,
+  );
+
+  test('variants fold onto the canonical tag', () {
+    expect(scan('"Искусственный интеллект", "ИИ"').tags, ['ai']);
+  });
+
+  test('an unmapped tag is left alone, still case-folded', () {
+    expect(scan('"Godot", "LLMs"').tags, ['godot', 'llm']);
+  });
+
+  test('no map means no merging', () {
+    expect(scan('"ии", "ai"', map: const {}).tags, ['ai', 'ии']);
+  });
+
+  test('synonyms reach body-recovered tags too', () {
+    final note = scanNote(
+      'articles/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A", tags: ())\n\n'
+      'tags:: #ИИ #Godot\n',
+      synonyms: synonyms,
+    );
+    expect(note.tags, ['ai', 'godot']);
+  });
+
+  test('a chain in the map is followed exactly one hop', () {
+    // Chained merges are how a synonym set drifts into a neighbouring concept.
+    // `a` resolves to `b` and stops, even though `b -> c` is also present.
+    final note = scan('"a"', map: const {'a': 'b', 'b': 'c'});
+    expect(note.tags, ['b']);
+  });
+}
+
+/// The map is a file in a synced vault, so it can be absent, half-written or
+/// hand-edited into nonsense. None of that may fail a scan.
+void _synonymFileTests() {
+  Future<VaultStorage> vault(String? contents) async {
+    final root = await Directory.systemTemp.createTemp('tylog_syn_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    if (contents != null) {
+      await storage.writeText('_system/tag-synonyms.json', contents);
+    }
+    return storage;
+  }
+
+  test('a well-formed map is loaded', () async {
+    final storage = await vault('{"schema":1,"synonyms":{"ИИ":"AI"}}');
+    // Keys and values are folded, so the file may be written in any casing.
+    expect(await loadTagSynonyms(storage), {'ии': 'ai'});
+  });
+
+  test('absent, corrupt, or wrong-shaped files yield no synonyms', () async {
+    expect(await loadTagSynonyms(await vault(null)), isEmpty);
+    expect(await loadTagSynonyms(await vault('not json {')), isEmpty);
+    expect(await loadTagSynonyms(await vault('[]')), isEmpty);
+    expect(await loadTagSynonyms(await vault('{"synonyms":"nope"}')), isEmpty);
+    expect(await loadTagSynonyms(await vault('{}')), isEmpty);
+  });
+
+  test('self-mappings and blanks are dropped', () async {
+    final storage = await vault(
+      '{"synonyms":{"ai":"ai","":"ai","x":"","ии":"ai"}}',
+    );
+    expect(await loadTagSynonyms(storage), {'ии': 'ai'});
+  });
+
+  test('a scan picks the map up from the vault', () async {
+    final storage = await vault('{"synonyms":{"ии":"ai"}}');
+    await storage.writeText(
+      'articles/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A", tags: ("ИИ",))\n',
+    );
+
+    final index = await scanVaultStorage(storage);
+
+    expect(index.notes.single.tags, ['ai']);
+  });
+}
+
+/// A note whose Typst query fails keeps its cached entry, which is right for a
+/// transient hiccup and wrong across a schema bump: the cached tags were
+/// derived by rules that no longer apply.
+class _FailingInspector implements TypstInspector {
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async =>
+      throw StateError('inspect failed');
+}
+
+void _staleCacheTests() {
+  Future<VaultStorage> vaultWith(String tags) async {
+    final root = await Directory.systemTemp.createTemp('tylog_stale_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'articles/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A", tags: ($tags))\n',
+    );
+    return storage;
+  }
+
+  test('an old-schema cached note is re-derived, not resurrected', () async {
+    final storage = await vaultWith('"ии"');
+    // Stands in for an index written before the synonym map existed.
+    final old = VaultIndex(
+      version: kVaultIndexVersion - 1,
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+          tags: ['ии'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    await storage.writeText(
+      '_system/tag-synonyms.json',
+      '{"synonyms":{"ии":"ai"}}',
+    );
+
+    final index = await scanVaultStorage(
+      storage,
+      previous: old,
+      inspector: _FailingInspector(),
+    );
+
+    expect(
+      index.notes.single.tags,
+      ['ai'],
+      reason: 'the failed query must not bring back pre-merge tags',
+    );
+  });
+
+  test('a current-schema cached note still survives a failed query', () async {
+    final storage = await vaultWith('"kept"');
+    final current = VaultIndex(
+      notesByPath: {
+        'articles/a.typ': const NoteRef(
+          id: 'a',
+          path: 'articles/a.typ',
+          title: 'Queried title',
+          outgoingLinks: [],
+          tags: ['kept'],
+          metadataSource: 'typst-query',
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final index = await scanVaultStorage(
+      storage,
+      previous: current,
+      inspector: _FailingInspector(),
+    );
+
+    expect(
+      index.notes.single.title,
+      'Queried title',
+      reason: 'a transient failure must not downgrade a good queried note',
+    );
+  });
 }
