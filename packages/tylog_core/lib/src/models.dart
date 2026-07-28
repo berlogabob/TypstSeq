@@ -329,7 +329,11 @@ class TaskRef {
 /// an index change.
 ///
 /// 6: added [NoteRef.contentHash].
-const kVaultIndexVersion = 6;
+/// 7: tags are parsed from `tags:: #A #B` and folded to one canonical
+///    spelling. Cached entries hold the old, unusable tag values, and no
+///    fingerprint changes when only the parser does — so the version is the
+///    only thing that can invalidate them.
+const kVaultIndexVersion = 7;
 
 class VaultIndex {
   const VaultIndex({
