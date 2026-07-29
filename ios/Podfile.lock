@@ -12,9 +12,9 @@ PODS:
     - Flutter
   - integration_test (0.0.1):
     - Flutter
-  - open_file_ios (1.0.3):
-    - Flutter
   - typst_flutter (1.0.0):
+    - Flutter
+  - url_launcher_ios (0.0.1):
     - Flutter
 
 DEPENDENCIES:
@@ -24,8 +24,8 @@ DEPENDENCIES:
   - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - flutter_timezone (from `.symlinks/plugins/flutter_timezone/ios`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
-  - open_file_ios (from `.symlinks/plugins/open_file_ios/ios`)
   - typst_flutter (from `.symlinks/plugins/typst_flutter/ios`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 EXTERNAL SOURCES:
   file_picker:
@@ -40,10 +40,10 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_timezone/ios"
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
-  open_file_ios:
-    :path: ".symlinks/plugins/open_file_ios/ios"
   typst_flutter:
     :path: ".symlinks/plugins/typst_flutter/ios"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   file_picker: 70164d9778c42c47218d6cd79ce435de0856b11a
@@ -52,8 +52,8 @@ SPEC CHECKSUMS:
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_timezone: 7c838e17ffd4645d261e87037e5bebf6d38fe544
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
-  open_file_ios: c1143c28b4c65f721cdd58d9fba2f7a1c55206cd
   typst_flutter: 10e650a02f2c13e9d10c3c4deddee7e230af8378
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: d71a8f9d234bf288cee64b372c30c196c8075224
 
