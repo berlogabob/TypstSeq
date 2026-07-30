@@ -16,6 +16,7 @@ import 'tylog_assets.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
+import 'vault_worker.dart';
 
 class WorkspaceSyncNotConfigured implements Exception {
   const WorkspaceSyncNotConfigured();
@@ -91,19 +92,36 @@ class WorkspaceController extends ChangeNotifier {
   /// closing a vault, or a hot restart. Notifying then throws.
   bool _disposed = false;
 
+  /// Indexing and sync are async and deliberately unawaited, so a vault close,
+  /// a hot restart or a test teardown can land between an await and the notify
+  /// that follows it. [_disposed] already existed for that hazard in
+  /// [refreshDerived]; enforcing it here covers every path instead of forty call
+  /// sites. Nothing is lost — a disposed controller has no listeners left.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   /// Refreshes [communities] and [linkResolver] for the current index.
   ///
   /// Cheap to call repeatedly: it returns immediately once the current
   /// revision has been derived. Fire-and-forget — callers do not await it, and
   /// the UI renders with the previous (or null) values until it lands.
-  Future<void> refreshDerived() async {
+  ///
+  /// [precomputed] short-circuits the community pass for the worker path, which
+  /// already ran it next to the scan that produced the index. That matters more
+  /// than it looks: `compute()` copies the *whole* `VaultIndex` onto this
+  /// isolate to hand it to the other one, and on a 1800-note vault that copy was
+  /// itself a visible stall.
+  Future<void> refreshDerived({CommunityMap? precomputed}) async {
     final revision = indexRevision;
     final current = index;
     if (_disposed || current == null || _derivedRevision == revision) return;
     linkResolver = LinkResolver(current.notes);
     final CommunityMap next;
     try {
-      next = await compute(computeCommunitiesIsolate, current);
+      next = precomputed ?? await compute(computeCommunitiesIsolate, current);
     } catch (_) {
       return; // Derived state is an optimization; the UI degrades to null.
     }
@@ -134,6 +152,22 @@ class WorkspaceController extends ChangeNotifier {
   bool cancelRebuild = false;
   double? rebuildProgress;
 
+  /// Owns the vault's indexing work on its own isolate. Null while no vault is
+  /// open, and null for the whole lifetime of a controller built with an
+  /// explicit [inspector] — see [_useWorker].
+  VaultWorkerClient? _worker;
+
+  /// Tests supply a fake [inspector], which cannot cross an isolate boundary,
+  /// and some also override the storage in [openVault]; both keep the original
+  /// in-process path. Production supplies neither.
+  bool get _useWorker => inspector == null;
+
+  /// Mutual exclusion for the scan, whichever path runs it. [rebuilding] can't
+  /// serve: it drives the progress UI, and a background [refreshIndex] must not
+  /// light that up. Two concurrent scans would race on `index.json` (and the
+  /// worker is single-flight by design).
+  bool _indexing = false;
+
   Timer? _autosave;
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
@@ -158,6 +192,7 @@ class WorkspaceController extends ChangeNotifier {
 
   void close(String message, {NextcloudConfig? nextCloud}) {
     _cancelTimers();
+    _shutdownWorker();
     vault = null;
     entry = null;
     note = null;
@@ -190,6 +225,7 @@ class WorkspaceController extends ChangeNotifier {
     VaultStorage? storage,
   }) async {
     _cancelTimers();
+    _shutdownWorker();
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
       await opened.ensureCreated(
@@ -290,6 +326,14 @@ class WorkspaceController extends ChangeNotifier {
       // another device already inspected. The UI is already usable from the
       // fast path above, so the wait costs nothing visible. whenComplete, not
       // then: a failed sync must still leave the vault indexed.
+      // A storage override can't be rebuilt from `next` inside the isolate, so
+      // that (test-only) path stays in-process.
+      if (_useWorker && storage == null) {
+        _worker = await VaultWorkerClient.spawn(
+          entry: next,
+          deviceId: deviceId,
+        );
+      }
       unawaited(
         coldIndex && firstSync != null
             ? firstSync.whenComplete(() => rebuildIndex(force: false))
@@ -356,12 +400,155 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
+    if (_indexing) return;
+    await _scan(opened, updateStatus: updateStatus);
+  }
+
+  /// [force] discards the scan cache and re-compiles every note — the manual
+  /// escape hatch for a suspected-bad index, not the routine path.
+  Future<void> rebuildIndex({bool force = false}) async {
+    final opened = vault;
+    if (opened == null) return;
+    if (rebuilding || _indexing) {
+      cancelRebuild = true;
+      _worker?.cancel();
+      return;
+    }
+    rebuilding = true;
+    cancelRebuild = false;
+    rebuildProgress = 0;
+    status = 'Rebuilding index...';
+    notifyListeners();
+    try {
+      await _scan(opened, force: force, showProgress: true);
+    } finally {
+      rebuilding = false;
+      rebuildProgress = null;
+      notifyListeners();
+    }
+  }
+
+  /// The one scan driver, for both the routine refresh and the explicit rebuild.
+  ///
+  /// [showProgress] drives the progress bar and the running status line;
+  /// [updateStatus] is the refresh path's quieter switch for callers that own
+  /// the status line themselves.
+  Future<void> _scan(
+    Vault opened, {
+    bool force = false,
+    bool showProgress = false,
+    bool updateStatus = true,
+  }) async {
+    _indexing = true;
     final revision = savedRevision;
+    try {
+      final worker = _worker;
+      if (worker == null) {
+        await _scanInProcess(
+          opened,
+          revision: revision,
+          force: force,
+          showProgress: showProgress,
+          updateStatus: updateStatus,
+        );
+        return;
+      }
+      // The worker holds its own Vault, which never saw this one's saveNote
+      // calls, so the pending set travels with the command and is cleared only
+      // once the scan reports back covering it.
+      final stale = opened.staleNotes;
+      await for (final event in worker.run(
+        RebuildIndexCommand(force: force, stale: stale),
+      )) {
+        // Vault closed (or swapped) under us — the events belong to nothing now.
+        if (opened != vault) return;
+        switch (event) {
+          case IndexProgressEvent(:final complete, :final total):
+            if (!showProgress) break;
+            rebuildProgress = total == 0 ? 1 : complete / total;
+            status = 'Rebuilding index: $complete / $total';
+            notifyListeners();
+          case IndexBuiltEvent(:final index):
+            // Publish notes and tasks now, before the much slower validation +
+            // search-index build — on SAF vaults that build reads many files and
+            // must never gate the notes the UI needs (Journal, Library, Today).
+            this.index = _retainIndex(index);
+            // O(n) and main-thread by design; communities arrive below.
+            linkResolver = LinkResolver(index.notes);
+            indexedRevision = revision;
+            opened.clearStaleNotes(stale);
+            if (showProgress) {
+              status = 'Indexed · ${index.notes.length} notes · building search…';
+            }
+            notifyListeners();
+            unawaited(_reconcileTasks(index.tasks));
+          case CommunitiesBuiltEvent(:final communities):
+            unawaited(refreshDerived(precomputed: communities));
+          case PkmsBuiltEvent(:final report, :final search):
+            validation = _retainValidation(report);
+            searchIndex.replaceWith(search);
+            if (showProgress) {
+              status = 'Index rebuilt · ${report.summary()}';
+            } else if (updateStatus) {
+              status = 'Indexed · ${report.summary()}';
+            }
+            notifyListeners();
+          case WorkFailedEvent(:final message, :final cancelled):
+            if (cancelled) {
+              status = 'Index rebuild cancelled';
+              notifyListeners();
+            } else if (showProgress || updateStatus) {
+              status = 'Index refresh failed: $message';
+              notifyListeners();
+            }
+          case WorkDoneEvent():
+            break;
+        }
+      }
+    } finally {
+      _indexing = false;
+    }
+  }
+
+  /// Pre-worker path, kept for controllers built with an explicit [inspector]
+  /// (tests) and for the storage-override open.
+  Future<void> _scanInProcess(
+    Vault opened, {
+    required int revision,
+    required bool force,
+    required bool showProgress,
+    required bool updateStatus,
+  }) async {
     try {
       final built = await opened.rebuildIndex(
         inspector: inspector,
+        force: force,
         deviceId: deviceId,
+        isCancelled: showProgress ? () => cancelRebuild : null,
+        onProgress: showProgress
+            ? (complete, total) {
+                if (complete % 100 != 0 && complete != total) return;
+                rebuildProgress = total == 0 ? 1 : complete / total;
+                status = 'Rebuilding index: $complete / $total';
+                notifyListeners();
+              }
+            : null,
       );
+      if (showProgress) {
+        if (opened != vault) return;
+        index = _retainIndex(built);
+        unawaited(refreshDerived());
+        indexedRevision = revision;
+        status = 'Indexed · ${built.notes.length} notes · building search…';
+        notifyListeners();
+        unawaited(_reconcileTasks(built.tasks));
+        final pkms = await _readPkms(opened, built);
+        validation = _retainValidation(pkms.report);
+        searchIndex.replaceWith(pkms.search);
+        status = 'Index rebuilt · ${pkms.report.summary()}';
+        notifyListeners();
+        return;
+      }
       final pkms = await _readPkms(opened, built);
       if (opened != vault) return;
       index = _retainIndex(built);
@@ -372,65 +559,14 @@ class WorkspaceController extends ChangeNotifier {
       if (updateStatus) status = 'Indexed · ${pkms.report.summary()}';
       notifyListeners();
       unawaited(_reconcileTasks(built.tasks));
-    } catch (error) {
-      if (updateStatus) {
-        status = 'Index refresh failed: $error';
-        notifyListeners();
-      }
-    }
-  }
-
-  /// [force] discards the scan cache and re-compiles every note — the manual
-  /// escape hatch for a suspected-bad index, not the routine path.
-  Future<void> rebuildIndex({bool force = false}) async {
-    final opened = vault;
-    if (opened == null) return;
-    if (rebuilding) {
-      cancelRebuild = true;
-      return;
-    }
-    rebuilding = true;
-    cancelRebuild = false;
-    rebuildProgress = 0;
-    status = 'Rebuilding index...';
-    notifyListeners();
-    try {
-      final built = await opened.rebuildIndex(
-        inspector: inspector,
-        force: force,
-        deviceId: deviceId,
-        isCancelled: () => cancelRebuild,
-        onProgress: (complete, total) {
-          if (complete % 100 != 0 && complete != total) return;
-          rebuildProgress = total == 0 ? 1 : complete / total;
-          status = 'Rebuilding index: $complete / $total';
-          notifyListeners();
-        },
-      );
-      // The scan already has every note and task. Publish them to the UI now,
-      // before the much slower validation + search-index build — on SAF vaults
-      // that build reads many files and must never gate the notes the UI needs
-      // (Journal, Library, Today all read `index`).
-      index = _retainIndex(built);
-      unawaited(refreshDerived());
-      indexedRevision = savedRevision;
-      status = 'Indexed · ${built.notes.length} notes · building search…';
-      notifyListeners();
-      unawaited(_reconcileTasks(built.tasks));
-      // Heavier pass: validation + full-text search index. Refined in place so a
-      // slow/stalled search build can't blank out the already-visible notes.
-      final pkms = await _readPkms(opened, built);
-      validation = _retainValidation(pkms.report);
-      searchIndex.replaceWith(pkms.search);
-      status = 'Index rebuilt · ${pkms.report.summary()}';
-      notifyListeners();
     } on IndexBuildCancelled {
       status = 'Index rebuild cancelled';
       notifyListeners();
-    } finally {
-      rebuilding = false;
-      rebuildProgress = null;
-      notifyListeners();
+    } catch (error) {
+      if (showProgress || updateStatus) {
+        status = 'Index refresh failed: $error';
+        notifyListeners();
+      }
     }
   }
 
@@ -874,12 +1010,20 @@ class WorkspaceController extends ChangeNotifier {
     _cloudPoll?.cancel();
   }
 
+  void _shutdownWorker() {
+    final worker = _worker;
+    _worker = null;
+    _indexing = false;
+    unawaited(worker?.dispose() ?? Future<void>.value());
+  }
+
   @override
   void dispose() {
     _disposed = true;
     dirtyNotifier.dispose();
     syncProgressTick.dispose();
     _cancelTimers();
+    _shutdownWorker();
     super.dispose();
   }
 }

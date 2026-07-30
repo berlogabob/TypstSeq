@@ -25,6 +25,15 @@ class Vault {
   /// same-size edit landing in the same second would otherwise be skipped.
   final _staleNotes = <String>{};
 
+  /// Snapshot of the pending stale paths. The worker isolate scans through its
+  /// *own* [Vault] instance, which never saw this one's [saveNote] calls, so the
+  /// set has to travel with the rebuild command — see [rebuildIndex]'s `stale`.
+  Set<String> get staleNotes => Set<String>.of(_staleNotes);
+
+  /// Drops paths a completed scan covered. Only the ones it was handed: a save
+  /// landing mid-scan must stay queued for the next one.
+  void clearStaleNotes(Iterable<String> paths) => _staleNotes.removeAll(paths);
+
   static const indexPath = TylogVaultPaths.index;
   static const searchIndexPath = TylogVaultPaths.searchIndex;
   static const helperPath = TylogVaultPaths.helper;
@@ -108,10 +117,16 @@ class Vault {
   /// that has no usable local index seeds itself from the other devices'
   /// donors instead of re-querying Typst for every note. Omit it and the
   /// rebuild is purely local.
+  ///
+  /// [stale] overrides this instance's own pending set, for the worker isolate:
+  /// it holds a different [Vault] than the one whose [saveNote] recorded the
+  /// edits, so the caller passes the snapshot in and clears it via
+  /// [clearStaleNotes] once the scan reports back.
   Future<VaultIndex> rebuildIndex({
     TypstInspector? inspector,
     bool force = false,
     String? deviceId,
+    Set<String>? stale,
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -124,7 +139,7 @@ class Vault {
     if (previous == null || previous.version != kVaultIndexVersion) {
       previous = await _loadDonatedIndex(deviceId) ?? previous;
     }
-    final stale = Set<String>.of(_staleNotes);
+    final staleNow = stale ?? Set<String>.of(_staleNotes);
     FlutterTypstInspector? ownedInspector;
     if (inspector == null) {
       try {
@@ -141,7 +156,7 @@ class Vault {
         inspector: inspector,
         previous: previous,
         force: force,
-        stale: stale,
+        stale: staleNow,
         onProgress: onProgress,
         isCancelled: isCancelled,
       );
@@ -149,8 +164,9 @@ class Vault {
       ownedInspector?.dispose();
     }
     // Only the paths this scan actually covered; a save landing mid-scan stays
-    // queued for the next one.
-    _staleNotes.removeAll(stale);
+    // queued for the next one. A no-op when `stale` came from outside — that
+    // caller owns the clearing.
+    _staleNotes.removeAll(staleNow);
     // Compact: nothing reads index.json by eye, and pretty-printing roughly
     // doubled the bytes encoded and written for a ~2.5 MB file.
     await storage.writeText(indexPath, jsonEncode(index.toJson()));

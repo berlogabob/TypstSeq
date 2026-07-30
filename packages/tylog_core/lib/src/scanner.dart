@@ -413,8 +413,11 @@ Future<VaultIndex> scanVaultStorage(
   for (var fileIndex = 0; fileIndex < files.length; fileIndex++) {
     if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
     // The cached branch below returns without awaiting anything, so a warm
-    // rebuild would otherwise run every note in one synchronous stretch and
-    // render no frames at all — onProgress fires but can never pump one.
+    // rebuild would otherwise run every note in one synchronous stretch. On the
+    // app's worker isolate that stretch is what starves the port listener, so
+    // this is the point at which a cancel sent mid-scan actually gets observed
+    // (see `isCancelled` above, and lib/vault_worker.dart). On any caller still
+    // scanning inline — the CLI, tests — it is what lets a frame render.
     if (fileIndex % 32 == 0) await Future<void>.delayed(Duration.zero);
     final file = files[fileIndex];
     final relative = file.path;
