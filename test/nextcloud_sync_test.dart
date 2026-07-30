@@ -11,12 +11,21 @@ import 'package:tylog/vault_storage.dart';
 
 void main() {
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
+  final defaultCheckpointInterval = NextcloudSync.checkpointInterval;
   // Zero-delay single retry keeps failure-path tests fast while still
   // exercising the transient-retry logic.
-  setUp(
-    () => NextcloudSync.connectionRetryDelays = const [Duration.zero],
-  );
-  tearDown(() => NextcloudSync.connectionRetryDelays = defaultRetryDelays);
+  setUp(() {
+    NextcloudSync.connectionRetryDelays = const [Duration.zero];
+    // Checkpointing is time-throttled in production, and these fixtures sync a
+    // handful of files against a local server in well under one interval — so
+    // without this no mid-loop checkpoint would ever fire and the resume tests
+    // would be exercising only the error-path save.
+    NextcloudSync.checkpointInterval = Duration.zero;
+  });
+  tearDown(() {
+    NextcloudSync.connectionRetryDelays = defaultRetryDelays;
+    NextcloudSync.checkpointInterval = defaultCheckpointInterval;
+  });
 
   test('no-change sync skips the local index rebuild', () {
     const unchanged = SyncResult(
@@ -254,6 +263,56 @@ void main() {
         (await loadSyncConflicts(both.vault)).single.path,
         'notes/both.typ',
       );
+    },
+  );
+
+  test(
+    'checkpoint cadence is time-bound, not per-file',
+    () async {
+      // A checkpoint re-encodes every cursor, so a per-N-files trigger scales
+      // with vault size squared: on a real 2061-path vault the old `% 10` gate
+      // fired 206 times at 38 ms each on a P30 — 2.75 s of blocked isolate and
+      // ~110 MB written. With a wall-clock interval the count is bounded by run
+      // duration instead, so a bigger vault costs no extra checkpoints.
+      //
+      // This run transfers 30 files against a local server in well under one
+      // interval, so a correct implementation checkpoints mid-loop zero times;
+      // the per-file version would have managed three.
+      NextcloudSync.checkpointInterval = const Duration(minutes: 5);
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+        for (var index = 0; index < 30; index++)
+          'notes/${index.toString().padLeft(2, '0')}.typ': _remoteText(
+            'remote $index',
+          ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_cadence_');
+      final storage = _CheckpointCountingStorage(dir);
+      final vault = Vault.withStorage(storage);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+
+      await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+      // The bootstrap marker plus the single post-loop save. Anything more means
+      // the per-file gate is back.
+      expect(
+        storage.checkpointWrites,
+        lessThanOrEqualTo(2),
+        reason: 'checkpointing more than twice for 30 files means the cadence '
+            'is scaling with file count again',
+      );
+      // Durability is unaffected: the run still persists every cursor at the end.
+      final saved =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map<String, Object?>;
+      expect((saved['cursors'] as Map).length, greaterThanOrEqualTo(30));
     },
   );
 
