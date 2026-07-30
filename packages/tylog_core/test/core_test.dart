@@ -448,6 +448,68 @@ void main() {
     final note = index.notesByPath['articles/a.typ']!;
     expect(suggestLinkTargets(note, index), isEmpty);
   });
+
+  test('batch suggestions match the per-note results', () {
+    // Correctness half: sharing a resolver must not change what is suggested.
+    const count = 50;
+    final index = VaultIndex(
+      notesByPath: {
+        for (var i = 0; i < count; i++)
+          'notes/n$i.typ': NoteRef(
+            id: 'n$i',
+            path: 'notes/n$i.typ',
+            title: 'Note $i',
+            outgoingLinks: const [],
+            tags: ['n${(i + 1) % count}', 'Note ${(i + 2) % count}'],
+          ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    expect(suggestLinkTargetsForNotes(index.notes, index), {
+      for (final note in index.notes)
+        note.path: suggestLinkTargets(note, index),
+    });
+  });
+
+  test('suggesting links for a whole vault stays linear', () {
+    // Relink vault and the post-import auto-linker both used to loop over
+    // suggestLinkTargets, which builds a whole-vault LinkResolver per call —
+    // quadratic. On a real 1700-article vault that was ~1700 rebuilds of the same
+    // four maps, tens of seconds of frozen UI for one menu tap.
+    //
+    // Sized so the margin is enormous rather than marginal, because a budget is
+    // only as good as its separation: measured on a fast laptop the batch form
+    // takes ~4 ms here while the per-note loop takes ~15 s. A 3 s budget is
+    // ~1000x above linear and ~5x below quadratic, so neither faster hardware nor
+    // a slow CI box can flip the verdict. (An earlier version used 2000 notes and
+    // 5 s, which the quadratic form passed in 1.5 s on this machine — the ratio,
+    // not the wall clock, is what has to be unambiguous.)
+    const count = 6000;
+    final index = VaultIndex(
+      notesByPath: {
+        for (var i = 0; i < count; i++)
+          'notes/n$i.typ': NoteRef(
+            id: 'n$i',
+            path: 'notes/n$i.typ',
+            title: 'Note $i',
+            outgoingLinks: const [],
+            // Points at its neighbour, so every note resolves to real work
+            // rather than missing the maps entirely.
+            tags: ['n${(i + 1) % count}'],
+          ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final stopwatch = Stopwatch()..start();
+    final suggestions = suggestLinkTargetsForNotes(index.notes, index);
+    stopwatch.stop();
+
+    expect(suggestions, hasLength(count));
+    expect(suggestions['notes/n0.typ'], ['notes/n1.typ']);
+    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 3)));
+  });
 }
 
 class _SourceInspector implements TypstInspector {

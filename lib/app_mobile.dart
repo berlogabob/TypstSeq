@@ -827,9 +827,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// shows a person/place/project icon; null when the index or target is absent.
   String? _resolveKind(String target) {
     final ix = index;
-    if (ix == null) return null;
-    final path = resolveLinkPath(ix, target);
-    return path == null ? null : ix.notesByPath[path]?.kind;
+    // The retained resolver, never a fresh one: this runs once per mention chip
+    // per span rebuild, and constructing a LinkResolver is O(vault). It is built
+    // wherever the index is published, so it is non-null whenever `ix` is.
+    final resolved = workspace.linkResolver?.resolve(target);
+    if (ix == null || resolved == null) return null;
+    return resolved.status == LinkResolutionStatus.resolved
+        ? ix.notesByPath[resolved.path]?.kind
+        : null;
   }
 
   /// Opens a `mailto:`/`http(s)` URL (e.g. an entity's email) in the OS handler.
@@ -1489,11 +1494,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentIndex = index;
     if (opened == null || currentIndex == null || paths.isEmpty) return;
     var appended = false;
-    for (final path in paths) {
-      final note = currentIndex.notesByPath[path];
-      if (note == null) continue;
-      final targets = suggestLinkTargets(note, currentIndex);
-      appended = await _appendRelatedSection(path, targets) > 0 || appended;
+    // One resolver for the batch: suggestLinkTargets builds a whole-vault
+    // LinkResolver per call, so calling it per imported article was quadratic.
+    final suggestions = suggestLinkTargetsForNotes(
+      [for (final path in paths) currentIndex.notesByPath[path]].nonNulls,
+      currentIndex,
+    );
+    for (final entry in suggestions.entries) {
+      appended =
+          await _appendRelatedSection(entry.key, entry.value) > 0 || appended;
     }
     if (appended) {
       await workspace.refreshIndex(updateStatus: false, always: true);
@@ -1538,9 +1547,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     await Future<void>.delayed(const Duration(milliseconds: 50));
     try {
+      // One resolver for every article, not one per article — the per-article
+      // form was quadratic and cost tens of seconds of frozen UI on a large
+      // vault (see suggestLinkTargetsForNotes).
+      final suggestions = suggestLinkTargetsForNotes(articles, idx);
       for (final note in articles) {
         final sourceCluster = communities.noteToCluster[note.path];
-        final targets = suggestLinkTargets(note, idx).where((targetPath) {
+        final targets = (suggestions[note.path] ?? const <String>[]).where((
+          targetPath,
+        ) {
           final targetCluster = communities.noteToCluster[targetPath];
           return sourceCluster == null ||
               targetCluster == null ||
@@ -1923,7 +1938,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (_) => KnowledgeScreen(
           initialView: initialView,
           index: ix,
-          search: searchIndex,
+          search: (query, tag) => workspace.searchNotes(query, tag: tag),
           problems: _knowledgeProblems(),
           onOpenNote: _openPath,
           onFixProblems: _fixProblems,
@@ -2083,8 +2098,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _setNoteProperty(note, 'relevance', relevance);
 
   String? _pathForLink(String title) {
-    final ix = index;
-    return ix == null ? null : resolveLinkPath(ix, title);
+    final resolved = workspace.linkResolver?.resolve(title);
+    return resolved?.status == LinkResolutionStatus.resolved
+        ? resolved!.path
+        : null;
   }
 
   LinkResolution _resolveLink(String title) {
@@ -3838,6 +3855,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'journal' => JournalFeed(
         vault: v,
         index: index,
+        resolveKind: _resolveKind,
         onOpenPath: (path) {
           primaryDestination = 1;
           unawaited(_openPath(path));
