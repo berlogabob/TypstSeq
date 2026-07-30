@@ -1938,7 +1938,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (_) => KnowledgeScreen(
           initialView: initialView,
           index: ix,
-          search: searchIndex,
+          search: (query, tag) => workspace.searchNotes(query, tag: tag),
           problems: _knowledgeProblems(),
           onOpenNote: _openPath,
           onFixProblems: _fixProblems,

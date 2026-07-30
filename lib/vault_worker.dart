@@ -73,6 +73,26 @@ class CancelWorkCommand extends VaultWorkerCommand {
   const CancelWorkCommand();
 }
 
+/// A full-text query, answered from the worker's own [PkmsSearchIndex].
+///
+/// Replies on [replyTo] rather than the event relay, and that is not a detail:
+/// [VaultWorkerClient.run] forwards *every* relay event into the in-flight
+/// command's stream, so a result arriving there would be delivered into a running
+/// rebuild and hit its `switch`. A private port keeps the two protocols apart.
+class SearchCommand extends VaultWorkerCommand {
+  const SearchCommand({
+    required this.query,
+    required this.replyTo,
+    this.tag,
+    this.limit = 50,
+  });
+
+  final String query;
+  final String? tag;
+  final int limit;
+  final SendPort replyTo;
+}
+
 class ShutdownCommand extends VaultWorkerCommand {
   const ShutdownCommand();
 }
@@ -105,11 +125,15 @@ class CommunitiesBuiltEvent extends VaultWorkerEvent {
   final CommunityMap communities;
 }
 
+/// Validation results only. The search index deliberately stays in the worker and
+/// is queried with [SearchCommand]: shipping it cost ~71 ms of root-isolate time
+/// per rebuild on a P30 — ~40 ms to deserialize 1806 documents and ~1M term
+/// entries, then ~31 ms for `replaceWith` to rebuild 107k posting Sets that the
+/// receiving constructor had *already* built once.
 class PkmsBuiltEvent extends VaultWorkerEvent {
-  const PkmsBuiltEvent(this.report, this.search);
+  const PkmsBuiltEvent(this.report);
 
   final PkmsValidationReport report;
-  final PkmsSearchIndex search;
 }
 
 class WorkDoneEvent extends VaultWorkerEvent {
@@ -147,6 +171,11 @@ class _VaultWorker {
   /// Kept across commands: `FlutterTypstInspector.create()` allocates a native
   /// engine, and re-creating one per incremental refresh would undo the point.
   FlutterTypstInspector? _inspector;
+
+  /// The search index lives here instead of crossing the port. Empty until the
+  /// first rebuild finishes, which mirrors what the UI used to hold in that
+  /// window anyway (`PkmsSearchIndex.empty()` from openVault).
+  PkmsSearchIndex _search = PkmsSearchIndex.empty();
   bool _cancelled = false;
   bool _busy = false;
 
@@ -162,6 +191,18 @@ class _VaultWorker {
         case ShutdownCommand():
           _cancelled = true;
           if (!_stopped.isCompleted) _stopped.complete();
+        case final SearchCommand command:
+          // Answered even while _busy, like Cancel above and for the same
+          // reason: `search` is synchronous, so handling it never awaits and the
+          // scanner's yield is enough to let it through mid-rebuild. Search must
+          // not wait on a scan that can take minutes.
+          command.replyTo.send(
+            _search.search(
+              command.query,
+              tag: command.tag,
+              limit: command.limit,
+            ),
+          );
         case final RebuildIndexCommand command:
           if (_busy) {
             _send(const WorkFailedEvent('worker busy'));
@@ -218,7 +259,12 @@ class _VaultWorker {
         previous: cached,
       );
       await search.saveStorage(_vault.storage, Vault.searchIndexPath);
-      _send(PkmsBuiltEvent(report, search));
+      // Published to this isolate's own field, not over the port. Swapped whole
+      // rather than `replaceWith`-ed: nothing here holds the old instance, so
+      // rebuilding 107k posting Sets to preserve an identity no one depends on
+      // would be pure waste.
+      _search = search;
+      _send(PkmsBuiltEvent(report));
       _send(const WorkDoneEvent());
     } on IndexBuildCancelled {
       _send(const WorkFailedEvent('cancelled', cancelled: true));
@@ -328,6 +374,44 @@ class VaultWorkerClient {
 
   /// Cooperative — observed at the scanner's per-32-note yield.
   void cancel() => _commands.send(const CancelWorkCommand());
+
+  /// Queries the worker's search index.
+  ///
+  /// Deliberately not routed through [run]: that is single-flight and would throw
+  /// during a rebuild, and its stream carries the rebuild's events. A per-query
+  /// port keeps this independent, so a search issued mid-rebuild is answered at
+  /// the scanner's next yield instead of waiting minutes for the scan to end.
+  Future<List<PkmsSearchResult>> search(
+    String query, {
+    String? tag,
+    int limit = 50,
+  }) async {
+    if (_relay.isClosed) return const [];
+    final reply = ReceivePort('tylog-vault-worker-search');
+    try {
+      _commands.send(
+        SearchCommand(
+          query: query,
+          tag: tag,
+          limit: limit,
+          replyTo: reply.sendPort,
+        ),
+      );
+      // A liveness guard, not a latency budget. The worker answers from its
+      // command listener without awaiting, and a scan in progress leaves that
+      // isolate idle between notes (the Typst compile is awaited, so the Rust
+      // work does not block Dart) — so a reply normally lands in milliseconds
+      // even mid-rebuild. This exists only so a worker killed with a query in
+      // flight cannot leave the caller hanging forever.
+      final results = await reply.first.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => const <PkmsSearchResult>[],
+      );
+      return results is List<PkmsSearchResult> ? results : const [];
+    } finally {
+      reply.close();
+    }
+  }
 
   Future<void> dispose() async {
     _commands.send(const ShutdownCommand());

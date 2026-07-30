@@ -543,9 +543,10 @@ class WorkspaceController extends ChangeNotifier {
             unawaited(_reconcileTasks(index.tasks));
           case CommunitiesBuiltEvent(:final communities):
             unawaited(refreshDerived(precomputed: communities));
-          case PkmsBuiltEvent(:final report, :final search):
+          case PkmsBuiltEvent(:final report):
+            // No search index to copy — it stays in the worker and is reached
+            // through [searchNotes].
             validation = _retainValidation(report);
-            searchIndex.replaceWith(search);
             if (showProgress) {
               status = 'Index rebuilt · ${report.summary()}';
             } else if (updateStatus) {
@@ -980,6 +981,23 @@ class WorkspaceController extends ChangeNotifier {
     _setDirty(false);
     savedRevision = editRevision;
     notifyListeners();
+  }
+
+  /// Full-text search, wherever the index happens to live.
+  ///
+  /// On the worker path it is a message round-trip; on the in-process path (an
+  /// explicit [inspector], i.e. tests) it queries the local [searchIndex]. Async
+  /// either way so callers do not have to know which.
+  Future<List<PkmsSearchResult>> searchNotes(
+    String query, {
+    String? tag,
+    int limit = 50,
+  }) async {
+    final worker = _worker;
+    if (worker == null) {
+      return searchIndex.search(query, tag: tag, limit: limit);
+    }
+    return worker.search(query, tag: tag, limit: limit);
   }
 
   Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(

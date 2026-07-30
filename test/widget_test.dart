@@ -6,7 +6,6 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/nextcloud_sync.dart';
-import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
@@ -928,7 +927,7 @@ KnowledgeScreen _knowledgeScreen({
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
-  search: PkmsSearchIndex.empty(),
+  search: (_, _) async => const [],
   problems: problems,
   onOpenNote: onOpenNote ?? (_) {},
   onFixProblems: onFixProblems,

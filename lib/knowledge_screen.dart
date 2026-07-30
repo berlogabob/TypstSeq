@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'models.dart';
@@ -18,7 +20,13 @@ class KnowledgeScreen extends StatefulWidget {
 
   final KnowledgeView initialView;
   final VaultIndex index;
-  final PkmsSearchIndex search;
+
+  /// Runs a full-text query. A callback rather than a [PkmsSearchIndex] because
+  /// the index itself lives in the worker isolate — shipping it to the UI cost
+  /// ~71 ms of root-isolate time per rebuild on a P30.
+  final Future<List<PkmsSearchResult>> Function(String query, String? tag)
+  search;
+
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
 
@@ -45,6 +53,15 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   String query = '';
   String? selectedTag;
   final _searchController = TextEditingController();
+
+  /// Results now arrive asynchronously, so they need somewhere to live.
+  List<PkmsSearchResult> _results = const [];
+  Timer? _searchDebounce;
+
+  /// Guards against a slow reply overwriting a newer one. The query has *two*
+  /// inputs (text and tag) reachable from three places, so comparing the reply
+  /// against the current text alone would not be enough.
+  int _searchGeneration = 0;
   // Codes with more than 5 problems collapse to one summary tile (a single
   // failing inspector can dead-mark itself for the rest of a scan and flood
   // this list with one unactionable row per article otherwise).
@@ -83,9 +100,44 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // The screen can open straight onto Search with a tag or empty query, and
+    // an empty query is a real query here (it lists everything).
+    _runSearch(immediate: true);
+  }
+
+  @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Re-queries for the current [query]/[selectedTag].
+  ///
+  /// Debounced because it now crosses an isolate boundary and the field fires on
+  /// every keystroke. [immediate] skips the wait for the paths where the user did
+  /// not type — first open, and picking or clearing a tag chip — so those feel
+  /// instant.
+  void _runSearch({bool immediate = false}) {
+    _searchDebounce?.cancel();
+    final generation = ++_searchGeneration;
+    Future<void> run() async {
+      final results = await widget.search(query, selectedTag);
+      // A newer query was issued while this one was in flight; its own reply owns
+      // the results now.
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() => _results = results);
+    }
+
+    if (immediate) {
+      unawaited(run());
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 120), () {
+      unawaited(run());
+    });
   }
 
   @override
@@ -130,7 +182,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ..sort((a, b) => tagCounts[b]!.compareTo(tagCounts[a]!)))
               .take(8)
               .toList();
-    final results = widget.search.search(query, tag: selectedTag);
+    final results = _results;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: 1 + results.length,
@@ -147,7 +199,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   prefixIcon: Icon(Icons.search),
                   hintText: 'Search notes, tasks, and attachments',
                 ),
-                onChanged: (value) => setState(() => query = value),
+                onChanged: (value) {
+                  setState(() => query = value);
+                  _runSearch();
+                },
               ),
               if (tagSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -159,11 +214,14 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                       ChoiceChip(
                         label: Text('#$tag'),
                         selected: false,
-                        onSelected: (_) => setState(() {
-                          selectedTag = tag;
-                          query = '';
-                          _searchController.clear();
-                        }),
+                        onSelected: (_) {
+                          setState(() {
+                            selectedTag = tag;
+                            query = '';
+                            _searchController.clear();
+                          });
+                          _runSearch(immediate: true);
+                        },
                       ),
                   ],
                 ),
@@ -173,7 +231,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: InputChip(
                     label: Text('#$selectedTag'),
-                    onDeleted: () => setState(() => selectedTag = null),
+                    onDeleted: () {
+                      setState(() => selectedTag = null);
+                      _runSearch(immediate: true);
+                    },
                   ),
                 ),
               const SizedBox(height: 8),

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:tylog/search_index.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_worker.dart';
@@ -67,8 +68,52 @@ void main() {
     // isolate never copies the index to compute them.
     expect(events.whereType<CommunitiesBuiltEvent>(), hasLength(1));
     final pkms = events.whereType<PkmsBuiltEvent>().single;
-    expect(pkms.search.search('spike'), isNotEmpty);
     expect(pkms.report.summary(), contains('errors='));
+
+    // The search index deliberately never crosses the port; it is queried in
+    // place. This is the pin that the worker answers a search at all.
+    expect(await worker.search('spike'), isNotEmpty);
+    expect(
+      (await worker.search('spike')).map((r) => r.path),
+      contains('notes/Note0.typ'),
+    );
+    expect(await worker.search('nothingmatchesthis'), isEmpty);
+  });
+
+  testWidgets('search is answered while a rebuild is running', (_) async {
+    // The risky half of keeping the index in the worker. `run` is single-flight,
+    // so a query cannot go through it during a rebuild; SearchCommand takes its
+    // own reply port and is handled without awaiting, like Cancel. If either of
+    // those were wrong this would hang or throw rather than answer.
+    final vault = await seed(400);
+    final worker = await VaultWorkerClient.spawn(entry: vault.entry);
+    addTearDown(worker.dispose);
+
+    // Populate the worker's index first, so there is something to find.
+    await worker.run(const RebuildIndexCommand(force: true, stale: {})).toList();
+
+    List<PkmsSearchResult>? midScan;
+    // `await for`, not `forEach`: forEach does not await an async callback, so the
+    // reply could have landed after the rebuild finished and the test would have
+    // proved nothing. Awaiting inside the loop means the reply demonstrably
+    // arrives while the worker is still scanning.
+    await for (final event in worker.run(
+      const RebuildIndexCommand(force: true, stale: {}),
+    )) {
+      if (event is IndexProgressEvent &&
+          event.complete >= 100 &&
+          event.complete < event.total &&
+          midScan == null) {
+        midScan = await worker.search('spike');
+      }
+    }
+
+    expect(
+      midScan,
+      isNotNull,
+      reason: 'no progress tick arrived, so nothing was queried mid-scan',
+    );
+    expect(midScan, isNotEmpty);
   });
 
   testWidgets('cancel is observed mid-scan and reported as cancelled', (
