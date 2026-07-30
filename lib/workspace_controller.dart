@@ -168,6 +168,10 @@ class WorkspaceController extends ChangeNotifier {
   /// worker is single-flight by design).
   bool _indexing = false;
 
+  /// A scan asked for while one was already running. Coalesced rather than
+  /// dropped — see [_scan].
+  bool _rescanQueued = false;
+
   Timer? _autosave;
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
@@ -433,26 +437,66 @@ class WorkspaceController extends ChangeNotifier {
   /// [showProgress] drives the progress bar and the running status line;
   /// [updateStatus] is the refresh path's quieter switch for callers that own
   /// the status line themselves.
+  /// [onProgress] replaces the built-in progress reporting for callers that own
+  /// the status line themselves — [syncNow] drives [rebuildProgress] and
+  /// [syncProgressTick] instead of `status` + `notifyListeners`.
   Future<void> _scan(
     Vault opened, {
     bool force = false,
     bool showProgress = false,
     bool updateStatus = true,
+    void Function(int complete, int total)? onProgress,
   }) async {
+    if (_indexing) {
+      // Never drop the trigger. A sync that just downloaded files must get a
+      // scan even if one was already running when it landed, or those bytes stay
+      // unindexed until some unrelated edit happens to schedule another — a
+      // download bumps no revision, so the `indexedRevision >= savedRevision`
+      // guard in refreshIndex would not re-run on its own.
+      _rescanQueued = true;
+      return;
+    }
     _indexing = true;
-    final revision = savedRevision;
     try {
-      final worker = _worker;
-      if (worker == null) {
-        await _scanInProcess(
+      // Repeats are never forced: a queued scan is there to pick up new bytes,
+      // not to re-compile the whole vault a second time.
+      var repeat = false;
+      do {
+        _rescanQueued = false;
+        await _scanOnce(
           opened,
-          revision: revision,
-          force: force,
+          force: force && !repeat,
           showProgress: showProgress,
           updateStatus: updateStatus,
+          onProgress: onProgress,
         );
-        return;
-      }
+        repeat = true;
+      } while (_rescanQueued && opened == vault && !_disposed);
+    } finally {
+      _indexing = false;
+    }
+  }
+
+  Future<void> _scanOnce(
+    Vault opened, {
+    required bool force,
+    required bool showProgress,
+    required bool updateStatus,
+    required void Function(int complete, int total)? onProgress,
+  }) async {
+    final revision = savedRevision;
+    final worker = _worker;
+    if (worker == null) {
+      await _scanInProcess(
+        opened,
+        revision: revision,
+        force: force,
+        showProgress: showProgress,
+        updateStatus: updateStatus,
+        onProgress: onProgress,
+      );
+      return;
+    }
       // The worker holds its own Vault, which never saw this one's saveNote
       // calls, so the pending set travels with the command and is cleared only
       // once the scan reports back covering it.
@@ -464,10 +508,13 @@ class WorkspaceController extends ChangeNotifier {
         if (opened != vault) return;
         switch (event) {
           case IndexProgressEvent(:final complete, :final total):
-            if (!showProgress) break;
-            rebuildProgress = total == 0 ? 1 : complete / total;
-            status = 'Rebuilding index: $complete / $total';
-            notifyListeners();
+            if (onProgress != null) {
+              onProgress(complete, total);
+            } else if (showProgress) {
+              rebuildProgress = total == 0 ? 1 : complete / total;
+              status = 'Rebuilding index: $complete / $total';
+              notifyListeners();
+            }
           case IndexBuiltEvent(:final index):
             // Publish notes and tasks now, before the much slower validation +
             // search-index build — on SAF vaults that build reads many files and
@@ -505,9 +552,6 @@ class WorkspaceController extends ChangeNotifier {
             break;
         }
       }
-    } finally {
-      _indexing = false;
-    }
   }
 
   /// Pre-worker path, kept for controllers built with an explicit [inspector]
@@ -518,6 +562,7 @@ class WorkspaceController extends ChangeNotifier {
     required bool force,
     required bool showProgress,
     required bool updateStatus,
+    void Function(int complete, int total)? onProgress,
   }) async {
     try {
       final built = await opened.rebuildIndex(
@@ -525,14 +570,20 @@ class WorkspaceController extends ChangeNotifier {
         force: force,
         deviceId: deviceId,
         isCancelled: showProgress ? () => cancelRebuild : null,
-        onProgress: showProgress
-            ? (complete, total) {
+        // Throttled here rather than in the callback so both paths tick at the
+        // same rate — the worker path throttles worker-side, before the port.
+        onProgress: (onProgress == null && !showProgress)
+            ? null
+            : (complete, total) {
                 if (complete % 100 != 0 && complete != total) return;
+                if (onProgress != null) {
+                  onProgress(complete, total);
+                  return;
+                }
                 rebuildProgress = total == 0 ? 1 : complete / total;
                 status = 'Rebuilding index: $complete / $total';
                 notifyListeners();
-              }
-            : null,
+              },
       );
       if (showProgress) {
         if (opened != vault) return;
@@ -765,7 +816,6 @@ class WorkspaceController extends ChangeNotifier {
           source = diskSource ?? '';
         }
       }
-      final indexedThroughRevision = savedRevision;
       final conflicts = await loadSyncConflicts(opened);
       if (result.requiresIndexRefresh ||
           concurrentConflict ||
@@ -774,20 +824,20 @@ class WorkspaceController extends ChangeNotifier {
         rebuildProgress = 0;
         notifyListeners();
         try {
-          final built = await opened.rebuildIndex(
-            inspector: inspector,
+          // Through _scan, not opened.rebuildIndex: this is the *most frequent*
+          // reindex trigger — any sync that changed anything — so running it
+          // inline here would have left the common case on the root isolate and
+          // undone the whole point of the worker. Sync owns the status line, so
+          // the built-in status updates are suppressed and progress is routed to
+          // syncProgressTick instead.
+          await _scan(
+            opened,
+            updateStatus: false,
             onProgress: (complete, total) {
-              if (complete % 100 != 0 && complete != total) return;
               rebuildProgress = total == 0 ? 1 : complete / total;
               syncProgressTick.notifyListeners();
             },
           );
-          final pkms = await _readPkms(opened, built);
-          index = _retainIndex(built);
-          unawaited(refreshDerived());
-          validation = _retainValidation(pkms.report);
-          searchIndex.replaceWith(pkms.search);
-          indexedRevision = indexedThroughRevision;
           // A pulled _system/reading/<device>.json flips requiresIndexRefresh
           // too, so this is the reload point for cross-device progress.
           await reloadReadingState();

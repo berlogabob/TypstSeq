@@ -298,11 +298,16 @@ class VaultWorkerClient {
 
   /// Runs one command, yielding its events until a terminal one.
   ///
-  /// Single-flight: the caller must not start a second [run] before the first
-  /// completes. [WorkspaceController] already serialises rebuilds behind its
-  /// `rebuilding` flag, and the worker rejects an overlap rather than corrupting
-  /// its state.
+  /// Single-flight, and enforced rather than assumed: every [run] subscribes to
+  /// the same relay, so two overlapping runs would each receive the *other's*
+  /// events and both mis-report. Throwing here turns that into an obvious bug at
+  /// the call site instead of silent cross-talk.
   Stream<VaultWorkerEvent> run(VaultWorkerCommand command) {
+    if (_running) {
+      throw StateError('VaultWorkerClient.run is single-flight; a command is '
+          'already in flight');
+    }
+    _running = true;
     // Buffered (non-broadcast) on purpose: the command goes out before the
     // caller has listened, so early events must queue rather than be dropped.
     final out = StreamController<VaultWorkerEvent>();
@@ -310,6 +315,7 @@ class VaultWorkerClient {
     events = _stream.listen((event) {
       out.add(event);
       if (event is WorkDoneEvent || event is WorkFailedEvent) {
+        _running = false;
         unawaited(events.cancel());
         unawaited(out.close());
       }
@@ -317,6 +323,8 @@ class VaultWorkerClient {
     _commands.send(command);
     return out.stream;
   }
+
+  bool _running = false;
 
   /// Cooperative — observed at the scanner's per-32-note yield.
   void cancel() => _commands.send(const CancelWorkCommand());

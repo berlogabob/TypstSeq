@@ -552,12 +552,65 @@ void main() {
       expect(await controller.syncNow(trigger: 'setup'), isTrue);
 
       expect(tickCount, greaterThan(0));
-      // Bounded: only the handful of once-per-run transitions (start, maybe
-      // index-rebuild-stage, success, finally) should hit the general
-      // channel -- not once per file/stage transition.
-      expect(notifyCount, lessThanOrEqualTo(5));
+      // Bounded: only the handful of once-per-run transitions should hit the
+      // general channel -- not once per file/stage transition. Those are start,
+      // index-local-changes stage, the index publish, communities landing,
+      // success, and finally. The index publish and communities were added when
+      // the post-sync reindex moved onto `_scan`: it now publishes the index as
+      // promptly as every other scan path instead of letting the end-of-sync
+      // notify cover it. `refreshDerived` is unawaited, so its notify may or may
+      // not land before syncNow returns -- hence a bound, not an equality.
+      expect(notifyCount, lessThanOrEqualTo(8));
     },
   );
+
+  test('the post-sync reindex goes through the scan driver, not an inline one', () async {
+    // The post-sync reindex is the *most frequent* reindex trigger — any sync
+    // that changed anything — and it used to call `opened.rebuildIndex` inline,
+    // bypassing the worker entirely. Nothing pinned that, so nothing noticed.
+    //
+    // The donor file is the observable proof: the inline call passed no
+    // `deviceId`, so `_writeIndexDonor` never ran on this path. Going through
+    // `_scan` supplies it, which both fixes the missing donor (peers were not
+    // seeing this device's notes after a sync-triggered reindex) and shows the
+    // reindex is on the shared driver rather than a hand-rolled copy.
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    controller.deviceId = 'test-device';
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = server.config;
+
+    const donor = '_system/index/test-device.json';
+    // Whatever the open-time rebuild published, so the assertion below is about
+    // the sync path and not about openVault.
+    await storage.delete(donor);
+
+    // An unsaved edit guarantees the reindex branch is taken: syncNow flushes it,
+    // which lifts savedRevision above indexedRevision.
+    controller.edit('#import "/_system/tylog.typ" as tylog\n// synced edit\n');
+    expect(await controller.syncNow(trigger: 'setup'), isTrue);
+
+    expect(
+      await storage.exists(donor),
+      isTrue,
+      reason: 'the sync-triggered reindex did not publish the index donor, so it '
+          'is not going through _scan',
+    );
+  });
 
   test('sync errors explain resumable network and authentication failures', () {
     expect(
