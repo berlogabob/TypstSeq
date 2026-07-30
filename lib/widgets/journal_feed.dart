@@ -2,7 +2,6 @@ import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:tylog_core/scanner.dart' show resolveLinkPath;
 
 import '../models.dart';
 import '../rich_editor.dart';
@@ -16,11 +15,17 @@ class JournalFeed extends StatefulWidget {
     required this.vault,
     required this.index,
     required this.onOpenPath,
+    this.resolveKind,
   });
 
   final Vault? vault;
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
+
+  /// Note kind behind a `#tylog.ref-note` target, for the chip icon. Supplied by
+  /// the shell so it can use the retained [LinkResolver] — this used to be
+  /// computed here, which meant building a whole-vault resolver per chip.
+  final String? Function(String target)? resolveKind;
 
   @override
   State<JournalFeed> createState() => _JournalFeedState();
@@ -35,13 +40,6 @@ class _JournalFeedState extends State<JournalFeed> {
     } catch (_) {
       return null;
     }
-  }
-
-  String? _resolveKind(String target) {
-    final idx = widget.index;
-    if (idx == null) return null;
-    final path = resolveLinkPath(idx, target);
-    return path == null ? null : idx.notesByPath[path]?.kind;
   }
 
   final sources = <String, Future<String>>{};
@@ -205,7 +203,7 @@ class _JournalFeedState extends State<JournalFeed> {
                       return TyLogReadView(
                         source: snapshot.data!,
                         imageResolver: _readAsset,
-                        resolveKind: _resolveKind,
+                        resolveKind: widget.resolveKind,
                       );
                     },
                   ),

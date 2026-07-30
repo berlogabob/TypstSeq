@@ -103,11 +103,15 @@ class WorkspaceController extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// Refreshes [communities] and [linkResolver] for the current index.
+  /// Refreshes [communities] for the current index.
   ///
   /// Cheap to call repeatedly: it returns immediately once the current
   /// revision has been derived. Fire-and-forget — callers do not await it, and
   /// the UI renders with the previous (or null) values until it lands.
+  ///
+  /// [linkResolver] is *not* built here — it is built wherever the index is
+  /// published ([_retainIndex] and [openVault]), because its consumers run inside
+  /// build and cannot wait for a fire-and-forget pass to land.
   ///
   /// [precomputed] short-circuits the community pass for the worker path, which
   /// already ran it next to the scan that produced the index. That matters more
@@ -118,7 +122,6 @@ class WorkspaceController extends ChangeNotifier {
     final revision = indexRevision;
     final current = index;
     if (_disposed || current == null || _derivedRevision == revision) return;
-    linkResolver = LinkResolver(current.notes);
     final CommunityMap next;
     try {
       next = precomputed ?? await compute(computeCommunitiesIsolate, current);
@@ -201,6 +204,9 @@ class WorkspaceController extends ChangeNotifier {
     entry = null;
     note = null;
     index = null;
+    // Tied to the index it was built from — a closed vault must not leave a
+    // resolver behind that still answers for the old one.
+    linkResolver = null;
     validation = null;
     searchIndex = PkmsSearchIndex.empty();
     helperSource = '';
@@ -283,7 +289,14 @@ class WorkspaceController extends ChangeNotifier {
       vault = opened;
       entry = next;
       note = today;
-      index = await opened.loadIndex();
+      final loaded = await opened.loadIndex();
+      index = loaded;
+      // Not via _retainIndex — a new vault must not inherit the previous one's
+      // index object. But the resolver still has to exist from the moment the
+      // index does: this is the fast path, so the editor starts rendering
+      // mention chips well before the first scan finishes, and until now
+      // linkResolver stayed null for all of that window.
+      linkResolver = loaded == null ? null : LinkResolver(loaded.notes);
       validation = null;
       searchIndex = PkmsSearchIndex.empty();
       helperSource = await opened.storage.readText(Vault.helperPath);
@@ -519,9 +532,8 @@ class WorkspaceController extends ChangeNotifier {
             // Publish notes and tasks now, before the much slower validation +
             // search-index build — on SAF vaults that build reads many files and
             // must never gate the notes the UI needs (Journal, Library, Today).
+            // _retainIndex builds linkResolver too; communities arrive below.
             this.index = _retainIndex(index);
-            // O(n) and main-thread by design; communities arrive below.
-            linkResolver = LinkResolver(index.notes);
             indexedRevision = revision;
             opened.clearStaleNotes(stale);
             if (showProgress) {
@@ -1007,6 +1019,12 @@ class WorkspaceController extends ChangeNotifier {
     // identity never changes, so `identical(index, cached)` would be true
     // forever and the cache would never invalidate.
     indexRevision++;
+    // Every index assignment funnels through here, which makes this the one
+    // place that can guarantee the resolver is never stale-or-absent while an
+    // index exists. That matters because the callers that need it run inside
+    // build: without a retained resolver they each construct a whole-vault one
+    // per link (O(vault) per mention chip per repaint).
+    linkResolver = LinkResolver(next.notes);
     final current = index;
     if (current == null || current.version != next.version) return next;
     current.notesByPath

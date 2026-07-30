@@ -685,8 +685,16 @@ LinkResolution resolveLink(VaultIndex index, String target) =>
 /// own tags/citations/string properties against the same exact-match
 /// id/alias/title/stem maps [LinkResolver] already uses to resolve
 /// `#tylog.ref-note(...)` targets. No fuzzy matching.
-List<String> suggestLinkTargets(NoteRef note, VaultIndex index) {
-  final resolver = LinkResolver(index.notes);
+///
+/// Pass [resolver] to reuse one across many notes — building it is O(vault), so
+/// calling this in a loop without it is quadratic. [suggestLinkTargetsForNotes]
+/// does that for you and is what batch callers should use.
+List<String> suggestLinkTargets(
+  NoteRef note,
+  VaultIndex index, {
+  LinkResolver? shared,
+}) {
+  final resolver = shared ?? LinkResolver(index.notes);
   final candidates = <String>{
     ...note.tags,
     ...note.citations,
@@ -705,6 +713,22 @@ List<String> suggestLinkTargets(NoteRef note, VaultIndex index) {
     }
   }
   return targets.toList()..sort();
+}
+
+/// [suggestLinkTargets] for many notes, sharing one [LinkResolver].
+///
+/// Batch callers must use this rather than looping: the resolver is O(vault) to
+/// build, so a per-note loop is quadratic — Relink vault over ~1700 articles was
+/// tens of seconds of frozen UI before this existed. Returns note path → targets.
+Map<String, List<String>> suggestLinkTargetsForNotes(
+  Iterable<NoteRef> notes,
+  VaultIndex index,
+) {
+  final shared = LinkResolver(index.notes);
+  return {
+    for (final note in notes)
+      note.path: suggestLinkTargets(note, index, shared: shared),
+  };
 }
 
 String replaceNoteHeader(String source, NoteMetadataDraft draft) {

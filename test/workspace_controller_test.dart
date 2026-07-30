@@ -258,6 +258,52 @@ void main() {
     },
   );
 
+  test('the link resolver exists as soon as the index does, at open', () async {
+    // The mention-chip icon path (_resolveKind) resolves links on every span
+    // rebuild. It used to build a whole-vault LinkResolver per chip; it now reads
+    // the retained one, so that one must exist the moment `index` does — not
+    // after the first scan lands. openVault's fast path assigns index from
+    // index.json and does not go through _retainIndex, so it is the gap that
+    // mattered: the editor renders chips during exactly that window.
+    final storage = _MemoryStorage();
+
+    // First open leaves a current index.json behind.
+    final warmup = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    await warmup.openVault(
+      const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => warmup.index != null);
+    warmup.dispose();
+
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
+      storage: storage,
+    );
+
+    // Deliberately no _waitUntil on the scan: this asserts the state right after
+    // the fast path, which is the whole point.
+    expect(controller.index, isNotNull);
+    expect(controller.linkResolver, isNotNull);
+
+    controller.close('done');
+    expect(
+      controller.linkResolver,
+      isNull,
+      reason: 'a closed vault must not leave a resolver answering for it',
+    );
+  });
+
   test('index-derived state is computed once per index, not per build', () async {
     final storage = _MemoryStorage();
     final controller = WorkspaceController(
