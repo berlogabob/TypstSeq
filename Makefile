@@ -4,7 +4,7 @@ APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
 OWNER_REPO ?= berlogabob/TypstSeq
 
-.PHONY: help setup-native test-core test-typst test verify build-android release
+.PHONY: help setup-native test-core test-typst test verify verify-android build-android release
 
 help:
 	@echo "TyLog release commands"
@@ -12,6 +12,7 @@ help:
 	@echo "  make test-core     # run Flutter-independent core and CLI tests"
 	@echo "  make test-typst    # compile/query the Typst package and format fixture"
 	@echo "  make verify        # run analysis, tests, native integration, and release builds"
+	@echo "  make verify-android # worker checks that need a real device (SAF, jank, attribution)"
 	@echo "  make bump-version   # 1.0.0+1 -> 1.0.0+2"
 	@echo "  make build-android  # build release APK"
 	@echo "  make release        # bump, test, APK, commit, tag, push; Actions publishes"
@@ -39,9 +40,24 @@ test: test-core test-typst
 verify: test
 	@flutter test integration_test/pkms_native_test.dart -d macos
 	@flutter test integration_test/markdown_import_native_test.dart -d macos
+	@flutter test integration_test/vault_worker_native_test.dart -d macos
+	@flutter test integration_test/vault_worker_jank_test.dart -d macos
 	@flutter build apk --release
 	@flutter build macos --release
 	@if [ "$$(uname -s)" = Linux ]; then flutter build linux; else echo "Skipping Linux build on $$(uname -s); covered by CI."; fi
+
+# Worker checks that need real hardware, so they cannot live in `verify` (which
+# runs on macOS) or in CI (which has no device). ANDROID_DEVICE defaults to the
+# only attached device. vault_worker_saf_test is Android-only by construction: it
+# probes SafBridge from a background isolate, which has no desktop equivalent.
+ANDROID_DEVICE ?= $(shell adb devices | awk 'NR>1 && $$2=="device" {print $$1; exit}')
+verify-android:
+	@if [ -z "$(ANDROID_DEVICE)" ]; then echo "No Android device attached (adb devices)."; exit 1; fi
+	@echo "Using device $(ANDROID_DEVICE)"
+	@flutter test integration_test/vault_worker_saf_test.dart -d $(ANDROID_DEVICE)
+	@flutter test integration_test/vault_worker_native_test.dart -d $(ANDROID_DEVICE)
+	@flutter test integration_test/vault_worker_jank_test.dart -d $(ANDROID_DEVICE)
+	@flutter test integration_test/vault_worker_attribution_test.dart -d $(ANDROID_DEVICE)
 
 build-android:
 	@flutter build apk --release

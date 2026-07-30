@@ -47,8 +47,14 @@ class VaultWorkerBoot {
   final SendPort events;
   final String? deviceId;
 
-  /// Null off Android. There, it is what lets the worker reach the SAF
-  /// `MethodChannel` at all — every vault read goes through it.
+  /// Non-null on every platform — it is a property of being spawned from a root
+  /// isolate, not of Android. Only *Android* has anything to use it for: there
+  /// `VaultEntry.storage` returns an `AndroidTreeVaultStorage`, so every vault
+  /// read is a SAF `MethodChannel` call that a background isolate cannot make
+  /// without it. Elsewhere the worker gets a `LocalVaultStorage`, which is pure
+  /// `dart:io` and needs no channel, so passing the token is harmless ballast.
+  ///
+  /// Nullable only so a caller can deliberately withhold it.
   final RootIsolateToken? rootIsolateToken;
 }
 
@@ -249,6 +255,25 @@ class _VaultWorker {
       // Unparseable task recurrence rules — rrule lives in the app layer, not
       // tylog_core — into the same Problems report the UI already shows.
       report.problems.addAll(validateTaskRecurrences(index.tasks));
+      final inspectorError = _inspectorError;
+      if (inspectorError != null) {
+        // Same channel as every other degradation, so it needs no new event, no
+        // controller plumbing and no UI: Problems already renders this list.
+        report.problems.add(
+          PkmsProblem(
+            code: 'typst-engine-unavailable',
+            severity: PkmsSeverity.error,
+            subject: '_system',
+            message:
+                'Native Typst did not start, so note metadata came from source '
+                'parsing instead of a Typst query.',
+            fix:
+                'Usually a missing or mismatched native library — rebuild it '
+                '(make setup-native) and reinstall.',
+            detail: inspectorError,
+          ),
+        );
+      }
       final cached = await PkmsSearchIndex.loadStorage(
         _vault.storage,
         Vault.searchIndexPath,
@@ -275,11 +300,23 @@ class _VaultWorker {
     }
   }
 
+  /// Why native Typst is unavailable, if it is. Reported as a problem rather than
+  /// swallowed: without it, a failed `RustLib.init()` — a stale or mismatched
+  /// `.so` is the usual cause — degrades every note to `metadataSource:
+  /// 'fallback'` with nothing anywhere to say so. macOS and Android are covered by
+  /// tests; iOS and Linux are not, so silence there would be indistinguishable
+  /// from working.
+  String? _inspectorError;
+
   Future<FlutterTypstInspector?> _createInspector() async {
     try {
-      return await FlutterTypstInspector.create();
-    } catch (_) {
-      // Native Typst is optional; the scanner falls back to source parsing.
+      final inspector = await FlutterTypstInspector.create();
+      _inspectorError = null;
+      return inspector;
+    } catch (error) {
+      // Native Typst stays optional — the scanner falls back to source parsing —
+      // but the degradation is now visible in the Problems report.
+      _inspectorError = '$error';
       return null;
     }
   }
