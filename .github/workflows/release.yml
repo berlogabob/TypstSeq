@@ -33,8 +33,27 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: packages/typst_flutter/.typst_flutter_prebuilt
-          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml', 'packages/typst_flutter/rust/**') }}
+      # Keeps the Rust rebuild incremental across runs; the source build itself is
+      # not optional here (see the assert below).
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            packages/typst_flutter/.native-build-1.92.0-rustup-android
+          key: native-android-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+          restore-keys: native-android-
       - run: ./tool/setup_typst_native.sh
+      - name: Refuse to ship a downloaded native library
+        # The Android .so used to come from the pinned upstream release, because
+        # every Rust build in setup_typst_native.sh sat behind a Darwin check. That
+        # library links and installs fine but has a different flutter_rust_bridge
+        # content hash than this fork, so RustLib.init() rejects it and the app runs
+        # with no Typst engine at all. Nothing failed loudly, so every published APK
+        # shipped that way.
+        run: ./tool/assert_source_built.sh android
       - name: Configure release signing
         if: github.event_name != 'pull_request'
         env:
@@ -70,8 +89,19 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: packages/typst_flutter/.typst_flutter_prebuilt
-          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
-      - run: ./tool/setup_typst_native.sh
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml', 'packages/typst_flutter/rust/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/typst_flutter/.native-build-1.92.0-rustup-linux
+          key: native-linux-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+          restore-keys: native-linux-
+      # Android is not needed for a Linux bundle, and cargo-ndk plus four ABIs is
+      # the slowest part of the script.
+      - run: TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh
+      - run: ./tool/assert_source_built.sh linux
       - run: flutter build linux --release
       - run: tar czf TyLog-linux-x64.tar.gz -C build/linux/x64/release/bundle .
       - name: Build AppImage
@@ -117,8 +147,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: packages/typst_flutter/.typst_flutter_prebuilt
-          key: prebuilt-macos-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
+          key: prebuilt-macos-${{ hashFiles('packages/typst_flutter/pubspec.yaml', 'packages/typst_flutter/rust/**') }}
+      # Android is built by the android job on its own runner, so skip it here.
       - run: TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh
+      - run: ./tool/assert_source_built.sh macos ios
       # typst_flutter's Package.swift links the .a via a relative -Xlinker
       # path that xcodebuild resolves against the repo parent on CI runners
       # (locally it resolves against the package dir). Mirror the prebuilt
@@ -147,7 +179,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          fail_on_unmatched_files: false
+          # A missing artifact means a platform build silently failed. Publishing an
+          # incomplete release quietly is worse than not publishing.
+          fail_on_unmatched_files: true
           files: |
             dist/tylog-android.apk
             dist/TyLog-x86_64.AppImage

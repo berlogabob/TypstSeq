@@ -33,8 +33,12 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: packages/typst_flutter/.typst_flutter_prebuilt
-          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml') }}
-      - run: ./tool/setup_typst_native.sh
+          # Must include rust/, or a Rust edit reuses a cache built before it. The
+          # old key hashed only pubspec.yaml, whose version line has never changed.
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml', 'packages/typst_flutter/rust/**') }}
+      # Analysis and tests never load the native library, so skip the Rust build
+      # here. The release jobs build it and assert the result.
+      - run: TYLOG_SKIP_SOURCE_BUILD=1 ./tool/setup_typst_native.sh
       - run: make test-typst
       - run: make test-core
       - run: flutter analyze
