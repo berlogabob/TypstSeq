@@ -7,11 +7,14 @@
           android:inset="16%" />
   </foreground>
   <!-- Themed icons (Android 13+): without this, launchers in themed mode
-       improvise by shrinking the foreground into a tiny disc. The tint uses
-       the drawable's alpha, so the colored network reads as a silhouette. -->
+       improvise by shrinking the foreground into a tiny disc. A dedicated
+       bold silhouette (dilated alpha), not the raw foreground: 1px arcs
+       evaporate at 48px and the ring reads as cut off.
+       NOTE: `dart run flutter_launcher_icons` overwrites this file — re-add
+       this block after regenerating. -->
   <monochrome>
       <inset
-          android:drawable="@drawable/ic_launcher_foreground"
-          android:inset="16%" />
+          android:drawable="@drawable/ic_launcher_monochrome"
+          android:inset="10%" />
   </monochrome>
 </adaptive-icon>
