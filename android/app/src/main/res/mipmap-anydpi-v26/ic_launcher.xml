@@ -6,4 +6,12 @@
           android:drawable="@drawable/ic_launcher_foreground"
           android:inset="16%" />
   </foreground>
+  <!-- Themed icons (Android 13+): without this, launchers in themed mode
+       improvise by shrinking the foreground into a tiny disc. The tint uses
+       the drawable's alpha, so the colored network reads as a silhouette. -->
+  <monochrome>
+      <inset
+          android:drawable="@drawable/ic_launcher_foreground"
+          android:inset="16%" />
+  </monochrome>
 </adaptive-icon>
