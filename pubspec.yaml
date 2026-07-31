@@ -104,8 +104,18 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
+# Per-platform sources, all derived from docs/brand/tylog-app-icon.png:
+# - the "square" is full-bleed and opaque, because iOS and legacy Android
+#   launchers apply their own mask — feeding them a pre-rounded icon gets
+#   white corners (iOS fills removed alpha) and a squircle-inside-squircle
+#   (EMUI wraps the legacy PNG in its own shape)
+# - the macOS variant keeps Apple's template margin (824px squircle on a
+#   1024 transparent canvas) so it doesn't loom over other Dock icons
+# Regenerate with: dart run flutter_launcher_icons
+# (then restore the 16% inset in mipmap-anydpi-v26/ic_launcher.xml if the
+# tool overwrote it)
 flutter_launcher_icons:
-  image_path: "docs/brand/tylog-app-icon.png"
+  image_path: "docs/brand/tylog-app-icon-square.png"
   android: true
   adaptive_icon_background: "#092433"
   adaptive_icon_foreground: "docs/brand/tylog-symbol-foreground.png"
@@ -113,4 +123,4 @@ flutter_launcher_icons:
   ios: true
   macos:
     generate: true
-    image_path: "docs/brand/tylog-app-icon.png"
+    image_path: "docs/brand/tylog-app-icon-macos.png"
