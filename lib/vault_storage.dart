@@ -32,6 +32,13 @@ class AndroidTreeVaultStorage extends VaultStorage {
   static Future<void> stopSyncForeground() =>
       channel.invokeMethod<void>('stopSyncForeground');
 
+  /// One WorkManager catch-up run ~1 min after backgrounding.
+  static Future<void> scheduleBackgroundSoon() =>
+      channel.invokeMethod<void>('scheduleBackgroundSoon');
+
+  static Future<void> cancelBackgroundSoon() =>
+      channel.invokeMethod<void>('cancelBackgroundSoon');
+
   // ponytail: Dart-side watchdog only. A stalled DocumentsProvider call ties
   // up one of SafBridge's four read threads (or its single write thread)
   // until app restart. Per-call native watchdogs if that recurs in practice.

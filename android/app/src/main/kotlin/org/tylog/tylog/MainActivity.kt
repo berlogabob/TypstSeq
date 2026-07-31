@@ -8,7 +8,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        safBridge = SafBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        safBridge = SafBridge(this, flutterEngine.dartExecutor.binaryMessenger, activity = this)
+        BackgroundSync.schedulePeriodic(this)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {

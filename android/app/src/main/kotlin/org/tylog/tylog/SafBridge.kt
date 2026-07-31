@@ -1,6 +1,7 @@
 package org.tylog.tylog
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
@@ -21,9 +22,15 @@ import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.withLock
 
+// [activity] is only needed for the picker, its result, and ACTION_VIEW; every
+// storage operation runs on [context]'s ContentResolver, which is what lets a
+// headless background engine (VaultSyncWorker) host this bridge with no
+// Activity at all. [onBackgroundDone] is that host's completion signal.
 class SafBridge(
-    private val activity: Activity,
+    private val context: Context,
     messenger: BinaryMessenger,
+    private val activity: Activity? = null,
+    private val onBackgroundDone: (() -> Unit)? = null,
 ) : MethodChannel.MethodCallHandler {
     companion object {
         private const val CHANNEL = "org.tylog.tylog/saf"
@@ -31,7 +38,7 @@ class SafBridge(
         private const val DIRECTORY_MIME = DocumentsContract.Document.MIME_TYPE_DIR
     }
 
-    private val resolver = activity.contentResolver
+    private val resolver = context.contentResolver
     private val mainHandler = Handler(Looper.getMainLooper())
     // Reads fan out; mutations stay on one thread.
     private val readExecutor = Executors.newFixedThreadPool(4)
@@ -83,13 +90,13 @@ class SafBridge(
             try {
                 when (call.method) {
                     "startSyncForeground" -> SyncForegroundService.start(
-                        activity,
+                        context,
                         call.argument<String>("detail"),
                     )
                     "updateSyncForeground" -> SyncForegroundService.update(
                         call.argument<String>("detail"),
                     )
-                    "stopSyncForeground" -> SyncForegroundService.stop(activity)
+                    "stopSyncForeground" -> SyncForegroundService.stop(context)
                 }
                 result.success(null)
             } catch (error: Throwable) {
@@ -102,7 +109,29 @@ class SafBridge(
             return
         }
 
+        if (call.method == "backgroundDone") {
+            onBackgroundDone?.invoke()
+            result.success(null)
+            return
+        }
+
+        if (call.method == "scheduleBackgroundSoon") {
+            BackgroundSync.runSoon(context)
+            result.success(null)
+            return
+        }
+
+        if (call.method == "cancelBackgroundSoon") {
+            BackgroundSync.cancelSoon(context)
+            result.success(null)
+            return
+        }
+
         if (call.method == "pickTree") {
+            if (activity == null) {
+                result.error("no_activity", "Folder picker needs a foreground Activity", null)
+                return
+            }
             if (pendingPick != null) {
                 result.error("already_active", "Folder picker is already active", null)
                 return
@@ -241,12 +270,12 @@ class SafBridge(
                 val value = lock.withLock { work() }
                 postMain {
                     if (value is OpenRequest) {
-                        activity.startActivity(
-                            Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(value.uri, value.mime)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            },
-                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(value.uri, value.mime)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            if (activity == null) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        (activity ?: context).startActivity(intent)
                         result.success(null)
                     } else {
                         result.success(value)
@@ -502,7 +531,7 @@ class SafBridge(
         resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read document")
 
     private fun writeAtomic(tree: Uri, path: String, bytes: ByteArray) {
-        val source = File.createTempFile("tylog-write-", ".tmp", activity.cacheDir)
+        val source = File.createTempFile("tylog-write-", ".tmp", context.cacheDir)
         try {
             source.writeBytes(bytes)
             writeAtomic(tree, path, source)
@@ -576,7 +605,7 @@ class SafBridge(
     }
 
     private fun materialize(uri: Uri): File {
-        val file = File.createTempFile("tylog-materialized-", ".tmp", activity.cacheDir)
+        val file = File.createTempFile("tylog-materialized-", ".tmp", context.cacheDir)
         resolver.openInputStream(uri)?.use { input ->
             FileOutputStream(file).use(input::copyTo)
         } ?: error("Could not materialize document")

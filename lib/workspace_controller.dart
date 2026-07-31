@@ -14,6 +14,7 @@ import 'search_index.dart';
 import 'task_scheduler.dart';
 import 'tylog_assets.dart';
 import 'vault.dart';
+import 'vault_lock.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
 import 'vault_worker.dart';
@@ -755,6 +756,14 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     }
+    // Single-owner rule: the background worker (vault_service.dart) may be
+    // mid-sync in its own engine. Taking the lock as 'ui' both blocks while
+    // it holds a fresh lock and keeps it out until we release.
+    if (!await VaultLock.acquire(opened.storage, 'ui')) {
+      status = 'Background sync in progress';
+      notifyListeners();
+      return false;
+    }
     // 'resume' included: a resume sync starts the instant the app foregrounds,
     // and users routinely background it again mid-run — without the service
     // Android freezes the run at its first network stage ("stuck on
@@ -893,6 +902,7 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return false;
     } finally {
+      await VaultLock.release(opened.storage, 'ui');
       if (keepRunningOffscreen) await _stopSyncForeground();
       syncing = false;
       syncStage = null;
