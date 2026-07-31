@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -3430,6 +3431,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showSnack(context, message);
   }
 
+  /// Compiles the open note to PDF and hands it to the platform share sheet.
+  ///
+  /// Shares bytes rather than a path on purpose: on Android the vault lives
+  /// behind SAF, so the note has no filesystem path to give anyone, and the
+  /// exported PDF should not have to be written into the vault just to leave the
+  /// app — reports already do that and land in `outputs/`, where a SAF user
+  /// cannot easily reach them.
+  ///
+  /// Compiles the *preview* source and file map, so what gets shared is exactly
+  /// what Preview renders, bibliography and all.
+  Future<void> _sharePdf() async {
+    final path = note;
+    if (path == null) {
+      _magicFeedback('Open a note first');
+      return;
+    }
+    // A dirty buffer would otherwise share the last-saved bytes.
+    if (dirty) await _save(syncAfter: false);
+    _magicFeedback('Building PDF…');
+    final Uint8List pdf;
+    try {
+      pdf = await compileSourcePdf(
+        source: _previewSource(),
+        files: _typstFiles(),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      // Same escape hatch the preview offers, since the cause is the same: the
+      // note does not compile.
+      unawaited(_showTypstHelp(error: error.toString()));
+      return;
+    }
+    if (!mounted) return;
+    final name = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+    // iPad and macOS anchor the share popover to a rect; without one they throw
+    // or place it arbitrarily.
+    final box = context.findRenderObject() as RenderBox?;
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            pdf,
+            mimeType: 'application/pdf',
+            name: '$name.pdf',
+            length: pdf.length,
+          ),
+        ],
+        fileNameOverrides: ['$name.pdf'],
+        subject: name,
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      ),
+    );
+  }
+
   Future<String?> _chooseCitation() async {
     final v = vault;
     if (v == null) return null;
@@ -3707,6 +3764,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
               _ShellAction.split: (Icons.vertical_split, 'Split editor'),
               _ShellAction.backlinks: (Icons.link, 'Context'),
+              _ShellAction.sharePdf: (Icons.ios_share, 'Share as PDF'),
               _ShellAction.problems: (Icons.warning_amber, 'Problems'),
               _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
               _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
@@ -3746,6 +3804,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         );
+      case _ShellAction.sharePdf:
+        await _sharePdf();
       case _ShellAction.problems:
         await _showKnowledge(initialView: KnowledgeView.problems);
       case _ShellAction.rebuild:
@@ -4364,6 +4424,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 enum _ShellAction {
   vaults,
   newPage,
+  sharePdf,
   graph,
   split,
   backlinks,
