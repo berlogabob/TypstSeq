@@ -42,10 +42,13 @@ Future<File> exportReportPdf(Directory root, File report) async {
       .substring(root.absolute.path.length + 1)
       .replaceAll(Platform.pathSeparator, '/');
   final output = await exportReportPdfStorage(LocalVaultStorage(root), path);
-  return File('${root.path}/$output');
+  return File('${root.path}/${output.path}');
 }
 
-Future<String> exportReportPdfStorage(
+/// Writes `<report>.pdf` next to the report source and also returns the bytes,
+/// so a caller can hand them straight to the share sheet without re-reading
+/// what it just wrote through SAF.
+Future<({String path, Uint8List bytes})> exportReportPdfStorage(
   VaultStorage storage,
   String report,
 ) async {
@@ -72,8 +75,9 @@ Future<String> exportReportPdfStorage(
     );
     try {
       final output = '${report.substring(0, report.length - 4)}.pdf';
-      await storage.writeBytes(output, await document.exportPdf());
-      return output;
+      final bytes = await document.exportPdf();
+      await storage.writeBytes(output, bytes);
+      return (path: output, bytes: bytes);
     } finally {
       document.dispose();
     }

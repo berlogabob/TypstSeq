@@ -53,6 +53,35 @@ Body text that must end up in the PDF.
     expect(pdf.length, greaterThan(1000));
   });
 
+  testWidgets('a report export returns the same bytes it wrote', (_) async {
+    final root = await Directory.systemTemp.createTemp('tylog_share_report_');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+
+    const source = '''#import "/_system/tylog.typ" as tylog
+= Test Report
+
+Report body that must end up in the PDF.
+''';
+    await vault.storage.writeBytes(
+      'outputs/Test Report.typ',
+      Uint8List.fromList(utf8.encode(source)),
+    );
+
+    final export = await exportReportPdfStorage(
+      vault.storage,
+      'outputs/Test Report.typ',
+    );
+
+    expect(export.path, 'outputs/Test Report.pdf');
+    expect(utf8.decode(export.bytes.take(4).toList()), '%PDF');
+    expect(export.bytes.length, greaterThan(1000));
+    // The share sheet gets the returned bytes, outputs/ keeps the written file —
+    // they must be the same document.
+    expect(await vault.storage.readBytes(export.path), export.bytes);
+  });
+
   testWidgets('a note that does not compile fails loudly', (_) async {
     final root = await Directory.systemTemp.createTemp('tylog_share_bad_');
     addTearDown(() => root.delete(recursive: true));

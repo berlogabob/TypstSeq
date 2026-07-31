@@ -3465,6 +3465,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     final name = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+    await _sharePdfBytes(name, pdf);
+  }
+
+  Future<void> _sharePdfBytes(String name, Uint8List pdf) async {
     // iPad and macOS anchor the share popover to a rect; without one they throw
     // or place it arbitrarily.
     final box = context.findRenderObject() as RenderBox?;
@@ -3641,11 +3645,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         to: range == null ? null : isoDay(range.end),
       ),
     );
-    final pdf = await exportReportPdfStorage(v.storage, report);
+    final export = await exportReportPdfStorage(v.storage, report);
     if (mounted) {
-      setState(() => status = 'Created $report and $pdf');
+      setState(() => status = 'Created $report and ${export.path}');
       _magicFeedback('Created report and PDF');
       _queueCloudSync();
+      // The PDF is already in outputs/; the share sheet is the natural
+      // completion of "create a report", and dismissing it costs nothing.
+      final name = export.path.split('/').last.replaceFirst('.pdf', '');
+      await _sharePdfBytes(name, export.bytes);
     }
   }
 
