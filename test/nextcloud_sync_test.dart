@@ -1091,6 +1091,58 @@ void main() {
     );
   });
 
+  test('a no-change run does not trace one decision per file', () async {
+    // The `completed` event embeds every decision, so recording "skip /
+    // no-change" per path put ~400 KB of JSON in one line on a 2000-note vault —
+    // which is how sync_trace.jsonl came to sit at 799 KB on a real device,
+    // above its own 512 KB trim threshold, and why the dashboard built a
+    // ListTile per note. The counts in the same event carry that information.
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var index = 0; index < 25; index++)
+        'notes/${index.toString().padLeft(2, '0')}.typ': _remoteText(
+          'remote $index',
+        ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_trace_volume_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    // First run transfers everything; those decisions are real and kept.
+    await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+    await vault.storage.delete('.tylog/sync_trace.jsonl');
+
+    // Second run changes nothing, so it should decide "skip / no-change"
+    // everywhere and record none of it.
+    final second = await NextcloudSync(_config(server)).sync(vault);
+    expect(second.skipped, greaterThanOrEqualTo(25));
+
+    final completed = (await _traceEvents(
+      vault,
+    )).firstWhere((event) => event['event'] == 'completed');
+    final recorded = (completed['decisions'] as List).cast<Map>();
+    // Not "no decisions at all": local-only files (_system, the daily note) are
+    // legitimately `remote-missing` under downloadRemote, and that is worth
+    // tracing. The invariant is narrower — the noise entry is never recorded.
+    expect(
+      recorded.where(
+        (d) => d['action'] == 'skip' && d['reason'] == 'no-change',
+      ),
+      isEmpty,
+      reason: 'skip/no-change is still being traced per path',
+    );
+    // ...and the volume is bounded by what actually happened, not by vault size.
+    expect(recorded.length, lessThan(second.skipped));
+    expect(completed['skipped'], second.skipped);
+  });
+
   test('sync trace is bounded and never blocks synchronization', () async {
     final server = await _webDavServer(remoteContent: 'remote note');
     final dir = await Directory.systemTemp.createTemp('tylog_trace_limit_');

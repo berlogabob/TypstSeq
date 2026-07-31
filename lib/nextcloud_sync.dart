@@ -581,7 +581,19 @@ class NextcloudSync {
             conflict += result.conflicts;
             repaired += result.repaired;
             deletedRemote += result.deletedRemote;
-            decisions.add(result.decision);
+            // "skip / no-change" is the one decision that carries no
+            // information: nothing was transferred and nothing was compared
+            // beyond fingerprints, and the same trace event already reports the
+            // count as `skipped`. Recording it per path is what makes a
+            // steady-state run write ~400 KB of JSON inside a single trace line
+            // — enough to push sync_trace.jsonl past its own 512 KB trim
+            // threshold on every run — and what makes the sync dashboard build
+            // one ListTile per note, eagerly, in a Column. Every other reason,
+            // including the other `skip` ones like unresolved-conflict, is kept.
+            if (result.decision.action != SyncAction.skip ||
+                result.decision.reason != 'no-change') {
+              decisions.add(result.decision);
+            }
             completed++;
             progress('sync-file $completed/${allPaths.length}', path);
             // Time-based, not every-N-files. A checkpoint re-encodes *every*
