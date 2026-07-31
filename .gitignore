@@ -74,10 +74,12 @@ audit/
 sample_vault/
 
 # Brand source assets live on the design drive, not in git.
-# Exception: the two icon sources flutter_launcher_icons reads (pubspec.yaml:109,112).
+# Exception: the icon sources flutter_launcher_icons reads (pubspec.yaml).
 docs/brand/*
 !docs/brand/tylog-app-icon.png
 !docs/brand/tylog-symbol-foreground.png
+!docs/brand/tylog-app-icon-square.png
+!docs/brand/tylog-app-icon-macos.png
 
 # Android release signing secrets
 android/key.properties
