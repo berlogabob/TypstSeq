@@ -1159,7 +1159,8 @@ void main() {
 
     // The finding this test exists to protect. Measured at 150/300/600/1200
     // files, `sync-file` never leaves the 16 ms timer floor and drops zero
-    // frames, while `list-remote` grows with entry count (25/35/51 ms). The
+    // frames, while `list-remote` grew with entry count (25/35/51 ms) until
+    // its PROPFIND parse moved into a compute() isolate. The
     // per-file loop is I/O-bound with an await at every step, so it does not
     // block the calling isolate — which is why moving NextcloudSync onto the
     // worker was dropped: it would buy nothing and cost the canReplaceLocal

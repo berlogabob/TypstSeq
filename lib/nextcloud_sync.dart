@@ -6,7 +6,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -1579,74 +1579,18 @@ class NextcloudSync {
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
     }
-
-    final files = <String, _RemoteFile>{};
-    // The root collection's own entry (href ends with '/') is included in a
-    // Depth:infinity response alongside every file; its etag changes
-    // whenever anything beneath it changes, which is what makes the
-    // no-change shortcut in sync() safe to rely on.
-    String? rootEtag;
-    for (final match in RegExp(
-      r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
-      dotAll: true,
-    ).allMatches(body)) {
-      final block = match.group(1)!;
-      try {
-        final hrefValue = _xmlValue(block, 'href');
-        if (hrefValue == null) {
-          throw const FormatException('missing href');
-        }
-        final href = Uri.decodeComponent(hrefValue);
-        if (href.endsWith('/')) {
-          if (rootEtag == null && _isRootHref(href)) {
-            rootEtag = _xmlValue(block, 'getetag');
-          }
-          continue;
-        }
-        final modifiedValue = _xmlValue(block, 'getlastmodified');
-        if (modifiedValue == null) {
-          throw const FormatException('missing getlastmodified');
-        }
-        final path = _relativeRemotePath(href);
-        if (path == null) {
-          throw const FormatException('path is outside configured folder');
-        }
-        final lengthValue = _xmlValue(block, 'getcontentlength');
-        final length = lengthValue == null ? null : int.tryParse(lengthValue);
-        if (lengthValue != null && length == null) {
-          throw const FormatException('invalid getcontentlength');
-        }
-        if (includeNonSyncable || !_isSyncInternal(path)) {
-          final checksum = _xmlSha256Info(block);
-          files[path] = _RemoteFile(
-            modified: HttpDate.parse(modifiedValue),
-            etag: _xmlValue(block, 'getetag'),
-            length: length,
-            sha256: checksum?.hash,
-            sha256Lowercase: checksum?.lowercase ?? false,
-          );
-        }
-      } catch (error) {
-        if (error is! FormatException && error is! HttpException) rethrow;
-        final message = error is FormatException
-            ? error.message
-            : (error as HttpException).message;
-        throw HttpException('PROPFIND invalid file metadata: $message');
-      }
-    }
-    return (files: files, rootEtag: rootEtag);
+    // Parsing a Depth:infinity response for ~2000 entries blocks the calling
+    // isolate for ~250-300 ms on a phone — the last blocking sync stage — so
+    // the parse runs in a compute() isolate. Everything crossing the boundary
+    // is plain data.
+    return compute(_parsePropfindBody, (
+      body: body,
+      rootPath: config.rootUri.path,
+      includeNonSyncable: includeNonSyncable,
+    ));
   }
 
-  bool _isRootHref(String href) {
-    final root = config.rootUri.path;
-    final normalizedRoot = root.endsWith('/')
-        ? root.substring(0, root.length - 1)
-        : root;
-    final normalizedHref = href.endsWith('/')
-        ? href.substring(0, href.length - 1)
-        : href;
-    return normalizedHref.endsWith(normalizedRoot);
-  }
+  bool _isRootHref(String href) => _isRootHrefFor(href, config.rootUri.path);
 
   /// Depth:0 probe of just the root collection's etag — the cheap
   /// "has anything at all changed" check used by the no-change shortcut in
@@ -1735,13 +1679,8 @@ class NextcloudSync {
     );
   }
 
-  String? _relativeRemotePath(String href) {
-    final root = config.rootUri.path;
-    final start = href.indexOf(root);
-    if (start < 0) return null;
-    final path = href.substring(start + root.length);
-    return path.isEmpty ? null : path;
-  }
+  String? _relativeRemotePath(String href) =>
+      _relativeRemotePathFor(href, config.rootUri.path);
 
   // Nextcloud quotes the etag in PROPFIND (getetag) but not in the PUT `oc-etag`
   // header, so a stored upload etag never string-matches the next PROPFIND and
@@ -2393,6 +2332,86 @@ bool _protectFromEmpty(String path) =>
 
 Future<String> _sha256(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
+
+/// Parses a Depth:infinity PROPFIND body into remote-file entries. Top-level
+/// and dependent only on plain data so it can run inside compute().
+({Map<String, _RemoteFile> files, String? rootEtag}) _parsePropfindBody(
+  ({String body, String rootPath, bool includeNonSyncable}) args,
+) {
+  final files = <String, _RemoteFile>{};
+  // The root collection's own entry (href ends with '/') is included in a
+  // Depth:infinity response alongside every file; its etag changes
+  // whenever anything beneath it changes, which is what makes the
+  // no-change shortcut in sync() safe to rely on.
+  String? rootEtag;
+  for (final match in RegExp(
+    r'<[^:>]*:?response[^>]*>(.*?)</[^:>]*:?response>',
+    dotAll: true,
+  ).allMatches(args.body)) {
+    final block = match.group(1)!;
+    try {
+      final hrefValue = _xmlValue(block, 'href');
+      if (hrefValue == null) {
+        throw const FormatException('missing href');
+      }
+      final href = Uri.decodeComponent(hrefValue);
+      if (href.endsWith('/')) {
+        if (rootEtag == null && _isRootHrefFor(href, args.rootPath)) {
+          rootEtag = _xmlValue(block, 'getetag');
+        }
+        continue;
+      }
+      final modifiedValue = _xmlValue(block, 'getlastmodified');
+      if (modifiedValue == null) {
+        throw const FormatException('missing getlastmodified');
+      }
+      final path = _relativeRemotePathFor(href, args.rootPath);
+      if (path == null) {
+        throw const FormatException('path is outside configured folder');
+      }
+      final lengthValue = _xmlValue(block, 'getcontentlength');
+      final length = lengthValue == null ? null : int.tryParse(lengthValue);
+      if (lengthValue != null && length == null) {
+        throw const FormatException('invalid getcontentlength');
+      }
+      final syncInternal = isSyncInternalPath(path) || !isSyncableVaultPath(path);
+      if (args.includeNonSyncable || !syncInternal) {
+        final checksum = _xmlSha256Info(block);
+        files[path] = _RemoteFile(
+          modified: HttpDate.parse(modifiedValue),
+          etag: _xmlValue(block, 'getetag'),
+          length: length,
+          sha256: checksum?.hash,
+          sha256Lowercase: checksum?.lowercase ?? false,
+        );
+      }
+    } catch (error) {
+      if (error is! FormatException && error is! HttpException) rethrow;
+      final message = error is FormatException
+          ? error.message
+          : (error as HttpException).message;
+      throw HttpException('PROPFIND invalid file metadata: $message');
+    }
+  }
+  return (files: files, rootEtag: rootEtag);
+}
+
+bool _isRootHrefFor(String href, String root) {
+  final normalizedRoot = root.endsWith('/')
+      ? root.substring(0, root.length - 1)
+      : root;
+  final normalizedHref = href.endsWith('/')
+      ? href.substring(0, href.length - 1)
+      : href;
+  return normalizedHref.endsWith(normalizedRoot);
+}
+
+String? _relativeRemotePathFor(String href, String root) {
+  final start = href.indexOf(root);
+  if (start < 0) return null;
+  final path = href.substring(start + root.length);
+  return path.isEmpty ? null : path;
+}
 
 String? _xmlValue(String xml, String name) {
   final match = RegExp(
