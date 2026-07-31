@@ -2354,9 +2354,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // pending edits now so backgrounding never loses keystrokes.
       if (dirty) unawaited(_save(syncAfter: false));
       _stopCloudPolling();
+      // Hand off to the background worker: one catch-up run in ~1 min, then
+      // the 15-min periodic keeps the vault fresh while the app is closed.
+      if (Platform.isAndroid && (cloud?.isReady ?? false)) {
+        unawaited(
+          AndroidTreeVaultStorage.scheduleBackgroundSoon().catchError((_) {}),
+        );
+      }
       return;
     }
     if (state == AppLifecycleState.resumed) {
+      // The UI owns the vault again; a still-pending catch-up run would only
+      // contend for the lock.
+      if (Platform.isAndroid) {
+        unawaited(
+          AndroidTreeVaultStorage.cancelBackgroundSoon().catchError((_) {}),
+        );
+      }
       _startCloudPolling();
       _rolloverTodayIfStale();
       if (cloud?.isReady ?? false) {
