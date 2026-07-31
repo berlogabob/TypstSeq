@@ -1091,6 +1091,90 @@ void main() {
     );
   });
 
+  test('which sync stage blocks the root isolate', () async {
+    // Phase 2.2. Everything measured so far priced sync components in isolation;
+    // this runs a whole sync and attributes root-isolate stalls to the stage
+    // reported by onProgress, so the decision to move sync onto the worker (which
+    // costs the canReplaceLocal predicate and ~30 root-isolate vault writers) is
+    // made against evidence rather than a hunch.
+    //
+    // A local server means no network latency, so what shows up here is purely
+    // the work sync does on the calling isolate. Diagnostic: it prints, and
+    // asserts only that it measured something.
+    const files = 600;
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var index = 0; index < files; index++)
+        'notes/${index.toString().padLeft(3, '0')}.typ': _remoteText(
+          'remote note $index ${List.filled(200, 'body').join(' ')}',
+        ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_sync_stages_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    const frame = Duration(milliseconds: 16);
+    var stage = 'start';
+    final worst = <String, Duration>{};
+    final dropped = <String, int>{};
+    var last = DateTime.now();
+    final ticker = Timer.periodic(frame, (_) {
+      final now = DateTime.now();
+      final gap = now.difference(last);
+      last = now;
+      // Attribute to whatever stage was running when the tick came due.
+      final key = stage.startsWith('sync-file') ? 'sync-file' : stage;
+      if (gap > (worst[key] ?? Duration.zero)) worst[key] = gap;
+      final late = gap - frame;
+      if (late > Duration.zero) {
+        dropped[key] =
+            (dropped[key] ?? 0) + late.inMicroseconds ~/ frame.inMicroseconds;
+      }
+    });
+
+    await NextcloudSync(
+      _config(server),
+      onProgress: (next, _) => stage = next,
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+    ticker.cancel();
+
+    final ranked = worst.keys.toList()
+      ..sort((a, b) => worst[b]!.compareTo(worst[a]!));
+    // ignore: avoid_print
+    print('SYNC-STAGES files=$files (local server, so no network in these)');
+    for (final key in ranked) {
+      // ignore: avoid_print
+      print(
+        '  ${key.padRight(22)} worst ${worst[key]!.inMilliseconds}ms  '
+        'dropped ${dropped[key] ?? 0}',
+      );
+    }
+
+    expect(worst, isNotEmpty, reason: 'no stage was ever observed');
+
+    // The finding this test exists to protect. Measured at 150/300/600/1200
+    // files, `sync-file` never leaves the 16 ms timer floor and drops zero
+    // frames, while `list-remote` grows with entry count (25/35/51 ms). The
+    // per-file loop is I/O-bound with an await at every step, so it does not
+    // block the calling isolate — which is why moving NextcloudSync onto the
+    // worker was dropped: it would buy nothing and cost the canReplaceLocal
+    // predicate plus ~30 root-isolate vault writers.
+    //
+    // If this ever fails, something synchronous was added to the per-file path
+    // and that conclusion needs revisiting.
+    expect(
+      dropped['sync-file'] ?? 0,
+      lessThanOrEqualTo(2),
+      reason: 'the per-file loop is dropping frames — it used not to, so '
+          'blocking work has been added to it',
+    );
+  });
+
   test('a no-change run does not trace one decision per file', () async {
     // The `completed` event embeds every decision, so recording "skip /
     // no-change" per path put ~400 KB of JSON in one line on a 2000-note vault —
