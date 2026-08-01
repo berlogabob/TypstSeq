@@ -4323,7 +4323,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(value: 'local', child: Text('Focused')),
                 PopupMenuItem(value: 'allFiles', child: Text('All files')),
                 PopupMenuItem(value: 'timeline', child: Text('Timeline')),
-                PopupMenuItem(value: 'voronoi', child: Text('Treemap')),
+                PopupMenuItem(value: 'voronoi', child: Text('Voronoi')),
               ],
             ),
           if (documentModes.contains(mode))

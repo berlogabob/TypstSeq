@@ -52,7 +52,7 @@ Projects and articles are ordinary notes with `kind: "project"` or `kind: "artic
 
 TyLog opens on Today. Today contains quick capture, due tasks, referenced dates, recent notes, backlinks, and inbox notes.
 
-Primary areas are Today, Journal, Tasks, and Library. Library contains Notes, Projects, Articles, Calendar, Search, and Graph. Graph offers five views: Concept map, Focused, All files, Timeline, and Treemap. Treemap packs the vault into zoomable Voronoi cells — community, then tag, then note — sized by note count; zooming or tapping a cell reveals the level below, and tapping a note cell opens the note. Android uses bottom navigation; macOS uses a navigation rail.
+Primary areas are Today, Journal, Tasks, and Library. Library contains Notes, Projects, Articles, Calendar, Search, and Graph. Graph offers five views: Concept map, Focused, All files, Timeline, and Voronoi. Voronoi packs the vault into zoomable cells — community, then tag, then note — sized by note count; zooming or tapping a cell reveals the level below, and tapping a note cell opens the note. Android uses bottom navigation; macOS uses a navigation rail.
 
 Android and macOS are the release platforms. The included iOS host supports development checks on iPad. A physical iPad run requires selecting an Apple development team in `ios/Runner.xcworkspace`, allowing Xcode to register and provision the device, and trusting the development certificate on the iPad. An iPad simulator does not require signing.
 
