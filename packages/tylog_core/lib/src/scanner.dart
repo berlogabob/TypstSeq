@@ -395,6 +395,7 @@ Future<VaultIndex> scanVaultStorage(
   var reinspected = 0;
   var consecutiveTimeouts = 0;
   var recoveries = 0;
+  var inspectorStopped = false;
 
   // One read per scan, shared by every note. Absent or unusable is normal and
   // simply means no merges.
@@ -549,6 +550,25 @@ Future<VaultIndex> scanVaultStorage(
             activeInspector = null;
           }
         }
+        if (activeInspector == null && !inspectorStopped) {
+          inspectorStopped = true;
+          // Without this the death is invisible: every note scanned after
+          // this point silently degrades to metadata-fallback, whose fix
+          // string blames the note's header — the wrong culprit.
+          problems.add(
+            PkmsProblem(
+              code: 'typst-engine-stopped',
+              severity: PkmsSeverity.warning,
+              subject: relative,
+              message:
+                  'Typst stopped responding during the scan; later notes '
+                  'fell back to legacy parsing.',
+              fix:
+                  'Repair the notes that failed to read, then rebuild the '
+                  'index.',
+            ),
+          );
+        }
       }
       final fallback = _fallbackNote(
         relative,
@@ -639,6 +659,11 @@ VaultIndex _buildVaultIndex(
   final allProblems = [...problems];
   for (final source in notes.values) {
     for (final target in source.outgoingLinks) {
+      // External URLs recorded as outgoing links by older scans (the
+      // pre-fix _legacySources fallthrough) still sit in the note cache;
+      // skipping them here clears the phantom broken-link problems without
+      // forcing a full index-version rebuild.
+      if (target.contains('://')) continue;
       final resolved = resolver.resolve(target);
       if (resolved.status == LinkResolutionStatus.resolved) {
         backlinks.putIfAbsent(resolved.path!, () => {}).add(source.path);
@@ -1421,7 +1446,10 @@ Set<String> _legacySources(String source) {
         .where((s) => s.isNotEmpty);
     if (links.isNotEmpty) {
       result.addAll(links);
-    } else if (value.trim().isNotEmpty) {
+    } else if (value.trim().isNotEmpty && !value.contains('://')) {
+      // A bare URL or an autolinked `#link("https://…")[…]` is an external
+      // reference, not a note id — registering it as an outgoing link just
+      // manufactures an unresolvable broken-link problem per article.
       result.add(value.trim());
     }
   }

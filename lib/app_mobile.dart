@@ -1970,11 +1970,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return _repairArticles(toFix);
       case 'duplicate-note-id':
       case 'duplicate-alias':
-        await _openDuplicateOwners(toFix.first);
+        await _openDuplicateOwners(toFix);
         return null;
       default:
         return null;
     }
+  }
+
+  /// Counts how many of [attempted] still carry [code] after a rescan — the
+  /// fix snackbars report resolved-vs-still-failing, not bytes written.
+  int _stillFlagged(Iterable<PkmsProblem> attempted, String code) {
+    final subjects = attempted.map((p) => p.subject).toSet();
+    return _knowledgeProblems()
+        .where((p) => p.code == code && subjects.contains(p.subject))
+        .length;
   }
 
   /// Repairs markdown-import artifacts that break a note's Typst metadata query
@@ -1984,22 +1993,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ) async {
     final v = vault;
     if (v == null) return null;
-    var fixed = 0;
     for (final problem in problems) {
       final source = await v.storage.readText(problem.subject);
       final repaired = repairArticleTypst(source);
       if (repaired != source) {
         await v.saveNote(problem.subject, repaired);
-        fixed++;
       }
     }
     await workspace.refreshIndex(always: true);
     if (!mounted) return null;
+    final remaining = _stillFlagged(problems, 'metadata-query-failed');
+    final resolved = problems.length - remaining;
     showSnack(
       context,
-      fixed == 0
-          ? 'Nothing to repair'
-          : 'Repaired $fixed note${fixed == 1 ? '' : 's'}',
+      remaining == 0
+          ? 'Repaired ${problems.length} note${problems.length == 1 ? '' : 's'}'
+          : resolved == 0
+          ? "Couldn't repair $remaining note${remaining == 1 ? '' : 's'} — "
+                'see Technical details for each error'
+          : 'Repaired $resolved, $remaining still failing — '
+                'see Technical details',
     );
     return _knowledgeProblems();
   }
@@ -2012,54 +2025,77 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return null;
-    var fixed = 0;
+    var converted = 0;
+    var alreadyManaged = 0;
     for (final problem in problems) {
       final note = ix.notesByPath[problem.subject];
       if (note == null) continue;
       final source = await v.storage.readText(problem.subject);
+      if (source.contains('tylog.note.with(')) {
+        // The header is fine — the note is flagged because Typst couldn't
+        // verify it (engine timeout/death). Rewriting the header from
+        // fallback-parsed metadata fixes nothing and risks baking
+        // body-recovered tags into it.
+        alreadyManaged++;
+        continue;
+      }
       final updated = replaceNoteHeader(
         source,
         NoteMetadataDraft.fromNote(note),
       );
       if (updated != source) {
         await v.saveNote(problem.subject, updated);
-        fixed++;
+        converted++;
       }
     }
     await workspace.refreshIndex(always: true);
     if (!mounted) return null;
+    final remaining = _stillFlagged(problems, 'metadata-fallback');
+    final parts = [
+      if (converted > 0) 'Converted $converted note${converted == 1 ? '' : 's'}',
+      if (alreadyManaged > 0)
+        '$alreadyManaged already managed — Typst couldn\'t verify '
+            'th${alreadyManaged == 1 ? 'at note' : 'ose notes'}',
+    ];
     showSnack(
       context,
-      fixed == 0
+      parts.isEmpty
           ? 'Nothing to convert'
-          : 'Converted $fixed note${fixed == 1 ? '' : 's'} to managed metadata',
+          : '${parts.join('; ')}'
+                '${remaining > 0 ? ' ($remaining still unverified)' : ''}',
     );
     return _knowledgeProblems();
   }
 
   /// A duplicated id/date can only be resolved by a human merge, so list every
-  /// file that claims it and open the tapped one.
-  Future<void> _openDuplicateOwners(PkmsProblem problem) async {
-    final owners = problem.targets.isNotEmpty
-        ? problem.targets
-        : [problem.subject];
+  /// file that claims it and open the tapped one. Accepts a whole group so the
+  /// list's "Open files" action shows all duplicates, not just the first.
+  Future<void> _openDuplicateOwners(List<PkmsProblem> problems) async {
+    List<String> owners(PkmsProblem problem) =>
+        problem.targets.isNotEmpty ? problem.targets : [problem.subject];
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
-            ListTile(
-              title: Text('“${problem.subject}” is claimed by ${owners.length} files'),
-              subtitle: const Text('Open each to compare, then merge or delete one.'),
+            const ListTile(
+              subtitle: Text('Open each to compare, then merge or delete one.'),
             ),
-            for (final path in owners)
+            for (final problem in problems) ...[
               ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: Text(path),
-                onTap: () => Navigator.pop(context, path),
+                title: Text(
+                  '“${problem.subject}” is claimed by ${owners(problem).length} files',
+                ),
               ),
+              for (final path in owners(problem))
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(path),
+                  onTap: () => Navigator.pop(context, path),
+                ),
+            ],
           ],
         ),
       ),

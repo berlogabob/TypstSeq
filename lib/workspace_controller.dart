@@ -182,6 +182,10 @@ class WorkspaceController extends ChangeNotifier {
   /// dropped — see [_scan].
   bool _rescanQueued = false;
 
+  /// Completes when the running [_scan] (including its queued repeats) exits,
+  /// so a coalesced caller can await real results instead of stale state.
+  Future<void>? _activeScan;
+
   Timer? _autosave;
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
@@ -425,7 +429,6 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
-    if (_indexing) return;
     await _scan(opened, updateStatus: updateStatus);
   }
 
@@ -474,10 +477,19 @@ class WorkspaceController extends ChangeNotifier {
       // unindexed until some unrelated edit happens to schedule another — a
       // download bumps no revision, so the `indexedRevision >= savedRevision`
       // guard in refreshIndex would not re-run on its own.
+      //
+      // Await the running scan rather than returning: the do-while below runs
+      // the queued repeat before _activeScan completes, so when this returns
+      // the caller's writes have actually been re-indexed. The Problems-screen
+      // fix buttons depend on that — they read the fresh problem list right
+      // after refreshIndex(always: true).
       _rescanQueued = true;
+      await _activeScan;
       return;
     }
     _indexing = true;
+    final done = Completer<void>();
+    _activeScan = done.future;
     try {
       // Repeats are never forced: a queued scan is there to pick up new bytes,
       // not to re-compile the whole vault a second time.
@@ -495,6 +507,8 @@ class WorkspaceController extends ChangeNotifier {
       } while (_rescanQueued && opened == vault && !_disposed);
     } finally {
       _indexing = false;
+      _activeScan = null;
+      done.complete();
     }
   }
 

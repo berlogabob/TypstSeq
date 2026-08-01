@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'search_index.dart';
+import 'widgets/snack.dart';
 
 enum KnowledgeView { search, problems }
 
@@ -94,6 +95,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           );
         });
       }
+    } catch (error) {
+      // A failed SAF write used to vanish into a discarded future — the
+      // button then "did nothing" with no explanation.
+      if (mounted) showSnack(context, 'Fix failed: $error');
     } finally {
       if (mounted) setState(() => _fixing = false);
     }
@@ -326,6 +331,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               )
             : null,
         onTap: () {
+          // Duplicate problems carry an id/date as subject, not an openable
+          // path — route them to the owners sheet instead of a dead open.
+          if (problem.code.startsWith('duplicate-')) {
+            unawaited(_runFix([problem]));
+            return;
+          }
           widget.onOpenNote(problem.subject);
           Navigator.pop(context);
         },
@@ -359,7 +370,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           if (_canFix(code))
             TextButton(
               onPressed: _fixing ? null : () => _runFix(group),
-              child: Text('Fix all ${group.length}'),
+              // Duplicates aren't auto-fixable — the group action opens the
+              // owners sheet for a manual merge, so don't promise "Fix all".
+              child: Text(
+                code.startsWith('duplicate-')
+                    ? 'Open files'
+                    : 'Fix all ${group.length}',
+              ),
             ),
           Icon(expanded ? Icons.expand_less : Icons.expand_more),
         ],

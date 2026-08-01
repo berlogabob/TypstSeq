@@ -874,6 +874,50 @@ void main() {
     expect(a.progress, 0.9);
   });
 
+  test(
+    'refreshIndex during an in-flight scan waits for the queued rescan',
+    () async {
+      final storage = _GatedScanStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      // Settle any scan the open kicked off, so the gate below catches ours.
+      await controller.refreshIndex(always: true);
+
+      // Stall a scan right after it snapshots the file listing.
+      storage.armGate();
+      final first = controller.refreshIndex(always: true);
+      await storage.gateReached.future;
+
+      // A note lands mid-scan — the stalled pass's listing predates it, so
+      // only the queued repeat can index it. The second refreshIndex must
+      // not return until that repeat ran (the Problems-screen fix buttons
+      // read fresh results right after this call).
+      await controller.vault!.saveNote(
+        'notes/MidScan.typ',
+        '#show: tylog.note.with(id: "mid-scan", title: "Mid scan")\nBody',
+      );
+      final second = controller.refreshIndex(always: true);
+
+      storage.release();
+      await first;
+      await second;
+
+      expect(
+        controller.index!.notesByPath.containsKey('notes/MidScan.typ'),
+        isTrue,
+      );
+    },
+  );
+
   test('shouldRolloverToday detects a calendar day change', () {
     final openedAt = DateTime(2026, 7, 15, 23, 55);
     expect(
@@ -920,6 +964,40 @@ class _FakeInspector implements TypstInspector {
         },
       ),
     ];
+  }
+}
+
+/// Stalls every armed `list()` call *after* it has captured its snapshot, so
+/// a test can land a write that the in-flight scan's listing predates —
+/// exactly the "file saved while a scan runs" race the coalesced-rescan
+/// logic exists for.
+class _GatedScanStorage extends _MemoryStorage {
+  Completer<void>? _armed;
+  Completer<void> gateReached = Completer<void>();
+
+  void armGate() {
+    gateReached = Completer<void>();
+    _armed = Completer<void>();
+  }
+
+  void release() {
+    final gate = _armed;
+    _armed = null;
+    gate?.complete();
+  }
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async {
+    final result = await super.list(path: path, recursive: recursive);
+    final gate = _armed;
+    if (gate != null) {
+      if (!gateReached.isCompleted) gateReached.complete();
+      await gate.future;
+    }
+    return result;
   }
 }
 

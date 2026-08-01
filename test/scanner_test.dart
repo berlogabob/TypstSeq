@@ -85,6 +85,66 @@ void main() {
     expect(index.backlinksByTarget['notes/B.typ'], ['notes/A.typ']);
   });
 
+  test('legacy source:: URLs are not registered as note links', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_srclink_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/articles').create(recursive: true);
+    await File('${dir.path}/articles/Auto.typ').writeAsString(
+      '''#show: tylog.note.with(id: "auto", title: "Auto", kind: "article")
+source:: #link("https://medium.com/")[medium.com]
+''',
+    );
+    await File('${dir.path}/articles/Bare.typ').writeAsString(
+      '''#show: tylog.note.with(id: "bare", title: "Bare", kind: "article")
+source:: https://example.com/page
+''',
+    );
+    await File('${dir.path}/articles/Wiki.typ').writeAsString(
+      '''#show: tylog.note.with(id: "wiki", title: "Wiki", kind: "article")
+source:: [[real-id]]
+''',
+    );
+    await File('${dir.path}/articles/Real.typ').writeAsString(
+      '#show: tylog.note.with(id: "real-id", title: "Real")',
+    );
+
+    final index = await scanVaultStorage(LocalVaultStorage(dir));
+
+    expect(index.notesByPath['articles/Auto.typ']!.outgoingLinks, isEmpty);
+    expect(index.notesByPath['articles/Bare.typ']!.outgoingLinks, isEmpty);
+    // A real [[wiki]] source is still recovered and resolved.
+    expect(index.notesByPath['articles/Wiki.typ']!.outgoingLinks, ['real-id']);
+    expect(index.backlinksByTarget['articles/Real.typ'], ['articles/Wiki.typ']);
+    expect(index.problems.where((p) => p.code == 'broken-link'), isEmpty);
+  });
+
+  test('cached URL outgoing links do not produce broken-link problems', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_srccache_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/articles').create(recursive: true);
+    await File('${dir.path}/articles/A.typ').writeAsString(
+      '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
+    );
+
+    final first = await scanVaultStorage(LocalVaultStorage(dir));
+    // Simulate a cache written by the pre-fix scanner, which recorded the
+    // raw source:: URL as an outgoing link on the cached note.
+    final poisoned = VaultIndex(
+      notesByPath: {
+        'articles/A.typ': first.notesByPath['articles/A.typ']!.copyWith(
+          outgoingLinks: ['#link("https://medium.com/")[medium.com]'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final second = await scanVaultStorage(
+      LocalVaultStorage(dir),
+      previous: poisoned,
+    );
+    expect(second.problems.where((p) => p.code == 'broken-link'), isEmpty);
+  });
+
   test('link resolver prefers id, alias, title, then filename stem', () {
     final index = VaultIndex(
       notesByPath: {
