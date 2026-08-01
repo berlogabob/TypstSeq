@@ -493,6 +493,56 @@ void main() {
   );
 
   test(
+    'typing after a mid-sync autosave does not spuriously flag a conflict',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      final original = controller.source;
+      controller.cloud = server.config;
+
+      expect(await controller.syncNow(trigger: 'setup'), isTrue);
+      expect(controller.syncConflicts, isEmpty);
+
+      server.armGate();
+      final syncFuture = controller.syncNow(trigger: 'manual');
+      await server.gateReached.future;
+
+      // The 400ms autosave lands mid-sync, then the user keeps typing: the
+      // editor buffer is now *ahead* of its own autosave on disk. Both
+      // versions are this session's own writes — pausing to think must not
+      // produce a "before the pause vs after the pause" conflict.
+      controller.edit('$original\nEdited during sync.\n');
+      await controller.save(syncAfter: false);
+      controller.edit('$original\nEdited during sync.\nKept typing.\n');
+
+      server.releaseGate.complete();
+      expect(await syncFuture, isTrue);
+
+      expect(controller.syncConflicts, isEmpty);
+      expect(controller.status, isNot(contains('attention')));
+      expect(
+        await controller.vault!.storage.readText(path),
+        contains('Kept typing.'),
+      );
+    },
+  );
+
+  test(
     'a genuine foreign disk change during sync still files a conflict',
     () async {
       final previousOverrides = HttpOverrides.current;

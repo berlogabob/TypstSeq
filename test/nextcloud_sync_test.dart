@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -1517,6 +1518,44 @@ void main() {
     expect(storage.hashCalls, 0);
   });
 
+  test('autosave landing between hash and upload stays consistent', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final uploads = <Map<String, Object?>>[];
+    final server = await _mutableWebDavServer(remote, uploads: uploads);
+    final dir = await Directory.systemTemp.createTemp('tylog_midwrite_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final storage = _MidSyncWriteStorage(dir);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/a.typ', 'v1');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    // The user edits (v2), a sync starts, and the 400ms autosave lands v3
+    // in the window between the engine hashing the file and reading its
+    // bytes for upload. Body, OC-Checksum, and cursor must all describe
+    // the same snapshot — otherwise the *next* sync manufactures a
+    // "both-changed" conflict out of this device's own upload.
+    await vault.storage.writeText('notes/a.typ', 'v2');
+    storage.armPath = 'notes/a.typ';
+    storage.armContent = 'v3';
+    final second = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(second.conflicts, 0);
+    expect(second.uploaded, greaterThanOrEqualTo(1));
+    final put = uploads.lastWhere((u) => u['path'] == 'notes/a.typ');
+    expect(put['body'], 'v3');
+    expect(put['checksum'], 'SHA256:${sha256.convert(utf8.encode('v3'))}');
+    expect(utf8.decode(remote['notes/a.typ']!.bytes), 'v3');
+
+    final third = await NextcloudSync(_config(server)).sync(vault);
+    expect(third.uploaded, 0);
+    expect(third.downloaded, 0);
+    expect(third.conflicts, 0);
+  });
+
   test('mass local disappearance does not wipe remote files', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
@@ -2604,6 +2643,26 @@ class _HashCountingStorage extends LocalVaultStorage {
   }
 }
 
+/// Simulates the editor's autosave racing the sync engine: the first
+/// readBytes of [armPath] rewrites the file with [armContent] before
+/// returning, landing "newer" bytes in the hash→upload window.
+class _MidSyncWriteStorage extends LocalVaultStorage {
+  _MidSyncWriteStorage(super.root);
+
+  String? armPath;
+  String? armContent;
+
+  @override
+  Future<Uint8List> readBytes(String path) async {
+    final content = armContent;
+    if (path == armPath && content != null) {
+      armContent = null;
+      await super.writeText(path, content);
+    }
+    return super.readBytes(path);
+  }
+}
+
 class _CheckpointCountingStorage extends LocalVaultStorage {
   _CheckpointCountingStorage(super.root);
 
@@ -2987,6 +3046,15 @@ Future<HttpServer> _mutableWebDavServer(
           'checksum': request.headers.value('oc-checksum'),
           'ifMatch': request.headers.value(HttpHeaders.ifMatchHeader),
         });
+        // Real Nextcloud honours If-Match on PUT: a stale etag means the
+        // remote moved since the client last looked, and answers 412.
+        final ifMatch = request.headers.value(HttpHeaders.ifMatchHeader);
+        final existing = files[path];
+        if (ifMatch != null && (existing == null || existing.etag != ifMatch)) {
+          request.response.statusCode = HttpStatus.preconditionFailed;
+          await request.response.close();
+          return;
+        }
         upgradedChecksums.add(path);
         final etag = '"upload-${version++}"';
         files[path] = _MutableRemoteFile(

@@ -63,6 +63,12 @@ class WorkspaceController extends ChangeNotifier {
   int editRevision = 0;
   int savedRevision = 0;
   int indexedRevision = 0;
+
+  /// The exact text this controller last wrote to disk. The post-sync
+  /// divergence check uses it to tell "disk holds our own mid-sync
+  /// autosave" (benign, even when the buffer has since moved on) apart
+  /// from genuinely foreign disk content (a real conflict).
+  String? _lastSavedSource;
   DateTime? lastEditAt;
   String helperSource = '';
   Map<String, Uint8List> typstPackageFiles = const {};
@@ -387,6 +393,7 @@ class WorkspaceController extends ChangeNotifier {
     final value = source;
     try {
       await opened.saveNote(path, value);
+      _lastSavedSource = value;
       if (revision == editRevision && path == note) {
         savedRevision = revision;
         _setDirty(false);
@@ -821,7 +828,8 @@ class WorkspaceController extends ChangeNotifier {
         final editorChanged = revisionBeforeSync != editRevision || dirty;
         if (editorChanged &&
             diskSource != sourceBeforeSync &&
-            diskSource != source) {
+            diskSource != source &&
+            diskSource != _lastSavedSource) {
           await createSyncConflict(
             opened,
             syncedNote,
@@ -829,11 +837,18 @@ class WorkspaceController extends ChangeNotifier {
             remoteBytes: diskSource == null ? null : utf8.encode(diskSource),
           );
           await opened.saveNote(syncedNote, source);
+          _lastSavedSource = source;
           concurrentConflict = true;
         } else if (editorChanged && diskSource != sourceBeforeSync) {
-          // The disk already holds exactly what the editor shows: our own
-          // 400ms autosave landed mid-sync. Nothing diverged, nothing to
-          // reconcile, and no data is at risk — just move on.
+          // The disk holds something this controller itself wrote — either
+          // exactly what the editor shows, or the last 400ms autosave that
+          // landed mid-sync before the user kept typing. Both versions are
+          // this session's own writes: nothing foreign, no conflict. Flush
+          // the buffer if it has moved past the autosave on disk.
+          if (diskSource != source) {
+            await opened.saveNote(syncedNote, source);
+            _lastSavedSource = source;
+          }
         } else if (!editorChanged && diskSource != sourceBeforeSync) {
           source = diskSource ?? '';
         }

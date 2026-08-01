@@ -1051,6 +1051,20 @@ class NextcloudSync {
         localHash = await vault.storage.hash(path);
       }
     }
+    // The editor's 400ms autosave can land between the scan-time hash above
+    // and the upload's own read of the file. Snapshotting bytes and hashing
+    // exactly those bytes keeps the PUT body, its OC-Checksum, and the
+    // recorded cursor describing one version — otherwise the next run sees
+    // its own upload as a remote change and manufactures a conflict.
+    Future<void> snapshotForUpload() async {
+      localBytes = await vault.storage.readBytes(path);
+      final snapshotHash = sha256.convert(localBytes!).toString();
+      if (snapshotHash != localHash) {
+        localHash = snapshotHash;
+        localStat = await vault.storage.stat(path) ?? localStat;
+      }
+    }
+
     final localChanged = previous == null
         ? localExists
         : localHash != previous.localSha256;
@@ -1131,9 +1145,10 @@ class NextcloudSync {
           reason = 'same-content';
         } else if (_protectFromEmpty(path) &&
             await captured.file.length() == 0 &&
-            (localStat.size ?? 0) > 0) {
+            (localStat?.size ?? 0) > 0) {
           await captured.file.delete();
           action = SyncAction.upload;
+          await snapshotForUpload();
           uploadedRemoteEtag = await _uploadStorage(
             path,
             vault.storage,
@@ -1212,6 +1227,7 @@ class NextcloudSync {
       downloadedHash = download.localSha256;
       if (download.protected) {
         action = SyncAction.upload;
+        await snapshotForUpload();
         uploadedRemoteEtag = await _uploadStorage(
           path,
           vault.storage,
@@ -1231,6 +1247,7 @@ class NextcloudSync {
         (localChanged && !remoteChanged)) {
       action = SyncAction.upload;
       try {
+        await snapshotForUpload();
         uploadedRemoteEtag = await _uploadStorage(
           path,
           vault.storage,
@@ -1271,15 +1288,15 @@ class NextcloudSync {
         remoteFile.sha256Lowercase &&
         localHash != null) {
       try {
-        final repairBytes = localBytes ?? await vault.storage.readBytes(path);
-        final repairedEtag = await _uploadStorage(
+        await snapshotForUpload();
+        uploadedRemoteEtag = await _uploadStorage(
           path,
           vault.storage,
-          localHash: localHash,
+          localHash: localHash!,
           remote: remoteFile,
-          bytes: repairBytes,
+          bytes: localBytes,
         );
-        observedRemoteEtag = repairedEtag ?? observedRemoteEtag;
+        uploadedRemoteTime = DateTime.now().toUtc();
         repaired++;
         reason = 'checksum-repaired';
       } on _RemoteChanged {
@@ -1288,6 +1305,12 @@ class NextcloudSync {
       }
     }
 
+    if (uploadedRemoteTime != null && uploadedRemoteEtag == null) {
+      // The PUT response carried no etag. Falling back to the pre-upload
+      // etag in the cursor would make the next run flag this device's own
+      // upload as a remote change — probe the fresh one instead.
+      uploadedRemoteEtag = (await _probeRemoteFile(path))?.etag;
+    }
     final wasDownloaded = action == SyncAction.download;
     final nextLocal = wasDownloaded
         ? await vault.storage.stat(path)
