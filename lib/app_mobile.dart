@@ -28,6 +28,7 @@ import 'task_scheduler.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
+import 'voronoi_view.dart';
 import 'widgets/app_version.dart';
 import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
@@ -234,6 +235,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final idx = index!;
     final built = switch (_graphMode) {
       'conceptMap' => buildConceptMap(idx),
+      // The treemap renders straight from the index; no note graph needed.
+      'voronoi' => const NoteGraph(nodes: [], edges: []),
       'allFiles' => buildNoteGraph(idx),
       'timeline' => buildTimelineGraph(idx, {
         for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
@@ -3970,6 +3973,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onReadPath: _readPath,
         onDeleteArticle: _deleteArticle,
       ),
+      'graph' when _graphMode == 'voronoi' && index != null => VoronoiView(
+        index: index!,
+        communities: communities,
+        indexRevision: workspace.indexRevision,
+        onOpenPath: (path) => unawaited(_openPath(path)),
+      ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
         currentPath: _graphFocusPath ?? current,
@@ -4302,6 +4311,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'conceptMap' => Icons.bubble_chart,
                 'allFiles' => Icons.hub,
                 'timeline' => Icons.timeline,
+                'voronoi' => Icons.hive,
                 _ => Icons.center_focus_strong,
               }),
               onSelected: (value) => setState(() {
@@ -4313,6 +4323,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(value: 'local', child: Text('Focused')),
                 PopupMenuItem(value: 'allFiles', child: Text('All files')),
                 PopupMenuItem(value: 'timeline', child: Text('Timeline')),
+                PopupMenuItem(value: 'voronoi', child: Text('Treemap')),
               ],
             ),
           if (documentModes.contains(mode))

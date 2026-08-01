@@ -9,3 +9,4 @@ export 'src/search_index.dart';
 export 'src/storage.dart';
 export 'src/validation.dart';
 export 'src/vault.dart';
+export 'src/voronoi.dart';

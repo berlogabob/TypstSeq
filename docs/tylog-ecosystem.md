@@ -57,8 +57,8 @@ depend on `@preview` or network access.
 
 [`packages/tylog_core`](../packages/tylog_core) contains models, storage,
 metadata decoding, fallback source parsing, link resolution, deterministic
-index and search construction, validation, reports, and pure graph building.
-It imports neither Flutter nor `typst_flutter`.
+index and search construction, validation, reports, and pure graph and
+Voronoi-treemap layout building. It imports neither Flutter nor `typst_flutter`.
 
 `VaultStorage` exposes only safe vault-relative list, stat, read, write,
 delete, directory creation, and hash operations. Platform file picking,

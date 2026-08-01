@@ -7,7 +7,7 @@ Last reviewed: 2026-07-06
 - Clean schema-v5 vault with `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, `_system`, `_index`, and `.tylog`
 - Namespaced `tylog` Typst interface; no raw wikilinks or durable tag/file/collection registries
 - Rich note metadata, derived backlinks, tasks, dates, attachments, calendar entries, and compressed search index
-- Today-first mobile workspace with Journal, Tasks, Library, Calendar, Search, and secondary graph
+- Today-first mobile workspace with Journal, Tasks, Library, Calendar, Search, and secondary graph (concept-map, focused, all-files, timeline, and Voronoi-treemap views)
 - Selection-aware Magic actions for links, tags, tasks, dates, projects, citations, attachments, formatting, tables, equations, and reports
 - Styled, tappable blocks by default, with exact Preview, Source, and responsive split views available explicitly
 - Reproducible Typst reports and sibling PDF export

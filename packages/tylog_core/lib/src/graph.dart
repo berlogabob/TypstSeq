@@ -161,7 +161,7 @@ NoteGraph buildConceptMap(
   int minNotes = kConceptMapMinNotes,
   int minCoOccur = 3,
 }) {
-  final notesByTag = _tagToNotes(index);
+  final notesByTag = tagToNotes(index);
   final promoted = {
     for (final entry in notesByTag.entries)
       if (entry.value.length >= minNotes) entry.key: entry.value,
@@ -199,7 +199,7 @@ NoteGraph buildConceptMap(
 /// by the concept map and community detection.
 /// ponytail: plain helper, not a memoized field — `VaultIndex` is a const model
 /// and this runs once per graph rebuild, not in a hot loop.
-Map<String, Set<String>> _tagToNotes(VaultIndex index) {
+Map<String, Set<String>> tagToNotes(VaultIndex index) {
   final byTag = <String, Set<String>>{};
   for (final note in index.notesByPath.values) {
     for (final tag in note.tags) {
@@ -242,7 +242,7 @@ CommunityMap computeCommunities(
   int minNotes = kConceptMapMinNotes,
   int minCoOccur = 3,
 }) {
-  final byTag = _tagToNotes(index);
+  final byTag = tagToNotes(index);
   final promoted = {
     for (final e in byTag.entries)
       if (e.value.length >= minNotes) e.key: e.value,

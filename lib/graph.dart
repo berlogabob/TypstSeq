@@ -28,6 +28,17 @@ export 'package:tylog_core/graph.dart'
 /// unreadable "hairball" (community consensus from PKM tools like Obsidian).
 const _hairballThreshold = 180;
 
+/// A stable, evenly-spread hue for community [slot] of [total]. Saturation/
+/// value are tuned per theme so tints stay legible on light and dark. Shared
+/// by the force-directed graph and the Voronoi treemap so a community keeps
+/// its color across visualizations.
+Color colorForSlot(int slot, int total, ColorScheme scheme) {
+  final hue = (slot * 360.0 / math.max(1, total)) % 360;
+  final dark = scheme.brightness == Brightness.dark;
+  return HSVColor.fromAHSV(1, hue, dark ? 0.42 : 0.40, dark ? 0.55 : 0.82)
+      .toColor();
+}
+
 class GraphView extends StatefulWidget {
   const GraphView({
     super.key,
@@ -1013,14 +1024,8 @@ class GraphPainter extends CustomPainter {
   static double _radiusFor(GraphNode node) =>
       node.kind == GraphNodeKind.note ? 12.0 : nodeRadius;
 
-  /// A stable, evenly-spread hue for community [slot] of [total]. Saturation/
-  /// value are tuned per theme so tints stay legible on light and dark.
-  Color _colorForSlot(int slot, int total) {
-    final hue = (slot * 360.0 / math.max(1, total)) % 360;
-    final dark = colorScheme.brightness == Brightness.dark;
-    return HSVColor.fromAHSV(1, hue, dark ? 0.42 : 0.40, dark ? 0.55 : 0.82)
-        .toColor();
-  }
+  Color _colorForSlot(int slot, int total) =>
+      colorForSlot(slot, total, colorScheme);
 
   Color? _clusterColor(GraphNode node) {
     final c = communities;
