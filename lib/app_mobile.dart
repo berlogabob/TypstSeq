@@ -4194,12 +4194,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onReadPath: _readPath,
           )
         : documentContent;
+    // Floats over the body (see workArea's Stack): transient status must
+    // never take part in content layout, or every screen jumps when a sync
+    // starts, changes stage, and ends.
+    Widget statusPill({required Widget child, Key? key}) => IgnorePointer(
+      key: key,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Material(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            elevation: 2,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 360),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
     final statusBanner = ListenableBuilder(
       listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
       builder: (context, _) {
         final openFailed = status.startsWith('Open failed:');
-        return openFailed
+        final banner = openFailed
             ? MaterialBanner(
+                key: const ValueKey('status-error'),
                 backgroundColor: Theme.of(context).colorScheme.errorContainer,
                 content: Text(
                   status,
@@ -4215,43 +4238,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               )
             : (v != null && (index == null || rebuildProgress != null))
-            ? Material(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        syncing && syncStage != null ? syncStage! : status,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(value: rebuildProgress),
-                    ],
-                  ),
+            ? statusPill(
+                key: const ValueKey('status-progress'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      syncing && syncStage != null ? syncStage! : status,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(value: rebuildProgress),
+                  ],
                 ),
               )
             : (syncing && syncStage != null)
-            ? Material(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Text(
-                    syncStage!,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+            ? statusPill(
+                key: const ValueKey('status-stage'),
+                child: Text(
+                  syncStage!,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               )
-            : const SizedBox.shrink();
+            : const SizedBox.shrink(key: ValueKey('status-none'));
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: banner,
+        );
       },
     );
     final workArea = WorkSurface(
-      child: Column(
+      child: Stack(
         children: [
-          statusBanner,
-          Expanded(child: bodyContent),
+          Positioned.fill(child: bodyContent),
+          Positioned(top: 0, left: 0, right: 0, child: statusBanner),
         ],
       ),
     );
