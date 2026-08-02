@@ -81,8 +81,15 @@ class EditorState extends State<Editor> {
       ),
       ListenableBuilder(
         listenable: focusNode,
-        builder: (context, _) => focusNode.hasFocus
-            ? SafeArea(
+        // AnimatedSize slides the dock open/closed instead of snapping the
+        // text field by 48px on every focus change. It stays in flow on
+        // purpose: overlaying would cover the last line of text.
+        builder: (context, _) => AnimatedSize(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: focusNode.hasFocus
+              ? SafeArea(
                 top: false,
                 child: SizedBox(
                   height: 48,
@@ -104,7 +111,8 @@ class EditorState extends State<Editor> {
                   ),
                 ),
               )
-            : const SizedBox.shrink(),
+              : const SizedBox(width: double.infinity, height: 0),
+        ),
       ),
     ],
   );

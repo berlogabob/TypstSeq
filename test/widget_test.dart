@@ -19,6 +19,9 @@ Future<void> setViewMode(WidgetTester tester, String mode) async {
 Future<void> openSource(WidgetTester tester) => setViewMode(tester, 'Source');
 
 Future<void> openMagicAction(WidgetTester tester, String label) async {
+  // The dock slides open over 150ms after the editor gains focus; let it
+  // finish before aiming at its buttons.
+  await tester.pumpAndSettle();
   await tester.tap(find.byTooltip('Insert'));
   await tester.pumpAndSettle();
   await tester.scrollUntilVisible(
@@ -131,7 +134,8 @@ void main() {
     expect(find.text('Secret'), findsOneWidget);
 
     await tester.tap(rich);
-    await tester.pump();
+    // Let the formatting dock finish sliding open before aiming at it.
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Bold'), findsOneWidget);
     final controller = tester.widget<TextField>(rich).controller!;
     final start = controller.text.indexOf('Visible text');
@@ -612,7 +616,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Insert'));
     await tester.pumpAndSettle();
 

@@ -2410,8 +2410,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           ),
         ),
       ),
-      if (focusNode.hasFocus)
-        TextFieldTapRegion(
+      // AnimatedSize slides the dock open/closed instead of snapping the
+      // text field by 48px on every focus change. In flow on purpose:
+      // overlaying would cover the last line of text.
+      AnimatedSize(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: !focusNode.hasFocus
+            ? const SizedBox(width: double.infinity, height: 0)
+            : TextFieldTapRegion(
           child: SafeArea(
             top: false,
             child: SizedBox(
@@ -2529,6 +2537,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             ),
           ),
         ),
+      ),
     ],
   );
 }

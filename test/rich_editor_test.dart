@@ -849,7 +849,8 @@ void main() {
       ),
     );
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
-    await tester.pump();
+    // Let the formatting dock finish sliding open before aiming at it.
+    await tester.pumpAndSettle();
     controller.selection = const TextSelection(baseOffset: 0, extentOffset: 6);
 
     await tester.tap(find.byTooltip('Bold'));
@@ -1774,7 +1775,8 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('rich-journal-editor')));
-      await tester.pump();
+      // Let the formatting dock finish sliding open before aiming at it.
+      await tester.pumpAndSettle();
       controller.selection = const TextSelection.collapsed(offset: 0);
 
       await tester.longPress(

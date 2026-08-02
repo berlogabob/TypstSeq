@@ -261,24 +261,6 @@ class _GraphViewState extends State<GraphView>
         !_bannerDismissed;
     return Column(
       children: [
-        if (showHairballBanner)
-          MaterialBanner(
-            content: Text(
-              '${widget.graph.nodes.length} notes in view — this can get '
-              'hard to read.',
-            ),
-            actions: [
-              if (widget.onSwitchToFocused != null)
-                TextButton(
-                  onPressed: widget.onSwitchToFocused,
-                  child: const Text('Focused view'),
-                ),
-              TextButton(
-                onPressed: () => setState(() => _bannerDismissed = true),
-                child: const Text('Dismiss'),
-              ),
-            ],
-          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Wrap(
@@ -326,22 +308,61 @@ class _GraphViewState extends State<GraphView>
             ],
           ),
         ),
-        if (selected != null)
-          Material(
-            color: scheme.surfaceContainerLow,
-            child: ListTile(
-              dense: true,
-              leading: const Icon(Icons.description_outlined),
-              title: Text(selected.title, maxLines: 1),
-              trailing: FilledButton.tonalIcon(
-                key: const Key('graph-open'),
-                onPressed: () => widget.onOpenPath(selected.path),
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Open'),
-              ),
-            ),
+        // The advisory banner and the selected-node bar float over the
+        // canvas: appearing in the Column reflowed (and re-laid-out) the
+        // whole graph on every node tap or dismiss.
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(child: _canvas(scheme, displayGraph)),
+              if (showHairballBanner)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: MaterialBanner(
+                    elevation: 2,
+                    content: Text(
+                      '${widget.graph.nodes.length} notes in view — this can '
+                      'get hard to read.',
+                    ),
+                    actions: [
+                      if (widget.onSwitchToFocused != null)
+                        TextButton(
+                          onPressed: widget.onSwitchToFocused,
+                          child: const Text('Focused view'),
+                        ),
+                      TextButton(
+                        onPressed: () => setState(() => _bannerDismissed = true),
+                        child: const Text('Dismiss'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (selected != null)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Material(
+                    color: scheme.surfaceContainerLow,
+                    elevation: 2,
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text(selected.title, maxLines: 1),
+                      trailing: FilledButton.tonalIcon(
+                        key: const Key('graph-open'),
+                        onPressed: () => widget.onOpenPath(selected.path),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open'),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        Expanded(child: _canvas(scheme, displayGraph)),
+        ),
       ],
     );
   }
