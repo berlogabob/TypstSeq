@@ -347,7 +347,7 @@ class Vault {
     return id;
   }
 
-  Future<String> nextTaskId(String text, {DateTime? now}) async {
+  Future<String> nextTaskId(String text, {DateTime? now, Set<String> reserved = const {}}) async {
     final instant = now ?? DateTime.now();
     final stamp =
         '${instant.year.toString().padLeft(4, '0')}'
@@ -362,7 +362,7 @@ class Vault {
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
     final base = slug.isEmpty ? stamp : '$stamp-$slug';
-    final ids = (await loadIndex())?.tasks.map((task) => task.id).toSet() ?? {};
+    final ids = {...?(await loadIndex())?.tasks.map((task) => task.id), ...reserved};
     var id = base;
     var suffix = 2;
     while (ids.contains(id)) {

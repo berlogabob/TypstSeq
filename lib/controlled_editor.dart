@@ -388,7 +388,7 @@ SourceEdit applyMagicEdit(
     MagicAction.mention =>
       '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${typstContent('@${value ?? selected}')}]',
     MagicAction.tag => '#tylog.tag(${typstString(value ?? selected)})',
-    MagicAction.task => _taskSnippet(
+    MagicAction.task => taskSnippet(
       id: request.id ?? 'task',
       text: value ?? selected,
       due: request.due,
@@ -454,7 +454,7 @@ SourceEdit applyMagicEdit(
   );
 }
 
-String _taskSnippet({
+String taskSnippet({
   required String id,
   required String text,
   String? due,

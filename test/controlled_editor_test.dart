@@ -227,4 +227,13 @@ unrelated @someone else''';
       '= Title\n\n',
     );
   });
+
+  test('taskSnippet escapes quotes and backslashes', () {
+    final result = taskSnippet(id: 't1', text: 'say "hi" \\ done');
+    expect(
+      result,
+      contains(r'text: "say \"hi\" \\ done"'),
+    );
+    expect(result, contains('id: "t1"'));
+  });
 }

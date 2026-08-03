@@ -426,4 +426,22 @@ void main() {
       expect(index.notesByPath['notes/Root.typ']?.title, 'Root');
     });
   });
+
+  test('nextTaskId avoids reserved ids', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_reserved_id_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final now = DateTime(2026, 8, 3, 14, 22, 0);
+
+    final id1 = await vault.nextTaskId('milk', now: now);
+    expect(id1, '20260803-142200-milk');
+
+    final id2 = await vault.nextTaskId(
+      'milk',
+      now: now,
+      reserved: {id1},
+    );
+    expect(id2, '$id1-2');
+  });
 }

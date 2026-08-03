@@ -2016,4 +2016,194 @@ void main() {
       ]),
     );
   });
+
+  test('multiline selection converts every line to a bullet list', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a\nb\nc',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+    controller.setBulletList();
+
+    expect(controller.text, '• a\n• b\n• c');
+    expect(saved.last, '- a\n- b\n- c');
+  });
+
+  test('multiline selection across blocks converts each block to its own list',
+      () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a\nb\n\nc',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+    controller.setBulletList();
+
+    expect(controller.text, '• a\n• b\n\n• c');
+    expect(saved.last, '- a\n- b\n\n- c');
+  });
+
+  test('multiline numbered conversion numbers lines sequentially', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a\nb\nc',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+    controller.setNumberedList();
+
+    expect(controller.text, '1. a\n2. b\n3. c');
+    expect(saved.last, '+ a\n+ b\n+ c');
+  });
+
+  test('partial multiline selection converts only touched lines', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a\nb\nc\nd',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    // Select from within line b to within line c
+    final lineALength = 'a'.length;
+    final lineBStart = lineALength + 1; // +1 for \n
+    final lineBLength = 'b'.length;
+    final lineCStart = lineBStart + lineBLength + 1; // +1 for \n
+    final lineCLength = 'c'.length;
+    final selectionEnd = lineCStart + lineCLength; // end of line c
+
+    controller.selection = TextSelection(
+      baseOffset: lineBStart,
+      extentOffset: selectionEnd,
+    );
+    controller.setBulletList();
+
+    // Line a unchanged, lines b-c bulleted, line d unchanged. Restyling
+    // splits the paragraph, so the splits become their own blocks (blank-line
+    // separators) — same semantics as the single-line setBlockStyle splits.
+    expect(controller.text, 'a\n\n• b\n• c\n\nd');
+    expect(saved.last, 'a\n\n- b\n- c\n\nd');
+  });
+
+  test('collapsed caret still converts a single line', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'a\nb\nc',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    // Collapsed caret in line b
+    final lineALength = 'a'.length;
+    final lineBStart = lineALength + 1;
+    controller.selection = TextSelection.collapsed(offset: lineBStart);
+
+    controller.setBulletList();
+
+    // Only line b bulleted; the split lines become their own blocks (existing
+    // single-line setBlockStyle semantics, pinned by the earlier toggle test).
+    expect(controller.text, 'a\n\n• b\n\nc');
+    expect(saved.last, 'a\n\n- b\n\nc');
+  });
+
+  test('insertTasks creates one checkbox line per entry and round-trips', () {
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'start\n\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.selection = TextSelection.collapsed(offset: controller.text.length);
+    controller.insertTasks([
+      (id: 't1', text: 'milk'),
+      (id: 't2', text: 'milk'),
+      (id: 't3', text: 'bread'),
+    ]);
+
+    expect(controller.text, contains('☐ milk'));
+    expect(controller.text, contains('☐ bread'));
+    expect(saved.last, contains('#tylog.task('));
+    expect(saved.last, contains('id: "t1"'));
+    expect(saved.last, contains('id: "t2"'));
+    expect(saved.last, contains('id: "t3"'));
+
+    // Reconstruct from saved source and verify text is identical (modulo the
+    // synthetic trailing empty paragraph, which is not serialized).
+    final reloaded = TyLogEditingController(
+      source: saved.last,
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(reloaded.dispose);
+
+    expect(reloaded.text, controller.text.trimRight());
+  });
+
+  test(
+    'insertTasks over a selection overlapping an existing task reports error '
+    'and leaves document unchanged',
+    () {
+      final errors = <Object>[];
+      final taskSource =
+          '#tylog.task(\n'
+          '  id: "t1",\n'
+          '  text: "Existing task",\n'
+          '  due: none,\n'
+          '  project: none,\n'
+          ')\n\n'
+          'Some notes here';
+      final controller = TyLogEditingController(
+        source: taskSource,
+        onSourceChanged: (_) {},
+        onError: errors.add,
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      final before = controller.text;
+      // Select from within task text into the paragraph
+      final selectionStart = before.indexOf('task');
+      final selectionEnd = before.indexOf('notes') + 2;
+
+      controller.selection = TextSelection(
+        baseOffset: selectionStart,
+        extentOffset: selectionEnd,
+      );
+      controller.insertTasks([(id: 'new', text: 'new task')]);
+
+      expect(errors, isNotEmpty);
+      expect(controller.text, before);
+      expect(controller.document.toSource(), taskSource);
+    },
+  );
 }
