@@ -92,6 +92,7 @@ void main() {
       inspector: _FailingInspector(),
     );
 
+    expect(index.notes.single.metadataSource, 'fallback-inspected');
     expect(index.notes.single.outgoingLinks, ['target']);
     final problem = index.problems.singleWhere(
       (problem) => problem.code == 'metadata-query-failed',
@@ -297,7 +298,8 @@ void main() {
       );
 
       // Same fingerprints (files untouched) but this pass's inspector is
-      // healthy — the cached fallback note must not shortcut past it.
+      // healthy — the uninspected cached fallback note must not shortcut past
+      // it. The poison note was already attempted, so it stays cached.
       final healthyInspector = _SourceInspector();
       final second = await scanVaultStorage(
         storage,
@@ -305,15 +307,74 @@ void main() {
         previous: first,
       );
 
-      expect(healthyInspector.calls, 2);
+      expect(healthyInspector.calls, 1);
       expect(
-        second.problems.where(
-          (problem) => problem.code == 'metadata-fallback',
-        ),
-        isEmpty,
+        second.problems
+            .where((problem) => problem.code == 'metadata-fallback')
+            .map((problem) => problem.subject),
+        ['notes/poison.typ'],
       );
     },
   );
+
+  test('an inspected fallback is not re-inspected unchanged', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'tylog_core_inspected_fallback_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A")',
+    );
+    final emptyInspector = _EmptyInspector();
+
+    final first = await scanVaultStorage(storage, inspector: emptyInspector);
+    expect(emptyInspector.calls, 1);
+    expect(first.notes.single.metadataSource, 'fallback-inspected');
+
+    final healthyInspector = _SourceInspector();
+    final second = await scanVaultStorage(
+      storage,
+      inspector: healthyInspector,
+      previous: first,
+    );
+
+    expect(healthyInspector.calls, 0);
+    expect(second.notes.single.metadataSource, 'fallback-inspected');
+    expect(
+      second.problems.where((problem) => problem.code == 'metadata-fallback'),
+      hasLength(1),
+    );
+  });
+
+  test('editing an inspected fallback triggers a fresh inspection', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'tylog_core_edited_inspected_fallback_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A")',
+    );
+    final first = await scanVaultStorage(storage, inspector: _EmptyInspector());
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "a", title: "Changed")',
+    );
+    final healthyInspector = _SourceInspector();
+
+    final second = await scanVaultStorage(
+      storage,
+      inspector: healthyInspector,
+      previous: first,
+    );
+
+    expect(healthyInspector.calls, 1);
+    expect(second.notes.single.title, 'Changed');
+    expect(second.notes.single.metadataSource, 'typst-query');
+  });
 
   test('inspection files exclude other note sources', () async {
     final root = await Directory.systemTemp.createTemp('tylog_core_files_');
@@ -546,6 +607,16 @@ class _FailingInspector implements TypstInspector {
   @override
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) =>
       throw StateError('fixture does not compile');
+}
+
+class _EmptyInspector implements TypstInspector {
+  int calls = 0;
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
+    calls++;
+    return const [];
+  }
 }
 
 Map<String, Object?> _stableNotes(VaultIndex index) => {

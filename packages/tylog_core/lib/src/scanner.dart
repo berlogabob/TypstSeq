@@ -206,10 +206,10 @@ abstract interface class RecoverableInspector {
 /// `metadata-query-failed` problem names it.
 Duration typstInspectTimeout = const Duration(seconds: 30);
 
-/// Upper bound on how many cached fallback notes a single scan re-queries.
-/// Re-inspection is a per-note Typst compile (seconds each on device); an
-/// uncapped pass over a large backlog pins the CPU for hours and starves
-/// sync. Capped, the backlog drains a slice per scan instead.
+/// Upper bound on how many cached uninspected fallback or legacy notes a
+/// single scan re-queries. Re-inspection is a per-note Typst compile (seconds
+/// each on device); an uncapped pass over a large backlog pins the CPU for
+/// hours and starves sync. Capped, the backlog drains a slice per scan instead.
 int maxMetadataReinspectionsPerScan = 50;
 
 /// Consecutive inspect timeouts tolerated before the native worker is
@@ -468,16 +468,17 @@ Future<VaultIndex> scanVaultStorage(
       }
     }
 
-    // A cached fallback note (dead inspector during some earlier scan) is
-    // re-queried when an inspector is available so it can upgrade to real
-    // metadata and drop its metadata-fallback problem — but only up to
+    // A cached uninspected fallback (dead inspector before this note) or legacy
+    // note is re-queried when an inspector is available so it can upgrade to
+    // real metadata and drop its metadata-fallback problem — but only up to
     // [maxMetadataReinspectionsPerScan] per pass: each re-query is a Typst
     // compile, and an uncapped backlog pins the device CPU for hours. Only
     // otherwise-reusable notes count against the cap; a genuinely changed note
     // is re-read regardless, so charging it here would starve the upgrades.
     final reinspect =
         matchesDisk &&
-        cached!.metadataSource != 'typst-query' &&
+        (cached!.metadataSource == 'fallback' ||
+            cached.metadataSource == 'legacy') &&
         activeInspector != null &&
         reinspected < maxMetadataReinspectionsPerScan;
     if (reinspect) reinspected++;
@@ -505,20 +506,23 @@ Future<VaultIndex> scanVaultStorage(
     inspectionFiles ??= activeInspector == null
         ? const <String, Uint8List>{}
         : await _inspectionFiles(storage);
+    var inspectionAttempted = false;
     try {
-      final queried = activeInspector == null
-          ? null
-          : decodeTylogMetadataRecords(
-              await activeInspector
-                  .inspect(
-                    TypstDocumentInput(
-                      path: relative,
-                      source: source,
-                      files: inspectionFiles,
-                    ),
-                  )
-                  .timeout(typstInspectTimeout),
-            );
+      QueriedMetadata? queried;
+      if (activeInspector != null) {
+        inspectionAttempted = true;
+        queried = decodeTylogMetadataRecords(
+          await activeInspector
+              .inspect(
+                TypstDocumentInput(
+                  path: relative,
+                  source: source,
+                  files: inspectionFiles,
+                ),
+              )
+              .timeout(typstInspectTimeout),
+        );
+      }
       if (activeInspector != null) {
         // A query got through: the worker is healthy, so reset both the
         // timeout streak and the recovery budget (a handful of bad notes
@@ -533,6 +537,7 @@ Future<VaultIndex> scanVaultStorage(
               fingerprint: fingerprint,
               modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
               synonyms: synonyms,
+              inspectionAttempted: inspectionAttempted,
             )
           : _queriedNote(
               relative,
@@ -593,6 +598,7 @@ Future<VaultIndex> scanVaultStorage(
         fingerprint: fingerprint,
         modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
         synonyms: synonyms,
+        inspectionAttempted: inspectionAttempted,
       );
       // Keeping the cached note is right for a *transient* inspect failure: a
       // previously-queried note should not be downgraded to a worse source
@@ -602,7 +608,9 @@ Future<VaultIndex> scanVaultStorage(
       // two version bumps, which quietly un-clustered the notes that carried
       // them.
       notes[relative] =
-          (reusable ? cached.copyWith(fingerprint: fingerprint) : null) ??
+          (reusable && cached.metadataSource == 'typst-query'
+              ? cached.copyWith(fingerprint: fingerprint)
+              : null) ??
           fallback;
       tasks.addAll(_fallbackTasks(relative, locateTypstCalls(source)));
       problems.add(
@@ -1322,6 +1330,7 @@ NoteRef _fallbackNote(
   String? fingerprint,
   int? modifiedMillis,
   Map<String, String> synonyms = const {},
+  bool inspectionAttempted = false,
 }) {
   final stem = path.split('/').last.replaceFirst(_typExtension, '');
   final calls = locateTypstCalls(source);
@@ -1372,7 +1381,7 @@ NoteRef _fallbackNote(
     properties: _parseProperties(header),
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
-    metadataSource: 'fallback',
+    metadataSource: inspectionAttempted ? 'fallback-inspected' : 'fallback',
   );
 }
 
