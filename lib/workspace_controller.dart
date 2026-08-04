@@ -1030,13 +1030,14 @@ class WorkspaceController extends ChangeNotifier {
   Future<List<PkmsSearchResult>> searchNotes(
     String query, {
     String? tag,
+    String? status,
     int limit = 50,
   }) async {
     final worker = _worker;
     if (worker == null) {
-      return searchIndex.search(query, tag: tag, limit: limit);
+      return searchIndex.search(query, tag: tag, status: status, limit: limit);
     }
-    return worker.search(query, tag: tag, limit: limit);
+    return worker.search(query, tag: tag, status: status, limit: limit);
   }
 
   Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(

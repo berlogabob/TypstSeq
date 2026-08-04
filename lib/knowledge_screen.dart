@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'models.dart';
+import 'saved_searches.dart';
 import 'search_index.dart';
 import 'widgets/snack.dart';
 
@@ -17,6 +18,9 @@ class KnowledgeScreen extends StatefulWidget {
     required this.problems,
     required this.onOpenNote,
     this.onFixProblems,
+    this.savedSearches = const <SavedSearch>[],
+    this.onSaveSearch,
+    this.onDeleteSearch,
   });
 
   final KnowledgeView initialView;
@@ -25,7 +29,7 @@ class KnowledgeScreen extends StatefulWidget {
   /// Runs a full-text query. A callback rather than a [PkmsSearchIndex] because
   /// the index itself lives in the worker isolate — shipping it to the UI cost
   /// ~71 ms of root-isolate time per rebuild on a P30.
-  final Future<List<PkmsSearchResult>> Function(String query, String? tag)
+  final Future<List<PkmsSearchResult>> Function(String query, String? tag, String? status)
   search;
 
   final List<PkmsProblem> problems;
@@ -36,6 +40,15 @@ class KnowledgeScreen extends StatefulWidget {
   /// when the fix only navigates (e.g. opening duplicate owners to merge).
   final Future<List<PkmsProblem>?> Function(List<PkmsProblem> problems)?
   onFixProblems;
+
+  /// Saved search presets.
+  final List<SavedSearch> savedSearches;
+
+  /// Called to save a new search preset.
+  final Future<void> Function(SavedSearch)? onSaveSearch;
+
+  /// Called to delete a saved search preset.
+  final Future<void> Function(SavedSearch)? onDeleteSearch;
 
   /// Codes this screen offers a one-tap "Fix" for.
   static const fixableCodes = {
@@ -53,6 +66,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late KnowledgeView view = widget.initialView;
   String query = '';
   String? selectedTag;
+  String? selectedStatus;
+  String? _activePreset;
   final _searchController = TextEditingController();
 
   /// Results now arrive asynchronously, so they need somewhere to live.
@@ -119,7 +134,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     super.dispose();
   }
 
-  /// Re-queries for the current [query]/[selectedTag].
+  /// Re-queries for the current [query]/[selectedTag]/[selectedStatus].
   ///
   /// Debounced because it now crosses an isolate boundary and the field fires on
   /// every keystroke. [immediate] skips the wait for the paths where the user did
@@ -129,7 +144,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     _searchDebounce?.cancel();
     final generation = ++_searchGeneration;
     Future<void> run() async {
-      final results = await widget.search(query, selectedTag);
+      final results = await widget.search(query, selectedTag, selectedStatus);
       // A newer query was issued while this one was in flight; its own reply owns
       // the results now.
       if (!mounted || generation != _searchGeneration) return;
@@ -209,6 +224,104 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   _runSearch();
                 },
               ),
+              if (widget.savedSearches.isNotEmpty || widget.onSaveSearch != null) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final preset in widget.savedSearches)
+                      GestureDetector(
+                        onLongPress: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Delete saved search?'),
+                              content: Text('Delete "${preset.name}"?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true && mounted) {
+                            await widget.onDeleteSearch?.call(preset);
+                          }
+                        },
+                        child: ChoiceChip(
+                          label: Text(preset.name),
+                          selected: _activePreset == preset.name,
+                          onSelected: (_) {
+                            if (_activePreset == preset.name) {
+                              // Deselect
+                              setState(() => _activePreset = null);
+                            } else {
+                              // Select and apply the preset
+                              setState(() {
+                                _activePreset = preset.name;
+                                query = preset.query;
+                                selectedTag = preset.tag;
+                                selectedStatus = preset.status;
+                                _searchController.text = preset.query;
+                              });
+                              _runSearch(immediate: true);
+                            }
+                          },
+                        ),
+                      ),
+                    if (widget.onSaveSearch != null &&
+                        (query.isNotEmpty || selectedTag != null || selectedStatus != null))
+                      ActionChip(
+                        avatar: const Icon(Icons.add),
+                        label: const Text('Save'),
+                        onPressed: () async {
+                          final name = await showDialog<String>(
+                            context: context,
+                            builder: (context) {
+                              final controller = TextEditingController();
+                              return AlertDialog(
+                                title: const Text('Save search'),
+                                content: TextField(
+                                  controller: controller,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Search name',
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, controller.text),
+                                    child: const Text('Save'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                          if (name != null && name.isNotEmpty && mounted) {
+                            await widget.onSaveSearch?.call(
+                              SavedSearch(
+                                name: name,
+                                query: query,
+                                tag: selectedTag,
+                                status: selectedStatus,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              ],
               if (tagSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(

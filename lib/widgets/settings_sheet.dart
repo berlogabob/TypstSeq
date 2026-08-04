@@ -20,6 +20,7 @@ class SettingsSheet extends StatelessWidget {
     required this.onManageVaults,
     required this.onEnableReminders,
     required this.onMigrateEntityTypes,
+    required this.onImportVault,
     this.onCheckForUpdates,
   });
 
@@ -34,6 +35,7 @@ class SettingsSheet extends StatelessWidget {
   final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
   final Future<void> Function() onMigrateEntityTypes;
+  final Future<void> Function() onImportVault;
 
   /// Desktop-only: check GitHub Releases for a newer build. Null hides the tile.
   final VoidCallback? onCheckForUpdates;
@@ -88,6 +90,12 @@ class SettingsSheet extends StatelessWidget {
                 title: 'Migrate entity types',
                 subtitle: 'Update older notes to the current format',
                 onTap: () => unawaited(onMigrateEntityTypes()),
+              ),
+              SettingsTile(
+                icon: Icons.drive_folder_upload_outlined,
+                title: 'Import Logseq/Obsidian vault',
+                subtitle: 'Convert a whole vault folder into TyLog notes',
+                onTap: () => unawaited(onImportVault()),
               ),
               FutureBuilder<String>(
                 future: appVersion(),

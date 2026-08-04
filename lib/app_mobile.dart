@@ -14,6 +14,7 @@ import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
+import 'saved_searches.dart';
 import 'markdown_article_import.dart';
 import 'models.dart';
 import 'month_calendar.dart';
@@ -57,6 +58,7 @@ export 'widgets/work_surface.dart'
 
 part 'app_mobile/desktop_update_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
+part 'app_mobile/vault_import_flow.dart';
 part 'app_mobile/vault_lifecycle.dart';
 
 const _autoRelatedMarker = '// tylog:auto-related';
@@ -951,13 +953,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
+    final searchStore = SavedSearchStore(v.storage);
+    final savedSearches = await searchStore.load();
+    if (!mounted) return;
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => KnowledgeScreen(
           initialView: initialView,
           index: ix,
-          search: (query, tag) => workspace.searchNotes(query, tag: tag),
+          search: (query, tag, status) =>
+              workspace.searchNotes(query, tag: tag, status: status),
+          savedSearches: savedSearches,
+          onSaveSearch: (search) async {
+            final next = [
+              ...savedSearches.where((s) => s.name != search.name),
+              search,
+            ];
+            await searchStore.save(next);
+            _queueCloudSync();
+          },
+          onDeleteSearch: (search) async {
+            await searchStore.save(
+              savedSearches.where((s) => s.name != search.name).toList(),
+            );
+            _queueCloudSync();
+          },
           problems: _knowledgeProblems(),
           onOpenNote: _openPath,
           onFixProblems: _fixProblems,
@@ -1531,6 +1552,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onMigrateEntityTypes: () async {
               Navigator.pop(context);
               await _migrateEntityTypes();
+            },
+            onImportVault: () async {
+              Navigator.pop(context);
+              await _importVault();
             },
             onCheckForUpdates: Platform.isMacOS
                 ? () {

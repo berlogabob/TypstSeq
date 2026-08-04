@@ -6,6 +6,8 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/nextcloud_sync.dart';
+import 'package:tylog/saved_searches.dart';
+import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
@@ -98,6 +100,7 @@ void main() {
     expect(find.text('Settings'), findsWidgets);
     expect(find.text('Local folder'), findsOneWidget);
     expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Import Logseq/Obsidian vault'), findsOneWidget);
     expect(find.text('Nextcloud settings'), findsNothing);
     expect(find.text('Sync server status'), findsNothing);
     expect(find.text('App version'), findsOneWidget);
@@ -921,6 +924,49 @@ void main() {
     // The list redrew from the callback's result (empty → "No vault problems").
     expect(find.text('No vault problems'), findsOneWidget);
   });
+
+  testWidgets(
+    'KnowledgeScreen shows saved searches and invokes callback with status',
+    (tester) async {
+      final invokedQueries = <(String query, String? tag, String? status)>[];
+      final searches = [
+        SavedSearch(name: 'To-do', query: '', status: 'todo'),
+        SavedSearch(name: 'Tagged', query: 'flutter', tag: 'dart'),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: _knowledgeScreen(
+              savedSearches: searches,
+              search: (query, tag, status) async {
+                invokedQueries.add((query, tag, status));
+                return const [];
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Verify both saved search chips are rendered
+      expect(find.text('To-do'), findsOneWidget);
+      expect(find.text('Tagged'), findsOneWidget);
+
+      // Tap the "To-do" preset
+      await tester.tap(find.text('To-do'));
+      await tester.pumpAndSettle();
+
+      // Verify the search was invoked with the preset's status and empty query
+      expect(invokedQueries.last, ('', null, 'todo'));
+
+      // Tap the "Tagged" preset
+      await tester.tap(find.text('Tagged'));
+      await tester.pumpAndSettle();
+
+      // Verify the search was invoked with the preset's query and tag
+      expect(invokedQueries.last, ('flutter', 'dart', null));
+    },
+  );
 }
 
 KnowledgeScreen _knowledgeScreen({
@@ -928,11 +974,19 @@ KnowledgeScreen _knowledgeScreen({
   List<PkmsProblem> problems = const [],
   ValueChanged<String>? onOpenNote,
   Future<List<PkmsProblem>?> Function(List<PkmsProblem>)? onFixProblems,
+  List<SavedSearch> savedSearches = const [],
+  Future<List<PkmsSearchResult>> Function(
+    String query,
+    String? tag,
+    String? status,
+  )?
+  search,
 }) => KnowledgeScreen(
   initialView: initialView,
   index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
-  search: (_, _) async => const [],
+  search: search ?? (_, _, _) async => const [],
   problems: problems,
   onOpenNote: onOpenNote ?? (_) {},
   onFixProblems: onFixProblems,
+  savedSearches: savedSearches,
 );

@@ -90,11 +90,13 @@ class SearchCommand extends VaultWorkerCommand {
     required this.query,
     required this.replyTo,
     this.tag,
+    this.status,
     this.limit = 50,
   });
 
   final String query;
   final String? tag;
+  final String? status;
   final int limit;
   final SendPort replyTo;
 }
@@ -206,6 +208,7 @@ class _VaultWorker {
             _search.search(
               command.query,
               tag: command.tag,
+              status: command.status,
               limit: command.limit,
             ),
           );
@@ -421,6 +424,7 @@ class VaultWorkerClient {
   Future<List<PkmsSearchResult>> search(
     String query, {
     String? tag,
+    String? status,
     int limit = 50,
   }) async {
     if (_relay.isClosed) return const [];
@@ -430,6 +434,7 @@ class VaultWorkerClient {
         SearchCommand(
           query: query,
           tag: tag,
+          status: status,
           limit: limit,
           replyTo: reply.sendPort,
         ),
