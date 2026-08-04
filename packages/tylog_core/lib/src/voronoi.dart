@@ -4,10 +4,11 @@ import 'dart:typed_data';
 import 'graph.dart';
 import 'models.dart';
 
-/// Rounds of (tessellate -> Lloyd re-center -> weight nudge) per hierarchy
-/// level. Fixed count, no convergence test — approximate area matching is the
-/// requirement ("big tag looks big"), not exact proportions.
-const kVoronoiIterations = 40;
+/// Max rounds of (tessellate -> Lloyd re-center -> weight nudge) per
+/// hierarchy level; the loop exits early once every cell is within 2% of the
+/// total area from its target — approximate area matching is the requirement
+/// ("big tag looks big"), not exact proportions.
+const kVoronoiIterations = 120;
 
 /// Signed shoelace area; positive when [poly] winds counter-clockwise in a
 /// y-up frame (clockwise on screen). Callers wanting a magnitude use
@@ -179,7 +180,7 @@ List<(double, double)> _powerCell(
 }
 
 /// Weighted treemap of one level: seeds sites with Random([seed]) inside
-/// convex [boundary], then runs [kVoronoiIterations] rounds of Lloyd
+/// convex [boundary], then runs up to [kVoronoiIterations] rounds of Lloyd
 /// re-centering plus a clamped area-deficit weight nudge (simplified
 /// Balzer–Deussen). Cells return in input order; [targetWeights] need not be
 /// normalized. Deterministic for a given seed.
@@ -205,22 +206,90 @@ List<List<(double, double)>> weightedTessellation(
   final weights = List.filled(n, 0.0);
   var cells = powerCells(sites, weights, boundary);
   final avgArea = totalArea / n;
+  // Vanished cell: raise its weight to the minimum that lets its own site
+  // win against every sibling (bisector lands 1/8 of the way to the binding
+  // neighbor), so it reappears as a sliver instead of near-max-sized. The
+  // old pull-toward-wMax rescue made count-1 cells oscillate huge/vanished
+  // and ship at whatever size the last iteration happened to catch. If the
+  // binding neighbor is nearly coincident no weight can separate the two
+  // (the radical axis is hypersensitive to weight when d2 ~ 0), so reseed
+  // the site instead — still deterministic, rng draws are seed-ordered.
+  void rescue(int i) {
+    var (xi, yi) = sites[i];
+    var nearest2 = double.infinity;
+    for (var j = 0; j < n; j++) {
+      if (j == i) continue;
+      final (xj, yj) = sites[j];
+      final d2 = (xi - xj) * (xi - xj) + (yi - yj) * (yi - yj);
+      nearest2 = math.min(nearest2, d2);
+    }
+    if (nearest2 < target[i] * 0.05) {
+      sites[i] = _randomPointIn(boundary, rng);
+      (xi, yi) = sites[i];
+    }
+    var w = double.negativeInfinity;
+    for (var j = 0; j < n; j++) {
+      if (j == i) continue;
+      final (xj, yj) = sites[j];
+      final d2 = (xi - xj) * (xi - xj) + (yi - yj) * (yi - yj);
+      w = math.max(w, weights[j] - d2 * 0.75);
+    }
+    if (w.isFinite) weights[i] = math.max(weights[i], w);
+  }
+
+  var step = 0.6;
+  var prevDeficit = double.infinity;
   for (var iter = 0; iter < kVoronoiIterations; iter++) {
+    // Measure before nudging so the break ships the tessellation that was
+    // actually checked, not one unmeasured overshoot past it.
+    var rescued = false;
+    var maxDeficit = 0.0;
+    var maxRelDeficit = 0.0;
+    for (var i = 0; i < n; i++) {
+      if (cells[i].length < 3) {
+        rescue(i);
+        rescued = true;
+      } else {
+        final d = (target[i] - polygonArea(cells[i])).abs();
+        maxDeficit = math.max(maxDeficit, d);
+        // Also relative to the cell's own target (floored at avgArea/4 so
+        // tiny targets don't demand pixel-perfection): the global-absolute
+        // bound alone let a 1-note community ship at ~20x its fair share.
+        maxRelDeficit = math.max(
+          maxRelDeficit,
+          d / math.max(target[i], avgArea / 4),
+        );
+      }
+    }
+    if (!rescued && maxDeficit < totalArea * 0.02 && maxRelDeficit < 0.25) {
+      break;
+    }
     for (var i = 0; i < n; i++) {
       final cell = cells[i];
-      if (cell.length < 3) {
-        // Vanished: its weight fell too far behind the neighbors' — pull it
-        // toward the current max so it wins ground back next round.
-        final wMax = weights.reduce(math.max);
-        weights[i] = (weights[i] + wMax) / 2 + avgArea * 0.05;
-        continue;
-      }
+      if (cell.length < 3) continue;
       sites[i] = polygonCentroid(cell);
       final deficit = target[i] - polygonArea(cell);
       // Clamped nudge keeps a huge target from shoving the radical axis past
       // a neighbor site in one step (the oscillation/vanishing failure mode).
-      weights[i] += deficit.clamp(-avgArea, avgArea) * 0.6;
+      weights[i] += deficit.clamp(-avgArea, avgArea) * step;
     }
+    cells = powerCells(sites, weights, boundary);
+    // Deficit stopped shrinking: the system is in a limit cycle around its
+    // equilibrium — damp the step so it spirals in instead of orbiting.
+    if (maxDeficit >= prevDeficit) step = math.max(step * 0.9, 0.1);
+    prevDeficit = maxDeficit;
+  }
+  // Never ship an invisible cell. Loop because same-pass rescues can
+  // re-dominate each other; converges in practice within a pass or two.
+  for (var pass = 0; pass < 4; pass++) {
+    var revived = false;
+    for (var i = 0; i < n; i++) {
+      if (cells[i].length < 3) {
+        rescue(i);
+        revived = true;
+      }
+    }
+    if (!revived) break;
     cells = powerCells(sites, weights, boundary);
   }
   return cells;
@@ -413,7 +482,13 @@ VoronoiResult computeVoronoiTreemap(VoronoiRequest req) {
     if (kids == null || kids.isEmpty || boundary.length < 3) return;
     final cells = weightedTessellation(
       boundary,
-      [for (final k in kids) req.weight[k]],
+      // sqrt-compressed areas: real vaults are extremely skewed (one
+      // community can hold 60% of all notes next to 1-note communities, a
+      // 1000:1 range). Proportional areas would make small communities
+      // invisible slivers and stall the solver; sqrt keeps every cell
+      // visible and strictly ordered while big still reads big. The label
+      // shows the true count.
+      [for (final k in kids) math.sqrt(req.weight[k])],
       req.seed + (parentIndex + 2) * 1000003,
     );
     for (var j = 0; j < kids.length; j++) {

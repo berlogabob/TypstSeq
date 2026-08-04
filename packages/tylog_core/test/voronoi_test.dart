@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
@@ -63,6 +64,67 @@ void main() {
     final areas = cells.map(polygonArea).toList();
     for (var i = 1; i < areas.length; i++) {
       expect(areas[i], greaterThan(areas[i - 1]), reason: 'target $i');
+    }
+  });
+
+  test('skewed weights: heavy cells out-size the count-1 crowd', () {
+    // Shape of real vault data: many 1-note tags next to a few 50-200 ones.
+    final targets = [...List.filled(20, 1.0), 50.0, 80.0, 120.0, 150.0, 200.0];
+    final cells = weightedTessellation(unitSquare, targets, 7);
+    final areas = cells.map(polygonArea).toList();
+    expect(areas.fold(0.0, (a, b) => a + b), closeTo(1.0, 1e-6));
+    for (var i = 0; i < areas.length; i++) {
+      expect(areas[i], greaterThan(0), reason: 'cell $i vanished');
+    }
+    final smallMax = areas.sublist(0, 20).reduce(math.max);
+    for (var i = 20; i < areas.length; i++) {
+      expect(areas[i], greaterThan(smallMax),
+          reason: 'target ${targets[i]} not bigger than every 1-note cell');
+    }
+    // A 1-note cell must stay near its fair share, not just below the heavy
+    // cells (the relative convergence bound: within 25% of avgArea/4).
+    expect(smallMax, lessThan(0.005));
+    // Heavy targets sum to 600/620 of the area; the solver should get close.
+    final heavySum = areas.sublist(20).fold(0.0, (a, b) => a + b);
+    expect(heavySum, greaterThan(0.7));
+  });
+
+  test('treemap root areas stay ordered under real-vault skew', () {
+    // Shape of the real vault top level: one community with 60% of all
+    // notes next to 1-note communities (1147:1 range). Areas are
+    // sqrt-compressed, so assert visibility + strict ordering, not
+    // proportionality.
+    final weights = [
+      1147.0, 156.0, 139.0, 79.0, 68.0, 35.0, 28.0, 17.0, 11.0, 9.0,
+      6.0, 5.0, 3.0, 3.0, 3.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, //
+    ];
+    final n = weights.length;
+    final req = VoronoiRequest(
+      ids: [for (var i = 0; i < n; i++) 'cluster:$i'],
+      labels: [for (var i = 0; i < n; i++) 'c$i'],
+      parent: Int32List.fromList(List.filled(n, -1)),
+      depth: Int32List(n),
+      colorSlot: Int32List.fromList([for (var i = 0; i < n; i++) i]),
+      weight: Float64List.fromList(weights),
+      width: 1450,
+      height: 1470,
+      seed: 7,
+    );
+    final areas = _cellsOf(computeVoronoiTreemap(req)).map(polygonArea).toList();
+    final total = areas.fold(0.0, (a, b) => a + b);
+    expect(total, closeTo(1450 * 1470, 1450 * 1470 * 1e-6));
+    // Every community visible and big enough to at least register (>0.1%).
+    for (var i = 0; i < n; i++) {
+      expect(areas[i], greaterThan(1450 * 1470 * 0.001), reason: 'cell $i');
+    }
+    // Areas follow counts wherever the sqrt-targets differ beyond the
+    // solver's 25% relative tolerance (near-equal counts may tie).
+    for (var i = 0; i < n; i++) {
+      for (var j = 0; j < n; j++) {
+        if (math.sqrt(weights[i]) > math.sqrt(weights[j]) * 1.3) {
+          expect(areas[i], greaterThan(areas[j]), reason: '$i vs $j');
+        }
+      }
     }
   });
 
