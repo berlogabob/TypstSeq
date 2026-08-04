@@ -58,6 +58,14 @@ Android and macOS are the release platforms. The included iOS host supports deve
 
 Journal and opened notes show clean, styled blocks by default. Tap a line or block to edit only its exact Typst source; the rest of the document stays covered. Edits autosave atomically. The top view button cycles Editor → Preview → Source → Editor; Split editor remains available for source and output together.
 
+Tapping a note link whose target does not exist offers to create that note (like Logseq/Obsidian). If two notes share the linked title, a picker lists both owners.
+
+Search supports saved presets: run a query, press the Save chip, and it appears as a tappable chip on the Search screen. Presets are stored in `_system/saved-searches.json`, so they sync to every device. Long-press a chip to delete it.
+
+## Import a Logseq or Obsidian vault
+
+Settings → "Import Logseq/Obsidian vault" converts a whole vault folder into TyLog notes. The dialect is auto-detected (`.obsidian/` → Obsidian, `logseq/` or `journals/` → Logseq; otherwise TyLog asks). Pages become `notes/`, journals become `daily/YYYY/MM/`, Logseq TODO bullets become real TyLog tasks, wikilinks become note references (`[[Target|Alias]]` keeps the alias as display text), and referenced images/files are copied into `assets/logseq/` or `assets/obsidian/`. A report lists conversions, skipped empty files, copied assets, and unresolved links — those become create-on-tap targets. On Android, pick the source folder when prompted; access is one-shot and not retained.
+
 ## Magic
 
 The persistent Magic button and `/` palette can insert or transform:
@@ -77,7 +85,7 @@ Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configure
 
 On first launch, Android requires a user-selected device folder and retains access through Android's Storage Access Framework. The selected folder is the authoritative vault and remains outside TyLog's private app container. Existing private vaults are copied and hash-verified before switching; the original is retained as a recovery backup. Nextcloud setup also asks for the remote folder, and nested paths such as `Research/TyLog` are created one segment at a time. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
 
-TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system`. It excludes `_index`, `.tylog` operational state, temporary files, and conflict snapshots. Autosave completes before sync. Checksums, conditional uploads/deletions, atomic transfers, polling, and repair are retained.
+TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system` (which includes saved searches in `_system/saved-searches.json`). It excludes `_index`, `.tylog` operational state, temporary files, and conflict snapshots. Autosave completes before sync. Checksums, conditional uploads/deletions, atomic transfers, polling, and repair are retained.
 
 The Sync dashboard shows the complete bounded diagnostic log, transfer/deletion totals, storage access, and unresolved conflicts. Text conflicts support editing a final version. Binary and delete-versus-edit conflicts offer explicit device/Nextcloud choices. Sync never overwrites a version whose remote ETag changed during resolution.
 

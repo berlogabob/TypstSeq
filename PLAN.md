@@ -1,6 +1,6 @@
 # TyLog v5 implementation status
 
-Last reviewed: 2026-07-06
+Last reviewed: 2026-08-04
 
 ## Implemented
 
@@ -19,7 +19,7 @@ Last reviewed: 2026-07-06
 
 - Old-vault migration is unsupported
 - Journal blocks hide Typst syntax until selected; arbitrary Typst stays exact and is edited one block at a time or in Source
-- No Markdown storage, HTML export, SQLite, AI/RAG, collaboration, plugin system, Kanban, or Zotero integration
+- No Markdown storage (Markdown/Logseq/Obsidian sources are converted to Typst on import, never stored), HTML export, SQLite, AI/RAG, collaboration, plugin system, Kanban, or Zotero integration
 
 ## Verification
 

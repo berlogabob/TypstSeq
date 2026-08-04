@@ -62,7 +62,11 @@ Voronoi-treemap layout building. It imports neither Flutter nor `typst_flutter`.
 
 `VaultStorage` exposes only safe vault-relative list, stat, read, write,
 delete, directory creation, and hash operations. Platform file picking,
-materialization, importing, and external opening stay in the Flutter app.
+materialization, and external opening stay in the Flutter app; import
+*conversion* (Markdown, Logseq, Obsidian → Typst) lives in the Rust crate
+`tylog_import_core`, bridged into the app through `typst_flutter`
+(`convertMarkdown`, `convertVaultNote`), while the app drives the walking,
+writing, and asset copying through `VaultStorage`.
 
 Indexing queries all Typst metadata once per document. The core filters the
 six labels and accepts legacy or Format v1 values. If an inspector is absent
@@ -99,6 +103,9 @@ dart run bin/tylog.dart export <file.typ> [output.pdf]
 - `index` writes `_index/index.json` and `_index/search-index.json.gz`.
 - `doctor` prints validation results and exits nonzero only for errors.
 - `export` calls official `typst compile` directly.
+- `dedupe <vault> [--apply]` resolves duplicate note ids: identical imported
+  articles are deleted, daily twins merged, id collisions reassigned; dry-run
+  by default.
 
 `index` and `doctor` fall back safely when a document fails to compile. A
 missing Typst executable is reported as a clear operational error. Standalone
@@ -113,6 +120,7 @@ make test-core
 make test-typst
 flutter analyze
 flutter test
+cargo test --manifest-path packages/tylog_import_core/Cargo.toml
 flutter test integration_test/pkms_native_test.dart -d macos
 flutter build apk --release
 flutter build macos --release
@@ -123,6 +131,8 @@ official CLI and embedded runtime, then verifies fallback indexing on
 intentionally malformed source. `make verify` runs the full local gate,
 including both release builds.
 
-Package registry support in the embedded runtime, app relocation, Rust core,
-SQLite, filesystem watchers, servers, plugins, and other P2 platform work are
-deliberately deferred.
+Package registry support in the embedded runtime, app relocation, SQLite,
+filesystem watchers, servers, plugins, and other P2 platform work are
+deliberately deferred. (A scoped Rust core does ship today:
+`tylog_import_core` handles import conversion behind the `typst_flutter`
+bridge; indexing and validation remain Dart in `tylog_core`.)

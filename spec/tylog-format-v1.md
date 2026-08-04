@@ -34,6 +34,13 @@ The standard note kinds are `note`, `daily`, `project`, `article`, and
 `research`. Other non-empty values are extensions and produce validation
 warnings, not read failures.
 
+Three `properties` keys are reserved with cross-tool meaning on imported
+notes: `import_format` (`markdown`, `logseq`, or `obsidian`),
+`import_source_name` (the original file name), and `import_sha256` (content
+hash of the imported source; the CLI `dedupe` command treats notes sharing an
+id and `import_sha256` as identical copies). Producers must not repurpose
+these keys.
+
 Task statuses are `todo`, `doing`, `done`, and `cancelled`. Priorities are
 `low`, `normal`, `high`, and `urgent`. Unknown status or priority values are
 validation errors because applications cannot safely infer their behaviour.
