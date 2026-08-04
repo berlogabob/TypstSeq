@@ -27,6 +27,7 @@ Future<int> runTylog(List<String> arguments) async {
     'init' => _init(args),
     'index' => _index(args),
     'doctor' => _doctor(args),
+    'dedupe' => _dedupe(args),
     'export' => _export(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
@@ -117,6 +118,221 @@ Future<int> _doctor(List<String> args) async {
       )
       ? 1
       : 0;
+}
+
+Future<int> _dedupe(List<String> args) async {
+  final apply = args.remove('--apply');
+  if (args.length != 1 || args.any((arg) => arg.startsWith('--'))) {
+    throw _UsageException('dedupe requires <vault> [--apply]');
+  }
+  final storage = LocalVaultStorage(Directory(args.single).absolute);
+  if ((await inspectVaultStorage(storage)).kind !=
+      VaultStorageKind.validVault) {
+    throw StateError('TyLog vault marker is missing or invalid');
+  }
+  final index = await scanVaultStorage(storage, force: true);
+  final groups = <String, List<NoteRef>>{};
+  for (final note in index.notes) {
+    groups.putIfAbsent(note.id, () => []).add(note);
+  }
+  final duplicates =
+      groups.entries.where((entry) => entry.value.length > 1).toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+  var deletions = 0;
+  var merges = 0;
+  var reassigned = 0;
+  var skipped = 0;
+
+  for (final group in duplicates) {
+    final id = group.key;
+    final owners = group.value..sort((a, b) => a.path.compareTo(b.path));
+    final hashes = owners
+        .map((note) => note.properties['import_sha256'])
+        .whereType<String>()
+        .toList();
+    if (owners.every((note) => note.path.startsWith('articles/')) &&
+        hashes.length == owners.length &&
+        hashes.every((hash) => hash.isNotEmpty) &&
+        hashes.toSet().length == 1) {
+      final modified = <String, DateTime>{};
+      for (final note in owners) {
+        modified[note.path] =
+            (await storage.stat(note.path))?.modified ?? DateTime(0);
+      }
+      owners.sort((a, b) => _compareArticleOwners(a, b, modified));
+      final keep = owners.first.path;
+      final remove = owners.skip(1).map((note) => note.path).toList();
+      if (apply) {
+        for (final path in remove) {
+          await storage.delete(path);
+        }
+      }
+      deletions += remove.length;
+      stdout.writeln(
+        '$id | ${apply ? 'applied' : 'dry-run'}: keep $keep, delete ${remove.join(', ')}',
+      );
+      continue;
+    }
+
+    final canonical = _dailyCanonicalPath(id);
+    final twinPattern = canonical == null
+        ? null
+        : RegExp(
+            '^${RegExp.escape(canonical.substring(0, canonical.length - 4))}-[^/]+\\.typ\$',
+          );
+    final canonicalNotes = canonical == null
+        ? const <NoteRef>[]
+        : owners.where((note) => note.path == canonical).toList();
+    final twins = twinPattern == null
+        ? const <NoteRef>[]
+        : owners.where((note) => twinPattern.hasMatch(note.path)).toList();
+    if (canonicalNotes.length == 1 &&
+        twins.isNotEmpty &&
+        canonicalNotes.length + twins.length == owners.length) {
+      final bodies = <String>[];
+      String? bodyError;
+      for (final twin in twins) {
+        final body = _dailyBody(await storage.readText(twin.path));
+        if (body == null) {
+          bodyError = '${twin.path} has no title heading';
+          break;
+        }
+        bodies.add(body);
+      }
+      if (bodyError == null) {
+        if (apply) {
+          var source = await storage.readText(canonical!);
+          for (final body in bodies) {
+            source += '\n== Merged from duplicate\n\n$body\n';
+          }
+          await storage.writeText(canonical, source);
+          for (final twin in twins) {
+            await storage.delete(twin.path);
+          }
+        }
+        deletions += twins.length;
+        merges += twins.length;
+        stdout.writeln(
+          '$id | ${apply ? 'applied' : 'dry-run'}: merge ${twins.map((note) => note.path).join(', ')} into $canonical',
+        );
+        continue;
+      }
+      stdout.writeln('$id | skipped: $bodyError');
+      skipped++;
+      continue;
+    }
+
+    // Id collision: different articles that derived the same id (weak id
+    // source in the producer). Content differs, so nothing may be deleted —
+    // reassign fresh unique ids to all but the oldest owner instead.
+    if (owners.every((note) => note.path.startsWith('articles/')) &&
+        owners.map((note) => note.title).toSet().length == owners.length) {
+      final modified = <String, DateTime>{};
+      for (final note in owners) {
+        modified[note.path] =
+            (await storage.stat(note.path))?.modified ?? DateTime(0);
+      }
+      owners.sort((a, b) {
+        final byTime = modified[a.path]!.compareTo(modified[b.path]!);
+        return byTime != 0 ? byTime : a.path.compareTo(b.path);
+      }); // oldest keeps the id
+      final renames = <String>[];
+      var counter = 2;
+      for (final note in owners.skip(1)) {
+        String candidate;
+        do {
+          candidate = '$id-${counter++}';
+        } while (groups.containsKey(candidate));
+        groups[candidate] = [note];
+        if (apply) {
+          final source = await storage.readText(note.path);
+          final draft = NoteMetadataDraft.fromNote(note);
+          await storage.writeText(
+            note.path,
+            replaceNoteHeader(
+              source,
+              NoteMetadataDraft(
+                id: candidate,
+                title: draft.title,
+                kind: draft.kind,
+                project: draft.project,
+                date: draft.date,
+                tags: draft.tags,
+                aliases: draft.aliases,
+                properties: draft.properties,
+              ),
+            ),
+          );
+        }
+        renames.add('${note.path} -> $candidate');
+      }
+      reassigned += renames.length;
+      stdout.writeln(
+        '$id | ${apply ? 'applied' : 'dry-run'}: reassign ${renames.join('; ')}',
+      );
+      continue;
+    }
+
+    final reason = owners.every((note) => note.path.startsWith('articles/'))
+        ? 'identical titles with differing content — merge by hand'
+        : canonical != null
+        ? 'ambiguous daily layout'
+        : 'duplicate layout is not safely deduplicatable';
+    stdout.writeln('$id | skipped: $reason');
+    skipped++;
+  }
+  stdout.writeln(
+    'Summary: groups=${duplicates.length} deletions=$deletions merges=$merges reassigned=$reassigned skipped=$skipped',
+  );
+  return 0;
+}
+
+int _compareArticleOwners(
+  NoteRef a,
+  NoteRef b,
+  Map<String, DateTime> modified,
+) {
+  final aStem = _stem(a.path);
+  final bStem = _stem(b.path);
+  final preferred = _preferredArticleStem(
+    bStem,
+  ).compareTo(_preferredArticleStem(aStem));
+  if (preferred != 0) return preferred;
+  final length = bStem.length.compareTo(aStem.length);
+  if (length != 0) return length;
+  final newer = modified[b.path]!.compareTo(modified[a.path]!);
+  return newer != 0 ? newer : a.path.compareTo(b.path);
+}
+
+int _preferredArticleStem(String stem) {
+  final lower = stem.toLowerCase();
+  final generic =
+      lower == 'home' ||
+      lower == 'index' ||
+      RegExp(
+        r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$',
+        caseSensitive: false,
+      ).hasMatch(stem);
+  return !RegExp(r' \(\d+\)$').hasMatch(stem) && !generic ? 1 : 0;
+}
+
+String _stem(String path) =>
+    path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+
+String? _dailyCanonicalPath(String id) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(id)) return null;
+  return 'daily/${id.substring(0, 4)}/${id.substring(5, 7)}/$id.typ';
+}
+
+String? _dailyBody(String source) {
+  final heading = RegExp(
+    r'^= [^\r\n]*(?:\r?\n|$)',
+    multiLine: true,
+  ).firstMatch(source);
+  if (heading == null) return null;
+  return source
+      .substring(heading.end)
+      .replaceFirst(RegExp(r'^(?:[ \t]*\r?\n)+'), '');
 }
 
 Future<int> _export(List<String> args) async {
@@ -267,4 +483,5 @@ Usage:
   tylog init [vault=.]
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
+  tylog dedupe <vault> [--apply]
   tylog export <file.typ> [output.pdf]''';
