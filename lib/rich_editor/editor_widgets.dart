@@ -71,10 +71,15 @@ class _TyLogReadViewState extends State<TyLogReadView> {
   }
 
   @override
-  Widget build(BuildContext context) => SelectableText.rich(
-    controller.readTextSpan(
-      context,
-      style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+  // Text.rich (RenderParagraph), not SelectableText.rich (RenderEditable):
+  // RenderEditable mispositions WidgetSpans whose size changes after first
+  // layout (async inline images), painting chips over the surrounding text.
+  Widget build(BuildContext context) => SelectionArea(
+    child: Text.rich(
+      controller.readTextSpan(
+        context,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+      ),
     ),
   );
 }
@@ -709,6 +714,7 @@ class _InlineImage extends StatelessWidget {
       final image = ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.4,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
@@ -1099,14 +1105,21 @@ String _atomBody(String source) {
   return source.substring(open + 1, close - 1);
 }
 
+// Inverse of the importer's escape_markup (tylog_import_core/src/lib.rs),
+// mirroring _unescapeMarkup in tylog_core/src/scanner.dart.
+String _unescapeMarkup(String value) => value.replaceAllMapped(
+  RegExp(r'\\([\\#$*_`<>@\[\]~=\-+/])'),
+  (m) => m[1]!,
+);
+
 String _atomLabel(String source) {
   final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
-    return content.replaceAll(r'\@', '@');
+    return _unescapeMarkup(content);
   }
   final quoted = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
   if (quoted != null) {
-    return quoted.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
+    return _unescapeMarkup(quoted.replaceAll(r'\"', '"'));
   }
   if (source.startsWith('@')) return source.substring(1);
   if (source.startsWith('#cite(')) {

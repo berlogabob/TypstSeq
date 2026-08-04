@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
@@ -448,6 +449,69 @@ void main() {
     expect(find.byIcon(Icons.person_outline), findsOneWidget); // person
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget); // place
     expect(find.byIcon(Icons.tag), findsOneWidget); // tag
+  });
+
+  testWidgets('atom labels drop importer markup escapes', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source: r'a #link("https://x.com")[GitHub\-репозиторий] b',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('GitHub-репозиторий'), findsOneWidget);
+    expect(find.textContaining(r'\-'), findsNothing);
+  });
+
+  testWidgets('inline chips never overlap the surrounding text lines', (
+    tester,
+  ) async {
+    for (final scale in [1.0, 1.3]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: TyLogReadView(
+              source:
+                  'aaa bbb #link("https://x.com")[link label] ccc ddd\n\n'
+                  'next paragraph line',
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final chipRect = tester.getRect(find.text('link label'));
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.byWidgetPredicate(
+          (w) => w is RichText && w.text.toPlainText().contains('next'),
+        ),
+      );
+      final plain = paragraph.text.toPlainText();
+      final start = plain.indexOf('next paragraph line');
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(
+          baseOffset: start,
+          extentOffset: start + 'next paragraph line'.length,
+        ),
+      );
+      expect(boxes, isNotEmpty);
+      for (final box in boxes) {
+        final global = box.toRect().shift(paragraph.localToGlobal(Offset.zero));
+        expect(
+          chipRect.overlaps(global.deflate(0.5)),
+          isFalse,
+          reason: 'chip $chipRect overlaps text $global at scale $scale',
+        );
+      }
+    }
   });
 
   test('list toggles one line, continues, and empty Enter exits', () {

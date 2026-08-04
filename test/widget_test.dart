@@ -167,7 +167,7 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('View mode'), findsOneWidget);
     await setViewMode(tester, 'Read');
-    expect(find.byType(SelectableText), findsWidgets);
+    expect(find.byType(SelectionArea), findsWidgets);
     expect(find.byTooltip('View mode'), findsNothing);
     await tester.tap(find.byTooltip('Back to edit'));
     await tester.pump();
