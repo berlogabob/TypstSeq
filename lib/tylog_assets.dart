@@ -6,10 +6,23 @@ import 'package:flutter/widgets.dart';
 class TylogAssets {
   TylogAssets._(this._bytes);
 
-  static const packageVersion = '0.1.0';
   static Future<TylogAssets>? _cached;
 
   final Map<String, Uint8List> _bytes;
+
+  /// Read from the bundled typst.toml, so the package version has exactly
+  /// one source of truth and a version bump cannot ship half-applied.
+  String get packageVersion {
+    final toml = text('typst/tylog/typst.toml');
+    final match = RegExp(
+      r'^version\s*=\s*"(\d+\.\d+\.\d+)"',
+      multiLine: true,
+    ).firstMatch(toml);
+    if (match == null) {
+      throw StateError('typst/tylog/typst.toml has no version field');
+    }
+    return match[1]!;
+  }
 
   static Future<TylogAssets> load() => _cached ??= _load();
 

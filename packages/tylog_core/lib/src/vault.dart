@@ -118,16 +118,18 @@ Future<void> initializeVaultStorage(
       TylogVaultPaths.helper,
       managedFiles[TylogVaultPaths.helper]!,
     );
-  } else if (classifyTylogHelper(
-        await storage.readText(TylogVaultPaths.helper),
-        current: currentHelper,
-        legacy: legacyHelper,
-      ) ==
-      TylogHelperKind.legacy) {
-    await storage.writeBytes(
-      TylogVaultPaths.helper,
-      managedFiles[TylogVaultPaths.helper]!,
+  } else {
+    final kind = classifyTylogHelper(
+      await storage.readText(TylogVaultPaths.helper),
+      current: currentHelper,
+      legacy: legacyHelper,
     );
+    if (kind == TylogHelperKind.legacy || kind == TylogHelperKind.outdated) {
+      await storage.writeBytes(
+        TylogVaultPaths.helper,
+        managedFiles[TylogVaultPaths.helper]!,
+      );
+    }
   }
   for (final path in [TylogVaultPaths.theme, TylogVaultPaths.export]) {
     if (!await storage.exists(path)) {
@@ -141,8 +143,51 @@ Future<void> initializeVaultStorage(
       await storage.writeBytes(entry.key, entry.value);
     }
   }
+  await _pruneStalePackageVersions(storage, managedFiles);
   if (!await storage.exists(TylogVaultPaths.bibliography)) {
     await storage.writeText(TylogVaultPaths.bibliography, '{}\n');
+  }
+}
+
+/// Delete files under `_system/packages/tylog/<version>/` for versions the
+/// managed set no longer ships. Without this every package upgrade leaves
+/// its predecessor in the vault forever. Uses only non-recursive listing
+/// (this runs on the vault-open fast path, where a recursive scan is the
+/// expensive operation) and file-level deletes, so the same code works on
+/// SAF-backed storage where directory semantics differ; an empty directory
+/// left behind is harmless.
+Future<void> _pruneStalePackageVersions(
+  VaultStorage storage,
+  Map<String, List<int>> managedFiles,
+) async {
+  const root = '_system/packages/tylog';
+  final currentVersions = managedFiles.keys
+      .where((k) => k.startsWith('$root/'))
+      .map((k) => k.substring(root.length + 1).split('/').first)
+      .toSet();
+  if (currentVersions.isEmpty) return;
+  final List<VaultStorageEntry> versionDirs;
+  try {
+    versionDirs = await storage.list(path: root);
+  } on Object {
+    return; // nothing vendored yet
+  }
+  for (final dir in versionDirs) {
+    if (!dir.isDirectory) continue;
+    final version = dir.path.split('/').last;
+    if (!currentVersions.contains(version)) {
+      await _deleteFilesShallowly(storage, dir.path);
+    }
+  }
+}
+
+Future<void> _deleteFilesShallowly(VaultStorage storage, String path) async {
+  for (final entry in await storage.list(path: path)) {
+    if (entry.isDirectory) {
+      await _deleteFilesShallowly(storage, entry.path);
+    } else {
+      await storage.delete(entry.path);
+    }
   }
 }
 

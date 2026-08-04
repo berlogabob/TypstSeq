@@ -32,6 +32,13 @@ test-typst:
 	@cd test/fixtures/tylog_format_v1 && typst eval 'query(metadata)' --root . --in valid.typ > /tmp/tylog-metadata.json
 	@for entity in note link tag date attachment task; do grep -q "\"label\":\"<tylog-$$entity>\"" /tmp/tylog-metadata.json; done
 	@grep -q '"schema":1' /tmp/tylog-metadata.json
+	# Conformance: the package's own emissions (not a hand-written fixture)
+	# must carry every entity label and schema — spec/package drift fails here.
+	@cd typst/tylog && typst eval 'query(metadata)' --root . --in examples/basic.typ > /tmp/tylog-conformance.json
+	@for entity in note link tag date attachment task; do grep -q "\"label\":\"<tylog-$$entity>\"" /tmp/tylog-conformance.json || { echo "package does not emit <tylog-$$entity>"; exit 1; }; done
+	@grep -q '"schema":1' /tmp/tylog-conformance.json
+	@grep -q '"id":"example"' /tmp/tylog-conformance.json
+	@grep -q '"status":"done"' /tmp/tylog-conformance.json
 
 test: test-core test-typst
 	@flutter analyze

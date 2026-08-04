@@ -206,12 +206,24 @@ class _RepositoryAssets {
         '${vaultAssets.path}/export.typ',
       ).readAsBytes(),
     };
+    final toml = await File('${package.path}/typst.toml').readAsString();
+    final versionMatch = RegExp(
+      r'^version\s*=\s*"(\d+\.\d+\.\d+)"',
+      multiLine: true,
+    ).firstMatch(toml);
+    if (versionMatch == null) {
+      throw StateError('typst/tylog/typst.toml has no version field');
+    }
+    final version = versionMatch[1]!;
     await for (final entity in package.list(recursive: true)) {
       if (entity is! File) continue;
       final relative = entity.absolute.path
           .substring(package.absolute.path.length + 1)
           .replaceAll(Platform.pathSeparator, '/');
-      files['_system/packages/tylog/0.1.0/$relative'] = await entity
+      // The app bundles typst/tylog/ non-recursively, so vaults it manages
+      // never contain examples/. Match that here or the two writers fight.
+      if (relative.startsWith('examples/')) continue;
+      files['_system/packages/tylog/$version/$relative'] = await entity
           .readAsBytes();
     }
     return _RepositoryAssets(

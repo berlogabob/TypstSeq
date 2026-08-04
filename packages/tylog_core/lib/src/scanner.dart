@@ -8,7 +8,17 @@ import 'models.dart';
 import 'storage.dart';
 import 'values.dart';
 
-enum TylogHelperKind { current, legacy, custom }
+/// `outdated` is a managed helper stamped with an older package version:
+/// still ours (not `custom`), and due for replacement on repair, exactly
+/// like `legacy`. Matching by regex rather than an exact version string is
+/// what lets a package version bump ship without every existing vault's
+/// helper suddenly classifying as `custom`.
+enum TylogHelperKind { current, legacy, outdated, custom }
+
+final _packageMarker = RegExp(
+  r'^// tylog-package: (\d+\.\d+\.\d+)$',
+  multiLine: true,
+);
 
 TylogHelperKind classifyTylogHelper(
   String source, {
@@ -23,8 +33,15 @@ TylogHelperKind classifyTylogHelper(
   if (legacy != null && normalized == legacy.replaceAll('\r\n', '\n').trim()) {
     return TylogHelperKind.legacy;
   }
-  if (normalized.contains('// tylog-package: 0.1.0')) {
-    return TylogHelperKind.current;
+  final marker = _packageMarker.firstMatch(normalized);
+  if (marker != null) {
+    final currentMarker = current == null
+        ? null
+        : _packageMarker.firstMatch(current);
+    if (currentMarker == null || marker[1] == currentMarker[1]) {
+      return TylogHelperKind.current;
+    }
+    return TylogHelperKind.outdated;
   }
   return TylogHelperKind.custom;
 }
