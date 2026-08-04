@@ -52,7 +52,8 @@ import 'workspace_controller.dart';
 export 'widgets/app_version.dart';
 export 'widgets/date_format.dart';
 export 'widgets/sync_status.dart';
-export 'widgets/work_surface.dart' show isTaskInTodayAgenda, isTaskOverdue;
+export 'widgets/work_surface.dart'
+    show TodayPage, continueReadingEligible, isTaskInTodayAgenda, isTaskOverdue;
 
 part 'app_mobile/desktop_update_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
@@ -1701,10 +1702,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (recent.progress >= 0.98) continue; // finished — nothing to continue
       final note = notesByPath[recent.path];
       if (note == null) continue;
-      // "Continue reading" is for readable content: articles and plain notes.
-      // Entity pages (person/organization/tag/date) and daily notes get an
-      // open recorded too, but shouldn't surface here.
-      if (note.kind != 'article' && note.kind != 'note') continue;
+      if (!continueReadingEligible(note)) continue;
       result.add((note, recent.progress));
       if (result.length == 8) break;
     }

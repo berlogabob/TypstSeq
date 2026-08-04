@@ -57,4 +57,19 @@ void main() {
       isFalse,
     );
   });
+
+  test('continue reading admits only articles', () {
+    NoteRef note(String kind) => NoteRef(
+      id: kind,
+      path: 'notes/$kind.typ',
+      title: kind,
+      kind: kind,
+      outgoingLinks: const [],
+      tags: const [],
+    );
+    expect(continueReadingEligible(note('article')), isTrue);
+    for (final kind in ['note', 'person', 'organization', 'project', 'daily']) {
+      expect(continueReadingEligible(note(kind)), isFalse, reason: kind);
+    }
+  });
 }

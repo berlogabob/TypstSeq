@@ -37,6 +37,11 @@ bool isTaskInTodayAgenda(TaskRef task, String today) {
       (scheduled != null && scheduled.compareTo(today) <= 0);
 }
 
+/// Continue-reading is for articles only: entities are often stored with
+/// kind 'note' (created before their kind is rewritten), so allowing any
+/// non-article kind lets them leak in.
+bool continueReadingEligible(NoteRef note) => note.kind == 'article';
+
 bool isTaskOverdue(TaskRef task, String today) {
   if (task.status == 'done' || task.status == 'cancelled') return false;
   final due = task.due?.split('T').first;
@@ -130,12 +135,26 @@ class TodayPage extends StatelessWidget {
                       title: const Text('Continue reading'),
                       children: [
                         for (final (note, progress) in recent)
-                          ListTile(
-                            title: Text(note.title),
-                            subtitle: progress > 0
-                                ? LinearProgressIndicator(value: progress)
-                                : null,
-                            onTap: () => (onReadPath ?? onOpenPath)(note.path),
+                          Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              leading: const Icon(Icons.auto_stories_outlined),
+                              title: Text(
+                                note.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: LinearProgressIndicator(
+                                value: progress,
+                              ),
+                              trailing: Text('${(progress * 100).round()}%'),
+                              onTap: () =>
+                                  (onReadPath ?? onOpenPath)(note.path),
+                            ),
                           ),
                       ],
                     ),
