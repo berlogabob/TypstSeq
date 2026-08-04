@@ -2,6 +2,8 @@ use comrak::nodes::{AstNode, ListType, NodeValue};
 use comrak::{Arena, Options, parse_document};
 use url::Url;
 
+pub mod vault_import;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDiagnostic {
     pub code: String,
@@ -293,6 +295,9 @@ impl TypstRenderer {
     }
 
     fn resolve_link<'a>(&mut self, node: &'a AstNode<'a>, target: &str) -> Option<String> {
+        if target.starts_with("assets/logseq/") {
+            return Some(target.to_owned());
+        }
         let parsed = Url::parse(target).ok().or_else(|| {
             self.base_url
                 .as_ref()
@@ -374,7 +379,7 @@ fn needs_markup_boundary<'a>(node: &'a AstNode<'a>) -> bool {
     )
 }
 
-fn escape_markup(value: &str) -> String {
+pub(crate) fn escape_markup(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for character in value.chars() {
         if matches!(

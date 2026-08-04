@@ -8,3 +8,5 @@ publish = false
 comrak = { version = "0.54", default-features = false }
 url = "2.5"
 
+[[bin]]
+name = "logseq_import"
