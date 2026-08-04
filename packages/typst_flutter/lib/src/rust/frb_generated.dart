@@ -5,6 +5,7 @@
 
 import 'api/markdown_import.dart';
 import 'api/typst.dart';
+import 'api/vault_import.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -65,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1640689516;
+  int get rustContentHash => -864610928;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -130,6 +131,12 @@ abstract class RustLibApi extends BaseApi {
     required String markdown,
     required String title,
     String? baseUrl,
+  });
+
+  Future<VaultNoteResult?> crateApiVaultImportConvertVaultNote({
+    required String dialect,
+    required String sourceRelPath,
+    required String markdown,
   });
 
   String crateApiTypstGetTypstVersion();
@@ -556,12 +563,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<VaultNoteResult?> crateApiVaultImportConvertVaultNote({
+    required String dialect,
+    required String sourceRelPath,
+    required String markdown,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(dialect, serializer);
+          sse_encode_String(sourceRelPath, serializer);
+          sse_encode_String(markdown, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_vault_note_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiVaultImportConvertVaultNoteConstMeta,
+        argValues: [dialect, sourceRelPath, markdown],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVaultImportConvertVaultNoteConstMeta =>
+      const TaskConstMeta(
+        debugName: "convert_vault_note",
+        argNames: ["dialect", "sourceRelPath", "markdown"],
+      );
+
+  @override
   String crateApiTypstGetTypstVersion() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -684,6 +728,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VaultNoteResult dco_decode_box_autoadd_vault_note_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_vault_note_result(raw);
+  }
+
+  @protected
   double dco_decode_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -745,6 +795,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<TypstDiagnostic> dco_decode_list_typst_diagnostic(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_typst_diagnostic).toList();
+  }
+
+  @protected
+  List<VaultNoteProperty> dco_decode_list_vault_note_property(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_vault_note_property).toList();
   }
 
   @protected
@@ -810,6 +866,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt? dco_decode_opt_box_autoadd_usize(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_usize(raw);
+  }
+
+  @protected
+  VaultNoteResult? dco_decode_opt_box_autoadd_vault_note_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_vault_note_result(raw);
   }
 
   @protected
@@ -913,6 +975,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt dco_decode_usize(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeU64(raw);
+  }
+
+  @protected
+  VaultNoteProperty dco_decode_vault_note_property(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return VaultNoteProperty(
+      key: dco_decode_String(arr[0]),
+      value: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  VaultNoteResult dco_decode_vault_note_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 14)
+      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
+    return VaultNoteResult(
+      relPath: dco_decode_String(arr[0]),
+      typst: dco_decode_String(arr[1]),
+      referencedAssets: dco_decode_list_String(arr[2]),
+      wikilinkTargets: dco_decode_list_String(arr[3]),
+      diagnostics: dco_decode_list_String(arr[4]),
+      id: dco_decode_String(arr[5]),
+      title: dco_decode_String(arr[6]),
+      kind: dco_decode_String(arr[7]),
+      date: dco_decode_opt_String(arr[8]),
+      tags: dco_decode_list_String(arr[9]),
+      aliases: dco_decode_list_String(arr[10]),
+      properties: dco_decode_list_vault_note_property(arr[11]),
+      droppedBlockRefs: dco_decode_u_32(arr[12]),
+      strippedMacros: dco_decode_u_32(arr[13]),
+    );
   }
 
   @protected
@@ -1036,6 +1134,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VaultNoteResult sse_decode_box_autoadd_vault_note_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_vault_note_result(deserializer));
+  }
+
+  @protected
   double sse_decode_f_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat32();
@@ -1130,6 +1236,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <TypstDiagnostic>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_typst_diagnostic(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<VaultNoteProperty> sse_decode_list_vault_note_property(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <VaultNoteProperty>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_vault_note_property(deserializer));
     }
     return ans_;
   }
@@ -1233,6 +1353,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VaultNoteResult? sse_decode_opt_box_autoadd_vault_note_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_vault_note_result(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   PageInfo sse_decode_page_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_widthPt = sse_decode_f_64(deserializer);
@@ -1327,6 +1460,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt sse_decode_usize(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  VaultNoteProperty sse_decode_vault_note_property(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_String(deserializer);
+    var var_value = sse_decode_String(deserializer);
+    return VaultNoteProperty(key: var_key, value: var_value);
+  }
+
+  @protected
+  VaultNoteResult sse_decode_vault_note_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_relPath = sse_decode_String(deserializer);
+    var var_typst = sse_decode_String(deserializer);
+    var var_referencedAssets = sse_decode_list_String(deserializer);
+    var var_wikilinkTargets = sse_decode_list_String(deserializer);
+    var var_diagnostics = sse_decode_list_String(deserializer);
+    var var_id = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_kind = sse_decode_String(deserializer);
+    var var_date = sse_decode_opt_String(deserializer);
+    var var_tags = sse_decode_list_String(deserializer);
+    var var_aliases = sse_decode_list_String(deserializer);
+    var var_properties = sse_decode_list_vault_note_property(deserializer);
+    var var_droppedBlockRefs = sse_decode_u_32(deserializer);
+    var var_strippedMacros = sse_decode_u_32(deserializer);
+    return VaultNoteResult(
+      relPath: var_relPath,
+      typst: var_typst,
+      referencedAssets: var_referencedAssets,
+      wikilinkTargets: var_wikilinkTargets,
+      diagnostics: var_diagnostics,
+      id: var_id,
+      title: var_title,
+      kind: var_kind,
+      date: var_date,
+      tags: var_tags,
+      aliases: var_aliases,
+      properties: var_properties,
+      droppedBlockRefs: var_droppedBlockRefs,
+      strippedMacros: var_strippedMacros,
+    );
   }
 
   @protected
@@ -1464,6 +1642,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_vault_note_result(
+    VaultNoteResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_vault_note_result(self, serializer);
+  }
+
+  @protected
   void sse_encode_f_32(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat32(self);
@@ -1551,6 +1738,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_typst_diagnostic(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_vault_note_property(
+    List<VaultNoteProperty> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_vault_note_property(item, serializer);
     }
   }
 
@@ -1650,6 +1849,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_vault_note_result(
+    VaultNoteResult? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_vault_note_result(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_page_info(PageInfo self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_f_64(self.widthPt, serializer);
@@ -1736,6 +1948,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_usize(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
+  void sse_encode_vault_note_property(
+    VaultNoteProperty self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.key, serializer);
+    sse_encode_String(self.value, serializer);
+  }
+
+  @protected
+  void sse_encode_vault_note_result(
+    VaultNoteResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.relPath, serializer);
+    sse_encode_String(self.typst, serializer);
+    sse_encode_list_String(self.referencedAssets, serializer);
+    sse_encode_list_String(self.wikilinkTargets, serializer);
+    sse_encode_list_String(self.diagnostics, serializer);
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_String(self.kind, serializer);
+    sse_encode_opt_String(self.date, serializer);
+    sse_encode_list_String(self.tags, serializer);
+    sse_encode_list_String(self.aliases, serializer);
+    sse_encode_list_vault_note_property(self.properties, serializer);
+    sse_encode_u_32(self.droppedBlockRefs, serializer);
+    sse_encode_u_32(self.strippedMacros, serializer);
   }
 
   @protected

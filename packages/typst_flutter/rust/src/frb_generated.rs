@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1640689516;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -864610928;
 
 // Section: executor
 
@@ -599,6 +599,46 @@ fn wire__crate__api__markdown_import__convert_markdown_impl(
         },
     )
 }
+fn wire__crate__api__vault_import__convert_vault_note_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "convert_vault_note",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_dialect = <String>::sse_decode(&mut deserializer);
+            let api_source_rel_path = <String>::sse_decode(&mut deserializer);
+            let api_markdown = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::vault_import::convert_vault_note(
+                            api_dialect,
+                            api_source_rel_path,
+                            api_markdown,
+                        ))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__typst__get_typst_version_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -800,6 +840,20 @@ impl SseDecode for Vec<crate::api::typst::TypstDiagnostic> {
     }
 }
 
+impl SseDecode for Vec<crate::api::vault_import::VaultNoteProperty> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::vault_import::VaultNoteProperty>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::typst::VirtualFile> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -892,6 +946,19 @@ impl SseDecode for Option<usize> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<usize>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::vault_import::VaultNoteResult> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::vault_import::VaultNoteResult>::sse_decode(
+                deserializer,
+            ));
         } else {
             return None;
         }
@@ -1014,6 +1081,55 @@ impl SseDecode for usize {
     }
 }
 
+impl SseDecode for crate::api::vault_import::VaultNoteProperty {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_key = <String>::sse_decode(deserializer);
+        let mut var_value = <String>::sse_decode(deserializer);
+        return crate::api::vault_import::VaultNoteProperty {
+            key: var_key,
+            value: var_value,
+        };
+    }
+}
+
+impl SseDecode for crate::api::vault_import::VaultNoteResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_relPath = <String>::sse_decode(deserializer);
+        let mut var_typst = <String>::sse_decode(deserializer);
+        let mut var_referencedAssets = <Vec<String>>::sse_decode(deserializer);
+        let mut var_wikilinkTargets = <Vec<String>>::sse_decode(deserializer);
+        let mut var_diagnostics = <Vec<String>>::sse_decode(deserializer);
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_kind = <String>::sse_decode(deserializer);
+        let mut var_date = <Option<String>>::sse_decode(deserializer);
+        let mut var_tags = <Vec<String>>::sse_decode(deserializer);
+        let mut var_aliases = <Vec<String>>::sse_decode(deserializer);
+        let mut var_properties =
+            <Vec<crate::api::vault_import::VaultNoteProperty>>::sse_decode(deserializer);
+        let mut var_droppedBlockRefs = <u32>::sse_decode(deserializer);
+        let mut var_strippedMacros = <u32>::sse_decode(deserializer);
+        return crate::api::vault_import::VaultNoteResult {
+            rel_path: var_relPath,
+            typst: var_typst,
+            referenced_assets: var_referencedAssets,
+            wikilink_targets: var_wikilinkTargets,
+            diagnostics: var_diagnostics,
+            id: var_id,
+            title: var_title,
+            kind: var_kind,
+            date: var_date,
+            tags: var_tags,
+            aliases: var_aliases,
+            properties: var_properties,
+            dropped_block_refs: var_droppedBlockRefs,
+            stripped_macros: var_strippedMacros,
+        };
+    }
+}
+
 impl SseDecode for crate::api::typst::VirtualFile {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1069,6 +1185,12 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
+        12 => wire__crate__api__vault_import__convert_vault_note_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
         _ => unreachable!(),
     }
 }
@@ -1085,7 +1207,7 @@ fn pde_ffi_dispatcher_sync_impl(
         4 => wire__crate__api__typst__CompiledDocument_page_info_impl(ptr, rust_vec_len, data_len),
         6 => wire__crate__api__typst__CompiledDocument_warnings_impl(ptr, rust_vec_len, data_len),
         9 => wire__crate__api__typst__TypstEngine_new_impl(ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__typst__get_typst_version_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__typst__get_typst_version_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1289,6 +1411,60 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::typst::TypstSourceLocation>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::vault_import::VaultNoteProperty {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.key.into_into_dart().into_dart(),
+            self.value.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::vault_import::VaultNoteProperty
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::vault_import::VaultNoteProperty>
+    for crate::api::vault_import::VaultNoteProperty
+{
+    fn into_into_dart(self) -> crate::api::vault_import::VaultNoteProperty {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::vault_import::VaultNoteResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.rel_path.into_into_dart().into_dart(),
+            self.typst.into_into_dart().into_dart(),
+            self.referenced_assets.into_into_dart().into_dart(),
+            self.wikilink_targets.into_into_dart().into_dart(),
+            self.diagnostics.into_into_dart().into_dart(),
+            self.id.into_into_dart().into_dart(),
+            self.title.into_into_dart().into_dart(),
+            self.kind.into_into_dart().into_dart(),
+            self.date.into_into_dart().into_dart(),
+            self.tags.into_into_dart().into_dart(),
+            self.aliases.into_into_dart().into_dart(),
+            self.properties.into_into_dart().into_dart(),
+            self.dropped_block_refs.into_into_dart().into_dart(),
+            self.stripped_macros.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::vault_import::VaultNoteResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::vault_import::VaultNoteResult>
+    for crate::api::vault_import::VaultNoteResult
+{
+    fn into_into_dart(self) -> crate::api::vault_import::VaultNoteResult {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::typst::VirtualFile {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -1448,6 +1624,16 @@ impl SseEncode for Vec<crate::api::typst::TypstDiagnostic> {
     }
 }
 
+impl SseEncode for Vec<crate::api::vault_import::VaultNoteProperty> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::vault_import::VaultNoteProperty>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::typst::VirtualFile> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1524,6 +1710,16 @@ impl SseEncode for Option<usize> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <usize>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::vault_import::VaultNoteResult> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::vault_import::VaultNoteResult>::sse_encode(value, serializer);
         }
     }
 }
@@ -1621,6 +1817,34 @@ impl SseEncode for usize {
             .cursor
             .write_u64::<NativeEndian>(self as _)
             .unwrap();
+    }
+}
+
+impl SseEncode for crate::api::vault_import::VaultNoteProperty {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.key, serializer);
+        <String>::sse_encode(self.value, serializer);
+    }
+}
+
+impl SseEncode for crate::api::vault_import::VaultNoteResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.rel_path, serializer);
+        <String>::sse_encode(self.typst, serializer);
+        <Vec<String>>::sse_encode(self.referenced_assets, serializer);
+        <Vec<String>>::sse_encode(self.wikilink_targets, serializer);
+        <Vec<String>>::sse_encode(self.diagnostics, serializer);
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <String>::sse_encode(self.kind, serializer);
+        <Option<String>>::sse_encode(self.date, serializer);
+        <Vec<String>>::sse_encode(self.tags, serializer);
+        <Vec<String>>::sse_encode(self.aliases, serializer);
+        <Vec<crate::api::vault_import::VaultNoteProperty>>::sse_encode(self.properties, serializer);
+        <u32>::sse_encode(self.dropped_block_refs, serializer);
+        <u32>::sse_encode(self.stripped_macros, serializer);
     }
 }
 

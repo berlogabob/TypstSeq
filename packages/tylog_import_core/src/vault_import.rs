@@ -5,6 +5,7 @@ use crate::{convert_markdown, escape_markup};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceDialect {
     Logseq,
+    Obsidian,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,32 +41,52 @@ struct Task {
 }
 
 #[derive(Debug)]
+struct Wikilink {
+    target: String,
+    display: String,
+}
+
+#[derive(Debug)]
 struct Preprocessed {
     markdown: String,
     tasks: Vec<Task>,
-    wikilinks: Vec<String>,
+    wikilinks: Vec<Wikilink>,
     assets: Vec<String>,
     dropped_block_refs: usize,
     stripped_macros: usize,
 }
 
 pub fn convert_logseq_note(source_rel_path: &str, markdown: &str) -> Option<ConvertedNote> {
-    let (meta, body, source_name) = extract_metadata(source_rel_path, markdown);
+    convert_vault_note(SourceDialect::Logseq, source_rel_path, markdown)
+}
+
+pub fn convert_vault_note(
+    dialect: SourceDialect,
+    source_rel_path: &str,
+    markdown: &str,
+) -> Option<ConvertedNote> {
+    let (meta, body, source_name, mut diagnostics) = match dialect {
+        SourceDialect::Logseq => {
+            let (meta, body, source_name) = extract_logseq_metadata(source_rel_path, markdown);
+            (meta, body, source_name, Vec::new())
+        }
+        SourceDialect::Obsidian => extract_obsidian_metadata(source_rel_path, markdown),
+    };
     if body_is_empty(&body) {
         return None;
     }
 
-    let preprocessed = preprocess(&body);
+    let preprocessed = preprocess(dialect, &body);
     let converted = convert_markdown(&preprocessed.markdown, &meta.title, None);
     let mut typst = converted.typst;
 
-    for (index, target) in preprocessed.wikilinks.iter().enumerate() {
+    for (index, wikilink) in preprocessed.wikilinks.iter().enumerate() {
         typst = typst.replace(
             &format!("QQWL{index}QQ"),
             &format!(
                 "#tylog.ref-note({})[{}]",
-                typst_string(target),
-                escape_markup(target)
+                typst_string(&wikilink.target),
+                escape_markup(&wikilink.display)
             ),
         );
     }
@@ -86,38 +107,44 @@ pub fn convert_logseq_note(source_rel_path: &str, markdown: &str) -> Option<Conv
         call.push(')');
         typst = typst.replace(&format!("QQTASK{index}QQ"), &call);
     }
-    typst = rewrite_asset_links(&typst);
+    typst = rewrite_asset_links(&typst, dialect);
 
     let rel_path = if let Some(date) = &meta.date {
         format!("daily/{}/{}/{}.typ", &date[..4], &date[5..7], date)
     } else {
-        format!("notes/{}.typ", sanitize_title(&meta.title))
+        let title = match dialect {
+            SourceDialect::Logseq => &meta.title,
+            SourceDialect::Obsidian => source_stem(&source_name),
+        };
+        format!("notes/{}.typ", sanitize_title(title))
     };
-    let typst = assemble_note(&meta, &source_name, &typst);
+    let typst = assemble_note(dialect, &meta, &source_name, &typst);
+    diagnostics.extend(
+        converted
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| diagnostic.message),
+    );
 
     Some(ConvertedNote {
         rel_path,
         typst,
         referenced_assets: preprocessed.assets,
-        wikilink_targets: preprocessed.wikilinks,
-        diagnostics: converted
-            .diagnostics
+        wikilink_targets: preprocessed
+            .wikilinks
             .into_iter()
-            .map(|diagnostic| diagnostic.message)
+            .map(|wikilink| wikilink.target)
             .collect(),
+        diagnostics,
         meta,
         dropped_block_refs: preprocessed.dropped_block_refs,
         stripped_macros: preprocessed.stripped_macros,
     })
 }
 
-fn extract_metadata(source_rel_path: &str, markdown: &str) -> (NoteMeta, String, String) {
-    let source_name = source_rel_path
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(source_rel_path)
-        .to_owned();
-    let stem = source_name.strip_suffix(".md").unwrap_or(&source_name);
+fn extract_logseq_metadata(source_rel_path: &str, markdown: &str) -> (NoteMeta, String, String) {
+    let source_name = source_name(source_rel_path);
+    let stem = source_stem(&source_name);
     let mut title = percent_decode(stem);
     let mut tags = Vec::new();
     let mut aliases = Vec::new();
@@ -184,6 +211,170 @@ fn extract_metadata(source_rel_path: &str, markdown: &str) -> (NoteMeta, String,
         body.join("\n"),
         source_name,
     )
+}
+
+fn extract_obsidian_metadata(
+    source_rel_path: &str,
+    markdown: &str,
+) -> (NoteMeta, String, String, Vec<String>) {
+    let source_name = source_name(source_rel_path);
+    let stem = source_stem(&source_name);
+    let mut title = stem.to_owned();
+    let mut tags = Vec::new();
+    let mut aliases = Vec::new();
+    let mut properties = Vec::new();
+    let mut diagnostics = Vec::new();
+    let mut body = markdown.to_owned();
+
+    if markdown.lines().next() == Some("---") {
+        let lines: Vec<_> = markdown.lines().collect();
+        if let Some(end) = lines[1..].iter().position(|line| *line == "---") {
+            let end = end + 1;
+            match parse_frontmatter(&lines[1..end]) {
+                Ok(entries) => {
+                    for (key, values) in entries {
+                        match key.to_ascii_lowercase().as_str() {
+                            "title" => title = values.join(", "),
+                            "tags" | "tag" => extend_unique(
+                                &mut tags,
+                                values
+                                    .into_iter()
+                                    .map(|tag| tag.trim_start_matches('#').to_owned())
+                                    .filter(|tag| !tag.is_empty())
+                                    .collect(),
+                            ),
+                            "aliases" | "alias" => extend_unique(&mut aliases, values),
+                            _ => properties.push((key, values.join(", "))),
+                        }
+                    }
+                    body = lines[end + 1..].join("\n");
+                }
+                Err(message) => diagnostics.push(message),
+            }
+        } else {
+            diagnostics.push(
+                "Obsidian frontmatter has no closing delimiter; it was kept in the body".to_owned(),
+            );
+        }
+    }
+
+    let date = obsidian_journal_date(stem);
+    let (id, kind) = if let Some(date) = &date {
+        title.clone_from(date);
+        if !tags.iter().any(|tag| tag.eq_ignore_ascii_case("journal")) {
+            tags.push("journal".to_owned());
+        }
+        (date.clone(), "daily".to_owned())
+    } else {
+        (
+            format!("obs-{:016x}", fnv1a(source_rel_path.as_bytes())),
+            "note".to_owned(),
+        )
+    };
+
+    (
+        NoteMeta {
+            id,
+            title,
+            kind,
+            date,
+            tags,
+            aliases,
+            properties,
+        },
+        body,
+        source_name,
+        diagnostics,
+    )
+}
+
+fn parse_frontmatter(lines: &[&str]) -> Result<Vec<(String, Vec<String>)>, String> {
+    let mut entries = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index];
+        if line.trim().is_empty() {
+            index += 1;
+            continue;
+        }
+        if line.starts_with([' ', '\t']) || line.trim_start().starts_with("- ") {
+            return Err(format!(
+                "Obsidian frontmatter line {} is not a flat key/value; frontmatter was kept in the body",
+                index + 2
+            ));
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            return Err(format!(
+                "Obsidian frontmatter line {} is not a key/value; frontmatter was kept in the body",
+                index + 2
+            ));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(format!(
+                "Obsidian frontmatter line {} has an empty key; frontmatter was kept in the body",
+                index + 2
+            ));
+        }
+        let value = value.trim();
+        if value.starts_with('[') {
+            let Some(value) = value.strip_suffix(']') else {
+                return Err(format!(
+                    "Obsidian frontmatter line {} has an invalid inline list; frontmatter was kept in the body",
+                    index + 2
+                ));
+            };
+            entries.push((
+                key.to_owned(),
+                value[1..]
+                    .split(',')
+                    .map(yaml_scalar)
+                    .filter(|item| !item.is_empty())
+                    .collect(),
+            ));
+            index += 1;
+            continue;
+        }
+        if value.is_empty() {
+            let mut values = Vec::new();
+            while index + 1 < lines.len() {
+                let Some(item) = lines[index + 1].trim_start().strip_prefix("- ") else {
+                    break;
+                };
+                values.push(yaml_scalar(item));
+                index += 1;
+            }
+            entries.push((key.to_owned(), values));
+        } else {
+            entries.push((key.to_owned(), vec![yaml_scalar(value)]));
+        }
+        index += 1;
+    }
+    Ok(entries)
+}
+
+fn yaml_scalar(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        value[1..value.len() - 1].to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
+fn source_name(source_rel_path: &str) -> String {
+    source_rel_path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(source_rel_path)
+        .to_owned()
+}
+
+fn source_stem(source_name: &str) -> &str {
+    source_name.strip_suffix(".md").unwrap_or(source_name)
 }
 
 fn property_line(line: &str) -> Option<(String, &str)> {
@@ -262,6 +453,18 @@ fn journal_date(source_rel_path: &str, stem: &str) -> Option<String> {
     Some(format!("{}-{}-{}", &stem[..4], &stem[5..7], &stem[8..]))
 }
 
+fn obsidian_journal_date(stem: &str) -> Option<String> {
+    let bytes = stem.as_bytes();
+    (bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit()))
+    .then(|| stem.to_owned())
+}
+
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in bytes {
@@ -289,20 +492,39 @@ fn body_is_empty(body: &str) -> bool {
         .all(|line| line.trim().is_empty() || line.trim() == "-")
 }
 
-fn preprocess(markdown: &str) -> Preprocessed {
-    let (markdown, stripped_macros) = rewrite_macros(markdown);
-    let mut wikilinks = Vec::new();
-    let (markdown, tasks, task_block_refs) = extract_tasks(&markdown, &mut wikilinks);
-    let markdown = replace_wikilinks(&markdown, &mut wikilinks);
-    let (markdown, body_block_refs) = drop_block_refs(&markdown);
-    let (markdown, assets) = rewrite_asset_destinations(&markdown);
-    Preprocessed {
-        markdown,
-        tasks,
-        wikilinks,
-        assets,
-        dropped_block_refs: task_block_refs + body_block_refs,
-        stripped_macros,
+fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
+    match dialect {
+        SourceDialect::Logseq => {
+            let (markdown, stripped_macros) = rewrite_macros(markdown);
+            let mut wikilinks = Vec::new();
+            let (markdown, tasks, task_block_refs) = extract_tasks(&markdown, &mut wikilinks);
+            let markdown = replace_wikilinks(&markdown, &mut wikilinks);
+            let (markdown, body_block_refs) = drop_block_refs(&markdown);
+            let (markdown, assets) = rewrite_asset_destinations(&markdown);
+            Preprocessed {
+                markdown,
+                tasks,
+                wikilinks,
+                assets,
+                dropped_block_refs: task_block_refs + body_block_refs,
+                stripped_macros,
+            }
+        }
+        SourceDialect::Obsidian => {
+            let (markdown, mut assets) = rewrite_obsidian_embeds(markdown);
+            let mut wikilinks = Vec::new();
+            let markdown = replace_wikilinks(&markdown, &mut wikilinks);
+            let (markdown, markdown_assets) = rewrite_obsidian_images(&markdown);
+            extend_unique(&mut assets, markdown_assets);
+            Preprocessed {
+                markdown,
+                tasks: Vec::new(),
+                wikilinks,
+                assets,
+                dropped_block_refs: 0,
+                stripped_macros: 0,
+            }
+        }
     }
 }
 
@@ -337,7 +559,7 @@ fn rewrite_macros(markdown: &str) -> (String, usize) {
     (out, stripped)
 }
 
-fn extract_tasks(markdown: &str, wikilinks: &mut Vec<String>) -> (String, Vec<Task>, usize) {
+fn extract_tasks(markdown: &str, wikilinks: &mut Vec<Wikilink>) -> (String, Vec<Task>, usize) {
     let lines: Vec<_> = markdown.lines().collect();
     let mut out = Vec::with_capacity(lines.len());
     let mut tasks = Vec::new();
@@ -437,18 +659,18 @@ fn first_date(value: &str) -> Option<String> {
     })
 }
 
-fn replace_task_wikilinks(value: &str, targets: &mut Vec<String>) -> String {
-    replace_wikilinks_with(value, targets, |target, _| target.to_owned())
+fn replace_task_wikilinks(value: &str, targets: &mut Vec<Wikilink>) -> String {
+    replace_wikilinks_with(value, targets, |_, display, _| display.to_owned())
 }
 
-fn replace_wikilinks(value: &str, targets: &mut Vec<String>) -> String {
-    replace_wikilinks_with(value, targets, |_, index| format!("QQWL{index}QQ"))
+fn replace_wikilinks(value: &str, targets: &mut Vec<Wikilink>) -> String {
+    replace_wikilinks_with(value, targets, |_, _, index| format!("QQWL{index}QQ"))
 }
 
 fn replace_wikilinks_with(
     value: &str,
-    targets: &mut Vec<String>,
-    replacement: impl Fn(&str, usize) -> String,
+    targets: &mut Vec<Wikilink>,
+    replacement: impl Fn(&str, &str, usize) -> String,
 ) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
@@ -459,14 +681,111 @@ fn replace_wikilinks_with(
             out.push_str(&rest[start..]);
             return out;
         };
-        let target = after[..end].trim();
+        let (target, display) = wikilink_parts(&after[..end]);
         let index = targets.len();
-        targets.push(target.to_owned());
-        out.push_str(&replacement(target, index));
+        targets.push(Wikilink {
+            target: target.to_owned(),
+            display: display.to_owned(),
+        });
+        out.push_str(&replacement(target, display, index));
         rest = &after[end + 2..];
     }
     out.push_str(rest);
     out
+}
+
+fn wikilink_parts(value: &str) -> (&str, &str) {
+    let (target, alias) = value.split_once('|').unwrap_or((value, ""));
+    let target = target.trim();
+    let alias = alias.trim();
+    (target, if alias.is_empty() { target } else { alias })
+}
+
+fn rewrite_obsidian_embeds(value: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(value.len());
+    let mut assets = Vec::new();
+    let mut rest = value;
+    while let Some(start) = rest.find("![[") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        let Some(end) = after.find("]]") else {
+            out.push_str(&rest[start..]);
+            return (out, assets);
+        };
+        let (target, display) = wikilink_parts(&after[..end]);
+        if is_image_path(target) {
+            let name = asset_basename(target);
+            out.push_str(&format!("![{display}](assets/obsidian/{name})"));
+            if !assets.iter().any(|asset| asset == target) {
+                assets.push(target.to_owned());
+            }
+        } else {
+            out.push_str("[[");
+            out.push_str(&after[..end]);
+            out.push_str("]]");
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    (out, assets)
+}
+
+fn rewrite_obsidian_images(value: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(value.len());
+    let mut assets = Vec::new();
+    let mut cursor = 0;
+    while let Some(offset) = value[cursor..].find("![") {
+        let start = cursor + offset;
+        let Some(label_end) = value[start + 2..].find("](").map(|end| start + 2 + end) else {
+            break;
+        };
+        let destination_start = label_end + 2;
+        let Some(close) = value[destination_start..].find(')') else {
+            break;
+        };
+        let destination_end = destination_start + close;
+        let inner = &value[destination_start..destination_end];
+        let (prefix, destination, suffix) = image_destination(inner);
+        out.push_str(&value[cursor..destination_start]);
+        if is_relative_image(destination) && !destination.starts_with("assets/obsidian/") {
+            out.push_str(prefix);
+            out.push_str("assets/obsidian/");
+            out.push_str(asset_basename(destination));
+            out.push_str(suffix);
+            if !assets.iter().any(|asset| asset == destination) {
+                assets.push(destination.to_owned());
+            }
+        } else {
+            out.push_str(inner);
+        }
+        out.push(')');
+        cursor = destination_end + 1;
+    }
+    out.push_str(&value[cursor..]);
+    (out, assets)
+}
+
+fn image_destination(value: &str) -> (&str, &str, &str) {
+    let trimmed = value.trim_start();
+    let leading = &value[..value.len() - trimmed.len()];
+    if let Some(rest) = trimmed.strip_prefix('<')
+        && let Some(end) = rest.find('>')
+    {
+        return (&value[..leading.len() + 1], &rest[..end], &rest[end..]);
+    }
+    let end = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+    (leading, &trimmed[..end], &trimmed[end..])
+}
+
+fn is_relative_image(destination: &str) -> bool {
+    !destination.is_empty()
+        && !destination.starts_with(['/', '\\', '#'])
+        && !destination.to_ascii_lowercase().starts_with("http://")
+        && !destination.to_ascii_lowercase().starts_with("https://")
+}
+
+fn asset_basename(path: &str) -> &str {
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
 fn drop_block_refs(value: &str) -> (String, usize) {
@@ -535,11 +854,15 @@ fn rewrite_asset_destinations(value: &str) -> (String, Vec<String>) {
     (out, assets)
 }
 
-fn rewrite_asset_links(value: &str) -> String {
-    const PREFIX: &str = "#link(\"assets/logseq/";
+fn rewrite_asset_links(value: &str, dialect: SourceDialect) -> String {
+    let format = match dialect {
+        SourceDialect::Logseq => "logseq",
+        SourceDialect::Obsidian => "obsidian",
+    };
+    let prefix = format!("#link(\"assets/{format}/");
     let mut out = String::with_capacity(value.len());
     let mut cursor = 0;
-    while let Some(offset) = value[cursor..].find(PREFIX) {
+    while let Some(offset) = value[cursor..].find(&prefix) {
         let start = cursor + offset;
         out.push_str(&value[cursor..start]);
         let path_start = start + "#link(\"".len();
@@ -639,7 +962,12 @@ fn is_image_path(path: &str) -> bool {
         })
 }
 
-fn assemble_note(meta: &NoteMeta, source_name: &str, converted: &str) -> String {
+fn assemble_note(
+    dialect: SourceDialect,
+    meta: &NoteMeta,
+    source_name: &str,
+    converted: &str,
+) -> String {
     let mut out = String::new();
     out.push_str("#import \"/_system/tylog.typ\" as tylog\n\n");
     out.push_str("#show: tylog.note.with(\n");
@@ -657,7 +985,11 @@ fn assemble_note(meta: &NoteMeta, source_name: &str, converted: &str) -> String 
     out.push_str(&format!("  aliases: {},\n", typst_tuple(&meta.aliases)));
     out.push_str("  project: none,\n");
     out.push_str(&format!(
-        "  properties: (\"import_format\": \"logseq\", \"import_source_name\": {}",
+        "  properties: (\"import_format\": {}, \"import_source_name\": {}",
+        typst_string(match dialect {
+            SourceDialect::Logseq => "logseq",
+            SourceDialect::Obsidian => "obsidian",
+        }),
         typst_string(source_name)
     ));
     for (key, value) in &meta.properties {
@@ -754,6 +1086,61 @@ mod tests {
         assert_eq!(note.rel_path, "daily/2022/01/2022-01-05.typ");
         assert_eq!(note.meta.kind, "daily");
         assert_eq!(note.meta.id, "2022-01-05");
+    }
+
+    #[test]
+    fn converts_obsidian_note_end_to_end() {
+        let note = convert_vault_note(
+            SourceDialect::Obsidian,
+            "folder/sub/Original.md",
+            "---\ntitle: Override\ntags: [#one, two]\naliases:\n  - Other\nextra: value\n---\nSee [[Real|Shown]].\n\n![[pic.png]]\n\n![other](folder/other.jpg)\n\n- [ ] waiting\n",
+        )
+        .unwrap();
+
+        assert_eq!(note.rel_path, "notes/Original.typ");
+        assert_eq!(note.meta.title, "Override");
+        assert_eq!(note.meta.tags, ["one", "two"]);
+        assert_eq!(note.meta.aliases, ["Other"]);
+        assert_eq!(note.meta.properties, [("extra".into(), "value".into())]);
+        assert!(note.typst.contains("\"import_format\": \"obsidian\""));
+        assert!(note.typst.contains("#tylog.ref-note(\"Real\")[Shown]"));
+        assert!(note.typst.contains("#image(\"/assets/obsidian/pic.png\")"));
+        assert!(
+            note.typst
+                .contains("#image(\"/assets/obsidian/other.jpg\")")
+        );
+        assert!(note.typst.contains("☐ waiting"));
+        assert_eq!(note.referenced_assets, ["pic.png", "folder/other.jpg"]);
+        assert_eq!(note.wikilink_targets, ["Real"]);
+    }
+
+    #[test]
+    fn maps_obsidian_journal_path() {
+        let note = convert_vault_note(
+            SourceDialect::Obsidian,
+            "daily notes/2024-05-01.md",
+            "journal entry",
+        )
+        .unwrap();
+
+        assert_eq!(note.rel_path, "daily/2024/05/2024-05-01.typ");
+        assert_eq!(note.meta.kind, "daily");
+        assert_eq!(note.meta.id, "2024-05-01");
+        assert_eq!(note.meta.title, "2024-05-01");
+    }
+
+    #[test]
+    fn converts_logseq_pipe_alias() {
+        let note = convert_logseq_note(
+            "pages/List.md",
+            "- Buy [[Milk|молоко]]\n- TODO [[Eggs|яйца]]",
+        )
+        .unwrap();
+
+        assert!(note.typst.contains("#tylog.ref-note(\"Milk\")[молоко]"));
+        assert!(note.typst.contains("text: \"яйца\""));
+        assert!(note.wikilink_targets.iter().any(|target| target == "Milk"));
+        assert!(note.wikilink_targets.iter().any(|target| target == "Eggs"));
     }
 
     #[test]

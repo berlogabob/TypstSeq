@@ -19,7 +19,11 @@ export 'src/compiler.dart';
 export 'src/document.dart';
 export 'src/exceptions.dart';
 export 'src/markdown_import.dart';
-export 'src/rust/api/markdown_import.dart' show MarkdownTypstResult;
+export 'src/rust/api/markdown_import.dart'
+    show MarkdownImportDiagnostic, MarkdownTypstResult;
+export 'src/rust/api/vault_import.dart'
+    show VaultNoteProperty, VaultNoteResult;
+export 'src/vault_import.dart';
 export 'src/rust/api/typst.dart' show TypstDiagnostic;
 export 'src/widgets/typst_document_viewer.dart';
 export 'src/widgets/typst_view.dart';

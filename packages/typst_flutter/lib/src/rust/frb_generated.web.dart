@@ -8,6 +8,7 @@
 
 import 'api/markdown_import.dart';
 import 'api/typst.dart';
+import 'api/vault_import.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -81,6 +82,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt dco_decode_box_autoadd_usize(dynamic raw);
 
   @protected
+  VaultNoteResult dco_decode_box_autoadd_vault_note_result(dynamic raw);
+
+  @protected
   double dco_decode_f_32(dynamic raw);
 
   @protected
@@ -113,6 +117,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<TypstDiagnostic> dco_decode_list_typst_diagnostic(dynamic raw);
 
   @protected
+  List<VaultNoteProperty> dco_decode_list_vault_note_property(dynamic raw);
+
+  @protected
   List<VirtualFile> dco_decode_list_virtual_file(dynamic raw);
 
   @protected
@@ -137,6 +144,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? dco_decode_opt_box_autoadd_usize(dynamic raw);
+
+  @protected
+  VaultNoteResult? dco_decode_opt_box_autoadd_vault_note_result(dynamic raw);
 
   @protected
   PageInfo dco_decode_page_info(dynamic raw);
@@ -170,6 +180,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt dco_decode_usize(dynamic raw);
+
+  @protected
+  VaultNoteProperty dco_decode_vault_note_property(dynamic raw);
+
+  @protected
+  VaultNoteResult dco_decode_vault_note_result(dynamic raw);
 
   @protected
   VirtualFile dco_decode_virtual_file(dynamic raw);
@@ -230,6 +246,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt sse_decode_box_autoadd_usize(SseDeserializer deserializer);
 
   @protected
+  VaultNoteResult sse_decode_box_autoadd_vault_note_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
@@ -268,6 +289,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<VaultNoteProperty> sse_decode_list_vault_note_property(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<VirtualFile> sse_decode_list_virtual_file(SseDeserializer deserializer);
 
   @protected
@@ -298,6 +324,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? sse_decode_opt_box_autoadd_usize(SseDeserializer deserializer);
+
+  @protected
+  VaultNoteResult? sse_decode_opt_box_autoadd_vault_note_result(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PageInfo sse_decode_page_info(SseDeserializer deserializer);
@@ -337,6 +368,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
+  VaultNoteProperty sse_decode_vault_note_property(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  VaultNoteResult sse_decode_vault_note_result(SseDeserializer deserializer);
 
   @protected
   VirtualFile sse_decode_virtual_file(SseDeserializer deserializer);
@@ -411,6 +450,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_usize(BigInt self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_vault_note_result(
+    VaultNoteResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
@@ -452,6 +497,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_typst_diagnostic(
     List<TypstDiagnostic> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_vault_note_property(
+    List<VaultNoteProperty> self,
     SseSerializer serializer,
   );
 
@@ -498,6 +549,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_usize(BigInt? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_vault_note_result(
+    VaultNoteResult? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_page_info(PageInfo self, SseSerializer serializer);
 
   @protected
@@ -541,6 +598,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vault_note_property(
+    VaultNoteProperty self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_vault_note_result(
+    VaultNoteResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_virtual_file(VirtualFile self, SseSerializer serializer);

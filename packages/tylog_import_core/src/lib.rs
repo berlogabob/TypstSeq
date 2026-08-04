@@ -295,7 +295,7 @@ impl TypstRenderer {
     }
 
     fn resolve_link<'a>(&mut self, node: &'a AstNode<'a>, target: &str) -> Option<String> {
-        if target.starts_with("assets/logseq/") {
+        if target.starts_with("assets/logseq/") || target.starts_with("assets/obsidian/") {
             return Some(target.to_owned());
         }
         let parsed = Url::parse(target).ok().or_else(|| {
