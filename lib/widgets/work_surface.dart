@@ -118,7 +118,10 @@ class TodayPage extends StatelessWidget {
                                   )
                                 : null,
                           ),
-                          onTap: () => unawaited(onSetStatus(task, 'done')),
+                          // Row opens the task's note; completing is the
+                          // checkbox's job only — a row tap that marks done
+                          // makes the task vanish under the finger.
+                          onTap: () => onOpenPath(task.notePath),
                           trailing: IconButton(
                             tooltip: 'Open source note',
                             onPressed: () => onOpenPath(task.notePath),
