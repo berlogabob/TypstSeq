@@ -51,6 +51,8 @@ struct Preprocessed {
     markdown: String,
     tasks: Vec<Task>,
     wikilinks: Vec<Wikilink>,
+    highlights: Vec<String>,
+    math: Vec<String>,
     assets: Vec<String>,
     dropped_block_refs: usize,
     stripped_macros: usize,
@@ -80,6 +82,12 @@ pub fn convert_vault_note(
     let converted = convert_markdown(&preprocessed.markdown, &meta.title, None);
     let mut typst = converted.typst;
 
+    for (index, highlight) in preprocessed.highlights.iter().enumerate() {
+        typst = typst.replace(
+            &format!("QQHL{index}QQ"),
+            &format!("#highlight[{}]", escape_markup(highlight)),
+        );
+    }
     for (index, wikilink) in preprocessed.wikilinks.iter().enumerate() {
         typst = typst.replace(
             &format!("QQWL{index}QQ"),
@@ -108,6 +116,9 @@ pub fn convert_vault_note(
         typst = typst.replace(&format!("QQTASK{index}QQ"), &call);
     }
     typst = rewrite_asset_links(&typst, dialect);
+    for (index, math) in preprocessed.math.iter().enumerate() {
+        typst = typst.replace(&format!("QQMATH{index}QQ"), math);
+    }
 
     let rel_path = if let Some(date) = &meta.date {
         format!("daily/{}/{}/{}.typ", &date[..4], &date[5..7], date)
@@ -390,7 +401,13 @@ fn property_line(line: &str) -> Option<(String, &str)> {
 fn is_noise_property(key: &str) -> bool {
     matches!(
         key,
-        "collapsed" | "id" | "ls-type" | "hl-page" | "hl-color" | "hl-stamp"
+        "collapsed"
+            | "id"
+            | "ls-type"
+            | "hl-page"
+            | "hl-color"
+            | "hl-stamp"
+            | "logseq.order-list-type"
     )
 }
 
@@ -495,16 +512,22 @@ fn body_is_empty(body: &str) -> bool {
 fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
     match dialect {
         SourceDialect::Logseq => {
-            let (markdown, stripped_macros) = rewrite_macros(markdown);
+            let (markdown, math) = extract_math(markdown);
+            let markdown = rewrite_bullet_headings(&markdown);
+            let markdown = strip_image_sizing_hints(&markdown);
+            let (markdown, stripped_macros) = rewrite_macros(&markdown);
             let mut wikilinks = Vec::new();
             let (markdown, tasks, task_block_refs) = extract_tasks(&markdown, &mut wikilinks);
             let markdown = replace_wikilinks(&markdown, &mut wikilinks);
+            let (markdown, highlights) = extract_highlights(&markdown);
             let (markdown, body_block_refs) = drop_block_refs(&markdown);
             let (markdown, assets) = rewrite_asset_destinations(&markdown);
             Preprocessed {
                 markdown,
                 tasks,
                 wikilinks,
+                highlights,
+                math,
                 assets,
                 dropped_block_refs: task_block_refs + body_block_refs,
                 stripped_macros,
@@ -520,12 +543,121 @@ fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
                 markdown,
                 tasks: Vec::new(),
                 wikilinks,
+                highlights: Vec::new(),
+                math: Vec::new(),
                 assets,
                 dropped_block_refs: 0,
                 stripped_macros: 0,
             }
         }
     }
+}
+
+fn extract_math(value: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(value.len());
+    let mut math = Vec::new();
+    let mut rest = value;
+    while let Some(start) = rest.find('$') {
+        out.push_str(&rest[..start]);
+        let display = rest[start..].starts_with("$$");
+        let delimiter = if display { "$$" } else { "$" };
+        let after = &rest[start + delimiter.len()..];
+        let search_end = if display {
+            after.len()
+        } else {
+            after.find('\n').unwrap_or(after.len())
+        };
+        let Some(end) = after[..search_end].find(delimiter) else {
+            out.push_str(delimiter);
+            rest = after;
+            continue;
+        };
+        let inner = &after[..end];
+        if display {
+            math.push(format!("$ {inner} $"));
+        } else {
+            math.push(format!("${inner}$"));
+        }
+        out.push_str(&format!("QQMATH{}QQ", math.len() - 1));
+        rest = &after[end + delimiter.len()..];
+    }
+    out.push_str(rest);
+    (out, math)
+}
+
+fn rewrite_bullet_headings(value: &str) -> String {
+    let mut out = Vec::new();
+    for line in value.lines() {
+        let trimmed = line.trim_start_matches([' ', '\t']);
+        let Some(heading) = trimmed.strip_prefix("- ") else {
+            out.push(line.to_owned());
+            continue;
+        };
+        let level = heading.bytes().take_while(|byte| *byte == b'#').count();
+        if (1..=6).contains(&level) && heading.as_bytes().get(level) == Some(&b' ') {
+            out.push(String::new());
+            out.push(heading.to_owned());
+            out.push(String::new());
+        } else {
+            out.push(line.to_owned());
+        }
+    }
+    out.join("\n")
+}
+
+fn strip_image_sizing_hints(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("![") {
+        let Some(label_end) = rest[start + 2..].find("](").map(|end| start + 2 + end) else {
+            break;
+        };
+        let destination_start = label_end + 2;
+        let Some(close) = rest[destination_start..].find(')') else {
+            break;
+        };
+        let image_end = destination_start + close + 1;
+        out.push_str(&rest[..image_end]);
+        rest = &rest[image_end..];
+        if let Some(hint) = rest.strip_prefix("{:")
+            && let Some(end) = hint.find('}')
+        {
+            rest = &hint[end + 1..];
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn extract_highlights(value: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(value.len());
+    let mut highlights = Vec::new();
+    let mut rest = value;
+    loop {
+        let marker = match (rest.find("=="), rest.find("^^")) {
+            (Some(equals), Some(carets)) if equals <= carets => Some((equals, "==")),
+            (Some(_), Some(carets)) => Some((carets, "^^")),
+            (Some(equals), None) => Some((equals, "==")),
+            (None, Some(carets)) => Some((carets, "^^")),
+            (None, None) => None,
+        };
+        let Some((start, delimiter)) = marker else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        let after = &rest[start + delimiter.len()..];
+        let line_end = after.find('\n').unwrap_or(after.len());
+        let Some(end) = after[..line_end].find(delimiter) else {
+            out.push_str(delimiter);
+            rest = after;
+            continue;
+        };
+        highlights.push(after[..end].to_owned());
+        out.push_str(&format!("QQHL{}QQ", highlights.len() - 1));
+        rest = &after[end + delimiter.len()..];
+    }
+    out.push_str(rest);
+    (out, highlights)
 }
 
 fn rewrite_macros(markdown: &str) -> (String, usize) {
@@ -1146,5 +1278,51 @@ mod tests {
     #[test]
     fn skips_empty_bullets() {
         assert!(convert_logseq_note("pages/Empty.md", "- \n-").is_none());
+    }
+
+    #[test]
+    fn converts_logseq_highlights() {
+        let note = convert_logseq_note("pages/Highlights.md", "- ==marked== and ^^also^^").unwrap();
+
+        assert!(note.typst.contains("#highlight[marked]"));
+        assert!(note.typst.contains("#highlight[also]"));
+    }
+
+    #[test]
+    fn preserves_logseq_math() {
+        let note = convert_logseq_note("pages/Math.md", "- $E = mc^2$\n- $$\\int x$$").unwrap();
+
+        assert!(note.typst.contains("$E = mc^2$"));
+        assert!(!note.typst.contains("\\$E \\= mc^2\\$"));
+        assert!(note.typst.contains("$ \\int x $"));
+    }
+
+    #[test]
+    fn promotes_logseq_bullet_headings() {
+        let note = convert_logseq_note("pages/Heading.md", "- # Section\n- body line").unwrap();
+
+        assert!(note.typst.lines().any(|line| line == "= Section"));
+        assert!(note.typst.lines().any(|line| line == "- body line"));
+    }
+
+    #[test]
+    fn strips_logseq_image_sizing_hints() {
+        let note =
+            convert_logseq_note("pages/Image.md", "- ![x](../assets/p.png){:width 320}").unwrap();
+
+        assert!(!note.typst.contains("{:width"));
+        assert!(note.typst.contains("#image(\"/assets/logseq/p.png\")"));
+    }
+
+    #[test]
+    fn removes_logseq_order_list_property() {
+        let note = convert_logseq_note(
+            "pages/List.md",
+            "- logseq.order-list-type:: number\n- body line",
+        )
+        .unwrap();
+
+        assert!(!note.typst.contains("order-list-type"));
+        assert!(note.typst.contains("- body line"));
     }
 }
