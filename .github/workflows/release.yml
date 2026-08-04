@@ -156,7 +156,21 @@ jobs:
       # (locally it resolves against the package dir). Mirror the prebuilt
       # dir there so both resolutions find it.
       - run: cp -R packages/typst_flutter/.typst_flutter_prebuilt "$GITHUB_WORKSPACE/../.typst_flutter_prebuilt"
+      # Flutter >= 3.44.8 turns on Swift Package Manager integration, which
+      # skips CocoaPods plugin embedding with this repo's non-standard Podfile
+      # and shipped v0.1.0+87 with NO plugin frameworks (Typst engine, file
+      # picker, share, notifications all missing). Force CocoaPods until the
+      # project is migrated to SPM deliberately.
+      - run: flutter config --no-enable-swift-package-manager
       - run: flutter build macos --release
+      # Gate on bundle contents, not a green build: the SPM regression produced
+      # a bootable app with three frameworks and no engine.
+      - run: |
+          APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
+          for fw in typst_flutter file_picker share_plus; do
+            test -d "$APP/Contents/Frameworks/$fw.framework" \
+              || { echo "FAIL: $fw.framework missing from bundle"; exit 1; }
+          done
       - run: ditto -c -k --keepParent build/macos/Build/Products/Release/*.app TyLog-macos.zip
       - run: flutter build ios --release --no-codesign
       - run: ditto -c -k --keepParent build/ios/iphoneos/Runner.app TyLog-ios-unsigned.zip
