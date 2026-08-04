@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:tylog_core/graph.dart';
 
+import 'widgets/graph_label.dart';
+
 export 'package:tylog_core/graph.dart'
     show
         GraphEdge,
@@ -1123,12 +1125,24 @@ class GraphPainter extends CustomPainter {
     for (final agg in aggs) {
       final tp = TextPainter(
         text: TextSpan(
-          text: '${agg.label} · ${agg.count}',
+          text: prettyGraphLabel(agg.label),
           style: TextStyle(
             color: colorScheme.onSurface,
             fontSize: kZoneLabelPx / scale,
             fontWeight: FontWeight.w600,
           ),
+          children: [
+            TextSpan(
+              text: ' · ${agg.count}',
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(
+                  alpha: kGraphCountAlpha,
+                ),
+                fontSize: kZoneLabelPx * kGraphCountScale / scale,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
@@ -1229,23 +1243,36 @@ class GraphPainter extends CustomPainter {
       // Note labels appear only near the selection to cut clutter; concept/work
       // hubs are always labelled so the map reads as a set of named topics.
       if (!related && !isEntity) continue;
-      final title = node.title.length > 18
-          ? '${node.title.substring(0, 17)}…'
+      final title = node.kind == GraphNodeKind.concept
+          ? prettyGraphLabel(node.title)
           : node.title;
-      // Concept/work hubs carry an article-count badge (e.g. "esp32 · 31").
-      final label = isEntity && node.count > 0 ? '$title · ${node.count}' : title;
       final textPainter = TextPainter(
         text: TextSpan(
-          text: label,
+          text: title,
           style: TextStyle(
             color: colorScheme.onSurface,
             fontSize: 11,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
+          children: [
+            // Concept/work hubs carry an article-count badge ("Esp32 · 31").
+            if (isEntity && node.count > 0)
+              TextSpan(
+                text: ' · ${node.count}',
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(
+                    alpha: kGraphCountAlpha,
+                  ),
+                  fontSize: 11 * kGraphCountScale,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
         ),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
         maxLines: 1,
+        ellipsis: '…',
       )..layout(maxWidth: 96);
       textPainter.paint(
         canvas,

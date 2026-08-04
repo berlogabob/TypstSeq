@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tylog_core/tylog_core.dart';
 
-import 'graph.dart' show colorForSlot, kZoneLabelPx;
+import 'graph.dart' show colorForSlot;
+import 'widgets/graph_label.dart';
 
 /// A cell's children are revealed once its on-screen area exceeds this square
 /// (per-cell semantic zoom — big communities open earlier than small ones).
@@ -393,25 +394,63 @@ class _VoronoiPainter extends CustomPainter {
     }
 
     for (final (cell, _) in labels) {
-      if (cell.bbox.width * scale < 48) continue; // too small to label
-      final text = cell.children.isEmpty
-          ? cell.label
-          : '${cell.label} · ${cell.count}';
+      final spec = graphLabelSpec(
+        Size(cell.bbox.width * scale, cell.bbox.height * scale),
+      );
+      if (spec == null) continue;
+      final hasCount = cell.children.isNotEmpty;
+      final name = hasCount ? prettyGraphLabel(cell.label) : cell.label;
+      final nameSize = spec.fontSize / scale;
       final tp = TextPainter(
         text: TextSpan(
-          text: text,
+          text: name,
           style: TextStyle(
             color: colorScheme.onSurface,
-            fontSize: kZoneLabelPx / scale,
-            fontWeight: cell.depth == 0 ? FontWeight.w600 : FontWeight.w400,
+            fontSize: nameSize,
+            height: 1.2,
+            fontWeight: switch (cell.depth) {
+              0 => FontWeight.w600,
+              1 => FontWeight.w500,
+              _ => FontWeight.w400,
+            },
           ),
+          children: [
+            if (hasCount && spec.showCount)
+              TextSpan(
+                text: '\n${cell.count}',
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(
+                    alpha: kGraphCountAlpha,
+                  ),
+                  fontSize: nameSize * kGraphCountScale,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
         ),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
-        maxLines: 2,
+        maxLines: spec.maxLines + (hasCount && spec.showCount ? 1 : 0),
         ellipsis: '…',
-      )..layout(maxWidth: cell.bbox.width * 0.9);
-      tp.paint(canvas, cell.centroid - Offset(tp.width / 2, tp.height / 2));
+      )..layout(maxWidth: cell.bbox.width * 0.85);
+      if (tp.height > cell.bbox.height * 0.9) continue;
+      // Center on the centroid, but keep the text inside the cell bounds so
+      // it never crosses a border into a neighbor.
+      final inner = cell.bbox.deflate(4 / scale);
+      final wanted = cell.centroid - Offset(tp.width / 2, tp.height / 2);
+      tp.paint(
+        canvas,
+        Offset(
+          wanted.dx.clamp(
+            inner.left,
+            math.max(inner.left, inner.right - tp.width),
+          ),
+          wanted.dy.clamp(
+            inner.top,
+            math.max(inner.top, inner.bottom - tp.height),
+          ),
+        ),
+      );
     }
   }
 
