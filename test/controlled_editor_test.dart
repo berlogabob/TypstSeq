@@ -74,6 +74,16 @@ unrelated @someone else''';
     expect(mentionExcerpts('nothing here', targets), isEmpty);
   });
 
+  test('preview drops the full importer escape set, not a subset', () {
+    final document = parseControlledTypst(
+      '- С 10\\-16 доставка МФУ\n- \\+79050163009 телефон',
+    );
+    expect(controlledBlockPreview(document.blocks.single), [
+      '• С 10-16 доставка МФУ',
+      '• +79050163009 телефон',
+    ].join('\n'));
+  });
+
   test('source-mode preview keeps a bare email but strips a citation @', () {
     final document = parseControlledTypst('mail a@b.com and cite @knuth');
     expect(controlledBlockPreview(document.blocks.single), 'mail a@b.com and cite knuth');

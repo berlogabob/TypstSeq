@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -511,6 +512,75 @@ void main() {
           reason: 'chip $chipRect overlaps text $global at scale $scale',
         );
       }
+    }
+  });
+
+  testWidgets('inline images never overlap the following text in the editor', (
+    tester,
+  ) async {
+    // A 10x300 image: tall enough that a strut-forced line box (~25px)
+    // cannot contain it — the regression this test guards against.
+    final tallPng = await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 10, 300),
+        Paint()..color = const Color(0xFF336699),
+      );
+      final image = await recorder.endRecording().toImage(10, 300);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data!.buffer.asUint8List();
+    });
+    final controller = TyLogEditingController(
+      source: 'intro line\n\n#image("/assets/tall.png")\n\nnext paragraph line',
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+      imageResolver: (path) async => tallPng,
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(); // bytes future resolves → Image mounts
+    await tester.runAsync(
+      () => precacheImage(
+        MemoryImage(tallPng!),
+        tester.element(find.byType(TyLogRichEditor)),
+      ),
+    );
+    await tester.pump(); // decoded image relayouts to full height
+    await tester.pump();
+
+    final imageRect = tester.getRect(find.byType(Image));
+    expect(
+      imageRect.height,
+      greaterThan(100),
+      reason: 'image must be decoded at full size for the check to bite',
+    );
+    final editable = tester.allRenderObjects
+        .whereType<RenderEditable>()
+        .single;
+    final start = controller.text.indexOf('next paragraph line');
+    expect(start, greaterThan(0));
+    final boxes = editable.getBoxesForSelection(
+      TextSelection(
+        baseOffset: start,
+        extentOffset: start + 'next paragraph line'.length,
+      ),
+    );
+    expect(boxes, isNotEmpty);
+    for (final box in boxes) {
+      final global = box.toRect().shift(editable.localToGlobal(Offset.zero));
+      expect(
+        imageRect.overlaps(global.deflate(0.5)),
+        isFalse,
+        reason: 'image $imageRect overlaps text $global',
+      );
     }
   });
 

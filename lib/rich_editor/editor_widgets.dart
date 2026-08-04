@@ -487,7 +487,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(
+      context,
+    ).textTheme.bodyLarge?.copyWith(height: 1.55);
+    return Column(
     children: [
       Expanded(
         child: CompositedTransformTarget(
@@ -500,9 +504,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             minLines: null,
             maxLines: null,
             textAlignVertical: TextAlignVertical.top,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.55),
+            style: textStyle,
+            // Without this, TextField forces every line box to the strut
+            // height and tall WidgetSpans (inline images) paint over the
+            // neighbouring lines; non-forced strut keeps it as a minimum.
+            strutStyle: textStyle == null
+                ? null
+                : StrutStyle.fromTextStyle(
+                    textStyle,
+                    forceStrutHeight: false,
+                  ),
             decoration: const InputDecoration(
               hintText: 'Start writing…',
               contentPadding: EdgeInsets.all(18),
@@ -677,7 +688,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         ),
       ),
     ],
-  );
+    );
+  }
 }
 
 /// Renders an image atom (`#image(...)`) as a real inline picture, loaded from
@@ -1105,21 +1117,14 @@ String _atomBody(String source) {
   return source.substring(open + 1, close - 1);
 }
 
-// Inverse of the importer's escape_markup (tylog_import_core/src/lib.rs),
-// mirroring _unescapeMarkup in tylog_core/src/scanner.dart.
-String _unescapeMarkup(String value) => value.replaceAllMapped(
-  RegExp(r'\\([\\#$*_`<>@\[\]~=\-+/])'),
-  (m) => m[1]!,
-);
-
 String _atomLabel(String source) {
   final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
-    return _unescapeMarkup(content);
+    return unescapeMarkup(content);
   }
   final quoted = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
   if (quoted != null) {
-    return _unescapeMarkup(quoted.replaceAll(r'\"', '"'));
+    return unescapeMarkup(quoted.replaceAll(r'\"', '"'));
   }
   if (source.startsWith('@')) return source.substring(1);
   if (source.startsWith('#cite(')) {

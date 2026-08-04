@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:tylog_core/scanner.dart' show unescapeMarkup;
 
 enum ControlledBlockKind {
   heading,
@@ -266,12 +267,8 @@ String _inlinePreview(String source) {
       .replaceAllMapped(RegExp(r'#cite\(([^)]*)\)'), (match) => match.group(1)!)
       // Legacy `[[wiki]]` links show as their target text.
       .replaceAllMapped(RegExp(r'\[\[([^\]]+)\]\]'), (match) => match.group(1)!)
-      .replaceAll(RegExp(r'#image\([^)]*\)'), 'Image')
-      .replaceAllMapped(
-        RegExp(r'\\([\\#\[\]\$*_@])'),
-        (match) => match.group(1)!,
-      );
-  return value;
+      .replaceAll(RegExp(r'#image\([^)]*\)'), 'Image');
+  return unescapeMarkup(value);
 }
 
 String? _namedString(String source, String name) {

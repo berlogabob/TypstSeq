@@ -1487,7 +1487,7 @@ Set<String> _legacySources(String source) {
 /// The importer escapes Typst's special characters when it writes body text, so
 /// a recovered `tags::` line arrives as `\#Python \#разработка`. Left in place
 /// the backslashes become part of the tag and it matches nothing.
-String _unescapeMarkup(String value) =>
+String unescapeMarkup(String value) =>
     value.replaceAllMapped(RegExp(r'\\([\\#$*_`<>@\[\]~=\-+/])'), (m) => m[1]!);
 
 /// Recovers tags from legacy Logseq-style `tags::` lines that the Typst parser
@@ -1500,7 +1500,7 @@ String _unescapeMarkup(String value) =>
 Set<String> _legacyTags(String source) {
   final result = <String>{};
   for (final line in _legacyTagLine.allMatches(source)) {
-    final value = _unescapeMarkup(line.group(1)!);
+    final value = unescapeMarkup(line.group(1)!);
     final links = _wikiLink
         .allMatches(value)
         .map((match) => match.group(1)!.trim())
