@@ -558,7 +558,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    // Tapping a note reference (`@mention` / `[[link]]`) navigates to the note.
+    // Tapping a note reference (`@mention` / `[[link]]`) navigates to the
+    // note; a dangling reference offers to create it (Logseq muscle memory),
+    // an ambiguous one lets the user pick which owner to open.
     final ref = RegExp(
       r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
     ).firstMatch(source);
@@ -567,13 +569,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .group(1)!
           .replaceAll(r'\"', '"')
           .replaceAll(r'\\', r'\');
-      final path = _pathForLink(target);
-      if (path != null) {
-        await _openNote(path);
-        return;
+      final resolution =
+          workspace.linkResolver?.resolve(target) ?? _resolveLink(target);
+      switch (resolution.status) {
+        case LinkResolutionStatus.resolved:
+          await _openNote(resolution.path!);
+        case LinkResolutionStatus.ambiguous:
+          await _chooseLinkOwner(target, resolution.candidates);
+        case LinkResolutionStatus.unresolved:
+          await _createFromLink(target);
       }
+      return;
     }
     await _editProtectedBlock(id);
+  }
+
+  Future<void> _createFromLink(String target) async {
+    final v = vault;
+    if (v == null) return;
+    // The resolver lags behind a just-created note until the background
+    // rescan lands (minutes on a big vault), so check the direct
+    // title->file mapping before claiming the note doesn't exist. Same
+    // sanitization as Vault.page.
+    final direct =
+        'notes/${target.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
+    if (await v.storage.exists(direct)) {
+      await _openNote(direct);
+      return;
+    }
+    if (!mounted) return;
+    final create = await showConfirmDialog(
+      context,
+      title: 'Create note?',
+      message: 'No note called “$target”. Create it?',
+      confirmLabel: 'Create',
+    );
+    if (!create || !mounted) return;
+    final file = await v.page(target);
+    // Open first — the refresh only serves future link resolution and can
+    // block for minutes behind an in-flight full rebuild.
+    await _openNote(file);
+    setState(() => status = 'Created $file');
+    unawaited(workspace.refreshIndex(always: true));
+  }
+
+  Future<void> _chooseLinkOwner(String target, List<String> candidates) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(title: Text('“$target” matches ${candidates.length} notes')),
+            for (final path in candidates)
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: Text(path),
+                onTap: () => Navigator.pop(context, path),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) await _openNote(choice);
   }
 
   Future<void> _editProtectedBlock(String id) async {
@@ -701,6 +760,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = await v.page(title);
     await _openNote(file);
     setState(() => status = 'Created $file');
+    // Without the refresh the new note stays unresolvable to every chip
+    // until the next unrelated scan; run it behind the navigation.
+    unawaited(workspace.refreshIndex(always: true));
   }
 
   Future<void> _newPage({String kind = 'note'}) async {
