@@ -2,6 +2,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/app_mobile.dart';
 
 void main() {
+  test('decideImportAction classifies source imports', () {
+    final imported = <String, Set<String>>{
+      'known.md': {'same'},
+    };
+
+    expect(
+      decideImportAction(sourceName: 'new.md', sha: 'same', imported: imported),
+      ImportSourceDecision.importNew,
+    );
+    expect(
+      decideImportAction(
+        sourceName: 'known.md',
+        sha: 'same',
+        imported: imported,
+      ),
+      ImportSourceDecision.skipUnchanged,
+    );
+    expect(
+      decideImportAction(
+        sourceName: 'known.md',
+        sha: 'different',
+        imported: imported,
+      ),
+      ImportSourceDecision.importChangedCopy,
+    );
+  });
+
   test('assignImportOutputPath suffixes existing and batch collisions', () {
     final used = <String>{};
     bool exists(String path) => path == 'notes/example.typ';

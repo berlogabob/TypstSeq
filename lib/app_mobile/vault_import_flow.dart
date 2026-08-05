@@ -2,6 +2,20 @@ part of '../app_mobile.dart';
 
 const _vaultImportAssetLimit = 50 * 1024 * 1024;
 
+enum ImportSourceDecision { importNew, skipUnchanged, importChangedCopy }
+
+ImportSourceDecision decideImportAction({
+  required String sourceName,
+  required String sha,
+  required Map<String, Set<String>> imported,
+}) {
+  final hashes = imported[sourceName];
+  if (hashes == null) return ImportSourceDecision.importNew;
+  return hashes.contains(sha)
+      ? ImportSourceDecision.skipUnchanged
+      : ImportSourceDecision.importChangedCopy;
+}
+
 String assignImportOutputPath(
   String relPath,
   Set<String> used,
@@ -40,6 +54,8 @@ class _VaultImportReport {
   int journals = 0;
   int appended = 0;
   int skippedEmpty = 0;
+  int unchanged = 0;
+  int changedCopies = 0;
   int assetsCopied = 0;
   int assetsSkipped = 0;
   int assetsMissing = 0;
@@ -73,6 +89,14 @@ extension _VaultImportFlow on _HomeScreenState {
       for (final entry in await opened.storage.list(recursive: true))
         if (!entry.isDirectory) entry.path.replaceAll('\\', '/'),
     };
+    final imported = <String, Set<String>>{};
+    for (final note in index?.notes ?? const <NoteRef>[]) {
+      final sourceName = note.properties['import_source_name'];
+      if (sourceName is! String) continue;
+      final hashes = imported.putIfAbsent(sourceName, () => <String>{});
+      final sourceHash = note.properties['import_sha256'];
+      if (sourceHash is String) hashes.add(sourceHash);
+    }
     if (!mounted || vault != opened) return;
 
     final progress = ValueNotifier<String>('Converting 0 of ${sources.length}');
@@ -113,15 +137,31 @@ extension _VaultImportFlow on _HomeScreenState {
       final name = item.path.split('/').last;
       progress.value = 'Converting ${index + 1} of ${sources.length}\n$name';
       try {
+        final markdown = await source.readText(item.path);
+        final sourceHash = await source.hash(item.path);
+        final decision = decideImportAction(
+          sourceName: name,
+          sha: sourceHash,
+          imported: imported,
+        );
+        if (decision == ImportSourceDecision.skipUnchanged) {
+          report.unchanged++;
+          continue;
+        }
         final result = await convertVaultNote(
           dialect: dialect,
           sourceRelPath: item.path,
-          markdown: await source.readText(item.path),
+          markdown: markdown,
         );
         if (result == null) {
           report.skippedEmpty++;
           continue;
         }
+        final typst = replaceNoteProperty(
+          result.typst,
+          'import_sha256',
+          sourceHash,
+        );
 
         final isJournal = item.journal || result.kind == 'daily';
         if (isJournal &&
@@ -131,7 +171,7 @@ extension _VaultImportFlow on _HomeScreenState {
           await opened.storage.writeText(
             result.relPath,
             '$current\n== From ${dialect == 'logseq' ? 'Logseq' : 'Obsidian'}\n\n'
-            '${importedNoteBody(result.typst)}',
+            '${importedNoteBody(typst)}',
           );
           used.add(result.relPath);
           writtenPaths.add(result.relPath);
@@ -142,8 +182,13 @@ extension _VaultImportFlow on _HomeScreenState {
             used,
             existingPaths.contains,
           );
-          await opened.saveNote(path, result.typst);
+          await opened.saveNote(path, typst);
           writtenPaths.add(path);
+        }
+
+        imported.putIfAbsent(name, () => <String>{}).add(sourceHash);
+        if (decision == ImportSourceDecision.importChangedCopy) {
+          report.changedCopies++;
         }
 
         if (isJournal) {
@@ -338,6 +383,8 @@ extension _VaultImportFlow on _HomeScreenState {
                 Text('Journals converted: ${report.journals}'),
                 Text('Journals appended: ${report.appended}'),
                 Text('Files skipped-empty: ${report.skippedEmpty}'),
+                Text('Unchanged (skipped): ${report.unchanged}'),
+                Text('Changed (imported as copy): ${report.changedCopies}'),
                 Text('Assets copied: ${report.assetsCopied}'),
                 Text('Assets skipped: ${report.assetsSkipped}'),
                 Text('Assets missing: ${report.assetsMissing}'),
