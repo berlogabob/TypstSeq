@@ -452,6 +452,27 @@ void main() {
     expect(find.byIcon(Icons.tag), findsOneWidget); // tag
   });
 
+  testWidgets('unresolved note chips show create styling', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source:
+                '#tylog.ref-note("ghost")[Ghost] '
+                '#tylog.ref-note("real")[Real]',
+            resolveKind: (target) => target == 'ghost' ? 'unresolved' : 'note',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
+    expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+    final ghost = tester.widget<Text>(find.text('Ghost'));
+    expect(ghost.style?.decoration, TextDecoration.underline);
+    expect(ghost.style?.decorationStyle, TextDecorationStyle.dashed);
+  });
+
   testWidgets('read view forwards tapped atom source', (tester) async {
     String? tapped;
     await tester.pumpWidget(

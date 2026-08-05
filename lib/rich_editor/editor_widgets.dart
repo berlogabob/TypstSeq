@@ -757,12 +757,14 @@ class _ProtectedChip extends StatelessWidget {
     required this.block,
     required this.onTap,
     required this.icon,
+    this.unresolved = false,
   });
 
   final String label;
   final bool block;
   final VoidCallback? onTap;
   final IconData icon;
+  final bool unresolved;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -799,7 +801,20 @@ class _ProtectedChip extends StatelessWidget {
                 children: [
                   Icon(icon, size: 16),
                   const SizedBox(width: 5),
-                  Flexible(child: Text(label)),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: unresolved
+                          ? TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              decoration: TextDecoration.underline,
+                              decorationStyle: TextDecorationStyle.dashed,
+                            )
+                          : null,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1138,9 +1153,9 @@ String _atomLabel(String source) {
 }
 
 /// The chip icon for an inline atom, by what it points at: email vs web link,
-/// tag, date, attachment, citation, and — via [resolveKind] against the vault
+/// tag, date, attachment, citation, and — via [resolvedKind] against the vault
 /// index — the referenced note's kind (person/place/project/…).
-IconData _atomIcon(String source, {String? Function(String id)? resolveKind}) {
+IconData _atomIcon(String source, {String? resolvedKind}) {
   if (source.startsWith('#link(')) {
     final url =
         RegExp(r'^#link\("((?:\\.|[^"])*)"').firstMatch(source)?.group(1) ?? '';
@@ -1153,14 +1168,24 @@ IconData _atomIcon(String source, {String? Function(String id)? resolveKind}) {
     return Icons.format_quote;
   }
   if (source.startsWith('#tylog.ref-note(')) {
-    final id = RegExp(
-      r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
-    ).firstMatch(source)?.group(1);
-    return iconForKind(
-      id == null ? null : resolveKind?.call(unescapeTypstString(id)),
-    );
+    return switch (resolvedKind) {
+      'unresolved' => Icons.add_circle_outline,
+      'ambiguous' => Icons.error_outline,
+      _ => iconForKind(resolvedKind),
+    };
   }
   return Icons.link;
+}
+
+String? _refNoteKind(
+  String source,
+  String? Function(String id)? resolveKind,
+) {
+  if (!source.startsWith('#tylog.ref-note(')) return null;
+  final id = RegExp(
+    r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
+  ).firstMatch(source)?.group(1);
+  return id == null ? null : resolveKind?.call(unescapeTypstString(id));
 }
 
 int? _squareEnd(String source, int open) {

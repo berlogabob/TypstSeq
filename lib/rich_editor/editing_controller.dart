@@ -839,6 +839,10 @@ class TyLogEditingController extends TextEditingController {
               final nested = _parseInline(body) ?? [TyLogInline.text(body)];
               for (final nestedPart in nested) {
                 if (nestedPart.isAtom) {
+                  final resolvedKind = _refNoteKind(
+                    nestedPart.source!,
+                    resolveKind,
+                  );
                   children.add(
                     WidgetSpan(
                       alignment: PlaceholderAlignment.middle,
@@ -846,9 +850,10 @@ class TyLogEditingController extends TextEditingController {
                         label: nestedPart.label!,
                         block: false,
                         onTap: null,
+                        unresolved: resolvedKind == 'unresolved',
                         icon: _atomIcon(
                           nestedPart.source!,
-                          resolveKind: resolveKind,
+                          resolvedKind: resolvedKind,
                         ),
                       ),
                     ),
@@ -877,11 +882,13 @@ class TyLogEditingController extends TextEditingController {
             final onTap = interactive || (tappable && imagePath == null)
                 ? () => onProtectedTap(part.id!)
                 : null;
+            final resolvedKind = _refNoteKind(part.source!, resolveKind);
             final chip = _ProtectedChip(
               label: part.label!,
               block: false,
               onTap: onTap,
-              icon: _atomIcon(part.source!, resolveKind: resolveKind),
+              unresolved: resolvedKind == 'unresolved',
+              icon: _atomIcon(part.source!, resolvedKind: resolvedKind),
             );
             children.add(
               WidgetSpan(
