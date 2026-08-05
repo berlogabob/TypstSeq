@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::{convert_markdown, escape_markup};
@@ -156,6 +157,8 @@ pub fn convert_vault_note(
 fn extract_logseq_metadata(source_rel_path: &str, markdown: &str) -> (NoteMeta, String, String) {
     let source_name = source_name(source_rel_path);
     let stem = source_stem(&source_name);
+    let markdown = replace_same_file_block_refs(markdown, &collect_same_file_blocks(markdown));
+    let markdown = rewrite_ordered_lists(&markdown);
     let mut title = percent_decode(stem);
     let mut tags = Vec::new();
     let mut aliases = Vec::new();
@@ -409,6 +412,109 @@ fn is_noise_property(key: &str) -> bool {
             | "hl-stamp"
             | "logseq.order-list-type"
     )
+}
+
+fn rewrite_ordered_lists(value: &str) -> String {
+    let mut lines: Vec<_> = value.lines().map(str::to_owned).collect();
+    let mut removed = vec![false; lines.len()];
+    for index in 0..lines.len() {
+        let Some((key, list_type)) = property_line(&lines[index]) else {
+            continue;
+        };
+        if !key.eq_ignore_ascii_case("logseq.order-list-type") {
+            continue;
+        }
+        removed[index] = true;
+        if !list_type.eq_ignore_ascii_case("number") {
+            continue;
+        }
+
+        let indent = leading_indent(&lines[index]);
+        let mut number = 1;
+        for line in &mut lines[index + 1..] {
+            if line.trim().is_empty() {
+                break;
+            }
+            let line_indent = leading_indent(line);
+            if line_indent < indent {
+                break;
+            }
+            let trimmed = &line[line_indent..];
+            if line_indent == indent {
+                let Some(text) = trimmed.strip_prefix("- ") else {
+                    break;
+                };
+                *line = format!("{}{}. {text}", &line[..line_indent], number);
+                number += 1;
+            } else if !is_markdown_bullet(trimmed) {
+                break;
+            }
+        }
+    }
+    lines
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, line)| (!removed[index]).then_some(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn is_markdown_bullet(value: &str) -> bool {
+    value.starts_with("- ")
+        || value.split_once(". ").is_some_and(|(number, _)| {
+            !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())
+        })
+}
+
+fn collect_same_file_blocks(value: &str) -> HashMap<String, String> {
+    let lines: Vec<_> = value.lines().collect();
+    let mut blocks = HashMap::new();
+    for (index, line) in lines.iter().enumerate() {
+        let Some((key, id)) = property_line(line) else {
+            continue;
+        };
+        if !key.eq_ignore_ascii_case("id") || !is_block_ref_token(id) {
+            continue;
+        }
+        let property_indent = leading_indent(line);
+        for parent in lines[..index].iter().rev() {
+            if parent.trim().is_empty() {
+                break;
+            }
+            if leading_indent(parent) >= property_indent {
+                continue;
+            }
+            if let Some(text) = parent.trim_start_matches([' ', '\t']).strip_prefix("- ") {
+                blocks.insert(id.to_owned(), text.trim().to_owned());
+            }
+            break;
+        }
+    }
+    blocks
+}
+
+fn replace_same_file_block_refs(value: &str, blocks: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("((") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("))") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let token = after[..end].trim();
+        if is_block_ref_token(token)
+            && let Some(text) = blocks.get(token)
+        {
+            out.push_str(text);
+        } else {
+            out.push_str(&rest[start..start + 2 + end + 2]);
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn parse_list(value: &str) -> Vec<String> {
@@ -932,11 +1038,7 @@ fn drop_block_refs(value: &str) -> (String, usize) {
             return (out, dropped);
         };
         let token = after[..end].trim();
-        if token.len() >= 8
-            && token
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        {
+        if is_block_ref_token(token) {
             dropped += 1;
         } else {
             out.push_str(&rest[start..start + 2 + end + 2]);
@@ -945,6 +1047,13 @@ fn drop_block_refs(value: &str) -> (String, usize) {
     }
     out.push_str(rest);
     (out, dropped)
+}
+
+fn is_block_ref_token(value: &str) -> bool {
+    value.len() >= 8
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn rewrite_asset_destinations(value: &str) -> (String, Vec<String>) {
@@ -1315,14 +1424,34 @@ mod tests {
     }
 
     #[test]
-    fn removes_logseq_order_list_property() {
+    fn converts_logseq_order_list_property() {
         let note = convert_logseq_note(
             "pages/List.md",
-            "- logseq.order-list-type:: number\n- body line",
+            "- logseq.order-list-type:: number\n- First\n  - nested\n- Second\n- Third",
         )
         .unwrap();
 
         assert!(!note.typst.contains("order-list-type"));
-        assert!(note.typst.contains("- body line"));
+        assert!(note.typst.contains("+ First"));
+        assert!(note.typst.contains("- nested"));
+        assert!(note.typst.contains("+ Second"));
+        assert!(note.typst.contains("+ Third"));
+    }
+
+    #[test]
+    fn resolves_same_file_logseq_block_refs() {
+        let note = convert_logseq_note(
+            "pages/Refs.md",
+            "- The target block [[topic]]\n  id:: abc12345-6789\n- see ((abc12345-6789))\n- missing ((deadbeef-0000))",
+        )
+        .unwrap();
+
+        assert!(
+            note.typst
+                .contains("see The target block #tylog.ref-note(\"topic\")[topic]")
+        );
+        assert!(note.typst.contains("- missing"));
+        assert!(!note.typst.contains("deadbeef-0000"));
+        assert_eq!(note.dropped_block_refs, 1);
     }
 }

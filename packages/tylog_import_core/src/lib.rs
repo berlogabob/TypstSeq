@@ -91,6 +91,11 @@ impl TypstRenderer {
             NodeValue::ThematicBreak => out.push_str("#line(length: 100%)\n\n"),
             NodeValue::Table(table) => self.render_table(node, table.num_columns, out),
             NodeValue::HtmlBlock(html) => {
+                if html_tag(&html.literal)
+                    .is_some_and(|tag| matches!(tag.name.as_str(), "script" | "style"))
+                {
+                    return;
+                }
                 self.warn(node, "html-block", "HTML block preserved as raw text");
                 write_raw_block(out, &html.literal, "html");
                 out.push_str("\n\n");
@@ -205,11 +210,50 @@ impl TypstRenderer {
     }
 
     fn render_inline_children<'a>(&mut self, node: &'a AstNode<'a>, out: &mut String) {
-        for child in node.children() {
-            self.render_inline(child, out);
-            if needs_markup_boundary(child) {
+        let children: Vec<_> = node.children().collect();
+        self.render_inline_slice(&children, out);
+    }
+
+    fn render_inline_slice<'a>(&mut self, nodes: &[&'a AstNode<'a>], out: &mut String) {
+        let mut index = 0;
+        while index < nodes.len() {
+            if let NodeValue::HtmlInline(html) = &nodes[index].data().value
+                && let Some(tag) = html_tag(html)
+                && !tag.closing
+                && !tag.self_closing
+                && let Some(end) = matching_html_close(nodes, index, &tag.name)
+            {
+                if matches!(tag.name.as_str(), "script" | "style") {
+                    index = end + 1;
+                    continue;
+                }
+                let wrapper = match tag.name.as_str() {
+                    "ins" => Some(("#underline[", "]")),
+                    "del" => Some(("#strike[", "]")),
+                    "mark" => Some(("#highlight[", "]")),
+                    "sup" => Some(("#super[", "]")),
+                    "sub" => Some(("#sub[", "]")),
+                    _ => None,
+                };
+                if tag.name == "kbd" {
+                    write_raw_inline(out, &collect_inline_text(&nodes[index + 1..end]));
+                    index = end + 1;
+                    continue;
+                }
+                if let Some((before, after)) = wrapper {
+                    out.push_str(before);
+                    self.render_inline_slice(&nodes[index + 1..end], out);
+                    out.push_str(after);
+                    index = end + 1;
+                    continue;
+                }
+            }
+
+            self.render_inline(nodes[index], out);
+            if needs_markup_boundary(nodes[index]) {
                 out.push(' ');
             }
+            index += 1;
         }
     }
 
@@ -260,10 +304,7 @@ impl TypstRenderer {
                     out.push_str(&escape_markup(label));
                 }
             }
-            NodeValue::HtmlInline(html) => {
-                self.warn(node, "html-inline", "Inline HTML preserved as raw text");
-                write_raw_inline(out, &html);
-            }
+            NodeValue::HtmlInline(_) => {}
             NodeValue::TaskItem(task) => {
                 out.push_str(if task.symbol.is_some() {
                     "☒ "
@@ -330,6 +371,66 @@ impl TypstRenderer {
             line: Some(node.data().sourcepos.start.line),
         });
     }
+}
+
+struct HtmlTag {
+    name: String,
+    closing: bool,
+    self_closing: bool,
+}
+
+fn html_tag(value: &str) -> Option<HtmlTag> {
+    let tag = value.trim_start().strip_prefix('<')?;
+    let tag = tag[..tag.find('>')?].trim();
+    if tag.starts_with(['!', '?']) {
+        return None;
+    }
+    let (closing, tag) = tag
+        .strip_prefix('/')
+        .map_or((false, tag), |tag| (true, tag.trim_start()));
+    let name_end = tag
+        .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+        .unwrap_or(tag.len());
+    (name_end > 0).then(|| HtmlTag {
+        name: tag[..name_end].to_ascii_lowercase(),
+        closing,
+        self_closing: tag.trim_end().ends_with('/'),
+    })
+}
+
+fn matching_html_close<'a>(nodes: &[&'a AstNode<'a>], start: usize, name: &str) -> Option<usize> {
+    let mut depth = 1;
+    for (index, node) in nodes.iter().enumerate().skip(start + 1) {
+        let NodeValue::HtmlInline(html) = &node.data().value else {
+            continue;
+        };
+        let Some(tag) = html_tag(html).filter(|tag| tag.name == name) else {
+            continue;
+        };
+        if tag.closing {
+            depth -= 1;
+            if depth == 0 {
+                return Some(index);
+            }
+        } else if !tag.self_closing {
+            depth += 1;
+        }
+    }
+    None
+}
+
+fn collect_inline_text<'a>(nodes: &[&'a AstNode<'a>]) -> String {
+    let mut value = String::new();
+    for node in nodes {
+        match &node.data().value {
+            NodeValue::Text(text) => value.push_str(text),
+            NodeValue::Code(code) => value.push_str(&code.literal),
+            NodeValue::SoftBreak | NodeValue::LineBreak => value.push(' '),
+            NodeValue::HtmlInline(_) => {}
+            _ => value.push_str(&collect_plain_text(node)),
+        }
+    }
+    value
 }
 
 fn is_matching_title<'a>(node: &'a AstNode<'a>, title: &str) -> bool {
@@ -557,5 +658,24 @@ mod tests {
         );
         assert!(converted.typst.contains("[WikiPron] (CUNY\\-CL)"));
         assert!(converted.typst.contains("#strong[bold] (detail)"));
+    }
+
+    #[test]
+    fn converts_allowlisted_inline_html_and_drops_other_tags() {
+        let converted = convert_markdown(
+            "<ins>a</ins> <del>b</del> <mark>m</mark> <kbd>Ctrl</kbd> <sup>2</sup> <sub>n</sub> <blink>x</blink> <script>bad()</script>\n\n<style>also bad</style>",
+            "HTML",
+            None,
+        );
+
+        assert!(converted.typst.contains("#underline[a]"));
+        assert!(converted.typst.contains("#strike[b]"));
+        assert!(converted.typst.contains("#highlight[m]"));
+        assert!(converted.typst.contains("`Ctrl`"));
+        assert!(converted.typst.contains("#super[2]"));
+        assert!(converted.typst.contains("#sub[n]"));
+        assert!(converted.typst.contains(" x"));
+        assert!(!converted.typst.contains("blink"));
+        assert!(!converted.typst.contains("bad"));
     }
 }
