@@ -30,9 +30,11 @@ import 'package:flutter_local_notifications_platform_interface/flutter_local_not
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
+import 'package:tylog/models.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
+import 'package:tylog/widgets/journal_feed.dart';
 
 const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
@@ -156,6 +158,50 @@ Future<void> openJournal(WidgetTester tester) async {
 void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+
+  testWidgets('journal card atom tap wins while its background still opens', (
+    tester,
+  ) async {
+    final base = await Directory.systemTemp.createTemp('tylog_journal_card_');
+    addTearDown(() => base.delete(recursive: true));
+    final vault = Vault(Directory('${base.path}/vault'));
+    final day = DateTime(2026, 8, 4);
+    final path = await vault.dailyNote(day);
+    await vault.storage.writeText(path, '#tylog.ref-note("p")[Ann]');
+    final opened = <String>[];
+    final tapped = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: JournalFeed(
+          vault: vault,
+          index: VaultIndex(
+            notesByPath: {
+              path: NoteRef(
+                id: '2026-08-04',
+                path: path,
+                title: '2026-08-04',
+                kind: 'daily',
+                date: '2026-08-04',
+                outgoingLinks: const [],
+              ),
+            },
+            backlinksByTarget: const {},
+          ),
+          onOpenPath: opened.add,
+          onAtomTap: tapped.add,
+        ),
+      ),
+    );
+    await pumpUntilFound(tester, find.text('Ann'));
+
+    await tester.tap(find.text('Ann'));
+    expect(tapped.single, startsWith('#tylog.ref-note("p")'));
+    expect(opened, isEmpty);
+
+    await tester.tap(find.text(humanDate(day)));
+    expect(opened, [path]);
+  });
 
   testWidgets('journal feed shows only the newest day at first', (
     tester,

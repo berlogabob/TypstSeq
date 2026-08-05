@@ -20,12 +20,14 @@ class ReadingMode extends StatefulWidget {
     this.onRate,
     this.imageResolver,
     this.resolveKind,
+    this.onAtomTap,
   });
 
   final String source;
   final String? path;
   final Future<Uint8List?> Function(String path)? imageResolver;
   final String? Function(String target)? resolveKind;
+  final ValueChanged<String>? onAtomTap;
   final double fontScale;
   final bool nightMode;
   final VoidCallback onExit;
@@ -271,6 +273,7 @@ class _ReadingModeState extends State<ReadingMode> {
                               source: widget.source,
                               imageResolver: widget.imageResolver,
                               resolveKind: widget.resolveKind,
+                              onAtomTap: widget.onAtomTap,
                             ),
                           ),
                         ),

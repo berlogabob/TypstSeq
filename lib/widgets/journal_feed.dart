@@ -16,11 +16,13 @@ class JournalFeed extends StatefulWidget {
     required this.index,
     required this.onOpenPath,
     this.resolveKind,
+    this.onAtomTap,
   });
 
   final Vault? vault;
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
+  final ValueChanged<String>? onAtomTap;
 
   /// Note kind behind a `#tylog.ref-note` target, for the chip icon. Supplied by
   /// the shell so it can use the retained [LinkResolver] — this used to be
@@ -204,6 +206,7 @@ class _JournalFeedState extends State<JournalFeed> {
                         source: snapshot.data!,
                         imageResolver: _readAsset,
                         resolveKind: widget.resolveKind,
+                        onAtomTap: widget.onAtomTap,
                       );
                     },
                   ),

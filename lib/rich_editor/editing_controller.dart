@@ -785,14 +785,24 @@ class TyLogEditingController extends TextEditingController {
     required bool withComposing,
   }) => _textSpan(context, style, withComposing: withComposing);
 
-  TextSpan readTextSpan(BuildContext context, {TextStyle? style}) =>
-      _textSpan(context, style, withComposing: false, interactive: false);
+  TextSpan readTextSpan(
+    BuildContext context, {
+    TextStyle? style,
+    bool tappable = false,
+  }) => _textSpan(
+    context,
+    style,
+    withComposing: false,
+    interactive: false,
+    tappable: tappable,
+  );
 
   TextSpan _textSpan(
     BuildContext context,
     TextStyle? style, {
     required bool withComposing,
     bool interactive = true,
+    bool tappable = false,
   }) {
     final children = <InlineSpan>[];
     var global = 0;
@@ -805,7 +815,9 @@ class TyLogEditingController extends TextEditingController {
             child: _ProtectedChip(
               label: block.protectedLabel ?? 'Custom Typst',
               block: true,
-              onTap: interactive ? () => onProtectedTap(block.id) : null,
+              onTap: interactive || tappable
+                  ? () => onProtectedTap(block.id)
+                  : null,
               icon: Icons.code,
             ),
           ),
@@ -861,14 +873,16 @@ class TyLogEditingController extends TextEditingController {
               }
               continue;
             }
-            final onTap = interactive ? () => onProtectedTap(part.id!) : null;
+            final imagePath = _imageAtomPath(part.source!);
+            final onTap = interactive || (tappable && imagePath == null)
+                ? () => onProtectedTap(part.id!)
+                : null;
             final chip = _ProtectedChip(
               label: part.label!,
               block: false,
               onTap: onTap,
               icon: _atomIcon(part.source!, resolveKind: resolveKind),
             );
-            final imagePath = _imageAtomPath(part.source!);
             children.add(
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,

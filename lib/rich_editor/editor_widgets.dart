@@ -38,11 +38,13 @@ class TyLogReadView extends StatefulWidget {
     required this.source,
     this.imageResolver,
     this.resolveKind,
+    this.onAtomTap,
   });
 
   final String source;
   final Future<Uint8List?> Function(String path)? imageResolver;
   final String? Function(String target)? resolveKind;
+  final void Function(String source)? onAtomTap;
 
   @override
   State<TyLogReadView> createState() => _TyLogReadViewState();
@@ -53,7 +55,8 @@ class _TyLogReadViewState extends State<TyLogReadView> {
     source: widget.source,
     onSourceChanged: (_) {},
     onError: (_) {},
-    onProtectedTap: (_) {},
+    onProtectedTap: (id) =>
+        widget.onAtomTap?.call(controller.protectedSource(id)),
     imageResolver: widget.imageResolver,
     resolveKind: widget.resolveKind,
   );
@@ -79,6 +82,7 @@ class _TyLogReadViewState extends State<TyLogReadView> {
       controller.readTextSpan(
         context,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+        tappable: widget.onAtomTap != null,
       ),
     ),
   );

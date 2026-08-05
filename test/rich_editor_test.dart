@@ -452,6 +452,39 @@ void main() {
     expect(find.byIcon(Icons.tag), findsOneWidget); // tag
   });
 
+  testWidgets('read view forwards tapped atom source', (tester) async {
+    String? tapped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source: '#tylog.ref-note("p")[Ann]',
+            onAtomTap: (source) => tapped = source,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Ann'));
+
+    expect(tapped, startsWith('#tylog.ref-note("p")'));
+  });
+
+  testWidgets('read view atoms are inert without a tap callback', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(source: '#tylog.ref-note("p")[Ann]'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Ann'));
+    await tester.pump();
+  });
+
   testWidgets('atom labels drop importer markup escapes', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

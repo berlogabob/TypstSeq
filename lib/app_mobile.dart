@@ -531,10 +531,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => status = 'Edit kept safe: $error');
   }
 
-  // Logseq behavior: tapping a date reference navigates to that day's journal
-  // page; every other protected chip opens the raw Typst editor.
-  Future<void> _tapProtected(String id) async {
-    final source = richController.protectedSource(id).trim();
+  Future<void> _tapProtected(String id) => _handleAtomSource(
+    richController.protectedSource(id),
+    allowEdit: true,
+    protectedId: id,
+  );
+
+  Future<void> _handleAtomSource(
+    String source, {
+    required bool allowEdit,
+    String? protectedId,
+  }) async {
+    source = source.trim();
     final match = RegExp(
       r'^#tylog\.date-ref\("(\d{4})-(\d{2})-(\d{2})"',
     ).firstMatch(source);
@@ -583,7 +591,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    await _editProtectedBlock(id);
+    if (allowEdit && protectedId != null) {
+      await _editProtectedBlock(protectedId);
+    }
   }
 
   Future<void> _createFromLink(String target) async {
@@ -2991,6 +3001,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onExit: _showEditor,
         onPreferencesChanged: _updateReadingPreferences,
         onProgress: _recordReadingProgress,
+        onAtomTap: (source) =>
+            unawaited(_handleAtomSource(source, allowEdit: false)),
         // A finished article reopens at the top, not the last line.
         initialProgress: savedProgress >= 0.98 ? 0 : savedProgress,
         canRate:
@@ -3058,6 +3070,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         vault: v,
         index: index,
         resolveKind: _resolveKind,
+        onAtomTap: (source) =>
+            unawaited(_handleAtomSource(source, allowEdit: false)),
         onOpenPath: (path) {
           primaryDestination = 1;
           unawaited(_openPath(path));
