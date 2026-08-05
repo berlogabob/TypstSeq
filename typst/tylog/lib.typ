@@ -56,8 +56,14 @@
   #transform(body)
 ]
 
-#let ref-note(target, body) = [
-  #metadata((schema: 1, entity: "link", target: target, text: repr(body))) <tylog-link>
+#let ref-note(target, heading: none, body) = [
+  #metadata((
+    schema: 1,
+    entity: "link",
+    target: target,
+    ..if heading != none { (heading: heading) },
+    text: repr(body),
+  )) <tylog-link>
   #body
 ]
 

@@ -73,6 +73,10 @@ String stripAutoRelated(String source) {
       .replaceFirst(RegExp(r'[\r\n]+$'), '');
 }
 
+String? refNoteHeading(String source) => RegExp(
+  r'heading\s*:\s*"((?:\\.|[^"])*)"',
+).firstMatch(source)?.group(1)?.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
+
 /// The articles a "Relink vault" pass may rewrite.
 ///
 /// An `llm_provider` property means article-pipeline generated that note's
@@ -89,7 +93,6 @@ bool _hasLlmLinks(NoteRef note) {
   final provider = note.properties['llm_provider'];
   return provider is String && provider.isNotEmpty;
 }
-
 
 String? vaultEntryLocation(VaultEntry? entry) =>
     entry?.treeUri ??
@@ -225,6 +228,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _graphKey = key;
     return built;
   }
+
   int primaryDestination = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
@@ -296,8 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Skipped under `flutter test`: it would hit GitHub and leave an unawaited
     // rootBundle/HTTP load pending past teardown, wedging the asset channel for
     // the next test (appVersion hangs).
-    if (Platform.isMacOS &&
-        !Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => unawaited(_checkForUpdates(silent: true)),
       );
@@ -365,7 +368,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return workspace.localDirectory;
   }
 
-
   Future<void> _save({bool syncAfter = true}) async {
     if (_currentSource() != workspace.source) {
       workspace.source = _currentSource();
@@ -391,8 +393,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// so the synchronous [_typstFiles] can hand them to the Typst compiler.
   final Map<String, Uint8List> _noteAssetFiles = {};
 
-  /// The `kind` of the note a `#tylog.ref-note("target")` points at, so its chip
-  /// shows a person/place/project icon; null when the index or target is absent.
+  /// The `kind` of the note a `#tylog.ref-note("target")` points at, or a
+  /// resolution-status sentinel; null when the index or resolver is absent.
   String? _resolveKind(String target) {
     final ix = index;
     // The retained resolver, never a fresh one: this runs once per mention chip
@@ -400,9 +402,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // wherever the index is published, so it is non-null whenever `ix` is.
     final resolved = workspace.linkResolver?.resolve(target);
     if (ix == null || resolved == null) return null;
-    return resolved.status == LinkResolutionStatus.resolved
-        ? ix.notesByPath[resolved.path]?.kind
-        : null;
+    return switch (resolved.status) {
+      LinkResolutionStatus.resolved => ix.notesByPath[resolved.path]?.kind,
+      LinkResolutionStatus.unresolved => 'unresolved',
+      LinkResolutionStatus.ambiguous => 'ambiguous',
+    };
   }
 
   /// Opens a `mailto:`/`http(s)` URL (e.g. an entity's email) in the OS handler.
@@ -415,7 +419,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }),
     );
   }
-
 
   /// Reads a vault asset (e.g. an article image) for inline rendering; null on
   /// any failure so the editor falls back to the path chip.
@@ -579,15 +582,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .group(1)!
           .replaceAll(r'\"', '"')
           .replaceAll(r'\\', r'\');
+      final heading = refNoteHeading(source);
       final resolution =
           workspace.linkResolver?.resolve(target) ?? _resolveLink(target);
       switch (resolution.status) {
         case LinkResolutionStatus.resolved:
-          await _openNote(resolution.path!);
+          await _openNote(resolution.path!, heading: heading);
         case LinkResolutionStatus.ambiguous:
-          await _chooseLinkOwner(target, resolution.candidates);
+          await _chooseLinkOwner(
+            target,
+            resolution.candidates,
+            heading: heading,
+          );
         case LinkResolutionStatus.unresolved:
-          await _createFromLink(target);
+          await _createFromLink(target, heading: heading);
       }
       return;
     }
@@ -596,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _createFromLink(String target) async {
+  Future<void> _createFromLink(String target, {String? heading}) async {
     final v = vault;
     if (v == null) return;
     // The resolver lags behind a just-created note until the background
@@ -606,7 +614,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final direct =
         'notes/${target.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
     if (await v.storage.exists(direct)) {
-      await _openNote(direct);
+      await _openNote(direct, heading: heading);
       return;
     }
     if (!mounted) return;
@@ -620,12 +628,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = await v.page(target);
     // Open first — the refresh only serves future link resolution and can
     // block for minutes behind an in-flight full rebuild.
-    await _openNote(file);
-    setState(() => status = 'Created $file');
+    await _openNote(file, heading: heading);
+    if (heading == null) setState(() => status = 'Created $file');
     unawaited(workspace.refreshIndex(always: true));
   }
 
-  Future<void> _chooseLinkOwner(String target, List<String> candidates) async {
+  Future<void> _chooseLinkOwner(
+    String target,
+    List<String> candidates, {
+    String? heading,
+  }) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -633,7 +645,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: ListView(
           shrinkWrap: true,
           children: [
-            ListTile(title: Text('“$target” matches ${candidates.length} notes')),
+            ListTile(
+              title: Text('“$target” matches ${candidates.length} notes'),
+            ),
             for (final path in candidates)
               ListTile(
                 leading: const Icon(Icons.description_outlined),
@@ -644,7 +658,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (choice != null) await _openNote(choice);
+    if (choice != null) await _openNote(choice, heading: heading);
   }
 
   Future<void> _editProtectedBlock(String id) async {
@@ -680,7 +694,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (updated != null) richController.replaceProtected(id, updated);
   }
 
-  Future<void> _openNote(String path) async {
+  Future<void> _openNote(String path, {String? heading}) async {
     final v = vault;
     if (v == null) return;
     if (dirty) await _save();
@@ -691,6 +705,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       mode = 'normal';
       status = 'Opened $path';
     });
+    if (heading != null) {
+      final text = richController.text;
+      final exact = RegExp(
+        '^${RegExp.escape(heading)}\$',
+        multiLine: true,
+      ).firstMatch(text);
+      final offset = exact?.start ?? text.indexOf(heading);
+      if (offset >= 0) {
+        richController.selection = TextSelection.collapsed(offset: offset);
+      } else {
+        setState(() => status = 'Heading "$heading" not found');
+      }
+    }
     final entry = _activeRegistryEntry;
     if (entry != null) {
       // Adopt another device's position on the first local open of a note
@@ -791,7 +818,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       status = 'Created $file';
     });
   }
-
 
   Future<String?> _chooseTemplate(Vault v) async {
     final templates =
@@ -1034,9 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Repairs markdown-import artifacts that break a note's Typst metadata query
   /// ("formatting couldn't be read") so it re-parses as verified metadata.
-  Future<List<PkmsProblem>?> _repairArticles(
-    List<PkmsProblem> problems,
-  ) async {
+  Future<List<PkmsProblem>?> _repairArticles(List<PkmsProblem> problems) async {
     final v = vault;
     if (v == null) return null;
     for (final problem in problems) {
@@ -1098,7 +1122,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return null;
     final remaining = _stillFlagged(problems, 'metadata-fallback');
     final parts = [
-      if (converted > 0) 'Converted $converted note${converted == 1 ? '' : 's'}',
+      if (converted > 0)
+        'Converted $converted note${converted == 1 ? '' : 's'}',
       if (alreadyManaged > 0)
         '$alreadyManaged already managed — Typst couldn\'t verify '
             'th${alreadyManaged == 1 ? 'at note' : 'ose notes'}',
@@ -1546,8 +1571,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             themeMode: widget.themeMode,
             onThemeModeChanged: (mode) {
               widget.onThemeModeChanged?.call(mode);
-              unawaited(registry?.setThemeMode(themeModeName(mode)) ??
-                  Future.value());
+              unawaited(
+                registry?.setThemeMode(themeModeName(mode)) ?? Future.value(),
+              );
             },
             onManageVaults: () => Navigator.pop(context, true),
             onNextcloud: () {
@@ -2393,7 +2419,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (selected.contains('\n')) {
           final lines = selected
               .split('\n')
-              .map((l) => l.replaceFirst(RegExp(r'^(?:[•☐☑] |\d+\. |[-+] )'), '').trim())
+              .map(
+                (l) => l
+                    .replaceFirst(RegExp(r'^(?:[•☐☑] |\d+\. |[-+] )'), '')
+                    .trim(),
+              )
               .where((l) => l.isNotEmpty)
               .toList();
           if (lines.length >= 2) {
@@ -2412,10 +2442,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   .join('\n\n');
               final editor = sourceController;
               final selection = editor.selection;
-              final start = selection.isValid ? selection.start : editor.text.length;
-              final end = selection.isValid ? selection.end : editor.text.length;
+              final start = selection.isValid
+                  ? selection.start
+                  : editor.text.length;
+              final end = selection.isValid
+                  ? selection.end
+                  : editor.text.length;
               final before = editor.text.substring(0, start);
-              final after = editor.text.substring(end).replaceFirst(RegExp(r'^\n+'), '');
+              final after = editor.text
+                  .substring(end)
+                  .replaceFirst(RegExp(r'^\n+'), '');
               final prefix = before.isEmpty
                   ? ''
                   : before.endsWith('\n\n')
@@ -2426,7 +2462,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               final inserted = '$prefix$snippets\n\n';
               editor.value = TextEditingValue(
                 text: '$before$inserted$after',
-                selection: TextSelection.collapsed(offset: start + inserted.length),
+                selection: TextSelection.collapsed(
+                  offset: start + inserted.length,
+                ),
               );
               _queueAutosave();
             }
@@ -3213,17 +3251,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               .toList();
           // `[[` also completes existing tags into concepts; `@` stays notes.
           if (kind == AutocompleteTriggerKind.wikiLink) {
-            final tags =
-                <String>{for (final n in notes) ...n.tags}.where(matches).toList()
-                  ..sort();
+            final tags = <String>{
+              for (final n in notes) ...n.tags,
+            }.where(matches).toList()..sort();
             suggestions.addAll(
-              tags.take(8).map(
-                (t) => MentionSuggestion(
-                  id: t,
-                  title: t,
-                  kind: MentionKind.concept,
-                ),
-              ),
+              tags
+                  .take(8)
+                  .map(
+                    (t) => MentionSuggestion(
+                      id: t,
+                      title: t,
+                      kind: MentionKind.concept,
+                    ),
+                  ),
             );
           }
           return suggestions;
