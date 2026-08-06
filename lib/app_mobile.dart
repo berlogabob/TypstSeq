@@ -1322,6 +1322,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// One-off maintenance: drops the org-mode `:LOGBOOK:` drawers and trailing
+  /// empty blocks that Logseq exports carry into a note (see
+  /// [stripLogseqNoise]). The converter strips these now, but a re-import
+  /// cannot repair the notes already on disk — the wizard skips a source whose
+  /// SHA is unchanged. Safe to run more than once.
+  Future<void> _stripImportNoise() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    var cleaned = 0;
+    for (final note in ix.notes) {
+      final source = await v.storage.readText(note.path);
+      final updated = stripLogseqNoise(source);
+      if (updated != source) {
+        await v.saveNote(note.path, updated);
+        cleaned++;
+      }
+    }
+    await workspace.refreshIndex(always: true);
+    if (!mounted) return;
+    showSnack(
+      context,
+      cleaned == 0
+          ? 'No imported notes needed cleaning'
+          : 'Cleaned $cleaned note${cleaned == 1 ? '' : 's'}',
+    );
+  }
+
   Future<void> _syncNow({String trigger = 'manual'}) async {
     try {
       await workspace.syncNow(trigger: trigger);
@@ -1657,6 +1685,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onMigrateEntityTypes: () async {
               Navigator.pop(context);
               await _migrateEntityTypes();
+            },
+            onStripImportNoise: () async {
+              Navigator.pop(context);
+              await _stripImportNoise();
             },
             onImportVault: () async {
               Navigator.pop(context);

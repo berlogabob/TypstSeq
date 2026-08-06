@@ -860,6 +860,71 @@ String serializeNoteHeader(NoteMetadataDraft draft) {
 /// `properties`. Only touches notes that are still on the generic `kind:
 /// "note"` default with a non-empty `properties["type"]`; already-specific
 /// kinds are left untouched so this is safe to run repeatedly (idempotent)
+
+/// Removes the org-mode bookkeeping a Logseq export carries into a note:
+/// `:LOGBOOK:` drawers with their `CLOCK:` records and state-change lines, and
+/// the empty block every page trails.
+///
+/// Repairs notes imported before the converter learned to drop these — a
+/// re-import cannot, because the wizard skips a source whose SHA is unchanged.
+/// Returns [source] unchanged when there is nothing to strip, so it is
+/// idempotent and safe to run repeatedly.
+///
+/// Matches by line shape rather than parsing the drawer, exactly like
+/// `strip_logseq_noise` in the Rust converter: a real vault has orphan `:END:`
+/// lines and unclosed openers, and a state machine would either leak those or
+/// swallow real content past an unclosed opener. Only *trailing* empty bullets
+/// go; an empty item between two others is deliberate spacing.
+String stripLogseqNoise(String source) {
+  final lines = source.split('\n');
+  // A trailing newline leaves an empty final element. That is the terminator,
+  // not a line — leaving it in blocked the trailing sweep below on every file
+  // whose only noise was the empty end block.
+  final endsWithNewline = lines.isNotEmpty && lines.last.isEmpty;
+  if (endsWithNewline) lines.removeLast();
+
+  final kept = <String>[];
+  var removed = 0;
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed == ':LOGBOOK:' ||
+        trimmed == ':END:' ||
+        trimmed.startsWith('CLOCK:') ||
+        trimmed.startsWith('- State "')) {
+      removed++;
+      continue;
+    }
+    kept.add(line);
+  }
+
+  // Trailing empty blocks, plus any blank lines tangled up with them. Blanks
+  // alone never count as noise, so a file that merely ends in whitespace is
+  // returned untouched.
+  var pending = 0;
+  while (kept.isNotEmpty) {
+    final trimmed = kept.last.trim();
+    if (trimmed == '-' || trimmed == '+' || trimmed == r'\-') {
+      kept.removeLast();
+      removed += 1 + pending;
+      pending = 0;
+      continue;
+    }
+    if (trimmed.isEmpty) {
+      kept.removeLast();
+      pending++;
+      continue;
+    }
+    break;
+  }
+  // Put back any blanks that turned out not to precede an empty block.
+  for (var i = 0; i < pending; i++) {
+    kept.add('');
+  }
+
+  if (removed == 0) return source;
+  return endsWithNewline ? '${kept.join('\n')}\n' : kept.join('\n');
+}
+
 /// and never clobbers a deliberately-set kind.
 String migrateEntityTypeToKind(String source) {
   final call = _noteHeader(source);

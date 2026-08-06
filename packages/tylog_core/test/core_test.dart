@@ -571,6 +571,56 @@ void main() {
     expect(suggestions['notes/n0.typ'], ['notes/n1.typ']);
     expect(stopwatch.elapsed, lessThan(const Duration(seconds: 3)));
   });
+
+  group('stripLogseqNoise', () {
+    test('drops a drawer and the trailing empty block', () {
+      const source =
+          '= Day\n'
+          '\n'
+          '- #tylog.task(id: "t1", text: "Ship it", status: "done")\n'
+          ':LOGBOOK:\n'
+          'CLOCK: \\[2025\\-12\\-25 Thu 12:33:43\\] \\=\\>  44:41:48\n'
+          '- State "DONE" from "LATER" [2023-10-01 Sun]\n'
+          ':END:\n'
+          '- Real content\n'
+          '-\n'
+          '-\n';
+
+      final stripped = stripLogseqNoise(source);
+
+      expect(stripped, isNot(contains('LOGBOOK')));
+      expect(stripped, isNot(contains('CLOCK:')));
+      expect(stripped, isNot(contains('State "DONE"')));
+      expect(stripped, contains('#tylog.task('));
+      expect(stripped.trimRight(), endsWith('- Real content'));
+    });
+
+    test('an interior empty bullet is deliberate spacing and stays', () {
+      const source = '- one\n-\n- two\n';
+      expect(stripLogseqNoise(source), source);
+    });
+
+    test('unbalanced drawers never swallow content', () {
+      const source = '- before\n:END:\n- middle\n:LOGBOOK:\nCLOCK: x\n- after\n';
+
+      final stripped = stripLogseqNoise(source);
+
+      expect(stripped, contains('before'));
+      expect(stripped, contains('middle'));
+      expect(stripped, contains('after'));
+      expect(stripped, isNot(contains(':END:')));
+    });
+
+    test('is idempotent, and identical when there is nothing to strip', () {
+      const clean = '= Note\n\n- one\n- two\n';
+      expect(stripLogseqNoise(clean), same(clean));
+
+      const dirty = '- a\n:LOGBOOK:\nCLOCK: x\n:END:\n- b\n';
+      final once = stripLogseqNoise(dirty);
+      expect(stripLogseqNoise(once), same(once));
+    });
+  });
+
 }
 
 class _SourceInspector implements TypstInspector {

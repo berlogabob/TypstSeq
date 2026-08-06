@@ -618,7 +618,11 @@ fn body_is_empty(body: &str) -> bool {
 fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
     match dialect {
         SourceDialect::Logseq => {
-            let (markdown, math) = extract_math(markdown);
+            // Before extract_tasks on purpose: that scans the lines *after* a
+            // task for SCHEDULED:/DEADLINE: and stops at the first non-match,
+            // so a drawer sitting in between was hiding the scheduled date.
+            let markdown = strip_logseq_noise(markdown);
+            let (markdown, math) = extract_math(&markdown);
             let markdown = rewrite_bullet_headings(&markdown);
             let markdown = strip_image_sizing_hints(&markdown);
             let (markdown, stripped_macros) = rewrite_macros(&markdown);
@@ -657,6 +661,43 @@ fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
             }
         }
     }
+}
+
+/// Drops the org-mode bookkeeping a Logseq export carries but a reader never
+/// wants: `:LOGBOOK:` drawers with their `CLOCK:` records and state-change
+/// lines, plus the empty block every page trails.
+///
+/// By line shape, not by parsing the drawer: a real vault has orphan `:END:`
+/// lines and unclosed `:LOGBOOK:` openers, and a state machine would either
+/// leak those or swallow real content past an unclosed opener. Only *trailing*
+/// empty bullets go — an empty item between two others is deliberate spacing.
+///
+/// Keep in step with `stripLogseqNoise` in tylog_core's scanner.dart, which
+/// repairs notes imported before this existed.
+fn strip_logseq_noise(value: &str) -> String {
+    let mut lines: Vec<&str> = value
+        .lines()
+        .filter(|line| !is_org_bookkeeping(line))
+        .collect();
+    while lines
+        .last()
+        .is_some_and(|line| is_empty_bullet(line) || line.trim().is_empty())
+    {
+        lines.pop();
+    }
+    lines.join("\n")
+}
+
+fn is_org_bookkeeping(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed == ":LOGBOOK:"
+        || trimmed == ":END:"
+        || trimmed.starts_with("CLOCK:")
+        || trimmed.starts_with("- State \"")
+}
+
+fn is_empty_bullet(line: &str) -> bool {
+    matches!(line.trim(), "-" | "+" | "*")
 }
 
 fn extract_math(value: &str) -> (String, Vec<String>) {
@@ -1319,6 +1360,53 @@ mod tests {
         assert!(note.typst.contains("#tylog.ref-note(\"Milk\")[Milk]"));
         assert!(note.typst.contains("#image(\"/assets/logseq/pic.png\")"));
         assert_eq!(note.referenced_assets, ["assets/pic.png"]);
+    }
+
+    /// The drawer sits between the task and its SCHEDULED: line, which is why
+    /// strip_logseq_noise has to run *before* extract_tasks: that scan stops at
+    /// the first line that is not SCHEDULED:/DEADLINE:, so the drawer was
+    /// hiding the date entirely.
+    #[test]
+    fn org_bookkeeping_is_dropped_and_stops_hiding_scheduled_dates() {
+        let markdown = concat!(
+            "- DONE Ship it\n",
+            ":LOGBOOK:\n",
+            "CLOCK: [2025-12-25 Thu 12:33:43]--[2025-12-27 Sat 09:15:31] =>  44:41:48\n",
+            "- State \"DONE\" from \"LATER\" [2023-10-01 Sun]\n",
+            ":END:\n",
+            "SCHEDULED: <2026-08-10 Mon>\n",
+            "- Real content\n",
+            "-\n",
+            "-\n",
+        );
+
+        let note = convert_logseq_note("pages/Log.md", markdown).expect("note");
+
+        assert!(!note.typst.contains("LOGBOOK"));
+        assert!(!note.typst.contains("CLOCK:"));
+        assert!(!note.typst.contains("State \\\""));
+        assert!(note.typst.contains("scheduled: \"2026-08-10\""));
+        assert!(note.typst.contains("Real content"));
+        // The trailing empty blocks every Logseq page ends with are gone, and
+        // nothing else picked up a stray bullet.
+        assert!(note.typst.trim_end().ends_with("Real content"));
+    }
+
+    /// An unclosed drawer and an orphan :END: both exist in the real vault; a
+    /// drawer parser would either leak them or eat everything after the opener.
+    #[test]
+    fn unbalanced_drawers_do_not_swallow_content() {
+        let note = convert_logseq_note(
+            "pages/Odd.md",
+            "- before\n:END:\n- middle\n:LOGBOOK:\nCLOCK: x\n- after\n",
+        )
+        .expect("note");
+
+        assert!(note.typst.contains("before"));
+        assert!(note.typst.contains("middle"));
+        assert!(note.typst.contains("after"));
+        assert!(!note.typst.contains(":END:"));
+        assert!(!note.typst.contains("LOGBOOK"));
     }
 
     #[test]

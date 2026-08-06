@@ -20,6 +20,7 @@ class SettingsSheet extends StatelessWidget {
     required this.onManageVaults,
     required this.onEnableReminders,
     required this.onMigrateEntityTypes,
+    required this.onStripImportNoise,
     required this.onImportVault,
     this.onCheckForUpdates,
   });
@@ -35,6 +36,7 @@ class SettingsSheet extends StatelessWidget {
   final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
   final Future<void> Function() onMigrateEntityTypes;
+  final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
 
   /// Desktop-only: check GitHub Releases for a newer build. Null hides the tile.
@@ -90,6 +92,12 @@ class SettingsSheet extends StatelessWidget {
                 title: 'Migrate entity types',
                 subtitle: 'Update older notes to the current format',
                 onTap: () => unawaited(onMigrateEntityTypes()),
+              ),
+              SettingsTile(
+                icon: Icons.cleaning_services_outlined,
+                title: 'Clean up imported notes',
+                subtitle: 'Remove Logseq time-tracking leftovers',
+                onTap: () => unawaited(onStripImportNoise()),
               ),
               SettingsTile(
                 icon: Icons.drive_folder_upload_outlined,
