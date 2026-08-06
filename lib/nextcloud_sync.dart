@@ -337,6 +337,7 @@ class NextcloudSync {
     var stage = 'start';
     String? currentPath;
     var up = 0;
+    var upContent = 0;
     var down = 0;
     var skip = 0;
     var conflict = 0;
@@ -596,6 +597,7 @@ class NextcloudSync {
               }
             }
             up += result.uploaded;
+            if (!isDeviceScopedVaultPath(path)) upContent += result.uploaded;
             down += result.downloaded;
             skip += result.skipped;
             conflict += result.conflicts;
@@ -692,6 +694,7 @@ class NextcloudSync {
       return SyncResult(
         trigger: trigger,
         uploaded: up,
+        uploadedContent: upContent,
         downloaded: down,
         skipped: skip,
         conflicts: conflict,
@@ -1114,6 +1117,14 @@ bool isSafBackupPath(String path) {
       name.contains('.tylog-');
 }
 
+/// This device's own bookkeeping inside the syncable `_system/` tree: reading
+/// progress (rewritten on every note open) and the index donor (rewritten
+/// after every scan). Both are per-device by path, so uploading one tells us
+/// only that *we* wrote it — never that the vault's content moved.
+bool isDeviceScopedVaultPath(String path) =>
+    path.startsWith('_system/reading/') ||
+    path.startsWith('${Vault.indexDonorsPath}/');
+
 bool isSyncableVaultPath(String path) => const [
   'daily/',
   'notes/',
@@ -1310,14 +1321,20 @@ class SyncResult {
     required this.skipped,
     required this.conflicts,
     required this.remoteCount,
+    int? uploadedContent,
     this.repaired = 0,
     this.renamed = 0,
     this.deletedLocal = 0,
     this.deletedRemote = 0,
-  });
+  }) : uploadedContent = uploadedContent ?? uploaded;
 
   final String trigger;
   final int uploaded;
+
+  /// The subset of [uploaded] that was real vault content — every upload that
+  /// was not one of this device's own bookkeeping files. See
+  /// [isDeviceScopedVaultPath]; only this subset can imply the index is stale.
+  final int uploadedContent;
   final int downloaded;
   final int skipped;
   final int conflicts;
@@ -1327,8 +1344,15 @@ class SyncResult {
   final int deletedLocal;
   final int deletedRemote;
 
+  /// Uploads are deliberately counted as [uploadedContent], not [uploaded].
+  /// An upload changes no local bytes, so on its own it can never make the
+  /// index stale — and this device re-uploads its own reading state after
+  /// every note open and its own index donor after every scan. Counting those
+  /// made each 25s poll trigger a full vault scan, whose donor write fed the
+  /// next poll: indexing that sustained itself. Content uploads still count,
+  /// so a note dropped into the vault folder from outside the app is picked up.
   bool get requiresIndexRefresh =>
-      uploaded > 0 || downloaded > 0 || renamed > 0 || deletedLocal > 0;
+      uploadedContent > 0 || downloaded > 0 || renamed > 0 || deletedLocal > 0;
 
   @override
   String toString() =>

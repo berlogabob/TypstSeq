@@ -50,6 +50,45 @@ void main() {
     expect(downloaded.requiresIndexRefresh, isTrue);
   });
 
+  // This device rewrites its reading state on every note open and its index
+  // donor after every scan. Counting those uploads as "something changed" made
+  // each poll trigger a full vault scan, whose donor write fed the next poll —
+  // indexing that sustained itself. Content uploads must still count, or a note
+  // dropped into the vault folder from outside the app is never indexed.
+  test('only this device\'s own bookkeeping uploads skip the reindex', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_selfupload_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await NextcloudSync(_config(server)).sync(vault);
+
+    Future<File> write(String relative, String body) async {
+      final file = File('${dir.path}/$relative');
+      await file.parent.create(recursive: true);
+      await file.writeAsString(body);
+      return file;
+    }
+
+    await write('_system/reading/device-a.json', '{"schema":1,"notes":{}}');
+    await write('${Vault.indexDonorsPath}/device-a.json', '{"schema":1}');
+    final bookkeeping = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(bookkeeping.uploaded, 2, reason: 'both files reached the server');
+    expect(bookkeeping.uploadedContent, 0);
+    expect(bookkeeping.requiresIndexRefresh, isFalse);
+
+    await write('notes/dropped-in.typ', 'added outside the app');
+    final content = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(content.uploadedContent, greaterThan(0));
+    expect(content.requiresIndexRefresh, isTrue);
+  });
+
   test('Nextcloud config accepts local debug secret schema', () {
     final config = NextcloudConfig.fromJson({
       'url': 'https://cloud.example/',

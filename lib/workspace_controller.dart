@@ -413,11 +413,6 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<void> ensureIndexed() async {
-    if (dirty) await save(syncAfter: false);
-    await refreshIndex();
-  }
-
   /// [always] runs the scan even when the editor-revision guard says nothing
   /// was saved — for vault mutations the editor never sees (imports, deletes,
   /// bulk repairs). It does *not* disable the mtime+size scan cache: an

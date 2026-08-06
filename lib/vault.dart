@@ -42,6 +42,7 @@ class Vault {
   static const bibliographyPath = TylogVaultPaths.bibliography;
   static const zoteroBibPath = TylogVaultPaths.zoteroBib;
   static const settingsPath = TylogVaultPaths.settings;
+  static const indexDonorsPath = TylogVaultPaths.indexDonors;
 
   Future<void> ensureCreated({bool createIfMissing = true}) async {
     final bundled = await TylogAssets.load();

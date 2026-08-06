@@ -984,14 +984,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showKnowledge({
     KnowledgeView initialView = KnowledgeView.search,
   }) async {
-    await _ensureIndexed();
-    if (!mounted || dirty) return;
+    // Deliberately not `await _ensureIndexed()`. That saves — which bumps
+    // savedRevision past indexedRevision, so refreshIndex's early-out is
+    // guaranteed to miss after any keystroke — and then awaits a full scan;
+    // a caller arriving mid-scan even queues a second pass and awaits both.
+    // Tens of seconds of dead tap on a big vault, and if the user typed during
+    // the wait the old `|| dirty` check threw the navigation away silently.
+    // Nothing here needs a fresh scan: worker searches are answered at the
+    // scanner's next yield (vault_worker.dart), and _retainIndex mutates this
+    // very VaultIndex in place, so the screen picks up the new scan itself.
+    if (dirty) await _save();
+    if (!mounted) return;
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
     final searchStore = SavedSearchStore(v.storage);
     final savedSearches = await searchStore.load();
     if (!mounted) return;
+    unawaited(workspace.refreshIndex());
+    // Acknowledge the tap: without this the Search icon never highlights,
+    // so a slow open reads as "the button does nothing".
+    final previousDestination = primaryDestination;
+    setState(() => primaryDestination = 3);
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -1021,6 +1035,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+    if (!mounted) return;
+    setState(() => primaryDestination = previousDestination);
   }
 
   /// The Problems-screen view: everything except sync conflicts (which route to
@@ -1191,7 +1207,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
           : replaceTaskStatus(source, task.id, nextStatus),
     );
-    await _rebuildIndex();
+    // refreshIndex, not rebuildIndex: the latter's guard cancels an in-flight
+    // scan (`cancelRebuild = true; _worker?.cancel()`), so ticking a checkbox
+    // while the vault was being scanned threw that whole scan away — and it
+    // was only re-triggered later. A one-note edit does not need the
+    // progress-UI rebuild path either.
+    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
@@ -1199,7 +1220,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final source = await v.storage.readText(note.path);
     await v.saveNote(note.path, replaceNoteProperty(source, name, value));
-    await _rebuildIndex();
+    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setReadStatus(NoteRef note, String status) =>
