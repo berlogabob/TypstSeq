@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/values.dart';
 import 'package:tylog_core/vault.dart';
 
 import 'flutter_typst_inspector.dart';
@@ -541,6 +542,18 @@ Directory defaultVaultDirectory(
   return Directory('${appDocuments.path}/TyLogVault');
 }
 
+/// The starter source for a brand-new note.
+///
+/// Every interpolation is escaped. This used to write `title: "$title"` raw, so
+/// a page called `He said "hi"` produced Typst that could not compile — and
+/// because the fallback parser reads a broken header back as a valid note,
+/// nothing reported it; the note just never regained real metadata. The heading
+/// is markup rather than a string literal, so it takes [escapeMarkup] instead:
+/// a `#` or `[` in the title breaks it the same way.
+///
+/// The templated path in [Vault.page] goes through `replaceNoteHeader`, which
+/// has always escaped correctly. These two are the same operation and must not
+/// disagree.
 String _noteSource({
   required String id,
   required String title,
@@ -551,13 +564,13 @@ String _noteSource({
     '''#import "/_system/tylog.typ" as tylog
 
 #show: tylog.note.with(
-  id: "$id",
-  title: "$title",
-  kind: "$kind",${date == null ? '' : '\n  date: "$date",'}
+  id: ${typstString(id)},
+  title: ${typstString(title)},
+  kind: ${typstString(kind)},${date == null ? '' : '\n  date: ${typstString(date)},'}
   tags: ${_typstList(tags)},
 )
 
-= $title
+= ${escapeMarkup(title)}
 
 ''';
 
@@ -577,6 +590,5 @@ bool isPristineStarterNote(String path, String source) {
           );
 }
 
-String _typstList(List<String> values) => values.isEmpty
-    ? '()'
-    : '(${values.map((value) => '"${value.replaceAll('"', r'\"')}"').join(', ')},)';
+String _typstList(List<String> values) =>
+    values.isEmpty ? '()' : '(${values.map(typstString).join(', ')},)';

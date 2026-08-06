@@ -1573,7 +1573,7 @@ String _serializeBlock(TyLogBlock block) {
 /// validation reverts the edit rather than emit broken Typst.
 String _serializePart(TyLogInline part) {
   if (part.isAtom) return part.source!;
-  var value = part.style.mono ? '`${part.text}`' : typstContent(part.text);
+  var value = part.style.mono ? '`${part.text}`' : escapeMarkup(part.text);
   if (part.style.italic) value = '#emph[$value]';
   if (part.style.bold) value = '#strong[$value]';
   if (part.style.strike) value = '#strike[$value]';

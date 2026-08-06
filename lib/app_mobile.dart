@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
+import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'bibliography.dart';
@@ -1930,7 +1931,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || title.trim().isEmpty) return;
     try {
       final dayPath = await v.todayNote();
-      final safeTitle = typstContent(title.trim());
+      final safeTitle = escapeMarkup(title.trim());
       final stars = int.tryParse(rating ?? '');
       final line = rating == null
           ? '- Read: $safeTitle'

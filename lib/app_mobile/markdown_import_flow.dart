@@ -256,7 +256,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
           // Bulleted so the block renders as a list, and so article-pipeline
           // (which writes the same marked block from its LLM suggestions)
           // produces byte-identical markup.
-          '- #tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
+          '- #tylog.ref-note(${typstString(target.id)})[${escapeMarkup(target.title)}]',
     ];
     if (lines.isNotEmpty) {
       await vault!.saveNote(

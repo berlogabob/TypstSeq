@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/tylog_assets.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/models.dart';
+import 'package:tylog_core/scanner.dart';
+import 'package:tylog_core/values.dart';
 
 void main() {
   test('default vault prefers Nextcloud on desktop', () async {
@@ -219,6 +221,62 @@ void main() {
       expect(await File('${dir.path}/$page.tmp').exists(), isFalse);
     },
   );
+
+  // `page()` sanitises `\` and `/` — but only for the *filename*. The title
+  // went into the header raw, so a quote produced a header Typst rejects, and
+  // into the `= ` heading raw, so a `#` or `[` broke that instead. Neither
+  // failed loudly: the fallback parser reads a broken header back as a valid
+  // note, so the note simply never regained real metadata.
+  test('a page title with Typst syntax in it produces valid source', () async {
+    final hasTypst = Process.runSync('which', ['typst']).exitCode == 0;
+    final dir = await Directory.systemTemp.createTemp('tylog_title_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    for (final title in const [
+      r'He said "hi"',
+      r'C:\path\thing',
+      'Cost #5 [draft]',
+      r'a_b *c* $d$ @e',
+    ]) {
+      final path = await vault.page(title);
+      final source = await vault.readText(path);
+
+      // The header must round-trip through the same escaping the scanner uses.
+      expect(
+        source,
+        contains('title: ${typstString(title)}'),
+        reason: 'header literal for: $title',
+      );
+      expect(
+        source,
+        contains('= ${escapeMarkup(title)}'),
+        reason: 'heading markup for: $title',
+      );
+      // And the header must still parse back to the original title.
+      expect(scanNote(path, source).title, title, reason: 'round-trip: $title');
+
+      // The check that actually matters. `scanNote` is lenient enough to read a
+      // broken header back as a valid note, and it never looks at the heading
+      // at all — so only the compiler can fail the markup half of this.
+      if (hasTypst) {
+        final result = Process.runSync('typst', [
+          'compile',
+          '--root',
+          dir.path,
+          '${dir.path}/$path',
+          '${dir.path}/out.pdf',
+        ]);
+        expect(
+          result.exitCode,
+          0,
+          reason: 'new note does not compile for title "$title":\n'
+              '${result.stderr}\n--- source ---\n$source',
+        );
+      }
+    }
+  });
 
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');

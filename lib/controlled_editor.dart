@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:tylog_core/scanner.dart' show unescapeMarkup;
+import 'package:tylog_core/values.dart';
 
 enum ControlledBlockKind {
   heading,
@@ -424,9 +425,9 @@ SourceEdit applyMagicEdit(
   final value = request.value?.trim();
   final replacement = switch (request.action) {
     MagicAction.noteLink || MagicAction.project =>
-      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${typstContent(selected.isEmpty ? value ?? '' : selected)}]',
+      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}]',
     MagicAction.mention =>
-      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${typstContent('@${value ?? selected}')}]',
+      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${escapeMarkup('@${value ?? selected}')}]',
     MagicAction.tag => '#tylog.tag(${typstString(value ?? selected)})',
     MagicAction.task => taskSnippet(
       id: request.id ?? 'task',
@@ -435,19 +436,19 @@ SourceEdit applyMagicEdit(
       project: request.project,
     ),
     MagicAction.date =>
-      '#tylog.date-ref(${typstString(value ?? selected)})[${typstContent(selected.isEmpty ? value ?? '' : selected)}]',
+      '#tylog.date-ref(${typstString(value ?? selected)})[${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}]',
     MagicAction.citation => '@${_citationKey(value ?? selected)}',
     MagicAction.attachment =>
-      '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${request.kind == 'image' ? '#image(${typstString(value ?? '')})' : typstContent(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
+      '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${request.kind == 'image' ? '#image(${typstString(value ?? '')})' : escapeMarkup(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
     MagicAction.heading =>
-      '= ${typstContent(selected.isEmpty ? value ?? '' : selected)}',
-    MagicAction.bold => '#strong[${typstContent(selected)}]',
-    MagicAction.italic => '#emph[${typstContent(selected)}]',
-    MagicAction.strike => '#strike[${typstContent(selected)}]',
-    MagicAction.underline => '#underline[${typstContent(selected)}]',
-    // Raw Typst content is literal — no typstContent escaping inside.
+      '= ${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}',
+    MagicAction.bold => '#strong[${escapeMarkup(selected)}]',
+    MagicAction.italic => '#emph[${escapeMarkup(selected)}]',
+    MagicAction.strike => '#strike[${escapeMarkup(selected)}]',
+    MagicAction.underline => '#underline[${escapeMarkup(selected)}]',
+    // Raw Typst content is literal — no escapeMarkup escaping inside.
     MagicAction.mono => '`$selected`',
-    MagicAction.highlight => '#highlight[${typstContent(selected)}]',
+    MagicAction.highlight => '#highlight[${escapeMarkup(selected)}]',
     MagicAction.table => _tableSnippet(request.rows, request.columns),
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
@@ -511,14 +512,6 @@ String _tableSnippet(int rows, int columns) {
   final cells = List.filled(rows * columns, '[]').join(', ');
   return '#table(columns: $columns, $cells)';
 }
-
-String typstString(String value) =>
-    '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
-
-String typstContent(String value) => value.replaceAllMapped(
-  RegExp(r'[\\#\[\]\$*_@]'),
-  (match) => '\\${match.group(0)}',
-);
 
 String _citationKey(String value) {
   // Typst label charset; Better BibTeX keys commonly contain ':' and '.'.
