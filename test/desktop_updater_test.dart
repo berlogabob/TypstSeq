@@ -6,6 +6,7 @@ import 'package:tylog/desktop_updater.dart';
 String _release({
   required String tag,
   bool withMacAsset = true,
+  bool withDigestAsset = true,
   String body = 'Notes here',
 }) => jsonEncode({
   'tag_name': tag,
@@ -17,6 +18,11 @@ String _release({
       {
         'name': 'TyLog-macos.zip',
         'browser_download_url': 'https://x/TyLog-macos.zip',
+      },
+    if (withDigestAsset)
+      {
+        'name': 'TyLog-macos.zip.sha256',
+        'browser_download_url': 'https://x/TyLog-macos.zip.sha256',
       },
   ],
 });
@@ -73,6 +79,51 @@ void main() {
         info!.zipUrl,
         'https://github.com/berlogabob/TypstSeq/releases/latest/download/TyLog-macos.zip',
       );
+    });
+  });
+
+
+  group('update verification', () {
+    // The updater deletes the running bundle and replaces it, so it has to be
+    // able to tell a complete download from a truncated or substituted one
+    // before it touches anything.
+    test('the published digest is found alongside the zip', () {
+      final info = parseLatestRelease(
+        _release(tag: 'v0.1.0+90'),
+        currentVersion: '0.1.0+89',
+      );
+
+      expect(info!.zipUrl, 'https://x/TyLog-macos.zip');
+      expect(info.digestUrl, 'https://x/TyLog-macos.zip.sha256');
+    });
+
+    // An older release has the zip but no digest beside it. Falling back to the
+    // stable URL keeps the updater working rather than wedging it — and if that
+    // URL 404s, verification fails closed.
+    test('a release without a digest asset falls back to the stable URL', () {
+      final info = parseLatestRelease(
+        _release(tag: 'v0.1.0+90', withDigestAsset: false),
+        currentVersion: '0.1.0+89',
+      );
+
+      expect(
+        info!.digestUrl,
+        'https://github.com/berlogabob/TypstSeq/releases/latest/download/'
+        'TyLog-macos.zip.sha256',
+      );
+    });
+
+    test('a missing checksum reads as unverified, not as verified', () {
+      const missing = UpdateNotVerified(expected: null, actual: 'abc');
+
+      expect('$missing', contains('no published checksum'));
+    });
+
+    test('a mismatch names both digests', () {
+      const mismatch = UpdateNotVerified(expected: 'aaa', actual: 'bbb');
+
+      expect('$mismatch', contains('expected aaa'));
+      expect('$mismatch', contains('got bbb'));
     });
   });
 }

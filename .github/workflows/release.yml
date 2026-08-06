@@ -172,6 +172,12 @@ jobs:
               || { echo "FAIL: $fw.framework missing from bundle"; exit 1; }
           done
       - run: ditto -c -k --keepParent build/macos/Build/Products/Release/*.app TyLog-macos.zip
+      # The in-app updater downloads this zip, deletes the running bundle and
+      # replaces it. Publish the digest so it can tell a complete download from
+      # a truncated or substituted one before it touches anything. This is an
+      # integrity check, not an authenticity one — that needs Developer ID
+      # signing and notarization, which this build does not do yet.
+      - run: shasum -a 256 TyLog-macos.zip | awk '{print $1}' > TyLog-macos.zip.sha256
       - run: flutter build ios --release --no-codesign
       - run: ditto -c -k --keepParent build/ios/iphoneos/Runner.app TyLog-ios-unsigned.zip
       - uses: actions/upload-artifact@v4
@@ -179,6 +185,7 @@ jobs:
           name: tylog-apple
           path: |
             TyLog-macos.zip
+            TyLog-macos.zip.sha256
             TyLog-ios-unsigned.zip
 
   release:
@@ -201,4 +208,5 @@ jobs:
             dist/TyLog-x86_64.AppImage
             dist/TyLog-linux-x64.tar.gz
             dist/TyLog-macos.zip
+            dist/TyLog-macos.zip.sha256
             dist/TyLog-ios-unsigned.zip
