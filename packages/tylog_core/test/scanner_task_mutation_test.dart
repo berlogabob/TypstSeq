@@ -404,7 +404,15 @@ void main() {
       const source = '#tylog.task(id: "t1", text: "Work")\n';
 
       final started = startTaskClock(source, 't1', '2026-08-06T09:00:00');
-      expect(started, contains('clocked: (("2026-08-06T09:00:00", none),)'));
+      // Re-locate the call rather than substring-matching: a `contains` check
+      // passed happily while the writer was emitting
+      // `priority: "normal"  clocked: (...)` — no comma, not valid Typst, and
+      // the whole task unreadable.
+      expect(
+        locateTypstCalls(started, names: {'tylog.task'}),
+        hasLength(1),
+        reason: 'the call must still parse',
+      );
       expect(parseClockedField(started).single.isRunning, isTrue);
 
       final stopped = stopTaskClock(started, 't1', '2026-08-06T10:30:00');
@@ -425,6 +433,30 @@ void main() {
       expect(entries, hasLength(2));
       expect(entries.first.end, '2026-08-06T11:00:00');
       expect(entries.where((entry) => entry.isRunning), hasLength(1));
+    });
+
+    // Both call shapes the vault actually contains. The single-line form has
+    // no trailing comma, so an appended field must supply its own.
+    test('appending clocked keeps both call shapes valid Typst', () {
+      const single = '#tylog.task(id: "t1", text: "W", priority: "normal")\n';
+      const multi =
+          '#tylog.task(\n  id: "t1",\n  text: "W",\n  priority: "normal",\n)\n';
+
+      for (final source in [single, multi]) {
+        final out = setTaskClocked(source, 't1', const [
+          ClockEntry(start: '2026-08-06T09:00:00', end: '2026-08-06T10:00:00'),
+        ]);
+
+        expect(
+          locateTypstCalls(out, names: {'tylog.task'}),
+          hasLength(1),
+          reason: 'call must still parse: $out',
+        );
+        expect(parseClockedField(out), hasLength(1));
+        expect(out, isNot(contains('"  clocked')));
+        // Every other field survives.
+        expect(taskField(out, 'text'), 'W');
+      }
     });
 
     test('stopping with nothing running leaves the source untouched', () {

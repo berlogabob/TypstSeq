@@ -1171,6 +1171,74 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   return source.replaceRange(call.start, call.end, replacement);
 }
 
+/// Inserts `name: value` just before a task call's closing paren.
+///
+/// The separator depends on how the call was written: the multi-line form ends
+/// `,\n)` and needs none, while a single-line `#tylog.task(id: "x", text: "y")`
+/// ends on a value and needs `, `. Getting this wrong produces
+/// `priority: "normal"  clocked: (...)`, which is not valid Typst and silently
+/// makes the whole task unreadable.
+String _appendTaskField(String callSource, String name, String value) {
+  final close = callSource.lastIndexOf(')');
+  if (close < 0) return callSource;
+  var before = close - 1;
+  while (before >= 0 && _isSpace(callSource.codeUnitAt(before))) {
+    before--;
+  }
+  if (before < 0) return callSource;
+  final previous = callSource[before];
+  final multiline = callSource.substring(before + 1, close).contains('\n');
+  if (previous == ',') {
+    return callSource.replaceRange(
+      before + 1,
+      close,
+      multiline ? '\n  $name: $value,\n' : ' $name: $value,',
+    );
+  }
+  if (previous == '(') {
+    return callSource.replaceRange(before + 1, close, '$name: $value,');
+  }
+  return callSource.replaceRange(before + 1, close, ', $name: $value,');
+}
+
+bool _isSpace(int code) => code == 32 || code == 9 || code == 10 || code == 13;
+
+/// Replaces [id]'s whole `clocked` list. Used by the Logseq recovery, which
+/// restores many sessions at once rather than opening them one at a time.
+///
+/// Duplicate `(start, end)` pairs collapse — the imported data holds 171 exact
+/// repeats — and order is preserved otherwise.
+String setTaskClocked(String source, String id, List<ClockEntry> entries) {
+  final seen = <String>{};
+  final unique = <ClockEntry>[];
+  for (final entry in entries) {
+    if (seen.add('${entry.start}|${entry.end}')) unique.add(entry);
+  }
+  final rendered = unique
+      .map(
+        (entry) =>
+            '("${entry.start}", ${entry.end == null ? 'none' : '"${entry.end}"'})',
+      )
+      .join(', ');
+  final call = _locateTaskCall(source, id);
+  final field = _locateTopLevelField(call.source, 'clocked');
+  final replacement = unique.isEmpty
+      ? (field == null
+            ? call.source
+            : call.source.replaceRange(field.start, field.end, '').replaceFirst(
+                RegExp(r',\s*,'),
+                ',',
+              ))
+      : (field == null
+            ? _appendTaskField(call.source, 'clocked', '($rendered,)')
+            : call.source.replaceRange(
+                field.start,
+                field.end,
+                'clocked: ($rendered,)',
+              ));
+  return source.replaceRange(call.start, call.end, replacement);
+}
+
 /// Opens a new tracked session on [id], appending `("<start>", none)`.
 ///
 /// Any session already running on this task is closed at [startIso] first, so
@@ -1182,10 +1250,7 @@ String startTaskClock(String source, String id, String startIso) {
   final call = _locateTaskCall(closed, id);
   final field = _locateTopLevelField(call.source, 'clocked');
   final replacement = field == null
-      ? call.source.replaceFirst(
-          RegExp(r'\)\s*$'),
-          '  clocked: (("$startIso", none),),\n)',
-        )
+      ? _appendTaskField(call.source, 'clocked', '(("$startIso", none),)')
       : call.source.replaceRange(
           field.start,
           field.end,
