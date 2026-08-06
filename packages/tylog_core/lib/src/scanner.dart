@@ -2132,10 +2132,11 @@ int? _balancedContentEnd(String source, int open) {
       i = _skipBlockComment(source, i);
       continue;
     }
-    if (source.codeUnitAt(i) == 34) {
-      i = _skipString(source, i);
-      continue;
-    }
+    // No string-skipping here: `[...]` is markup, where a `"` is literal text
+    // like any other character. Treating it as a delimiter makes an odd number
+    // of quotes in a task's text swallow the closing `]` and run to the next
+    // quote — or to EOF. Same defect as the one removed from
+    // `locateTypstCalls`; nothing in the vault trips it yet.
     if (source.codeUnitAt(i) == 91) depth++;
     if (source.codeUnitAt(i) == 93 && --depth == 0) return i + 1;
     i++;

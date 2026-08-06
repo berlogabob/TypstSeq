@@ -553,6 +553,21 @@ void main() {
       expect(() => replaceTaskStatus(source, 't2', 'done'), returnsNormally);
     });
 
+    // Same rule one level in: a call's `[...]` content block is markup too, so
+    // a lone quote inside it is text. Treating it as a string delimiter made
+    // the scan swallow the closing bracket and run on to the next quote.
+    test('an unpaired quote inside a content block is text too', () {
+      const source =
+          '#tylog.link("Notes/A.typ")[5" pipe]\n'
+          '#tylog.task(id: "t1", text: "One")\n';
+
+      final calls = locateTypstCalls(source, names: {'tylog.link', 'tylog.task'});
+
+      expect(calls, hasLength(2));
+      expect(calls.first.source, endsWith('[5" pipe]'));
+      expect(calls.last.source, contains('id: "t1"'));
+    });
+
     test('an escaped backtick does not open a raw span', () {
       const source =
           '- \\-\\>\\`\\-\\>\n'
