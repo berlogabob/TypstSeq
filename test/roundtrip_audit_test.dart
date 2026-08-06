@@ -31,7 +31,16 @@ List<({int start, int end, TyLogBlockStyle style})> _ranges(TyLogDocument d) {
   for (final b in d.blocks) {
     final end = cursor + b.visibleText.length;
     out.add((start: cursor, end: end, style: b.style));
-    cursor = end + 2;
+    // Mirrors TyLogDocument.gapAfter: consecutive semantic blocks (a run of
+    // tasks, say) are one newline apart, not two.
+    final separator = b.separator;
+    cursor =
+        end +
+        (separator.isEmpty
+            ? 2
+            : RegExp(r'\n[ \t]*\n').hasMatch(separator)
+            ? 2
+            : 1);
   }
   return out;
 }

@@ -275,7 +275,24 @@ class TyLogDocument {
   );
 
   String get visibleText =>
-      blocks.map((block) => block.visibleText).join('\n\n');
+      [
+        for (var i = 0; i < blocks.length; i++)
+          '${blocks[i].visibleText}${gapAfter(i)}',
+      ].join();
+
+  /// What separates block [i] from the next one *on screen*.
+  ///
+  /// Mirrors [toSource]'s own fallback so the two never disagree. A run of
+  /// consecutive `#tylog.task(...)` lines is separated by a single newline in
+  /// the source — the shape every Logseq import produces — and hard-coding
+  /// `'\n\n'` here put a blank line between every one of them. One imported
+  /// daily note has a run of 97.
+  String gapAfter(int index) {
+    if (index >= blocks.length - 1) return '';
+    final separator = blocks[index].separator;
+    if (separator.isEmpty) return '\n\n';
+    return RegExp(r'\n[ \t]*\n').hasMatch(separator) ? '\n\n' : '\n';
+  }
 
   List<_BlockRange> get _ranges {
     final result = <_BlockRange>[];
@@ -283,7 +300,7 @@ class TyLogDocument {
     for (var i = 0; i < blocks.length; i++) {
       final end = cursor + blocks[i].visibleText.length;
       result.add(_BlockRange(i, cursor, end));
-      cursor = end + 2;
+      cursor = end + gapAfter(i).length;
     }
     return result;
   }

@@ -949,9 +949,13 @@ class TyLogEditingController extends TextEditingController {
           }
         }
       }
-      if (i + 1 < document.blocks.length) {
-        children.add(TextSpan(text: '\n\n', style: style));
-        global += 2;
+      // Must be the same gap document.visibleText used: the span's plain text
+      // has to stay byte-identical to value.text or the TextField's caret and
+      // selection geometry desync from the model.
+      final gap = document.gapAfter(i);
+      if (gap.isNotEmpty) {
+        children.add(TextSpan(text: gap, style: style));
+        global += gap.length;
       }
     }
     return TextSpan(style: style, children: children);
