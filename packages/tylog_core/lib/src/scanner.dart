@@ -1085,8 +1085,14 @@ Map<String, Object?> _parseProperties(String callSource) {
   if (!value.startsWith('(') || !value.endsWith(')')) return const {};
   final inner = value.substring(1, value.length - 1).trim();
   if (inner.isEmpty || inner == ':') return const {};
+  // Typst allows a bare identifier as a dictionary key, and hand-written and
+  // imported headers use it: `properties: (type: "person",)`. Reading only
+  // quoted keys made those properties invisible — which silently disabled
+  // `migrateEntityTypeToKind` on exactly the notes it exists to fix, and let
+  // `replaceNoteHeader` drop the key on the next write. `_locateDictEntry`
+  // already accepts both forms; this is the reader catching up.
   final entryKeyValue = RegExp(
-    r'^\s*"((?:\\.|[^"\\])*)"\s*:\s*(.*)$',
+    r'^\s*(?:"((?:\\.|[^"\\])*)"|([A-Za-z_][A-Za-z0-9_\-]*))\s*:\s*(.*)$',
     dotAll: true,
   );
   final result = <String, Object?>{};
@@ -1094,10 +1100,11 @@ Map<String, Object?> _parseProperties(String callSource) {
     if (entry.trim().isEmpty) continue;
     final match = entryKeyValue.firstMatch(entry);
     if (match == null) continue;
-    final key = match
-        .group(1)!
-        .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
-    result[key] = _parsePropertyValue(match.group(2)!.trim());
+    final key = (match.group(1) ?? match.group(2)!).replaceAllMapped(
+      RegExp(r'\\(.)'),
+      (m) => m.group(1)!,
+    );
+    result[key] = _parsePropertyValue(match.group(3)!.trim());
   }
   return result;
 }

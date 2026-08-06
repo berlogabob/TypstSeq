@@ -34,6 +34,30 @@ Body text.
       expect(migrated, isNot(contains('"type"')));
     });
 
+    // Typst allows a bare identifier as a dictionary key, and two real notes in
+    // the vault use it (`properties: (type: "person",)`). The property reader
+    // only accepted quoted keys, so the migration read no `type` at all and
+    // silently left them as generic notes.
+    test('folds a bare-identifier type key, not just a quoted one', () {
+      const source = '''
+#show: tylog.note.with(
+  id: "20260715-001417-fernandomarson",
+  title: "FernandoMarson",
+  kind: "note",
+  date: none,
+  tags: (),
+  aliases: (),
+  project: none,
+  properties: (type: "person",),
+)
+''';
+
+      final migrated = migrateEntityTypeToKind(source);
+
+      expect(scanNote('notes/n1.typ', migrated).kind, 'person');
+      expect(migrated, isNot(contains('type:')));
+    });
+
     test('is idempotent', () {
       const source = '''
 #show: tylog.note.with(
