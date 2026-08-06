@@ -96,14 +96,31 @@ int? _semanticBlockEnd(String source, int start, int limit) {
       (line.startsWith(r'$') && line.endsWith(r'$'))) {
     return boundedLineEnd;
   }
+  // Skipped *after* the heading/equation checks above on purpose: `- = foo` is
+  // a list item, not a heading, and classifying it as one crashes _parseBlock
+  // on a null `^=+` match.
+  final callStart = contentStart + (_listItemMarker.firstMatch(line)?.end ?? 0);
   for (final prefix in const ['#tylog.task(', '#table(']) {
-    if (!source.startsWith(prefix, contentStart)) continue;
-    final open = source.indexOf('(', contentStart);
+    if (!source.startsWith(prefix, callStart)) continue;
+    final open = source.indexOf('(', callStart);
     final close = _balancedParenEnd(source, open);
     if (close != null && close <= limit) return close;
   }
   return null;
 }
+
+/// A leading list/enum marker. A `#tylog.task(...)` written as a list item
+/// (`- #tylog.task(...)` — the shape the Logseq importer emits) is still its
+/// own semantic block; the marker stays inside the block source and is
+/// re-emitted verbatim, so it round-trips byte-for-byte.
+final _listItemMarker = RegExp(r'^(?:[-+]|\d+\.)[ \t]+');
+
+/// Whether [value] starts a `prefix` call, with or without a list marker in
+/// front of it. Shared by [_semanticBlockEnd] and [_block] so the two can never
+/// disagree about where a block starts.
+bool _startsCall(String value, String prefix) =>
+    value.startsWith(prefix) ||
+    value.replaceFirst(_listItemMarker, '').startsWith(prefix);
 
 bool _isNewline(int code) => code == 10 || code == 13;
 
@@ -116,7 +133,11 @@ String controlledBlockPreview(ControlledBlock block) {
           .split('\n')
           .map(
             (line) => _inlinePreview(
-              line.replaceFirst(RegExp(r'^(?:[-+] |\d+\. )'), '• '),
+              // Indent survives the swap: it is what makes the list nest.
+              line.replaceFirstMapped(
+                RegExp(r'^([ \t]*)(?:[-+] |\d+\. )'),
+                (marker) => '${marker[1]}• ',
+              ),
             ),
           )
           .join('\n'),
@@ -162,15 +183,18 @@ ControlledBlock _block(String source, int start, int end) {
   final raw = source.substring(start, end);
   final trimmed = raw.trimLeft();
   final kind = switch (trimmed) {
-    String value when value.startsWith('#tylog.task(') =>
+    String value when _startsCall(value, '#tylog.task(') =>
       ControlledBlockKind.task,
-    String value when value.startsWith('#table(') => ControlledBlockKind.table,
+    String value when _startsCall(value, '#table(') => ControlledBlockKind.table,
     String value when value.startsWith(r'$') && value.endsWith(r'$') =>
       ControlledBlockKind.equation,
     String value when RegExp(r'^=+\s').hasMatch(value) =>
       ControlledBlockKind.heading,
     String value
-        when RegExp(r'^(?:[-+] |\d+\. )', multiLine: true).hasMatch(value) =>
+        when RegExp(
+          r'^[ \t]*(?:[-+] |\d+\. )',
+          multiLine: true,
+        ).hasMatch(value) =>
       ControlledBlockKind.list,
     _ => ControlledBlockKind.paragraph,
   };

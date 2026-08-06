@@ -157,10 +157,11 @@ extension _VaultImportFlow on _HomeScreenState {
           report.skippedEmpty++;
           continue;
         }
-        final typst = replaceNoteProperty(
-          result.typst,
-          'import_sha256',
-          sourceHash,
+        // Logseq's `type::` survives conversion as a plain property. Fold it
+        // into `kind` on the way in so a typed page lands as an entity instead
+        // of needing the Settings > "Migrate entity types" pass afterwards.
+        final typst = migrateEntityTypeToKind(
+          replaceNoteProperty(result.typst, 'import_sha256', sourceHash),
         );
 
         final isJournal = item.journal || result.kind == 'daily';

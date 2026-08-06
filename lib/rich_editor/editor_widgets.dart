@@ -758,6 +758,7 @@ class _ProtectedChip extends StatelessWidget {
     required this.onTap,
     required this.icon,
     this.unresolved = false,
+    this.textStyle,
   });
 
   final String label;
@@ -766,63 +767,87 @@ class _ProtectedChip extends StatelessWidget {
   final IconData icon;
   final bool unresolved;
 
+  /// The style of the text run this chip sits in. A `WidgetSpan` does not
+  /// inherit the surrounding `TextSpan` style — without this the label falls
+  /// back to the Material default and the chip reads as a foreign object
+  /// dropped into the sentence. Null for block chips, which stand alone.
+  final TextStyle? textStyle;
+
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: onTap != null,
-    label: '$label, protected Typst',
-    child: Padding(
-      padding: EdgeInsets.symmetric(horizontal: block ? 0 : 2, vertical: 2),
-      child: Material(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: block ? 12 : 7,
-              vertical: block ? 10 : 3,
-            ),
-            // Bounded (not single-line-ellipsized) so a long extracted
-            // label — e.g. a hand-authored `#step[...]` body — stays fully
-            // readable instead of being cut to "…" after a few words.
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // height 1.0 so the chip doesn't stretch the line box it sits in — the
+    // surrounding run is 1.55.
+    final inline = textStyle?.copyWith(height: 1.0);
+    final radius = BorderRadius.circular(block ? 10 : 6);
+    return Semantics(
+      button: onTap != null,
+      label: '$label, protected Typst',
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: block ? 0 : 1,
+          vertical: block ? 2 : 0,
+        ),
+        child: Material(
+          // Inline: a tint that sits under the prose rather than an opaque
+          // block that interrupts it.
+          color: block
+              ? scheme.surfaceContainerHighest
+              : scheme.primary.withValues(alpha: 0.08),
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: block ? 12 : 4,
+                vertical: block ? 10 : 1,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                // Inline chips are one line — center the icon with the text so
-                // it doesn't float above the baseline. Block chips can wrap to
-                // several lines, so keep their icon aligned to the first line.
-                crossAxisAlignment: block
-                    ? CrossAxisAlignment.start
-                    : CrossAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 16),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: unresolved
-                          ? TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              decoration: TextDecoration.underline,
-                              decorationStyle: TextDecorationStyle.dashed,
-                            )
-                          : null,
+              // Bounded (not single-line-ellipsized) so a long extracted
+              // label — e.g. a hand-authored `#step[...]` body — stays fully
+              // readable instead of being cut to "…" after a few words.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  // Inline chips are one line — center the icon with the text
+                  // so it doesn't float above the baseline. Block chips can
+                  // wrap to several lines, so keep their icon on the first.
+                  crossAxisAlignment: block
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      // Scales with the prose instead of fixing a 16px icon
+                      // into a possibly-smaller run.
+                      size: block ? 16 : (inline?.fontSize ?? 16) * 0.85,
+                      color: block ? null : scheme.primary,
                     ),
-                  ),
-                ],
+                    SizedBox(width: block ? 5 : 3),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: unresolved
+                            ? (inline ?? const TextStyle()).copyWith(
+                                color: scheme.onSurfaceVariant,
+                                decoration: TextDecoration.underline,
+                                decorationStyle: TextDecorationStyle.dashed,
+                              )
+                            : inline,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
@@ -884,11 +909,20 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
         ? TyLogBlockStyle.numberedList
         : TyLogBlockStyle.bulletList;
     var number = 1;
-    body = trimmed
+    // Indent is content: it is what makes a Typst list nest. Keep it in front
+    // of the glyph so the serializer can put the `- `/`+ ` back where it was —
+    // stripping it here is what used to turn `  - b` into `- - b` on save.
+    // Read from `source`, not `trimmed`: a block may now start on an indented
+    // line (a plain bullet following a list-item task).
+    body = source
         .split('\n')
         .map((line) {
-          final content = line.replaceFirst(RegExp(r'^(?:[-+] |\d+\. )'), '');
-          return numbered ? '${number++}. $content' : '• $content';
+          final marker = RegExp(
+            r'^([ \t]*)(?:[-+] |\d+\. )?',
+          ).firstMatch(line)!;
+          final indent = marker.group(1)!;
+          final content = line.substring(marker.end);
+          return numbered ? '$indent${number++}. $content' : '$indent• $content';
         })
         .join('\n');
   }
@@ -1416,16 +1450,22 @@ TyLogBlock _blockFrom(
 /// (the "can't press Enter / paste a list" bug). Escaping the first char keeps
 /// the visible text identical (`_parseInline` unescapes any `\x`) while making
 /// the line parse — and Typst-render — as literal prose.
-final _leadingBlockMarker = RegExp(r'^(?:=+ |[-+] |\d+\. )');
+/// Indented markers count too: block classification skips leading whitespace,
+/// so `  - x` re-parses as a list just as `- x` does.
+final _leadingBlockMarker = RegExp(r'^([ \t]*)(?:=+ |[-+] |\d+\. )');
+final _leadingEquation = RegExp(r'^([ \t]*)\$.*\$$');
 String _escapeParagraphMarkers(String content) => content
     .split('\n')
-    .map(
-      (line) =>
-          _leadingBlockMarker.hasMatch(line) ||
-              (line.length >= 2 && line.startsWith(r'$') && line.endsWith(r'$'))
-          ? '\\$line'
-          : line,
-    )
+    .map((line) {
+      final marker =
+          _leadingBlockMarker.firstMatch(line) ??
+          _leadingEquation.firstMatch(line);
+      // The escape goes *after* the indent — a leading `\ ` is a non-breaking
+      // space in Typst, not an escaped marker.
+      return marker == null
+          ? line
+          : '${marker[1]}\\${line.substring(marker[1]!.length)}';
+    })
     .join('\n');
 
 String _serializeBlock(TyLogBlock block) {
@@ -1433,15 +1473,27 @@ String _serializeBlock(TyLogBlock block) {
   final content = block.parts.map(_serializePart).join();
   return switch (block.style) {
     TyLogBlockStyle.heading => '${'=' * block.headingLevel} $content',
+    // The glyph group is optional so a glyph-less line still gets its marker,
+    // exactly as before; the indent group is what the parse side preserved.
     TyLogBlockStyle.bulletList =>
       content
           .split('\n')
-          .map((line) => '- ${line.replaceFirst(RegExp(r'^•\s*'), '')}')
+          .map(
+            (line) => line.replaceFirstMapped(
+              RegExp(r'^([ \t]*)(?:•[ \t]*)?'),
+              (marker) => '${marker[1]}- ',
+            ),
+          )
           .join('\n'),
     TyLogBlockStyle.numberedList =>
       content
           .split('\n')
-          .map((line) => '+ ${line.replaceFirst(RegExp(r'^\d+\.\s*'), '')}')
+          .map(
+            (line) => line.replaceFirstMapped(
+              RegExp(r'^([ \t]*)(?:\d+\.[ \t]*)?'),
+              (marker) => '${marker[1]}+ ',
+            ),
+          )
           .join('\n'),
     TyLogBlockStyle.paragraph => _escapeParagraphMarkers(content),
     TyLogBlockStyle.protected => block.originalSource,

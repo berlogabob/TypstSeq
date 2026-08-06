@@ -3332,12 +3332,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Floats over the body (see workArea's Stack): transient status must
     // never take part in content layout, or every screen jumps when a sync
     // starts, changes stage, and ends.
+    // Bottom-anchored: the top of the body is where the Library's tab bar
+    // (Notes/Projects/Articles/…) lives, and a pill parked there hides the
+    // tabs for the whole of an index run.
     Widget statusPill({required Widget child, Key? key}) => IgnorePointer(
       key: key,
       child: Align(
-        alignment: Alignment.topCenter,
+        alignment: Alignment.bottomCenter,
         child: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(bottom: 4),
           child: Material(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             elevation: 2,
@@ -3351,7 +3354,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    final statusBanner = ListenableBuilder(
+    // Two slots: the error banner is interactive (Retry) and stays pinned at
+    // the top; the transient pills float at the bottom, clear of the tab bar.
+    Widget statusBanner({required bool error}) => ListenableBuilder(
       listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
       builder: (context, _) {
         final openFailed = status.startsWith('Open failed:');
@@ -3399,7 +3404,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : const SizedBox.shrink(key: ValueKey('status-none'));
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 200),
-          child: banner,
+          child: openFailed == error
+              ? banner
+              : const SizedBox.shrink(key: ValueKey('status-none')),
         );
       },
     );
@@ -3407,7 +3414,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Stack(
         children: [
           Positioned.fill(child: bodyContent),
-          Positioned(top: 0, left: 0, right: 0, child: statusBanner),
+          // left/right pinned on both so the MaterialBanner keeps a tight
+          // width; only one vertical edge, so each shrink-wraps its height.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: statusBanner(error: true),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: statusBanner(error: false),
+          ),
         ],
       ),
     );

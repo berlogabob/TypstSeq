@@ -50,6 +50,10 @@ void main() {
     'adjacent-lists': '- a\n\n- b',
     'heading-then-para': '= Title\n\nbody',
     'task-then-para': '#tylog.task(id: "t1", text: "Ship it")\n\nbody',
+    'nested-list': '- a\n  - b\n    + c\n  1. d',
+    'list-item-tasks':
+        '- #tylog.task(id: "t1", text: "Buy milk", status: "done")\n'
+        '  - #tylog.task(id: "t2", text: "Sub", status: "done")\n\nafter',
     'equation-then-para': r'$x^2$' '\n\nbody',
     'inline-mix': '#strong[b] #emph[i] #strike[s]\n\nplain',
     'para-para': 'alpha\n\nbeta',
@@ -152,6 +156,17 @@ void main() {
       run('type', r.start, 'type @block-start : $cur');
     }
   }
+
+  // checkIdentity only ever calls toSource on a *clean* document, so it never
+  // reaches the serializer. This is the one probe that does — and it is the
+  // regression that was silently rewriting `  - b` to `- - b` on every save.
+  test('a nested list keeps its indentation through an edit', () {
+    final document = TyLogDocument.parse('- a\n  - b\n    + c\n  1. d');
+    expect(document.visibleText, '• a\n  • b\n    • c\n  • d');
+    final at = document.visibleText.indexOf('a');
+    document.replace(at, at + 1, 'A');
+    expect(document.toSource(), '- A\n  - b\n    - c\n  - d');
+  });
 
   test('AUDIT: serialize/parse identity + edit safety', () {
     synthetic.forEach((label, src) {

@@ -845,7 +845,8 @@ class TyLogEditingController extends TextEditingController {
                   );
                   children.add(
                     WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
+                      alignment: PlaceholderAlignment.baseline,
+                      baseline: TextBaseline.alphabetic,
                       child: _ProtectedChip(
                         label: nestedPart.label!,
                         block: false,
@@ -854,6 +855,13 @@ class TyLogEditingController extends TextEditingController {
                         icon: _atomIcon(
                           nestedPart.source!,
                           resolvedKind: resolvedKind,
+                        ),
+                        textStyle: _styleFor(
+                          context,
+                          style,
+                          block.style,
+                          block.headingLevel,
+                          nestedPart.style,
                         ),
                       ),
                     ),
@@ -889,11 +897,24 @@ class TyLogEditingController extends TextEditingController {
               onTap: onTap,
               unresolved: resolvedKind == 'unresolved',
               icon: _atomIcon(part.source!, resolvedKind: resolvedKind),
+              textStyle: _styleFor(
+                context,
+                style,
+                block.style,
+                block.headingLevel,
+                part.style,
+              ),
             );
+            final isImage = imagePath != null && imageResolver != null;
             children.add(
               WidgetSpan(
-                alignment: PlaceholderAlignment.middle,
-                child: imagePath != null && imageResolver != null
+                // A chip sits on the text baseline like a word; an inline
+                // image is a block and stays centred on the line.
+                alignment: isImage
+                    ? PlaceholderAlignment.middle
+                    : PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: isImage
                     ? _InlineImage(
                         bytes: imageBytes(imagePath),
                         fallback: chip,
