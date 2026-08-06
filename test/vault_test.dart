@@ -317,6 +317,27 @@ void main() {
     );
   });
 
+  // `_index/` is device-local derived data that TyLog never syncs — but the
+  // vault usually sits inside ~/Nextcloud, and the desktop client uploads what
+  // it finds. The search index tokenises whole note bodies, so that upload
+  // carries note text.
+  test('ensureCreated keeps device-local caches out of a desktop sync', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_exclude_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+
+    await vault.ensureCreated();
+    final excludes = await vault.readText('.sync-exclude.lst');
+
+    expect(excludes, contains('_index'));
+    expect(excludes, contains('.tylog'));
+
+    // A user's own edits to the file survive re-opening the vault.
+    await vault.storage.writeText('.sync-exclude.lst', '_index\nmy-own-rule\n');
+    await vault.ensureCreated();
+    expect(await vault.readText('.sync-exclude.lst'), contains('my-own-rule'));
+  });
+
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');
     addTearDown(() => dir.delete(recursive: true));

@@ -119,6 +119,42 @@ class Vault {
       legacyHelper: bundled.text('typst/vault/legacy-v5-tylog.typ'),
       createIfMissing: createIfMissing,
     );
+    await _writeSyncExcludes();
+  }
+
+  /// Keeps the device-local caches out of a desktop client's upload.
+  ///
+  /// `_index/` is derived data — the note index, the search index, the tag
+  /// embeddings — and TyLog never syncs it: it is not in `isSyncableVaultPath`.
+  /// But the vault commonly *lives inside* `~/Nextcloud`, and the desktop
+  /// client uploads whatever it finds there. On this vault that is ~27 MB of
+  /// cache, and because the search index tokenises whole note bodies it also
+  /// carries note text — including, verifiably, values from `pswrd:` lines.
+  ///
+  /// The Nextcloud/ownCloud desktop client reads a `.sync-exclude.lst` from a
+  /// synced directory, so one file keeps the caches local. Written for every
+  /// vault, not just detected-managed ones: a vault can be moved into a synced
+  /// folder later, and a stray exclude file in a folder no client watches is
+  /// inert.
+  ///
+  /// It does not remove what has already been uploaded — that is a deliberate
+  /// deletion, not something to do behind the user's back.
+  Future<void> _writeSyncExcludes() async {
+    const path = '.sync-exclude.lst';
+    const contents = '''
+# Written by TyLog. Device-local caches — rebuildable, and large.
+# The search index contains note text, so this also keeps note contents out of
+# a desktop client's upload.
+_index
+.tylog
+''';
+    try {
+      if (await storage.exists(path)) return;
+      await storage.writeText(path, contents);
+    } catch (_) {
+      // A read-only or restricted vault still opens; this is a hardening step,
+      // not a precondition.
+    }
   }
 
   Future<String> todayNote([DateTime? now]) async {
