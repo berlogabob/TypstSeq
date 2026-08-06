@@ -103,6 +103,10 @@
   assignees: (),
   tags: (),
   completed: (),
+  // Time tracking, imported from Logseq's `:LOGBOOK:` drawers or recorded in
+  // the app: a list of `(start, end)` ISO-8601 pairs. `end` is `none` while a
+  // session is still running, so an interrupted clock is kept rather than lost.
+  clocked: (),
   properties: (:),
   view: default-task-view,
 ) = [
@@ -123,6 +127,7 @@
     assignees: assignees,
     tags: tags,
     completed: completed,
+    clocked: clocked,
     properties: properties,
   )) <tylog-task>
   #view(text, status, priority)

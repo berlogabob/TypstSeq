@@ -39,6 +39,9 @@ struct Task {
     priority: &'static str,
     scheduled: Option<String>,
     due: Option<String>,
+    /// `(start, end)` ISO-8601 pairs from the task's `:LOGBOOK:` drawer. `end`
+    /// is `None` for a clock that was started and never stopped.
+    clocked: Vec<(String, Option<String>)>,
 }
 
 #[derive(Debug)]
@@ -112,6 +115,22 @@ pub fn convert_vault_note(
         }
         if let Some(date) = &task.due {
             call.push_str(&format!(", due: {}", typst_string(date)));
+        }
+        if !task.clocked.is_empty() {
+            let pairs: Vec<String> = task
+                .clocked
+                .iter()
+                .map(|(start, end)| {
+                    format!(
+                        "({}, {})",
+                        typst_string(start),
+                        end.as_deref().map(typst_string).unwrap_or_else(|| "none".to_owned())
+                    )
+                })
+                .collect();
+            // A single-element Typst array needs the trailing comma to stay an
+            // array rather than collapsing to its element.
+            call.push_str(&format!(", clocked: ({},)", pairs.join(", ")));
         }
         call.push(')');
         typst = typst.replace(&format!("QQTASK{index}QQ"), &call);
@@ -618,16 +637,16 @@ fn body_is_empty(body: &str) -> bool {
 fn preprocess(dialect: SourceDialect, markdown: &str) -> Preprocessed {
     match dialect {
         SourceDialect::Logseq => {
-            // Before extract_tasks on purpose: that scans the lines *after* a
-            // task for SCHEDULED:/DEADLINE: and stops at the first non-match,
-            // so a drawer sitting in between was hiding the scheduled date.
-            let markdown = strip_logseq_noise(markdown);
-            let (markdown, math) = extract_math(&markdown);
+            let (markdown, math) = extract_math(markdown);
             let markdown = rewrite_bullet_headings(&markdown);
             let markdown = strip_image_sizing_hints(&markdown);
             let (markdown, stripped_macros) = rewrite_macros(&markdown);
             let mut wikilinks = Vec::new();
             let (markdown, tasks, task_block_refs) = extract_tasks(&markdown, &mut wikilinks);
+            // After extract_tasks, which claims each task's own :LOGBOOK: drawer
+            // as `clocked`. What is left here is orphaned bookkeeping and the
+            // empty block every page trails.
+            let markdown = strip_logseq_noise(&markdown);
             let markdown = replace_wikilinks(&markdown, &mut wikilinks);
             let (markdown, highlights) = extract_highlights(&markdown);
             let (markdown, body_block_refs) = drop_block_refs(&markdown);
@@ -862,6 +881,8 @@ fn extract_tasks(markdown: &str, wikilinks: &mut Vec<Wikilink>) -> (String, Vec<
         }
         let mut scheduled = None;
         let mut due = None;
+        let mut clocked = Vec::new();
+        let mut in_drawer = false;
         let mut next = index + 1;
         while next < lines.len() {
             let next_line = lines[next];
@@ -870,6 +891,43 @@ fn extract_tasks(markdown: &str, wikilinks: &mut Vec<Wikilink>) -> (String, Vec<
                 break;
             }
             let trimmed = next_line.trim_start_matches([' ', '\t']);
+
+            // The task's own time tracking. Deliberately shape-driven rather
+            // than a drawer parser: a real export stacks several :LOGBOOK:
+            // blocks under one task and leaves stray CLOCK: lines between
+            // them, so anything that breaks out on the first unexpected line
+            // abandons the rest (one journal lost 102 of its 107 records that
+            // way). Orphan :END: and empty drawers fall out for free.
+            if trimmed == ":LOGBOOK:" || trimmed == ":END:" {
+                in_drawer = trimmed == ":LOGBOOK:";
+                next += 1;
+                continue;
+            }
+            // org state-change records, which sit inside the drawer, and blank
+            // lines that a real export leaves in there. Blanks are skipped only
+            // *inside* a drawer: elsewhere a blank line ends the block and
+            // swallowing it would merge this task into what follows.
+            if trimmed.starts_with("- State \"") || (in_drawer && trimmed.is_empty()) {
+                next += 1;
+                continue;
+            }
+            // A noise property (`collapsed:: true`) can sit between the task
+            // and its drawer. Only the known-noise keys are stepped over —
+            // other `key:: value` lines are the user's own data and must stay.
+            if property_line(next_line)
+                .is_some_and(|(key, _)| is_noise_property(&key.to_ascii_lowercase()))
+            {
+                next += 1;
+                continue;
+            }
+            if trimmed.starts_with("CLOCK:") {
+                if let Some(entry) = parse_clock_line(trimmed) {
+                    clocked.push(entry);
+                }
+                next += 1;
+                continue;
+            }
+
             let slot = if let Some(value) = trimmed.strip_prefix("SCHEDULED:") {
                 Some((&mut scheduled, value))
             } else if let Some(value) = trimmed.strip_prefix("DEADLINE:") {
@@ -893,10 +951,58 @@ fn extract_tasks(markdown: &str, wikilinks: &mut Vec<Wikilink>) -> (String, Vec<
             priority,
             scheduled,
             due,
+            clocked,
         });
         index = next;
     }
     (out.join("\n"), tasks, dropped_block_refs)
+}
+
+/// `CLOCK: [2025-12-25 Thu 12:33:43]--[2025-12-27 Sat 09:15:31] =>  44:41:48`
+/// into `("2025-12-25T12:33:43", Some("2025-12-27T09:15:31"))`.
+///
+/// The trailing `=>` duration is ignored: it is redundant given both
+/// timestamps, and in a real export it is sometimes damaged (`=> 01:22:[[10]]`,
+/// `=> 1:0:00`). A clock that was started and never stopped has no second
+/// timestamp and keeps `None`, so the record survives instead of being dropped.
+fn parse_clock_line(line: &str) -> Option<(String, Option<String>)> {
+    // Logseq linkifies bare numbers, so an hour can arrive as `[[11]]`. Undoing
+    // that first keeps the bracket scan below honest — otherwise the `]]`
+    // closes the timestamp early and the stamp is truncated.
+    let line = line.replace("[[", "").replace("]]", "");
+    let rest = line.trim().strip_prefix("CLOCK:")?;
+    let mut stamps = rest.split("--").filter_map(|chunk| {
+        let open = chunk.find('[')?;
+        let close = chunk[open..].find(']')? + open;
+        parse_clock_stamp(&chunk[open + 1..close])
+    });
+    let start = stamps.next()?;
+    Some((start, stamps.next()))
+}
+
+/// `2025-12-25 Thu 12:33:43` into `2025-12-25T12:33:43`.
+fn parse_clock_stamp(value: &str) -> Option<String> {
+    let mut parts = value.split_whitespace();
+    let date = parts.next()?;
+    if date.len() != 10
+        || !date.as_bytes().iter().enumerate().all(|(index, byte)| {
+            if index == 4 || index == 7 {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+    {
+        return None;
+    }
+    let mut units = parts.last()?.split(':').map(|unit| unit.parse::<u32>().ok());
+    let hour = units.next()??;
+    let minute = units.next()??;
+    let second = units.next()??;
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some(format!("{date}T{hour:02}:{minute:02}:{second:02}"))
 }
 
 fn parse_task_line(line: &str) -> Option<(usize, &'static str, &str)> {
@@ -1362,10 +1468,9 @@ mod tests {
         assert_eq!(note.referenced_assets, ["assets/pic.png"]);
     }
 
-    /// The drawer sits between the task and its SCHEDULED: line, which is why
-    /// strip_logseq_noise has to run *before* extract_tasks: that scan stops at
-    /// the first line that is not SCHEDULED:/DEADLINE:, so the drawer was
-    /// hiding the date entirely.
+    /// The drawer sits between the task and its SCHEDULED: line, so the scan
+    /// has to step over it — it used to stop at the first line that was not
+    /// SCHEDULED:/DEADLINE:, hiding the date entirely.
     #[test]
     fn org_bookkeeping_is_dropped_and_stops_hiding_scheduled_dates() {
         let markdown = concat!(
@@ -1394,6 +1499,46 @@ mod tests {
 
     /// An unclosed drawer and an orphan :END: both exist in the real vault; a
     /// drawer parser would either leak them or eat everything after the opener.
+    /// Time tracking is the whole point of the drawer: the CLOCK records are
+    /// the user's own data and must land on the task, not be discarded.
+    #[test]
+    fn logbook_clock_records_are_captured_onto_the_task() {
+        let markdown = concat!(
+            "- DONE Ship it\n",
+            "  :LOGBOOK:\n",
+            "  CLOCK: [2025-12-25 Thu 12:33:43]--[2025-12-27 Sat 09:15:31] =>  44:41:48\n",
+            "  CLOCK: [2025-12-28 Sun 10:02:11]\n",
+            "  :END:\n",
+        );
+
+        let note = convert_logseq_note("pages/Log.md", markdown).expect("note");
+
+        assert!(note.typst.contains(
+            r#"clocked: (("2025-12-25T12:33:43", "2025-12-27T09:15:31"), ("2025-12-28T10:02:11", none),)"#
+        ));
+        assert!(!note.typst.contains("LOGBOOK"));
+        assert!(!note.typst.contains("CLOCK:"));
+    }
+
+    /// Both damage patterns seen in the real export: Logseq linkified a number
+    /// inside the timestamp, and the trailing `=>` duration is unreliable, so
+    /// elapsed time is derived from the stamps instead.
+    #[test]
+    fn damaged_clock_lines_still_parse() {
+        let markdown = concat!(
+            "- DONE A\n",
+            "  :LOGBOOK:\n",
+            "  CLOCK: [2023-02-20 Mon 17:08:32]--[2023-02-20 Mon 18:08:32] =>  1:0:00\n",
+            "  CLOCK: [2025-12-23 Tue [[11]]:51:04]--[2025-12-23 Tue 13:13:14] =>  01:22:[[10]]\n",
+            "  :END:\n",
+        );
+
+        let note = convert_logseq_note("pages/Odd.md", markdown).expect("note");
+
+        assert!(note.typst.contains(r#"("2023-02-20T17:08:32", "2023-02-20T18:08:32")"#));
+        assert!(note.typst.contains(r#"("2025-12-23T11:51:04", "2025-12-23T13:13:14")"#));
+    }
+
     #[test]
     fn unbalanced_drawers_do_not_swallow_content() {
         let note = convert_logseq_note(
