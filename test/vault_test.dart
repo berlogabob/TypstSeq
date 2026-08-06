@@ -154,6 +154,39 @@ void main() {
     expect(await vault.readText(article), contains('kind: "article"'));
   });
 
+  // The missing-page triage creates hundreds of notes in one pass, most of
+  // them Cyrillic. nextNoteId slugs with [^a-z0-9]+, so those titles slug to
+  // nothing and the id collapses to a bare second-resolution timestamp; left
+  // deduping against the on-disk index (which cannot see a note written a
+  // millisecond ago) every one of them would be minted identical, and the
+  // triage would manufacture duplicate-note-id errors instead of fixing links.
+  test('a batch of Cyrillic pages shares one id namespace', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_triage_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    final ids = <String>{};
+    final now = DateTime(2026, 8, 6, 12, 0, 0);
+    final paths = [
+      for (final title in ['Илья Бирман', 'Дубай', 'Купить'])
+        await vault.page(
+          title,
+          kind: title == 'Илья Бирман' ? 'person' : 'note',
+          now: now,
+          knownIds: ids,
+        ),
+    ];
+
+    expect(paths, [
+      'notes/Илья Бирман.typ',
+      'notes/Дубай.typ',
+      'notes/Купить.typ',
+    ]);
+    expect(ids, hasLength(3), reason: 'ids must not collide within a batch');
+    expect(await vault.readText(paths.first), contains('kind: "person"'));
+  });
+
   test('dailyNote opens or creates the journal file for any date', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_daily_');
     addTearDown(() => dir.delete(recursive: true));

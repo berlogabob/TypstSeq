@@ -85,6 +85,7 @@ class Vault {
     String kind = 'note',
     String? template,
     DateTime? now,
+    Set<String>? knownIds,
   }) async {
     final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
     if (safe.isEmpty) throw ArgumentError('Page title is empty');
@@ -95,7 +96,7 @@ class Vault {
     };
     final path = '$directory/$safe.typ';
     if (!await storage.exists(path)) {
-      final id = await nextNoteId(title, now: now);
+      final id = await nextNoteId(title, now: now, knownIds: knownIds);
       final source = template == null
           ? _noteSource(id: id, title: title.trim(), kind: kind)
           : replaceNoteHeader(
@@ -324,7 +325,18 @@ class Vault {
     }
   }
 
-  Future<String> nextNoteId(String title, {DateTime? now}) async {
+  /// [knownIds] lets a caller creating several notes at once own the id
+  /// namespace for the whole batch. Without it each call re-reads the on-disk
+  /// index, which cannot know about the note written a millisecond ago — and
+  /// since the slug drops every non-ASCII character, a run of Cyrillic titles
+  /// collapses to the bare second-resolution timestamp and mints *the same id*
+  /// every time. Ids chosen here are added back to the set, the way
+  /// [nextTaskId] uses `reserved`.
+  Future<String> nextNoteId(
+    String title, {
+    DateTime? now,
+    Set<String>? knownIds,
+  }) async {
     final instant = now ?? DateTime.now();
     final stamp =
         '${instant.year.toString().padLeft(4, '0')}'
@@ -339,12 +351,16 @@ class Vault {
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
     final base = slug.isEmpty ? stamp : '$stamp-$slug';
-    final ids = (await loadIndex())?.notes.map((note) => note.id).toSet() ?? {};
+    final ids =
+        knownIds ??
+        (await loadIndex())?.notes.map((note) => note.id).toSet() ??
+        <String>{};
     var id = base;
     var suffix = 2;
     while (ids.contains(id)) {
       id = '$base-${suffix++}';
     }
+    ids.add(id);
     return id;
   }
 

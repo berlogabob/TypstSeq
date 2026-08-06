@@ -700,6 +700,9 @@ VaultIndex _buildVaultIndex(
                 : 'broken-link',
             severity: PkmsSeverity.warning,
             subject: source.path,
+            // The Problems screen parses the target back out of this string
+            // (unresolvedLinkTargets) to offer bulk page creation — keep the
+            // `<status> link: <target>` shape.
             message: '${resolved.status.name} link: $target',
             fix: 'Choose a unique note ID or create the missing note.',
           ),
@@ -1641,10 +1644,15 @@ List<String> _normalizedTags(
   Set<String> values, [
   Map<String, String> synonyms = const {},
 ]) => _sorted({
-  for (final tag in values) _normalizeTag(tag, synonyms),
+  for (final tag in values) normalizeTag(tag, synonyms),
 }..remove(''));
 
-String _normalizeTag(String tag, [Map<String, String> synonyms = const {}]) {
+/// Folds a tag to the form the index stores (`3D` → `3d`, `quick capture` →
+/// `quick-capture`). Public because callers comparing arbitrary user text
+/// against index tags — e.g. deciding whether an unresolved `[[Tutorial]]` is
+/// really the existing `tutorial` tag — must fold the same way or they miss
+/// most of the overlap.
+String normalizeTag(String tag, [Map<String, String> synonyms = const {}]) {
   final folded = tag.trim().toLowerCase().replaceAll(RegExp(r'[\s_]+'), '-');
   // One hop only. A map that happens to contain `a -> b` and `b -> c` must not
   // drag `a` all the way to `c`: chained merges are how a synonym set drifts

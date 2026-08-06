@@ -1060,9 +1060,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 'duplicate-alias':
         await _openDuplicateOwners(toFix);
         return null;
+      case 'broken-link':
+        return _triageMissingPages(toFix);
       default:
         return null;
     }
+  }
+
+  /// Materialises the pages behind Logseq wikilinks that never had a file.
+  /// Logseq treats `[[Tutorial]]` as a page regardless; the importer only
+  /// reported them, so a migrated vault is left with thousands of broken links
+  /// — and the persons and places the user expected are among them.
+  Future<List<PkmsProblem>?> _triageMissingPages(
+    List<PkmsProblem> problems,
+  ) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return null;
+    final targets = unresolvedLinkTargets(problems, {
+      for (final note in ix.notes) ...note.tags,
+    });
+    if (targets.isEmpty) {
+      showSnack(context, 'Every unresolved link is already a tag');
+      return null;
+    }
+    final picked = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(
+        builder: (_) => TriageMissingPagesScreen(targets: targets),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return null;
+    if (picked.length > 100) {
+      final go = await showConfirmDialog(
+        context,
+        title: 'Create ${picked.length} pages?',
+        message: 'This writes ${picked.length} new notes, then reindexes once.',
+        confirmLabel: 'Create',
+      );
+      if (!go || !mounted) return null;
+    }
+    // One id namespace for the whole batch: nextNoteId otherwise dedups against
+    // the last written index, which cannot know about the note created a
+    // millisecond ago — and a Cyrillic title slugs to nothing, so a run of them
+    // would all collapse onto the same timestamp id.
+    final ids = {for (final note in ix.notes) note.id};
+    for (final entry in picked.entries) {
+      await v.page(entry.key, kind: entry.value, knownIds: ids);
+    }
+    await workspace.refreshIndex(always: true);
+    if (!mounted) return null;
+    showSnack(context, 'Created ${picked.length} pages');
+    return _knowledgeProblems();
   }
 
   /// Counts how many of [attempted] still carry [code] after a rescan — the
