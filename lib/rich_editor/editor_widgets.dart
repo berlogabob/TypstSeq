@@ -914,8 +914,10 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     headingLevel = marker.length;
     body = trimmed.replaceFirst(RegExp(r'^=+\s*'), '');
   } else if (block.kind == ControlledBlockKind.list) {
-    final numbered = RegExp(r'^(?:\d+\. |\+ )').hasMatch(trimmed);
-    style = numbered
+    // Block style drives the toolbar state only; the glyph is decided per line
+    // below, because a Logseq export routinely mixes `-` and `+` inside one
+    // block and the first line does not speak for the rest.
+    style = RegExp(r'^(?:\d+\. |\+ )').hasMatch(trimmed)
         ? TyLogBlockStyle.numberedList
         : TyLogBlockStyle.bulletList;
     var number = 1;
@@ -924,15 +926,22 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     // stripping it here is what used to turn `  - b` into `- - b` on save.
     // Read from `source`, not `trimmed`: a block may now start on an indented
     // line (a plain bullet following a list-item task).
+    //
+    // A line with no marker is a *continuation* of the item above it — a
+    // Logseq block is often several lines long. Leaving it glyph-less is what
+    // makes the round-trip work: glyph presence now means marker presence, so
+    // the serializer adds a marker back to exactly the lines that had one.
+    // Previously the marker was optional on both sides, so every wrapped line
+    // grew a bullet it never had (6152 lines across 457 imported notes).
     body = source
         .split('\n')
         .map((line) {
-          final marker = RegExp(
-            r'^([ \t]*)(?:[-+] |\d+\. )?',
-          ).firstMatch(line)!;
+          final marker = _listMarker.firstMatch(line);
+          if (marker == null) return line;
           final indent = marker.group(1)!;
           final content = line.substring(marker.end);
-          return numbered ? '$indent${number++}. $content' : '$indent• $content';
+          final ordered = marker.group(2) == '+' || marker.group(3) != null;
+          return ordered ? '$indent${number++}. $content' : '$indent• $content';
         })
         .join('\n');
   }
@@ -1460,6 +1469,22 @@ TyLogBlock _blockFrom(
 /// (the "can't press Enter / paste a list" bug). Escaping the first char keeps
 /// the visible text identical (`_parseInline` unescapes any `\x`) while making
 /// the line parse — and Typst-render — as literal prose.
+/// A Typst list marker at the start of a line: indent, then `-`/`+`/`N.`,
+/// then whitespace *or* end-of-line. Requiring the separator is what keeps
+/// `-foo` (not a list item) and `1.5` out, while still matching a marker with
+/// no content after it — the empty trailing bullet every Logseq page carries.
+final _listMarker = RegExp(r'^([ \t]*)(?:([-+])|(\d+)\.)(?:[ \t]+|$)');
+
+/// The inverse of [_listMarker]: a rendered glyph back to its source marker.
+/// A line with no glyph is a continuation line and is returned untouched, so
+/// glyph presence and marker presence stay one-to-one across the round trip.
+String _serializeListLine(String line) {
+  final glyph = RegExp(r'^([ \t]*)(?:(•)|(\d+)\.)[ \t]*').firstMatch(line);
+  if (glyph == null) return line;
+  return '${glyph.group(1)}${glyph.group(2) != null ? '- ' : '+ '}'
+      '${line.substring(glyph.end)}';
+}
+
 /// Indented markers count too: block classification skips leading whitespace,
 /// so `  - x` re-parses as a list just as `- x` does.
 final _leadingBlockMarker = RegExp(r'^([ \t]*)(?:=+ |[-+] |\d+\. )');
@@ -1483,28 +1508,14 @@ String _serializeBlock(TyLogBlock block) {
   final content = block.parts.map(_serializePart).join();
   return switch (block.style) {
     TyLogBlockStyle.heading => '${'=' * block.headingLevel} $content',
-    // The glyph group is optional so a glyph-less line still gets its marker,
-    // exactly as before; the indent group is what the parse side preserved.
-    TyLogBlockStyle.bulletList =>
-      content
-          .split('\n')
-          .map(
-            (line) => line.replaceFirstMapped(
-              RegExp(r'^([ \t]*)(?:•[ \t]*)?'),
-              (marker) => '${marker[1]}- ',
-            ),
-          )
-          .join('\n'),
-    TyLogBlockStyle.numberedList =>
-      content
-          .split('\n')
-          .map(
-            (line) => line.replaceFirstMapped(
-              RegExp(r'^([ \t]*)(?:\d+\.[ \t]*)?'),
-              (marker) => '${marker[1]}+ ',
-            ),
-          )
-          .join('\n'),
+    // One mapper for both list styles: the *glyph* decides the marker, not the
+    // block's style, so a `+` item inside a mostly-`-` block survives instead
+    // of being rewritten as a bullet.
+    TyLogBlockStyle.bulletList ||
+    TyLogBlockStyle.numberedList => content
+        .split('\n')
+        .map(_serializeListLine)
+        .join('\n'),
     TyLogBlockStyle.paragraph => _escapeParagraphMarkers(content),
     TyLogBlockStyle.protected => block.originalSource,
     TyLogBlockStyle.taskLine => replaceTaskText(
