@@ -96,7 +96,7 @@ class SettingsSheet extends StatelessWidget {
               SettingsTile(
                 icon: Icons.cleaning_services_outlined,
                 title: 'Clean up imported notes',
-                subtitle: 'Remove Logseq time-tracking leftovers',
+                subtitle: 'Remove empty Logseq drawers and trailing blanks',
                 onTap: () => unawaited(onStripImportNoise()),
               ),
               SettingsTile(

@@ -896,14 +896,22 @@ String stripLogseqNoise(String source) {
   final endsWithNewline = lines.isNotEmpty && lines.last.isEmpty;
   if (endsWithNewline) lines.removeLast();
 
+  // A CLOCK: record is the user's time tracking, not noise — the converter
+  // captures it into properties("clocked") now. If any survives in this note
+  // the drawer is left completely alone rather than deleted, because deleting
+  // it is unrecoverable and this runs from a one-tap Settings action. Only
+  // genuinely empty drawers are cleaned.
+  final holdsTime = lines.any((line) => line.trim().startsWith('CLOCK:'));
+
   final kept = <String>[];
   var removed = 0;
   for (final line in lines) {
     final trimmed = line.trim();
-    if (trimmed == ':LOGBOOK:' ||
+    final isDrawer =
+        trimmed == ':LOGBOOK:' ||
         trimmed == ':END:' ||
-        trimmed.startsWith('CLOCK:') ||
-        trimmed.startsWith('- State "')) {
+        trimmed.startsWith('- State "');
+    if (!holdsTime && isDrawer) {
       removed++;
       continue;
     }
@@ -968,9 +976,14 @@ String migrateEntityTypeToKind(String source) {
 /// whitespace/newline so callers can replace it without disturbing
 /// formatting around it.
 class _DictEntry {
-  const _DictEntry(this.start, this.end);
+  const _DictEntry(this.start, this.end, this.valueStart);
+
+  /// Bounds of the whole `"key": value` entry.
   final int start;
   final int end;
+
+  /// Where the value begins, for readers that want it without the key.
+  final int valueStart;
 }
 
 /// Locates the top-level `"key": value` entry for [key] inside [dictSource]
@@ -997,7 +1010,15 @@ _DictEntry? _locateDictEntry(String dictSource, String key) {
           : rawKey;
       if (decodedKey == key) {
         final leading = match.group(1)!.length;
-        return _DictEntry(offset + leading, offset + part.length);
+        var valueStart = match.end;
+        while (valueStart < part.length && _space(part.codeUnitAt(valueStart))) {
+          valueStart++;
+        }
+        return _DictEntry(
+          offset + leading,
+          offset + part.length,
+          offset + valueStart,
+        );
       }
     }
     offset += part.length + 1;
@@ -1036,13 +1057,8 @@ String replaceNoteProperty(String source, String key, Object? value) {
       entry.end,
       '${typstString(key)}: $encodedValue',
     );
-  } else if (dictSource.trim() == '(:)') {
-    newDict = '(${typstString(key)}: $encodedValue,)';
   } else {
-    newDict = dictSource.replaceFirst(
-      RegExp(r'\)\s*$'),
-      '${typstString(key)}: $encodedValue,)',
-    );
+    newDict = _appendDictEntry(dictSource, key, encodedValue);
   }
   final newHeader = header.replaceRange(
     propsField.valueStart,
@@ -1204,8 +1220,28 @@ String _appendTaskField(String callSource, String name, String value) {
 
 bool _isSpace(int code) => code == 32 || code == 9 || code == 10 || code == 13;
 
-/// Replaces [id]'s whole `clocked` list. Used by the Logseq recovery, which
-/// restores many sessions at once rather than opening them one at a time.
+/// Appends `"key": value` to a Typst dictionary literal, supplying the comma
+/// the previous entry may not have.
+///
+/// `("status": "read")` has no trailing comma, so a blind splice before the
+/// closing paren yields `("status": "read""clocked": …)` — the same
+/// missing-separator defect that made 406 task calls unreadable, one level
+/// down.
+String _appendDictEntry(String dict, String key, String rawValue) {
+  final entry = '${typstString(key)}: $rawValue,';
+  if (dict.trim() == '(:)' || dict.trim() == '()') return '($entry)';
+  final close = dict.lastIndexOf(')');
+  if (close < 0) return dict;
+  var before = close - 1;
+  while (before >= 0 && _space(dict.codeUnitAt(before))) {
+    before--;
+  }
+  if (before < 0) return dict;
+  final separator = dict[before] == ',' || dict[before] == '(' ? '' : ', ';
+  return dict.replaceRange(before + 1, close, '$separator$entry');
+}
+
+/// Sets [id]'s tracked sessions, stored as `properties("clocked")`.
 ///
 /// Duplicate `(start, end)` pairs collapse — the imported data holds 171 exact
 /// repeats — and order is preserved otherwise.
@@ -1222,105 +1258,121 @@ String setTaskClocked(String source, String id, List<ClockEntry> entries) {
       )
       .join(', ');
   final call = _locateTaskCall(source, id);
-  final field = _locateTopLevelField(call.source, 'clocked');
-  final replacement = unique.isEmpty
-      ? (field == null
-            ? call.source
-            : call.source.replaceRange(field.start, field.end, '').replaceFirst(
-                RegExp(r',\s*,'),
-                ',',
-              ))
-      : (field == null
-            ? _appendTaskField(call.source, 'clocked', '($rendered,)')
-            : call.source.replaceRange(
-                field.start,
-                field.end,
-                'clocked: ($rendered,)',
-              ));
-  return source.replaceRange(call.start, call.end, replacement);
-}
-
-/// Opens a new tracked session on [id], appending `("<start>", none)`.
-///
-/// Any session already running on this task is closed at [startIso] first, so
-/// a task can never accumulate two open clocks. The caller is responsible for
-/// stopping a clock running on a *different* task — see the one-running-clock
-/// rule in the app layer.
-String startTaskClock(String source, String id, String startIso) {
-  final closed = _closeRunningClocks(source, id, startIso);
-  final call = _locateTaskCall(closed, id);
-  final field = _locateTopLevelField(call.source, 'clocked');
-  final replacement = field == null
-      ? _appendTaskField(call.source, 'clocked', '(("$startIso", none),)')
-      : call.source.replaceRange(
-          field.start,
-          field.end,
-          'clocked: (${call.source.substring(field.valueStart + 1, field.valueEnd - 1)}("$startIso", none),)',
-        );
-  return closed.replaceRange(call.start, call.end, replacement);
-}
-
-/// Closes the session running on [id] by replacing its trailing `none` with
-/// [endIso]. A no-op when nothing is running.
-String stopTaskClock(String source, String id, String endIso) =>
-    _closeRunningClocks(source, id, endIso);
-
-/// Rewrites every `none` end in [id]'s `clocked` list to [endIso].
-///
-/// Unlike every other task writer this edits *inside* a list element, so it
-/// works on offsets found by scanning rather than on a regex: a task whose
-/// `text` reads `clocked: (a (b) c)` is a real shape the mutation tests guard
-/// against, and a regex would happily match it.
-String _closeRunningClocks(String source, String id, String endIso) {
-  final call = _locateTaskCall(source, id);
-  final field = _locateTopLevelField(call.source, 'clocked');
-  if (field == null) return source;
-  final value = call.source.substring(field.valueStart, field.valueEnd);
-  final rewritten = _closeClockGroups(value, endIso);
-  if (rewritten == value) return source;
-  final call2 = call.source.replaceRange(
-    field.valueStart,
-    field.valueEnd,
-    rewritten,
+  return source.replaceRange(
+    call.start,
+    call.end,
+    // Also drops a legacy top-level `clocked:` argument, so a note written
+    // before the data moved into properties migrates the first time it is
+    // touched — and stops failing to compile on packages that never had that
+    // argument.
+    _removeTaskField(
+      _setTaskProperty(
+        call.source,
+        'clocked',
+        unique.isEmpty ? null : '($rendered,)',
+      ),
+      'clocked',
+    ),
   );
-  return source.replaceRange(call.start, call.end, call2);
 }
 
-/// Replaces the `none` second component of each top-level `(...)` group.
-String _closeClockGroups(String value, String endIso) {
-  // Only the LAST open session is closed. Four tasks in the real vault carry
-  // two `none` ends each, and rewriting every one of them to the same stamp
-  // fabricated a second session of identical length and double-counted the
-  // time. Older strays are left open for the flagging path to surface.
-  var depth = 0;
-  var groupStart = -1;
-  ({int start, int end})? last;
-  for (var i = 0; i < value.length; i++) {
-    final char = value[i];
-    if (char == '"') {
-      i = _skipString(value, i) - 1;
-      continue;
-    }
-    if (char == '(') {
-      if (depth == 1) groupStart = i;
-      depth++;
-      continue;
-    }
-    if (char != ')') continue;
-    depth--;
-    if (depth != 1 || groupStart < 0) continue;
-    final inner = value.substring(groupStart + 1, i);
-    final none = RegExp(r',\s*none\s*$').firstMatch(inner);
-    if (none != null) {
-      last = (
-        start: groupStart + 1 + none.start,
-        end: groupStart + 1 + none.end,
-      );
-    }
-    groupStart = -1;
+/// Removes a top-level named argument from a task call, tidying the comma.
+String _removeTaskField(String callSource, String name) {
+  final field = _locateTopLevelField(callSource, name);
+  if (field == null) return callSource;
+  var end = field.end;
+  while (end < callSource.length && _space(callSource.codeUnitAt(end))) {
+    end++;
   }
-  if (last == null) return value;
-  return value.replaceRange(last.start, last.end, ', "$endIso"');
+  if (end < callSource.length && callSource[end] == ',') end++;
+  var start = field.start;
+  // If nothing follows, take the comma that preceded it instead.
+  if (end >= callSource.length || callSource.substring(end).trim() == ')') {
+    while (start > 0 && _space(callSource.codeUnitAt(start - 1))) {
+      start--;
+    }
+    if (start > 0 && callSource[start - 1] == ',') start--;
+  }
+  return callSource.replaceRange(start, end, '');
+}
+
+/// Sets (or removes, when [rawValue] is null) `properties[key]` on a task
+/// call, leaving every other argument byte-identical.
+///
+/// Time tracking lives here rather than in a named argument because a dict
+/// tolerates keys an older Typst package has never seen, while an unknown
+/// named argument is a hard compile error — and the package syncs between
+/// devices that may be on different builds.
+String _setTaskProperty(String callSource, String key, String? rawValue) {
+  final field = _locateTopLevelField(callSource, 'properties');
+  if (field == null) {
+    if (rawValue == null) return callSource;
+    return _appendTaskField(
+      callSource,
+      'properties',
+      '(${typstString(key)}: $rawValue,)',
+    );
+  }
+  final dict = callSource.substring(field.valueStart, field.valueEnd);
+  final entry = _locateDictEntry(dict, key);
+  final String next;
+  if (entry != null) {
+    next = rawValue == null
+        ? _stripDictEntry(dict, entry)
+        : dict.replaceRange(
+            entry.start,
+            entry.end,
+            '${typstString(key)}: $rawValue',
+          );
+  } else if (rawValue == null) {
+    return callSource;
+  } else {
+    next = _appendDictEntry(dict, key, rawValue);
+  }
+  return callSource.replaceRange(field.valueStart, field.valueEnd, next);
+}
+
+/// Removes one entry from a dictionary literal, collapsing the comma it left.
+String _stripDictEntry(String dict, _DictEntry entry) {
+  final without = dict.replaceRange(entry.start, entry.end, '');
+  final cleaned = without.replaceAll(RegExp(r',\s*,'), ',').replaceAll(
+    RegExp(r'\(\s*,'),
+    '(',
+  );
+  return cleaned.trim() == '()' ? '(:)' : cleaned;
+}
+
+/// Opens a new tracked session on [id].
+///
+/// Closes the session currently running on this task first, so a task can
+/// never accumulate two open clocks — Logseq's willingness to do exactly that
+/// is how 107 of this vault's sessions ended with no end at all. Older strays
+/// are left open for the flagging path rather than back-dated.
+///
+/// Stopping a clock running on a *different* task is the caller's job; see the
+/// one-running-clock rule in the app layer.
+String startTaskClock(String source, String id, String startIso) {
+  final closed = stopTaskClock(source, id, startIso);
+  final call = _locateTaskCall(closed, id);
+  return setTaskClocked(closed, id, [
+    ...parseClockedField(call.source),
+    ClockEntry(start: startIso),
+  ]);
+}
+
+/// Closes the session running on [id]. A no-op when nothing is running.
+///
+/// Only the most recent open session closes. Four tasks in the real vault
+/// carry two, and closing both to one timestamp invented a second session of
+/// identical length and double-counted the time.
+String stopTaskClock(String source, String id, String endIso) {
+  final call = _locateTaskCall(source, id);
+  final entries = parseClockedField(call.source);
+  final index = entries.lastIndexWhere((entry) => entry.isRunning);
+  if (index < 0) return source;
+  final next = [...entries];
+  next[index] = ClockEntry(start: next[index].start, end: endIso);
+  return setTaskClocked(source, id, next);
 }
 
 String replaceTaskText(String source, String id, String text) {
@@ -1638,9 +1690,26 @@ List<ClockEntry> _clockedFromMetadata(Object? value) {
 /// session after the first vanishes with no error; its `.toSet()` would destroy
 /// the pairing on top of that.
 List<ClockEntry> parseClockedField(String callSource) {
-  final field = _locateTopLevelField(callSource, 'clocked');
-  if (field == null) return const [];
-  final value = callSource.substring(field.valueStart, field.valueEnd);
+  // `properties: ("clocked": (...))` is where it lives; a bare top-level
+  // `clocked:` is the shape written before it moved, still read so notes
+  // authored in between keep their time.
+  final properties = _locateTopLevelField(callSource, 'properties');
+  String? value;
+  if (properties != null) {
+    final dict = callSource.substring(
+      properties.valueStart,
+      properties.valueEnd,
+    );
+    final entry = _locateDictEntry(dict, 'clocked');
+    if (entry != null) {
+      value = dict.substring(entry.valueStart, entry.end).trim();
+    }
+  }
+  if (value == null) {
+    final field = _locateTopLevelField(callSource, 'clocked');
+    if (field == null) return const [];
+    value = callSource.substring(field.valueStart, field.valueEnd);
+  }
   final entries = <ClockEntry>[];
   var depth = 0;
   var groupStart = -1;
@@ -1698,7 +1767,9 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
             assignees: stringList(value['assignees']),
             tags: stringList(value['tags']),
             completed: stringList(value['completed']),
-            clocked: _clockedFromMetadata(value['clocked']),
+            clocked: _clockedFromMetadata(
+              (value['properties'] as Map?)?['clocked'] ?? value['clocked'],
+            ),
             properties: (value['properties'] as Map? ?? const {})
                 .cast<String, Object?>(),
           ),

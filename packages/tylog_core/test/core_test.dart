@@ -573,26 +573,43 @@ void main() {
   });
 
   group('stripLogseqNoise', () {
-    test('drops a drawer and the trailing empty block', () {
+    // A CLOCK: record is the user's time tracking. This runs from a one-tap
+    // Settings action and saveNote makes it permanent, so a drawer holding any
+    // is left completely alone rather than risk an unrecoverable delete.
+    test('a drawer holding time records is preserved untouched', () {
       const source =
           '= Day\n'
           '\n'
           '- #tylog.task(id: "t1", text: "Ship it", status: "done")\n'
           ':LOGBOOK:\n'
-          'CLOCK: \\[2025\\-12\\-25 Thu 12:33:43\\] \\=\\>  44:41:48\n'
-          '- State "DONE" from "LATER" [2023-10-01 Sun]\n'
+          'CLOCK: [2025-12-25 Thu 12:33:43]--[2025-12-27 Sat 09:15:31]\n'
           ':END:\n'
           '- Real content\n'
-          '-\n'
           '-\n';
 
       final stripped = stripLogseqNoise(source);
 
-      expect(stripped, isNot(contains('LOGBOOK')));
-      expect(stripped, isNot(contains('CLOCK:')));
-      expect(stripped, isNot(contains('State "DONE"')));
-      expect(stripped, contains('#tylog.task('));
+      expect(stripped, contains('CLOCK:'));
+      expect(stripped, contains(':LOGBOOK:'));
+      expect(stripped, contains('Real content'));
+      // The trailing empty block is still cleaned.
       expect(stripped.trimRight(), endsWith('- Real content'));
+    });
+
+    test('an empty drawer with no time records is still cleaned', () {
+      const source =
+          '- one\n'
+          ':LOGBOOK:\n'
+          '- State "DONE" from "LATER" [2023-10-01 Sun]\n'
+          ':END:\n'
+          '- two\n';
+
+      final stripped = stripLogseqNoise(source);
+
+      expect(stripped, isNot(contains('LOGBOOK')));
+      expect(stripped, isNot(contains('State "DONE"')));
+      expect(stripped, contains('one'));
+      expect(stripped, contains('two'));
     });
 
     test('an interior empty bullet is deliberate spacing and stays', () {
@@ -601,7 +618,7 @@ void main() {
     });
 
     test('unbalanced drawers never swallow content', () {
-      const source = '- before\n:END:\n- middle\n:LOGBOOK:\nCLOCK: x\n- after\n';
+      const source = '- before\n:END:\n- middle\n:LOGBOOK:\n- after\n';
 
       final stripped = stripLogseqNoise(source);
 
@@ -615,7 +632,7 @@ void main() {
       const clean = '= Note\n\n- one\n- two\n';
       expect(stripLogseqNoise(clean), same(clean));
 
-      const dirty = '- a\n:LOGBOOK:\nCLOCK: x\n:END:\n- b\n';
+      const dirty = '- a\n:LOGBOOK:\n:END:\n- b\n';
       final once = stripLogseqNoise(dirty);
       expect(stripLogseqNoise(once), same(once));
     });

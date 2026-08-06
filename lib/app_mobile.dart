@@ -1245,16 +1245,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final file = task.notePath;
     final source = await v.storage.readText(file);
-    await v.saveNote(
-      file,
-      task.recurrence != null && nextStatus == 'done'
-          ? completeTaskOccurrence(
-              source,
-              task.id,
-              DateTime.now().toUtc().toIso8601String(),
-            )
-          : replaceTaskStatus(source, task.id, nextStatus),
-    );
+    try {
+      await v.saveNote(
+        file,
+        task.recurrence != null && nextStatus == 'done'
+            ? completeTaskOccurrence(
+                source,
+                task.id,
+                DateTime.now().toUtc().toIso8601String(),
+              )
+            : replaceTaskStatus(source, task.id, nextStatus),
+      );
+    } on StateError catch (error) {
+      // The task writers throw when they cannot find the call — an id the
+      // index still lists but the file no longer has, or two tasks sharing an
+      // id. Callers discard this future (`unawaited(onSetStatus(...))`), so
+      // without this the checkbox silently did nothing and the user was told
+      // nothing at all.
+      if (!mounted) return;
+      showSnack(context, 'Could not update that task: ${error.message}');
+      return;
+    }
     // refreshIndex, not rebuildIndex: the latter's guard cancels an in-flight
     // scan (`cancelRebuild = true; _worker?.cancel()`), so ticking a checkbox
     // while the vault was being scanned threw that whole scan away — and it
@@ -1322,9 +1333,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// One-off maintenance: drops the org-mode `:LOGBOOK:` drawers and trailing
+  /// One-off maintenance: drops the *empty* org-mode drawers and trailing
   /// empty blocks that Logseq exports carry into a note (see
-  /// [stripLogseqNoise]). The converter strips these now, but a re-import
+  /// [stripLogseqNoise]). A drawer holding CLOCK: records is left alone —
+  /// those are the user's time tracking, and this is a one-tap action whose
+  /// writes are permanent. The converter strips these now, but a re-import
   /// cannot repair the notes already on disk — the wizard skips a source whose
   /// SHA is unchanged. Safe to run more than once.
   Future<void> _stripImportNoise() async {
