@@ -1101,8 +1101,17 @@ List<TyLogInline>? _parseInline(
       }
     }
 
+    // The label part accepts `\]` and one level of nesting. `[^\]]*` stopped at
+    // the first `]` whatever preceded it, so a label like
+    // `[... \[2026 Edition\]]` matched only half of itself and left a stray
+    // `]` behind — the round-trip guard then saw a mismatch and silently
+    // reverted the user's edit. Three such labels in the vault, in two notes:
+    // escaped brackets from the importer, and one real `#link(...)[#link(...)[…]]`.
     final atomMatch = RegExp(
-      r'^(#(?:link|tylog\.(?:ref-note|date-ref|attachment))\([^\n]*?\)\[[^\]]*\]|#tylog\.tag\("(?:\\.|[^"])*"\)|#cite\([^)]*\)|#[iI]mage\([^)]*\)|@[A-Za-z0-9_.:+-]+)',
+      r'^(#(?:link|tylog\.(?:ref-note|date-ref|attachment))\([^\n]*?\)'
+      r'\[(?:\\.|[^\[\]]|\[(?:\\.|[^\[\]])*\])*\]'
+      r'|#tylog\.tag\("(?:\\.|[^"])*"\)|#cite\([^)]*\)|#[iI]mage\([^)]*\)'
+      r'|@[A-Za-z0-9_.:+-]+)',
     ).firstMatch(source.substring(i));
     if (atomMatch != null) {
       final raw = atomMatch.group(0)!;
@@ -1207,7 +1216,13 @@ String _shortenUrlLabel(String label) {
 }
 
 String _atomLabel(String source) {
-  final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
+  // Same bracket grammar the atom scanner uses: `\]` and one level of nesting.
+  // With a plain `[^\]]*` a title like `… \[2026 Edition\]` matched nothing at
+  // all, and the chip fell through to the quoted-string branch and displayed
+  // the raw note id instead of the title.
+  final content = RegExp(
+    r'\[((?:\\.|[^\[\]]|\[(?:\\.|[^\[\]])*\])*)\]$',
+  ).firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
     final label = unescapeMarkup(content);
     // Only for links: a long label on any other atom is authored text.

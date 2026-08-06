@@ -2444,4 +2444,36 @@ void main() {
       greaterThan(48),
     );
   });
+
+  // The bracket grammar used to be `[^\]]*`, which stops at the first `]`
+  // whatever precedes it. A title carrying `\]` therefore matched only half of
+  // itself: the chip showed a truncated label ending in a stray backslash, and
+  // the leftover `]` was rendered as text beside it. Three such labels in the
+  // vault, in two notes.
+  test('an atom label survives escaped brackets', () {
+    const source =
+        r'#tylog.ref-note("md-82c2")[Know in 90 Minutes \[2026 Edition\]]';
+
+    final document = TyLogDocument.parse(source);
+    final parts = document.blocks.single.parts;
+
+    expect(document.visibleText, '\uFFFC', reason: 'no stray `]` beside the chip');
+    expect(parts.where((part) => part.isAtom), hasLength(1));
+    expect(parts.single.label, 'Know in 90 Minutes [2026 Edition]');
+    expect(document.toSource(validate: false), source);
+  });
+
+  // Genuinely nested: `#link(...)[#link(...)[…]]`. One atom, not a truncated
+  // one trailing a stray bracket.
+  test('an atom label survives one level of nesting', () {
+    const source =
+        r'#link("https://a.example/x")[#link("https://b.example/y")[Image: 1]]';
+
+    final document = TyLogDocument.parse(source);
+
+    expect(document.visibleText, '\uFFFC');
+    expect(document.blocks.single.parts, hasLength(1));
+    expect(document.toSource(validate: false), source);
+  });
+
 }
