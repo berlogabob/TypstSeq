@@ -380,6 +380,67 @@ void main() {
       );
     });
 
+    // The donor is the whole index a fresh device starts from, and the
+    // scanner's cached branch reuses `previous.tasks` for any note whose bytes
+    // still match. A donor carrying notes but no tasks therefore matches every
+    // note, re-derives nothing, and leaves the Tasks view empty.
+    test("a peer's donor carries its tasks, not just its notes", () async {
+      const withTask = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "root", title: "Root", kind: "note")
+= Root
+#tylog.task(id: "t1", text: "Ship it", status: "todo")
+''';
+      final laptop = await newVault('tylog_donor_tasks_');
+      await laptop.storage.writeText('notes/Root.typ', withTask);
+      final laptopIndex = await laptop.rebuildIndex(deviceId: 'laptop');
+      expect(
+        laptopIndex.tasks,
+        isNotEmpty,
+        reason: 'precondition: the laptop found the task by scanning',
+      );
+
+      final phone = await newVault('tylog_donor_tasks_phone_');
+      await phone.storage.writeText('notes/Root.typ', withTask);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        await laptop.storage.readText('_system/index/laptop.json'),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.tasks.map((task) => task.id), contains('t1'));
+    });
+
+    test('a schema-1 donor is skipped rather than trusted', () async {
+      final laptop = await newVault('tylog_donor_v1_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+      final donor =
+          jsonDecode(await laptop.storage.readText('_system/index/laptop.json'))
+              as Map<String, Object?>;
+      // What the previous release wrote: notes, no tasks.
+      donor['schema'] = 1;
+      donor.remove('tasks');
+      for (final note in (donor['notes'] as List).cast<Map>()) {
+        note['title'] = 'FROM DONOR';
+      }
+
+      final phone = await newVault('tylog_donor_v1_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        jsonEncode(donor),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(
+        index.notesByPath['notes/Root.typ']?.title,
+        'Root',
+        reason: 'a task-less donor must be re-parsed, not reused',
+      );
+    });
+
     test('a donor is ignored when it no longer matches the bytes', () async {
       final laptop = await newVault('tylog_donor_stale_');
       await laptop.storage.writeText('notes/Root.typ', source);

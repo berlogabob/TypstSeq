@@ -14,6 +14,13 @@ import 'tylog_assets.dart';
 export 'package:tylog_core/vault.dart'
     show VaultStorageInspection, VaultStorageKind, inspectVaultStorage;
 
+/// Shape of `_system/index/<deviceId>.json`.
+///
+/// 2 added `tasks`. A schema-1 donor is skipped rather than read: it carries
+/// every note, so every note hits the scanner's cached branch, and the tasks
+/// it does not carry are never re-derived.
+const _indexDonorSchema = 2;
+
 class Vault {
   Vault(Directory root) : storage = LocalVaultStorage(root);
   Vault.withStorage(this.storage);
@@ -24,6 +31,15 @@ class Vault {
   /// cache keys on mtime+size, which SAF reports at second granularity, so a
   /// same-size edit landing in the same second would otherwise be skipped.
   final _staleNotes = <String>{};
+
+  /// Whether this instance has confirmed the donor on disk is current-schema.
+  ///
+  /// The unchanged-vault early-out in [_writeIndexDonor] never encodes and
+  /// never reads, so on its own it would leave a device that upgraded but
+  /// whose vault has not changed serving its old schema-1 donor forever — and
+  /// peers now skip those. Clearing this each launch costs one encode per app
+  /// run and lets the upgrade actually happen.
+  bool _donorSchemaConfirmed = false;
 
   /// Snapshot of the pending stale paths. The worker isolate scans through its
   /// *own* [Vault] instance, which never saw this one's [saveNote] calls, so the
@@ -188,8 +204,12 @@ class Vault {
   /// write renames a fresh temp file into place. Rewriting an identical donor
   /// would re-upload megabytes after every save.
   ///
-  /// Only `notes` — backlinks, problems and tasks are recomputed from scratch
-  /// on every scan anyway, so shipping them would be dead weight.
+  /// Notes *and* tasks. Backlinks and problems really are recomputed from
+  /// scratch every scan, but tasks are not: the scanner's cached branch reuses
+  /// `previous.tasks` for any note whose bytes still match, so a donor without
+  /// them hands a fresh device a complete note index and an empty task list —
+  /// every note matches by content hash, every one contributes zero tasks, and
+  /// the Tasks view comes up blank until a forced rebuild.
   Future<void> _writeIndexDonor(
     String deviceId,
     VaultIndex index,
@@ -202,24 +222,31 @@ class Vault {
       // already published and the scan changed nothing, don't encode ~2 MB of
       // JSON and read the same amount back over SAF just to discover the bytes
       // are identical. O(n) over maps already in memory.
-      if (published && _sameNotes(previous, index)) return;
+      if (published && _donorSchemaConfirmed && _sameNotes(previous, index)) {
+        return;
+      }
       // Compact, unlike index.json: nothing reads this by eye, and it is the
       // one index artifact that crosses the network.
       final donor = jsonEncode({
-        'schema': 1,
+        'schema': _indexDonorSchema,
         'indexVersion': index.version,
         // Which synonym map produced these tags. A peer whose map differs must
         // re-derive rather than inherit tags folded by rules it no longer uses.
         'synonymsHash': await _synonymsHash(),
         'notes': [for (final note in index.notes) note.toJson()],
+        'tasks': [for (final task in index.tasks) task.toJson()],
       });
       // Second guard, for the cases the note comparison can't settle: a first
       // publish after a version bump, or a donor whose file drifted from what
       // the index says. Byte-identical means don't touch the file at all —
       // on desktop the Nextcloud client watches mtime, so a redundant rewrite
       // re-uploads megabytes.
-      if (published && await storage.readText(path) == donor) return;
+      if (published && await storage.readText(path) == donor) {
+        _donorSchemaConfirmed = true;
+        return;
+      }
       await storage.writeText(path, donor);
+      _donorSchemaConfirmed = true;
     } catch (_) {
       // A donor is a cache. Failing to publish one must never fail a rebuild.
     }
@@ -279,6 +306,10 @@ class Vault {
       return null;
     }
     final notes = <String, NoteRef>{};
+    // Tasks follow whichever donor won each note: they are derived from that
+    // note's bytes, so mixing one donor's note with another's tasks would put
+    // the scanner's cached branch out of step with the file on disk.
+    final tasksByPath = <String, List<TaskRef>>{};
     for (final file in files) {
       if (file.isDirectory ||
           !file.path.endsWith('.json') ||
@@ -290,6 +321,16 @@ class Vault {
             (jsonDecode(await storage.readText(file.path)) as Map)
                 .cast<String, Object?>();
         if (json['indexVersion'] != kVaultIndexVersion) continue;
+        // schema 1 donors carry notes but no tasks. Reusing one seeds a full
+        // note index whose every entry hits the cached branch, so no note is
+        // ever re-queried and the task list stays empty. Skipping it costs one
+        // slow first scan; using it costs a silently empty Tasks view.
+        if (json['schema'] != _indexDonorSchema) continue;
+        final donorTasks = <String, List<TaskRef>>{};
+        for (final item in (json['tasks'] as List? ?? const []).cast<Map>()) {
+          final task = TaskRef.fromJson(item.cast<String, Object?>());
+          (donorTasks[task.notePath] ??= <TaskRef>[]).add(task);
+        }
         // The donor's tags were folded by whatever map its author had. If ours
         // differs, its NoteRefs are as stale as an old-schema entry — the
         // content hashes would still match and the change would be invisible.
@@ -303,6 +344,7 @@ class Vault {
           if (existing == null ||
               (note.modifiedMillis ?? 0) >= (existing.modifiedMillis ?? 0)) {
             notes[note.path] = note;
+            tasksByPath[note.path] = donorTasks[note.path] ?? const [];
           }
         }
       } catch (_) {
@@ -310,7 +352,11 @@ class Vault {
       }
     }
     if (notes.isEmpty) return null;
-    return VaultIndex(notesByPath: notes, backlinksByTarget: const {});
+    return VaultIndex(
+      notesByPath: notes,
+      backlinksByTarget: const {},
+      tasks: [for (final list in tasksByPath.values) ...list],
+    );
   }
 
   Future<VaultIndex?> loadIndex() async {
