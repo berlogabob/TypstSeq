@@ -411,6 +411,78 @@ void main() {
       expect(index.tasks.map((task) => task.id), contains('t1'));
     });
 
+    // The donor is uploaded to `_system/index/`, which is inside the sync
+    // allowlist, so every byte of it reaches the server and every peer device.
+    // `NoteRef.toJson` serialises `properties` verbatim, so a note's
+    // hand-written `pswrd:` travelled with it — confirmed on the real vault,
+    // where two donors carried five each.
+    test('a donor never publishes properties we did not write', () async {
+      const secret = 'S3cretValue123';
+      const withSecret = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(
+  id: "creds",
+  title: "Creds",
+  kind: "note",
+  properties: ("login": "bob", "pswrd": "$secret",),
+)
+
+= Creds
+#tylog.task(id: "t9", text: "Rotate it", status: "todo")
+''';
+      final vault = await newVault('tylog_donor_secret_');
+      await vault.storage.writeText('notes/Root.typ', source);
+      await vault.storage.writeText('notes/Creds.typ', withSecret);
+
+      await vault.rebuildIndex(deviceId: 'laptop');
+      final donor = await vault.storage.readText('_system/index/laptop.json');
+
+      expect(donor, isNot(contains(secret)));
+      expect(donor, isNot(contains('pswrd')));
+      expect(
+        donor,
+        isNot(contains('t9')),
+        reason: 'a held-back note must not leak its tasks either',
+      );
+      // The other 99% still ship — this must not become "publish nothing".
+      expect(donor, contains('notes/Root.typ'));
+    });
+
+    // A note held back from the donor has to be re-parsed by the peer, not
+    // silently dropped from its index.
+    test('a peer re-parses the notes a donor held back', () async {
+      const withSecret = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(
+  id: "creds",
+  title: "Creds",
+  kind: "note",
+  properties: ("pswrd": "hunter2",),
+)
+
+= Creds
+''';
+      final laptop = await newVault('tylog_donor_holdback_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.storage.writeText('notes/Creds.typ', withSecret);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+
+      final phone = await newVault('tylog_donor_holdback_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText('notes/Creds.typ', withSecret);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        await laptop.storage.readText('_system/index/laptop.json'),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.notesByPath['notes/Creds.typ'], isNotNull);
+      expect(
+        index.notesByPath['notes/Creds.typ']?.properties['pswrd'],
+        'hunter2',
+        reason: 'held back from the donor, but still read from local disk',
+      );
+    });
+
     test('a schema-1 donor is skipped rather than trusted', () async {
       final laptop = await newVault('tylog_donor_v1_');
       await laptop.storage.writeText('notes/Root.typ', source);

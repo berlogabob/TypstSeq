@@ -19,7 +19,56 @@ export 'package:tylog_core/vault.dart'
 /// 2 added `tasks`. A schema-1 donor is skipped rather than read: it carries
 /// every note, so every note hits the scanner's cached branch, and the tasks
 /// it does not carry are never re-derived.
-const _indexDonorSchema = 2;
+///
+/// 3 stopped publishing user-authored note properties. Schema-2 donors are
+/// skipped for the same reason *and* because they contain the values this
+/// change exists to stop shipping — see [_donorSafeProperties].
+const _indexDonorSchema = 3;
+
+/// Property keys TyLog or article-pipeline writes, and therefore the only ones
+/// a donor may carry off-device.
+///
+/// A donor is published to `_system/index/`, which is inside the sync allowlist
+/// (`isSyncableVaultPath`), so every key here is uploaded to the server and
+/// handed to every other device. `NoteRef.toJson` serialises `properties`
+/// verbatim, so before this list a note's hand-written `pswrd:`/`login:` values
+/// travelled with it. Allowlist, never denylist: an unknown key is by
+/// definition one we did not write and cannot vouch for.
+const _donorSafeProperties = {
+  'import_format',
+  'import_source_name',
+  'import_source_path',
+  'import_sha256',
+  'status',
+  'relevance',
+  'rating',
+  'citation-key',
+  'type',
+  'icon',
+  'llm_provider',
+  'llm_model',
+  'extraction',
+  'processed',
+  'url',
+  'source',
+  'source_url',
+  'share_url',
+  'author',
+  'updated',
+  'week',
+};
+
+/// Whether [note] may be published to peers.
+///
+/// A note carrying any key outside [_donorSafeProperties] is left out of the
+/// donor entirely rather than published with its properties stripped: the
+/// scanner's cached branch reuses a donor entry wholesale when the content hash
+/// matches, so a half-populated entry would read as authoritative and the note
+/// would lose its properties on every peer. Omitting it costs that one note a
+/// re-parse and keeps the result correct. Measured on the real vault: 3323 of
+/// 3345 notes still ship (99.3%); 22 are re-parsed.
+bool _isDonorSafe(NoteRef note) =>
+    note.properties.keys.every(_donorSafeProperties.contains);
 
 class Vault {
   Vault(Directory root) : storage = LocalVaultStorage(root);
@@ -210,6 +259,10 @@ class Vault {
   /// them hands a fresh device a complete note index and an empty task list —
   /// every note matches by content hash, every one contributes zero tasks, and
   /// the Tasks view comes up blank until a forced rebuild.
+  ///
+  /// Notes carrying properties we did not write are held back entirely — see
+  /// [_isDonorSafe]. This file leaves the device, so what goes into it is a
+  /// privacy decision, not a caching one.
   Future<void> _writeIndexDonor(
     String deviceId,
     VaultIndex index,
@@ -225,6 +278,10 @@ class Vault {
       if (published && _donorSchemaConfirmed && _sameNotes(previous, index)) {
         return;
       }
+      final publishable = <String>{
+        for (final note in index.notes)
+          if (_isDonorSafe(note)) note.path,
+      };
       // Compact, unlike index.json: nothing reads this by eye, and it is the
       // one index artifact that crosses the network.
       final donor = jsonEncode({
@@ -233,8 +290,17 @@ class Vault {
         // Which synonym map produced these tags. A peer whose map differs must
         // re-derive rather than inherit tags folded by rules it no longer uses.
         'synonymsHash': await _synonymsHash(),
-        'notes': [for (final note in index.notes) note.toJson()],
-        'tasks': [for (final task in index.tasks) task.toJson()],
+        'notes': [
+          for (final note in index.notes)
+            if (publishable.contains(note.path)) note.toJson(),
+        ],
+        // A task rides with its note or not at all: the peer only consults
+        // donated tasks for a note it also took from the donor, so tasks for an
+        // omitted note are dead weight that would still cross the network.
+        'tasks': [
+          for (final task in index.tasks)
+            if (publishable.contains(task.notePath)) task.toJson(),
+        ],
       });
       // Second guard, for the cases the note comparison can't settle: a first
       // publish after a version bump, or a donor whose file drifted from what
