@@ -28,7 +28,7 @@ unchanged so existing Typst queries continue to work.
 | `<tylog-tag>` | `tag` | `name` | — |
 | `<tylog-date>` | `date` | `date` | `text` |
 | `<tylog-attachment>` | `attachment` | `path`, `kind` | `title` |
-| `<tylog-task>` | `task` | `id`, `text`, `status`, `priority` | `project`, `scheduled`, `due`, `remind`, `timezone`, `recurrence`, `dependencies`, `assignees`, `tags`, `completed`, `properties` |
+| `<tylog-task>` | `task` | `id`, `text`, `status`, `priority` | `project`, `scheduled`, `due`, `remind`, `timezone`, `recurrence`, `dependencies`, `assignees`, `tags`, `completed`, `clocked`, `properties` |
 
 The standard note kinds are `note`, `daily`, `project`, `article`, and
 `research`. Other non-empty values are extensions and produce validation

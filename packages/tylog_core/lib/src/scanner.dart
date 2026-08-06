@@ -292,6 +292,15 @@ List<TypstCall> locateTypstCalls(
   final calls = <TypstCall>[];
   var i = 0;
   while (i < source.length) {
+    // A backslash escapes the next character, so `\`` is a literal backtick and
+    // not the start of a raw span. Without this, one escaped backtick made
+    // _skipRaw run to end-of-file looking for a closing pair and every call
+    // after it — every task in the note — became invisible to this scanner.
+    // The importer escapes freely, so a note only has to contain "->`->" once.
+    if (source.codeUnitAt(i) == 92) {
+      i += 2;
+      continue;
+    }
     if (source.startsWith('//', i)) {
       i = source.indexOf('\n', i);
       if (i < 0) break;
@@ -1162,6 +1171,89 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   return source.replaceRange(call.start, call.end, replacement);
 }
 
+/// Opens a new tracked session on [id], appending `("<start>", none)`.
+///
+/// Any session already running on this task is closed at [startIso] first, so
+/// a task can never accumulate two open clocks. The caller is responsible for
+/// stopping a clock running on a *different* task — see the one-running-clock
+/// rule in the app layer.
+String startTaskClock(String source, String id, String startIso) {
+  final closed = _closeRunningClocks(source, id, startIso);
+  final call = _locateTaskCall(closed, id);
+  final field = _locateTopLevelField(call.source, 'clocked');
+  final replacement = field == null
+      ? call.source.replaceFirst(
+          RegExp(r'\)\s*$'),
+          '  clocked: (("$startIso", none),),\n)',
+        )
+      : call.source.replaceRange(
+          field.start,
+          field.end,
+          'clocked: (${call.source.substring(field.valueStart + 1, field.valueEnd - 1)}("$startIso", none),)',
+        );
+  return closed.replaceRange(call.start, call.end, replacement);
+}
+
+/// Closes the session running on [id] by replacing its trailing `none` with
+/// [endIso]. A no-op when nothing is running.
+String stopTaskClock(String source, String id, String endIso) =>
+    _closeRunningClocks(source, id, endIso);
+
+/// Rewrites every `none` end in [id]'s `clocked` list to [endIso].
+///
+/// Unlike every other task writer this edits *inside* a list element, so it
+/// works on offsets found by scanning rather than on a regex: a task whose
+/// `text` reads `clocked: (a (b) c)` is a real shape the mutation tests guard
+/// against, and a regex would happily match it.
+String _closeRunningClocks(String source, String id, String endIso) {
+  final call = _locateTaskCall(source, id);
+  final field = _locateTopLevelField(call.source, 'clocked');
+  if (field == null) return source;
+  final value = call.source.substring(field.valueStart, field.valueEnd);
+  final rewritten = _closeClockGroups(value, endIso);
+  if (rewritten == value) return source;
+  final call2 = call.source.replaceRange(
+    field.valueStart,
+    field.valueEnd,
+    rewritten,
+  );
+  return source.replaceRange(call.start, call.end, call2);
+}
+
+/// Replaces the `none` second component of each top-level `(...)` group.
+String _closeClockGroups(String value, String endIso) {
+  final buffer = StringBuffer();
+  var depth = 0;
+  var groupStart = -1;
+  var copied = 0;
+  for (var i = 0; i < value.length; i++) {
+    final char = value[i];
+    if (char == '"') {
+      i = _skipString(value, i) - 1;
+      continue;
+    }
+    if (char == '(') {
+      if (depth == 1) groupStart = i;
+      depth++;
+      continue;
+    }
+    if (char != ')') continue;
+    depth--;
+    if (depth != 1 || groupStart < 0) continue;
+    final inner = value.substring(groupStart + 1, i);
+    final none = RegExp(r',\s*none\s*$').firstMatch(inner);
+    if (none != null) {
+      buffer.write(value.substring(copied, groupStart + 1 + none.start));
+      buffer.write(', "$endIso"');
+      copied = groupStart + 1 + none.end;
+    }
+    groupStart = -1;
+  }
+  if (copied == 0) return value;
+  buffer.write(value.substring(copied));
+  return buffer.toString();
+}
+
 String replaceTaskText(String source, String id, String text) {
   final call = _locateTaskCall(source, id);
   final quoted =
@@ -1453,6 +1545,74 @@ NoteRef _fallbackNote(
   );
 }
 
+/// `clocked` as it arrives from `typst query`: an array of two-element arrays,
+/// with `none` decoding to null. Deliberately not [stringList] — that calls
+/// `toString()` on each element and would yield the literal
+/// `"[2025-12-25T12:33:43, null]"` for every session.
+List<ClockEntry> _clockedFromMetadata(Object? value) {
+  if (value is! List) return const [];
+  final entries = <ClockEntry>[];
+  for (final pair in value) {
+    if (pair is! List || pair.isEmpty) continue;
+    final start = pair.first;
+    if (start is! String || start.isEmpty) continue;
+    final end = pair.length > 1 ? pair[1] : null;
+    entries.add(ClockEntry(start: start, end: end is String ? end : null));
+  }
+  return entries;
+}
+
+/// `clocked` read straight from the call source, for notes whose Typst
+/// metadata was unavailable — 399 of them in a real vault, so this path is not
+/// an edge case.
+///
+/// Built on [_locateTopLevelField] rather than `_parseList`. That helper's
+/// `([^)]*)` stops at the first inner `)`, so for
+/// `clocked: (("a", "b"), ("c", none),)` it captures only `("a", "b"` and every
+/// session after the first vanishes with no error; its `.toSet()` would destroy
+/// the pairing on top of that.
+List<ClockEntry> parseClockedField(String callSource) {
+  final field = _locateTopLevelField(callSource, 'clocked');
+  if (field == null) return const [];
+  final value = callSource.substring(field.valueStart, field.valueEnd);
+  final entries = <ClockEntry>[];
+  var depth = 0;
+  var groupStart = -1;
+  for (var i = 0; i < value.length; i++) {
+    final char = value[i];
+    if (char == '"') {
+      i = _skipString(value, i) - 1;
+      continue;
+    }
+    if (char == '(') {
+      if (depth == 1) groupStart = i;
+      depth++;
+      continue;
+    }
+    if (char == ')') {
+      depth--;
+      if (depth == 1 && groupStart >= 0) {
+        final entry = _clockPair(value.substring(groupStart + 1, i));
+        if (entry != null) entries.add(entry);
+        groupStart = -1;
+      }
+    }
+  }
+  return entries;
+}
+
+/// `"2025-12-25T12:33:43", none` — the inside of one `clocked` pair.
+ClockEntry? _clockPair(String group) {
+  final quoted = RegExp(r'"((?:\\.|[^"])*)"').allMatches(group).toList();
+  if (quoted.isEmpty) return null;
+  final start = quoted.first.group(1)!;
+  if (start.isEmpty) return null;
+  return ClockEntry(
+    start: start,
+    end: quoted.length > 1 ? quoted[1].group(1) : null,
+  );
+}
+
 List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
     values
         .map(
@@ -1472,6 +1632,7 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
             assignees: stringList(value['assignees']),
             tags: stringList(value['tags']),
             completed: stringList(value['completed']),
+            clocked: _clockedFromMetadata(value['clocked']),
             properties: (value['properties'] as Map? ?? const {})
                 .cast<String, Object?>(),
           ),
@@ -1497,6 +1658,7 @@ List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
         assignees: _parseList(call.source, 'assignees'),
         tags: _parseList(call.source, 'tags'),
         completed: _parseList(call.source, 'completed'),
+        clocked: parseClockedField(call.source),
       ),
     )
     .where((task) => task.id.isNotEmpty && task.text.isNotEmpty)

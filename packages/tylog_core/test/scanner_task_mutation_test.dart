@@ -367,6 +367,105 @@ void main() {
       },
     );
   });
+
+  group('clocked time tracking', () {
+    const multi =
+        '#tylog.task(\n'
+        '  id: "t1",\n'
+        '  text: "Ship it",\n'
+        '  clocked: (("2025-12-25T12:33:43", "2025-12-27T09:15:31"), '
+        '("2025-12-28T10:02:11", none),),\n'
+        ')\n';
+
+    // Not built on _parseList: its ([^)]*) stops at the first inner ")",
+    // keeping one session and dropping the rest with no error at all.
+    test('the fallback path reads every session, not just the first', () {
+      final entries = parseClockedField(multi);
+
+      expect(entries, hasLength(2));
+      expect(entries.first.start, '2025-12-25T12:33:43');
+      expect(entries.first.end, '2025-12-27T09:15:31');
+      expect(entries.last.start, '2025-12-28T10:02:11');
+      expect(entries.last.end, isNull, reason: 'still running');
+    });
+
+    test('a text field shaped like a clocked list is not mistaken for one', () {
+      const source =
+          '#tylog.task(id: "t1", text: "clocked: (a (b) c) noted", '
+          'clocked: (("2025-01-01T09:00:00", "2025-01-01T10:00:00"),))\n';
+
+      final entries = parseClockedField(source);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.start, '2025-01-01T09:00:00');
+    });
+
+    test('start appends an open session and stop closes it', () {
+      const source = '#tylog.task(id: "t1", text: "Work")\n';
+
+      final started = startTaskClock(source, 't1', '2026-08-06T09:00:00');
+      expect(started, contains('clocked: (("2026-08-06T09:00:00", none),)'));
+      expect(parseClockedField(started).single.isRunning, isTrue);
+
+      final stopped = stopTaskClock(started, 't1', '2026-08-06T10:30:00');
+      final entry = parseClockedField(stopped).single;
+      expect(entry.end, '2026-08-06T10:30:00');
+      expect(entry.elapsed, const Duration(hours: 1, minutes: 30));
+      expect(stopped, contains('text: "Work"'));
+    });
+
+    // Logseq's willingness to leave several clocks open on one task is how
+    // 107 of this vault's sessions ended up with no end at all.
+    test('starting twice closes the first session rather than stacking', () {
+      var source = '#tylog.task(id: "t1", text: "Work")\n';
+      source = startTaskClock(source, 't1', '2026-08-06T09:00:00');
+      source = startTaskClock(source, 't1', '2026-08-06T11:00:00');
+
+      final entries = parseClockedField(source);
+      expect(entries, hasLength(2));
+      expect(entries.first.end, '2026-08-06T11:00:00');
+      expect(entries.where((entry) => entry.isRunning), hasLength(1));
+    });
+
+    test('stopping with nothing running leaves the source untouched', () {
+      const source =
+          '#tylog.task(id: "t1", text: "Work", clocked: (("a", "b"),))\n';
+
+      expect(stopTaskClock(source, 't1', '2026-08-06T10:00:00'), same(source));
+    });
+
+    test('totals exclude misfires, runaways and running sessions', () {
+      const task = TaskRef(
+        id: 't1',
+        notePath: 'notes/a.typ',
+        text: 'Work',
+        clocked: [
+          // A 2s misfire — 41% of the imported data looks like this.
+          ClockEntry(start: '2026-01-01T09:00:00', end: '2026-01-01T09:00:02'),
+          ClockEntry(start: '2026-01-01T10:00:00', end: '2026-01-01T12:00:00'),
+          // Runaway: 37 such entries held 94% of all recorded time.
+          ClockEntry(start: '2026-01-02T10:00:00', end: '2026-01-09T10:00:00'),
+          ClockEntry(start: '2026-01-03T10:00:00'),
+        ],
+      );
+
+      expect(task.clockedTotal, const Duration(hours: 2));
+      expect(task.clockedOn('2026-01-01'), const Duration(hours: 2));
+      expect(task.runningClock?.start, '2026-01-03T10:00:00');
+    });
+
+    test('ClockEntry round-trips through JSON with a null end', () {
+      const running = ClockEntry(start: '2026-08-06T09:00:00');
+      expect(ClockEntry.fromJson(running.toJson()), running);
+
+      const closed = ClockEntry(
+        start: '2026-08-06T09:00:00',
+        end: '2026-08-06T10:00:00',
+      );
+      expect(ClockEntry.fromJson(closed.toJson()), closed);
+    });
+  });
+
 }
 
 List<TaskRef> _fallbackTasksFor(String source) {
