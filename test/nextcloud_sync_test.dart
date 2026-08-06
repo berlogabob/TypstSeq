@@ -87,6 +87,27 @@ void main() {
 
     expect(content.uploadedContent, greaterThan(0));
     expect(content.requiresIndexRefresh, isTrue);
+
+    // The same asymmetry on the way in: a peer's donor and reading file arrive
+    // constantly (one per device, rewritten after every scan), and pulling them
+    // says nothing about vault content either. The reading file still has to be
+    // reloaded — just without dragging a rescan along.
+    remote['_system/index/device-b.json'] = _MutableRemoteFile(
+      bytes: utf8.encode('{"schema":1,"peer":true}'),
+      etag: '"peer-donor"',
+      modified: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+    remote['_system/reading/device-b.json'] = _MutableRemoteFile(
+      bytes: utf8.encode('{"schema":1,"recent":[]}'),
+      etag: '"peer-reading"',
+      modified: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+    final peer = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(peer.downloaded, 2);
+    expect(peer.downloadedContent, 0);
+    expect(peer.downloadedReadingState, isTrue);
+    expect(peer.requiresIndexRefresh, isFalse);
   });
 
   test('Nextcloud config accepts local debug secret schema', () {

@@ -339,6 +339,8 @@ class NextcloudSync {
     var up = 0;
     var upContent = 0;
     var down = 0;
+    var downContent = 0;
+    var downReading = false;
     var skip = 0;
     var conflict = 0;
     var repaired = 0;
@@ -597,8 +599,14 @@ class NextcloudSync {
               }
             }
             up += result.uploaded;
-            if (!isDeviceScopedVaultPath(path)) upContent += result.uploaded;
             down += result.downloaded;
+            if (!isDeviceScopedVaultPath(path)) {
+              upContent += result.uploaded;
+              downContent += result.downloaded;
+            } else if (result.downloaded > 0 &&
+                path.startsWith('_system/reading/')) {
+              downReading = true;
+            }
             skip += result.skipped;
             conflict += result.conflicts;
             repaired += result.repaired;
@@ -696,6 +704,8 @@ class NextcloudSync {
         uploaded: up,
         uploadedContent: upContent,
         downloaded: down,
+        downloadedContent: downContent,
+        downloadedReadingState: downReading,
         skipped: skip,
         conflicts: conflict,
         remoteCount: remoteCount,
@@ -1322,11 +1332,14 @@ class SyncResult {
     required this.conflicts,
     required this.remoteCount,
     int? uploadedContent,
+    int? downloadedContent,
+    this.downloadedReadingState = false,
     this.repaired = 0,
     this.renamed = 0,
     this.deletedLocal = 0,
     this.deletedRemote = 0,
-  }) : uploadedContent = uploadedContent ?? uploaded;
+  }) : uploadedContent = uploadedContent ?? uploaded,
+       downloadedContent = downloadedContent ?? downloaded;
 
   final String trigger;
   final int uploaded;
@@ -1336,6 +1349,14 @@ class SyncResult {
   /// [isDeviceScopedVaultPath]; only this subset can imply the index is stale.
   final int uploadedContent;
   final int downloaded;
+
+  /// The subset of [downloaded] that was real vault content. A peer's reading
+  /// file or index donor arriving says nothing about the vault's content.
+  final int downloadedContent;
+
+  /// A peer's `_system/reading/<device>.json` arrived, so cross-device reading
+  /// progress needs reloading — on its own, without a rescan.
+  final bool downloadedReadingState;
   final int skipped;
   final int conflicts;
   final int remoteCount;
@@ -1352,7 +1373,10 @@ class SyncResult {
   /// next poll: indexing that sustained itself. Content uploads still count,
   /// so a note dropped into the vault folder from outside the app is picked up.
   bool get requiresIndexRefresh =>
-      uploadedContent > 0 || downloaded > 0 || renamed > 0 || deletedLocal > 0;
+      uploadedContent > 0 ||
+      downloadedContent > 0 ||
+      renamed > 0 ||
+      deletedLocal > 0;
 
   @override
   String toString() =>
