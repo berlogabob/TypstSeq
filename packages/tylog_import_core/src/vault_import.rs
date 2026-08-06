@@ -128,9 +128,18 @@ pub fn convert_vault_note(
                     )
                 })
                 .collect();
+            // Into `properties`, never as a named argument. A dict tolerates
+            // keys an older tylog package has never seen; an unknown named
+            // argument is a hard Typst compile error, and `_system/packages/`
+            // syncs between devices that may be on different builds. Emitting
+            // it as an argument is what stopped 167 notes compiling.
+            //
             // A single-element Typst array needs the trailing comma to stay an
             // array rather than collapsing to its element.
-            call.push_str(&format!(", clocked: ({},)", pairs.join(", ")));
+            call.push_str(&format!(
+                ", properties: (\"clocked\": ({},),)",
+                pairs.join(", ")
+            ));
         }
         call.push(')');
         typst = typst.replace(&format!("QQTASK{index}QQ"), &call);
@@ -1514,7 +1523,7 @@ mod tests {
         let note = convert_logseq_note("pages/Log.md", markdown).expect("note");
 
         assert!(note.typst.contains(
-            r#"clocked: (("2025-12-25T12:33:43", "2025-12-27T09:15:31"), ("2025-12-28T10:02:11", none),)"#
+            r#"properties: ("clocked": (("2025-12-25T12:33:43", "2025-12-27T09:15:31"), ("2025-12-28T10:02:11", none),),)"#
         ));
         assert!(!note.typst.contains("LOGBOOK"));
         assert!(!note.typst.contains("CLOCK:"));
