@@ -1189,10 +1189,29 @@ String _atomBody(String source) {
   return source.substring(open + 1, close - 1);
 }
 
+/// A pasted URL usually arrives as its own label, so the chip ends up holding
+/// the whole address — 827 of them in this vault, the longest 258 characters.
+/// The chip is deliberately unbounded (a hand-authored `#step[...]` body must
+/// stay readable), so a raw URL wrapped into a multi-line slab 70% of the
+/// viewport wide, mid-sentence. Show what identifies the link instead: host,
+/// plus a trimmed path when there is room.
+String _shortenUrlLabel(String label) {
+  if (label.length <= 48) return label;
+  final uri = Uri.tryParse(label);
+  if (uri == null || !uri.hasAuthority) return label;
+  final host = uri.host.replaceFirst(RegExp(r'^www\.'), '');
+  final path = uri.path.replaceFirst(RegExp(r'/$'), '');
+  if (path.isEmpty || path == '/') return host;
+  final tail = path.split('/').where((s) => s.isNotEmpty).last;
+  return tail.length > 32 ? '$host/${tail.substring(0, 31)}…' : '$host/$tail';
+}
+
 String _atomLabel(String source) {
   final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
-    return unescapeMarkup(content);
+    final label = unescapeMarkup(content);
+    // Only for links: a long label on any other atom is authored text.
+    return source.startsWith('#link(') ? _shortenUrlLabel(label) : label;
   }
   final quoted = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
   if (quoted != null) {

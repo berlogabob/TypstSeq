@@ -218,6 +218,25 @@ bool _inlineCodeDelimited(String raw) {
       i++;
       continue;
     }
+    // A backtick span is raw: `_parseInline` does no markup parsing inside it,
+    // so a `#` in there never becomes a call and must not be judged as one.
+    // Without this a password like `uW!w9AfvTQU3SS#77` made inlineCallEnd
+    // return null and collapsed the whole note into one "Custom Typst" box.
+    // Same condition as the parser: only a *closed* span is raw.
+    //
+    // ponytail: this unlocks 596 previously-uneditable blocks across the real
+    // vault (1083 -> 487 protected), at the cost of 11 more Enter-at-block-end
+    // reverts per 14851 probed edits — those blocks are mostly code, and
+    // paragraph-boundary Enter was already the one weak spot. Fix that
+    // boundary case if the rate ever matters; it fails safe (edit reverts with
+    // an error, nothing is corrupted).
+    if (code == 96) {
+      final close = raw.indexOf('`', i + 1);
+      if (close > i) {
+        i = close;
+        continue;
+      }
+    }
     if (code != 35) continue;
     final end = inlineCallEnd(raw, i);
     if (end == null) return false;
