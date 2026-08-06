@@ -310,10 +310,14 @@ List<TypstCall> locateTypstCalls(
       i = _skipBlockComment(source, i);
       continue;
     }
-    if (source.codeUnitAt(i) == 34) {
-      i = _skipString(source, i);
-      continue;
-    }
+    // Deliberately NOT skipping `"` here. This loop walks *markup*, where a
+    // quote is ordinary text — only inside a call is it a string delimiter, and
+    // _balancedEnd/_locateTopLevelField handle it there. Treating it as a
+    // delimiter at this level meant one unpaired quote in prose opened a
+    // "string" that closed on the `id: "` of a later call, flipping parity and
+    // hiding every task after it: notes/bbc___block1.typ has 12 tasks of which
+    // the scanner saw 10, and the two it lost threw "Task not found" on every
+    // edit while the UI happily listed them.
     if (source.codeUnitAt(i) == 96) {
       i = _skipRaw(source, i);
       continue;
@@ -1146,7 +1150,7 @@ String replaceTaskStatus(String source, String id, String status) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'status');
   final replacement = field == null
-      ? call.source.replaceFirst(RegExp(r'\)\s*$'), '  status: "$status",\n)')
+      ? _appendTaskField(call.source, 'status', '"$status"')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1159,10 +1163,7 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'completed');
   final replacement = field == null
-      ? call.source.replaceFirst(
-          RegExp(r'\)\s*$'),
-          '  completed: ("$timestamp",),\n)',
-        )
+      ? _appendTaskField(call.source, 'completed', '("$timestamp",)')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1287,10 +1288,13 @@ String _closeRunningClocks(String source, String id, String endIso) {
 
 /// Replaces the `none` second component of each top-level `(...)` group.
 String _closeClockGroups(String value, String endIso) {
-  final buffer = StringBuffer();
+  // Only the LAST open session is closed. Four tasks in the real vault carry
+  // two `none` ends each, and rewriting every one of them to the same stamp
+  // fabricated a second session of identical length and double-counted the
+  // time. Older strays are left open for the flagging path to surface.
   var depth = 0;
   var groupStart = -1;
-  var copied = 0;
+  ({int start, int end})? last;
   for (var i = 0; i < value.length; i++) {
     final char = value[i];
     if (char == '"') {
@@ -1308,15 +1312,15 @@ String _closeClockGroups(String value, String endIso) {
     final inner = value.substring(groupStart + 1, i);
     final none = RegExp(r',\s*none\s*$').firstMatch(inner);
     if (none != null) {
-      buffer.write(value.substring(copied, groupStart + 1 + none.start));
-      buffer.write(', "$endIso"');
-      copied = groupStart + 1 + none.end;
+      last = (
+        start: groupStart + 1 + none.start,
+        end: groupStart + 1 + none.end,
+      );
     }
     groupStart = -1;
   }
-  if (copied == 0) return value;
-  buffer.write(value.substring(copied));
-  return buffer.toString();
+  if (last == null) return value;
+  return value.replaceRange(last.start, last.end, ', "$endIso"');
 }
 
 String replaceTaskText(String source, String id, String text) {
@@ -1325,10 +1329,7 @@ String replaceTaskText(String source, String id, String text) {
       '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   final field = _locateTopLevelField(call.source, 'text');
   final replacement = field == null
-      ? call.source.replaceFirst(
-          RegExp(r'\)\s*$'),
-          '  text: $quoted,\n)',
-        )
+      ? _appendTaskField(call.source, 'text', quoted)
       : call.source.replaceRange(
           field.start,
           field.end,
