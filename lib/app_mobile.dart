@@ -63,14 +63,38 @@ part 'app_mobile/vault_lifecycle.dart';
 
 const _autoRelatedMarker = '// tylog:auto-related';
 
+/// Removes the generated `// tylog:auto-related` block so a relink pass can
+/// write a fresh one without duplicating.
+///
+/// Consumes only the block itself — its `== Related` heading and the
+/// `#tylog.ref-note(...)` items — and keeps anything that follows. article-pipeline
+/// writes the block last, so today nothing follows it in any of the 159 notes
+/// that carry one; truncating to EOF was correct only for as long as that
+/// holds. The moment a user types below their Related section, a relink would
+/// delete what they wrote, with no error and nothing to undo.
 String stripAutoRelated(String source) {
   final marker = RegExp(
     '(?:^|\\n)${RegExp.escape(_autoRelatedMarker)}(?:\\r?\\n|\$)',
   ).firstMatch(source);
   if (marker == null) return source;
-  return source
+  final before = source
       .substring(0, marker.start)
       .replaceFirst(RegExp(r'[\r\n]+$'), '');
+  final lines = source.substring(marker.end).split('\n');
+  final relatedHeading = RegExp(r'^\s*=+\s');
+  final refItem = RegExp(r'^\s*(?:[-+*]\s*)?#tylog\.ref-note\(');
+  var i = 0;
+  if (i < lines.length && relatedHeading.hasMatch(lines[i])) i++;
+  while (i < lines.length &&
+      (lines[i].trim().isEmpty || refItem.hasMatch(lines[i]))) {
+    i++;
+  }
+  final tail = lines
+      .sublist(i)
+      .join('\n')
+      .replaceFirst(RegExp(r'^[\r\n]+'), '')
+      .trimRight();
+  return tail.isEmpty ? before : '$before\n\n$tail';
 }
 
 String? refNoteHeading(String source) => RegExp(
@@ -1278,7 +1302,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return;
     final source = await v.storage.readText(note.path);
-    await v.saveNote(note.path, replaceNoteProperty(source, name, value));
+    try {
+      await v.saveNote(note.path, replaceNoteProperty(source, name, value));
+    } on StateError catch (error) {
+      // `replaceNoteProperty` throws on a note with no managed header — four
+      // in this vault. Both call sites are `unawaited(...)` dropdowns, so
+      // without this the control moved, nothing was written, and the user was
+      // told nothing. Same silent-failure shape as `_setTaskStatus` above.
+      if (!mounted) return;
+      showSnack(context, 'Could not update that note: ${error.message}');
+      return;
+    }
     await workspace.refreshIndex(always: true);
   }
 
