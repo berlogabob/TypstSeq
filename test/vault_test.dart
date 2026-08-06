@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/tylog_assets.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/models.dart';
+import 'package:tylog_core/scanner.dart';
+import 'package:tylog_core/values.dart';
 
 void main() {
   test('default vault prefers Nextcloud on desktop', () async {
@@ -154,6 +156,39 @@ void main() {
     expect(await vault.readText(article), contains('kind: "article"'));
   });
 
+  // The missing-page triage creates hundreds of notes in one pass, most of
+  // them Cyrillic. nextNoteId slugs with [^a-z0-9]+, so those titles slug to
+  // nothing and the id collapses to a bare second-resolution timestamp; left
+  // deduping against the on-disk index (which cannot see a note written a
+  // millisecond ago) every one of them would be minted identical, and the
+  // triage would manufacture duplicate-note-id errors instead of fixing links.
+  test('a batch of Cyrillic pages shares one id namespace', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_triage_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    final ids = <String>{};
+    final now = DateTime(2026, 8, 6, 12, 0, 0);
+    final paths = [
+      for (final title in ['Илья Бирман', 'Дубай', 'Купить'])
+        await vault.page(
+          title,
+          kind: title == 'Илья Бирман' ? 'person' : 'note',
+          now: now,
+          knownIds: ids,
+        ),
+    ];
+
+    expect(paths, [
+      'notes/Илья Бирман.typ',
+      'notes/Дубай.typ',
+      'notes/Купить.typ',
+    ]);
+    expect(ids, hasLength(3), reason: 'ids must not collide within a batch');
+    expect(await vault.readText(paths.first), contains('kind: "person"'));
+  });
+
   test('dailyNote opens or creates the journal file for any date', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_daily_');
     addTearDown(() => dir.delete(recursive: true));
@@ -186,6 +221,122 @@ void main() {
       expect(await File('${dir.path}/$page.tmp').exists(), isFalse);
     },
   );
+
+  // `page()` sanitises `\` and `/` — but only for the *filename*. The title
+  // went into the header raw, so a quote produced a header Typst rejects, and
+  // into the `= ` heading raw, so a `#` or `[` broke that instead. Neither
+  // failed loudly: the fallback parser reads a broken header back as a valid
+  // note, so the note simply never regained real metadata.
+  test('a page title with Typst syntax in it produces valid source', () async {
+    final hasTypst = Process.runSync('which', ['typst']).exitCode == 0;
+    final dir = await Directory.systemTemp.createTemp('tylog_title_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    for (final title in const [
+      r'He said "hi"',
+      r'C:\path\thing',
+      'Cost #5 [draft]',
+      r'a_b *c* $d$ @e',
+    ]) {
+      final path = await vault.page(title);
+      final source = await vault.readText(path);
+
+      // The header must round-trip through the same escaping the scanner uses.
+      expect(
+        source,
+        contains('title: ${typstString(title)}'),
+        reason: 'header literal for: $title',
+      );
+      expect(
+        source,
+        contains('= ${escapeMarkup(title)}'),
+        reason: 'heading markup for: $title',
+      );
+      // And the header must still parse back to the original title.
+      expect(scanNote(path, source).title, title, reason: 'round-trip: $title');
+
+      // The check that actually matters. `scanNote` is lenient enough to read a
+      // broken header back as a valid note, and it never looks at the heading
+      // at all — so only the compiler can fail the markup half of this.
+      if (hasTypst) {
+        final result = Process.runSync('typst', [
+          'compile',
+          '--root',
+          dir.path,
+          '${dir.path}/$path',
+          '${dir.path}/out.pdf',
+        ]);
+        expect(
+          result.exitCode,
+          0,
+          reason: 'new note does not compile for title "$title":\n'
+              '${result.stderr}\n--- source ---\n$source',
+        );
+      }
+    }
+  });
+
+  // The safety net under the bulk maintenance passes. There is no vault-level
+  // undo, so if this does not run before a rewrite, a mis-tap over 3,351 notes
+  // is recoverable only from the server's versioning.
+  test('snapshotNotes copies notes as they are, under a stamped folder', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_snapshot_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final a = await vault.page('Alpha');
+    final b = await vault.page('Beta');
+    await vault.saveNote(a, 'original alpha');
+    await vault.saveNote(b, 'original beta');
+
+    final undo = await vault.snapshotNotes([a, b], now: DateTime.utc(2026, 8, 7, 9, 30));
+
+    expect(undo, '.tylog/undo/2026-08-07T09-30-00.000Z');
+    expect(await vault.readText('$undo/$a'), 'original alpha');
+    expect(await vault.readText('$undo/$b'), 'original beta');
+
+    // Overwriting afterwards must leave the copies alone — that is the point.
+    await vault.saveNote(a, 'rewritten alpha');
+    expect(await vault.readText('$undo/$a'), 'original alpha');
+    expect(await vault.readText(a), 'rewritten alpha');
+  });
+
+  test('snapshotNotes throws rather than half-copying', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_snapshot_fail_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final a = await vault.page('Alpha');
+
+    // A caller that cannot snapshot must not go on to rewrite.
+    await expectLater(
+      vault.snapshotNotes([a, 'notes/does-not-exist.typ']),
+      throwsA(anything),
+    );
+  });
+
+  // `_index/` is device-local derived data that TyLog never syncs — but the
+  // vault usually sits inside ~/Nextcloud, and the desktop client uploads what
+  // it finds. The search index tokenises whole note bodies, so that upload
+  // carries note text.
+  test('ensureCreated keeps device-local caches out of a desktop sync', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_exclude_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+
+    await vault.ensureCreated();
+    final excludes = await vault.readText('.sync-exclude.lst');
+
+    expect(excludes, contains('_index'));
+    expect(excludes, contains('.tylog'));
+
+    // A user's own edits to the file survive re-opening the vault.
+    await vault.storage.writeText('.sync-exclude.lst', '_index\nmy-own-rule\n');
+    await vault.ensureCreated();
+    expect(await vault.readText('.sync-exclude.lst'), contains('my-own-rule'));
+  });
 
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');
@@ -344,6 +495,139 @@ void main() {
         await phone.storage.exists('_system/index/phone.json'),
         isTrue,
         reason: 'the phone publishes its own donor too',
+      );
+    });
+
+    // The donor is the whole index a fresh device starts from, and the
+    // scanner's cached branch reuses `previous.tasks` for any note whose bytes
+    // still match. A donor carrying notes but no tasks therefore matches every
+    // note, re-derives nothing, and leaves the Tasks view empty.
+    test("a peer's donor carries its tasks, not just its notes", () async {
+      const withTask = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "root", title: "Root", kind: "note")
+= Root
+#tylog.task(id: "t1", text: "Ship it", status: "todo")
+''';
+      final laptop = await newVault('tylog_donor_tasks_');
+      await laptop.storage.writeText('notes/Root.typ', withTask);
+      final laptopIndex = await laptop.rebuildIndex(deviceId: 'laptop');
+      expect(
+        laptopIndex.tasks,
+        isNotEmpty,
+        reason: 'precondition: the laptop found the task by scanning',
+      );
+
+      final phone = await newVault('tylog_donor_tasks_phone_');
+      await phone.storage.writeText('notes/Root.typ', withTask);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        await laptop.storage.readText('_system/index/laptop.json'),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.tasks.map((task) => task.id), contains('t1'));
+    });
+
+    // The donor is uploaded to `_system/index/`, which is inside the sync
+    // allowlist, so every byte of it reaches the server and every peer device.
+    // `NoteRef.toJson` serialises `properties` verbatim, so a note's
+    // hand-written `pswrd:` travelled with it — confirmed on the real vault,
+    // where two donors carried five each.
+    test('a donor never publishes properties we did not write', () async {
+      const secret = 'S3cretValue123';
+      const withSecret = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(
+  id: "creds",
+  title: "Creds",
+  kind: "note",
+  properties: ("login": "bob", "pswrd": "$secret",),
+)
+
+= Creds
+#tylog.task(id: "t9", text: "Rotate it", status: "todo")
+''';
+      final vault = await newVault('tylog_donor_secret_');
+      await vault.storage.writeText('notes/Root.typ', source);
+      await vault.storage.writeText('notes/Creds.typ', withSecret);
+
+      await vault.rebuildIndex(deviceId: 'laptop');
+      final donor = await vault.storage.readText('_system/index/laptop.json');
+
+      expect(donor, isNot(contains(secret)));
+      expect(donor, isNot(contains('pswrd')));
+      expect(
+        donor,
+        isNot(contains('t9')),
+        reason: 'a held-back note must not leak its tasks either',
+      );
+      // The other 99% still ship — this must not become "publish nothing".
+      expect(donor, contains('notes/Root.typ'));
+    });
+
+    // A note held back from the donor has to be re-parsed by the peer, not
+    // silently dropped from its index.
+    test('a peer re-parses the notes a donor held back', () async {
+      const withSecret = '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(
+  id: "creds",
+  title: "Creds",
+  kind: "note",
+  properties: ("pswrd": "hunter2",),
+)
+
+= Creds
+''';
+      final laptop = await newVault('tylog_donor_holdback_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.storage.writeText('notes/Creds.typ', withSecret);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+
+      final phone = await newVault('tylog_donor_holdback_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText('notes/Creds.typ', withSecret);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        await laptop.storage.readText('_system/index/laptop.json'),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(index.notesByPath['notes/Creds.typ'], isNotNull);
+      expect(
+        index.notesByPath['notes/Creds.typ']?.properties['pswrd'],
+        'hunter2',
+        reason: 'held back from the donor, but still read from local disk',
+      );
+    });
+
+    test('a schema-1 donor is skipped rather than trusted', () async {
+      final laptop = await newVault('tylog_donor_v1_');
+      await laptop.storage.writeText('notes/Root.typ', source);
+      await laptop.rebuildIndex(deviceId: 'laptop');
+      final donor =
+          jsonDecode(await laptop.storage.readText('_system/index/laptop.json'))
+              as Map<String, Object?>;
+      // What the previous release wrote: notes, no tasks.
+      donor['schema'] = 1;
+      donor.remove('tasks');
+      for (final note in (donor['notes'] as List).cast<Map>()) {
+        note['title'] = 'FROM DONOR';
+      }
+
+      final phone = await newVault('tylog_donor_v1_phone_');
+      await phone.storage.writeText('notes/Root.typ', source);
+      await phone.storage.writeText(
+        '_system/index/laptop.json',
+        jsonEncode(donor),
+      );
+
+      final index = await phone.rebuildIndex(deviceId: 'phone');
+
+      expect(
+        index.notesByPath['notes/Root.typ']?.title,
+        'Root',
+        reason: 'a task-less donor must be re-parsed, not reused',
       );
     });
 

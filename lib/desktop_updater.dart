@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'widgets/app_version.dart';
 
 /// GitHub owner/repo the desktop build is released from.
@@ -11,9 +13,14 @@ const _repo = 'TypstSeq';
 /// also has a stable `releases/latest/download/...` URL as a fallback.
 const _macAsset = 'TyLog-macos.zip';
 
+/// Digest of [_macAsset], published beside it by the release workflow.
+const _macDigestAsset = '$_macAsset.sha256';
+
 const _latestApi = 'https://api.github.com/repos/$_owner/$_repo/releases/latest';
 const _stableMacUrl =
     'https://github.com/$_owner/$_repo/releases/latest/download/$_macAsset';
+const _stableMacDigestUrl =
+    'https://github.com/$_owner/$_repo/releases/latest/download/$_macDigestAsset';
 
 /// A newer release than what's running, ready to download + apply.
 class UpdateInfo {
@@ -21,6 +28,7 @@ class UpdateInfo {
     required this.version,
     required this.notes,
     required this.zipUrl,
+    required this.digestUrl,
     required this.htmlUrl,
   });
 
@@ -33,8 +41,32 @@ class UpdateInfo {
   /// Direct download URL for the macOS asset.
   final String zipUrl;
 
+  /// URL of the published SHA-256 for [zipUrl].
+  final String digestUrl;
+
   /// The release page, for the manual-install fallback.
   final String htmlUrl;
+}
+
+/// Thrown by [downloadAndApply] when the downloaded zip does not match the
+/// digest published beside it.
+///
+/// The updater deletes the running bundle and replaces it, so a truncated or
+/// substituted download must stop before anything is touched. This is an
+/// integrity check, not an authenticity one: an attacker who can serve a
+/// different zip can serve a matching digest too. Real authenticity needs
+/// Developer ID signing and notarization, which this build does not do.
+class UpdateNotVerified implements Exception {
+  const UpdateNotVerified({required this.expected, required this.actual});
+
+  /// The published digest, or null when it could not be fetched.
+  final String? expected;
+  final String actual;
+
+  @override
+  String toString() => expected == null
+      ? 'Update could not be verified: no published checksum'
+      : 'Update failed verification: expected $expected, got $actual';
 }
 
 /// Thrown by [downloadAndApply] when the running `.app` sits in a directory we
@@ -87,11 +119,13 @@ UpdateInfo? parseLatestRelease(
   if (!isNewer(tag, currentVersion)) return null;
 
   String? zipUrl;
+  String? digestUrl;
   if (json['assets'] case final List assets) {
     for (final a in assets) {
-      if (a is Map && a['name'] == _macAsset) {
-        zipUrl = a['browser_download_url'] as String?;
-        break;
+      if (a is! Map) continue;
+      if (a['name'] == _macAsset) zipUrl = a['browser_download_url'] as String?;
+      if (a['name'] == _macDigestAsset) {
+        digestUrl = a['browser_download_url'] as String?;
       }
     }
   }
@@ -99,6 +133,7 @@ UpdateInfo? parseLatestRelease(
     version: tag.startsWith('v') ? tag.substring(1) : tag,
     notes: (json['body'] as String?)?.trim() ?? '',
     zipUrl: zipUrl ?? _stableMacUrl,
+    digestUrl: digestUrl ?? _stableMacDigestUrl,
     htmlUrl:
         (json['html_url'] as String?) ??
         'https://github.com/$_owner/$_repo/releases/latest',
@@ -136,11 +171,14 @@ Future<({UpdateInfo? info, bool failed})> checkForUpdate({
   }
 }
 
-/// Downloads the update, then hands off to a detached helper that waits for this
-/// process to quit, swaps the `.app` in place (quarantine stripped), and
-/// relaunches — after which this process exits. macOS only.
+/// Downloads the update, verifies it against the digest published beside it,
+/// then hands off to a detached helper that waits for this process to quit,
+/// swaps the `.app` in place (quarantine stripped), and relaunches — after
+/// which this process exits. macOS only.
 ///
-/// Throws [UpdateNotWritable] before downloading if the app can't be replaced.
+/// Throws [UpdateNotWritable] before downloading if the app can't be replaced,
+/// and [UpdateNotVerified] after downloading if the bytes don't match. Nothing
+/// on disk is touched until the download verifies.
 Future<void> downloadAndApply(
   UpdateInfo info, {
   void Function(double progress)? onProgress,
@@ -162,10 +200,14 @@ Future<void> downloadAndApply(
     throw UpdateNotWritable(appPath);
   }
 
+  // A private 0700 directory rather than a predictable name in world-writable
+  // /tmp: the helper script below runs as the user, and anything that can
+  // rewrite it between the write and the exec gets to run whatever it likes.
+  final work = Directory.systemTemp.createTempSync('tylog-update-');
+  final zipPath = '${work.path}/$_macAsset';
+
   // Stream the zip to a temp file, reporting progress.
   final http = HttpClient()..connectionTimeout = const Duration(seconds: 30);
-  final zipPath =
-      '${Directory.systemTemp.path}/tylog-update-${DateTime.now().millisecondsSinceEpoch}.zip';
   try {
     final request = await http.getUrl(Uri.parse(info.zipUrl));
     request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
@@ -182,6 +224,14 @@ Future<void> downloadAndApply(
       if (total > 0) onProgress?.call(received / total);
     }
     await sink.close();
+    final expected = await _fetchDigest(info.digestUrl, http);
+    final actual = sha256.convert(await File(zipPath).readAsBytes()).toString();
+    if (expected == null || expected != actual) {
+      throw UpdateNotVerified(expected: expected, actual: actual);
+    }
+  } catch (_) {
+    work.deleteSync(recursive: true);
+    rethrow;
   } finally {
     http.close(force: true);
   }
@@ -189,28 +239,57 @@ Future<void> downloadAndApply(
 
   // Detached helper: wait for us to exit, unzip with `ditto` (preserves the
   // bundle's exec bits + framework symlinks), swap, strip quarantine, relaunch.
-  final scriptPath =
-      '${Directory.systemTemp.path}/tylog-update-${DateTime.now().millisecondsSinceEpoch}.sh';
+  //
+  // The old bundle is moved aside, not deleted, and only removed once the new
+  // one is in place — `rm -rf "$APP" && ditto ...` left the user with no app at
+  // all if the copy failed halfway. On any failure the previous bundle is put
+  // back and relaunched.
+  final scriptPath = '${work.path}/apply.sh';
   await File(scriptPath).writeAsString('''
 #!/bin/bash
-PID="\$1"; ZIP="\$2"; APP="\$3"; STAGE="\$(mktemp -d)"
+PID="\$1"; ZIP="\$2"; APP="\$3"; WORK="\$4"; STAGE="\$(mktemp -d)"
 while kill -0 "\$PID" 2>/dev/null; do sleep 0.2; done
 /usr/bin/ditto -x -k "\$ZIP" "\$STAGE" || exit 1
 NEW="\$(/bin/ls -d "\$STAGE"/*.app 2>/dev/null | head -1)"
 [ -z "\$NEW" ] && exit 1
 /usr/bin/xattr -dr com.apple.quarantine "\$NEW" 2>/dev/null
-rm -rf "\$APP" && /usr/bin/ditto "\$NEW" "\$APP" || exit 1
+BACKUP="\$APP.previous-\$\$"
+mv "\$APP" "\$BACKUP" || exit 1
+if /usr/bin/ditto "\$NEW" "\$APP"; then
+  rm -rf "\$BACKUP"
+else
+  rm -rf "\$APP"
+  mv "\$BACKUP" "\$APP"
+fi
 /usr/bin/xattr -dr com.apple.quarantine "\$APP" 2>/dev/null
 /usr/bin/open "\$APP"
-rm -rf "\$STAGE" "\$ZIP" "\$0"
+rm -rf "\$STAGE" "\$WORK"
 ''');
 
   await Process.start(
     '/bin/bash',
-    [scriptPath, '$pid', zipPath, appPath],
+    [scriptPath, '$pid', zipPath, appPath, work.path],
     mode: ProcessStartMode.detached,
   );
   // Quit so the helper can replace the running bundle.
   await Future<void>.delayed(const Duration(milliseconds: 200));
   exit(0);
+}
+
+/// Fetches the published SHA-256 for the macOS asset, or null if unavailable.
+///
+/// The file holds the bare lowercase hex digest, one line, as written by
+/// `shasum -a 256 ... | awk '{print $1}'` in the release workflow.
+Future<String?> _fetchDigest(String url, HttpClient http) async {
+  try {
+    final request = await http.getUrl(Uri.parse(url));
+    request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
+    final response = await request.close();
+    if (response.statusCode != 200) return null;
+    final body = (await response.transform(utf8.decoder).join()).trim();
+    final digest = body.split(RegExp(r'\s+')).first.toLowerCase();
+    return RegExp(r'^[0-9a-f]{64}$').hasMatch(digest) ? digest : null;
+  } on Exception {
+    return null;
+  }
 }

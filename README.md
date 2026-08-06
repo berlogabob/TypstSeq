@@ -35,6 +35,7 @@ Linux remains compile-tested in CI. Current implementation and manual verificati
 - [TyLog ecosystem and CLI](docs/tylog-ecosystem.md)
 - [TyLog Format v1](spec/tylog-format-v1.md)
 - [Typst package](typst/tylog/README.md)
+- [Changelog](CHANGELOG.md)
 - [Implementation status](PLAN.md)
 - [Application graph](graphify-out/GRAPH_REPORT.md)
 

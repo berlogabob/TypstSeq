@@ -31,7 +31,16 @@ List<({int start, int end, TyLogBlockStyle style})> _ranges(TyLogDocument d) {
   for (final b in d.blocks) {
     final end = cursor + b.visibleText.length;
     out.add((start: cursor, end: end, style: b.style));
-    cursor = end + 2;
+    // Mirrors TyLogDocument.gapAfter: consecutive semantic blocks (a run of
+    // tasks, say) are one newline apart, not two.
+    final separator = b.separator;
+    cursor =
+        end +
+        (separator.isEmpty
+            ? 2
+            : RegExp(r'\n[ \t]*\n').hasMatch(separator)
+            ? 2
+            : 1);
   }
   return out;
 }
@@ -50,6 +59,10 @@ void main() {
     'adjacent-lists': '- a\n\n- b',
     'heading-then-para': '= Title\n\nbody',
     'task-then-para': '#tylog.task(id: "t1", text: "Ship it")\n\nbody',
+    'nested-list': '- a\n  - b\n    + c\n  1. d',
+    'list-item-tasks':
+        '- #tylog.task(id: "t1", text: "Buy milk", status: "done")\n'
+        '  - #tylog.task(id: "t2", text: "Sub", status: "done")\n\nafter',
     'equation-then-para': r'$x^2$' '\n\nbody',
     'inline-mix': '#strong[b] #emph[i] #strike[s]\n\nplain',
     'para-para': 'alpha\n\nbeta',
@@ -152,6 +165,39 @@ void main() {
       run('type', r.start, 'type @block-start : $cur');
     }
   }
+
+  // checkIdentity only ever calls toSource on a *clean* document, so it never
+  // reaches the serializer. This is the one probe that does — and it is the
+  // regression that was silently rewriting `  - b` to `- - b` on every save.
+  test('a nested list keeps its indentation and marker kinds', () {
+    final document = TyLogDocument.parse('- a\n  - b\n    + c\n  1. d');
+    // Indentation survives, and an ordered marker stays ordered instead of
+    // being flattened to a bullet by the block's first-line style.
+    expect(document.visibleText, '• a\n  • b\n    1. c\n  2. d');
+    final at = document.visibleText.indexOf('a');
+    document.replace(at, at + 1, 'A');
+    expect(document.toSource(), '- A\n  - b\n    + c\n  + d');
+  });
+
+  // A Logseq block is often several lines long; the importer emits them as one
+  // marker line followed by bare continuation lines. Those must not sprout
+  // bullets they never had — 6152 such lines across 457 imported notes.
+  test('a continuation line is not turned into a list item', () {
+    final document = TyLogDocument.parse('- item one\ncontinued here\n- item two');
+    expect(document.visibleText, '• item one\ncontinued here\n• item two');
+    final at = document.visibleText.indexOf('one');
+    document.replace(at, at + 3, 'ONE');
+    expect(document.toSource(), '- item ONE\ncontinued here\n- item two');
+  });
+
+  // The trailing empty bullet every Logseq page carries. It rendered as a
+  // bullet followed by a literal hyphen, in 996 of the imported files.
+  test('a marker with no content renders as an empty item, not a hyphen', () {
+    // `-` on its own is a marker with nothing after it. It used to fall out of
+    // the marker group (which required a trailing space) and render as the
+    // literal text "-" behind a bullet: "• -".
+    expect(TyLogDocument.parse('- a\n-').visibleText, '• a\n• ');
+  });
 
   test('AUDIT: serialize/parse identity + edit safety', () {
     synthetic.forEach((label, src) {

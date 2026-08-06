@@ -292,6 +292,15 @@ List<TypstCall> locateTypstCalls(
   final calls = <TypstCall>[];
   var i = 0;
   while (i < source.length) {
+    // A backslash escapes the next character, so `\`` is a literal backtick and
+    // not the start of a raw span. Without this, one escaped backtick made
+    // _skipRaw run to end-of-file looking for a closing pair and every call
+    // after it — every task in the note — became invisible to this scanner.
+    // The importer escapes freely, so a note only has to contain "->`->" once.
+    if (source.codeUnitAt(i) == 92) {
+      i += 2;
+      continue;
+    }
     if (source.startsWith('//', i)) {
       i = source.indexOf('\n', i);
       if (i < 0) break;
@@ -301,10 +310,14 @@ List<TypstCall> locateTypstCalls(
       i = _skipBlockComment(source, i);
       continue;
     }
-    if (source.codeUnitAt(i) == 34) {
-      i = _skipString(source, i);
-      continue;
-    }
+    // Deliberately NOT skipping `"` here. This loop walks *markup*, where a
+    // quote is ordinary text — only inside a call is it a string delimiter, and
+    // _balancedEnd/_locateTopLevelField handle it there. Treating it as a
+    // delimiter at this level meant one unpaired quote in prose opened a
+    // "string" that closed on the `id: "` of a later call, flipping parity and
+    // hiding every task after it: notes/bbc___block1.typ has 12 tasks of which
+    // the scanner saw 10, and the two it lost threw "Task not found" on every
+    // edit while the UI happily listed them.
     if (source.codeUnitAt(i) == 96) {
       i = _skipRaw(source, i);
       continue;
@@ -700,6 +713,9 @@ VaultIndex _buildVaultIndex(
                 : 'broken-link',
             severity: PkmsSeverity.warning,
             subject: source.path,
+            // The Problems screen parses the target back out of this string
+            // (unresolvedLinkTargets) to offer bulk page creation — keep the
+            // `<status> link: <target>` shape.
             message: '${resolved.status.name} link: $target',
             fix: 'Choose a unique note ID or create the missing note.',
           ),
@@ -857,6 +873,79 @@ String serializeNoteHeader(NoteMetadataDraft draft) {
 /// `properties`. Only touches notes that are still on the generic `kind:
 /// "note"` default with a non-empty `properties["type"]`; already-specific
 /// kinds are left untouched so this is safe to run repeatedly (idempotent)
+
+/// Removes the org-mode bookkeeping a Logseq export carries into a note:
+/// `:LOGBOOK:` drawers with their `CLOCK:` records and state-change lines, and
+/// the empty block every page trails.
+///
+/// Repairs notes imported before the converter learned to drop these — a
+/// re-import cannot, because the wizard skips a source whose SHA is unchanged.
+/// Returns [source] unchanged when there is nothing to strip, so it is
+/// idempotent and safe to run repeatedly.
+///
+/// Matches by line shape rather than parsing the drawer, exactly like
+/// `strip_logseq_noise` in the Rust converter: a real vault has orphan `:END:`
+/// lines and unclosed openers, and a state machine would either leak those or
+/// swallow real content past an unclosed opener. Only *trailing* empty bullets
+/// go; an empty item between two others is deliberate spacing.
+String stripLogseqNoise(String source) {
+  final lines = source.split('\n');
+  // A trailing newline leaves an empty final element. That is the terminator,
+  // not a line — leaving it in blocked the trailing sweep below on every file
+  // whose only noise was the empty end block.
+  final endsWithNewline = lines.isNotEmpty && lines.last.isEmpty;
+  if (endsWithNewline) lines.removeLast();
+
+  // A CLOCK: record is the user's time tracking, not noise — the converter
+  // captures it into properties("clocked") now. If any survives in this note
+  // the drawer is left completely alone rather than deleted, because deleting
+  // it is unrecoverable and this runs from a one-tap Settings action. Only
+  // genuinely empty drawers are cleaned.
+  final holdsTime = lines.any((line) => line.trim().startsWith('CLOCK:'));
+
+  final kept = <String>[];
+  var removed = 0;
+  for (final line in lines) {
+    final trimmed = line.trim();
+    final isDrawer =
+        trimmed == ':LOGBOOK:' ||
+        trimmed == ':END:' ||
+        trimmed.startsWith('- State "');
+    if (!holdsTime && isDrawer) {
+      removed++;
+      continue;
+    }
+    kept.add(line);
+  }
+
+  // Trailing empty blocks, plus any blank lines tangled up with them. Blanks
+  // alone never count as noise, so a file that merely ends in whitespace is
+  // returned untouched.
+  var pending = 0;
+  while (kept.isNotEmpty) {
+    final trimmed = kept.last.trim();
+    if (trimmed == '-' || trimmed == '+' || trimmed == r'\-') {
+      kept.removeLast();
+      removed += 1 + pending;
+      pending = 0;
+      continue;
+    }
+    if (trimmed.isEmpty) {
+      kept.removeLast();
+      pending++;
+      continue;
+    }
+    break;
+  }
+  // Put back any blanks that turned out not to precede an empty block.
+  for (var i = 0; i < pending; i++) {
+    kept.add('');
+  }
+
+  if (removed == 0) return source;
+  return endsWithNewline ? '${kept.join('\n')}\n' : kept.join('\n');
+}
+
 /// and never clobbers a deliberately-set kind.
 String migrateEntityTypeToKind(String source) {
   final call = _noteHeader(source);
@@ -887,9 +976,14 @@ String migrateEntityTypeToKind(String source) {
 /// whitespace/newline so callers can replace it without disturbing
 /// formatting around it.
 class _DictEntry {
-  const _DictEntry(this.start, this.end);
+  const _DictEntry(this.start, this.end, this.valueStart);
+
+  /// Bounds of the whole `"key": value` entry.
   final int start;
   final int end;
+
+  /// Where the value begins, for readers that want it without the key.
+  final int valueStart;
 }
 
 /// Locates the top-level `"key": value` entry for [key] inside [dictSource]
@@ -916,7 +1010,15 @@ _DictEntry? _locateDictEntry(String dictSource, String key) {
           : rawKey;
       if (decodedKey == key) {
         final leading = match.group(1)!.length;
-        return _DictEntry(offset + leading, offset + part.length);
+        var valueStart = match.end;
+        while (valueStart < part.length && _space(part.codeUnitAt(valueStart))) {
+          valueStart++;
+        }
+        return _DictEntry(
+          offset + leading,
+          offset + part.length,
+          offset + valueStart,
+        );
       }
     }
     offset += part.length + 1;
@@ -937,9 +1039,15 @@ String replaceNoteProperty(String source, String key, Object? value) {
   final encodedValue = _typstValue(value);
   final propsField = _locateTopLevelField(header, 'properties');
   if (propsField == null) {
-    final newHeader = header.replaceFirst(
-      RegExp(r'\)\s*$'),
-      '  properties: (${typstString(key)}: $encodedValue,),\n)',
+    // Must go through the same separator-aware append as every other writer:
+    // a blind splice before `)` drops the comma on a single-line header
+    // (`kind: "note"  properties: (…)`), which is exactly the defect that made
+    // 406 task calls unparseable. `_noteSource` only ever writes multi-line
+    // headers today, so this is the latent half of that bug, not a live one.
+    final newHeader = _appendCallField(
+      header,
+      'properties',
+      '(${typstString(key)}: $encodedValue,)',
     );
     return source.replaceRange(call.start, call.end, newHeader);
   }
@@ -955,13 +1063,8 @@ String replaceNoteProperty(String source, String key, Object? value) {
       entry.end,
       '${typstString(key)}: $encodedValue',
     );
-  } else if (dictSource.trim() == '(:)') {
-    newDict = '(${typstString(key)}: $encodedValue,)';
   } else {
-    newDict = dictSource.replaceFirst(
-      RegExp(r'\)\s*$'),
-      '${typstString(key)}: $encodedValue,)',
-    );
+    newDict = _appendDictEntry(dictSource, key, encodedValue);
   }
   final newHeader = header.replaceRange(
     propsField.valueStart,
@@ -982,8 +1085,14 @@ Map<String, Object?> _parseProperties(String callSource) {
   if (!value.startsWith('(') || !value.endsWith(')')) return const {};
   final inner = value.substring(1, value.length - 1).trim();
   if (inner.isEmpty || inner == ':') return const {};
+  // Typst allows a bare identifier as a dictionary key, and hand-written and
+  // imported headers use it: `properties: (type: "person",)`. Reading only
+  // quoted keys made those properties invisible — which silently disabled
+  // `migrateEntityTypeToKind` on exactly the notes it exists to fix, and let
+  // `replaceNoteHeader` drop the key on the next write. `_locateDictEntry`
+  // already accepts both forms; this is the reader catching up.
   final entryKeyValue = RegExp(
-    r'^\s*"((?:\\.|[^"\\])*)"\s*:\s*(.*)$',
+    r'^\s*(?:"((?:\\.|[^"\\])*)"|([A-Za-z_][A-Za-z0-9_\-]*))\s*:\s*(.*)$',
     dotAll: true,
   );
   final result = <String, Object?>{};
@@ -991,10 +1100,11 @@ Map<String, Object?> _parseProperties(String callSource) {
     if (entry.trim().isEmpty) continue;
     final match = entryKeyValue.firstMatch(entry);
     if (match == null) continue;
-    final key = match
-        .group(1)!
-        .replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
-    result[key] = _parsePropertyValue(match.group(2)!.trim());
+    final key = (match.group(1) ?? match.group(2)!).replaceAllMapped(
+      RegExp(r'\\(.)'),
+      (m) => m.group(1)!,
+    );
+    result[key] = _parsePropertyValue(match.group(3)!.trim());
   }
   return result;
 }
@@ -1069,7 +1179,7 @@ String replaceTaskStatus(String source, String id, String status) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'status');
   final replacement = field == null
-      ? call.source.replaceFirst(RegExp(r'\)\s*$'), '  status: "$status",\n)')
+      ? _appendCallField(call.source, 'status', '"$status"')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1082,10 +1192,7 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'completed');
   final replacement = field == null
-      ? call.source.replaceFirst(
-          RegExp(r'\)\s*$'),
-          '  completed: ("$timestamp",),\n)',
-        )
+      ? _appendCallField(call.source, 'completed', '("$timestamp",)')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1094,16 +1201,201 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   return source.replaceRange(call.start, call.end, replacement);
 }
 
+/// Inserts `name: value` just before a Typst call's closing paren — used for
+/// both `#tylog.task(...)` fields and `tylog.note.with(...)` header fields.
+///
+/// The separator depends on how the call was written: the multi-line form ends
+/// `,\n)` and needs none, while a single-line `#tylog.task(id: "x", text: "y")`
+/// ends on a value and needs `, `. Getting this wrong produces
+/// `priority: "normal"  clocked: (...)`, which is not valid Typst and silently
+/// makes the whole task unreadable.
+String _appendCallField(String callSource, String name, String value) {
+  final close = callSource.lastIndexOf(')');
+  if (close < 0) return callSource;
+  var before = close - 1;
+  while (before >= 0 && _isSpace(callSource.codeUnitAt(before))) {
+    before--;
+  }
+  if (before < 0) return callSource;
+  final previous = callSource[before];
+  final multiline = callSource.substring(before + 1, close).contains('\n');
+  if (previous == ',') {
+    return callSource.replaceRange(
+      before + 1,
+      close,
+      multiline ? '\n  $name: $value,\n' : ' $name: $value,',
+    );
+  }
+  if (previous == '(') {
+    return callSource.replaceRange(before + 1, close, '$name: $value,');
+  }
+  return callSource.replaceRange(before + 1, close, ', $name: $value,');
+}
+
+bool _isSpace(int code) => code == 32 || code == 9 || code == 10 || code == 13;
+
+/// Appends `"key": value` to a Typst dictionary literal, supplying the comma
+/// the previous entry may not have.
+///
+/// `("status": "read")` has no trailing comma, so a blind splice before the
+/// closing paren yields `("status": "read""clocked": …)` — the same
+/// missing-separator defect that made 406 task calls unreadable, one level
+/// down.
+String _appendDictEntry(String dict, String key, String rawValue) {
+  final entry = '${typstString(key)}: $rawValue,';
+  if (dict.trim() == '(:)' || dict.trim() == '()') return '($entry)';
+  final close = dict.lastIndexOf(')');
+  if (close < 0) return dict;
+  var before = close - 1;
+  while (before >= 0 && _space(dict.codeUnitAt(before))) {
+    before--;
+  }
+  if (before < 0) return dict;
+  final separator = dict[before] == ',' || dict[before] == '(' ? '' : ', ';
+  return dict.replaceRange(before + 1, close, '$separator$entry');
+}
+
+/// Sets [id]'s tracked sessions, stored as `properties("clocked")`.
+///
+/// Duplicate `(start, end)` pairs collapse — the imported data holds 171 exact
+/// repeats — and order is preserved otherwise.
+String setTaskClocked(String source, String id, List<ClockEntry> entries) {
+  final seen = <String>{};
+  final unique = <ClockEntry>[];
+  for (final entry in entries) {
+    if (seen.add('${entry.start}|${entry.end}')) unique.add(entry);
+  }
+  final rendered = unique
+      .map(
+        (entry) =>
+            '("${entry.start}", ${entry.end == null ? 'none' : '"${entry.end}"'})',
+      )
+      .join(', ');
+  final call = _locateTaskCall(source, id);
+  return source.replaceRange(
+    call.start,
+    call.end,
+    // Also drops a legacy top-level `clocked:` argument, so a note written
+    // before the data moved into properties migrates the first time it is
+    // touched — and stops failing to compile on packages that never had that
+    // argument.
+    _removeTaskField(
+      _setTaskProperty(
+        call.source,
+        'clocked',
+        unique.isEmpty ? null : '($rendered,)',
+      ),
+      'clocked',
+    ),
+  );
+}
+
+/// Removes a top-level named argument from a task call, tidying the comma.
+String _removeTaskField(String callSource, String name) {
+  final field = _locateTopLevelField(callSource, name);
+  if (field == null) return callSource;
+  var end = field.end;
+  while (end < callSource.length && _space(callSource.codeUnitAt(end))) {
+    end++;
+  }
+  if (end < callSource.length && callSource[end] == ',') end++;
+  var start = field.start;
+  // If nothing follows, take the comma that preceded it instead.
+  if (end >= callSource.length || callSource.substring(end).trim() == ')') {
+    while (start > 0 && _space(callSource.codeUnitAt(start - 1))) {
+      start--;
+    }
+    if (start > 0 && callSource[start - 1] == ',') start--;
+  }
+  return callSource.replaceRange(start, end, '');
+}
+
+/// Sets (or removes, when [rawValue] is null) `properties[key]` on a task
+/// call, leaving every other argument byte-identical.
+///
+/// Time tracking lives here rather than in a named argument because a dict
+/// tolerates keys an older Typst package has never seen, while an unknown
+/// named argument is a hard compile error — and the package syncs between
+/// devices that may be on different builds.
+String _setTaskProperty(String callSource, String key, String? rawValue) {
+  final field = _locateTopLevelField(callSource, 'properties');
+  if (field == null) {
+    if (rawValue == null) return callSource;
+    return _appendCallField(
+      callSource,
+      'properties',
+      '(${typstString(key)}: $rawValue,)',
+    );
+  }
+  final dict = callSource.substring(field.valueStart, field.valueEnd);
+  final entry = _locateDictEntry(dict, key);
+  final String next;
+  if (entry != null) {
+    next = rawValue == null
+        ? _stripDictEntry(dict, entry)
+        : dict.replaceRange(
+            entry.start,
+            entry.end,
+            '${typstString(key)}: $rawValue',
+          );
+  } else if (rawValue == null) {
+    return callSource;
+  } else {
+    next = _appendDictEntry(dict, key, rawValue);
+  }
+  return callSource.replaceRange(field.valueStart, field.valueEnd, next);
+}
+
+/// Removes one entry from a dictionary literal, collapsing the comma it left.
+String _stripDictEntry(String dict, _DictEntry entry) {
+  final without = dict.replaceRange(entry.start, entry.end, '');
+  final cleaned = without.replaceAll(RegExp(r',\s*,'), ',').replaceAll(
+    RegExp(r'\(\s*,'),
+    '(',
+  );
+  return cleaned.trim() == '()' ? '(:)' : cleaned;
+}
+
+/// Opens a new tracked session on [id].
+///
+/// Closes the session currently running on this task first, so a task can
+/// never accumulate two open clocks — Logseq's willingness to do exactly that
+/// is how 107 of this vault's sessions ended with no end at all. Older strays
+/// are left open for the flagging path rather than back-dated.
+///
+/// Stopping a clock running on a *different* task is the caller's job; see the
+/// one-running-clock rule in the app layer.
+String startTaskClock(String source, String id, String startIso) {
+  final closed = stopTaskClock(source, id, startIso);
+  final call = _locateTaskCall(closed, id);
+  return setTaskClocked(closed, id, [
+    ...parseClockedField(call.source),
+    ClockEntry(start: startIso),
+  ]);
+}
+
+/// Closes the session running on [id]. A no-op when nothing is running.
+///
+/// Only the most recent open session closes. Four tasks in the real vault
+/// carry two, and closing both to one timestamp invented a second session of
+/// identical length and double-counted the time.
+String stopTaskClock(String source, String id, String endIso) {
+  final call = _locateTaskCall(source, id);
+  final entries = parseClockedField(call.source);
+  final index = entries.lastIndexWhere((entry) => entry.isRunning);
+  if (index < 0) return source;
+  final next = [...entries];
+  next[index] = ClockEntry(start: next[index].start, end: endIso);
+  return setTaskClocked(source, id, next);
+}
+
 String replaceTaskText(String source, String id, String text) {
   final call = _locateTaskCall(source, id);
   final quoted =
       '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   final field = _locateTopLevelField(call.source, 'text');
   final replacement = field == null
-      ? call.source.replaceFirst(
-          RegExp(r'\)\s*$'),
-          '  text: $quoted,\n)',
-        )
+      ? _appendCallField(call.source, 'text', quoted)
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1385,6 +1677,91 @@ NoteRef _fallbackNote(
   );
 }
 
+/// `clocked` as it arrives from `typst query`: an array of two-element arrays,
+/// with `none` decoding to null. Deliberately not [stringList] — that calls
+/// `toString()` on each element and would yield the literal
+/// `"[2025-12-25T12:33:43, null]"` for every session.
+List<ClockEntry> _clockedFromMetadata(Object? value) {
+  if (value is! List) return const [];
+  final entries = <ClockEntry>[];
+  for (final pair in value) {
+    if (pair is! List || pair.isEmpty) continue;
+    final start = pair.first;
+    if (start is! String || start.isEmpty) continue;
+    final end = pair.length > 1 ? pair[1] : null;
+    entries.add(ClockEntry(start: start, end: end is String ? end : null));
+  }
+  return entries;
+}
+
+/// `clocked` read straight from the call source, for notes whose Typst
+/// metadata was unavailable — 399 of them in a real vault, so this path is not
+/// an edge case.
+///
+/// Built on [_locateTopLevelField] rather than `_parseList`. That helper's
+/// `([^)]*)` stops at the first inner `)`, so for
+/// `clocked: (("a", "b"), ("c", none),)` it captures only `("a", "b"` and every
+/// session after the first vanishes with no error; its `.toSet()` would destroy
+/// the pairing on top of that.
+List<ClockEntry> parseClockedField(String callSource) {
+  // `properties: ("clocked": (...))` is where it lives; a bare top-level
+  // `clocked:` is the shape written before it moved, still read so notes
+  // authored in between keep their time.
+  final properties = _locateTopLevelField(callSource, 'properties');
+  String? value;
+  if (properties != null) {
+    final dict = callSource.substring(
+      properties.valueStart,
+      properties.valueEnd,
+    );
+    final entry = _locateDictEntry(dict, 'clocked');
+    if (entry != null) {
+      value = dict.substring(entry.valueStart, entry.end).trim();
+    }
+  }
+  if (value == null) {
+    final field = _locateTopLevelField(callSource, 'clocked');
+    if (field == null) return const [];
+    value = callSource.substring(field.valueStart, field.valueEnd);
+  }
+  final entries = <ClockEntry>[];
+  var depth = 0;
+  var groupStart = -1;
+  for (var i = 0; i < value.length; i++) {
+    final char = value[i];
+    if (char == '"') {
+      i = _skipString(value, i) - 1;
+      continue;
+    }
+    if (char == '(') {
+      if (depth == 1) groupStart = i;
+      depth++;
+      continue;
+    }
+    if (char == ')') {
+      depth--;
+      if (depth == 1 && groupStart >= 0) {
+        final entry = _clockPair(value.substring(groupStart + 1, i));
+        if (entry != null) entries.add(entry);
+        groupStart = -1;
+      }
+    }
+  }
+  return entries;
+}
+
+/// `"2025-12-25T12:33:43", none` — the inside of one `clocked` pair.
+ClockEntry? _clockPair(String group) {
+  final quoted = RegExp(r'"((?:\\.|[^"])*)"').allMatches(group).toList();
+  if (quoted.isEmpty) return null;
+  final start = quoted.first.group(1)!;
+  if (start.isEmpty) return null;
+  return ClockEntry(
+    start: start,
+    end: quoted.length > 1 ? quoted[1].group(1) : null,
+  );
+}
+
 List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
     values
         .map(
@@ -1404,6 +1781,9 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
             assignees: stringList(value['assignees']),
             tags: stringList(value['tags']),
             completed: stringList(value['completed']),
+            clocked: _clockedFromMetadata(
+              (value['properties'] as Map?)?['clocked'] ?? value['clocked'],
+            ),
             properties: (value['properties'] as Map? ?? const {})
                 .cast<String, Object?>(),
           ),
@@ -1429,6 +1809,7 @@ List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
         assignees: _parseList(call.source, 'assignees'),
         tags: _parseList(call.source, 'tags'),
         completed: _parseList(call.source, 'completed'),
+        clocked: parseClockedField(call.source),
       ),
     )
     .where((task) => task.id.isNotEmpty && task.text.isNotEmpty)
@@ -1641,10 +2022,15 @@ List<String> _normalizedTags(
   Set<String> values, [
   Map<String, String> synonyms = const {},
 ]) => _sorted({
-  for (final tag in values) _normalizeTag(tag, synonyms),
+  for (final tag in values) normalizeTag(tag, synonyms),
 }..remove(''));
 
-String _normalizeTag(String tag, [Map<String, String> synonyms = const {}]) {
+/// Folds a tag to the form the index stores (`3D` → `3d`, `quick capture` →
+/// `quick-capture`). Public because callers comparing arbitrary user text
+/// against index tags — e.g. deciding whether an unresolved `[[Tutorial]]` is
+/// really the existing `tutorial` tag — must fold the same way or they miss
+/// most of the overlap.
+String normalizeTag(String tag, [Map<String, String> synonyms = const {}]) {
   final folded = tag.trim().toLowerCase().replaceAll(RegExp(r'[\s_]+'), '-');
   // One hop only. A map that happens to contain `a -> b` and `b -> c` must not
   // drag `a` all the way to `c`: chained merges are how a synonym set drifts
@@ -1746,10 +2132,11 @@ int? _balancedContentEnd(String source, int open) {
       i = _skipBlockComment(source, i);
       continue;
     }
-    if (source.codeUnitAt(i) == 34) {
-      i = _skipString(source, i);
-      continue;
-    }
+    // No string-skipping here: `[...]` is markup, where a `"` is literal text
+    // like any other character. Treating it as a delimiter makes an odd number
+    // of quotes in a task's text swallow the closing `]` and run to the next
+    // quote — or to EOF. Same defect as the one removed from
+    // `locateTypstCalls`; nothing in the vault trips it yet.
     if (source.codeUnitAt(i) == 91) depth++;
     if (source.codeUnitAt(i) == 93 && --depth == 0) return i + 1;
     i++;

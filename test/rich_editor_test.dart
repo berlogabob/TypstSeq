@@ -2394,4 +2394,86 @@ void main() {
       expect(controller.document.toSource(), taskSource);
     },
   );
+
+  // A `#` inside a raw backtick span is not a call — _parseInline never parses
+  // markup in there. The editability gate did not know that, so a password
+  // like `uW!w9AfvTQU3SS#77` collapsed the whole note into one "Custom Typst"
+  // box, hiding an entire day's journal.
+  test('a # inside backticks keeps the block editable', () {
+    final document = TyLogDocument.parse(r'pswrd `uW!w9AfvTQU3SS#77` end');
+
+    expect(document.blocks.single.style, TyLogBlockStyle.paragraph);
+    expect(document.visibleText, 'pswrd uW!w9AfvTQU3SS#77 end');
+    expect(document.toSource(), r'pswrd `uW!w9AfvTQU3SS#77` end');
+  });
+
+  test('an unclosed backtick still guards the # as before', () {
+    // No closing backtick means no raw span, so the bare `#` must still make
+    // the block protected rather than silently parsing as a call.
+    final document = TyLogDocument.parse('a `b #c');
+    expect(document.blocks.single.style, TyLogBlockStyle.protected);
+  });
+
+  test('a link chip labelled with its own URL is shortened for display', () {
+    const source =
+        '#link("https://www.ispo.com/en/promotion/ispo-award-winner-peak-design'
+        '-outdoor-backpack-45l?utm_medium=paid")'
+        '[https://www.ispo.com/en/promotion/ispo-award-winner-peak-design'
+        '-outdoor-backpack-45l?utm_medium=paid]';
+    final document = TyLogDocument.parse(source);
+    final atom = document.blocks.single.parts.firstWhere((p) => p.isAtom);
+
+    expect(atom.label, 'ispo.com/ispo-award-winner-peak-design-o…');
+    expect(atom.label!.length, lessThan(48));
+    // Display only — the source must survive untouched.
+    expect(document.toSource(), source);
+  });
+
+  test('a short or authored link label is left alone', () {
+    final short = TyLogDocument.parse('#link("https://ex.com/a")[click here]');
+    expect(
+      short.blocks.single.parts.firstWhere((p) => p.isAtom).label,
+      'click here',
+    );
+    // Long, but not a link: an authored body stays fully readable.
+    final step = TyLogDocument.parse(
+      '#step[${'a really long authored body ' * 3}]',
+    );
+    expect(
+      step.blocks.single.parts.firstWhere((p) => p.isAtom).label!.length,
+      greaterThan(48),
+    );
+  });
+
+  // The bracket grammar used to be `[^\]]*`, which stops at the first `]`
+  // whatever precedes it. A title carrying `\]` therefore matched only half of
+  // itself: the chip showed a truncated label ending in a stray backslash, and
+  // the leftover `]` was rendered as text beside it. Three such labels in the
+  // vault, in two notes.
+  test('an atom label survives escaped brackets', () {
+    const source =
+        r'#tylog.ref-note("md-82c2")[Know in 90 Minutes \[2026 Edition\]]';
+
+    final document = TyLogDocument.parse(source);
+    final parts = document.blocks.single.parts;
+
+    expect(document.visibleText, '\uFFFC', reason: 'no stray `]` beside the chip');
+    expect(parts.where((part) => part.isAtom), hasLength(1));
+    expect(parts.single.label, 'Know in 90 Minutes [2026 Edition]');
+    expect(document.toSource(validate: false), source);
+  });
+
+  // Genuinely nested: `#link(...)[#link(...)[…]]`. One atom, not a truncated
+  // one trailing a stray bracket.
+  test('an atom label survives one level of nesting', () {
+    const source =
+        r'#link("https://a.example/x")[#link("https://b.example/y")[Image: 1]]';
+
+    final document = TyLogDocument.parse(source);
+
+    expect(document.visibleText, '\uFFFC');
+    expect(document.blocks.single.parts, hasLength(1));
+    expect(document.toSource(validate: false), source);
+  });
+
 }

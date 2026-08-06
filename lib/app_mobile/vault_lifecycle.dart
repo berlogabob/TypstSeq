@@ -104,10 +104,6 @@ extension _VaultLifecycle on _HomeScreenState {
     }
   }
 
-  Future<void> _ensureIndexed() async {
-    await workspace.ensureIndexed();
-  }
-
   Future<void> _switchVault(VaultEntry entry) async {
     final registry = vaultRegistry;
     if (registry == null || registry.activeId == entry.id) return;

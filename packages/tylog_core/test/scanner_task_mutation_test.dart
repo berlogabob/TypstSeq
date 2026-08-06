@@ -367,6 +367,239 @@ void main() {
       },
     );
   });
+
+  group('clocked time tracking', () {
+    const multi =
+        '#tylog.task(\n'
+        '  id: "t1",\n'
+        '  text: "Ship it",\n'
+        '  clocked: (("2025-12-25T12:33:43", "2025-12-27T09:15:31"), '
+        '("2025-12-28T10:02:11", none),),\n'
+        ')\n';
+
+    // Not built on _parseList: its ([^)]*) stops at the first inner ")",
+    // keeping one session and dropping the rest with no error at all.
+    test('the fallback path reads every session, not just the first', () {
+      final entries = parseClockedField(multi);
+
+      expect(entries, hasLength(2));
+      expect(entries.first.start, '2025-12-25T12:33:43');
+      expect(entries.first.end, '2025-12-27T09:15:31');
+      expect(entries.last.start, '2025-12-28T10:02:11');
+      expect(entries.last.end, isNull, reason: 'still running');
+    });
+
+    test('a text field shaped like a clocked list is not mistaken for one', () {
+      const source =
+          '#tylog.task(id: "t1", text: "clocked: (a (b) c) noted", '
+          'clocked: (("2025-01-01T09:00:00", "2025-01-01T10:00:00"),))\n';
+
+      final entries = parseClockedField(source);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.start, '2025-01-01T09:00:00');
+    });
+
+    test('start appends an open session and stop closes it', () {
+      const source = '#tylog.task(id: "t1", text: "Work")\n';
+
+      final started = startTaskClock(source, 't1', '2026-08-06T09:00:00');
+      // Re-locate the call rather than substring-matching: a `contains` check
+      // passed happily while the writer was emitting
+      // `priority: "normal"  clocked: (...)` — no comma, not valid Typst, and
+      // the whole task unreadable.
+      expect(
+        locateTypstCalls(started, names: {'tylog.task'}),
+        hasLength(1),
+        reason: 'the call must still parse',
+      );
+      expect(parseClockedField(started).single.isRunning, isTrue);
+
+      final stopped = stopTaskClock(started, 't1', '2026-08-06T10:30:00');
+      final entry = parseClockedField(stopped).single;
+      expect(entry.end, '2026-08-06T10:30:00');
+      expect(entry.elapsed, const Duration(hours: 1, minutes: 30));
+      expect(stopped, contains('text: "Work"'));
+    });
+
+    // Logseq's willingness to leave several clocks open on one task is how
+    // 107 of this vault's sessions ended up with no end at all.
+    test('starting twice closes the first session rather than stacking', () {
+      var source = '#tylog.task(id: "t1", text: "Work")\n';
+      source = startTaskClock(source, 't1', '2026-08-06T09:00:00');
+      source = startTaskClock(source, 't1', '2026-08-06T11:00:00');
+
+      final entries = parseClockedField(source);
+      expect(entries, hasLength(2));
+      expect(entries.first.end, '2026-08-06T11:00:00');
+      expect(entries.where((entry) => entry.isRunning), hasLength(1));
+    });
+
+    // Both call shapes the vault actually contains. The single-line form has
+    // no trailing comma, so an appended field must supply its own.
+    test('appending clocked keeps both call shapes valid Typst', () {
+      const single = '#tylog.task(id: "t1", text: "W", priority: "normal")\n';
+      const multi =
+          '#tylog.task(\n  id: "t1",\n  text: "W",\n  priority: "normal",\n)\n';
+
+      for (final source in [single, multi]) {
+        final out = setTaskClocked(source, 't1', const [
+          ClockEntry(start: '2026-08-06T09:00:00', end: '2026-08-06T10:00:00'),
+        ]);
+
+        expect(
+          locateTypstCalls(out, names: {'tylog.task'}),
+          hasLength(1),
+          reason: 'call must still parse: $out',
+        );
+        expect(parseClockedField(out), hasLength(1));
+        expect(out, isNot(contains('"  clocked')));
+        // Every other field survives.
+        expect(taskField(out, 'text'), 'W');
+      }
+    });
+
+    test('stopping with nothing running leaves the source untouched', () {
+      const source =
+          '#tylog.task(id: "t1", text: "Work", clocked: (("a", "b"),))\n';
+
+      expect(stopTaskClock(source, 't1', '2026-08-06T10:00:00'), same(source));
+    });
+
+    test('totals exclude misfires, runaways and running sessions', () {
+      const task = TaskRef(
+        id: 't1',
+        notePath: 'notes/a.typ',
+        text: 'Work',
+        clocked: [
+          // A 2s misfire — 41% of the imported data looks like this.
+          ClockEntry(start: '2026-01-01T09:00:00', end: '2026-01-01T09:00:02'),
+          ClockEntry(start: '2026-01-01T10:00:00', end: '2026-01-01T12:00:00'),
+          // Runaway: 37 such entries held 94% of all recorded time.
+          ClockEntry(start: '2026-01-02T10:00:00', end: '2026-01-09T10:00:00'),
+          ClockEntry(start: '2026-01-03T10:00:00'),
+        ],
+      );
+
+      expect(task.clockedTotal, const Duration(hours: 2));
+      expect(task.clockedOn('2026-01-01'), const Duration(hours: 2));
+      expect(task.runningClock?.start, '2026-01-03T10:00:00');
+    });
+
+    test('ClockEntry round-trips through JSON with a null end', () {
+      const running = ClockEntry(start: '2026-08-06T09:00:00');
+      expect(ClockEntry.fromJson(running.toJson()), running);
+
+      const closed = ClockEntry(
+        start: '2026-08-06T09:00:00',
+        end: '2026-08-06T10:00:00',
+      );
+      expect(ClockEntry.fromJson(closed.toJson()), closed);
+    });
+  });
+
+
+  group('single-line calls survive every writer', () {
+    // The shape the in-app Task chip and typst/tylog/README.md emit: no
+    // trailing comma, and no `status`/`completed` field, so each writer takes
+    // its append branch. The multi-line shape every other test uses hid this.
+    const source =
+        '#tylog.task(id: "t1", text: "Task", due: none, project: none)\n';
+
+    void expectStillACall(String out, String label) {
+      expect(
+        locateTypstCalls(out, names: {'tylog.task'}),
+        hasLength(1),
+        reason: '$label produced something the scanner cannot read: $out',
+      );
+      // `project: none  status: "done"` — no separator — is what Typst
+      // rejects with `error: expected comma`, and what the paren-based
+      // scanner accepts anyway, so assert on the text as well.
+      expect(out, isNot(matches(RegExp(r'(none|"[a-z]+")\s\s+[a-z]+:'))), reason: label);
+    }
+
+    test('replaceTaskStatus', () {
+      final out = replaceTaskStatus(source, 't1', 'done');
+      expectStillACall(out, 'replaceTaskStatus');
+      expect(taskField(out, 'status'), 'done');
+      expect(taskField(out, 'text'), 'Task');
+    });
+
+    test('replaceTaskText', () {
+      const bare = '#tylog.task(id: "t1", status: "todo")\n';
+      final out = replaceTaskText(bare, 't1', 'Renamed');
+      expectStillACall(out, 'replaceTaskText');
+      expect(taskField(out, 'text'), 'Renamed');
+    });
+
+    test('completeTaskOccurrence', () {
+      final out = completeTaskOccurrence(source, 't1', '2026-01-01T00:00:00');
+      expectStillACall(out, 'completeTaskOccurrence');
+      expect(out, contains('completed: ("2026-01-01T00:00:00",)'));
+    });
+  });
+
+  group('delimiters in prose do not hide tasks', () {
+    // Both shapes cost this vault real tasks: an unpaired quote in Russian
+    // prose hid two of one note's twelve, and a stray escaped backtick hid
+    // every task after it in another.
+    test('an unpaired quote in markup is text, not a string', () {
+      const source =
+          '- я "разобрал все модификаторы\n'
+          '- #tylog.task(id: "t1", text: "One")\n'
+          '- #tylog.task(id: "t2", text: "Two")\n';
+
+      expect(locateTypstCalls(source, names: {'tylog.task'}), hasLength(2));
+      expect(() => replaceTaskStatus(source, 't2', 'done'), returnsNormally);
+    });
+
+    // Same rule one level in: a call's `[...]` content block is markup too, so
+    // a lone quote inside it is text. Treating it as a string delimiter made
+    // the scan swallow the closing bracket and run on to the next quote.
+    test('an unpaired quote inside a content block is text too', () {
+      const source =
+          '#tylog.link("Notes/A.typ")[5" pipe]\n'
+          '#tylog.task(id: "t1", text: "One")\n';
+
+      final calls = locateTypstCalls(source, names: {'tylog.link', 'tylog.task'});
+
+      expect(calls, hasLength(2));
+      expect(calls.first.source, endsWith('[5" pipe]'));
+      expect(calls.last.source, contains('id: "t1"'));
+    });
+
+    test('an escaped backtick does not open a raw span', () {
+      const source =
+          '- \\-\\>\\`\\-\\>\n'
+          '- #tylog.task(id: "t1", text: "One")\n';
+
+      expect(locateTypstCalls(source, names: {'tylog.task'}), hasLength(1));
+    });
+
+    test('a real raw span still hides what it contains', () {
+      const source = '```\n- #tylog.task(id: "t1", text: "Demo")\n```\n';
+
+      expect(locateTypstCalls(source, names: {'tylog.task'}), isEmpty);
+    });
+  });
+
+  test('closing a clock closes only the last open session', () {
+    // Four real tasks carry two open sessions; closing all of them to one
+    // timestamp invented a duplicate session and double-counted the time.
+    const source =
+        '#tylog.task(id: "t1", text: "W", clocked: '
+        '(("2026-01-01T09:00:00", none), ("2026-01-02T09:00:00", none),))\n';
+
+    final out = stopTaskClock(source, 't1', '2026-01-02T11:00:00');
+    final entries = parseClockedField(
+      locateTypstCalls(out, names: {'tylog.task'}).single.source,
+    );
+
+    expect(entries, hasLength(2));
+    expect(entries.first.isRunning, isTrue, reason: 'the older stray stays open');
+    expect(entries.last.end, '2026-01-02T11:00:00');
+  });
+
 }
 
 List<TaskRef> _fallbackTasksFor(String source) {

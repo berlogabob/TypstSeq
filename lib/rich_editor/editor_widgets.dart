@@ -394,12 +394,22 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               ? Theme.of(context).colorScheme.surfaceContainerHighest
               : null,
           leading: Icon(
-            item.kind == MentionKind.concept
+            item.create
+                ? Icons.add_circle_outline
+                : item.kind == MentionKind.concept
                 ? Icons.tag
-                : Icons.alternate_email,
+                // The note's own kind, so a project reads as a project and an
+                // imported article as an article.
+                : iconForKind(item.noteKind),
           ),
           title: Text(item.title),
-          subtitle: Text(item.id),
+          // A raw id ("md-3b7a2305beedce32") tells the user nothing, and two
+          // scraped copies of one page are otherwise identical rows.
+          subtitle: Text(
+            item.subtitle ?? item.id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           onTap: () => _selectMention(item),
         );
       },
@@ -758,6 +768,7 @@ class _ProtectedChip extends StatelessWidget {
     required this.onTap,
     required this.icon,
     this.unresolved = false,
+    this.textStyle,
   });
 
   final String label;
@@ -766,63 +777,87 @@ class _ProtectedChip extends StatelessWidget {
   final IconData icon;
   final bool unresolved;
 
+  /// The style of the text run this chip sits in. A `WidgetSpan` does not
+  /// inherit the surrounding `TextSpan` style — without this the label falls
+  /// back to the Material default and the chip reads as a foreign object
+  /// dropped into the sentence. Null for block chips, which stand alone.
+  final TextStyle? textStyle;
+
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: onTap != null,
-    label: '$label, protected Typst',
-    child: Padding(
-      padding: EdgeInsets.symmetric(horizontal: block ? 0 : 2, vertical: 2),
-      child: Material(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: block ? 12 : 7,
-              vertical: block ? 10 : 3,
-            ),
-            // Bounded (not single-line-ellipsized) so a long extracted
-            // label — e.g. a hand-authored `#step[...]` body — stays fully
-            // readable instead of being cut to "…" after a few words.
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // height 1.0 so the chip doesn't stretch the line box it sits in — the
+    // surrounding run is 1.55.
+    final inline = textStyle?.copyWith(height: 1.0);
+    final radius = BorderRadius.circular(block ? 10 : 6);
+    return Semantics(
+      button: onTap != null,
+      label: '$label, protected Typst',
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: block ? 0 : 1,
+          vertical: block ? 2 : 0,
+        ),
+        child: Material(
+          // Inline: a tint that sits under the prose rather than an opaque
+          // block that interrupts it.
+          color: block
+              ? scheme.surfaceContainerHighest
+              : scheme.primary.withValues(alpha: 0.08),
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: block ? 12 : 4,
+                vertical: block ? 10 : 1,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                // Inline chips are one line — center the icon with the text so
-                // it doesn't float above the baseline. Block chips can wrap to
-                // several lines, so keep their icon aligned to the first line.
-                crossAxisAlignment: block
-                    ? CrossAxisAlignment.start
-                    : CrossAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 16),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: unresolved
-                          ? TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              decoration: TextDecoration.underline,
-                              decorationStyle: TextDecorationStyle.dashed,
-                            )
-                          : null,
+              // Bounded (not single-line-ellipsized) so a long extracted
+              // label — e.g. a hand-authored `#step[...]` body — stays fully
+              // readable instead of being cut to "…" after a few words.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  // Inline chips are one line — center the icon with the text
+                  // so it doesn't float above the baseline. Block chips can
+                  // wrap to several lines, so keep their icon on the first.
+                  crossAxisAlignment: block
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      // Scales with the prose instead of fixing a 16px icon
+                      // into a possibly-smaller run.
+                      size: block ? 16 : (inline?.fontSize ?? 16) * 0.85,
+                      color: block ? null : scheme.primary,
                     ),
-                  ),
-                ],
+                    SizedBox(width: block ? 5 : 3),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: unresolved
+                            ? (inline ?? const TextStyle()).copyWith(
+                                color: scheme.onSurfaceVariant,
+                                decoration: TextDecoration.underline,
+                                decorationStyle: TextDecorationStyle.dashed,
+                              )
+                            : inline,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
@@ -879,16 +914,34 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     headingLevel = marker.length;
     body = trimmed.replaceFirst(RegExp(r'^=+\s*'), '');
   } else if (block.kind == ControlledBlockKind.list) {
-    final numbered = RegExp(r'^(?:\d+\. |\+ )').hasMatch(trimmed);
-    style = numbered
+    // Block style drives the toolbar state only; the glyph is decided per line
+    // below, because a Logseq export routinely mixes `-` and `+` inside one
+    // block and the first line does not speak for the rest.
+    style = RegExp(r'^(?:\d+\. |\+ )').hasMatch(trimmed)
         ? TyLogBlockStyle.numberedList
         : TyLogBlockStyle.bulletList;
     var number = 1;
-    body = trimmed
+    // Indent is content: it is what makes a Typst list nest. Keep it in front
+    // of the glyph so the serializer can put the `- `/`+ ` back where it was —
+    // stripping it here is what used to turn `  - b` into `- - b` on save.
+    // Read from `source`, not `trimmed`: a block may now start on an indented
+    // line (a plain bullet following a list-item task).
+    //
+    // A line with no marker is a *continuation* of the item above it — a
+    // Logseq block is often several lines long. Leaving it glyph-less is what
+    // makes the round-trip work: glyph presence now means marker presence, so
+    // the serializer adds a marker back to exactly the lines that had one.
+    // Previously the marker was optional on both sides, so every wrapped line
+    // grew a bullet it never had (6152 lines across 457 imported notes).
+    body = source
         .split('\n')
         .map((line) {
-          final content = line.replaceFirst(RegExp(r'^(?:[-+] |\d+\. )'), '');
-          return numbered ? '${number++}. $content' : '• $content';
+          final marker = _listMarker.firstMatch(line);
+          if (marker == null) return line;
+          final indent = marker.group(1)!;
+          final content = line.substring(marker.end);
+          final ordered = marker.group(2) == '+' || marker.group(3) != null;
+          return ordered ? '$indent${number++}. $content' : '$indent• $content';
         })
         .join('\n');
   }
@@ -1048,8 +1101,17 @@ List<TyLogInline>? _parseInline(
       }
     }
 
+    // The label part accepts `\]` and one level of nesting. `[^\]]*` stopped at
+    // the first `]` whatever preceded it, so a label like
+    // `[... \[2026 Edition\]]` matched only half of itself and left a stray
+    // `]` behind — the round-trip guard then saw a mismatch and silently
+    // reverted the user's edit. Three such labels in the vault, in two notes:
+    // escaped brackets from the importer, and one real `#link(...)[#link(...)[…]]`.
     final atomMatch = RegExp(
-      r'^(#(?:link|tylog\.(?:ref-note|date-ref|attachment))\([^\n]*?\)\[[^\]]*\]|#tylog\.tag\("(?:\\.|[^"])*"\)|#cite\([^)]*\)|#[iI]mage\([^)]*\)|@[A-Za-z0-9_.:+-]+)',
+      r'^(#(?:link|tylog\.(?:ref-note|date-ref|attachment))\([^\n]*?\)'
+      r'\[(?:\\.|[^\[\]]|\[(?:\\.|[^\[\]])*\])*\]'
+      r'|#tylog\.tag\("(?:\\.|[^"])*"\)|#cite\([^)]*\)|#[iI]mage\([^)]*\)'
+      r'|@[A-Za-z0-9_.:+-]+)',
     ).firstMatch(source.substring(i));
     if (atomMatch != null) {
       final raw = atomMatch.group(0)!;
@@ -1136,10 +1198,35 @@ String _atomBody(String source) {
   return source.substring(open + 1, close - 1);
 }
 
+/// A pasted URL usually arrives as its own label, so the chip ends up holding
+/// the whole address — 827 of them in this vault, the longest 258 characters.
+/// The chip is deliberately unbounded (a hand-authored `#step[...]` body must
+/// stay readable), so a raw URL wrapped into a multi-line slab 70% of the
+/// viewport wide, mid-sentence. Show what identifies the link instead: host,
+/// plus a trimmed path when there is room.
+String _shortenUrlLabel(String label) {
+  if (label.length <= 48) return label;
+  final uri = Uri.tryParse(label);
+  if (uri == null || !uri.hasAuthority) return label;
+  final host = uri.host.replaceFirst(RegExp(r'^www\.'), '');
+  final path = uri.path.replaceFirst(RegExp(r'/$'), '');
+  if (path.isEmpty || path == '/') return host;
+  final tail = path.split('/').where((s) => s.isNotEmpty).last;
+  return tail.length > 32 ? '$host/${tail.substring(0, 31)}…' : '$host/$tail';
+}
+
 String _atomLabel(String source) {
-  final content = RegExp(r'\[([^\]]*)\]$').firstMatch(source)?.group(1);
+  // Same bracket grammar the atom scanner uses: `\]` and one level of nesting.
+  // With a plain `[^\]]*` a title like `… \[2026 Edition\]` matched nothing at
+  // all, and the chip fell through to the quoted-string branch and displayed
+  // the raw note id instead of the title.
+  final content = RegExp(
+    r'\[((?:\\.|[^\[\]]|\[(?:\\.|[^\[\]])*\])*)\]$',
+  ).firstMatch(source)?.group(1);
   if (content != null && content.isNotEmpty) {
-    return unescapeMarkup(content);
+    final label = unescapeMarkup(content);
+    // Only for links: a long label on any other atom is authored text.
+    return source.startsWith('#link(') ? _shortenUrlLabel(label) : label;
   }
   final quoted = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
   if (quoted != null) {
@@ -1416,16 +1503,38 @@ TyLogBlock _blockFrom(
 /// (the "can't press Enter / paste a list" bug). Escaping the first char keeps
 /// the visible text identical (`_parseInline` unescapes any `\x`) while making
 /// the line parse — and Typst-render — as literal prose.
-final _leadingBlockMarker = RegExp(r'^(?:=+ |[-+] |\d+\. )');
+/// A Typst list marker at the start of a line: indent, then `-`/`+`/`N.`,
+/// then whitespace *or* end-of-line. Requiring the separator is what keeps
+/// `-foo` (not a list item) and `1.5` out, while still matching a marker with
+/// no content after it — the empty trailing bullet every Logseq page carries.
+final _listMarker = RegExp(r'^([ \t]*)(?:([-+])|(\d+)\.)(?:[ \t]+|$)');
+
+/// The inverse of [_listMarker]: a rendered glyph back to its source marker.
+/// A line with no glyph is a continuation line and is returned untouched, so
+/// glyph presence and marker presence stay one-to-one across the round trip.
+String _serializeListLine(String line) {
+  final glyph = RegExp(r'^([ \t]*)(?:(•)|(\d+)\.)[ \t]*').firstMatch(line);
+  if (glyph == null) return line;
+  return '${glyph.group(1)}${glyph.group(2) != null ? '- ' : '+ '}'
+      '${line.substring(glyph.end)}';
+}
+
+/// Indented markers count too: block classification skips leading whitespace,
+/// so `  - x` re-parses as a list just as `- x` does.
+final _leadingBlockMarker = RegExp(r'^([ \t]*)(?:=+ |[-+] |\d+\. )');
+final _leadingEquation = RegExp(r'^([ \t]*)\$.*\$$');
 String _escapeParagraphMarkers(String content) => content
     .split('\n')
-    .map(
-      (line) =>
-          _leadingBlockMarker.hasMatch(line) ||
-              (line.length >= 2 && line.startsWith(r'$') && line.endsWith(r'$'))
-          ? '\\$line'
-          : line,
-    )
+    .map((line) {
+      final marker =
+          _leadingBlockMarker.firstMatch(line) ??
+          _leadingEquation.firstMatch(line);
+      // The escape goes *after* the indent — a leading `\ ` is a non-breaking
+      // space in Typst, not an escaped marker.
+      return marker == null
+          ? line
+          : '${marker[1]}\\${line.substring(marker[1]!.length)}';
+    })
     .join('\n');
 
 String _serializeBlock(TyLogBlock block) {
@@ -1433,16 +1542,14 @@ String _serializeBlock(TyLogBlock block) {
   final content = block.parts.map(_serializePart).join();
   return switch (block.style) {
     TyLogBlockStyle.heading => '${'=' * block.headingLevel} $content',
-    TyLogBlockStyle.bulletList =>
-      content
-          .split('\n')
-          .map((line) => '- ${line.replaceFirst(RegExp(r'^•\s*'), '')}')
-          .join('\n'),
-    TyLogBlockStyle.numberedList =>
-      content
-          .split('\n')
-          .map((line) => '+ ${line.replaceFirst(RegExp(r'^\d+\.\s*'), '')}')
-          .join('\n'),
+    // One mapper for both list styles: the *glyph* decides the marker, not the
+    // block's style, so a `+` item inside a mostly-`-` block survives instead
+    // of being rewritten as a bullet.
+    TyLogBlockStyle.bulletList ||
+    TyLogBlockStyle.numberedList => content
+        .split('\n')
+        .map(_serializeListLine)
+        .join('\n'),
     TyLogBlockStyle.paragraph => _escapeParagraphMarkers(content),
     TyLogBlockStyle.protected => block.originalSource,
     TyLogBlockStyle.taskLine => replaceTaskText(
@@ -1466,7 +1573,7 @@ String _serializeBlock(TyLogBlock block) {
 /// validation reverts the edit rather than emit broken Typst.
 String _serializePart(TyLogInline part) {
   if (part.isAtom) return part.source!;
-  var value = part.style.mono ? '`${part.text}`' : typstContent(part.text);
+  var value = part.style.mono ? '`${part.text}`' : escapeMarkup(part.text);
   if (part.style.italic) value = '#emph[$value]';
   if (part.style.bold) value = '#strong[$value]';
   if (part.style.strike) value = '#strike[$value]';

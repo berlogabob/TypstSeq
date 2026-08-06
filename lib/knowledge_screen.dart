@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'saved_searches.dart';
+import 'scanner.dart';
 import 'search_index.dart';
+import 'widgets/constants.dart';
+import 'widgets/property_select_chip.dart';
 import 'widgets/snack.dart';
 
 enum KnowledgeView { search, problems }
@@ -56,6 +59,7 @@ class KnowledgeScreen extends StatefulWidget {
     'metadata-query-failed',
     'duplicate-note-id',
     'duplicate-alias',
+    'broken-link',
   };
 
   @override
@@ -93,6 +97,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   String _fixLabel(String code) => switch (code) {
     'metadata-fallback' => 'Convert',
     'metadata-query-failed' => 'Repair',
+    'broken-link' => 'Triage',
     _ => 'Open files',
   };
 
@@ -485,11 +490,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               onPressed: _fixing ? null : () => _runFix(group),
               // Duplicates aren't auto-fixable — the group action opens the
               // owners sheet for a manual merge, so don't promise "Fix all".
-              child: Text(
-                code.startsWith('duplicate-')
-                    ? 'Open files'
-                    : 'Fix all ${group.length}',
-              ),
+              child: Text(switch (code) {
+                // Neither of these fixes anything on its own: they open a
+                // review UI, so don't promise "Fix all".
+                'broken-link' => 'Triage',
+                _ when code.startsWith('duplicate-') => 'Open files',
+                _ => 'Fix all ${group.length}',
+              }),
             ),
           Icon(expanded ? Icons.expand_less : Icons.expand_more),
         ],
@@ -515,4 +522,182 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     PkmsSeverity.warning => Colors.amber,
     PkmsSeverity.info => Theme.of(context).colorScheme.onSurfaceVariant,
   };
+}
+
+const _unresolvedPrefix = 'unresolved link: ';
+
+/// The kinds a missing page can be created as. `note` first — it is the safe
+/// default; the entity kinds are what turn an imported Logseq wikilink into a
+/// real person/place node.
+const missingPageKinds = ['note', 'person', 'place', 'organization', 'project'];
+
+/// One missing page, aggregated over every note that links to it.
+class UnresolvedTarget {
+  const UnresolvedTarget(this.target, this.referrers);
+
+  final String target;
+  final List<String> referrers;
+
+  int get count => referrers.length;
+}
+
+/// Groups `broken-link` problems into one row per missing page, most
+/// referenced first.
+///
+/// Logseq treats `[[Tutorial]]` as a page even with no file behind it; the
+/// importer only reported these, so a migrated vault carries thousands of
+/// broken links — and the persons and places the user expected are among them.
+///
+/// Two classes are dropped rather than offered:
+/// * targets that are already a tag — the right action there is a tag, not a
+///   page. Compared through [normalizeTag] because the index stores tags
+///   folded, so a raw match misses `Tutorial` vs `tutorial`.
+/// * import artefacts that still carry escaped `\[\[…\]\]` brackets — no page
+///   title would ever resolve those.
+List<UnresolvedTarget> unresolvedLinkTargets(
+  Iterable<PkmsProblem> problems,
+  Set<String> tags,
+) {
+  final folded = {for (final tag in tags) normalizeTag(tag)};
+  final byTarget = <String, List<String>>{};
+  for (final problem in problems) {
+    if (problem.code != 'broken-link' ||
+        !problem.message.startsWith(_unresolvedPrefix)) {
+      continue;
+    }
+    final target = problem.message.substring(_unresolvedPrefix.length).trim();
+    if (target.isEmpty || target.contains('[')) continue;
+    if (folded.contains(normalizeTag(target))) continue;
+    byTarget.putIfAbsent(target, () => []).add(problem.subject);
+  }
+  return byTarget.entries
+      .map((entry) => UnresolvedTarget(entry.key, entry.value))
+      .toList()
+    ..sort(
+      (a, b) => b.count != a.count
+          ? b.count.compareTo(a.count)
+          : a.target.compareTo(b.target),
+    );
+}
+
+/// "Илья Бирман", "Grant Abbitt" — two capitalised words, the shape a Logseq
+/// person page takes. Only a starting guess; the row's picker overrides it.
+String defaultKindForTarget(String target) {
+  final parts = target.trim().split(' ');
+  final capitalised =
+      parts.length == 2 &&
+      parts.every(
+        (part) =>
+            part.isNotEmpty &&
+            part[0].toUpperCase() == part[0] &&
+            part[0].toLowerCase() != part[0],
+      );
+  return capitalised ? 'person' : 'note';
+}
+
+/// Picks which missing pages to create, and as what. Writes nothing itself —
+/// it pops `target -> kind` and the caller does the batch, the same split as
+/// the duplicate-owners sheet.
+class TriageMissingPagesScreen extends StatefulWidget {
+  const TriageMissingPagesScreen({required this.targets, super.key});
+
+  final List<UnresolvedTarget> targets;
+
+  @override
+  State<TriageMissingPagesScreen> createState() =>
+      _TriageMissingPagesScreenState();
+}
+
+class _TriageMissingPagesScreenState extends State<TriageMissingPagesScreen> {
+  /// Empty on open, deliberately: with 1350 candidates the default must never
+  /// be "create everything".
+  final Map<String, String> _picked = {};
+
+  void _selectAtLeast(int references) => setState(() {
+    for (final target in widget.targets.where((t) => t.count >= references)) {
+      _picked.putIfAbsent(target.target, () => defaultKindForTarget(target.target));
+    }
+  });
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text('${widget.targets.length} missing pages'),
+      actions: [
+        PopupMenuButton<int>(
+          tooltip: 'Select by how often they are referenced',
+          onSelected: _selectAtLeast,
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 10, child: Text('Select 10+ references')),
+            PopupMenuItem(value: 5, child: Text('Select 5+ references')),
+            PopupMenuItem(value: 3, child: Text('Select 3+ references')),
+          ],
+          icon: const Icon(Icons.checklist),
+        ),
+        if (_picked.isNotEmpty)
+          IconButton(
+            tooltip: 'Clear selection',
+            onPressed: () => setState(_picked.clear),
+            icon: const Icon(Icons.deselect),
+          ),
+      ],
+    ),
+    body: ListView.builder(
+      key: const Key('missing-pages-list'),
+      itemCount: widget.targets.length,
+      itemBuilder: (context, index) {
+        final item = widget.targets[index];
+        final kind = _picked[item.target] ?? defaultKindForTarget(item.target);
+        return CheckboxListTile(
+          key: Key('missing-page-${item.target}'),
+          value: _picked.containsKey(item.target),
+          onChanged: (checked) => setState(() {
+            if (checked ?? false) {
+              _picked[item.target] = kind;
+            } else {
+              _picked.remove(item.target);
+            }
+          }),
+          isThreeLine: true,
+          secondary: Icon(iconForKind(kind)),
+          title: Text('${item.target}  ·  ${item.count}'),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                item.referrers.take(2).join('\n'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              PropertySelectChip(
+                value: kind,
+                options: missingPageKinds,
+                labels: const {},
+                tooltip: 'Create as',
+                onChanged: (next) => setState(() => _picked[item.target] = next),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: FilledButton(
+          onPressed: _picked.isEmpty
+              ? null
+              : () => Navigator.pop(context, Map.of(_picked)),
+          child: Text(
+            _picked.isEmpty
+                ? 'Select pages to create'
+                : 'Create ${_picked.length} page${_picked.length == 1 ? '' : 's'}',
+          ),
+        ),
+      ),
+    ),
+  );
 }

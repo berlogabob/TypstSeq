@@ -29,6 +29,14 @@ test-core:
 
 test-typst:
 	@typst compile --root typst/tylog typst/tylog/examples/basic.typ /tmp/tylog-example.pdf
+	# Every call shape the app writes must compile against the SHIPPED package
+	# and survive a metadata query. A field the app emits but the package does
+	# not declare is a hard Typst error, and nothing caught that until 167 real
+	# notes stopped compiling.
+	@typst compile --root typst/tylog typst/tylog/tests/app_written.typ /tmp/tylog-app-written.pdf
+	@cd typst/tylog && typst eval 'query(<tylog-task>)' --root . --in tests/app_written.typ > /tmp/tylog-tasks.json
+	@grep -q '"id":"clocked"' /tmp/tylog-tasks.json
+	@grep -q '2025-12-28T10:02:11' /tmp/tylog-tasks.json
 	@cd test/fixtures/tylog_format_v1 && typst eval 'query(metadata)' --root . --in valid.typ > /tmp/tylog-metadata.json
 	@for entity in note link tag date attachment task; do grep -q "\"label\":\"<tylog-$$entity>\"" /tmp/tylog-metadata.json; done
 	@grep -q '"schema":1' /tmp/tylog-metadata.json

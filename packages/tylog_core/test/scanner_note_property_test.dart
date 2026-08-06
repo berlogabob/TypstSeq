@@ -135,5 +135,11 @@ Body text here.
 
       expect(updated, contains('= A\nBody text here.'));
     });
+
+    // The single-line-header case (no `properties:` field, no trailing comma)
+    // is deliberately NOT tested here: scanNote reads the malformed
+    // `kind: "note"  properties: (…)` back as a perfectly good note, so a
+    // parse-based test passes on output Typst rejects. It lives in
+    // writer_compiles_test.dart, which compiles the writer's output.
   });
 }

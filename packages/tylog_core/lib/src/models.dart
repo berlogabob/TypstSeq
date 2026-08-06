@@ -207,6 +207,58 @@ class DateRef {
       DateRef(date: json['date'] as String, text: json['text'] as String?);
 }
 
+/// One tracked work session on a task: an ISO-8601 start, and an end that is
+/// null while the clock is still running.
+///
+/// Kept as a value class rather than a record because a Dart record has no
+/// JSON codec and the index round-trips through [VaultIndex.toJson].
+class ClockEntry {
+  const ClockEntry({required this.start, this.end});
+
+  final String start;
+  final String? end;
+
+  /// Null while running, or when either stamp is unparseable.
+  Duration? get elapsed {
+    final from = DateTime.tryParse(start);
+    final to = end == null ? null : DateTime.tryParse(end!);
+    if (from == null || to == null) return null;
+    final span = to.difference(from);
+    return span.isNegative ? null : span;
+  }
+
+  bool get isRunning => end == null;
+
+  /// A session long enough to be real work. Logseq's own data is 41% start/stop
+  /// misfires of five seconds or less, which would otherwise pad every total.
+  static const minimumMeaningful = Duration(seconds: 30);
+
+  /// Past this, a clock was almost certainly left running rather than worked.
+  /// In the imported vault 37 such entries held 94% of all recorded time.
+  static const runawayThreshold = Duration(hours: 24);
+
+  /// Whether this session counts toward a total. Running, trivial and runaway
+  /// sessions are kept in the file but excluded from sums.
+  bool get isCountable {
+    final span = elapsed;
+    return span != null &&
+        span >= minimumMeaningful &&
+        span < runawayThreshold;
+  }
+
+  Map<String, Object?> toJson() => {'start': start, if (end != null) 'end': end};
+
+  factory ClockEntry.fromJson(Map<String, Object?> json) =>
+      ClockEntry(start: json['start'] as String, end: json['end'] as String?);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ClockEntry && start == other.start && end == other.end;
+
+  @override
+  int get hashCode => Object.hash(start, end);
+}
+
 class AttachmentRef {
   const AttachmentRef({required this.path, this.kind = 'file', this.title});
 
@@ -260,6 +312,7 @@ class TaskRef {
     this.assignees = const [],
     this.tags = const [],
     this.completed = const [],
+    this.clocked = const [],
     this.properties = const {},
   });
 
@@ -278,6 +331,9 @@ class TaskRef {
   final List<String> assignees;
   final List<String> tags;
   final List<String> completed;
+
+  /// Tracked work sessions, oldest first. See [ClockEntry].
+  final List<ClockEntry> clocked;
   final Map<String, Object?> properties;
 
   Map<String, Object?> toJson() => {
@@ -296,6 +352,7 @@ class TaskRef {
     'assignees': assignees,
     'tags': tags,
     'completed': completed,
+    'clocked': [for (final entry in clocked) entry.toJson()],
     'properties': properties,
   };
 
@@ -315,9 +372,28 @@ class TaskRef {
     assignees: stringList(json['assignees']),
     tags: stringList(json['tags']),
     completed: stringList(json['completed']),
+    clocked: [
+      for (final entry in (json['clocked'] as List? ?? const []).cast<Map>())
+        ClockEntry.fromJson(entry.cast<String, Object?>()),
+    ],
     properties: (json['properties'] as Map? ?? const {})
         .cast<String, Object?>(),
   );
+
+  /// Time that counts: running, trivial and runaway sessions are excluded.
+  /// See [ClockEntry.isCountable].
+  Duration get clockedTotal => clocked
+      .where((entry) => entry.isCountable)
+      .fold(Duration.zero, (sum, entry) => sum + entry.elapsed!);
+
+  /// The session currently running on this task, if any.
+  ClockEntry? get runningClock =>
+      clocked.where((entry) => entry.isRunning).lastOrNull;
+
+  /// Countable time whose session *started* on [day] (an ISO `yyyy-MM-dd`).
+  Duration clockedOn(String day) => clocked
+      .where((entry) => entry.isCountable && entry.start.startsWith(day))
+      .fold(Duration.zero, (sum, entry) => sum + entry.elapsed!);
 }
 
 /// Schema version of `_index/index.json`. Bumping it invalidates every cached

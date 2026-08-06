@@ -413,11 +413,6 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<void> ensureIndexed() async {
-    if (dirty) await save(syncAfter: false);
-    await refreshIndex();
-  }
-
   /// [always] runs the scan even when the editor-revision guard says nothing
   /// was saved — for vault mutations the editor never sees (imports, deletes,
   /// bulk repairs). It does *not* disable the mtime+size scan cache: an
@@ -868,6 +863,10 @@ class WorkspaceController extends ChangeNotifier {
         }
       }
       final conflicts = await loadSyncConflicts(opened);
+      // Decoupled from the scan below: a peer's reading file is the whole
+      // point of cross-device progress, but pulling it says nothing about the
+      // vault's *content*, so it must not drag a full rescan along with it.
+      if (result.downloadedReadingState) await reloadReadingState();
       if (result.requiresIndexRefresh ||
           concurrentConflict ||
           indexedRevision < savedRevision) {
@@ -889,9 +888,6 @@ class WorkspaceController extends ChangeNotifier {
               syncProgressTick.notifyListeners();
             },
           );
-          // A pulled _system/reading/<device>.json flips requiresIndexRefresh
-          // too, so this is the reload point for cross-device progress.
-          await reloadReadingState();
         } finally {
           rebuildProgress = null;
           syncProgressTick.notifyListeners();

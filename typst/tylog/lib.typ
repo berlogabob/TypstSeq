@@ -103,6 +103,11 @@
   assignees: (),
   tags: (),
   completed: (),
+  // Time tracking lives in `properties` under the "clocked" key: a list of
+  // `(start, end)` ISO-8601 pairs, `end` none while a session runs. A dict
+  // tolerates keys an older package has never heard of, whereas an unknown
+  // named argument is a hard compile error — and this package syncs between
+  // devices that may be on different builds.
   properties: (:),
   view: default-task-view,
 ) = [

@@ -3,6 +3,8 @@
 /// pumping a widget tree.
 library;
 
+import 'package:tylog_core/models.dart';
+
 enum AutocompleteTriggerKind { mention, command, wikiLink }
 
 /// What a wiki-link/mention candidate resolves to, so selection can emit the
@@ -49,23 +51,94 @@ class MentionSuggestion {
     required this.id,
     required this.title,
     this.kind = MentionKind.note,
+    this.noteKind,
+    this.subtitle,
+    this.create = false,
   });
 
   /// For a note, its note id; for a concept, the tag key (what goes inside
   /// `#tylog.tag(...)`).
   final String id;
   final String title;
+
+  /// What selecting this row *emits* — a note reference or a tag. Not the
+  /// note's own kind; see [noteKind].
   final MentionKind kind;
+
+  /// The referenced note's `kind` (`project`, `person`, `article`, …), for the
+  /// row icon. Null for concepts and for the create row.
+  final String? noteKind;
+
+  /// One line under the title telling two same-titled notes apart — an
+  /// article's source host, else its path. Falls back to [id] when null,
+  /// which is all a concept has.
+  final String? subtitle;
+
+  /// This row creates the page instead of linking an existing one, the way
+  /// Logseq materialises `[[X]]` on the spot.
+  final bool create;
 
   @override
   bool operator ==(Object other) =>
       other is MentionSuggestion &&
       id == other.id &&
       title == other.title &&
-      kind == other.kind;
+      kind == other.kind &&
+      noteKind == other.noteKind &&
+      subtitle == other.subtitle &&
+      create == other.create;
 
   @override
-  int get hashCode => Object.hash(id, title, kind);
+  int get hashCode =>
+      Object.hash(id, title, kind, noteKind, subtitle, create);
+}
+
+/// How strongly a note answers a mention query. Tiers are lifted from
+/// `PkmsSearchIndex.searchPrefix`, which was written for this feature but was
+/// never wired up; matching them keeps `@` and the Search screen consistent.
+///
+/// Sorting by title alone put two scraped articles above the page the user
+/// meant. A tier always outranks a kind bonus — an exactly-titled article
+/// still beats a merely prefix-matching project — but among equally good
+/// matches an entity outranks a note, and a note outranks an imported article.
+///
+/// [recencyByPath] maps a note path to its position in the recently-opened
+/// list (0 = most recent); build it once per query, not per candidate.
+int mentionScore(NoteRef note, String query, Map<String, int> recencyByPath) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return 0;
+  final title = note.title.toLowerCase();
+  final tier = title == q
+      ? 1000
+      : title.startsWith(q)
+      ? 500
+      : note.aliases.any((alias) => alias.toLowerCase().startsWith(q))
+      ? 300
+      : note.id.toLowerCase().startsWith(q)
+      ? 200
+      : 0;
+  if (tier == 0) return 0;
+  final kindBonus = switch (note.kind) {
+    'person' || 'place' || 'organization' || 'event' || 'website' => 120,
+    'project' => 120,
+    'article' => 0,
+    _ => 60,
+  };
+  final position = recencyByPath[note.path];
+  final recencyBonus = position == null ? 0 : 50 - position;
+  return tier + kindBonus + (recencyBonus < 0 ? 0 : recencyBonus);
+}
+
+/// The line under a mention row. A raw note id (`md-3b7a2305beedce32`) tells
+/// the user nothing, and two scraped copies of the same page are otherwise
+/// indistinguishable — so prefer the article's source host, then its path.
+String mentionSubtitle(NoteRef note) {
+  final url = note.properties['url'];
+  if (url is String) {
+    final host = Uri.tryParse(url)?.host;
+    if (host != null && host.isNotEmpty) return '${note.kind} · $host';
+  }
+  return '${note.kind} · ${note.path}';
 }
 
 /// Scans backward from [caret] in [text] to see whether the caret is

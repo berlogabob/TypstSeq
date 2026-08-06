@@ -33,6 +33,17 @@ void main() {
     expect(stripAutoRelated(reAppended), body);
   });
 
+  // article-pipeline writes the block last, so nothing follows it today. If a
+  // user types below their Related section, a relink must not silently delete
+  // it — there is no error and nothing to undo.
+  test('stripAutoRelated keeps content written after the block', () {
+    final withTail =
+        '$body\n\n$marker\n== Related\n'
+        '- #tylog.ref-note("a")[A]\n\n= My own notes\n\nKeep this.\n';
+
+    expect(stripAutoRelated(withTail), '$body\n\n= My own notes\n\nKeep this.');
+  });
+
   test('stripAutoRelated leaves marker-free source untouched', () {
     const plain = '= Note\n\nNo related block here.';
     expect(stripAutoRelated(plain), plain);

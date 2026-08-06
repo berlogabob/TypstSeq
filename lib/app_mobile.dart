@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
+import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'bibliography.dart';
@@ -63,14 +64,38 @@ part 'app_mobile/vault_lifecycle.dart';
 
 const _autoRelatedMarker = '// tylog:auto-related';
 
+/// Removes the generated `// tylog:auto-related` block so a relink pass can
+/// write a fresh one without duplicating.
+///
+/// Consumes only the block itself — its `== Related` heading and the
+/// `#tylog.ref-note(...)` items — and keeps anything that follows. article-pipeline
+/// writes the block last, so today nothing follows it in any of the 159 notes
+/// that carry one; truncating to EOF was correct only for as long as that
+/// holds. The moment a user types below their Related section, a relink would
+/// delete what they wrote, with no error and nothing to undo.
 String stripAutoRelated(String source) {
   final marker = RegExp(
     '(?:^|\\n)${RegExp.escape(_autoRelatedMarker)}(?:\\r?\\n|\$)',
   ).firstMatch(source);
   if (marker == null) return source;
-  return source
+  final before = source
       .substring(0, marker.start)
       .replaceFirst(RegExp(r'[\r\n]+$'), '');
+  final lines = source.substring(marker.end).split('\n');
+  final relatedHeading = RegExp(r'^\s*=+\s');
+  final refItem = RegExp(r'^\s*(?:[-+*]\s*)?#tylog\.ref-note\(');
+  var i = 0;
+  if (i < lines.length && relatedHeading.hasMatch(lines[i])) i++;
+  while (i < lines.length &&
+      (lines[i].trim().isEmpty || refItem.hasMatch(lines[i]))) {
+    i++;
+  }
+  final tail = lines
+      .sublist(i)
+      .join('\n')
+      .replaceFirst(RegExp(r'^[\r\n]+'), '')
+      .trimRight();
+  return tail.isEmpty ? before : '$before\n\n$tail';
 }
 
 String? refNoteHeading(String source) => RegExp(
@@ -984,14 +1009,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showKnowledge({
     KnowledgeView initialView = KnowledgeView.search,
   }) async {
-    await _ensureIndexed();
-    if (!mounted || dirty) return;
+    // Deliberately not `await _ensureIndexed()`. That saves — which bumps
+    // savedRevision past indexedRevision, so refreshIndex's early-out is
+    // guaranteed to miss after any keystroke — and then awaits a full scan;
+    // a caller arriving mid-scan even queues a second pass and awaits both.
+    // Tens of seconds of dead tap on a big vault, and if the user typed during
+    // the wait the old `|| dirty` check threw the navigation away silently.
+    // Nothing here needs a fresh scan: worker searches are answered at the
+    // scanner's next yield (vault_worker.dart), and _retainIndex mutates this
+    // very VaultIndex in place, so the screen picks up the new scan itself.
+    if (dirty) await _save();
+    if (!mounted) return;
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
     final searchStore = SavedSearchStore(v.storage);
     final savedSearches = await searchStore.load();
     if (!mounted) return;
+    unawaited(workspace.refreshIndex());
+    // Acknowledge the tap: without this the Search icon never highlights,
+    // so a slow open reads as "the button does nothing".
+    final previousDestination = primaryDestination;
+    setState(() => primaryDestination = 3);
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -1021,6 +1060,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+    if (!mounted) return;
+    setState(() => primaryDestination = previousDestination);
   }
 
   /// The Problems-screen view: everything except sync conflicts (which route to
@@ -1044,9 +1085,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 'duplicate-alias':
         await _openDuplicateOwners(toFix);
         return null;
+      case 'broken-link':
+        return _triageMissingPages(toFix);
       default:
         return null;
     }
+  }
+
+  /// Materialises the pages behind Logseq wikilinks that never had a file.
+  /// Logseq treats `[[Tutorial]]` as a page regardless; the importer only
+  /// reported them, so a migrated vault is left with thousands of broken links
+  /// — and the persons and places the user expected are among them.
+  Future<List<PkmsProblem>?> _triageMissingPages(
+    List<PkmsProblem> problems,
+  ) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return null;
+    final targets = unresolvedLinkTargets(problems, {
+      for (final note in ix.notes) ...note.tags,
+    });
+    if (targets.isEmpty) {
+      showSnack(context, 'Every unresolved link is already a tag');
+      return null;
+    }
+    final picked = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(
+        builder: (_) => TriageMissingPagesScreen(targets: targets),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return null;
+    if (picked.length > 100) {
+      final go = await showConfirmDialog(
+        context,
+        title: 'Create ${picked.length} pages?',
+        message: 'This writes ${picked.length} new notes, then reindexes once.',
+        confirmLabel: 'Create',
+      );
+      if (!go || !mounted) return null;
+    }
+    // One id namespace for the whole batch: nextNoteId otherwise dedups against
+    // the last written index, which cannot know about the note created a
+    // millisecond ago — and a Cyrillic title slugs to nothing, so a run of them
+    // would all collapse onto the same timestamp id.
+    final ids = {for (final note in ix.notes) note.id};
+    for (final entry in picked.entries) {
+      await v.page(entry.key, kind: entry.value, knownIds: ids);
+    }
+    await workspace.refreshIndex(always: true);
+    if (!mounted) return null;
+    showSnack(context, 'Created ${picked.length} pages');
+    return _knowledgeProblems();
   }
 
   /// Counts how many of [attempted] still carry [code] after a rescan — the
@@ -1181,25 +1270,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final file = task.notePath;
     final source = await v.storage.readText(file);
-    await v.saveNote(
-      file,
-      task.recurrence != null && nextStatus == 'done'
-          ? completeTaskOccurrence(
-              source,
-              task.id,
-              DateTime.now().toUtc().toIso8601String(),
-            )
-          : replaceTaskStatus(source, task.id, nextStatus),
-    );
-    await _rebuildIndex();
+    try {
+      await v.saveNote(
+        file,
+        task.recurrence != null && nextStatus == 'done'
+            ? completeTaskOccurrence(
+                source,
+                task.id,
+                DateTime.now().toUtc().toIso8601String(),
+              )
+            : replaceTaskStatus(source, task.id, nextStatus),
+      );
+    } on StateError catch (error) {
+      // The task writers throw when they cannot find the call — an id the
+      // index still lists but the file no longer has, or two tasks sharing an
+      // id. Callers discard this future (`unawaited(onSetStatus(...))`), so
+      // without this the checkbox silently did nothing and the user was told
+      // nothing at all.
+      if (!mounted) return;
+      showSnack(context, 'Could not update that task: ${error.message}');
+      return;
+    }
+    // refreshIndex, not rebuildIndex: the latter's guard cancels an in-flight
+    // scan (`cancelRebuild = true; _worker?.cancel()`), so ticking a checkbox
+    // while the vault was being scanned threw that whole scan away — and it
+    // was only re-triggered later. A one-note edit does not need the
+    // progress-UI rebuild path either.
+    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
     final v = vault;
     if (v == null) return;
     final source = await v.storage.readText(note.path);
-    await v.saveNote(note.path, replaceNoteProperty(source, name, value));
-    await _rebuildIndex();
+    try {
+      await v.saveNote(note.path, replaceNoteProperty(source, name, value));
+    } on StateError catch (error) {
+      // `replaceNoteProperty` throws on a note with no managed header — four
+      // in this vault. Both call sites are `unawaited(...)` dropdowns, so
+      // without this the control moved, nothing was written, and the user was
+      // told nothing. Same silent-failure shape as `_setTaskStatus` above.
+      if (!mounted) return;
+      showSnack(context, 'Could not update that note: ${error.message}');
+      return;
+    }
+    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setReadStatus(NoteRef note, String status) =>
@@ -1226,32 +1341,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await workspace.rebuildIndex(force: force);
   }
 
-  /// One-off maintenance action: folds the legacy `properties["type"]`
-  /// entity classifier into `kind` across every note in the vault (see
-  /// [migrateEntityTypeToKind]). Safe to run multiple times.
-  Future<void> _migrateEntityTypes() async {
+  /// Rewrites every note the [transform] changes, but only after saying how
+  /// many and taking a copy.
+  ///
+  /// These are one-tap tiles that write to every note in the vault, and there
+  /// is no vault-level undo — the editor's history is a 100-entry in-memory
+  /// stack cleared on every `setSource`. Before this, one mis-tap rewrote
+  /// 3,351 files with no confirmation and nothing to recover from but the
+  /// server's own versioning.
+  ///
+  /// The pass is computed first and applied second, so the count in the dialog
+  /// is the real one rather than an estimate, and a note is only copied if it
+  /// is actually about to change.
+  Future<void> _runBulkRewrite({
+    required String title,
+    required String confirmLabel,
+    required String pastTense,
+    required String nothingToDo,
+    required String Function(String source) transform,
+  }) async {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
-    var migrated = 0;
+
+    final pending = <String, String>{};
     for (final note in ix.notes) {
       final source = await v.storage.readText(note.path);
-      final updated = migrateEntityTypeToKind(source);
-      if (updated != source) {
-        await v.saveNote(note.path, updated);
-        migrated++;
-      }
+      final updated = transform(source);
+      if (updated != source) pending[note.path] = updated;
+    }
+    if (!mounted) return;
+    if (pending.isEmpty) {
+      showSnack(context, nothingToDo);
+      return;
+    }
+
+    final count = '${pending.length} note${pending.length == 1 ? '' : 's'}';
+    final confirmed = await showConfirmDialog(
+      context,
+      title: title,
+      message:
+          'This rewrites $count and cannot be undone from inside TyLog.\n\n'
+          'A copy of each note as it is now will be written to '
+          '.tylog/undo/ first.',
+      confirmLabel: confirmLabel,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    final String undoDirectory;
+    try {
+      undoDirectory = await v.snapshotNotes(pending.keys);
+    } catch (error) {
+      // No snapshot, no rewrite. The whole point of the copy is that it exists
+      // before anything is overwritten.
+      if (!mounted) return;
+      showSnack(
+        context,
+        'Could not save a backup, so nothing was changed: $error',
+      );
+      return;
+    }
+
+    for (final entry in pending.entries) {
+      await v.saveNote(entry.key, entry.value);
     }
     await workspace.refreshIndex(always: true);
     if (!mounted) return;
-    showSnack(
-      context,
-      migrated == 0
-          ? 'No notes needed entity-type migration'
-          : 'Migrated $migrated note${migrated == 1 ? '' : 's'} to '
-                'kind-based entity types',
-    );
+    showSnack(context, '$pastTense $count — previous copies in $undoDirectory');
   }
+
+  /// One-off maintenance action: folds the legacy `properties["type"]`
+  /// entity classifier into `kind` across every note in the vault (see
+  /// [migrateEntityTypeToKind]). Safe to run multiple times.
+  Future<void> _migrateEntityTypes() => _runBulkRewrite(
+    title: 'Migrate entity types',
+    confirmLabel: 'Migrate',
+    pastTense: 'Migrated',
+    nothingToDo: 'No notes needed entity-type migration',
+    transform: migrateEntityTypeToKind,
+  );
+
+  /// One-off maintenance: drops the *empty* org-mode drawers and trailing
+  /// empty blocks that Logseq exports carry into a note (see
+  /// [stripLogseqNoise]). A drawer holding CLOCK: records is left alone — those
+  /// are the user's time tracking, and this rewrites in bulk. The converter
+  /// strips these now, but a re-import cannot repair the notes already on disk
+  /// — the wizard skips a source whose SHA is unchanged. Safe to run more than
+  /// once.
+  Future<void> _stripImportNoise() => _runBulkRewrite(
+    title: 'Clean up imported notes',
+    confirmLabel: 'Clean up',
+    pastTense: 'Cleaned',
+    nothingToDo: 'No imported notes needed cleaning',
+    transform: stripLogseqNoise,
+  );
 
   Future<void> _syncNow({String trigger = 'manual'}) async {
     try {
@@ -1589,6 +1773,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Navigator.pop(context);
               await _migrateEntityTypes();
             },
+            onStripImportNoise: () async {
+              Navigator.pop(context);
+              await _stripImportNoise();
+            },
             onImportVault: () async {
               Navigator.pop(context);
               await _importVault();
@@ -1782,7 +1970,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || title.trim().isEmpty) return;
     try {
       final dayPath = await v.todayNote();
-      final safeTitle = typstContent(title.trim());
+      final safeTitle = escapeMarkup(title.trim());
       final stars = int.tryParse(rating ?? '');
       final line = rating == null
           ? '- Read: $safeTitle'
@@ -3235,6 +3423,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (q.isEmpty) return const <MentionSuggestion>[];
           bool matches(String s) => s.toLowerCase().startsWith(q);
           final notes = index?.notes ?? const <NoteRef>[];
+          // Built once per query, not per candidate: _mergedRecent() allocates
+          // and sorts, and it is capped at 30 entries.
+          final recency = <String, int>{
+            for (final (position, recent) in _mergedRecent().indexed)
+              recent.path: position,
+          };
           final matchedNotes =
               notes
                   .where(
@@ -3244,10 +3438,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         n.aliases.any(matches),
                   )
                   .toList()
-                ..sort((a, b) => a.title.compareTo(b.title));
+                ..sort((a, b) {
+                  final byScore = mentionScore(
+                    b,
+                    q,
+                    recency,
+                  ).compareTo(mentionScore(a, q, recency));
+                  return byScore != 0 ? byScore : a.title.compareTo(b.title);
+                });
           final suggestions = matchedNotes
               .take(8)
-              .map((n) => MentionSuggestion(id: n.id, title: n.title))
+              .map(
+                (n) => MentionSuggestion(
+                  id: n.id,
+                  title: n.title,
+                  noteKind: n.kind,
+                  subtitle: mentionSubtitle(n),
+                ),
+              )
               .toList();
           // `[[` also completes existing tags into concepts; `@` stays notes.
           if (kind == AutocompleteTriggerKind.wikiLink) {
@@ -3264,6 +3472,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       kind: MentionKind.concept,
                     ),
                   ),
+            );
+          }
+          // Logseq lets `[[X]]` name a page that has no file yet. Without this
+          // row a page that does not exist is simply unreachable from the
+          // editor and the user has to accept whichever near-miss ranked
+          // first. Selecting it emits an ordinary ref-note to the typed title,
+          // which renders as the existing tappable "unresolved" chip — tapping
+          // that runs _createFromLink, and until then the link shows up in the
+          // broken-link triage like any other missing page.
+          final typed = query.trim();
+          if (typed.isNotEmpty &&
+              !suggestions.any(
+                (s) => s.title.toLowerCase() == typed.toLowerCase(),
+              )) {
+            suggestions.add(
+              MentionSuggestion(
+                id: typed,
+                title: typed,
+                subtitle: 'New page — not created yet',
+                create: true,
+              ),
             );
           }
           return suggestions;
@@ -3332,12 +3561,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Floats over the body (see workArea's Stack): transient status must
     // never take part in content layout, or every screen jumps when a sync
     // starts, changes stage, and ends.
+    // Bottom-anchored: the top of the body is where the Library's tab bar
+    // (Notes/Projects/Articles/…) lives, and a pill parked there hides the
+    // tabs for the whole of an index run.
     Widget statusPill({required Widget child, Key? key}) => IgnorePointer(
       key: key,
       child: Align(
-        alignment: Alignment.topCenter,
+        alignment: Alignment.bottomCenter,
         child: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(bottom: 4),
           child: Material(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             elevation: 2,
@@ -3351,7 +3583,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    final statusBanner = ListenableBuilder(
+    // Two slots: the error banner is interactive (Retry) and stays pinned at
+    // the top; the transient pills float at the bottom, clear of the tab bar.
+    Widget statusBanner({required bool error}) => ListenableBuilder(
       listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
       builder: (context, _) {
         final openFailed = status.startsWith('Open failed:');
@@ -3399,7 +3633,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : const SizedBox.shrink(key: ValueKey('status-none'));
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 200),
-          child: banner,
+          child: openFailed == error
+              ? banner
+              : const SizedBox.shrink(key: ValueKey('status-none')),
         );
       },
     );
@@ -3407,7 +3643,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Stack(
         children: [
           Positioned.fill(child: bodyContent),
-          Positioned(top: 0, left: 0, right: 0, child: statusBanner),
+          // left/right pinned on both so the MaterialBanner keeps a tight
+          // width; only one vertical edge, so each shrink-wraps its height.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: statusBanner(error: true),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: statusBanner(error: false),
+          ),
         ],
       ),
     );

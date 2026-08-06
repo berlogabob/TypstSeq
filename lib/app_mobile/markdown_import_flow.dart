@@ -256,7 +256,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
           // Bulleted so the block renders as a list, and so article-pipeline
           // (which writes the same marked block from its LLM suggestions)
           // produces byte-identical markup.
-          '- #tylog.ref-note(${typstString(target.id)})[${typstContent(target.title)}]',
+          '- #tylog.ref-note(${typstString(target.id)})[${escapeMarkup(target.title)}]',
     ];
     if (lines.isNotEmpty) {
       await vault!.saveNote(
@@ -300,27 +300,23 @@ extension _MarkdownImportFlow on _HomeScreenState {
     final articles = relinkCandidates(idx.notes);
     final skipped =
         idx.notes.where((n) => n.kind == 'article').length - articles.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Relink vault'),
-        content: Text(
-          'Rescan ${articles.length} articles and refresh their suggested links?'
+    // The old wording asked only "rescan and refresh?", which does not describe
+    // what happens: relinking *replaces* the existing Related block, so
+    // anything written inside it is gone. `stripAutoRelated` now keeps whatever
+    // follows the block, but the block's own contents are still overwritten.
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Relink vault',
+      message:
+          'Rescan ${articles.length} article'
+          '${articles.length == 1 ? '' : 's'} and replace the '
+          '"Related" section in each one? Anything written inside those '
+          'sections is overwritten.'
           '${skipped > 0 ? '\n\n$skipped already linked by a language model are left unchanged.' : ''}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Relink'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Relink',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     unawaited(
       showDialog<void>(

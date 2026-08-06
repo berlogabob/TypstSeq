@@ -53,6 +53,26 @@ void main() {
     expect(document.blocks[1].source, endsWith(')'));
   });
 
+  // The shape the Logseq importer emits — thousands of lines in a migrated
+  // vault. Without this the `- ` demotes the task to a list, and the call is
+  // rendered as an inline atom labelled with its first quoted string: the id.
+  test('a task written as a list item is still its own task block', () {
+    const source =
+        '- #tylog.task(id: "t1", text: "Buy milk", status: "done")\n'
+        '  - #tylog.task(id: "t2", text: "Sub", status: "done")';
+
+    final document = parseControlledTypst(source);
+
+    expect(document.blocks.map((block) => block.kind), [
+      ControlledBlockKind.task,
+      ControlledBlockKind.task,
+    ]);
+    expect(document.blocks.map(controlledBlockPreview), ['Buy milk', 'Sub']);
+    // The marker + indent stay in the block source; that is what lets
+    // replaceTaskText round-trip byte-for-byte.
+    expect(document.blocks[1].source, startsWith('  - #tylog.task('));
+  });
+
   test('mentionExcerpts finds ref-note, @mention and [[wiki]] lines', () {
     const source = '''met #tylog.ref-note("fernando")[Fernando] about the launch
 

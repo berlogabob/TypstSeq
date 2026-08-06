@@ -30,6 +30,12 @@ unchanged so existing Typst queries continue to work.
 | `<tylog-attachment>` | `attachment` | `path`, `kind` | `title` |
 | `<tylog-task>` | `task` | `id`, `text`, `status`, `priority` | `project`, `scheduled`, `due`, `remind`, `timezone`, `recurrence`, `dependencies`, `assignees`, `tags`, `completed`, `properties` |
 
+Task time tracking is carried in `properties` under the `clocked` key: a list
+of `(start, end)` ISO-8601 pairs, with `end` absent while a session is still
+running. It lives there rather than in its own field because `properties` is
+the extension slot — a reader on an older package ignores an unknown key, while
+an unknown named argument is a hard compile error.
+
 The standard note kinds are `note`, `daily`, `project`, `article`, and
 `research`. Other non-empty values are extensions and produce validation
 warnings, not read failures.
