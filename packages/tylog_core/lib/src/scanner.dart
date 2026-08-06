@@ -1039,9 +1039,15 @@ String replaceNoteProperty(String source, String key, Object? value) {
   final encodedValue = _typstValue(value);
   final propsField = _locateTopLevelField(header, 'properties');
   if (propsField == null) {
-    final newHeader = header.replaceFirst(
-      RegExp(r'\)\s*$'),
-      '  properties: (${typstString(key)}: $encodedValue,),\n)',
+    // Must go through the same separator-aware append as every other writer:
+    // a blind splice before `)` drops the comma on a single-line header
+    // (`kind: "note"  properties: (…)`), which is exactly the defect that made
+    // 406 task calls unparseable. `_noteSource` only ever writes multi-line
+    // headers today, so this is the latent half of that bug, not a live one.
+    final newHeader = _appendCallField(
+      header,
+      'properties',
+      '(${typstString(key)}: $encodedValue,)',
     );
     return source.replaceRange(call.start, call.end, newHeader);
   }
@@ -1166,7 +1172,7 @@ String replaceTaskStatus(String source, String id, String status) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'status');
   final replacement = field == null
-      ? _appendTaskField(call.source, 'status', '"$status"')
+      ? _appendCallField(call.source, 'status', '"$status"')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1179,7 +1185,7 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'completed');
   final replacement = field == null
-      ? _appendTaskField(call.source, 'completed', '("$timestamp",)')
+      ? _appendCallField(call.source, 'completed', '("$timestamp",)')
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1188,14 +1194,15 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   return source.replaceRange(call.start, call.end, replacement);
 }
 
-/// Inserts `name: value` just before a task call's closing paren.
+/// Inserts `name: value` just before a Typst call's closing paren — used for
+/// both `#tylog.task(...)` fields and `tylog.note.with(...)` header fields.
 ///
 /// The separator depends on how the call was written: the multi-line form ends
 /// `,\n)` and needs none, while a single-line `#tylog.task(id: "x", text: "y")`
 /// ends on a value and needs `, `. Getting this wrong produces
 /// `priority: "normal"  clocked: (...)`, which is not valid Typst and silently
 /// makes the whole task unreadable.
-String _appendTaskField(String callSource, String name, String value) {
+String _appendCallField(String callSource, String name, String value) {
   final close = callSource.lastIndexOf(')');
   if (close < 0) return callSource;
   var before = close - 1;
@@ -1307,7 +1314,7 @@ String _setTaskProperty(String callSource, String key, String? rawValue) {
   final field = _locateTopLevelField(callSource, 'properties');
   if (field == null) {
     if (rawValue == null) return callSource;
-    return _appendTaskField(
+    return _appendCallField(
       callSource,
       'properties',
       '(${typstString(key)}: $rawValue,)',
@@ -1381,7 +1388,7 @@ String replaceTaskText(String source, String id, String text) {
       '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   final field = _locateTopLevelField(call.source, 'text');
   final replacement = field == null
-      ? _appendTaskField(call.source, 'text', quoted)
+      ? _appendCallField(call.source, 'text', quoted)
       : call.source.replaceRange(
           field.start,
           field.end,
