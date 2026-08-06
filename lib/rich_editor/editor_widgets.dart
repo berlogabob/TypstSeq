@@ -394,12 +394,22 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               ? Theme.of(context).colorScheme.surfaceContainerHighest
               : null,
           leading: Icon(
-            item.kind == MentionKind.concept
+            item.create
+                ? Icons.add_circle_outline
+                : item.kind == MentionKind.concept
                 ? Icons.tag
-                : Icons.alternate_email,
+                // The note's own kind, so a project reads as a project and an
+                // imported article as an article.
+                : iconForKind(item.noteKind),
           ),
           title: Text(item.title),
-          subtitle: Text(item.id),
+          // A raw id ("md-3b7a2305beedce32") tells the user nothing, and two
+          // scraped copies of one page are otherwise identical rows.
+          subtitle: Text(
+            item.subtitle ?? item.id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           onTap: () => _selectMention(item),
         );
       },

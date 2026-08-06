@@ -1,5 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/editor_autocomplete.dart';
+import 'package:tylog_core/models.dart';
+
+NoteRef _note(
+  String id,
+  String path,
+  String title, {
+  String kind = 'note',
+  Map<String, Object?> properties = const {},
+  List<String> aliases = const [],
+}) => NoteRef(
+  id: id,
+  path: path,
+  title: title,
+  kind: kind,
+  aliases: aliases,
+  properties: properties,
+  outgoingLinks: const [],
+);
 
 void main() {
   group('detectTrigger', () {
@@ -131,6 +149,62 @@ void main() {
       final trigger = detectTrigger('[[@Fer', 6);
       expect(trigger!.kind, AutocompleteTriggerKind.wikiLink);
       expect(trigger.query, '@Fer');
+    });
+  });
+
+  // The real vault's "@flowgroove" case: sorting by title alone put two
+  // scraped articles — indistinguishable rows subtitled md-3b7a2305beedce32
+  // and md-bc14d696f4420a94 — above everything else.
+  group('mention ranking', () {
+    final project = _note('fg', 'projects/FlowGroove.typ', 'FlowGroove',
+        kind: 'project');
+    final articleA = _note(
+      'md-3b7a2305beedce32',
+      'articles/FlowGroove.typ',
+      'FlowGroove',
+      kind: 'article',
+      properties: {'url': 'https://flowgroove.app/join/?code=VHEE8I'},
+    );
+    final audit = _note(
+      'flowgroove-ux-ui-audit-ru',
+      'notes/FlowGroove_UX_UI_Audit_RU.typ',
+      'UX/UI-аудит бета-версии FlowGroove',
+    );
+
+    test('an equally-titled project outranks an imported article', () {
+      expect(
+        mentionScore(project, 'flowgroove', const {}),
+        greaterThan(mentionScore(articleA, 'flowgroove', const {})),
+      );
+    });
+
+    test('tier dominates the kind bonus', () {
+      // An exactly-titled article still beats a project matching only by
+      // prefix — otherwise a kind bonus could bury the page you named.
+      expect(
+        mentionScore(articleA, 'flowgroove', const {}),
+        greaterThan(mentionScore(project, 'flow', const {})),
+      );
+      // The audit note matches on its *id*, so it belongs in the list — but
+      // below both notes whose title matches.
+      final auditScore = mentionScore(audit, 'flowgroove', const {});
+      expect(auditScore, greaterThan(0));
+      expect(auditScore, lessThan(mentionScore(articleA, 'flowgroove', const {})));
+      // A word merely appearing in the title is not a match at all.
+      expect(mentionScore(audit, 'аудит', const {}), 0);
+    });
+
+    test('recently opened breaks a tie between identical titles', () {
+      const recency = {'articles/FlowGroove.typ': 0};
+      expect(
+        mentionScore(articleA, 'flowgroove', recency),
+        greaterThan(mentionScore(articleA, 'flowgroove', const {})),
+      );
+    });
+
+    test('subtitle names the kind and source instead of an opaque id', () {
+      expect(mentionSubtitle(articleA), 'article · flowgroove.app');
+      expect(mentionSubtitle(project), 'project · projects/FlowGroove.typ');
     });
   });
 }

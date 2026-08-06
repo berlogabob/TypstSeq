@@ -12,7 +12,12 @@ import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
 
 export 'editor_autocomplete.dart'
-    show MentionSuggestion, MentionKind, AutocompleteTriggerKind;
+    show
+        MentionSuggestion,
+        MentionKind,
+        AutocompleteTriggerKind,
+        mentionScore,
+        mentionSubtitle;
 
 part 'rich_editor/document_model.dart';
 part 'rich_editor/editing_controller.dart';

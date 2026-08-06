@@ -3256,6 +3256,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (q.isEmpty) return const <MentionSuggestion>[];
           bool matches(String s) => s.toLowerCase().startsWith(q);
           final notes = index?.notes ?? const <NoteRef>[];
+          // Built once per query, not per candidate: _mergedRecent() allocates
+          // and sorts, and it is capped at 30 entries.
+          final recency = <String, int>{
+            for (final (position, recent) in _mergedRecent().indexed)
+              recent.path: position,
+          };
           final matchedNotes =
               notes
                   .where(
@@ -3265,10 +3271,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         n.aliases.any(matches),
                   )
                   .toList()
-                ..sort((a, b) => a.title.compareTo(b.title));
+                ..sort((a, b) {
+                  final byScore = mentionScore(
+                    b,
+                    q,
+                    recency,
+                  ).compareTo(mentionScore(a, q, recency));
+                  return byScore != 0 ? byScore : a.title.compareTo(b.title);
+                });
           final suggestions = matchedNotes
               .take(8)
-              .map((n) => MentionSuggestion(id: n.id, title: n.title))
+              .map(
+                (n) => MentionSuggestion(
+                  id: n.id,
+                  title: n.title,
+                  noteKind: n.kind,
+                  subtitle: mentionSubtitle(n),
+                ),
+              )
               .toList();
           // `[[` also completes existing tags into concepts; `@` stays notes.
           if (kind == AutocompleteTriggerKind.wikiLink) {
@@ -3285,6 +3305,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       kind: MentionKind.concept,
                     ),
                   ),
+            );
+          }
+          // Logseq lets `[[X]]` name a page that has no file yet. Without this
+          // row a page that does not exist is simply unreachable from the
+          // editor and the user has to accept whichever near-miss ranked
+          // first. Selecting it emits an ordinary ref-note to the typed title,
+          // which renders as the existing tappable "unresolved" chip — tapping
+          // that runs _createFromLink, and until then the link shows up in the
+          // broken-link triage like any other missing page.
+          final typed = query.trim();
+          if (typed.isNotEmpty &&
+              !suggestions.any(
+                (s) => s.title.toLowerCase() == typed.toLowerCase(),
+              )) {
+            suggestions.add(
+              MentionSuggestion(
+                id: typed,
+                title: typed,
+                subtitle: 'New page — not created yet',
+                create: true,
+              ),
             );
           }
           return suggestions;
