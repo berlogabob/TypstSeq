@@ -278,6 +278,45 @@ void main() {
     }
   });
 
+  // The safety net under the bulk maintenance passes. There is no vault-level
+  // undo, so if this does not run before a rewrite, a mis-tap over 3,351 notes
+  // is recoverable only from the server's versioning.
+  test('snapshotNotes copies notes as they are, under a stamped folder', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_snapshot_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final a = await vault.page('Alpha');
+    final b = await vault.page('Beta');
+    await vault.saveNote(a, 'original alpha');
+    await vault.saveNote(b, 'original beta');
+
+    final undo = await vault.snapshotNotes([a, b], now: DateTime.utc(2026, 8, 7, 9, 30));
+
+    expect(undo, '.tylog/undo/2026-08-07T09-30-00.000Z');
+    expect(await vault.readText('$undo/$a'), 'original alpha');
+    expect(await vault.readText('$undo/$b'), 'original beta');
+
+    // Overwriting afterwards must leave the copies alone — that is the point.
+    await vault.saveNote(a, 'rewritten alpha');
+    expect(await vault.readText('$undo/$a'), 'original alpha');
+    expect(await vault.readText(a), 'rewritten alpha');
+  });
+
+  test('snapshotNotes throws rather than half-copying', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_snapshot_fail_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final a = await vault.page('Alpha');
+
+    // A caller that cannot snapshot must not go on to rewrite.
+    await expectLater(
+      vault.snapshotNotes([a, 'notes/does-not-exist.typ']),
+      throwsA(anything),
+    );
+  });
+
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');
     addTearDown(() => dir.delete(recursive: true));

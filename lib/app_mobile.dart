@@ -1341,62 +1341,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await workspace.rebuildIndex(force: force);
   }
 
+  /// Rewrites every note the [transform] changes, but only after saying how
+  /// many and taking a copy.
+  ///
+  /// These are one-tap tiles that write to every note in the vault, and there
+  /// is no vault-level undo — the editor's history is a 100-entry in-memory
+  /// stack cleared on every `setSource`. Before this, one mis-tap rewrote
+  /// 3,351 files with no confirmation and nothing to recover from but the
+  /// server's own versioning.
+  ///
+  /// The pass is computed first and applied second, so the count in the dialog
+  /// is the real one rather than an estimate, and a note is only copied if it
+  /// is actually about to change.
+  Future<void> _runBulkRewrite({
+    required String title,
+    required String confirmLabel,
+    required String pastTense,
+    required String nothingToDo,
+    required String Function(String source) transform,
+  }) async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+
+    final pending = <String, String>{};
+    for (final note in ix.notes) {
+      final source = await v.storage.readText(note.path);
+      final updated = transform(source);
+      if (updated != source) pending[note.path] = updated;
+    }
+    if (!mounted) return;
+    if (pending.isEmpty) {
+      showSnack(context, nothingToDo);
+      return;
+    }
+
+    final count = '${pending.length} note${pending.length == 1 ? '' : 's'}';
+    final confirmed = await showConfirmDialog(
+      context,
+      title: title,
+      message:
+          'This rewrites $count and cannot be undone from inside TyLog.\n\n'
+          'A copy of each note as it is now will be written to '
+          '.tylog/undo/ first.',
+      confirmLabel: confirmLabel,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    final String undoDirectory;
+    try {
+      undoDirectory = await v.snapshotNotes(pending.keys);
+    } catch (error) {
+      // No snapshot, no rewrite. The whole point of the copy is that it exists
+      // before anything is overwritten.
+      if (!mounted) return;
+      showSnack(
+        context,
+        'Could not save a backup, so nothing was changed: $error',
+      );
+      return;
+    }
+
+    for (final entry in pending.entries) {
+      await v.saveNote(entry.key, entry.value);
+    }
+    await workspace.refreshIndex(always: true);
+    if (!mounted) return;
+    showSnack(context, '$pastTense $count — previous copies in $undoDirectory');
+  }
+
   /// One-off maintenance action: folds the legacy `properties["type"]`
   /// entity classifier into `kind` across every note in the vault (see
   /// [migrateEntityTypeToKind]). Safe to run multiple times.
-  Future<void> _migrateEntityTypes() async {
-    final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    var migrated = 0;
-    for (final note in ix.notes) {
-      final source = await v.storage.readText(note.path);
-      final updated = migrateEntityTypeToKind(source);
-      if (updated != source) {
-        await v.saveNote(note.path, updated);
-        migrated++;
-      }
-    }
-    await workspace.refreshIndex(always: true);
-    if (!mounted) return;
-    showSnack(
-      context,
-      migrated == 0
-          ? 'No notes needed entity-type migration'
-          : 'Migrated $migrated note${migrated == 1 ? '' : 's'} to '
-                'kind-based entity types',
-    );
-  }
+  Future<void> _migrateEntityTypes() => _runBulkRewrite(
+    title: 'Migrate entity types',
+    confirmLabel: 'Migrate',
+    pastTense: 'Migrated',
+    nothingToDo: 'No notes needed entity-type migration',
+    transform: migrateEntityTypeToKind,
+  );
 
   /// One-off maintenance: drops the *empty* org-mode drawers and trailing
   /// empty blocks that Logseq exports carry into a note (see
-  /// [stripLogseqNoise]). A drawer holding CLOCK: records is left alone —
-  /// those are the user's time tracking, and this is a one-tap action whose
-  /// writes are permanent. The converter strips these now, but a re-import
-  /// cannot repair the notes already on disk — the wizard skips a source whose
-  /// SHA is unchanged. Safe to run more than once.
-  Future<void> _stripImportNoise() async {
-    final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    var cleaned = 0;
-    for (final note in ix.notes) {
-      final source = await v.storage.readText(note.path);
-      final updated = stripLogseqNoise(source);
-      if (updated != source) {
-        await v.saveNote(note.path, updated);
-        cleaned++;
-      }
-    }
-    await workspace.refreshIndex(always: true);
-    if (!mounted) return;
-    showSnack(
-      context,
-      cleaned == 0
-          ? 'No imported notes needed cleaning'
-          : 'Cleaned $cleaned note${cleaned == 1 ? '' : 's'}',
-    );
-  }
+  /// [stripLogseqNoise]). A drawer holding CLOCK: records is left alone — those
+  /// are the user's time tracking, and this rewrites in bulk. The converter
+  /// strips these now, but a re-import cannot repair the notes already on disk
+  /// — the wizard skips a source whose SHA is unchanged. Safe to run more than
+  /// once.
+  Future<void> _stripImportNoise() => _runBulkRewrite(
+    title: 'Clean up imported notes',
+    confirmLabel: 'Clean up',
+    pastTense: 'Cleaned',
+    nothingToDo: 'No imported notes needed cleaning',
+    transform: stripLogseqNoise,
+  );
 
   Future<void> _syncNow({String trigger = 'manual'}) async {
     try {

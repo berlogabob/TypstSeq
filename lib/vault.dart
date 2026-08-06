@@ -174,6 +174,34 @@ class Vault {
     return path;
   }
 
+  /// Copies each of [paths] as it is right now under `.tylog/undo/<stamp>/`,
+  /// and returns that directory.
+  ///
+  /// The safety net for bulk rewrites. TyLog has no vault-level undo — the
+  /// editor's history is an in-memory stack cleared on every note switch — so
+  /// a maintenance pass over 3,351 notes was previously recoverable only from
+  /// the server's own versioning.
+  ///
+  /// Throws if any copy fails. A caller that cannot snapshot must not write:
+  /// the copy exists precisely so that it is there *before* anything is
+  /// overwritten. `.tylog/` is outside the sync allowlist, so snapshots stay on
+  /// the device that made them.
+  Future<String> snapshotNotes(Iterable<String> paths, {DateTime? now}) async {
+    final stamp = (now ?? DateTime.now())
+        .toUtc()
+        .toIso8601String()
+        .replaceAll(':', '-');
+    final directory = '.tylog/undo/$stamp';
+    for (final path in paths) {
+      final parent = path.lastIndexOf('/');
+      await storage.createDirectory(
+        parent < 0 ? directory : '$directory/${path.substring(0, parent)}',
+      );
+      await storage.writeText('$directory/$path', await storage.readText(path));
+    }
+    return directory;
+  }
+
   Future<String> project(String title, {DateTime? now}) =>
       page(title, kind: 'project', now: now);
 
