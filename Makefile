@@ -4,7 +4,7 @@ APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
 OWNER_REPO ?= berlogabob/TypstSeq
 
-.PHONY: help setup-native test-core test-typst test verify verify-android build-android release
+.PHONY: help setup-native test-core test-typst test verify verify-android verify-real-vault build-android release
 
 help:
 	@echo "TyLog release commands"
@@ -12,7 +12,8 @@ help:
 	@echo "  make test-core     # run Flutter-independent core and CLI tests"
 	@echo "  make test-typst    # compile/query the Typst package and format fixture"
 	@echo "  make verify        # run analysis, tests, native integration, and release builds"
-	@echo "  make verify-android # worker checks that need a real device (SAF, jank, attribution)"
+	@echo "  make verify-android # every integration test, on a real device"
+	@echo "  make verify-real-vault # SAF perf against the real vault (profile build)"
 	@echo "  make bump-version   # 1.0.0+1 -> 1.0.0+2"
 	@echo "  make build-android  # build release APK"
 	@echo "  make release        # bump, test, APK, commit, tag, push; Actions publishes"
@@ -52,27 +53,47 @@ test: test-core test-typst
 	@flutter analyze
 	@flutter test
 
+# Globbed, never enumerated. The hand-written lists that used to live here left
+# SIX of twelve integration tests in no target at all, so nobody noticed three of
+# them had stopped working — one could not run on Android at all, one had rotted
+# on both platforms, and one asserted a hardware-dependent speed ratio. A new
+# file now runs automatically.
+#
+# One invocation per file, not one for all of them: a second file in the same
+# `flutter test` call fails to load with "Unable to start the app on the device",
+# because the first test's app is still holding the device.
+#
+# Platform exclusions belong in the test as `skip:`, next to the reason for them
+# (see vault_worker_saf_test.dart). Never `if (!Platform.isX) return;` — that
+# reports a PASS for a test that never ran, which is how this rotted.
+#
+# vault_worker_real_vault_test is excluded deliberately: it measures the real
+# vault over SAF and must be a profile build via `flutter drive`, not
+# `flutter test` (which builds debug, has no SAF grant, and would silently
+# measure an empty vault). It has its own target below.
+INTEGRATION_TESTS := $(filter-out integration_test/vault_worker_real_vault_test.dart,$(wildcard integration_test/*.dart))
+
 verify: test
-	@flutter test integration_test/pkms_native_test.dart -d macos
-	@flutter test integration_test/markdown_import_native_test.dart -d macos
-	@flutter test integration_test/vault_worker_native_test.dart -d macos
-	@flutter test integration_test/vault_worker_jank_test.dart -d macos
+	@for t in $(INTEGRATION_TESTS); do echo "== $$t"; flutter test $$t -d macos -r expanded || exit 1; done
 	@flutter build apk --release
 	@flutter build macos --release
 	@if [ "$$(uname -s)" = Linux ]; then flutter build linux; else echo "Skipping Linux build on $$(uname -s); covered by CI."; fi
 
-# Worker checks that need real hardware, so they cannot live in `verify` (which
-# runs on macOS) or in CI (which has no device). ANDROID_DEVICE defaults to the
-# only attached device. vault_worker_saf_test is Android-only by construction: it
-# probes SafBridge from a background isolate, which has no desktop equivalent.
+# Checks that need real hardware, so they cannot live in CI (which has no
+# device). ANDROID_DEVICE defaults to the only attached device.
 ANDROID_DEVICE ?= $(shell adb devices | awk 'NR>1 && $$2=="device" {print $$1; exit}')
 verify-android:
 	@if [ -z "$(ANDROID_DEVICE)" ]; then echo "No Android device attached (adb devices)."; exit 1; fi
 	@echo "Using device $(ANDROID_DEVICE)"
-	@flutter test integration_test/vault_worker_saf_test.dart -d $(ANDROID_DEVICE)
-	@flutter test integration_test/vault_worker_native_test.dart -d $(ANDROID_DEVICE)
-	@flutter test integration_test/vault_worker_jank_test.dart -d $(ANDROID_DEVICE)
-	@flutter test integration_test/vault_worker_attribution_test.dart -d $(ANDROID_DEVICE)
+	@for t in $(INTEGRATION_TESTS); do echo "== $$t"; flutter test $$t -d $(ANDROID_DEVICE) -r expanded || exit 1; done
+
+# The real-vault SAF measurement. Needs a profile build (release-signed, so it
+# installs over the release app and keeps the persisted SAF grant) and a device
+# whose active vault is android-tree; the test fails loudly otherwise.
+verify-real-vault:
+	@if [ -z "$(ANDROID_DEVICE)" ]; then echo "No Android device attached (adb devices)."; exit 1; fi
+	@flutter drive --profile --driver=test_driver/integration_test.dart \
+		--target=integration_test/vault_worker_real_vault_test.dart -d $(ANDROID_DEVICE)
 
 build-android:
 	@flutter build apk --release

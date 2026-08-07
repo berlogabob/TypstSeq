@@ -82,7 +82,15 @@ void main() {
         index.notesByPath['projects/Root.typ']?.metadataSource,
         'typst-query',
       );
-      expect(index.notesByPath['notes/Broken.typ']?.metadataSource, 'fallback');
+      // 'fallback-inspected', not 'fallback': an inspector was available and
+      // did run, and the note still fell back because it does not compile. The
+      // plain 'fallback' stamp means no inspector was ever tried. The scanner
+      // started drawing that distinction in ef14140 and this expectation was
+      // never updated — it has been failing inside `make verify` ever since.
+      expect(
+        index.notesByPath['notes/Broken.typ']?.metadataSource,
+        'fallback-inspected',
+      );
       expect(index.backlinksByTarget['projects/Root.typ'], [
         'notes/Broken.typ',
       ]);
@@ -109,7 +117,11 @@ void main() {
     );
     expect(await pdf.length(), greaterThan(100));
     expect(String.fromCharCodes((await pdf.readAsBytes()).take(4)), '%PDF');
-  });
+    // Desktop only, by construction: this asserts parity between the embedded
+    // engine and `CliTypstInspector`, which shells out to a `typst` binary.
+    // There is none on a phone, so running it there fails with "Typst
+    // executable not found" — a red test that says nothing about the app.
+  }, skip: Platform.isAndroid || Platform.isIOS);
 }
 
 List<String> _normalizedMetadata(Iterable<TypstMetadataRecord> records) {

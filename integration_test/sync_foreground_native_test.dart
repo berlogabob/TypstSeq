@@ -10,7 +10,6 @@ void main() {
   testWidgets('Android foreground sync service starts, updates, and stops', (
     tester,
   ) async {
-    if (!Platform.isAndroid) return;
     const holdSeconds = int.fromEnvironment('TYLOG_FOREGROUND_HOLD_SECONDS');
 
     await AndroidTreeVaultStorage.startSyncForeground(
@@ -23,5 +22,7 @@ void main() {
       await Future<void>.delayed(Duration(seconds: holdSeconds));
     }
     await AndroidTreeVaultStorage.stopSyncForeground();
-  });
+    // `skip:`, not an early `return`: a bare return reports a PASS for a test
+    // that never executed, which is how several tests here rotted unnoticed.
+  }, skip: !Platform.isAndroid);
 }

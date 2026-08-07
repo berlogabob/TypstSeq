@@ -24,11 +24,27 @@ void main() {
       await tester.pump();
 
       final field = find.byKey(const Key('rich-journal-editor'));
-      await tester.tap(field);
+      // `showKeyboard`, not `tap`: the dock subtree does not exist at all while
+      // the editor is unfocused (editor_widgets.dart renders a zero-height box
+      // instead), so `find.byTooltip('Insert')` returns 0 widgets rather than
+      // failing a hit test. Tapping is also unreliable on a real device — the
+      // IME resizes the viewport between iterations, so the field's old centre
+      // can land outside it and `onTapOutside` immediately unfocuses again.
+      // `showKeyboard` focuses without hit-testing and attaches the text-input
+      // client that the composing-text assertions below depend on.
+      await tester.showKeyboard(field);
       harness.controller.selection = TextSelection.collapsed(
         offset: harness.controller.text.length,
       );
-      await tester.pump();
+      // Settle, not pump: focus is applied in a scheduled callback and the dock
+      // then expands through a 150ms AnimatedSize from height zero. A single
+      // pump leaves the button either absent or unhittable.
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('Insert'),
+        findsOneWidget,
+        reason: 'magic dock should be open for ${action.name}',
+      );
       await tester.tap(find.byTooltip('Insert'));
       await tester.pumpAndSettle();
 
@@ -36,7 +52,10 @@ void main() {
       await tester.scrollUntilVisible(
         choice,
         120,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(Scrollable),
+        ),
       );
       await tester.ensureVisible(choice);
       await tester.pumpAndSettle();

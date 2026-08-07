@@ -90,9 +90,15 @@ void main() {
 
       expect(fallbackServer.archiveGets, 1);
       expect(fallbackServer.individualGets, fallbackCount);
+      // Ordering, not a ratio. The old assertion demanded the fallback be >=4x
+      // the ZIP path, which is a property of one machine's CPU-to-delay ratio,
+      // not of the code: a faster phone measured 3.39x and failed. What this
+      // test actually proves is asserted deterministically above — one archive
+      // GET versus `fallbackCount` individual ones. The speedup belongs in a
+      // benchmark that reports, not a gate that breaks on new hardware.
       expect(
-        fallbackWatch.elapsedMilliseconds,
-        greaterThanOrEqualTo(archiveWatch.elapsedMilliseconds * 4),
+        archiveWatch.elapsedMilliseconds,
+        lessThan(fallbackWatch.elapsedMilliseconds),
         reason:
             'ZIP ${archiveWatch.elapsedMilliseconds}ms; '
             'four-worker fallback ${fallbackWatch.elapsedMilliseconds}ms',
