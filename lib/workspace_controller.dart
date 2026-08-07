@@ -1132,7 +1132,9 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> _sweepSafBackups(Vault opened) async {
     try {
       for (final item in await opened.storage.list(recursive: true)) {
-        if (!item.isDirectory && isSafBackupPath(item.path)) {
+        if (!item.isDirectory &&
+            (isSafBackupPath(item.path) ||
+                isForkedVaultLockPath(item.path))) {
           await opened.storage.delete(item.path);
         }
       }

@@ -894,6 +894,24 @@ void main() {
     );
   });
 
+  // A SAF rename collision forks the vault lock into `vault (1).lock`, which
+  // nothing can find again — VaultLock looks up `vault.lock` exactly, so it can
+  // neither read nor release it. Swept, but matched exactly: a rule like
+  // "anything with (n)" would delete real notes.
+  test('a forked vault lock is swept, ordinary notes are not', () {
+    expect(isForkedVaultLockPath('.tylog/vault (1).lock'), isTrue);
+    expect(isForkedVaultLockPath('.tylog/vault (12).lock'), isTrue);
+
+    expect(isForkedVaultLockPath('.tylog/vault.lock'), isFalse,
+        reason: 'the real lock must never be swept');
+    expect(isForkedVaultLockPath('notes/Report (1).typ'), isFalse,
+        reason: 'ordinary user content');
+    expect(isForkedVaultLockPath('assets/photo (2).jpg'), isFalse);
+    expect(isForkedVaultLockPath('notes/vault (1).lock'), isFalse,
+        reason: 'only inside .tylog/');
+    expect(isForkedVaultLockPath('.tylog/vault ().lock'), isFalse);
+  });
+
   test('legacy identical and empty conflict copies are cleaned', () async {
     final server = await _webDavServer(remoteContent: 'keep note');
     final dir = await Directory.systemTemp.createTemp('tylog_old_conflicts_');

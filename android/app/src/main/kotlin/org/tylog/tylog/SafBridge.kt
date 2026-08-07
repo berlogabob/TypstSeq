@@ -36,6 +36,25 @@ class SafBridge(
         private const val CHANNEL = "org.tylog.tylog/saf"
         private const val PICK_TREE = 4815
         private const val DIRECTORY_MIME = DocumentsContract.Document.MIME_TYPE_DIR
+
+        // Process-wide, not per-instance. Two SafBridge instances live in this
+        // process — one for the UI engine (MainActivity) and one for the
+        // WorkManager engine (VaultSyncWorker), and there is no android:process
+        // splitting them. A per-instance lock serialised each engine against
+        // itself and neither against the other, so both could resolve the same
+        // path to "absent" and both rename a temp file onto the same name. SAF
+        // does not overwrite on rename: the provider de-duplicates, and the
+        // loser silently becomes "name (1)".
+        //
+        // Found as `.tylog/vault (1).lock` on a real device — the vault lock is
+        // the one path both engines write by design, so it surfaced there first,
+        // but the same window applies to any note.
+        private val storageLock = ReentrantReadWriteLock(true)
+
+        // Shared for the same reason: a write through one instance mints a new
+        // document id, and an unshared cache leaves the other instance holding
+        // a dead one. Keyed by (tree, path), so instances cannot collide.
+        private val uriCache = ConcurrentHashMap<Pair<String, String>, Uri>()
     }
 
     private val resolver = context.contentResolver
@@ -55,7 +74,7 @@ class SafBridge(
     // (runStorage), so there is no lock ordering to get wrong.
     // Fair: a full-vault scan is a long burst of reads, and a non-fair lock
     // would let it starve the autosave write queued behind it.
-    private val storageLock = ReentrantReadWriteLock(true)
+    // (Declared in the companion object — shared across engines.)
 
     private val mutatingMethods = setOf(
         "createDirectory", "write", "delete", "deleteRoot", "releaseAccess", "import",
@@ -71,7 +90,7 @@ class SafBridge(
     // file. Evicted on our own writes/deletes; an external app replacing a
     // file is caught by the retry in withResolved and the existence checks in
     // exists/stat. Add an LRU only if a vault ever gets big enough to care.
-    private val uriCache = ConcurrentHashMap<Pair<String, String>, Uri>()
+    // (Declared in the companion object — shared across engines.)
 
     private var pendingPick: MethodChannel.Result? = null
     @Volatile private var disposed = false
@@ -328,7 +347,11 @@ class SafBridge(
         mainHandler.removeCallbacksAndMessages(null)
         readExecutor.shutdownNow()
         writeExecutor.shutdownNow()
-        uriCache.clear()
+        // Deliberately not clearing uriCache: it is shared across engines now,
+        // so the background engine finishing its work would otherwise throw
+        // away the UI engine's warm cache and force a cold child-cursor walk
+        // per path segment. Entries are evicted on our own writes and deletes,
+        // and a stale one is caught by the retry in withResolved.
     }
 
     private fun path(call: MethodCall): String = safePath(call.argument<String>("path") ?: "")
@@ -511,6 +534,28 @@ class SafBridge(
         null,
     ) ?: error("Storage provider returned no result")
 
+    // Accepts a renamed document only if it really landed under [name].
+    //
+    // DocumentsContract.renameDocument does not fail when the name is taken —
+    // AOSP's FileSystemProvider runs buildUniqueFile and silently returns
+    // "name (1)" instead. Unchecked, that is not merely litter: in the replace
+    // branch the original has already been renamed aside, and the caller goes
+    // on to delete that backup, so the note's only good copy is deleted while
+    // the new content sits under a name nothing will ever look up (child()
+    // matches display names exactly).
+    //
+    // Observed on a real device as `.tylog/vault (1).lock`. The process-wide
+    // lock removes the in-process race that caused it; this catches the same
+    // collision from any other writer on the tree, which no lock of ours can.
+    private fun commit(tree: Uri, safe: String, name: String, committed: Uri) {
+        val actual = runCatching { displayName(committed) }.getOrNull()
+        if (actual != null && actual != name) {
+            runCatching { DocumentsContract.deleteDocument(resolver, committed) }
+            error("Storage provider renamed the document to \"$actual\"")
+        }
+        uriCache[cacheKey(tree, safe)] = committed
+    }
+
     private fun displayName(uri: Uri): String {
         query(uri).use { cursor ->
             require(cursor.moveToFirst()) { "Folder disappeared" }
@@ -570,7 +615,7 @@ class SafBridge(
             if (target == null) {
                 val created = DocumentsContract.renameDocument(resolver, temporary, name)
                 requireNotNull(created) { "Storage provider cannot rename documents safely" }
-                uriCache[cacheKey(tree, safe)] = created
+                commit(tree, safe, name, created)
                 return
             }
             val backupName = ".$name.tylog-${System.nanoTime()}.backup"
@@ -579,7 +624,7 @@ class SafBridge(
             try {
                 val committed = DocumentsContract.renameDocument(resolver, temporary, name)
                 requireNotNull(committed) { "Storage provider could not commit document" }
-                uriCache[cacheKey(tree, safe)] = committed
+                commit(tree, safe, name, committed)
                 DocumentsContract.deleteDocument(resolver, backup)
             } catch (error: Throwable) {
                 runCatching { DocumentsContract.renameDocument(resolver, backup, name) }

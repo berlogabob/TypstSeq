@@ -1128,6 +1128,20 @@ bool isSafBackupPath(String path) {
       name.contains('.tylog-');
 }
 
+/// A vault lock forked by a SAF rename collision: `.tylog/vault (1).lock`.
+///
+/// When two engines raced to create the lock, the provider de-duplicated the
+/// loser's rename instead of overwriting, leaving a file nothing can find again
+/// — `VaultLock` looks up `vault.lock` exactly, so it can neither read nor
+/// release it. Harmless in itself but permanent, and a clear sign the lock was
+/// not arbitrating anything for the length of that sync.
+///
+/// Matched exactly, never generalised to "anything with (n)": `Report (1).typ`
+/// is perfectly ordinary user content, and a broader sweep would delete notes.
+final _forkedVaultLock = RegExp(r'^\.tylog/vault \(\d+\)\.lock$');
+
+bool isForkedVaultLockPath(String path) => _forkedVaultLock.hasMatch(path);
+
 /// This device's own bookkeeping inside the syncable `_system/` tree: reading
 /// progress (rewritten on every note open) and the index donor (rewritten
 /// after every scan). Both are per-device by path, so uploading one tells us
