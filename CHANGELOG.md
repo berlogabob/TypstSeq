@@ -3,6 +3,55 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.3.0+91
+
+Everything here came out of running 0.2.0 against a real phone and a real
+3,351-note vault for the first time. Four defects, all of which you would have
+hit; none were introduced by 0.2.0 — they had been there and nothing looked.
+
+### Fixed
+
+- **Resolving a sync conflict no longer blocks the app.** It used to allow
+  exactly one resolve, then silently refuse every tap until you force-quit.
+  Cause: resolving awaits a full index rescan, and the dashboard held its "busy"
+  flag for that entire window — hours on a large vault. Resolution now runs on
+  its own path; it contends with nothing. Anything still refused says so.
+- **Geotagged photos stop conflicting forever.** Android hands the app a
+  GPS-redacted copy of a photo whose bytes on disk are intact, so the sync saw a
+  difference that did not exist. Resolving never helped, and "keep this device
+  version" would have destroyed the coordinates on the server. Sync now compares
+  the image data and ignores metadata segments.
+- **Concurrent writes can no longer fork a file.** The two Flutter engines in
+  this app each held their own storage lock, so both could write the same path
+  and the Android provider would silently rename the loser to `name (1)` — found
+  on a real device as `.tylog/vault (1).lock`, a lock nothing could release. The
+  lock is now process-wide, and a rename that lands under the wrong name is
+  rejected rather than accepted. Old forked locks are swept on vault open.
+- A note whose bytes are unchanged is no longer re-indexed for search just
+  because its timestamp moved. A sync that touched only mtimes used to
+  re-tokenise the entire vault.
+
+### Guarded
+
+- **TyLog can no longer write a field the Typst package does not declare.** That
+  is what cost 167 notes: `clocked:` was written as an argument the package had
+  never declared, so every note carrying one stopped compiling, and the fallback
+  parser read them back as fine. A test now derives the package's side from the
+  package itself.
+- `SafBridge.writeAtomic` — the one path that can lose a note — has tests for
+  the first time, against a provider that reproduces Android's rename
+  de-duplication. Reverting the fix reproduces the real-world artifact by name.
+- The integration suite is globbed rather than listed by hand. Six of twelve
+  tests were in no target at all; four had rotted, one of them failing inside
+  `make verify` since a commit already on main.
+
+### Known
+
+- A cold index rebuild is ~25 notes/min (~2.2 hours for this vault). Tracked in
+  #54 with the measurement needed to fix it properly.
+- Credentials stored in note properties still reach the local search index by
+  design. They no longer leave the device in the index donor.
+
 ## 0.2.0+90
 
 First release with a version that carries a signal. It contains a fix that
