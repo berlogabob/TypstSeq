@@ -1048,6 +1048,7 @@ String replaceNoteProperty(String source, String key, Object? value) {
       header,
       'properties',
       '(${typstString(key)}: $encodedValue,)',
+      allowed: writableNoteFields,
     );
     return source.replaceRange(call.start, call.end, newHeader);
   }
@@ -1179,7 +1180,12 @@ String replaceTaskStatus(String source, String id, String status) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'status');
   final replacement = field == null
-      ? _appendCallField(call.source, 'status', '"$status"')
+      ? _appendCallField(
+            call.source,
+            'status',
+            '"$status"',
+            allowed: writableTaskFields,
+          )
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1192,7 +1198,12 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'completed');
   final replacement = field == null
-      ? _appendCallField(call.source, 'completed', '("$timestamp",)')
+      ? _appendCallField(
+            call.source,
+            'completed',
+            '("$timestamp",)',
+            allowed: writableTaskFields,
+          )
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1200,6 +1211,32 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
         );
   return source.replaceRange(call.start, call.end, replacement);
 }
+
+/// Field names TyLog may write into a `#tylog.task(...)` call.
+///
+/// Bound to `typst/tylog/lib.typ` by `package_contract_test.dart`: every name
+/// here must be a parameter the shipped package actually declares. That test
+/// exists because this is the failure that cost 167 notes — the app started
+/// writing `clocked:` as a named argument the package had never declared, so
+/// every note carrying one stopped compiling. Nothing caught it, because the
+/// fallback parser reads a broken call back as a perfectly good task.
+///
+/// Adding a field here without adding it to the package fails the test. Adding
+/// it to neither means the writer cannot emit it at all.
+const writableTaskFields = {'status', 'completed', 'text', 'properties'};
+
+/// Field names TyLog may write into a `tylog.note.with(...)` header.
+/// Same contract as [writableTaskFields].
+const writableNoteFields = {
+  'id',
+  'title',
+  'kind',
+  'date',
+  'tags',
+  'aliases',
+  'project',
+  'properties',
+};
 
 /// Inserts `name: value` just before a Typst call's closing paren — used for
 /// both `#tylog.task(...)` fields and `tylog.note.with(...)` header fields.
@@ -1209,7 +1246,18 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
 /// ends on a value and needs `, `. Getting this wrong produces
 /// `priority: "normal"  clocked: (...)`, which is not valid Typst and silently
 /// makes the whole task unreadable.
-String _appendCallField(String callSource, String name, String value) {
+String _appendCallField(
+  String callSource,
+  String name,
+  String value, {
+  required Set<String> allowed,
+}) {
+  // A field the package does not declare is a hard Typst error, and the
+  // fallback parser will happily read the broken call back as valid.
+  assert(
+    allowed.contains(name),
+    'TyLog may not write "$name" — see writableTaskFields/writableNoteFields',
+  );
   final close = callSource.lastIndexOf(')');
   if (close < 0) return callSource;
   var before = close - 1;
@@ -1325,6 +1373,7 @@ String _setTaskProperty(String callSource, String key, String? rawValue) {
       callSource,
       'properties',
       '(${typstString(key)}: $rawValue,)',
+      allowed: writableTaskFields,
     );
   }
   final dict = callSource.substring(field.valueStart, field.valueEnd);
@@ -1395,7 +1444,12 @@ String replaceTaskText(String source, String id, String text) {
       '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   final field = _locateTopLevelField(call.source, 'text');
   final replacement = field == null
-      ? _appendCallField(call.source, 'text', quoted)
+      ? _appendCallField(
+            call.source,
+            'text',
+            quoted,
+            allowed: writableTaskFields,
+          )
       : call.source.replaceRange(
           field.start,
           field.end,
