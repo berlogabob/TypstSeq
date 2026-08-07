@@ -324,6 +324,21 @@ extension _PathSync on NextcloudSync {
           skipped++;
           repaired++;
           reason = 'same-content';
+        } else if (await _sameImageDifferentMetadata(
+          vault,
+          path,
+          captured.file,
+          localBytes: localBytes,
+        )) {
+          // Same picture, different metadata — Android hands us a GPS-redacted
+          // read of a file whose bytes on disk are intact, so a geotagged photo
+          // looks changed on this device forever. Treating it as a conflict is
+          // wrong twice over: it can never be resolved (the next read is
+          // redacted again), and "keep this device version" would upload the
+          // redacted copy and destroy the coordinates on the server.
+          await captured.file.delete();
+          skipped++;
+          reason = 'same-image-metadata-differs';
         } else if (_protectFromEmpty(path) &&
             await captured.file.length() == 0 &&
             (localStat?.size ?? 0) > 0) {
@@ -758,5 +773,46 @@ extension _PathSync on NextcloudSync {
       return prev.localSha256!;
     }
     return storage.hash(path);
+  }
+
+  /// Whether local and remote are the same photo differing only in metadata.
+  ///
+  /// Android redacts GPS EXIF from images read out of shared storage, and the
+  /// app cannot opt out: the redaction is decided from the identity of the
+  /// DocumentsProvider serving the read, not ours, so `ACCESS_MEDIA_LOCATION`
+  /// never reaches it. The file on disk keeps its coordinates; every read we do
+  /// has them zeroed.
+  ///
+  /// Confirmed on a real device — the on-disk bytes and the server's bytes had
+  /// the same SHA-256, and only the app's read differed. Without this check
+  /// those photos conflict on every sync forever.
+  ///
+  /// Bounded on size: this reads both sides into memory, and it is only ever
+  /// reached for a file whose length already matches on both sides.
+  Future<bool> _sameImageDifferentMetadata(
+    Vault vault,
+    String path,
+    File capturedRemote, {
+    List<int>? localBytes,
+  }) async {
+    const jpeg = {'.jpg', '.jpeg'};
+    final dot = path.lastIndexOf('.');
+    if (dot < 0 || !jpeg.contains(path.substring(dot).toLowerCase())) {
+      return false;
+    }
+    const limit = 32 * 1024 * 1024;
+    try {
+      if (await capturedRemote.length() > limit) return false;
+      final local = localBytes ?? await vault.storage.readBytes(path);
+      if (local.length != await capturedRemote.length()) return false;
+      return sameJpegIgnoringMetadata(
+        local,
+        await capturedRemote.readAsBytes(),
+      );
+    } catch (_) {
+      // Unreadable either side: no opinion, fall through to the normal
+      // comparison rather than guessing the files match.
+      return false;
+    }
   }
 }

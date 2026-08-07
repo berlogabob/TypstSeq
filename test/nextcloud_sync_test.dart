@@ -834,6 +834,66 @@ void main() {
     );
   });
 
+  // Android hands the app a GPS-redacted read of a photo whose bytes on disk
+  // are intact, so a geotagged image looks changed on the device forever. It
+  // conflicts, resolving does not help because the next read is redacted again,
+  // and "keep this device version" would upload the redacted copy and destroy
+  // the coordinates on the server. Confirmed on a real device: on-disk bytes
+  // and server bytes had the same SHA-256; only the app's read differed.
+  test('a GPS-redacted photo is not a conflict', () async {
+    List<int> jpeg(List<int> gps) => [
+      0xFF, 0xD8,
+      0xFF, 0xE1, 0x00, 0x06, 0x45, 0x78, ...gps, // APP1 with/without coords
+      0xFF, 0xDB, 0x00, 0x06, 0x00, 0x01, 0x02, 0x03,
+      0xFF, 0xDA, 0x00, 0x04, 0x01, 0x00, 7, 7, 7, 7,
+      0xFF, 0xD9,
+    ];
+    final onServer = jpeg([0x4E, 0x57]); // N, W
+    final asDeviceReadsIt = jpeg([0x00, 0x00]); // redacted by Android
+
+    final server = await _webDavServer(
+      remoteBytes: onServer,
+      remoteModified: DateTime.utc(2025),
+      propfindBody:
+          '<d:multistatus xmlns:d="DAV:"><d:response>'
+          '<d:href>/remote.php/dav/files/alice/TyLogVault/assets/logseq/photo.jpg</d:href>'
+          '<d:propstat><d:prop><d:getlastmodified>'
+          '${HttpDate.format(DateTime.utc(2030))}'
+          '</d:getlastmodified><d:getetag>"remote-1"</d:getetag>'
+          '<d:getcontentlength>${onServer.length}</d:getcontentlength>'
+          '</d:prop></d:propstat>'
+          '</d:response></d:multistatus>',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_exif_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final photo = File('${dir.path}/assets/logseq/photo.jpg');
+    await photo.parent.create(recursive: true);
+    await photo.writeAsBytes(asDeviceReadsIt);
+    await photo.setLastModified(DateTime.utc(2025));
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(onServer.length, asDeviceReadsIt.length, reason: 'same size');
+    expect(onServer, isNot(asDeviceReadsIt), reason: 'but different bytes');
+    expect(result.conflicts, 0, reason: 'same picture, different metadata');
+    // The photo itself must be untouched on both sides: not conflicted, and not
+    // pushed over the original with the redacted copy. (Other uploads in this
+    // result are the vault's own managed files on a first sync.)
+    expect(await photo.readAsBytes(), asDeviceReadsIt);
+    expect(
+      await photo.parent
+          .list()
+          .where((entry) => entry.path.contains('conflict'))
+          .isEmpty,
+      isTrue,
+    );
+  });
+
   test('legacy identical and empty conflict copies are cleaned', () async {
     final server = await _webDavServer(remoteContent: 'keep note');
     final dir = await Directory.systemTemp.createTemp('tylog_old_conflicts_');
@@ -2769,6 +2829,9 @@ Future<HttpServer> _webDavServer({
   bool truncatedChunked = false,
   bool propfindStalled = false,
   String remoteContent = '',
+  // Binary remote payload, for asset conflicts where a String would mangle the
+  // bytes. Takes precedence over `remoteContent` when set.
+  List<int>? remoteBytes,
   DateTime? remoteModified,
   String? remoteModifiedValue,
   String etag = '"remote-1"',
@@ -2798,7 +2861,7 @@ Future<HttpServer> _webDavServer({
                 '<d:propstat><d:prop><d:getlastmodified>'
                 '${remoteModifiedValue ?? HttpDate.format(remoteModified ?? DateTime.utc(2030))}'
                 '</d:getlastmodified><d:getetag>$etag</d:getetag>'
-                '<d:getcontentlength>${utf8.encode(remoteContent).length}</d:getcontentlength>'
+                '<d:getcontentlength>${(remoteBytes ?? utf8.encode(remoteContent)).length}</d:getcontentlength>'
                 '</d:prop></d:propstat>'
                 '</d:response></d:multistatus>',
       );
@@ -2809,7 +2872,7 @@ Future<HttpServer> _webDavServer({
         // content; only the checksum header exposes the truncation.
         request.response.headers.set(
           'X-Hash-SHA256',
-          sha256.convert(utf8.encode(remoteContent)).toString(),
+          sha256.convert(remoteBytes ?? utf8.encode(remoteContent)).toString(),
         );
         request.response.write(
           remoteContent.substring(0, remoteContent.length ~/ 2),
@@ -2825,7 +2888,11 @@ Future<HttpServer> _webDavServer({
         socket.destroy();
         return;
       }
-      request.response.write(remoteContent);
+      if (remoteBytes != null) {
+        request.response.add(remoteBytes);
+      } else {
+        request.response.write(remoteContent);
+      }
     } else if (request.method == 'PUT') {
       final body = await request.fold<List<int>>(
         [],
