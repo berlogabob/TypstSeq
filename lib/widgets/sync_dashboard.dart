@@ -65,33 +65,63 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   SyncDashboardData? data;
   Object? loadError;
   bool running = false;
+  bool _reloading = false;
+  Timer? _refresh;
 
+  /// This screen holds a *snapshot*, not a live view of the controller, and
+  /// `_run` refuses to act while that snapshot says a sync is in flight. So a
+  /// snapshot that gets stuck on `syncing: true` disables every action on the
+  /// screen — conflict resolution included — with no visible cause. Observed on
+  /// a real device: the spinner claimed "Syncing…" for nine minutes after the
+  /// sync service had stopped, and only force-quitting the app cleared it.
+  ///
+  /// Refreshing for the life of the screen rather than only during `_run` means
+  /// a stale value survives one tick instead of forever.
   @override
   void initState() {
     super.initState();
     unawaited(_reload());
+    _refresh = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => unawaited(_reload()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
   }
 
   Future<void> _reload() async {
+    // Single-flight. `load()` does several SAF round trips and routinely takes
+    // longer than the refresh interval, so without this two loads overlap and
+    // the slower one can land last — pinning `data` to the older snapshot.
+    if (_reloading) return;
+    _reloading = true;
     try {
       final loaded = await widget.load();
-      if (mounted) setState(() => data = loaded);
+      if (mounted) {
+        setState(() {
+          data = loaded;
+          loadError = null;
+        });
+      }
     } catch (error) {
+      // Keep the error visible even when a previous snapshot exists: silently
+      // holding on to stale data is how the screen froze without saying so.
       if (mounted) setState(() => loadError = error);
+    } finally {
+      _reloading = false;
     }
   }
 
   Future<void> _run(Future<void> Function() action) async {
     if (running || data?.syncing == true) return;
     setState(() => running = true);
-    final refresh = Timer.periodic(
-      const Duration(milliseconds: 250),
-      (_) => unawaited(_reload()),
-    );
     try {
       await action();
     } finally {
-      refresh.cancel();
       await _reload();
       if (mounted) setState(() => running = false);
     }

@@ -792,13 +792,23 @@ class WorkspaceController extends ChangeNotifier {
     status = 'Syncing…';
     _cloudAutosave?.cancel();
     notifyListeners();
-    if (keepRunningOffscreen) {
-      await _startSyncForeground('Preparing Nextcloud sync…');
-    }
+    // Inside the try from here on. `_startSyncForeground` swallows its own
+    // throws, but a platform channel that never *completes* would strand
+    // `syncing` at true with no sync running — and every Sync-dashboard action
+    // refuses to act while that flag is set.
     try {
+      if (keepRunningOffscreen) {
+        await _startSyncForeground('Preparing Nextcloud sync…');
+      }
       if (dirty) {
         await save(syncAfter: false);
-        if (dirty) return false;
+        if (dirty) {
+          // Without this the status string stays 'Syncing…' forever, which is
+          // what made the dashboard claim a sync was running while the banner
+          // said sync was paused.
+          status = 'Sync postponed — unsaved changes';
+          return false;
+        }
       }
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
@@ -927,11 +937,14 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return false;
     } finally {
-      await VaultLock.release(opened.storage, 'ui');
-      if (keepRunningOffscreen) await _stopSyncForeground();
+      // Clear the flag *before* the two awaits, not after: a hang in either
+      // would otherwise leave `syncing` true with no sync running, which locks
+      // every action on the Sync dashboard.
       syncing = false;
       syncStage = null;
       notifyListeners();
+      await VaultLock.release(opened.storage, 'ui');
+      if (keepRunningOffscreen) await _stopSyncForeground();
     }
   }
 
