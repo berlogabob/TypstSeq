@@ -44,17 +44,62 @@ SyncConflict _conflict(String path) => SyncConflict(
 );
 
 void main() {
-  testWidgets('actions come back once a background sync ends', (tester) async {
-    // A poll-triggered sync that starts and finishes while the screen is open.
-    var syncing = true;
+  // The reported symptom: resolve one conflict, then every later tap does
+  // nothing until the app is force-quit. Cause is `_run`'s `running` flag, held
+  // for the whole of `resolveConflict` — which awaits `refreshIndex(always:
+  // true)`, which awaits any running scan plus a queued repeat. On a large
+  // vault that is hours, so the user got exactly one resolve per scan cycle,
+  // with the row still showing its chevron and no message.
+  testWidgets('a second conflict resolves while the first is still working', (
+    tester,
+  ) async {
     var resolved = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: SyncDashboardScreen(
           load: () async => _data(
-            syncing: syncing,
-            conflicts: [_conflict('daily/2024/12/2024-12-24.typ')],
+            syncing: false,
+            conflicts: [_conflict('notes/A.typ'), _conflict('notes/B.typ')],
           ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {
+            resolved++;
+            // Stands in for the inline full-vault rescan.
+            await Future<void>.delayed(const Duration(seconds: 30));
+          },
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('notes/A.typ'));
+    await tester.pump();
+    // Deliberately not settling: the point is to tap while the first is in
+    // flight, which is exactly what a user with a backlog does.
+    await tester.tap(find.text('notes/B.typ'));
+    await tester.pump();
+
+    expect(resolved, 2, reason: 'one resolve must not block the next');
+
+    await tester.pump(const Duration(seconds: 60));
+    await tester.pumpAndSettle();
+  });
+
+  // A running sync must not block resolution either: resolving is one Depth:0
+  // probe and one file write, and while conflicts exist a sync essentially
+  // cannot start anyway (the poll returns early, and Sync now is disabled).
+  testWidgets('a conflict resolves even while a sync is running', (
+    tester,
+  ) async {
+    var resolved = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async =>
+              _data(syncing: true, conflicts: [_conflict('notes/A.typ')]),
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async => resolved++,
@@ -65,22 +110,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // While a sync really is running, taps are refused. That part is intended.
-    await tester.tap(find.text('daily/2024/12/2024-12-24.typ'));
-    await tester.pump();
-    expect(resolved, 0, reason: 'a tap during a sync is deliberately ignored');
-
-    // The sync ends with the screen already open and nothing else happening.
-    // The dashboard has to notice by itself: before the fix nothing re-read
-    // `syncing` once `_run` had returned, so this stayed refused forever and
-    // only force-quitting the app recovered it.
-    syncing = false;
-    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('notes/A.typ'));
     await tester.pump();
 
-    await tester.tap(find.text('daily/2024/12/2024-12-24.typ'));
-    await tester.pump();
-    expect(resolved, 1, reason: 'the dashboard recovered without a restart');
+    expect(resolved, 1);
   });
 
   testWidgets('a slow load landing late does not overwrite a fresher one', (

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'loading.dart';
+import 'snack.dart';
 import 'sync_status.dart';
 
 class SyncDashboardData {
@@ -116,8 +117,35 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
     }
   }
 
+  /// Resolving a conflict is deliberately *not* routed through [_run].
+  ///
+  /// It contends with nothing the other actions contend with: one Depth:0
+  /// probe and one file write. But `workspace.resolveConflict` awaits
+  /// `refreshIndex(always: true)`, which awaits any scan already running plus
+  /// one queued repeat — a full vault scan, hours on a large vault. Held behind
+  /// `running`, that allowed exactly **one resolve per scan cycle**: the second
+  /// tap and every tap after it hit the guard and died silently, with the row
+  /// still showing its chevron.
+  ///
+  /// That was the whole reported symptom — "I can resolve one, then nothing
+  /// happens until I force-quit the app."
+  Future<void> _resolve(SyncConflict conflict) async {
+    await widget.onResolve(conflict);
+    await _reload();
+  }
+
   Future<void> _run(Future<void> Function() action) async {
-    if (running || data?.syncing == true) return;
+    // Never refuse silently. The same regression has now been fixed twice in
+    // this codebase (`_setTaskStatus`, `_setNoteProperty`); a bare `return`
+    // here made it three.
+    if (running) {
+      showSnack(context, 'Still finishing the last action…');
+      return;
+    }
+    if (data?.syncing == true) {
+      showSnack(context, 'Sync is running — try again in a moment');
+      return;
+    }
     setState(() => running = true);
     try {
       await action();
@@ -184,9 +212,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                         : () => unawaited(_run(widget.onSync)),
                     onReview: value.conflicts.isEmpty
                         ? () {}
-                        : () => unawaited(
-                            _run(() => widget.onResolve(value.conflicts.first)),
-                          ),
+                        : () => unawaited(_resolve(value.conflicts.first)),
                     onSetup: busy
                         ? null
                         : () => unawaited(
@@ -256,7 +282,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                                 : 'This device deleted; Nextcloud changed',
                           ),
                           trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _run(() => widget.onResolve(conflict)),
+                          onTap: () => unawaited(_resolve(conflict)),
                         ),
                       ),
                   ],
