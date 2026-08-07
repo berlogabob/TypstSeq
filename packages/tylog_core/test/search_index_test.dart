@@ -30,6 +30,49 @@ String _note({
     'Body of $title.';
 
 void main() {
+  // The scanner re-stamps every warm note's fingerprint to the new mtime, so
+  // keying this cache on the fingerprint meant a sync that only moved
+  // timestamps invalidated the WHOLE corpus: the scanner correctly reused every
+  // note via its content hash while this index re-read, re-tokenised and
+  // re-posted all of it. Measured on a real device as a "warm" scan that still
+  // burned ten minutes at full CPU.
+  test('touching mtimes does not invalidate the search index', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_search_mtime_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    final notesDir = await Directory('${root.path}/notes').create();
+    for (var i = 0; i < 5; i++) {
+      await File('${notesDir.path}/n$i.typ').writeAsString(
+        _note(id: 'n$i', title: 'Note $i'),
+      );
+    }
+
+    final first = await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage),
+    );
+
+    // Move every mtime without changing a byte — exactly what a sync does.
+    for (final file in notesDir.listSync().whereType<File>()) {
+      file.setLastModifiedSync(DateTime.now().add(const Duration(hours: 1)));
+    }
+
+    var reread = 0;
+    await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage),
+      previous: first,
+      onProgress: (done, total) => reread = total,
+    );
+
+    expect(
+      reread,
+      0,
+      reason: 'identical bytes must not be re-tokenised because mtime moved',
+    );
+  });
+
+
   group('searchPrefix', () {
     late Directory root;
 

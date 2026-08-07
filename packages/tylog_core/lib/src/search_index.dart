@@ -35,6 +35,7 @@ class _SearchDocument {
     required this.aliases,
     required this.terms,
     this.fingerprint,
+    this.contentHash,
     this.fileKind,
     this.status,
     this.snippet,
@@ -48,6 +49,16 @@ class _SearchDocument {
   final List<String> aliases;
   final Map<String, int> terms;
   final String? fingerprint;
+
+  /// Content hash of the note this document was built from.
+  ///
+  /// The cache key. `fingerprint` is mtime+size and cannot serve: the scanner
+  /// deliberately re-stamps it on every warm note (`scanner.dart`, "re-stamp
+  /// the cheap gate"), so after any mtime churn — a sync, a restored index —
+  /// the scanner correctly reused every note via its content hash while this
+  /// index missed on all of them and re-read, re-tokenised and re-posted the
+  /// entire vault. That was the "warm scan that still burns ten minutes".
+  final String? contentHash;
   final String? fileKind;
   final String? status;
   final String? snippet;
@@ -61,6 +72,7 @@ class _SearchDocument {
     'aliases': aliases,
     'terms': {for (final key in (terms.keys.toList()..sort())) key: terms[key]},
     'fingerprint': fingerprint,
+    if (contentHash != null) 'contentHash': contentHash,
     if (fileKind != null) 'fileKind': fileKind,
     if (status != null) 'status': status,
     if (snippet != null) 'snippet': snippet,
@@ -78,6 +90,7 @@ class _SearchDocument {
           (key, value) => MapEntry(key.toString(), (value as num).toInt()),
         ),
         fingerprint: json['fingerprint'] as String?,
+        contentHash: json['contentHash'] as String?,
         fileKind: json['fileKind'] as String?,
         status: json['status'] as String?,
         snippet: json['snippet'] as String?,
@@ -143,8 +156,17 @@ class PkmsSearchIndex {
     final misses = <NoteRef>[];
     for (final note in vault.notes) {
       final cached = previous?._documents[note.path];
-      if (cached?.fingerprint == note.fingerprint) {
-        documents[note.path] = cached!;
+      // Content hash first: it survives the mtime re-stamping that the scanner
+      // does to every warm note, so a sync that only moved timestamps no longer
+      // invalidates the whole corpus. Falls back to the fingerprint for
+      // documents written before the hash was persisted.
+      final hit =
+          cached != null &&
+          (cached.contentHash != null && note.contentHash != null
+              ? cached.contentHash == note.contentHash
+              : cached.fingerprint == note.fingerprint);
+      if (hit) {
+        documents[note.path] = cached;
       } else {
         misses.add(note);
       }
@@ -188,6 +210,7 @@ class PkmsSearchIndex {
           '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} ${jsonEncode(note.properties)} $source',
         ),
         fingerprint: note.fingerprint,
+        contentHash: note.contentHash,
         snippet: _snippet(source),
       );
     }
