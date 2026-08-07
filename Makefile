@@ -82,10 +82,24 @@ verify: test
 # Checks that need real hardware, so they cannot live in CI (which has no
 # device). ANDROID_DEVICE defaults to the only attached device.
 ANDROID_DEVICE ?= $(shell adb devices | awk 'NR>1 && $$2=="device" {print $$1; exit}')
+# Gradle needs a JDK, and `flutter build` uses Android Studio's bundled one
+# rather than whatever is on PATH. Deliberately NOT defaulting to $JAVA_HOME:
+# on this machine it points at .../Contents/jbr, one level above the actual
+# JDK home, which Gradle rejects outright. Override explicitly if yours differs.
+GRADLE_JAVA_HOME ?= /Applications/Android Studio.app/Contents/jbr/Contents/Home
 verify-android:
 	@if [ -z "$(ANDROID_DEVICE)" ]; then echo "No Android device attached (adb devices)."; exit 1; fi
 	@echo "Using device $(ANDROID_DEVICE)"
 	@for t in $(INTEGRATION_TESTS); do echo "== $$t"; flutter test $$t -d $(ANDROID_DEVICE) -r expanded || exit 1; done
+	# Kotlin instrumented tests. These cover SafBridge.writeAtomic against a
+	# provider that de-duplicates on rename, which is the one path that can lose
+	# a note and the one the Dart suite structurally cannot reach: its "SAF"
+	# fake extends LocalVaultStorage, so it uses POSIX rename and overwrites
+	# silently. Reverting the fix makes them reproduce `vault (1).lock` exactly.
+	@if [ ! -x "$(GRADLE_JAVA_HOME)/bin/java" ]; then \
+		echo "No JDK at $(GRADLE_JAVA_HOME) — set GRADLE_JAVA_HOME=/path/to/jdk"; exit 1; \
+	fi
+	@cd android && JAVA_HOME="$(GRADLE_JAVA_HOME)" ./gradlew :app:connectedDebugAndroidTest
 
 # The real-vault SAF measurement. Needs a profile build (release-signed, so it
 # installs over the release app and keeps the persisted SAF grant) and a device

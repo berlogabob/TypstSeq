@@ -4,4 +4,24 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <!-- Debug builds only: never in profile or release. It reproduces
+             AOSP's rename de-duplication so the instrumented test can drive
+             SafBridge.writeAtomic against the behaviour that produced
+             `.tylog/vault (1).lock` on a real device.
+
+             It lives here rather than in androidTest because the test APK gets
+             its own UID, and SafBridge runs in the app's process — a
+             non-exported provider is unreachable across that boundary. -->
+        <provider
+            android:name="org.tylog.tylog.DedupingDocumentsProvider"
+            android:authorities="org.tylog.tylog.test.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+    </application>
 </manifest>

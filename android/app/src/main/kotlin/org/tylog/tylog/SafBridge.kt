@@ -55,6 +55,19 @@ class SafBridge(
         // document id, and an unshared cache leaves the other instance holding
         // a dead one. Keyed by (tree, path), so instances cannot collide.
         private val uriCache = ConcurrentHashMap<Pair<String, String>, Uri>()
+
+        /**
+         * Drops every memoised document uri.
+         *
+         * Only for the instrumented test, which points one tree authority at a
+         * fresh directory per case: because the cache is process-wide and keyed
+         * by (tree, path), entries would otherwise survive into the next test
+         * and resolve to documents that no longer exist. Production never needs
+         * this — entries are evicted on our own writes and deletes, and a stale
+         * one is caught by the retry in withResolved.
+         */
+        @androidx.annotation.VisibleForTesting
+        internal fun clearUriCache() = uriCache.clear()
     }
 
     private val resolver = context.contentResolver
@@ -585,7 +598,11 @@ class SafBridge(
         }
     }
 
-    private fun writeAtomic(tree: Uri, path: String, source: File) {
+    // Visible for the instrumented test, which drives it against a
+    // de-duplicating DocumentsProvider — the behaviour the Dart suite cannot
+    // reproduce, because its "SAF" fake inherits POSIX rename.
+    @androidx.annotation.VisibleForTesting
+    internal fun writeAtomic(tree: Uri, path: String, source: File) {
         val safe = safePath(path)
         require(safe.isNotEmpty()) { "Cannot write the vault root" }
         val name = safe.substringAfterLast('/')

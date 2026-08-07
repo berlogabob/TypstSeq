@@ -33,6 +33,16 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            java.srcDirs("src/androidTest/kotlin")
+        }
+        getByName("debug") {
+            java.srcDirs("src/debug/kotlin")
+        }
     }
 
     if (keystorePropertiesFile.exists()) {
@@ -75,6 +85,15 @@ android {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.annotation:annotation:1.8.2")
+    // SafBridge.writeAtomic is the one path that can lose a note, and nothing
+    // in the Dart suite can exercise it: the "SAF" fake there is an empty
+    // LocalVaultStorage subclass, so it uses POSIX rename and overwrites
+    // silently. These run it against a provider that de-duplicates like AOSP.
+    // Runner only, pinned to what integration_test resolves to strictly.
+    // Deliberately not androidx.test.ext:junit — it drags in test activities
+    // declared without android:exported, which targetSdk 36 rejects outright.
+    androidTestImplementation("androidx.test:runner:1.3.0")
 }
 
 kotlin {
