@@ -351,7 +351,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             if (state == null) return const SizedBox.shrink();
             return Material(
               elevation: 6,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(kRadiusMedium),
               clipBehavior: Clip.antiAlias,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
@@ -485,18 +485,42 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (mounted) focusNode.requestFocus();
   }
 
+  // Built from kHighlightChoices — the single source of truth shared with the
+  // Magic/slash colour picker — so this menu and that one can never drift.
   Future<void> _showHighlightMenu(BuildContext context) async {
     final fill = await showMenu<String>(
       context: context,
       position: _menuPositionBelow(context, _highlightButtonKey),
-      items: const [
-        PopupMenuItem(value: kHighlightYellow, child: Text('Yellow')),
-        PopupMenuItem(value: kHighlightGreen, child: Text('Green')),
-        PopupMenuItem(value: kHighlightPink, child: Text('Pink')),
-        PopupMenuItem(value: kHighlightBlue, child: Text('Blue')),
+      items: [
+        for (final (choiceFill, label) in kHighlightChoices)
+          PopupMenuItem(
+            value: choiceFill,
+            child: Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: highlightSwatchColor(choiceFill),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(label),
+              ],
+            ),
+          ),
       ],
     );
-    if (fill != null) widget.controller.setHighlight(fill);
+    if (fill != null) {
+      // Same three-way contract as applyMagic's MagicAction.highlight case:
+      // '' is Typst's default fill, kHighlightNone clears it, anything else
+      // is a verbatim fill expression.
+      widget.controller.setHighlight(fill == kHighlightNone ? null : fill);
+    }
     if (mounted) focusNode.requestFocus();
   }
 
@@ -743,7 +767,7 @@ class _InlineImage extends StatelessWidget {
           maxHeight: MediaQuery.sizeOf(context).height * 0.4,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(kRadiusSmall),
           child: Image.memory(
             data,
             fit: BoxFit.contain,
@@ -789,7 +813,9 @@ class _ProtectedChip extends StatelessWidget {
     // height 1.0 so the chip doesn't stretch the line box it sits in — the
     // surrounding run is 1.55.
     final inline = textStyle?.copyWith(height: 1.0);
-    final radius = BorderRadius.circular(block ? 10 : 6);
+    final radius = BorderRadius.circular(
+      block ? kRadiusMedium : kRadiusSmall,
+    );
     return Semantics(
       button: onTap != null,
       label: '$label, protected Typst',

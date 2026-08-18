@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'constants.dart';
+
 const taskCheckedGlyph = '☑';
 const taskUncheckedGlyph = '☐';
 
@@ -14,7 +16,9 @@ class TaskCheckbox extends StatelessWidget {
     value: value,
     onChanged: onChanged,
     activeColor: Theme.of(context).colorScheme.primary,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(kRadiusSmall),
+    ),
     visualDensity: VisualDensity.standard,
   );
 }

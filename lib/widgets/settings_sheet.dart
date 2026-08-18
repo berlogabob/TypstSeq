@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'app_version.dart';
+import 'constants.dart';
 
 class SettingsSheet extends StatelessWidget {
   const SettingsSheet({
@@ -148,7 +149,9 @@ class SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     elevation: 0,
     color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(kRadiusLarge),
+    ),
     child: ListTile(
       leading: CircleAvatar(
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,

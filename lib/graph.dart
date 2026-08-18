@@ -1184,7 +1184,7 @@ class GraphPainter extends CustomPainter {
       final paint = Paint()
         ..color = connected
             ? colorScheme.primary
-            : _edgeColor(
+            : edgeColor(
                 edge.kind,
                 colorScheme.brightness,
               ).withValues(alpha: connected ? 1 : 0.45)
@@ -1317,7 +1317,13 @@ class GraphPainter extends CustomPainter {
       selectedPath != oldDelegate.selectedPath;
 }
 
-Color _edgeColor(GraphEdgeKind kind, Brightness brightness) =>
+/// Edge stroke color for [kind] on [brightness]. Public (rather than the
+/// `_edgeColor` this used to be) so `test/contrast_test.dart` can assert on
+/// the real values instead of a duplicated set of literals. The light-mode
+/// values are contrast-floored at 3:1 against the app's light surface
+/// (`#F8FAFC`) — that test enforces it, so don't drop one back below the bar.
+/// The dark branch already clears 9.16–12.95:1 and is left alone.
+Color edgeColor(GraphEdgeKind kind, Brightness brightness) =>
     brightness == Brightness.dark
     ? switch (kind) {
         GraphEdgeKind.link => const Color(0xFFE0E0E0),
@@ -1326,10 +1332,12 @@ Color _edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         GraphEdgeKind.read => const Color(0xFF80CBC4), // read-on-day = teal
       }
     : switch (kind) {
-        GraphEdgeKind.link => const Color(0xFF9E9E9E),
-        GraphEdgeKind.citation => const Color(0xFF7986CB),
-        GraphEdgeKind.tag => const Color(0xFF4DB6AC),
-        GraphEdgeKind.read => const Color(0xFF00897B),
+        GraphEdgeKind.link => const Color(0xFF757575),
+        GraphEdgeKind.citation => const Color(0xFF5C6BC0),
+        GraphEdgeKind.tag => const Color(0xFF00897B),
+        // Darker than `tag` so the two teals stay distinguishable now that
+        // both had to move to clear 3:1.
+        GraphEdgeKind.read => const Color(0xFF00695C),
       };
 
 void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
@@ -1368,14 +1376,14 @@ class GraphLegend extends StatelessWidget {
     children: [
       _LegendEntry(
         kind: GraphEdgeKind.link,
-        color: _edgeColor(GraphEdgeKind.link, Theme.of(context).brightness),
+        color: edgeColor(GraphEdgeKind.link, Theme.of(context).brightness),
         label: 'Link',
         selected: visibleKinds.contains(GraphEdgeKind.link),
         onToggle: onToggle,
       ),
       _LegendEntry(
         kind: GraphEdgeKind.citation,
-        color: _edgeColor(GraphEdgeKind.citation, Theme.of(context).brightness),
+        color: edgeColor(GraphEdgeKind.citation, Theme.of(context).brightness),
         label: 'Citation',
         dashed: true,
         selected: visibleKinds.contains(GraphEdgeKind.citation),
@@ -1383,9 +1391,19 @@ class GraphLegend extends StatelessWidget {
       ),
       _LegendEntry(
         kind: GraphEdgeKind.tag,
-        color: _edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
+        color: edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
         label: 'Tag',
         selected: visibleKinds.contains(GraphEdgeKind.tag),
+        onToggle: onToggle,
+      ),
+      // `read` edges (timeline "read this on day X" graphs) are drawn and
+      // togglable via `_visibleKinds` like the other three kinds — without
+      // this entry they were visible and filterable but never explained.
+      _LegendEntry(
+        kind: GraphEdgeKind.read,
+        color: edgeColor(GraphEdgeKind.read, Theme.of(context).brightness),
+        label: 'Read',
+        selected: visibleKinds.contains(GraphEdgeKind.read),
         onToggle: onToggle,
       ),
     ],

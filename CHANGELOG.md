@@ -3,6 +3,69 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.3.0+92
+
+A design audit of the whole interface, and the fixes for what it found. Nothing
+here touches your vault, your notes, or how anything is stored.
+
+### Fixed
+
+- **Tapping a task in Library ▸ Tasks no longer completes it.** The row toggled
+  the task done, while the identical-looking row on Today opened its note — so
+  whichever screen you learned first taught you the wrong thing about the other,
+  and the cost of the mistake was a task disappearing under your finger. Both
+  lists now open the note; the checkbox is the only thing that changes status.
+- **The warning icon in Problems is legible.** It was drawn in a yellow that
+  scored 1.56:1 against the app background, below even the 3:1 floor icons are
+  held to — effectively invisible in daylight.
+- **Graph edges are legible in light mode.** Link, citation and tag edges sat
+  between 2.3:1 and 3.3:1 against the background. All four kinds now clear 3:1.
+  Dark mode was already fine and is unchanged.
+- **The status and relevance chips on an article row can be hit.** They drew
+  about 26px tall, immediately next to each other — well under the 48px minimum
+  and the easiest mis-tap in the app. They look exactly the same; the touch
+  area is now full size.
+
+### Added
+
+- **Highlight colours without a long-press.** The four colours were reachable
+  only by long-pressing the toolbar button — a gesture nothing announces and
+  nobody finds on a phone. Magic ▸ Highlight and `/highlight` now offer the
+  palette directly, including "Remove highlight".
+- **The Voronoi map is usable with a screen reader.** Every visible cell is now
+  a labelled, activatable target that does what tapping it does. Before, the
+  entire view was invisible to assistive tech.
+- **Deleting an article no longer requires a long-press** — it is in the row's
+  ⋮ menu, styled as the destructive action it is. Long-press still works.
+- **The timeline graph's "Read" edges have a legend entry** and can be toggled
+  like the other three kinds. They were drawn, but unexplained and unfilterable.
+
+### Changed
+
+- **Today is capture-first.** The agenda and reading shelf could take 60% of the
+  screen, pushing the editor — the reason Today opens on Today — into whatever
+  was left. They are capped at 45% now, and when nothing is due and nothing is
+  part-read they take no space at all, instead of spending a row to say so.
+- The rating sheet's "Shit" button is now **"Discard article…"**, which is what
+  it always did: it deletes the article. Stars fill in as you press them.
+- One icon per concept. A note, a person, a place, a project now look the same
+  in every list, picker and chip.
+- Dialog text fields are styled alike — the metadata editor's were invisible
+  while the identical new-entity dialog's were outlined.
+- "More" separates everyday actions from maintenance, so "Rebuild index" and
+  "Relink vault" no longer sit flush against "New page".
+
+### Guarded
+
+- **Colour contrast is now a test.** Every colour the UI hardcodes is checked
+  against the WCAG 3:1 floor on both themes, reading the real values the app
+  draws with rather than a copy of them. The three failures above cannot come
+  back silently.
+- **The design tokens are now a test.** The brand seed, the corner-radius scale,
+  the palette rule and the one-icon-per-kind rule are enforced by a source scan.
+  The seed had drifted into three files and seven unrelated corner radii were in
+  use; that is the class of rot this stops.
+
 ## 0.3.0+91
 
 Everything here came out of running 0.2.0 against a real phone and a real

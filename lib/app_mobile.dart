@@ -156,22 +156,14 @@ class _TyLogAppState extends State<TyLogApp> {
 
   @override
   Widget build(BuildContext context) {
-    final darkColorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0B2F44),
-      brightness: Brightness.dark,
-    );
+    final darkColorScheme = tyLogColorScheme(Brightness.dark);
     return MaterialApp(
       title: 'TyLog',
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0B2F44),
-          brightness: Brightness.light,
-          surface: const Color(0xFFF8FAFC),
-          onSurfaceVariant: const Color(0xFF3F414A),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-        hintColor: const Color(0xFF5F616A),
+        colorScheme: tyLogColorScheme(Brightness.light),
+        scaffoldBackgroundColor: kLightSurface,
+        hintColor: kLightHint,
         inputDecorationTheme: const InputDecorationTheme(
           border: InputBorder.none,
         ),
@@ -556,7 +548,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _richEditorError(Object error) {
     if (!mounted) return;
-    setState(() => status = 'Edit kept safe: $error');
+    showSnack(context, 'Edit kept safe: $error');
   }
 
   Future<void> _tapProtected(String id) => _handleAtomSource(
@@ -592,7 +584,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (uri != null && await canLaunchUrl(uri)) {
         await launchUrl(uri);
       } else {
-        setState(() => status = "Couldn't open ${link.group(1)}");
+        if (!mounted) return;
+        showSnack(context, "Couldn't open ${link.group(1)}");
       }
       return;
     }
@@ -654,7 +647,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Open first — the refresh only serves future link resolution and can
     // block for minutes behind an in-flight full rebuild.
     await _openNote(file, heading: heading);
-    if (heading == null) setState(() => status = 'Created $file');
+    if (heading == null && mounted) showSnack(context, 'Created $file');
     unawaited(workspace.refreshIndex(always: true));
   }
 
@@ -728,7 +721,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     workspace.replaceNote(path, source);
     setState(() {
       mode = 'normal';
-      status = 'Opened $path';
     });
     if (heading != null) {
       final text = richController.text;
@@ -740,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (offset >= 0) {
         richController.selection = TextSelection.collapsed(offset: offset);
       } else {
-        setState(() => status = 'Heading "$heading" not found');
+        if (mounted) showSnack(context, 'Heading "$heading" not found');
       }
     }
     final entry = _activeRegistryEntry;
@@ -823,7 +815,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final file = await v.page(title);
     await _openNote(file);
-    setState(() => status = 'Created $file');
+    if (mounted) showSnack(context, 'Created $file');
     // Without the refresh the new note stays unresolvable to every chip
     // until the next unrelated scan; run it behind the navigation.
     unawaited(workspace.refreshIndex(always: true));
@@ -839,9 +831,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = await v.page(title, kind: kind, template: template);
     await workspace.refreshIndex(always: true);
     await _openNote(file);
-    setState(() {
-      status = 'Created $file';
-    });
+    if (mounted) showSnack(context, 'Created $file');
   }
 
   Future<String?> _chooseTemplate(Vault v) async {
@@ -880,10 +870,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('New page'),
-        content: TextField(
-          controller: title,
+        content: _dialogField(
+          title,
+          label: 'Title',
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Title'),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
@@ -935,33 +925,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             children: [
               SelectableText('ID: ${current.id}'),
-              TextField(
-                controller: title,
-                decoration: const InputDecoration(labelText: 'Title'),
+              _dialogField(title, label: 'Title'),
+              _dialogField(tagsText, label: 'Tags, comma-separated'),
+              _dialogField(aliases, label: 'Aliases, comma-separated'),
+              _dialogField(
+                kindField,
+                label: 'Kind',
+                hint: 'note, project, person, place…',
               ),
-              TextField(
-                controller: tagsText,
-                decoration: const InputDecoration(
-                  labelText: 'Tags, comma-separated',
-                ),
-              ),
-              TextField(
-                controller: aliases,
-                decoration: const InputDecoration(
-                  labelText: 'Aliases, comma-separated',
-                ),
-              ),
-              TextField(
-                controller: kindField,
-                decoration: const InputDecoration(
-                  labelText: 'Kind',
-                  hintText: 'note, project, person, place…',
-                ),
-              ),
-              TextField(
-                controller: email,
+              _dialogField(
+                email,
+                label: 'Email',
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
               ),
             ],
           ),
@@ -1484,42 +1459,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
-                      controller: url,
+                    _dialogField(
+                      url,
+                      label: 'Server URL',
+                      hint: 'https://cloud.example.com',
                       keyboardType: TextInputType.url,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.url],
                       onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Server URL',
-                        hintText: 'https://cloud.example.com',
-                      ),
                     ),
-                    TextField(
-                      controller: user,
+                    _dialogField(
+                      user,
+                      label: 'Login',
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.username],
                       onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(labelText: 'Login'),
                     ),
-                    TextField(
-                      controller: pass,
+                    _dialogField(
+                      pass,
+                      label: 'Password or app password',
                       obscureText: true,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.password],
                       onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Password or app password',
-                      ),
                     ),
-                    TextField(
-                      controller: folder,
+                    _dialogField(
+                      folder,
+                      label: 'Remote folder',
+                      helper: 'Created inside your Nextcloud files.',
                       textInputAction: TextInputAction.done,
                       onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Remote folder',
-                        helperText: 'Created inside your Nextcloud files.',
-                      ),
                     ),
                   ],
                 ),
@@ -1767,7 +1736,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onEnableReminders: () async {
               await taskScheduler.requestPermission();
               await taskScheduler.reconcile(index?.tasks ?? const []);
-              if (mounted) setState(() => status = 'Task reminders enabled');
+              if (context.mounted) showSnack(context, 'Task reminders enabled');
             },
             onMigrateEntityTypes: () async {
               Navigator.pop(context);
@@ -1857,7 +1826,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await openPlatformFile(v.storage, path, localRoot: _localVaultDirectory);
     } catch (error) {
-      if (mounted) setState(() => status = 'Could not open file: $error');
+      if (mounted) showSnack(context, 'Could not open file: $error');
     }
   }
 
@@ -2051,7 +2020,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     await v.storage.delete(ref.path);
     await _rebuildIndex();
-    if (mounted) setState(() => status = 'Deleted ${ref.title}');
+    if (mounted) showSnack(context, 'Deleted ${ref.title}');
   }
 
   Future<void> _rateArticle(String path, String value) async {
@@ -2305,13 +2274,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: input,
+        content: _dialogField(
+          input,
+          label: title,
           autofocus: true,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            labelText: title,
-          ),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
@@ -2376,9 +2342,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             for (final item in notes)
               ListTile(
-                leading: Icon(
-                  item.kind == 'project' ? Icons.work_outline : Icons.notes,
-                ),
+                leading: Icon(iconForKind(item.kind)),
                 title: Text(item.title),
                 subtitle: Text(item.id),
                 onTap: () => Navigator.pop(context, item),
@@ -2420,7 +2384,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             for (final item in _entities)
               ListTile(
-                leading: const Icon(Icons.alternate_email),
+                leading: Icon(iconForKind(item.kind)),
                 title: Text(item.title),
                 subtitle: Text(item.kind),
                 onTap: () => Navigator.pop(context, item),
@@ -2445,39 +2409,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: title,
-              autofocus: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Name',
-              ),
+            _dialogField(title, label: 'Name', autofocus: true),
+            const SizedBox(height: 12),
+            _dialogField(
+              kind,
+              label: 'Kind',
+              hint: 'person, place, castle…',
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: kind,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Kind',
-                hintText: 'person, place, castle…',
-              ),
-            ),
+            _dialogField(aliases, label: 'Aliases, comma-separated'),
             const SizedBox(height: 12),
-            TextField(
-              controller: aliases,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Aliases, comma-separated',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: email,
+            _dialogField(
+              email,
+              label: 'Email (optional)',
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Email (optional)',
-              ),
             ),
           ],
         ),
@@ -2532,8 +2477,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case MagicAction.strike:
       case MagicAction.underline:
       case MagicAction.mono:
-      case MagicAction.highlight:
         _applyMagic(MagicRequest(action: action));
+        return;
+      case MagicAction.highlight:
+        // The four highlight colours used to be reachable only by long-
+        // pressing the toolbar button, which tooltips advertise but Android
+        // has no way to discover. Surface them explicitly here instead.
+        final chosen = await showModalBottomSheet<String>(
+          context: context,
+          showDragHandle: true,
+          builder: (context) => SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final (fill, label) in kHighlightChoices)
+                  ListTile(
+                    leading: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: highlightSwatchColor(fill),
+                        borderRadius: BorderRadius.circular(kRadiusSmall),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                    title: Text(label),
+                    onTap: () => Navigator.pop(context, fill),
+                  ),
+              ],
+            ),
+          ),
+        );
+        if (!mounted) return;
+        if (chosen == null) return;
+        _applyMagic(
+          MagicRequest(action: MagicAction.highlight, value: chosen),
+        );
         return;
       case MagicAction.equation:
         final selected = _selectedText();
@@ -2743,19 +2724,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: rows,
+                    child: _dialogField(
+                      rows,
+                      label: 'Rows',
                       autofocus: true,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Rows'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: TextField(
-                      controller: columns,
+                    child: _dialogField(
+                      columns,
+                      label: 'Columns',
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Columns'),
                     ),
                   ),
                 ],
@@ -3017,7 +2998,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     final export = await exportReportPdfStorage(v.storage, report);
     if (mounted) {
-      setState(() => status = 'Created $report and ${export.path}');
       _magicFeedback('Created report and PDF');
       _queueCloudSync();
       // The PDF is already in outputs/; the share sheet is the natural
@@ -3128,6 +3108,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showMoreMenu(Widget linksPanel) async {
+    // Everyday actions vs. whole-vault maintenance (index rebuild, relink)
+    // used to sit in one undifferentiated list; a section break keeps the
+    // disruptive, rarely-needed operations from looking as casual as "New
+    // page".
+    const dailyActions = <_ShellAction, (IconData, String)>{
+      _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
+      _ShellAction.settings: (Icons.settings, 'Settings'),
+      _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
+      _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
+      _ShellAction.split: (Icons.vertical_split, 'Split editor'),
+      _ShellAction.backlinks: (Icons.link, 'Context'),
+      _ShellAction.sharePdf: (Icons.ios_share, 'Share as PDF'),
+    };
+    const maintenanceActions = <_ShellAction, (IconData, String)>{
+      _ShellAction.problems: (Icons.warning_amber, 'Problems'),
+      _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
+      _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
+      _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
+    };
     final action = await showModalBottomSheet<_ShellAction>(
       context: context,
       showDragHandle: true,
@@ -3135,19 +3134,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: ListView(
           shrinkWrap: true,
           children: [
-            for (final entry in const <_ShellAction, (IconData, String)>{
-              _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
-              _ShellAction.settings: (Icons.settings, 'Settings'),
-              _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
-              _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
-              _ShellAction.split: (Icons.vertical_split, 'Split editor'),
-              _ShellAction.backlinks: (Icons.link, 'Context'),
-              _ShellAction.sharePdf: (Icons.ios_share, 'Share as PDF'),
-              _ShellAction.problems: (Icons.warning_amber, 'Problems'),
-              _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
-              _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
-              _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
-            }.entries)
+            for (final entry in dailyActions.entries)
+              ListTile(
+                leading: Icon(entry.value.$1),
+                title: Text(entry.value.$2),
+                onTap: () => Navigator.pop(context, entry.key),
+              ),
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text(
+                'Maintenance',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            for (final entry in maintenanceActions.entries)
               ListTile(
                 leading: Icon(entry.value.$1),
                 title: Text(entry.value.$2),
@@ -3573,7 +3576,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Material(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             elevation: 2,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(kRadiusLarge),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 360),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -3694,7 +3697,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Tooltip(
                       message: 'Calendar',
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(kRadiusSmall),
                         onTap: () => unawaited(_showCalendarPicker()),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(minHeight: 48),
@@ -3893,6 +3896,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ? 'Today'
       : index?.notesByPath[current]?.title ??
             current.split('/').last.replaceFirst('.typ', '');
+
+  /// A dialog text field. The app-wide theme sets `InputBorder.none` for the
+  /// editor surfaces, which leaves dialog fields with no visible affordance —
+  /// every dialog field goes through here so they cannot drift apart again.
+  Widget _dialogField(
+    TextEditingController controller, {
+    required String label,
+    String? hint,
+    String? helper,
+    bool autofocus = false,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    List<String>? autofillHints,
+    ValueChanged<String>? onChanged,
+    ValueChanged<String>? onSubmitted,
+  }) => TextField(
+    controller: controller,
+    autofocus: autofocus,
+    obscureText: obscureText,
+    keyboardType: keyboardType,
+    textInputAction: textInputAction,
+    autofillHints: autofillHints,
+    onChanged: onChanged,
+    onSubmitted: onSubmitted,
+    decoration: InputDecoration(
+      border: const OutlineInputBorder(),
+      labelText: label,
+      hintText: hint,
+      helperText: helper,
+    ),
+  );
 }
 
 enum _ShellAction {

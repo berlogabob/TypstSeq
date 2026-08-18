@@ -89,7 +89,9 @@ void main() {
       fallbackWatch.stop();
 
       expect(fallbackServer.archiveGets, 1);
-      expect(fallbackServer.individualGets, fallbackCount);
+      // >= not ==: _retryTransient re-GETs a file when a loopback socket drops
+      // under load, and the server counts every attempt (1611 seen once).
+      expect(fallbackServer.individualGets, greaterThanOrEqualTo(fallbackCount));
       // Ordering, not a ratio. The old assertion demanded the fallback be >=4x
       // the ZIP path, which is a property of one machine's CPU-to-delay ratio,
       // not of the code: a faster phone measured 3.39x and failed. What this

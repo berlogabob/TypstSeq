@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 import 'graph.dart' show colorForSlot;
@@ -224,10 +225,17 @@ class _VoronoiViewState extends State<VoronoiView>
       level = found.children;
     }
     if (hit == null) return;
-    if (hit.children.isEmpty) {
-      widget.onOpenPath(hit.id);
+    _activate(hit, viewport);
+  }
+
+  /// What a tap on [cell] does — shared by the [GestureDetector] hit test
+  /// above and the semantics `onTap` wired into the painter below, so a
+  /// screen reader activates exactly what a sighted tap would.
+  void _activate(_Cell cell, Size viewport) {
+    if (cell.children.isEmpty) {
+      widget.onOpenPath(cell.id);
     } else {
-      _animateTo(viewport, hit.bbox);
+      _animateTo(viewport, cell.bbox);
     }
   }
 
@@ -290,6 +298,7 @@ class _VoronoiViewState extends State<VoronoiView>
                     colorScheme: scheme,
                     viewport: viewport,
                     transform: _transform,
+                    onActivate: (cell) => _activate(cell, viewport),
                   ),
                 ),
               ),
@@ -320,6 +329,7 @@ class _VoronoiPainter extends CustomPainter {
     required this.colorScheme,
     required this.viewport,
     required this.transform,
+    required this.onActivate,
   }) : super(repaint: transform);
 
   final List<_Cell> cells;
@@ -331,6 +341,11 @@ class _VoronoiPainter extends CustomPainter {
   /// Live view transform (also the repaint signal) — read each frame for the
   /// per-cell reveal test, constant-size labels, and culling.
   final TransformationController transform;
+
+  /// What tapping (or activating via a screen reader) a cell does — wired to
+  /// `_VoronoiViewState._activate`, which knows the viewport and can drive
+  /// the zoom animation, neither of which the painter itself has.
+  final void Function(_Cell cell) onActivate;
 
   /// Visible region in canvas coords (translate+scale only, no rotation).
   Rect _cullRect(double scale) {
@@ -454,7 +469,60 @@ class _VoronoiPainter extends CustomPainter {
     }
   }
 
+  /// Exposes exactly the cells [paint] currently draws as leaves — the same
+  /// cells [_VoronoiViewState._onTap] would resolve a tap to — as semantics
+  /// nodes a screen reader can activate. Descends into a cell's children
+  /// only when [_isOpen] says they're revealed at the last-built [scale];
+  /// cells folded inside a collapsed parent get no node, since a sighted tap
+  /// can't reach them either.
+  ///
+  /// Unlike [paint], this isn't driven by `repaint: transform` — semantics
+  /// rebuilds only follow widget rebuilds ([shouldRebuildSemantics]), so the
+  /// tree reflects the scale as of the last frame Flutter rebuilt this
+  /// widget, not every zoom tick. Cheap to live with: the reveal threshold
+  /// is coarse, and a screen reader user's next interaction re-triggers a
+  /// build anyway.
+  @override
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+    final scale = transform.value.getMaxScaleOnAxis();
+    final result = <CustomPainterSemantics>[];
+
+    void visit(int index) {
+      final cell = cells[index];
+      if (_isOpen(cell, scale)) {
+        for (final c in cell.children) {
+          visit(c);
+        }
+        return;
+      }
+      final hasChildren = cell.children.isNotEmpty;
+      final label = hasChildren
+          ? '${prettyGraphLabel(cell.label)}, ${cell.count} notes'
+          : cell.label;
+      result.add(
+        CustomPainterSemantics(
+          rect: cell.bbox,
+          properties: SemanticsProperties(
+            label: label,
+            textDirection: TextDirection.ltr,
+            button: true,
+            onTap: () => onActivate(cell),
+          ),
+        ),
+      );
+    }
+
+    for (final r in roots) {
+      visit(r);
+    }
+    return result;
+  };
+
   @override
   bool shouldRepaint(covariant _VoronoiPainter oldDelegate) =>
       oldDelegate.cells != cells || oldDelegate.colorScheme != colorScheme;
+
+  @override
+  bool shouldRebuildSemantics(covariant _VoronoiPainter oldDelegate) =>
+      oldDelegate.cells != cells || oldDelegate.roots != roots;
 }

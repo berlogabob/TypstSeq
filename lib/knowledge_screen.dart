@@ -519,7 +519,9 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   Color _problemColor(PkmsSeverity severity) => switch (severity) {
     PkmsSeverity.error => Theme.of(context).colorScheme.error,
-    PkmsSeverity.warning => Colors.amber,
+    // Raw `Colors.amber` scored 1.56:1 on the light surface — below even the
+    // 3:1 non-text minimum. `warningColor` clears 3:1 on both themes.
+    PkmsSeverity.warning => warningColor(Theme.of(context).colorScheme),
     PkmsSeverity.info => Theme.of(context).colorScheme.onSurfaceVariant,
   };
 }

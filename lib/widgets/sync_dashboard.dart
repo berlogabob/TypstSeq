@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
+import 'constants.dart';
 import 'loading.dart';
 import 'snack.dart';
 import 'sync_status.dart';
@@ -429,7 +430,7 @@ class _SyncDistribution extends StatelessWidget {
           const Text('No files needed changes.')
         else
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(kRadiusSmall),
             child: SizedBox(
               height: 12,
               child: Row(

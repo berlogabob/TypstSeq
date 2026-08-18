@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'constants.dart';
+
 /// Reading-triage pipeline stages, in order. Free-form legacy/custom status
 /// values are folded onto these five by `articleStatusStage`.
 const articleStatusOptions = [
@@ -88,14 +90,14 @@ class PropertySelectChip extends StatelessWidget {
       builder: (context) {
         final foreground =
             foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
-        return Container(
+        final pill = Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color:
                 backgroundColor ??
                 Theme.of(context).colorScheme.surfaceContainerHighest,
             border: Border.all(color: foreground.withValues(alpha: 0.2)),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(kRadiusSmall),
           ),
           child: Text(
             labels[value] ?? value ?? placeholder ?? labels[options.first]!,
@@ -103,6 +105,19 @@ class PropertySelectChip extends StatelessWidget {
               context,
             ).textTheme.labelMedium?.copyWith(color: foreground),
           ),
+        );
+        // PopupMenuButton sizes its gesture area to `child`, and two of these
+        // pills sit side by side (status + relevance) in every article row —
+        // the worst case for mis-taps. Constrain the child to the 48dp
+        // minimum tap target (Material/WCAG target-size guidance) while
+        // centering the unchanged pill inside it, so the hit area grows
+        // without inflating what's painted.
+        return ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: kMinTapTarget,
+            minHeight: kMinTapTarget,
+          ),
+          child: Center(widthFactor: 1, heightFactor: 1, child: pill),
         );
       },
     ),

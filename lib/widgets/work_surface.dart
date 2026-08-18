@@ -75,97 +75,106 @@ class TodayPage extends StatelessWidget {
             b.due ?? b.scheduled ?? '9999',
           ),
         );
+    final hasTopContent = agenda.isNotEmpty || recent.isNotEmpty;
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
-          // Agenda + Continue reading share a bounded, scroll-if-tall region so
-          // a long recent list can never starve the editor and overflow.
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: constraints.maxHeight * 0.6),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ExpansionTile(
-                    key: const PageStorageKey('today-agenda'),
-                    initiallyExpanded: agenda.isNotEmpty,
-                    leading: const Icon(Icons.event_note),
-                    title: Text(
-                      'Agenda${agenda.isEmpty ? '' : ' · ${agenda.length}'}',
-                    ),
-                    subtitle: agenda.isEmpty
-                        ? const Text('Nothing actionable today')
-                        : null,
-                    children: [
-                      for (final task in agenda)
-                        ListTile(
-                          leading: TaskCheckbox(
-                            value: task.status == 'done',
-                            onChanged: (done) {
-                              if (done == true) {
-                                unawaited(onSetStatus(task, 'done'));
-                              }
-                            },
-                          ),
-                          title: Text(task.text),
-                          subtitle: Text(
-                            task.due == null
-                                ? 'Scheduled today'
-                                : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
-                            style: isTaskOverdue(task, today)
-                                ? TextStyle(
-                                    color: Theme.of(context).colorScheme.error,
-                                  )
-                                : null,
-                          ),
-                          // Row opens the task's note; completing is the
-                          // checkbox's job only — a row tap that marks done
-                          // makes the task vanish under the finger.
-                          onTap: () => onOpenPath(task.notePath),
-                          trailing: IconButton(
-                            tooltip: 'Open source note',
-                            onPressed: () => onOpenPath(task.notePath),
-                            icon: const Icon(Icons.open_in_new),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (recent.isNotEmpty)
-                    ExpansionTile(
-                      key: const PageStorageKey('today-continue-reading'),
-                      initiallyExpanded: true,
-                      leading: const Icon(Icons.history),
-                      title: const Text('Continue reading'),
-                      children: [
-                        for (final (note, progress) in recent)
-                          Card(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: ListTile(
-                              leading: const Icon(Icons.auto_stories_outlined),
-                              title: Text(
-                                note.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+          // Today is capture-first: quick capture is the editor's job, so it
+          // must keep the majority of the viewport even when the agenda and
+          // reading shelf both have content. Agenda + Continue reading share
+          // a bounded, scroll-if-tall region capped at 45% of the page —
+          // that leaves the editor >=55%, and a long recent list still can't
+          // starve it or overflow.
+          if (hasTopContent) ...[
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: constraints.maxHeight * 0.45,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (agenda.isNotEmpty)
+                      ExpansionTile(
+                        key: const PageStorageKey('today-agenda'),
+                        initiallyExpanded: true,
+                        leading: const Icon(Icons.event_note),
+                        title: Text('Agenda · ${agenda.length}'),
+                        children: [
+                          for (final task in agenda)
+                            ListTile(
+                              leading: TaskCheckbox(
+                                value: task.status == 'done',
+                                onChanged: (done) {
+                                  if (done == true) {
+                                    unawaited(onSetStatus(task, 'done'));
+                                  }
+                                },
                               ),
-                              subtitle: LinearProgressIndicator(
-                                value: progress,
+                              title: Text(task.text),
+                              subtitle: Text(
+                                task.due == null
+                                    ? 'Scheduled today'
+                                    : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
+                                style: isTaskOverdue(task, today)
+                                    ? TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      )
+                                    : null,
                               ),
-                              trailing: Text('${(progress * 100).round()}%'),
-                              onTap: () =>
-                                  (onReadPath ?? onOpenPath)(note.path),
+                              // Row opens the task's note; completing is the
+                              // checkbox's job only — a row tap that marks
+                              // done makes the task vanish under the finger.
+                              onTap: () => onOpenPath(task.notePath),
+                              trailing: IconButton(
+                                tooltip: 'Open source note',
+                                onPressed: () => onOpenPath(task.notePath),
+                                icon: const Icon(Icons.open_in_new),
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                ],
+                        ],
+                      ),
+                    if (recent.isNotEmpty)
+                      ExpansionTile(
+                        key: const PageStorageKey('today-continue-reading'),
+                        initiallyExpanded: true,
+                        leading: const Icon(Icons.history),
+                        title: const Text('Continue reading'),
+                        children: [
+                          for (final (note, progress) in recent)
+                            Card(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: ListTile(
+                                leading: const Icon(
+                                  Icons.auto_stories_outlined,
+                                ),
+                                title: Text(
+                                  note.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: LinearProgressIndicator(
+                                  value: progress,
+                                ),
+                                trailing: Text('${(progress * 100).round()}%'),
+                                onTap: () =>
+                                    (onReadPath ?? onOpenPath)(note.path),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1),
+            const Divider(height: 1),
+          ],
           Expanded(child: editor),
         ],
       ),
@@ -191,17 +200,13 @@ class _PrimaryTasksView extends StatelessWidget {
     final today = isoDay(DateTime.now());
     final sorted = tasks.toList()
       ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
-    final itemCount = 1 + (sorted.isEmpty ? 1 : sorted.length);
+    // No "Tasks" headline: the Library tab bar already names this screen,
+    // and no sibling tab (Notes/Projects/Articles/Entities/Calendar) has one.
+    final itemCount = sorted.isEmpty ? 1 : sorted.length;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: itemCount,
       itemBuilder: (context, i) {
-        if (i == 0) {
-          return Text(
-            'Tasks',
-            style: Theme.of(context).textTheme.headlineMedium,
-          );
-        }
         if (sorted.isEmpty) {
           return ListTile(
             leading: indexing
@@ -210,7 +215,7 @@ class _PrimaryTasksView extends StatelessWidget {
             title: Text(indexing ? 'Indexing…' : 'No indexed tasks'),
           );
         }
-        final task = sorted[i - 1];
+        final task = sorted[i];
         final overdue = isTaskOverdue(task, today);
         return ListTile(
           leading: TaskCheckbox(
@@ -229,9 +234,10 @@ class _PrimaryTasksView extends StatelessWidget {
                 ? TextStyle(color: Theme.of(context).colorScheme.error)
                 : null,
           ),
-          onTap: () => unawaited(
-            onSetStatus(task, task.status == 'done' ? 'todo' : 'done'),
-          ),
+          // Row opens the task's note; completing is the checkbox's job
+          // only — a row tap that marks done makes the task vanish under
+          // the finger (same reasoning as TodayPage's agenda row).
+          onTap: () => onOpenPath(task.notePath),
           trailing: IconButton(
             tooltip: 'Open source note',
             icon: const Icon(Icons.open_in_new),
@@ -369,10 +375,9 @@ class LibraryView extends StatelessWidget {
       itemBuilder: (context, i) {
         final note = notes[i];
         return ListTile(
-          leading: Icon(switch (kind) {
-            'project' => Icons.work_outline,
-            _ => Icons.notes,
-          }),
+          // Route through iconForKind so 'note'/'project' match every
+          // other list's icon for the same kind.
+          leading: Icon(iconForKind(kind)),
           title: Text(note.title),
           onTap: () => onOpenPath(note.path),
         );
@@ -411,7 +416,9 @@ class LibraryView extends StatelessWidget {
         }
         final note = entities[i - 1];
         return ListTile(
-          leading: const Icon(Icons.alternate_email),
+          // alternate_email means "email" elsewhere in the app; use the
+          // shared kind→icon map so a person reads as a person here too.
+          leading: Icon(iconForKind(note.kind)),
           title: Text(note.title),
           subtitle: Text(
             [
@@ -836,6 +843,24 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           tooltip: 'Set relevance',
           placeholder: '★',
           onChanged: (next) => unawaited(widget.onSetRelevance(note, next)),
+        ),
+        // Long-press delete has no visible affordance; this menu makes it
+        // discoverable without displacing the status/relevance chips.
+        PopupMenuButton<String>(
+          tooltip: 'More',
+          icon: const Icon(Icons.more_vert),
+          onSelected: (value) {
+            if (value == 'delete') unawaited(widget.onDeleteArticle(note));
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'delete',
+              child: Text(
+                'Delete article…',
+                style: TextStyle(color: scheme.error),
+              ),
+            ),
+          ],
         ),
       ],
     );

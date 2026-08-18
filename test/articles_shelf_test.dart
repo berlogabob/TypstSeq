@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/property_select_chip.dart';
+import 'package:tylog/widgets/task_checkbox.dart';
 import 'package:tylog/widgets/work_surface.dart';
 
 void main() {
@@ -57,30 +58,32 @@ void main() {
     outgoingLinks: [],
   );
 
-  Widget shelf() => MaterialApp(
-    home: Scaffold(
-      body: LibraryView(
-        index: VaultIndex(
-          notesByPath: {
-            for (final n in [unread, reading, summarized, plainNote]) n.path: n,
-          },
-          backlinksByTarget: const {},
-          tasks: const [],
+  Widget shelf({Future<void> Function(NoteRef note)? onDeleteArticle}) =>
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryView(
+            index: VaultIndex(
+              notesByPath: {
+                for (final n in [unread, reading, summarized, plainNote])
+                  n.path: n,
+              },
+              backlinksByTarget: const {},
+              tasks: const [],
+            ),
+            progressByPath: const {'articles/Halfway.typ': 0.4},
+            onOpenPath: (_) {},
+            onOpenDay: (_) {},
+            onSetTaskStatus: (_, _) async {},
+            onSetReadStatus: (_, _) async {},
+            onSetRelevance: (_, _) async {},
+            onCreateNote: (_) {},
+            onCreateEntity: () {},
+            onImportMarkdownArticles: () async {},
+            onReadPath: (_) {},
+            onDeleteArticle: onDeleteArticle ?? (_) async {},
+          ),
         ),
-        progressByPath: const {'articles/Halfway.typ': 0.4},
-        onOpenPath: (_) {},
-        onOpenDay: (_) {},
-        onSetTaskStatus: (_, _) async {},
-        onSetReadStatus: (_, _) async {},
-        onSetRelevance: (_, _) async {},
-        onCreateNote: (_) {},
-        onCreateEntity: () {},
-        onImportMarkdownArticles: () async {},
-        onReadPath: (_) {},
-        onDeleteArticle: (_) async {},
-      ),
-    ),
-  );
+      );
 
   testWidgets('articles shelf: counts, recent order, filter, resume card', (
     tester,
@@ -134,4 +137,78 @@ void main() {
     expect(find.text('Halfway'), findsNothing);
     expect(find.text('Done'), findsNothing);
   });
+
+  testWidgets(
+    'library tasks tab: row tap opens the note; checkbox is the only way '
+    'to change status',
+    (tester) async {
+      final opened = <String>[];
+      final statuses = <String>[];
+      final task = TaskRef(
+        id: 'task-1',
+        text: 'Write report',
+        notePath: 'notes/task.typ',
+        status: 'todo',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LibraryView(
+              index: VaultIndex(
+                notesByPath: const {},
+                backlinksByTarget: const {},
+                tasks: [task],
+              ),
+              progressByPath: const {},
+              onOpenPath: opened.add,
+              onOpenDay: (_) {},
+              onSetTaskStatus: (_, status) async {
+                statuses.add(status);
+              },
+              onSetReadStatus: (_, _) async {},
+              onSetRelevance: (_, _) async {},
+              onCreateNote: (_) {},
+              onCreateEntity: () {},
+              onImportMarkdownArticles: () async {},
+              onReadPath: (_) {},
+              onDeleteArticle: (_) async {},
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+
+      // Tapping the row body opens the source note, same as TodayPage.
+      await tester.tap(find.text('Write report'));
+      expect(opened, ['notes/task.typ']);
+      expect(statuses, isEmpty);
+
+      // Only the checkbox flips status.
+      await tester.tap(find.byType(TaskCheckbox));
+      await tester.pumpAndSettle();
+      expect(statuses, ['done']);
+    },
+  );
+
+  testWidgets(
+    'articles shelf: overflow menu exposes delete and calls onDeleteArticle',
+    (tester) async {
+      final deleted = <String>[];
+      await tester.pumpWidget(
+        shelf(onDeleteArticle: (note) async => deleted.add(note.path)),
+      );
+      await tester.tap(find.text('Articles'));
+      await tester.pumpAndSettle();
+
+      // Fresh sorts first (most recently modified); open its overflow menu.
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Delete article…'), findsOneWidget);
+
+      await tester.tap(find.text('Delete article…'));
+      await tester.pumpAndSettle();
+      expect(deleted, ['articles/Fresh.typ']);
+    },
+  );
 }

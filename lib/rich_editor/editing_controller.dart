@@ -576,7 +576,18 @@ class TyLogEditingController extends TextEditingController {
         toggleMono();
         return;
       case MagicAction.highlight:
-        toggleHighlight();
+        // setHighlight's contract: null clears, '' is Typst's default fill,
+        // anything else is a verbatim fill expression. A bare tap (no value,
+        // via the toolbar button or the "/" palette) keeps the old on/off
+        // toggle; the Magic/slash colour picker sends an explicit fill, or
+        // kHighlightNone to clear it outright.
+        if (request.value == null) {
+          toggleHighlight();
+        } else if (request.value == kHighlightNone) {
+          setHighlight(null);
+        } else {
+          setHighlight(request.value);
+        }
         return;
       default:
         final selection = this.selection.isValid

@@ -354,6 +354,16 @@ int? _balancedParenEnd(String source, int open) {
   return null;
 }
 
+/// A [MagicRequest.value] of this means "remove the highlight" for
+/// [MagicAction.highlight] — distinct from a null/empty value, which applies
+/// Typst's default fill (see `TyLogEditingController.applyMagic` and
+/// [applyMagicEdit] below). Lives here rather than in `document_model.dart`
+/// because it's a `MagicRequest.value` protocol constant, arguably its home
+/// either way — `rich_editor.dart` imports this file, so `document_model.dart`
+/// (a `part of rich_editor.dart`) sees it fine, and every direct importer of
+/// `controlled_editor.dart` (e.g. `app_mobile.dart`) does too.
+const kHighlightNone = 'none';
+
 enum MagicAction {
   noteLink,
   mention,
@@ -448,7 +458,13 @@ SourceEdit applyMagicEdit(
     MagicAction.underline => '#underline[${escapeMarkup(selected)}]',
     // Raw Typst content is literal — no escapeMarkup escaping inside.
     MagicAction.mono => '`$selected`',
-    MagicAction.highlight => '#highlight[${escapeMarkup(selected)}]',
+    MagicAction.highlight => switch (value) {
+      null || '' => '#highlight[${escapeMarkup(selected)}]',
+      // Source mode has nothing to "remove" from a plain insert; emit the
+      // selected text unwrapped as the closest honest equivalent.
+      kHighlightNone => escapeMarkup(selected),
+      _ => '#highlight(fill: $value)[${escapeMarkup(selected)}]',
+    },
     MagicAction.table => _tableSnippet(request.rows, request.columns),
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
@@ -486,7 +502,14 @@ SourceEdit applyMagicEdit(
     MagicAction.strike when selected.isEmpty => start + '#strike['.length,
     MagicAction.underline when selected.isEmpty => start + '#underline['.length,
     MagicAction.mono when selected.isEmpty => start + '`'.length,
-    MagicAction.highlight when selected.isEmpty => start + '#highlight['.length,
+    // Prefix length must match whatever branch above actually emitted — a
+    // `fill:` argument makes '#highlight[' the wrong length and would leave
+    // the caret inside the argument list instead of the (empty) body.
+    MagicAction.highlight when selected.isEmpty => start + switch (value) {
+      null || '' => '#highlight['.length,
+      kHighlightNone => 0,
+      _ => '#highlight(fill: $value)['.length,
+    },
     _ => start + replacement.length,
   };
   return SourceEdit(

@@ -90,13 +90,37 @@ const Map<String, Color> _highlightPalette = {
 };
 
 /// Unknown/custom fill expressions (round-tripped verbatim but not in the
-/// palette) render with a neutral tint rather than no highlight at all.
+/// palette) fall back to this neutral tint rather than no highlight at all.
+/// Shared by [_highlightColor] (painting) and [highlightSwatchColor] (menu
+/// UI) so the two never disagree about what an unrecognized fill looks like.
+Color _paletteColor(String fill) =>
+    _highlightPalette[fill] ?? const Color(0x339E9E9E);
+
 Color _highlightColor(String fill, Brightness brightness) {
-  final color = _highlightPalette[fill] ?? const Color(0x339E9E9E);
+  final color = _paletteColor(fill);
   return brightness == Brightness.dark
       ? Color.lerp(Colors.black.withValues(alpha: color.a), color, 0.4)!
       : color;
 }
+
+/// The highlight palette as offered to the user, in menu order: the verbatim
+/// Typst `fill:` expression paired with its label. Single source of truth for
+/// the toolbar's long-press menu and the Magic/slash colour picker, so the two
+/// can never drift apart.
+const List<(String, String)> kHighlightChoices = [
+  ('', 'Default'),
+  (kHighlightYellow, 'Yellow'),
+  (kHighlightGreen, 'Green'),
+  (kHighlightPink, 'Pink'),
+  (kHighlightBlue, 'Blue'),
+  (kHighlightNone, 'Remove highlight'),
+];
+
+/// The swatch colour for a [kHighlightChoices] fill, for menu UI. Public
+/// counterpart to the private `_highlightColor` used during painting.
+/// [kHighlightNone] ("remove") gets no fill at all rather than a tint.
+Color highlightSwatchColor(String fill) =>
+    fill == kHighlightNone ? Colors.transparent : _paletteColor(fill);
 
 class TyLogInlineStyle {
   const TyLogInlineStyle({
