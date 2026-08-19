@@ -460,6 +460,14 @@ class NextcloudSync {
       final remoteUserCount = remote.keys
           .where((path) => !path.startsWith('_system/'))
           .length;
+      // Mirror of the "refusing to propagate deletions" guard below, for the
+      // other direction: a remote listing that no longer looks like a TyLog
+      // vault, or that lost most of what our cursors remember, is a server
+      // incident (wiped folder, wrong mount) — restore it, never mirror the
+      // wipe locally. Individual remote deletions pass this easily.
+      final allowLocalDeletes =
+          remote.containsKey('_system/tylog.typ') &&
+          remote.length >= (syncState.length * 0.5).ceil();
       if (initialMode == InitialSyncMode.uploadLocal &&
           (remoteUserCount > 0 ||
               remote.isNotEmpty && !remote.containsKey('_system/tylog.typ'))) {
@@ -585,6 +593,7 @@ class NextcloudSync {
                 unresolvedConflict: unresolved[path],
                 possibleRename: renameDetection.protectedLocalDeletions
                     .contains(path),
+                allowLocalDeletes: allowLocalDeletes,
                 archive: archiveSnapshot,
               ),
             );
@@ -612,6 +621,7 @@ class NextcloudSync {
             conflict += result.conflicts;
             repaired += result.repaired;
             deletedRemote += result.deletedRemote;
+            deletedLocal += result.deletedLocal;
             // "skip / no-change" is the one decision that carries no
             // information: nothing was transferred and nothing was compared
             // beyond fingerprints, and the same trace event already reports the
@@ -1085,6 +1095,7 @@ class _PathResult {
     this.conflicts = 0,
     this.repaired = 0,
     this.deletedRemote = 0,
+    this.deletedLocal = 0,
   });
 
   final SyncDecision decision;
@@ -1096,6 +1107,7 @@ class _PathResult {
   final int conflicts;
   final int repaired;
   final int deletedRemote;
+  final int deletedLocal;
 }
 
 class _DownloadResult {

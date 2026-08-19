@@ -208,6 +208,7 @@ extension _PathSync on NextcloudSync {
     required InitialSyncMode? initialMode,
     required SyncConflict? unresolvedConflict,
     required bool possibleRename,
+    required bool allowLocalDeletes,
     required _RemoteArchiveSnapshot? archive,
   }) async {
     final localExists = localStat != null;
@@ -266,6 +267,7 @@ extension _PathSync on NextcloudSync {
     var conflicts = 0;
     var repaired = 0;
     var deletedRemote = 0;
+    var deletedLocal = 0;
 
     if (unresolvedConflict != null) {
       skipped++;
@@ -439,6 +441,23 @@ extension _PathSync on NextcloudSync {
         downloaded++;
         reason = localExists ? 'remote-newer' : 'local-missing';
       }
+    } else if (allowLocalDeletes &&
+        localExists &&
+        !remoteExists &&
+        !localChanged &&
+        !stateRecovered &&
+        !possibleRename &&
+        previous?.remoteEtag != null) {
+      // Mirror of 'local-deleted' above: the cursor proves this exact content
+      // was synced with the server before (etag recorded, bytes unchanged
+      // since), so a missing remote is another device's deletion. Re-uploading
+      // here resurrected every vault deletion — and the PUT into the deleted
+      // parent collection 404-failed the whole run (2026-08-19). Local edits
+      // since the last sync still win: localChanged falls through to upload.
+      action = SyncAction.deleteLocal;
+      await vault.storage.delete(path);
+      deletedLocal++;
+      reason = 'remote-deleted';
     } else if ((localExists && !remoteExists) ||
         (localChanged && !remoteChanged)) {
       action = SyncAction.upload;
@@ -511,7 +530,9 @@ extension _PathSync on NextcloudSync {
     final nextLocal = wasDownloaded
         ? await vault.storage.stat(path)
         : localStat;
-    final nextLocalExists = wasDownloaded ? nextLocal != null : localExists;
+    final nextLocalExists = action == SyncAction.deleteLocal
+        ? false
+        : (wasDownloaded ? nextLocal != null : localExists);
     final nextRemote = uploadedRemoteTime ?? remoteTime;
     var updateCursor = false;
     SyncCursor? cursor;
@@ -552,6 +573,7 @@ extension _PathSync on NextcloudSync {
       conflicts: conflicts,
       repaired: repaired,
       deletedRemote: deletedRemote,
+      deletedLocal: deletedLocal,
     );
   }
 

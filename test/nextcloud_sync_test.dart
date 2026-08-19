@@ -1367,6 +1367,87 @@ void main() {
     expect(completed['skipped'], second.skipped);
   });
 
+  // 2026-08-19: 110 junk notes deleted on the Mac resurrected from the phone.
+  // The cursor proved the phone had synced those exact bytes (etag recorded,
+  // local unchanged), yet "local exists, remote missing" always re-uploaded —
+  // and the PUT into the deleted parent collection 404-failed the whole run.
+  test('a remote deletion of an unchanged file is honored, not resurrected',
+      () async {
+    final remote = <String, _MutableRemoteFile>{
+      'notes/junk.typ': _MutableRemoteFile(
+        bytes: utf8.encode('= Junk note'),
+        etag: '"junk-v1"',
+        modified: DateTime.now().toUtc(),
+      ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_remotedel_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    final first = await NextcloudSync(_config(server)).sync(vault);
+    expect(first.downloaded, greaterThan(0));
+    expect(File('${dir.path}/notes/junk.typ').existsSync(), isTrue);
+
+    // Another device deletes the note on the server.
+    remote.remove('notes/junk.typ');
+
+    final second = await NextcloudSync(_config(server)).sync(vault);
+    expect(
+      File('${dir.path}/notes/junk.typ').existsSync(),
+      isFalse,
+      reason: 'the remote deletion must propagate, not resurrect',
+    );
+    expect(second.deletedLocal, 1);
+    expect(remote.containsKey('notes/junk.typ'), isFalse,
+        reason: 'nothing may re-upload the deleted note');
+
+    // Steady state afterwards: the cursor is gone, nothing oscillates.
+    final third = await NextcloudSync(_config(server)).sync(vault);
+    expect(third.deletedLocal, 0);
+    expect(third.uploaded, 0);
+    expect(remote.containsKey('notes/junk.typ'), isFalse);
+  });
+
+  test('a mass remote wipe is restored, never mirrored locally', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_remotewipe_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    for (var i = 0; i < 4; i++) {
+      final file = File('${dir.path}/notes/note$i.typ');
+      await file.parent.create(recursive: true);
+      await file.writeAsString('= Note $i');
+    }
+    await NextcloudSync(_config(server)).sync(vault);
+    // Settling run: the persisted root etag is captured before the first
+    // run's own uploads, and a stale pre-upload etag would let the no-change
+    // shortcut skip the recovery run below.
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(remote.keys.where((p) => p.startsWith('notes/')).length, 4);
+
+    // Server-side catastrophe: everything vanishes from the listing. The
+    // deletion cursor rule must not turn that into a local wipe.
+    remote.clear();
+
+    final recovery = await NextcloudSync(_config(server)).sync(vault);
+    expect(recovery.deletedLocal, 0);
+    for (var i = 0; i < 4; i++) {
+      expect(File('${dir.path}/notes/note$i.typ').existsSync(), isTrue,
+          reason: 'a mass remote wipe must restore, not mirror');
+    }
+    expect(remote.keys.where((p) => p.startsWith('notes/')).length, 4);
+  });
+
   test('sync trace is bounded and never blocks synchronization', () async {
     final server = await _webDavServer(remoteContent: 'remote note');
     final dir = await Directory.systemTemp.createTemp('tylog_trace_limit_');
@@ -1724,7 +1805,13 @@ void main() {
     }
   });
 
-  test('remote absence restores the authoritative local file', () async {
+  // Changed 2026-08-19: this used to assert the opposite ("remote absence
+  // restores the authoritative local file"), which is how 110 junk notes
+  // deleted on the Mac resurrected from the phone. With a cursor proving the
+  // server had this exact content, absence is a deletion and propagates;
+  // without one (a file never synced), restore still wins.
+  test('remote absence deletes a cursor-tracked file but restores an untracked one',
+      () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
     final dir = await Directory.systemTemp.createTemp('tylog_delete_local_');
@@ -1736,13 +1823,20 @@ void main() {
     await vault.ensureCreated();
     await vault.storage.writeText('notes/delete.typ', 'delete me');
     await NextcloudSync(_config(server)).sync(vault);
+    // Settling run so the persisted root etag reflects the uploads above.
+    await NextcloudSync(_config(server)).sync(vault);
 
     remote.remove('notes/delete.typ');
+    // A file the server never saw: no cursor, so absence means "new local".
+    await vault.storage.writeText('notes/fresh.typ', 'never synced');
     final result = await NextcloudSync(_config(server)).sync(vault);
 
-    expect(result.uploaded, 1);
-    expect(await vault.storage.readText('notes/delete.typ'), 'delete me');
-    expect(utf8.decode(remote['notes/delete.typ']!.bytes), 'delete me');
+    expect(result.deletedLocal, 1);
+    expect(await vault.storage.exists('notes/delete.typ'), isFalse,
+        reason: 'cursor-tracked + unchanged + remote gone = remote deletion');
+    expect(remote.containsKey('notes/delete.typ'), isFalse);
+    expect(utf8.decode(remote['notes/fresh.typ']!.bytes), 'never synced',
+        reason: 'an untracked local file is still uploaded, not deleted');
   });
 
   test('remote edit cannot replace a note edited during sync', () async {
