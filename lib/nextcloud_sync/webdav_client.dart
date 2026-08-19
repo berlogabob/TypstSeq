@@ -243,8 +243,10 @@ extension _WebDavClient on NextcloudSync {
       if (remoteFile?.length != null && bytes.length != remoteFile!.length) {
         throw HttpException('Archive $path size mismatch');
       }
-      if (remoteFile?.sha256 != null &&
-          sha256.convert(bytes).toString() != remoteFile!.sha256) {
+      // Hashed once: the same digest serves the integrity check and the
+      // cursor's localSha256 (it was computed twice per file before).
+      final digest = sha256.convert(bytes).toString();
+      if (remoteFile?.sha256 != null && digest != remoteFile!.sha256) {
         throw HttpException('Archive $path checksum mismatch');
       }
       if (protectNonEmpty &&
@@ -259,7 +261,7 @@ extension _WebDavClient on NextcloudSync {
       return _DownloadResult(
         protected: false,
         etag: remoteFile?.etag,
-        localSha256: sha256.convert(bytes).toString(),
+        localSha256: digest,
       );
     }
     final temporary = await File(
@@ -267,9 +269,12 @@ extension _WebDavClient on NextcloudSync {
     ).create();
     try {
       final result = await _download(path, temporary);
-      if (remoteFile?.sha256 != null &&
-          await _sha256(temporary) != remoteFile!.sha256) {
-        throw HttpException('GET $path checksum mismatch');
+      String? verifiedSha256;
+      if (remoteFile?.sha256 != null) {
+        verifiedSha256 = await _sha256(temporary);
+        if (verifiedSha256 != remoteFile!.sha256) {
+          throw HttpException('GET $path checksum mismatch');
+        }
       }
       if (protectNonEmpty &&
           _protectFromEmpty(path) &&
@@ -284,7 +289,8 @@ extension _WebDavClient on NextcloudSync {
       return _DownloadResult(
         protected: result.protected,
         etag: result.etag,
-        localSha256: sha256.convert(bytes).toString(),
+        // The streamed digest already verified these exact bytes.
+        localSha256: verifiedSha256 ?? sha256.convert(bytes).toString(),
       );
     } finally {
       if (await temporary.exists()) await temporary.delete();

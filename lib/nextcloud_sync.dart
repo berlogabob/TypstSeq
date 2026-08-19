@@ -1058,11 +1058,18 @@ class _RemoteArchiveSnapshot {
   bool contains(String path) => files.containsKey(path);
 
   Uint8List read(String path) {
-    final bytes = files[path]?.readBytes();
-    if (bytes == null) {
+    final file = files[path];
+    if (file == null) {
       throw FormatException('Archive file is unreadable: $path');
     }
-    return bytes;
+    // Stream-decompress into a transient buffer and free the entry's cache
+    // right away. readBytes() left every transferred file decompressed in
+    // the heap until close() at the end of the run — 1.6–2.3 GB resident on
+    // a large sync (docs/sync-memory-findings.md, suspect 1). Entries share
+    // one FileBuffer, so free only the content cache, never closeSync().
+    final out = OutputMemoryStream();
+    file.writeContent(out, freeMemory: true);
+    return out.getBytes();
   }
 
   Future<void> close() async {
