@@ -225,7 +225,8 @@ void _typeComposing(
 
 String _sourceMarker(MagicAction action) => switch (action) {
   MagicAction.noteLink || MagicAction.project => '#tylog.ref-note(',
-  MagicAction.mention => r'\@Ada',
+  // Same shape as noteLink now — the '@'-prefixed body was retired.
+  MagicAction.mention => '#tylog.ref-note("native-person")[Ada]',
   MagicAction.tag => '#tylog.tag(',
   MagicAction.task => '#tylog.task(',
   MagicAction.date => '#tylog.date-ref(',
