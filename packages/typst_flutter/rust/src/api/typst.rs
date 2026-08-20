@@ -181,6 +181,28 @@ impl TypstEngine {
         self.world.add_fonts(font_data);
     }
 
+    /// Streams one chunk of the persistent base layer of virtual files that
+    /// survives [`compile`] calls.
+    ///
+    /// A vault-wide metadata scan compiles thousands of notes against the same
+    /// support files (package, templates, attachments). Passing that file set
+    /// through [`compile`]'s `files` parameter serialises the whole set across
+    /// the FFI boundary once per note — for a vault with hundreds of megabytes
+    /// of assets that copy dwarfs the compile itself. Callers send the shared
+    /// set once per scan and pass only per-compile extras (usually none) to
+    /// [`compile`]; per-compile `files` shadow base entries at the same path.
+    ///
+    /// Chunked because one message carrying the whole set is a single
+    /// contiguous allocation of the vault's asset volume — enough to abort
+    /// the process on memory-constrained Android devices. `first` starts a
+    /// new generation, `last` drops base entries the generation didn't
+    /// mention; unchanged bytes are preserved to keep the comemo cache warm.
+    /// A single call with `first` and `last` set and no files clears the
+    /// layer.
+    pub fn add_base_files(&mut self, files: Vec<VirtualFile>, first: bool, last: bool) {
+        self.world.add_base_files(files, first, last);
+    }
+
     /// Compile Typst markup into a CompiledDocument handle.
     pub fn compile(
         &mut self,
@@ -276,6 +298,11 @@ struct SimpleWorld {
     source: Source,
     /// Virtual file system: normalised path string → file bytes.
     files: HashMap<String, Bytes>,
+    /// Persistent base layer under [`Self::files`]; survives `set_files`.
+    /// Lookups check `files` first, so per-compile files shadow base entries.
+    base_files: HashMap<String, Bytes>,
+    /// Keys staged by the in-progress `add_base_files` generation.
+    staged_base_keys: std::collections::HashSet<String>,
     sys_time: Option<i64>,
 }
 
@@ -306,6 +333,8 @@ impl SimpleWorld {
                 "".into(),
             ),
             files: HashMap::new(),
+            base_files: HashMap::new(),
+            staged_base_keys: std::collections::HashSet::new(),
             sys_time: None,
         }
     }
@@ -346,6 +375,41 @@ impl SimpleWorld {
             self.files.insert(normalised, new_bytes);
         }
         self.files.retain(|k, _| new_keys.contains(k));
+    }
+
+    /// Stages one chunk of the base file layer (see
+    /// [`TypstEngine::add_base_files`]). Same replace-with-cache-preservation
+    /// contract as [`Self::set_files`], split across a generation of chunked
+    /// calls: `first` resets the staged key set, every chunk upserts (with
+    /// the identical-bytes skip), and `last` retains only the keys this
+    /// generation staged.
+    fn add_base_files(&mut self, virtual_files: Vec<VirtualFile>, first: bool, last: bool) {
+        if first {
+            self.staged_base_keys.clear();
+        }
+        for vf in virtual_files {
+            let normalised = vf.path.replace('\\', "/");
+            self.staged_base_keys.insert(normalised.clone());
+
+            let new_bytes = Bytes::new(vf.bytes);
+            if self
+                .base_files
+                .get(&normalised)
+                .is_some_and(|existing| existing.as_slice() == new_bytes.as_slice())
+            {
+                continue; // Skip if bytes are identical to preserve cache
+            }
+            self.base_files.insert(normalised, new_bytes);
+        }
+        if last {
+            let staged = std::mem::take(&mut self.staged_base_keys);
+            self.base_files.retain(|k, _| staged.contains(k));
+        }
+    }
+
+    /// Two-layer VFS lookup: per-compile files shadow the persistent base.
+    fn vfs_get(&self, key: &str) -> Option<&Bytes> {
+        self.files.get(key).or_else(|| self.base_files.get(key))
     }
 
     fn set_sys_time(&mut self, sys_time: Option<i64>) {
@@ -405,7 +469,7 @@ impl typst::World for SimpleWorld {
         // parse the bytes as UTF-8, and return a fresh Source.
         let key = self.vfs_key(id);
 
-        match self.files.get(&key) {
+        match self.vfs_get(&key) {
             Some(bytes) => {
                 let text = std::str::from_utf8(bytes).map_err(|_| FileError::InvalidUtf8)?;
                 Ok(Source::new(id, text.to_string()))
@@ -424,8 +488,7 @@ impl typst::World for SimpleWorld {
         // system.
         let key = self.vfs_key(id);
 
-        self.files
-            .get(&key)
+        self.vfs_get(&key)
             .cloned()
             .ok_or_else(|| FileError::NotFound(id.vpath().get_without_slash().into()))
     }

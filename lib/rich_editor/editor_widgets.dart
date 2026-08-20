@@ -7,6 +7,7 @@ class TyLogRichEditor extends StatefulWidget {
     required this.onInsert,
     this.onMentionQuery,
     this.onCommandSelected,
+    this.onCreateNote,
   });
 
   final TyLogEditingController controller;
@@ -27,6 +28,13 @@ class TyLogRichEditor extends StatefulWidget {
   /// Invoked when a "/" palette entry is selected — the parent should run
   /// the exact same handler the Magic menu uses for that action.
   final Future<void> Function(MagicAction action)? onCommandSelected;
+
+  /// Materialises the page a "create" mention row names, Logseq-style: Enter
+  /// on `[[New Page` creates the note immediately and returns its id, so the
+  /// inserted reference resolves instead of dangling until someone taps the
+  /// chip and confirms a dialog. Returning null falls back to the old
+  /// unresolved-chip behavior.
+  final Future<String?> Function(String title)? onCreateNote;
 
   @override
   State<TyLogRichEditor> createState() => _TyLogRichEditorState();
@@ -260,37 +268,46 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       kind == AutocompleteTriggerKind.mention ||
       kind == AutocompleteTriggerKind.wikiLink;
 
-  void _selectMention(MentionSuggestion item) {
+  Future<void> _selectMention(MentionSuggestion item) async {
     final trigger = _autocomplete.value?.trigger;
     if (trigger == null) return;
     final caret = widget.controller.selection.baseOffset;
     _cancelAutocomplete();
-    // Drop the "@query" / "[[query" text and insert on a collapsed caret so the
-    // snippet body comes from the chosen title, not the raw typed query (which
-    // would otherwise embed a literal "[[..." for a note link).
-    widget.controller.value = widget.controller.value.copyWith(
-      text: widget.controller.text.replaceRange(trigger.start, caret, ''),
-      selection: TextSelection.collapsed(offset: trigger.start),
-      composing: TextRange.empty,
+    // A create row materialises the page first, so the reference inserted
+    // below resolves immediately. On failure (or no handler) the old
+    // behavior remains: an unresolved chip the user can tap to create.
+    String? createdId;
+    if (item.create && item.kind == MentionKind.note) {
+      createdId = await widget.onCreateNote?.call(item.title);
+      if (!mounted) return;
+    }
+    // One atomic edit: the selection is set over the "@query"/"[[query"
+    // trigger text and applyMagic replaces it wholesale (replaceSelection).
+    // The old delete-then-insert pair left a revert window between the two
+    // controller writes in which a failed round-trip mangled the document.
+    widget.controller.selection = TextSelection(
+      baseOffset: trigger.start,
+      extentOffset: caret,
     );
-    // `@` keeps its "@name" mention rendering; `[[` writes a plain note
-    // reference or a tag, so a wiki-link never leaves the "@" prefix behind.
     final request = switch (item.kind) {
       MentionKind.concept => MagicRequest(
         action: MagicAction.tag,
         value: item.id,
+        replaceSelection: true,
       ),
       MentionKind.note =>
         trigger.kind == AutocompleteTriggerKind.wikiLink
             ? MagicRequest(
                 action: MagicAction.noteLink,
-                id: item.id,
+                id: createdId ?? item.id,
                 value: item.title,
+                replaceSelection: true,
               )
             : MagicRequest(
                 action: MagicAction.mention,
-                id: item.id,
+                id: createdId ?? item.id,
                 value: item.title,
+                replaceSelection: true,
               ),
     };
     widget.controller.applyMagic(request);

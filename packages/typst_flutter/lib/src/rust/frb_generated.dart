@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -864610928;
+  int get rustContentHash => 618104202;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -104,6 +104,13 @@ abstract class RustLibApi extends BaseApi {
 
   List<TypstDiagnostic> crateApiTypstCompiledDocumentWarnings({
     required CompiledDocument that,
+  });
+
+  Future<void> crateApiTypstTypstEngineAddBaseFiles({
+    required TypstEngine that,
+    required List<VirtualFile> files,
+    required bool first,
+    required bool last,
   });
 
   Future<void> crateApiTypstTypstEngineAddFonts({
@@ -377,6 +384,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiTypstTypstEngineAddBaseFiles({
+    required TypstEngine that,
+    required List<VirtualFile> files,
+    required bool first,
+    required bool last,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEngine(
+            that,
+            serializer,
+          );
+          sse_encode_list_virtual_file(files, serializer);
+          sse_encode_bool(first, serializer);
+          sse_encode_bool(last, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTypstTypstEngineAddBaseFilesConstMeta,
+        argValues: [that, files, first, last],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTypstTypstEngineAddBaseFilesConstMeta =>
+      const TaskConstMeta(
+        debugName: "TypstEngine_add_base_files",
+        argNames: ["that", "files", "first", "last"],
+      );
+
+  @override
   Future<void> crateApiTypstTypstEngineAddFonts({
     required TypstEngine that,
     required List<Uint8List> fontData,
@@ -393,7 +442,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -437,7 +486,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -465,7 +514,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -504,7 +553,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -541,7 +590,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -578,7 +627,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -605,7 +654,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -705,6 +754,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
   }
 
   @protected
@@ -1114,6 +1169,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_i_64(deserializer));
@@ -1516,12 +1577,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
   void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCompiledDocument(
     CompiledDocument self,
@@ -1615,6 +1670,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
   }
 
   @protected
@@ -1988,12 +2049,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.path, serializer);
     sse_encode_list_prim_u_8_strict(self.bytes, serializer);
   }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
-  }
 }
 
 @sealed
@@ -2070,6 +2125,35 @@ class TypstEngineImpl extends RustOpaque implements TypstEngine {
         RustLib.instance.api.rust_arc_decrement_strong_count_TypstEngine,
     rustArcDecrementStrongCountPtr:
         RustLib.instance.api.rust_arc_decrement_strong_count_TypstEnginePtr,
+  );
+
+  /// Streams one chunk of the persistent base layer of virtual files that
+  /// survives [`compile`] calls.
+  ///
+  /// A vault-wide metadata scan compiles thousands of notes against the same
+  /// support files (package, templates, attachments). Passing that file set
+  /// through [`compile`]'s `files` parameter serialises the whole set across
+  /// the FFI boundary once per note — for a vault with hundreds of megabytes
+  /// of assets that copy dwarfs the compile itself. Callers send the shared
+  /// set once per scan and pass only per-compile extras (usually none) to
+  /// [`compile`]; per-compile `files` shadow base entries at the same path.
+  ///
+  /// Chunked because one message carrying the whole set is a single
+  /// contiguous allocation of the vault's asset volume — enough to abort
+  /// the process on memory-constrained Android devices. `first` starts a
+  /// new generation, `last` drops base entries the generation didn't
+  /// mention; unchanged bytes are preserved to keep the comemo cache warm.
+  /// A single call with `first` and `last` set and no files clears the
+  /// layer.
+  Future<void> addBaseFiles({
+    required List<VirtualFile> files,
+    required bool first,
+    required bool last,
+  }) => RustLib.instance.api.crateApiTypstTypstEngineAddBaseFiles(
+    that: this,
+    files: files,
+    first: first,
+    last: last,
   );
 
   /// Adds additional fonts to the engine.

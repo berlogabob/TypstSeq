@@ -289,7 +289,7 @@ class LibraryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 6,
+    length: 4,
     child: Column(
       children: [
         const TabBar(
@@ -297,18 +297,21 @@ class LibraryView extends StatelessWidget {
           tabAlignment: TabAlignment.start,
           tabs: [
             Tab(text: 'Notes'),
-            Tab(text: 'Projects'),
             Tab(text: 'Articles'),
             Tab(text: 'Tasks'),
-            Tab(text: 'Entities'),
             Tab(text: 'Calendar'),
           ],
         ),
         Expanded(
           child: TabBarView(
             children: [
-              _notes('note'),
-              _notes('project'),
+              _UnifiedNotesView(
+                index: index,
+                indexing: indexing,
+                onOpenPath: onOpenPath,
+                onCreateNote: onCreateNote,
+                onCreateEntity: onCreateEntity,
+              ),
               _ArticlesShelf(
                 index: index,
                 indexing: indexing,
@@ -328,7 +331,6 @@ class LibraryView extends StatelessWidget {
                 onSetStatus: onSetTaskStatus,
                 onOpenPath: onOpenPath,
               ),
-              _entities(),
               CalendarTab(
                 index: index,
                 indexing: indexing,
@@ -342,93 +344,125 @@ class LibraryView extends StatelessWidget {
     ),
   );
 
-  Widget _notes(String kind) {
-    final notes = (index?.notes ?? const <NoteRef>[])
-        .where((note) => note.kind == kind)
-        .toList();
-    if (notes.isEmpty) {
-      final project = kind == 'project';
-      return ListView(
-        children: [
-          ListTile(
-            leading: indexing
-                ? const LoadingIndicator(size: 20, strokeWidth: 2)
-                : null,
-            title: Text(
-              indexing
-                  ? 'Indexing…'
-                  : project
-                  ? 'No projects yet'
-                  : 'No notes yet',
-            ),
-            trailing: TextButton.icon(
-              onPressed: () => onCreateNote(kind),
-              icon: const Icon(Icons.add),
-              label: Text(project ? 'New project' : 'New note'),
-            ),
-          ),
-        ],
-      );
-    }
-    return ListView.builder(
-      itemCount: notes.length,
-      itemBuilder: (context, i) {
-        final note = notes[i];
-        return ListTile(
-          // Route through iconForKind so 'note'/'project' match every
-          // other list's icon for the same kind.
-          leading: Icon(iconForKind(kind)),
-          title: Text(note.title),
-          onTap: () => onOpenPath(note.path),
-        );
-      },
-    );
-  }
+}
 
-  Widget _entities() {
-    final entities =
-        (index?.notes ?? const <NoteRef>[])
-            .where((note) => !structuralNoteKinds.contains(note.kind))
-            .toList()
+/// The unified primary list: notes, projects, and entities together, sliced
+/// by kind-tag filter chips instead of the old Notes/Projects/Entities silo
+/// tabs. Articles keep their own shelf (a reading-triage view, not a filter)
+/// and daily notes live in Journal/Calendar, so both stay out of "All" —
+/// each remains reachable via its chip.
+class _UnifiedNotesView extends StatefulWidget {
+  const _UnifiedNotesView({
+    required this.index,
+    required this.indexing,
+    required this.onOpenPath,
+    required this.onCreateNote,
+    required this.onCreateEntity,
+  });
+
+  final VaultIndex? index;
+  final bool indexing;
+  final ValueChanged<String> onOpenPath;
+  final ValueChanged<String> onCreateNote;
+  final VoidCallback onCreateEntity;
+
+  @override
+  State<_UnifiedNotesView> createState() => _UnifiedNotesViewState();
+}
+
+class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
+  String? _kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final all = (widget.index?.notes ?? const <NoteRef>[])
+        .where((note) => note.kind != 'daily')
+        .toList();
+    final kinds = {for (final note in all) note.kind}..remove('note');
+    final chips = kinds.toList()..sort();
+    final selected = _kind;
+    final notes =
+        all.where((note) {
+            if (selected != null) return note.kind == selected;
+            return note.kind != 'article';
+          }).toList()
           ..sort((a, b) => a.title.compareTo(b.title));
-    final itemCount = 1 + (entities.isEmpty ? 1 : entities.length);
-    return ListView.builder(
-      itemCount: itemCount,
-      itemBuilder: (context, i) {
-        if (i == 0) {
-          return ListTile(
-            leading: const Icon(Icons.add),
-            title: const Text('New entity'),
-            onTap: onCreateEntity,
-          );
-        }
-        if (entities.isEmpty) {
-          return ListTile(
-            leading: indexing
-                ? const LoadingIndicator(size: 20, strokeWidth: 2)
-                : null,
-            title: Text(
-              indexing
-                  ? 'Indexing…'
-                  : 'No people, places, or other entities yet',
+    return Column(
+      children: [
+        if (chips.isNotEmpty)
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                for (final kind in chips)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8, top: 6),
+                    child: FilterChip(
+                      avatar: Icon(iconForKind(kind), size: 16),
+                      label: Text(kind),
+                      selected: selected == kind,
+                      onSelected: (_) => setState(
+                        () => _kind = selected == kind ? null : kind,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          );
-        }
-        final note = entities[i - 1];
-        return ListTile(
-          // alternate_email means "email" elsewhere in the app; use the
-          // shared kind→icon map so a person reads as a person here too.
-          leading: Icon(iconForKind(note.kind)),
-          title: Text(note.title),
-          subtitle: Text(
-            [
-              note.kind,
-              if (note.aliases.isNotEmpty) note.aliases.join(', '),
-            ].join(' · '),
           ),
-          onTap: () => onOpenPath(note.path),
-        );
-      },
+        Expanded(
+          child: ListView.builder(
+            itemCount: 1 + (notes.isEmpty ? 1 : notes.length),
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: ListTile(
+                        leading: const Icon(Icons.add),
+                        title: const Text('New note'),
+                        onTap: () => widget.onCreateNote(_kind ?? 'note'),
+                      ),
+                    ),
+                    Expanded(
+                      child: ListTile(
+                        leading: const Icon(Icons.person_add_alt),
+                        title: const Text('New entity'),
+                        onTap: widget.onCreateEntity,
+                      ),
+                    ),
+                  ],
+                );
+              }
+              if (notes.isEmpty) {
+                return ListTile(
+                  leading: widget.indexing
+                      ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                      : null,
+                  title: Text(widget.indexing ? 'Indexing…' : 'No notes yet'),
+                );
+              }
+              final note = notes[i - 1];
+              final isEntity = !structuralNoteKinds.contains(note.kind);
+              return ListTile(
+                // Shared kind→icon map so a person reads as a person here too.
+                leading: Icon(iconForKind(note.kind)),
+                title: Text(note.title),
+                subtitle: isEntity || note.kind == 'project'
+                    ? Text(
+                        [
+                          note.kind,
+                          if (note.aliases.isNotEmpty) note.aliases.join(', '),
+                        ].join(' · '),
+                      )
+                    : null,
+                onTap: () => widget.onOpenPath(note.path),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

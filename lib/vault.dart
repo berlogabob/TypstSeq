@@ -100,6 +100,10 @@ class Vault {
   /// landing mid-scan must stay queued for the next one.
   void clearStaleNotes(Iterable<String> paths) => _staleNotes.removeAll(paths);
 
+  /// sha256 of the last index-cache bytes this process wrote; a rebuild that
+  /// re-derives identical bytes skips the multi-megabyte rewrite.
+  String? _lastIndexDigest;
+
   static const indexPath = TylogVaultPaths.index;
   static const searchIndexPath = TylogVaultPaths.searchIndex;
   static const helperPath = TylogVaultPaths.helper;
@@ -299,9 +303,18 @@ _index
     // queued for the next one. A no-op when `stale` came from outside — that
     // caller owns the clearing.
     _staleNotes.removeAll(staleNow);
-    // Compact: nothing reads index.json by eye, and pretty-printing roughly
-    // doubled the bytes encoded and written for a ~2.5 MB file.
-    await storage.writeText(indexPath, jsonEncode(index.toJson()));
+    // Gzip via the shared codec (readers accept the old plain JSON), and skip
+    // the write entirely when this process already wrote identical bytes —
+    // the encoded index was ~6.7 MB plain and is rewritten on every rebuild.
+    final encoded = encodeVaultIndexBytes(index);
+    final digest = sha256.convert(encoded).toString();
+    // The existence check keeps an externally-deleted `_index/` from being
+    // treated as already-written just because this process wrote the same
+    // bytes earlier.
+    if (digest != _lastIndexDigest || !await storage.exists(indexPath)) {
+      await storage.writeBytes(indexPath, encoded);
+      _lastIndexDigest = digest;
+    }
     if (deviceId != null && deviceId.isNotEmpty) {
       await _writeIndexDonor(deviceId, index, ownPrevious);
     }
@@ -493,10 +506,7 @@ _index
   Future<VaultIndex?> loadIndex() async {
     if (!await storage.exists(indexPath)) return null;
     try {
-      return VaultIndex.fromJson(
-        (jsonDecode(await storage.readText(indexPath)) as Map)
-            .cast<String, Object?>(),
-      );
+      return decodeVaultIndexBytes(await storage.readBytes(indexPath));
     } catch (_) {
       return null;
     }

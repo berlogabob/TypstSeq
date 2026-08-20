@@ -396,6 +396,21 @@ class TaskRef {
       .fold(Duration.zero, (sum, entry) => sum + entry.elapsed!);
 }
 
+/// The single kind vocabulary (plan: "Kinds become tags", cleanup step).
+/// Two lists used to drift apart — a 10-value `standardKinds` local to
+/// validation and a 5-value `structuralNoteKinds` in the app's widget
+/// constants. One source now; the app re-exports [structuralNoteKinds].
+///
+/// Structural kinds are the app's own taxonomy (journal, pages, projects, …);
+/// everything else — including any custom kind — renders as an entity page.
+const structuralNoteKinds = {'daily', 'note', 'project', 'article', 'research'};
+
+/// First-class entity-page kinds (knowledge graph): known, not "unknown".
+const entityNoteKinds = {'person', 'organization', 'place', 'website', 'event'};
+
+/// Every kind validation accepts without an extension warning.
+const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
+
 /// Schema version of `_index/index.json`. Bumping it invalidates every cached
 /// [NoteRef] (see the version gate in `scanVaultStorage`), so raise it only
 /// when a field the scanner reads back has changed shape.
@@ -413,7 +428,10 @@ class TaskRef {
 ///    reasoning as 7 — the mapping changes derived tags without touching a
 ///    single byte of any note. Editing the map *after* this ships invalidates
 ///    nothing on its own; use "Rebuild index" (force) then.
-const kVaultIndexVersion = 8;
+/// 9: non-default kinds alias into tags (`kind: article` → tag `article`), so
+///    kind filtering rides the existing tag machinery. Same reasoning as 7/8:
+///    derived tags change while note bytes don't.
+const kVaultIndexVersion = 9;
 
 class VaultIndex {
   const VaultIndex({

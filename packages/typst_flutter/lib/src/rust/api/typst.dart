@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `add_fonts`, `map_diagnostic`, `map_errors`, `new`, `resolve_span`, `set_files`, `set_inputs`, `set_markup`, `set_sys_time`, `vfs_key`
+// These functions are ignored because they are not marked as `pub`: `add_base_files`, `add_fonts`, `map_diagnostic`, `map_errors`, `new`, `resolve_span`, `set_files`, `set_inputs`, `set_markup`, `set_sys_time`, `vfs_get`, `vfs_key`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SimpleWorld`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `book`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `file`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `font`, `library`, `main`, `source`, `today`
 
@@ -41,6 +41,30 @@ abstract class CompiledDocument implements RustOpaqueInterface {
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TypstEngine>>
 abstract class TypstEngine implements RustOpaqueInterface {
+  /// Streams one chunk of the persistent base layer of virtual files that
+  /// survives [`compile`] calls.
+  ///
+  /// A vault-wide metadata scan compiles thousands of notes against the same
+  /// support files (package, templates, attachments). Passing that file set
+  /// through [`compile`]'s `files` parameter serialises the whole set across
+  /// the FFI boundary once per note — for a vault with hundreds of megabytes
+  /// of assets that copy dwarfs the compile itself. Callers send the shared
+  /// set once per scan and pass only per-compile extras (usually none) to
+  /// [`compile`]; per-compile `files` shadow base entries at the same path.
+  ///
+  /// Chunked because one message carrying the whole set is a single
+  /// contiguous allocation of the vault's asset volume — enough to abort
+  /// the process on memory-constrained Android devices. `first` starts a
+  /// new generation, `last` drops base entries the generation didn't
+  /// mention; unchanged bytes are preserved to keep the comemo cache warm.
+  /// A single call with `first` and `last` set and no files clears the
+  /// layer.
+  Future<void> addBaseFiles({
+    required List<VirtualFile> files,
+    required bool first,
+    required bool last,
+  });
+
   /// Adds additional fonts to the engine.
   Future<void> addFonts({required List<Uint8List> fontData});
 

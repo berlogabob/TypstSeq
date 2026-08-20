@@ -405,6 +405,7 @@ class MagicRequest {
     this.kind,
     this.rows = 2,
     this.columns = 2,
+    this.replaceSelection = false,
   });
 
   final MagicAction action;
@@ -415,6 +416,12 @@ class MagicRequest {
   final String? kind;
   final int rows;
   final int columns;
+
+  /// The selection is typed trigger text (`[[query`, `@query`) to be replaced
+  /// wholesale by [value] — never used as the snippet body. Lets the mention
+  /// popup swap trigger for reference in one atomic edit instead of a
+  /// delete-then-insert pair with a revert window between them.
+  final bool replaceSelection;
 }
 
 class SourceEdit {
@@ -431,13 +438,19 @@ SourceEdit applyMagicEdit(
 ) {
   final start = selection.isValid ? selection.start : source.length;
   final end = selection.isValid ? selection.end : source.length;
-  final selected = source.substring(start, end);
+  // Under replaceSelection the selected text is the trigger being replaced,
+  // not content — snippet bodies must come from the request's value.
+  final selected =
+      request.replaceSelection ? '' : source.substring(start, end);
   final value = request.value?.trim();
   final replacement = switch (request.action) {
     MagicAction.noteLink || MagicAction.project =>
       '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}]',
+    // Same shape as noteLink: the old '@'-prefixed body was a second on-disk
+    // spelling of the same reference that previews had to strip again.
+    // Existing notes keep their '@Title' bodies; only new insertions change.
     MagicAction.mention =>
-      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${escapeMarkup('@${value ?? selected}')}]',
+      '#tylog.ref-note(${typstString(request.id ?? value ?? selected)})[${escapeMarkup(value ?? selected)}]',
     MagicAction.tag => '#tylog.tag(${typstString(value ?? selected)})',
     MagicAction.task => taskSnippet(
       id: request.id ?? 'task',

@@ -130,9 +130,11 @@ unrelated @someone else''';
         value: 'Fernando Marson',
       ),
     );
+    // Same shape as noteLink — the old '@'-prefixed body was a second on-disk
+    // spelling of the same reference that previews had to strip again.
     expect(
       mention.text,
-      r'#tylog.ref-note("fernando-marson")[\@Fernando Marson]',
+      '#tylog.ref-note("fernando-marson")[Fernando Marson]',
     );
 
     final task = applyMagicEdit(

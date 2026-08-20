@@ -1363,6 +1363,43 @@ void main() {
     },
   );
 
+  test('a mention replaces the selected trigger text in one atomic edit', () {
+    // The popup used to delete "[[query" via one controller assignment and
+    // insert the reference via a second — a revert firing between the two
+    // left the document mangled. With replaceSelection the whole swap is a
+    // single applyMagic call: one edit, one validation, one undo step.
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: 'seed [[Ho\n',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final start = controller.text.indexOf('[[Ho');
+    expect(start, greaterThanOrEqualTo(0));
+    controller.selection = TextSelection(
+      baseOffset: start,
+      extentOffset: start + '[[Ho'.length,
+    );
+
+    controller.applyMagic(
+      const MagicRequest(
+        action: MagicAction.noteLink,
+        id: 'home-assistant',
+        value: 'Home Assistant',
+        replaceSelection: true,
+      ),
+    );
+
+    // The reference renders as an atom placeholder in visible text; the
+    // emitted source carries the actual call.
+    expect(controller.text, isNot(contains('[[Ho')));
+    expect(saved.last, contains('#tylog.ref-note("home-assistant")'));
+    expect(saved.last, contains('Home Assistant'));
+    expect(saved.last, isNot(contains('[[Ho')));
+  });
+
   test('applyMagic(task) places the caret at the end of the task text', () {
     final saved = <String>[];
     final controller = TyLogEditingController(

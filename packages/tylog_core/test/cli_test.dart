@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -41,17 +40,10 @@ void main() {
       await File('${root.path}/${TylogVaultPaths.searchIndex}').exists(),
       isTrue,
     );
-    final indexed =
-        jsonDecode(
-              await File(
-                '${root.path}/${TylogVaultPaths.index}',
-              ).readAsString(),
-            )
-            as Map;
-    expect(
-      (indexed['notes'] as List).cast<Map>().map((note) => note['path']),
-      contains(notePath),
+    final indexed = decodeVaultIndexBytes(
+      await File('${root.path}/${TylogVaultPaths.index}').readAsBytes(),
     );
+    expect(indexed.notes.map((note) => note.path), contains(notePath));
 
     final doctor = await _cli(['doctor', root.path], environment);
     expect(doctor.exitCode, 0, reason: doctor.stdout.toString());

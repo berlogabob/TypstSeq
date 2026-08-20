@@ -250,6 +250,18 @@ class PkmsSearchIndex {
         );
       }
     }
+    // Every note doc came from the cache and the document set (tasks and
+    // attachments derive from those same unchanged notes) has the same keys:
+    // this build is byte-identical to `previous`, so hand the caller back the
+    // same instance. The identity is the caller's signal that re-encoding and
+    // re-writing the index file can be skipped, and it avoids rebuilding the
+    // posting sets in the constructor.
+    if (previous != null &&
+        misses.isEmpty &&
+        documents.length == previous._documents.length &&
+        documents.keys.every(previous._documents.containsKey)) {
+      return previous;
+    }
     return PkmsSearchIndex._(documents);
   }
 

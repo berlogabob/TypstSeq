@@ -116,6 +116,12 @@ int mentionScore(NoteRef note, String query, Map<String, int> recencyByPath) {
       ? 300
       : note.id.toLowerCase().startsWith(q)
       ? 200
+      // Substring last: "assistant" must reach "Home Assistant", but any
+      // prefix match still outranks it.
+      : title.contains(q)
+      ? 100
+      : note.aliases.any((alias) => alias.toLowerCase().contains(q))
+      ? 80
       : 0;
   if (tier == 0) return 0;
   final kindBonus = switch (note.kind) {
@@ -205,12 +211,15 @@ AutocompleteTrigger? _detectWikiLink(String text, int caret) {
   return null;
 }
 
-bool _isWordChar(int code) =>
-    (code >= 0x30 && code <= 0x39) || // 0-9
-    (code >= 0x41 && code <= 0x5a) || // A-Z
-    (code >= 0x61 && code <= 0x7a) || // a-z
-    code == 0x5f || // _
-    code == 0x2d; // -
+/// Any Unicode letter or digit, plus `_`/`-`. The old ASCII-only class made
+/// `@Илья` undetectable while `[[Илья` worked — two triggers for the same
+/// job with different alphabets.
+bool _isWordChar(int code) {
+  if (code == 0x5f || code == 0x2d) return true; // _ -
+  return _wordChar.hasMatch(String.fromCharCode(code));
+}
+
+final _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
 bool _isWhitespace(int code) =>
     code == 0x20 || code == 0x09 || code == 0x0a || code == 0x0d;

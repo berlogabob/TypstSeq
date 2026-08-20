@@ -49,19 +49,9 @@ Future<PkmsValidationReport> validatePkmsStorage(
     );
   }
 
-  const standardKinds = {
-    'note',
-    'daily',
-    'project',
-    'article',
-    'research',
-    // Entity-page kinds (knowledge graph): first-class, not "unknown".
-    'person',
-    'organization',
-    'place',
-    'website',
-    'event',
-  };
+  // The shared vocabulary in models.dart — validation and the app's UI must
+  // agree on what counts as a known kind.
+  const standardKinds = standardNoteKinds;
   const taskStatuses = {'todo', 'doing', 'done', 'cancelled'};
   const priorities = {'low', 'normal', 'high', 'urgent'};
 

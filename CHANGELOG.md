@@ -3,6 +3,71 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.3.0+93
+
+Performance floor, linking that just works, and kinds-as-tags. One forced full
+re-index on first open (index schema v9) — with the indexing fix below it takes
+minutes, not hours. No note file is rewritten by anything in this release.
+
+### Fixed
+
+- **Cold indexing is orders of magnitude faster on the native path.** Every
+  note inspection re-serialised the entire vault's support files — 854 MB of
+  `assets/` — across the FFI boundary. Three stacked fixes: the file set now
+  crosses once per scan instead of once per note (measured on the real vault:
+  15.6 → 3,600–5,100 notes/min per-note inspect cost, A/B in
+  `integration_test/vfs_base_files_bench_test.dart`; issue #54's ~25 notes/min
+  ≈ 2.2 h cold rebuild becomes minutes); the handoff is streamed in 48 MB
+  chunks (one message carrying the whole vault was a single contiguous
+  allocation that aborted the app on the P30); and images travel as valid
+  1×1 same-format placeholders — a metadata query only needs `#image()` to
+  resolve, and its records are layout-independent, so the vault's real
+  image bytes are never read or shipped at all. The placeholders are
+  compile-verified against the typst CLI in tests (broken bytes would
+  silently degrade notes to the fallback parser). Measured on the Huawei P30
+  (release build, real vault): the full forced re-index of 5,086 notes took
+  14.2 min with the app usable throughout and native heap ≤360 MB — the
+  pre-fix build OOM-crashed twice on the same scan — and metadata quality
+  ended at 5,068/5,086 typst-query (18 fallback, 0.35%).
+- **Warm rebuilds skip the search-index round trip.** The worker re-decoded
+  (8.4 MB gz → 31 MB JSON), rebuilt 107k posting sets twice, and re-encoded the
+  search index even when nothing changed. It now reuses the in-memory index and
+  skips the save when the document set is unchanged.
+- **`_index/index.json` is gzipped** (~4:1 on the real vault) and identical
+  bytes are not rewritten. Older plain-JSON files still open; the CLI reads and
+  writes the same format.
+- **Typing a mention no longer has a corruption window.** The popup replaced
+  `[[query` with the reference in two separate editor writes; a round-trip
+  failure between them could mangle the paragraph. It is now one atomic edit
+  with one validation and a clean rollback.
+- **`@` completes non-ASCII names.** `@Илья` never matched (ASCII-only word
+  class); the trigger now accepts any Unicode letter or digit. New `@`
+  insertions also emit the same reference shape as `[[` instead of a second
+  `[@Title]` spelling.
+- **A fully-typed `[[Page]]` is a real link.** It used to be dead text —
+  displayed as a link in excerpts but invisible to backlinks, the graph, and
+  triage. Literal wikilinks are now indexed as outgoing links (the note's text
+  keeps its brackets; nothing rewrites it).
+
+### Added
+
+- **Enter creates the page.** Selecting the "New page" row in the `[[` popup
+  creates the note immediately and links it — no dangling chip, no confirm
+  dialog. Bare `[[` or `@` now shows recently-opened notes instead of "No
+  matches", and matching is substring-based ("assistant" finds
+  "Home Assistant").
+- **Kinds are tags now.** `kind: article/person/place/…` also surfaces as a
+  tag (`#article`, `#person`), so the existing tag filters slice by kind
+  everywhere — search, saved searches, reports. Index-only: headers and the
+  article-pipeline contract are untouched; the plain `note` kind is not
+  aliased; kind tags are excluded from the concept map and community
+  detection so `#article` doesn't swallow the graph.
+- **One Notes list instead of three tabs.** Notes, Projects and Entities
+  merged into a single list with kind filter chips; Articles keep their
+  reading shelf, Journal/Calendar unchanged.
+- **The magic-menu note/entity choosers have a filter field** — they were
+  unsearchable full-vault lists.
+
 ## 0.3.0+92
 
 A design audit of the whole interface, and the fixes for what it found. Nothing

@@ -37,6 +37,14 @@ void main() {
       expect(trigger.start, 0);
     });
 
+    test('@ accepts Unicode names (Cyrillic)', () {
+      const text = '@Илья';
+      final trigger = detectTrigger(text, text.length);
+      expect(trigger, isNotNull);
+      expect(trigger!.kind, AutocompleteTriggerKind.mention);
+      expect(trigger.query, 'Илья');
+    });
+
     test('a space after the query cancels the trigger', () {
       expect(detectTrigger('@Fer ', 5), isNull);
     });
@@ -190,8 +198,14 @@ void main() {
       final auditScore = mentionScore(audit, 'flowgroove', const {});
       expect(auditScore, greaterThan(0));
       expect(auditScore, lessThan(mentionScore(articleA, 'flowgroove', const {})));
-      // A word merely appearing in the title is not a match at all.
-      expect(mentionScore(audit, 'аудит', const {}), 0);
+      // A word inside the title now matches too (substring tier), but stays
+      // below any prefix-tier match so it can't bury the page you named.
+      final substring = mentionScore(audit, 'аудит', const {});
+      expect(substring, greaterThan(0));
+      expect(
+        substring,
+        lessThan(mentionScore(articleA, 'flowgroove', const {})),
+      );
     });
 
     test('recently opened breaks a tie between identical titles', () {
@@ -205,6 +219,25 @@ void main() {
     test('subtitle names the kind and source instead of an opaque id', () {
       expect(mentionSubtitle(articleA), 'article · flowgroove.app');
       expect(mentionSubtitle(project), 'project · projects/FlowGroove.typ');
+    });
+
+    test('a non-prefix substring still matches, below prefix tiers', () {
+      const home = NoteRef(
+        id: 'home-assistant',
+        path: 'notes/Home Assistant.typ',
+        title: 'Home Assistant',
+        outgoingLinks: [],
+      );
+      expect(
+        mentionScore(home, 'assistant', const {}),
+        greaterThan(0),
+        reason: '"assistant" must reach "Home Assistant"',
+      );
+      expect(
+        mentionScore(home, 'home', const {}),
+        greaterThan(mentionScore(home, 'assistant', const {})),
+        reason: 'prefix outranks substring',
+      );
     });
   });
 }

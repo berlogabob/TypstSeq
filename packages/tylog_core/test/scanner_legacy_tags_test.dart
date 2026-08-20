@@ -16,7 +16,7 @@ journal-day:: [[2026-05-26]]
 source:: [[shazoo.ru]]
 ''';
 
-    final note = scanNote('articles/a.typ', source);
+    final note = scanNote('notes/a.typ', source);
 
     expect(note.dateRefs.map((d) => d.date), contains('2026-05-26'));
     expect(note.outgoingLinks, contains('shazoo.ru'));
@@ -29,7 +29,7 @@ source:: [[shazoo.ru]]
 tags:: [[Godot]] [[Unity]] [[игровые движки]]
 ''';
 
-    final note = scanNote('articles/godot.typ', source);
+    final note = scanNote('notes/godot.typ', source);
 
     // Tags are folded to one canonical spelling when indexed, so clustering
     // does not see `Godot` and `godot` as unrelated concepts.
@@ -43,7 +43,7 @@ tags:: [[Godot]] [[Unity]] [[игровые движки]]
 tags:: ESP32, Home-Assistant
 ''';
 
-    final note = scanNote('articles/a.typ', source);
+    final note = scanNote('notes/a.typ', source);
 
     expect(note.tags, containsAll(['kept', 'esp32', 'home-assistant']));
   });
@@ -58,7 +58,7 @@ tags:: ESP32, Home-Assistant
 tags:: #Python #разработка
 ''';
 
-    final note = scanNote('articles/a.typ', source);
+    final note = scanNote('notes/a.typ', source);
 
     expect(note.tags, ['python', 'разработка']);
   });
@@ -72,7 +72,7 @@ tags:: #Python #разработка
 tags:: #библиотеки Python #советы для разработчиков
 ''';
 
-    final note = scanNote('articles/a.typ', source);
+    final note = scanNote('notes/a.typ', source);
 
     expect(note.tags, ['библиотеки-python', 'советы-для-разработчиков']);
   });
@@ -87,7 +87,7 @@ tags:: #библиотеки Python #советы для разработчик�
 tags:: \\#Python \\#машинное\\-обучение
 ''';
 
-    final note = scanNote('articles/a.typ', source);
+    final note = scanNote('notes/a.typ', source);
 
     expect(note.tags, ['python', 'машинное-обучение']);
   });
@@ -99,7 +99,7 @@ tags:: \\#Python \\#машинное\\-обучение
       addTearDown(() => root.delete(recursive: true));
       final storage = LocalVaultStorage(root);
       await storage.writeText(
-        'articles/godot.typ',
+        'notes/godot.typ',
         '#show: tylog.note.with(id: "godot", title: "Godot", tags: ())\n'
             '\ntags:: [[Godot]] [[Unity]]\n',
       );
@@ -139,7 +139,7 @@ void _synonymTests() {
   const synonyms = {'искусственный-интеллект': 'ai', 'ии': 'ai', 'llms': 'llm'};
 
   NoteRef scan(String tags, {Map<String, String> map = synonyms}) => scanNote(
-    'articles/a.typ',
+    'notes/a.typ',
     '#show: tylog.note.with(id: "a", title: "A", tags: ($tags))\n',
     synonyms: map,
   );
@@ -158,7 +158,7 @@ void _synonymTests() {
 
   test('synonyms reach body-recovered tags too', () {
     final note = scanNote(
-      'articles/a.typ',
+      'notes/a.typ',
       '#show: tylog.note.with(id: "a", title: "A", tags: ())\n\n'
       'tags:: #ИИ #Godot\n',
       synonyms: synonyms,
@@ -211,7 +211,7 @@ void _synonymFileTests() {
   test('a scan picks the map up from the vault', () async {
     final storage = await vault('{"synonyms":{"ии":"ai"}}');
     await storage.writeText(
-      'articles/a.typ',
+      'notes/a.typ',
       '#show: tylog.note.with(id: "a", title: "A", tags: ("ИИ",))\n',
     );
 
@@ -236,7 +236,7 @@ void _staleCacheTests() {
     addTearDown(() => root.delete(recursive: true));
     final storage = LocalVaultStorage(root);
     await storage.writeText(
-      'articles/a.typ',
+      'notes/a.typ',
       '#show: tylog.note.with(id: "a", title: "A", tags: ($tags))\n',
     );
     return storage;
@@ -248,9 +248,9 @@ void _staleCacheTests() {
     final old = VaultIndex(
       version: kVaultIndexVersion - 1,
       notesByPath: {
-        'articles/a.typ': const NoteRef(
+        'notes/a.typ': const NoteRef(
           id: 'a',
-          path: 'articles/a.typ',
+          path: 'notes/a.typ',
           title: 'A',
           outgoingLinks: [],
           tags: ['ии'],
@@ -280,9 +280,9 @@ void _staleCacheTests() {
     final storage = await vaultWith('"kept"');
     final current = VaultIndex(
       notesByPath: {
-        'articles/a.typ': const NoteRef(
+        'notes/a.typ': const NoteRef(
           id: 'a',
-          path: 'articles/a.typ',
+          path: 'notes/a.typ',
           title: 'Queried title',
           outgoingLinks: [],
           tags: ['kept'],

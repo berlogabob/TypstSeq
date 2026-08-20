@@ -34,6 +34,7 @@ import 'voronoi_view.dart';
 import 'widgets/app_version.dart';
 import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
+import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
 import 'widgets/linked_references.dart';
 import 'widgets/dialogs.dart';
@@ -2325,34 +2326,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final chosen = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            if (heading != null)
-              ListTile(
-                title: Text(heading),
-                subtitle: const Text('Dismiss to use no filter'),
-              ),
-            if (create)
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: Text('Create ${kind ?? 'note'}'),
-                onTap: () => Navigator.pop(context, 'create'),
-              ),
-            for (final item in notes)
-              ListTile(
-                leading: Icon(iconForKind(item.kind)),
-                title: Text(item.title),
-                subtitle: Text(item.id),
-                onTap: () => Navigator.pop(context, item),
-              ),
-          ],
-        ),
+      builder: (context) => NotePickerSheet(
+        notes: notes,
+        heading: heading,
+        createLabel: create ? 'Create ${kind ?? 'note'}' : null,
       ),
     );
     if (chosen is NoteRef) return chosen;
-    if (chosen != 'create') return null;
+    if (chosen != NotePickerSheet.createSentinel) return null;
     final title = await _askText(
       'New ${kind ?? 'note'}',
       initialValue: _selectedText(),
@@ -2373,28 +2354,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final chosen = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('New entity'),
-              onTap: () => Navigator.pop(context, 'create'),
-            ),
-            for (final item in _entities)
-              ListTile(
-                leading: Icon(iconForKind(item.kind)),
-                title: Text(item.title),
-                subtitle: Text(item.kind),
-                onTap: () => Navigator.pop(context, item),
-              ),
-          ],
-        ),
+      builder: (context) => NotePickerSheet(
+        notes: _entities,
+        createLabel: 'New entity',
+        subtitleFor: (note) => note.kind,
       ),
     );
     if (chosen is NoteRef) return chosen;
-    return chosen == 'create' ? _createEntity() : null;
+    return chosen == NotePickerSheet.createSentinel ? _createEntity() : null;
   }
 
   Future<NoteRef?> _createEntity() async {
@@ -3423,8 +3390,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // the full-text search index — the latter can take a while to finish
           // building on large SAF vaults, and mentions must resolve instantly.
           final q = query.trim().toLowerCase();
-          if (q.isEmpty) return const <MentionSuggestion>[];
-          bool matches(String s) => s.toLowerCase().startsWith(q);
           final notes = index?.notes ?? const <NoteRef>[];
           // Built once per query, not per candidate: _mergedRecent() allocates
           // and sorts, and it is capped at 30 entries.
@@ -3432,6 +3397,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             for (final (position, recent) in _mergedRecent().indexed)
               recent.path: position,
           };
+          // Bare `[[` / `@` shows recently-opened notes instead of "No
+          // matches" — the recency list was already computed and only ever
+          // used as a tiebreaker.
+          if (q.isEmpty) {
+            final byPath = index?.notesByPath ?? const <String, NoteRef>{};
+            return [
+              for (final recent in _mergedRecent().take(8))
+                if (byPath[recent.path] case final NoteRef n)
+                  MentionSuggestion(
+                    id: n.id,
+                    title: n.title,
+                    noteKind: n.kind,
+                    subtitle: mentionSubtitle(n),
+                  ),
+            ];
+          }
+          bool matches(String s) => s.toLowerCase().contains(q);
           final matchedNotes =
               notes
                   .where(
@@ -3501,6 +3483,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return suggestions;
         },
         onCommandSelected: _runMagic,
+        onCreateNote: (title) async {
+          final v = vault;
+          if (v == null) return null;
+          // Same direct-mapping check as _createFromLink: the resolver lags a
+          // just-created note until the background rescan lands.
+          final direct =
+              'notes/${title.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
+          if (await v.storage.exists(direct)) return null;
+          try {
+            final file = await v.page(title);
+            if (context.mounted) showSnack(context, 'Created $file');
+            unawaited(workspace.refreshIndex(always: true));
+            // The reference is inserted by title either way; returning the
+            // title keeps the emitted ref identical to the pre-create one,
+            // which the resolver maps to the new file.
+            return title;
+          } catch (_) {
+            return null;
+          }
+        },
       ),
       _ => const SizedBox.shrink(),
     };

@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+/// Note kinds that represent the app's own structural taxonomy (daily
+/// journal, pages, projects, …) rather than a user-defined entity. Defined in
+/// tylog_core next to the validation vocabulary so the two can't drift.
+export 'package:tylog_core/models.dart'
+    show structuralNoteKinds, entityNoteKinds, standardNoteKinds;
+
 // ---------------------------------------------------------------------------
 // Design tokens
 //
@@ -58,9 +64,6 @@ Color warningColor(ColorScheme scheme) => scheme.brightness == Brightness.dark
     ? const Color(0xFFFFC107)
     : const Color(0xFFB26A00);
 
-/// Note kinds that represent the app's own structural taxonomy (daily
-/// journal, pages, projects, …) rather than a user-defined entity.
-const structuralNoteKinds = {'daily', 'note', 'project', 'article', 'research'};
 
 /// The icon representing a note of the given [kind] — person/place/org entities
 /// and structural kinds. Used by inline reference chips and entity lists so

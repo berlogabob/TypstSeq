@@ -7,6 +7,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/values.dart';
+import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes;
 
 void main() {
   test('default vault prefers Nextcloud on desktop', () async {
@@ -393,15 +394,20 @@ void main() {
 ''');
 
     final first = await vault.rebuildIndex();
-    final firstJson = await vault.storage.readText(Vault.indexPath);
+    final firstBytes = await vault.storage.readBytes(Vault.indexPath);
     await vault.storage.delete('_index');
     final second = await vault.rebuildIndex();
-    final secondJson = await vault.storage.readText(Vault.indexPath);
+    final secondBytes = await vault.storage.readBytes(Vault.indexPath);
 
     expect(first.version, kVaultIndexVersion);
     expect(first.backlinksByTarget['notes/Child.typ'], ['notes/Root.typ']);
     expect(second.backlinksByTarget, first.backlinksByTarget);
-    expect(secondJson, firstJson);
+    expect(secondBytes, firstBytes);
+    expect(
+      decodeVaultIndexBytes(secondBytes).backlinksByTarget,
+      first.backlinksByTarget,
+      reason: 'the on-disk cache must decode back to the same index',
+    );
   });
 
   group('index donors', () {

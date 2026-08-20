@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'scanner.dart' show normalizeTag;
 
 enum GraphEdgeKind { link, citation, tag, read }
 
@@ -200,9 +201,19 @@ NoteGraph buildConceptMap(
 /// ponytail: plain helper, not a memoized field — `VaultIndex` is a const model
 /// and this runs once per graph rebuild, not in a hot loop.
 Map<String, Set<String>> tagToNotes(VaultIndex index) {
+  // Kind-alias tags (kind `article` → tag `article`, see the scanner) are
+  // filter chips, not concepts: on a real vault `article` sits on thousands
+  // of notes and would be the highest-degree hub in every graph mode and
+  // swallow community detection. Excluded here so the concept map, Louvain
+  // communities, and the Voronoi treemap all skip them in one place.
+  final kindTags = {
+    for (final note in index.notesByPath.values)
+      if (note.kind != 'note') normalizeTag(note.kind),
+  };
   final byTag = <String, Set<String>>{};
   for (final note in index.notesByPath.values) {
     for (final tag in note.tags) {
+      if (kindTags.contains(tag)) continue;
       byTag.putIfAbsent(tag, () => {}).add(note.path);
     }
   }

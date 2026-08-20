@@ -199,6 +199,16 @@ abstract interface class RecoverableInspector {
   Future<void> recover();
 }
 
+/// An inspector that can hold the scan-wide support files (package, templates,
+/// attachments) as persistent state, so the scanner sends them once per scan
+/// instead of attaching the same map to every note's [TypstDocumentInput].
+/// For the native engine that map crosses the FFI boundary by copy — hundreds
+/// of megabytes of assets serialised once per note was the dominant cost of a
+/// cold index. A separate interface so CLI/test inspectors stay untouched.
+abstract interface class BaseFilesInspector {
+  Future<void> setBaseFiles(Map<String, Uint8List> files);
+}
+
 /// Upper bound for a single note's metadata query. A pathological document
 /// can make the Typst compile spin forever (device-verified: one synced
 /// article froze the whole scan, and with it index + search, until app
@@ -516,9 +526,26 @@ Future<VaultIndex> scanVaultStorage(
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
     contentHash ??= sha256.convert(bytes).toString();
-    inspectionFiles ??= activeInspector == null
-        ? const <String, Uint8List>{}
-        : await _inspectionFiles(storage);
+    if (inspectionFiles == null) {
+      if (activeInspector == null) {
+        inspectionFiles = const <String, Uint8List>{};
+      } else {
+        final shared = await _inspectionFiles(storage);
+        final inspector = activeInspector;
+        if (inspector is BaseFilesInspector) {
+          try {
+            await (inspector as BaseFilesInspector).setBaseFiles(shared);
+            // Base layer installed engine-side; notes carry no files.
+            inspectionFiles = const <String, Uint8List>{};
+          } catch (_) {
+            // Handoff failed: fall back to shipping the map per note.
+            inspectionFiles = shared;
+          }
+        } else {
+          inspectionFiles = shared;
+        }
+      }
+    }
     var inspectionAttempted = false;
     try {
       QueriedMetadata? queried;
@@ -673,10 +700,48 @@ Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
     // looked up — but flutter_rust_bridge serialises the whole map
     // synchronously on this isolate for *every* note, so it was copying the
     // vault's assets twice per inspect.
-    files[entry.path] = await storage.readBytes(entry.path);
+    //
+    // Images travel as valid same-format 1×1 placeholders instead of their
+    // real bytes: a metadata query only needs `#image()` to *resolve* (a
+    // missing file is a compile error that silently degrades the note to the
+    // fallback parser), and the metadata records it reads are
+    // layout-independent, so fake dimensions change nothing. The real bytes —
+    // 850 MB of them on the live vault — held twice (Dart map + engine VFS)
+    // OOM-killed the app on device, and reading them through SAF was a
+    // minute of stall before the first query could run.
+    files[entry.path] =
+        imagePlaceholder(entry.path) ?? await storage.readBytes(entry.path);
   }
   return files;
 }
+
+/// A minimal valid image of the same format as [path], or null for non-image
+/// files (data files a note may `read()`/`csv()` keep their real bytes).
+Uint8List? imagePlaceholder(String path) {
+  final dot = path.lastIndexOf('.');
+  if (dot < 0) return null;
+  return switch (path.substring(dot + 1).toLowerCase()) {
+    'png' => _placeholderPng,
+    'jpg' || 'jpeg' => _placeholderJpeg,
+    'gif' => _placeholderGif,
+    'svg' => _placeholderSvg,
+    _ => null,
+  };
+}
+
+// 1×1 valid images (CRCs intact — Typst decodes them for size).
+final Uint8List _placeholderPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP4DwABAQEAsTj2FAAAAABJRU5ErkJggg==',
+);
+final Uint8List _placeholderJpeg = base64Decode(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==',
+);
+final Uint8List _placeholderGif = base64Decode(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+);
+final Uint8List _placeholderSvg = Uint8List.fromList(
+  utf8.encode('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'),
+);
 
 PkmsProblem _fallbackProblem(String path) => PkmsProblem(
   code: 'metadata-fallback',
@@ -1621,20 +1686,26 @@ NoteRef _queriedNote(
 ]) {
   final note = metadata.note!;
   final stem = path.split('/').last.replaceFirst(_typExtension, '');
+  final kind = _text(note['kind']) ?? _kindFromPath(path);
   return NoteRef(
     id: _text(note['id']) ?? '',
     path: path,
     title: _text(note['title']) ?? stem,
-    kind: _text(note['kind']) ?? _kindFromPath(path),
+    kind: kind,
     project: _text(note['project']),
     date: _text(note['date']),
     tags: _normalizedTags({
       ...stringList(note['tags']),
       ...metadata.tags,
       ..._legacyTags(source),
+      ..._kindTag(kind),
     }, synonyms),
     aliases: _sorted(stringList(note['aliases']).toSet()),
-    outgoingLinks: _sorted({...metadata.links, ..._legacySources(source)}),
+    outgoingLinks: _sorted({
+      ...metadata.links,
+      ..._legacySources(source),
+      ..._wikiLinkTargets(source),
+    }),
     fileRefs: _sorted(
       metadata.attachments
           .map((item) => item['path']?.toString() ?? '')
@@ -1685,22 +1756,25 @@ NoteRef _fallbackNote(
   final attachmentCalls = calls.where(
     (call) => call.name == 'tylog.attachment',
   );
+  final kind = _field(header, 'kind') ?? _kindFromPath(path);
   return NoteRef(
     id: _field(header, 'id') ?? stem,
     path: path,
     title: _field(header, 'title') ?? stem,
-    kind: _field(header, 'kind') ?? _kindFromPath(path),
+    kind: kind,
     project: _field(header, 'project'),
     date: _field(header, 'date'),
     tags: _normalizedTags({
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tylog.tag'),
       ..._legacyTags(source),
+      ..._kindTag(kind),
     }, synonyms),
     aliases: _sorted(_parseList(header, 'aliases').toSet()),
     outgoingLinks: _sorted({
       ..._firstArguments(calls, 'tylog.ref-note'),
       ..._legacySources(source),
+      ..._wikiLinkTargets(source),
     }),
     fileRefs: _sorted({..._firstArguments(calls, 'tylog.attachment')}),
     citations: _citations(source),
@@ -1895,6 +1969,16 @@ List<DateRef> _legacyDates(String source) => [
       DateRef(date: m.group(0)!),
 ];
 
+/// Literal `[[Title]]` / `[[Title|shown]]` wikilinks left in note text (typed
+/// out fully, so the editor popup never converted them). Indexed as ordinary
+/// outgoing links so backlinks, the graph, and dangling-link triage see them —
+/// the same exposure the linked-references excerpt matcher already accepts.
+/// Index-only: the note's text keeps its literal brackets.
+Set<String> _wikiLinkTargets(String source) => {
+  for (final match in _wikiLink.allMatches(source))
+    match.group(1)!.split('|').first.trim(),
+}..remove('');
+
 /// Recovers `source:: [[origin]]` legacy lines as outgoing links (an article's
 /// source entity), so the relationship is not lost.
 Set<String> _legacySources(String source) {
@@ -2072,6 +2156,14 @@ List<String> _sorted(Set<String> values) => values.toList()..sort();
 ///
 /// Index-only, both of them: the note's own text is never rewritten, so undoing
 /// a bad merge means editing the synonym file, not hundreds of notes.
+/// The kind→tag alias (plan: "Kinds become tags"): non-default kinds join the
+/// note's tags so the existing tag filters slice by article/person/daily with
+/// no UI changes. Index-only — like tag synonyms, the note's text is never
+/// rewritten. The default `note` is not aliased: a mega-tag carried by every
+/// plain note filters nothing.
+Iterable<String> _kindTag(String kind) =>
+    kind == 'note' ? const [] : [kind];
+
 List<String> _normalizedTags(
   Set<String> values, [
   Map<String, String> synonyms = const {},

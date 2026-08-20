@@ -100,6 +100,34 @@ class TypstCompiler implements Finalizable {
     }
   }
 
+  /// Installs a persistent base layer of virtual files that survives
+  /// [compile] calls (per-compile [compile] `files` shadow it). Send the
+  /// scan-wide support set here once instead of re-serialising it across the
+  /// FFI boundary on every compile; an empty map clears the layer.
+  ///
+  /// Streamed in bounded chunks: one message carrying a whole vault's assets
+  /// is a single contiguous allocation of that size, which aborted the app
+  /// on a memory-constrained Android device.
+  Future<void> setBaseFiles(Map<String, Uint8List> files) async {
+    const chunkBytes = 48 << 20;
+    var batch = <api.VirtualFile>[];
+    var batchSize = 0;
+    var first = true;
+    Future<void> flush({required bool last}) async {
+      await _engine.addBaseFiles(files: batch, first: first, last: last);
+      first = false;
+      batch = [];
+      batchSize = 0;
+    }
+
+    for (final e in files.entries) {
+      batch.add(api.VirtualFile(path: e.key, bytes: e.value));
+      batchSize += e.value.length;
+      if (batchSize >= chunkBytes) await flush(last: false);
+    }
+    await flush(last: true); // Also clears the layer for an empty map.
+  }
+
   /// Queries the compiled [document] using a Typst [selector] string.
   ///
   /// Returns a JSON string containing the queried elements (e.g. headings).

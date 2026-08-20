@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:tylog_core/tylog_core.dart';
@@ -58,9 +57,8 @@ Future<int> _index(List<String> args) async {
   VaultIndex? previous;
   if (!force && await storage.exists(TylogVaultPaths.index)) {
     try {
-      previous = VaultIndex.fromJson(
-        (jsonDecode(await storage.readText(TylogVaultPaths.index)) as Map)
-            .cast<String, Object?>(),
+      previous = decodeVaultIndexBytes(
+        await storage.readBytes(TylogVaultPaths.index),
       );
     } catch (_) {}
   }
@@ -74,10 +72,7 @@ Future<int> _index(List<String> args) async {
     previous: previous,
     force: force,
   );
-  await storage.writeText(
-    TylogVaultPaths.index,
-    jsonEncode(index.toJson()),
-  );
+  await storage.writeBytes(TylogVaultPaths.index, encodeVaultIndexBytes(index));
   final search = await PkmsSearchIndex.buildStorage(
     storage,
     index,

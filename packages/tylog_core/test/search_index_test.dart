@@ -73,6 +73,47 @@ void main() {
   });
 
 
+  // The warm rebuild used to reconstruct (and re-save) 107k posting sets even
+  // when every document hit the cache. Returning the previous instance lets
+  // the worker skip both the posting rebuild and the multi-megabyte
+  // re-encode/re-write.
+  test('a fully-cached rebuild returns the previous instance', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_search_same_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    final notesDir = await Directory('${root.path}/notes').create();
+    for (var i = 0; i < 3; i++) {
+      await File(
+        '${notesDir.path}/n$i.typ',
+      ).writeAsString(_note(id: 'n$i', title: 'Note $i'));
+    }
+
+    final vault = await scanVaultStorage(storage);
+    final first = await PkmsSearchIndex.buildStorage(storage, vault);
+    final second = await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage, previous: vault),
+      previous: first,
+    );
+    expect(
+      identical(second, first),
+      isTrue,
+      reason: 'no misses and an unchanged document set must reuse previous',
+    );
+
+    // Any content change must still produce a fresh index.
+    await File('${notesDir.path}/n0.typ').writeAsString(
+      _note(id: 'n0', title: 'Renamed'),
+    );
+    final third = await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage),
+      previous: second,
+    );
+    expect(identical(third, second), isFalse);
+    expect(third.search('Renamed'), isNotEmpty);
+  });
+
   group('searchPrefix', () {
     late Directory root;
 

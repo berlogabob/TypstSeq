@@ -184,6 +184,11 @@ class _VaultWorker {
   /// first rebuild finishes, which mirrors what the UI used to hold in that
   /// window anyway (`PkmsSearchIndex.empty()` from openVault).
   PkmsSearchIndex _search = PkmsSearchIndex.empty();
+
+  /// Whether [_search] holds a real build from this worker (as opposed to the
+  /// initial empty placeholder). Only then can a warm rebuild reuse it and
+  /// skip re-loading the saved index from disk.
+  bool _searchBuilt = false;
   bool _cancelled = false;
   bool _busy = false;
 
@@ -277,21 +282,32 @@ class _VaultWorker {
           ),
         );
       }
-      final cached = await PkmsSearchIndex.loadStorage(
-        _vault.storage,
-        Vault.searchIndexPath,
-      );
+      // The in-memory index from the previous rebuild is exactly what was
+      // last saved, so a warm rebuild skips the gzip-decode/jsonDecode round
+      // trip entirely; the disk load only happens on this worker's first
+      // rebuild. buildStorage returns `cached` itself when nothing changed —
+      // that identity is the signal that re-encoding and re-writing the
+      // multi-megabyte index file would be a no-op too.
+      final cached = _searchBuilt
+          ? _search
+          : await PkmsSearchIndex.loadStorage(
+              _vault.storage,
+              Vault.searchIndexPath,
+            );
       final search = await PkmsSearchIndex.buildStorage(
         _vault.storage,
         index,
         previous: cached,
       );
-      await search.saveStorage(_vault.storage, Vault.searchIndexPath);
+      if (!identical(search, cached)) {
+        await search.saveStorage(_vault.storage, Vault.searchIndexPath);
+      }
       // Published to this isolate's own field, not over the port. Swapped whole
       // rather than `replaceWith`-ed: nothing here holds the old instance, so
       // rebuilding 107k posting Sets to preserve an identity no one depends on
       // would be pure waste.
       _search = search;
+      _searchBuilt = true;
       _send(PkmsBuiltEvent(report));
       _send(const WorkDoneEvent());
     } on IndexBuildCancelled {

@@ -1,7 +1,31 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
+import 'models.dart';
 import 'scanner.dart';
 import 'storage.dart';
+
+/// Encodes a [VaultIndex] for its on-disk cache at [TylogVaultPaths.index].
+///
+/// Gzip-wrapped compact JSON: the plain encoding measured 6.7 MB on a real
+/// vault and is written on every rebuild and decoded on every open; the same
+/// corpus compresses roughly 4:1 (the search index's measured ratio). The
+/// path keeps its `.json` name — `_index/` is local and disposable, and
+/// [decodeVaultIndexBytes] still reads the old plain format.
+Uint8List encodeVaultIndexBytes(VaultIndex index) => Uint8List.fromList(
+  gzip.encode(utf8.encode(jsonEncode(index.toJson()))),
+);
+
+/// Decodes bytes written by [encodeVaultIndexBytes], accepting both the
+/// gzip format (magic `1f 8b`) and the plain JSON written by older builds.
+VaultIndex decodeVaultIndexBytes(List<int> bytes) {
+  final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
+  final json = utf8.decode(isGzip ? gzip.decode(bytes) : bytes);
+  return VaultIndex.fromJson(
+    (jsonDecode(json) as Map).cast<String, Object?>(),
+  );
+}
 
 abstract final class TylogVaultPaths {
   static const index = '_index/index.json';
