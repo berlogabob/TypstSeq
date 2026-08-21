@@ -1186,6 +1186,22 @@ bool isSafBackupPath(String path) {
       name.contains('.tylog-');
 }
 
+/// A path holding a regenerable cache rather than anything a user wrote.
+///
+/// Index donors are the only such thing inside the sync allowlist. They matter
+/// here because the two halves of the donor mechanism disagree by design:
+/// `pruneUnusable` deletes a donor this build cannot read, and the sync engine
+/// cannot tell that deletion from a user deleting a file. When a schema bump
+/// crosses with the publishing device republishing — exactly what happened on
+/// the P30 at 15:47 with `_system/index/cli-7e1afd3ac405.json` — the two race
+/// and produce a conflict over a cache file, which is nobody's idea of
+/// something to review.
+///
+/// Nothing is lost by taking the remote copy: a donor is derived data, and the
+/// worst case is that this device prunes it again on the next scan.
+bool isRegenerableCachePath(String path) =>
+    path.startsWith('_system/index/') && path.endsWith('.json');
+
 /// Orphan of an interrupted atomic write: `.index.json.tylog-<micros>.tmp`
 /// (SAF) or `notes/a.typ.<micros>.tmp` (local). Both writers rename the temp
 /// over its target, so one that outlives the write is dead weight nothing will

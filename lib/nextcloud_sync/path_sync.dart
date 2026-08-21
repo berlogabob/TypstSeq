@@ -372,6 +372,24 @@ extension _PathSync on NextcloudSync {
           uploaded++;
           repaired++;
           reason = 'remote-empty-repaired';
+        } else if (isRegenerableCachePath(path)) {
+          // Two devices' views of a shared cache file. Nothing here is
+          // user-authored, so the remote copy wins rather than the user being
+          // asked to arbitrate between two derived indexes.
+          await captured.file.delete();
+          action = SyncAction.download;
+          final download = await _downloadStorage(
+            path,
+            vault.storage,
+            protectNonEmpty: true,
+            archive: archive,
+            remoteFile: remoteFile,
+          );
+          observedRemoteEtag = download.etag;
+          downloadedHash = download.localSha256;
+          downloaded++;
+          repaired++;
+          reason = 'cache-refetched';
         } else if (fastForwardWinner(
               local: localBytes ?? await vault.storage.readBytes(path),
               remote: await captured.file.readAsBytes(),
@@ -427,7 +445,24 @@ extension _PathSync on NextcloudSync {
         }
       }
     } else if (previous != null && !localExists && remoteExists) {
-      if (remoteChanged || stateRecovered || possibleRename) {
+      if ((remoteChanged || stateRecovered || possibleRename) &&
+          isRegenerableCachePath(path)) {
+        // A pruned donor racing its own republication. Take the remote copy
+        // rather than asking about a cache file.
+        action = SyncAction.download;
+        final download = await _downloadStorage(
+          path,
+          vault.storage,
+          protectNonEmpty: true,
+          archive: archive,
+          remoteFile: remoteFile,
+        );
+        observedRemoteEtag = download.etag;
+        downloadedHash = download.localSha256;
+        downloaded++;
+        repaired++;
+        reason = 'cache-refetched';
+      } else if (remoteChanged || stateRecovered || possibleRename) {
         action = SyncAction.conflict;
         await _storeConflict(
           vault,

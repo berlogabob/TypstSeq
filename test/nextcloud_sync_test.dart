@@ -2006,6 +2006,69 @@ void main() {
     expect(await loadSyncConflicts(vault), isEmpty);
   });
 
+  test('a pruned index donor is refetched, not turned into a conflict', () async {
+    // Index donors are the one regenerable cache inside the sync allowlist,
+    // and the two halves of the mechanism disagree by design: pruneUnusable
+    // deletes a donor this build cannot read, and sync cannot tell that from a
+    // user deleting a file. On the P30 at 15:47 a schema bump crossed with the
+    // desktop republishing and produced a conflict over a cache file.
+    const donor = '_system/index/cli-7e1afd3ac405.json';
+    final remote = <String, _MutableRemoteFile>{
+      donor: _remoteText('{"schema":4}'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_donor_prune_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText(donor, '{"schema":4}');
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(await loadSyncConflicts(vault), isEmpty);
+
+    // The desktop republishes while this device prunes its unusable copy.
+    remote[donor] = _remoteText('{"schema":4,"republished":true}');
+    await vault.storage.delete(donor);
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'poll');
+
+    expect(result.conflicts, 0, reason: 'a cache file is never a conflict');
+    expect(
+      (await loadSyncConflicts(vault)).map((c) => c.path),
+      isEmpty,
+    );
+    expect(await vault.storage.readText(donor), contains('republished'));
+  });
+
+  test('two devices disagreeing about a donor is not a conflict', () async {
+    // The same rule on the first-sync path: no cursor, both sides present and
+    // different. A user has no business arbitrating between two derived
+    // indexes.
+    const donor = '_system/index/peer.json';
+    final remote = <String, _MutableRemoteFile>{
+      donor: _remoteText('{"schema":4,"from":"peer"}'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_donor_first_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText(donor, '{"schema":4,"from":"me"}');
+
+    final result = await NextcloudSync(_config(server)).sync(vault);
+
+    expect(result.conflicts, 0);
+    expect(await loadSyncConflicts(vault), isEmpty);
+    expect(await vault.storage.readText(donor), contains('peer'));
+  });
+
   group('append-only differences resolve themselves', () {
     // The A24's daily/2026-08-19.typ was remote 184 bytes against local 294,
     // identical up to an appended "== Reading" block. It stopped the user for
