@@ -1,6 +1,7 @@
 # Findings from the 0.3.0+93 device rollout — scope of work
 
-**Status:** scoped, not started. Written 2026-08-21 from the two-device rollout
+**Status:** 1a, 1c, 1d, 2 and all of 3 are **done** (2026-08-21, see §5).
+1b remains. Originally scoped, not started. Written 2026-08-21 from the two-device rollout
 (P30 / Android 10, A24 / Android 16) and the live vault with the article-pipeline
 drain running. Sync-conflict findings are scoped separately in
 `2026-08-21-sync-conflict-recovery.md`.
@@ -170,3 +171,24 @@ afterwards. Options, cheapest first:
 
 Not scheduled yet. Moving sync off the root isolate stays unscheduled for the
 same reasons as before (conflicts, SAF tokens, the foreground service).
+
+
+---
+
+## 5. Closed 2026-08-21
+
+| Item | Outcome |
+|---|---|
+| 1a laptop produces no index | Donor publication moved into tylog_core; `tylog index` emits one under a stable per-machine id, and the drain runs it as a post-step. |
+| 1c stale donors never collected | `IndexDonorStore.pruneUnusable` runs on publish. |
+| 1d fails silently | Index status reports "reused N from M devices" (`workspace_controller.dart`). |
+| 2 unnecessary fallback on a syncing device | Placeholders now cover images a note *references* and the vault lacks, not just listed files. Proven against the real `typst` binary. |
+| 3 orphan temp files | Swept at vault open after an hour untouched; the three on the P30's live vault are gone. |
+| 3 drain junk gate | Fixed in article-pipeline (`junk_reason` + length floor). |
+| 3 stray keystroke strands a daily | Emptying a file that was never a structured note deletes it; a real note still refuses. The old behaviour also left the editor permanently dirty, which disabled idle maintenance and midnight rollover. |
+
+**1b (donors surviving a derive-only version bump) is the one left**, and it is
+still the most valuable: today's v8→v9 bump changed only a derivation, yet every
+donor died and both phones recompiled thousands of notes to recover data they
+already had. Splitting `indexVersion` into `queryVersion` + `deriveVersion` and
+storing raw queried records in the donor is unchanged as the plan.

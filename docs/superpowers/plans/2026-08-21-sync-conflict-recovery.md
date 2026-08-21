@@ -1,7 +1,14 @@
 # Sync conflict recovery — scope of work
 
-**Status:** scoped, not started. Written 2026-08-21 from a live incident on the
-A24 (Android 16, release 0.3.0+93).
+**Status:** **Phase 1 done** 2026-08-21 — the vault-wide freeze is gone; a
+pending conflict now blocks only its own path, and the exit metric is pinned by
+a test in `test/workspace_controller_test.dart` that fails on the old code.
+Phases 2-4 remain. Written 2026-08-21 from a live incident on the A24
+(Android 16, release 0.3.0+93).
+
+Fixed in passing: `pollTick` fell through to `syncNow`, which throws
+`WorkspaceSyncNotConfigured` without a ready config — unreachable before only
+because the conflict gate returned first.
 
 ## Context — what actually happened
 
