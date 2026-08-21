@@ -372,6 +372,45 @@ extension _PathSync on NextcloudSync {
           uploaded++;
           repaired++;
           reason = 'remote-empty-repaired';
+        } else if (fastForwardWinner(
+              local: localBytes ?? await vault.storage.readBytes(path),
+              remote: await captured.file.readAsBytes(),
+              path: path,
+            )
+            case final winner?) {
+          // One copy is the other plus an appended block. Keeping the longer
+          // side is lossless by definition, so stopping the user for a
+          // decision with one safe answer only invites the wrong one — and
+          // until Phase 1 it also froze the whole vault's sync.
+          await captured.file.delete();
+          if (winner == SyncConflictResolution.keepRemote) {
+            action = SyncAction.download;
+            final download = await _downloadStorage(
+              path,
+              vault.storage,
+              protectNonEmpty: true,
+              archive: archive,
+              remoteFile: remoteFile,
+            );
+            observedRemoteEtag = download.etag;
+            downloadedHash = download.localSha256;
+            downloaded++;
+            reason = 'auto-resolved-remote-extends-local';
+          } else {
+            action = SyncAction.upload;
+            await snapshotForUpload();
+            uploadedRemoteEtag = await _uploadStorage(
+              path,
+              vault.storage,
+              localHash: localHash!,
+              remote: remoteFile,
+              bytes: localBytes,
+            );
+            uploadedRemoteTime = DateTime.now().toUtc();
+            uploaded++;
+            reason = 'auto-resolved-local-extends-remote';
+          }
+          repaired++;
         } else {
           action = SyncAction.conflict;
           await _storeConflict(

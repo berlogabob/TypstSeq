@@ -1280,15 +1280,46 @@ class SyncConflict {
   final DateTime? remoteModified;
   final String? remoteEtag;
 
-  bool get isText => const {
-    '.typ',
-    '.yml',
-    '.yaml',
-    '.json',
-    '.txt',
-    '.md',
-    '.csv',
-  }.any(path.toLowerCase().endsWith);
+  bool get isText => isTextSyncPath(path);
+}
+
+/// Whether a path holds text we may reason about line-wise.
+bool isTextSyncPath(String path) => const {
+  '.typ',
+  '.yml',
+  '.yaml',
+  '.json',
+  '.txt',
+  '.md',
+  '.csv',
+}.any(path.toLowerCase().endsWith);
+
+/// Which side to keep when one copy is byte-for-byte the other plus more
+/// appended — an append-only edit, where keeping the longer side is lossless
+/// by definition. Null when neither extends the other.
+///
+/// This is most of what a vault with a live producer generates: the A24's
+/// `daily/2026-08-19.typ` was remote 184 bytes against local 294, identical up
+/// to an appended `== Reading` block, and it still stopped the user for a
+/// decision that had only one safe answer.
+///
+/// Text only. A truncated binary is a prefix of the whole file too, and
+/// keeping the longer side there is luck rather than a merge.
+SyncConflictResolution? fastForwardWinner({
+  required List<int> local,
+  required List<int> remote,
+  required String path,
+}) {
+  if (!isTextSyncPath(path)) return null;
+  if (local.length == remote.length) return null;
+  final shorter = local.length < remote.length ? local : remote;
+  final longer = local.length < remote.length ? remote : local;
+  for (var i = 0; i < shorter.length; i++) {
+    if (shorter[i] != longer[i]) return null;
+  }
+  return identical(longer, local)
+      ? SyncConflictResolution.keepLocal
+      : SyncConflictResolution.keepRemote;
 }
 
 Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {

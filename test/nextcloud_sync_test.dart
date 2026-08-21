@@ -2006,6 +2006,104 @@ void main() {
     expect(await loadSyncConflicts(vault), isEmpty);
   });
 
+  group('append-only differences resolve themselves', () {
+    // The A24's daily/2026-08-19.typ was remote 184 bytes against local 294,
+    // identical up to an appended "== Reading" block. It stopped the user for
+    // a decision with only one safe answer - and until the per-path gate, it
+    // froze the whole vault's sync while it waited.
+    const base = '#import "/_system/tylog.typ" as tylog\n\n= 2026-08-19\n';
+    const extended = '$base\n== Reading\n- something\n';
+
+    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})>
+    setup({required String local, required String remoteText}) async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/day.typ': _MutableRemoteFile(
+          bytes: utf8.encode(remoteText),
+          etag: '"remote"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_ff_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/day.typ', local);
+      return (vault: vault, server: server, remote: remote);
+    }
+
+    test('the longer remote is adopted, not queued for review', () async {
+      final s = await setup(local: base, remoteText: extended);
+      final result = await NextcloudSync(
+        _config(s.server),
+      ).sync(s.vault, trigger: 'poll');
+
+      expect(result.conflicts, 0);
+      expect(result.downloaded, 1);
+      expect(await s.vault.storage.readText('notes/day.typ'), extended);
+      expect(await loadSyncConflicts(s.vault), isEmpty);
+    });
+
+    test('the longer local is uploaded, not queued for review', () async {
+      final s = await setup(local: extended, remoteText: base);
+      final result = await NextcloudSync(
+        _config(s.server),
+      ).sync(s.vault, trigger: 'poll');
+
+      expect(result.conflicts, 0);
+      // Not an exact upload count: a first sync also uploads the starter vault.
+      expect(result.uploaded, greaterThanOrEqualTo(1));
+      expect(utf8.decode(s.remote['notes/day.typ']!.bytes), extended);
+      expect(await loadSyncConflicts(s.vault), isEmpty);
+    });
+
+    test('a genuine two-sided edit still stops for review', () async {
+      final s = await setup(
+        local: '${base}local wrote this\n',
+        remoteText: '${base}remote wrote that\n',
+      );
+      final result = await NextcloudSync(
+        _config(s.server),
+      ).sync(s.vault, trigger: 'poll');
+
+      expect(result.conflicts, 1);
+      expect(await loadSyncConflicts(s.vault), hasLength(1));
+    });
+
+    test('a binary prefix is never treated as an append', () {
+      // A truncated image is a prefix of the whole file; keeping the longer
+      // side there is luck, not a merge.
+      expect(
+        fastForwardWinner(
+          local: [1, 2, 3],
+          remote: [1, 2, 3, 4],
+          path: 'assets/photo.png',
+        ),
+        isNull,
+      );
+      expect(
+        fastForwardWinner(
+          local: utf8.encode(base),
+          remote: utf8.encode(extended),
+          path: 'notes/day.typ',
+        ),
+        SyncConflictResolution.keepRemote,
+      );
+      expect(
+        fastForwardWinner(
+          local: utf8.encode('${base}y'),
+          remote: utf8.encode('${base}x'),
+          path: 'notes/day.typ',
+        ),
+        isNull,
+        reason: 'same length, different content is not a fast-forward',
+      );
+    });
+  });
+
   test(
     'a conflict whose remote was deleted becomes resolvable instead of stuck',
     () async {
