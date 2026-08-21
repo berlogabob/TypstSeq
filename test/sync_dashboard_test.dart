@@ -17,8 +17,11 @@ import 'package:tylog/widgets/sync_dashboard.dart';
 /// the sync service had stopped, while the banner simultaneously said sync was
 /// paused pending conflict review. Resolving one conflict worked; the next tap
 /// did nothing, with no message.
-SyncDashboardData _data({required bool syncing, List<SyncConflict>? conflicts}) =>
-    SyncDashboardData(
+SyncDashboardData _data({
+  required bool syncing,
+  List<SyncConflict>? conflicts,
+  String? error,
+}) => SyncDashboardData(
       storageName: 'TyLog',
       storageLocation: 'TyLog',
       cloud: const NextcloudConfig(
@@ -32,6 +35,7 @@ SyncDashboardData _data({required bool syncing, List<SyncConflict>? conflicts}) 
       desktopManaged: false,
       storageHealthy: true,
       conflicts: conflicts ?? const [],
+      error: error,
       events: const [],
     );
 
@@ -186,6 +190,62 @@ void main() {
 
     expect(find.byKey(const ValueKey('conflict-c-notes/A.typ')), findsOneWidget);
     expect(find.byKey(const ValueKey('conflict-c-notes/B.typ')), findsOneWidget);
+  });
+
+  // Two independent mechanisms hid failures, and either alone was enough.
+  testWidgets('an error is visible while a sync is running', (tester) async {
+    // syncStatusKind ranked `syncing` above `error`, and the error only ever
+    // reached the screen through the status card's subtitle - so during a sync
+    // it was not merely deprioritised, it was never rendered.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: true,
+            error: 'Nextcloud changed while you were deciding',
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('sync-error-card')), findsOneWidget);
+    expect(
+      find.text('Nextcloud changed while you were deciding'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an error is visible while conflicts are pending', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: false,
+            conflicts: [_conflict('notes/A.typ')],
+            error: 'Upload failed: connection reset',
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('sync-error-card')), findsOneWidget);
+    expect(find.text('Upload failed: connection reset'), findsOneWidget);
+    // The conflict is still listed too; they are different facts.
+    expect(find.text('notes/A.typ'), findsOneWidget);
   });
 
   testWidgets('a slow load landing late does not overwrite a fresher one', (

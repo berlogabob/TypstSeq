@@ -968,7 +968,11 @@ class WorkspaceController extends ChangeNotifier {
       );
       syncConflicts = await loadSyncConflicts(opened);
       await refreshIndex(updateStatus: false, always: true);
-      syncError = syncConflicts.isEmpty ? friendlySyncError(error) : null;
+      // A failed sync and a pending conflict are different facts. Nulling the
+      // error whenever any conflict existed meant that on a vault with one
+      // stale record — which is where sync problems are most likely — every
+      // sync failure was silently discarded.
+      syncError = friendlySyncError(error);
       status = syncConflicts.isEmpty ? syncError! : 'Needs attention';
       notifyListeners();
       return false;

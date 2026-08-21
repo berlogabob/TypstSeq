@@ -435,6 +435,40 @@ void main() {
     );
   });
 
+  test('a fresh error outranks the spinner but not the setup sync', () {
+    // syncNow clears syncError as it starts, so an error present during a sync
+    // is one that happened just now - a resolve that failed, say. Ranking
+    // `syncing` above it meant it was never rendered, which is
+    // indistinguishable from a button that did nothing.
+    expect(
+      syncStatusKind(
+        vaultOpen: true,
+        storageHealthy: true,
+        cloudConfigured: true,
+        desktopManaged: false,
+        syncing: true,
+        error: 'Upload failed',
+        conflicts: 0,
+        result: null,
+      ),
+      SyncStatusKind.paused,
+    );
+    // And it outranks pending conflicts, which are a different fact.
+    expect(
+      syncStatusKind(
+        vaultOpen: true,
+        storageHealthy: true,
+        cloudConfigured: true,
+        desktopManaged: false,
+        syncing: false,
+        error: 'Upload failed',
+        conflicts: 3,
+        result: null,
+      ),
+      SyncStatusKind.paused,
+    );
+  });
+
   test('active initial sync wins over not-configured status', () {
     final kind = syncStatusKind(
       vaultOpen: true,

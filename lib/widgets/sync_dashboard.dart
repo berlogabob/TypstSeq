@@ -211,6 +211,23 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                     Text(value.stage!),
                     const SizedBox(height: 12),
                   ],
+                  // Its own element, above everything. The error used to reach
+                  // the screen only through the status card's subtitle, one
+                  // contested line that "Syncing…" and "N conflicts need
+                  // review" both outrank — so the failure that mattered most
+                  // was the one thing that could not be read.
+                  if (value.error != null) ...[
+                    Card(
+                      key: const Key('sync-error-card'),
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      child: ListTile(
+                        leading: const Icon(Icons.error_outline),
+                        title: const Text('Last action failed'),
+                        subtitle: Text(value.error!),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   _SyncStatusCard(
                     syncing: running || value.syncing,
                     vaultOpen: value.vaultOpen,
@@ -581,7 +598,9 @@ class _SyncStatusCard extends StatelessWidget {
       SyncStatusKind.desktopManaged => 'This folder syncs through the system.',
       SyncStatusKind.notConfigured => 'Connect Nextcloud to sync this vault.',
       SyncStatusKind.syncing => 'Checking this device and Nextcloud.',
-      SyncStatusKind.paused => error!,
+      // Not the error text: it has its own card above, and printing it twice
+      // just makes the screen noisier without making it clearer.
+      SyncStatusKind.paused => 'The last action did not complete.',
       SyncStatusKind.conflicts =>
         'Everything else keeps syncing. Your files are safe.',
       SyncStatusKind.ready => 'No sync has completed in this session.',
