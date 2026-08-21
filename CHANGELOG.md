@@ -3,6 +3,29 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.4.1+96
+
+Three fixes for a class of problem 0.4.0's own schema bump exposed on the
+device an hour after release: index donors are shared files, and the code that
+prunes them and the code that syncs them disagreed about what a deleted one
+means.
+
+### Fixed
+
+- **A device no longer deletes another device's index donor.** The P30 dropped
+  its unusable local replica seconds after the desktop had replaced it with a
+  readable one, and the next sync read that absence as a user deletion and
+  removed the desktop's donor from Nextcloud — the one file the whole fleet
+  needed to skip the version-10 recompile. Sync now refetches an absent cache
+  file instead of propagating it, and pruning someone else's donor requires it
+  to have sat untouched for seven days.
+- **A shared cache file is never a conflict.** A prune racing its own
+  republication, or two devices simply holding different derived indexes,
+  produced a conflict over a file nothing user-authored ever touches.
+- **A conflict already recorded on a donor clears itself**, rather than
+  outliving the fix that stops new ones being made — the sync loop skips a
+  conflicted path before reaching anything that knows a donor is regenerable.
+
 ## 0.4.0+95
 
 Sync stops freezing over conflicts nobody made, an index bump stops costing the
