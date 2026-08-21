@@ -62,6 +62,17 @@ fi
 rustc_bin=$("$rustup" which --toolchain "$toolchain" rustc)
 cargo_bin=$("$rustup" which --toolchain "$toolchain" cargo)
 
+# Pin every rustup proxy this script's children invoke to the same toolchain.
+#
+# Without it a proxied `rustc`/`cargo` resolves through rustup's default, and on
+# a runner whose default is due an update rustup performs that update *during*
+# the build: the v0.4.0 release log shows "removing previous version of
+# component rust-std" three seconds into `cargo install cargo-ndk`, and the
+# compile that was running lost the host standard library mid-flight
+# (`can't find crate for std`). Both the 0.3.0+94 and 0.4.0 releases died there,
+# so no APK was published by either.
+export RUSTUP_TOOLCHAIN="$toolchain"
+
 "$rustup" target add --toolchain "$toolchain" \
   aarch64-linux-android armv7-linux-androideabi \
   x86_64-linux-android i686-linux-android
@@ -141,7 +152,14 @@ fi
 if [ -z "${TYLOG_SKIP_ANDROID:-}" ]; then
   cd "$package/rust"
   if ! command -v cargo-ndk >/dev/null 2>&1; then
-    "$cargo_bin" install cargo-ndk --version 4.1.2 --locked
+    # Retried once: if the toolchain was mutated underneath the first attempt,
+    # reinstalling it restores the host std the retry needs. A bare failure
+    # here means no Typst engine in the APK, so it is worth the second try.
+    if ! "$cargo_bin" install cargo-ndk --version 4.1.2 --locked; then
+      echo "cargo-ndk install failed; repairing the toolchain and retrying." >&2
+      "$rustup" toolchain install "$toolchain" --profile minimal --force
+      "$cargo_bin" install cargo-ndk --version 4.1.2 --locked
+    fi
   fi
   android_sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}}
   android_ndk=${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}
