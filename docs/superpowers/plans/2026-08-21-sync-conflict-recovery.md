@@ -1,9 +1,15 @@
 # Sync conflict recovery — scope of work
 
-**Status:** **Phase 1 done** 2026-08-21 — the vault-wide freeze is gone; a
+**Status:** **Phases 1, 3b and 3d done** 2026-08-21 — the vault-wide freeze is gone; a
 pending conflict now blocks only its own path, and the exit metric is pinned by
 a test in `test/workspace_controller_test.dart` that fails on the old code.
-Phases 2-4 remain. Written 2026-08-21 from a live incident on the A24
+Phase 3b (a deleted remote left the record permanently unresolvable) and
+Phase 3d (the default could destroy the strictly newer side) are done too, each
+with a test that fails on the previous code. **Remaining: Phase 2**
+(auto-resolve the provably-lossless cases), **3a** (show that a resolve is
+working — it takes minutes and looks dead), **3c** (refresh and re-decide on an
+ETag mismatch instead of throwing), **Phase 4** (never fail invisibly; resolve
+in bulk). Written 2026-08-21 from a live incident on the A24
 (Android 16, release 0.3.0+93).
 
 Fixed in passing: `pollTick` fell through to `syncNow`, which throws
