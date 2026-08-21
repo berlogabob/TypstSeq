@@ -15,7 +15,12 @@ import 'vault.dart';
 /// 3 stopped publishing user-authored note properties. Schema-2 donors are
 /// skipped for the same reason *and* because they contain the values this
 /// change exists to stop shipping — see [donorSafeProperties].
-const indexDonorSchema = 3;
+///
+/// 4 carries `queryVersion` and each note's [NoteRef.queryFacts], so a donor
+/// survives a derive-only index bump instead of being thrown away with the
+/// whole vault's compiled metadata. Schema-3 donors are skipped: they have no
+/// facts, so nothing in them can be re-derived.
+const indexDonorSchema = 4;
 
 /// Property keys TyLog or article-pipeline writes, and therefore the only ones
 /// a donor may carry off-device.
@@ -157,6 +162,9 @@ class IndexDonorStore {
       final donor = jsonEncode({
         'schema': indexDonorSchema,
         'indexVersion': index.version,
+        // The half that costs a Typst compile. A peer on a newer index version
+        // can still use this donor if this matches — see load().
+        'queryVersion': index.queryVersion,
         // Which synonym map produced these tags. A peer whose map differs must
         // re-derive rather than inherit tags folded by rules it no longer uses.
         'synonymsHash': await _synonymsHash(),
@@ -207,9 +215,12 @@ class IndexDonorStore {
         try {
           final json = (jsonDecode(await storage.readText(file.path)) as Map)
               .cast<String, Object?>();
+          // Re-derivable counts as usable: deleting a donor whose queried
+          // half is current would throw away exactly what saves the recompile.
           final usable =
               json['schema'] == indexDonorSchema &&
-              json['indexVersion'] == kVaultIndexVersion;
+              (json['indexVersion'] == kVaultIndexVersion ||
+                  json['queryVersion'] == kVaultQueryVersion);
           if (usable) continue;
         } catch (_) {
           // Unreadable or not JSON: dead weight by definition.
@@ -245,6 +256,9 @@ class IndexDonorStore {
       return null;
     }
     final notes = <String, NoteRef>{};
+    // Set when any merged donor predates the current index version, so the
+    // returned index reports the older one and the scanner re-derives.
+    var staleDerivation = false;
     // Tasks follow whichever donor won each note: they are derived from that
     // note's bytes, so mixing one donor's note with another's tasks would put
     // the scanner's cached branch out of step with the file on disk.
@@ -260,14 +274,21 @@ class IndexDonorStore {
       try {
         final json = (jsonDecode(await storage.readText(file.path)) as Map)
             .cast<String, Object?>();
-        if (json['indexVersion'] != kVaultIndexVersion) {
-          skipped++;
-          continue;
-        }
         if (json['schema'] != indexDonorSchema) {
           skipped++;
           continue;
         }
+        // A donor from an older index version is still worth having when its
+        // queried half is current: the scanner re-derives those entries
+        // against the bytes on disk instead of recompiling them. Every index
+        // bump so far (6, 7, 8, 9) was derive-only, and each one made every
+        // device recompile the entire vault for nothing.
+        final sameIndex = json['indexVersion'] == kVaultIndexVersion;
+        if (!sameIndex && json['queryVersion'] != kVaultQueryVersion) {
+          skipped++;
+          continue;
+        }
+        if (!sameIndex) staleDerivation = true;
         final donorTasks = <String, List<TaskRef>>{};
         for (final item in (json['tasks'] as List? ?? const []).cast<Map>()) {
           final task = TaskRef.fromJson(item.cast<String, Object?>());
@@ -306,6 +327,9 @@ class IndexDonorStore {
     );
     if (notes.isEmpty) return null;
     return VaultIndex(
+      // Reporting the older version is what routes these entries through the
+      // scanner's re-derivation branch rather than its straight-reuse one.
+      version: staleDerivation ? kVaultIndexVersion - 1 : kVaultIndexVersion,
       notesByPath: notes,
       backlinksByTarget: const {},
       tasks: tasks,

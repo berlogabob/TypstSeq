@@ -217,12 +217,55 @@ void main() {
       expect(second.notesByPath['notes/b.typ']?.contentHash, isNotNull);
     });
 
-    test('an index from an older schema is a total miss', () async {
+    test('a derive-only bump re-derives instead of recompiling', () async {
+      // Every index bump this vault has ever had (6, 7, 8, 9) changed
+      // derivation and left the query untouched, yet each one made every
+      // device recompile the whole vault - 14.2 minutes for 5,086 notes on the
+      // P30 - to recover metadata it was already holding.
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      final olderDerivation = VaultIndex(
+        version: kVaultIndexVersion - 1,
+        notesByPath: first.notesByPath,
+        backlinksByTarget: first.backlinksByTarget,
+      );
+
+      inspector.inspected.clear();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: olderDerivation,
+      );
+
+      expect(
+        inspector.inspected,
+        isEmpty,
+        reason: 'the queried half is current, so nothing needs compiling',
+      );
+      expect(second.version, kVaultIndexVersion);
+      // And the result is the real thing, not a downgraded entry.
+      expect(
+        second.notesByPath['notes/a.typ']?.metadataSource,
+        'typst-query',
+      );
+      expect(
+        second.notesByPath['notes/a.typ']?.title,
+        first.notesByPath['notes/a.typ']?.title,
+      );
+    });
+
+    test('an entry with no query facts is still a total miss', () async {
+      // Pre-version-10 entries have nothing to re-derive from.
       final inspector = _CountingInspector();
       final first = await scanVaultStorage(storage, inspector: inspector);
       final legacy = VaultIndex(
         version: kVaultIndexVersion - 1,
-        notesByPath: first.notesByPath,
+        notesByPath: {
+          for (final entry in first.notesByPath.entries)
+            entry.key: NoteRef.fromJson(
+              entry.value.toJson()..remove('queryFacts'),
+            ),
+        },
         backlinksByTarget: first.backlinksByTarget,
       );
 
@@ -235,6 +278,26 @@ void main() {
 
       expect(inspector.inspected, hasLength(2));
       expect(second.version, kVaultIndexVersion);
+    });
+
+    test('a stale query version is a total miss', () async {
+      final inspector = _CountingInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      final oldQuery = VaultIndex(
+        version: kVaultIndexVersion - 1,
+        queryVersion: kVaultQueryVersion - 1,
+        notesByPath: first.notesByPath,
+        backlinksByTarget: first.backlinksByTarget,
+      );
+
+      inspector.inspected.clear();
+      await scanVaultStorage(
+        storage,
+        inspector: inspector,
+        previous: oldQuery,
+      );
+
+      expect(inspector.inspected, hasLength(2));
     });
   });
 }

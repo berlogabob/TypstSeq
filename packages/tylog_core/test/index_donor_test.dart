@@ -22,9 +22,11 @@ VaultIndex _index() => VaultIndex(
 String _donorJson({
   int schema = indexDonorSchema,
   int version = kVaultIndexVersion,
+  int queryVersion = kVaultQueryVersion,
 }) => jsonEncode({
   'schema': schema,
   'indexVersion': version,
+  'queryVersion': queryVersion,
   'synonymsHash': '',
   'notes': [
     const NoteRef(
@@ -70,6 +72,49 @@ void main() {
     expect(reused?.notesByPath['notes/a.typ']?.title, 'Alpha');
   });
 
+  test('a donor survives a derive-only index bump', () async {
+    // The whole point of the split: v8 and v9 changed only derivation, yet
+    // every donor died and both phones recompiled thousands of notes to
+    // recover metadata they were already holding.
+    await storage.writeText(
+      path('desktop'),
+      _donorJson(version: kVaultIndexVersion - 1),
+    );
+
+    final store = IndexDonorStore(storage);
+    final reused = await store.load('phone');
+    expect(reused, isNotNull);
+    expect(reused!.notesByPath['notes/peer.typ']?.title, 'FROM PEER');
+    expect(
+      reused.version,
+      lessThan(kVaultIndexVersion),
+      reason: 'the scanner must see it as needing re-derivation',
+    );
+    expect(store.lastReuse.notes, 1);
+  });
+
+  test('a donor from an older query version is not reusable', () async {
+    await storage.writeText(
+      path('desktop'),
+      _donorJson(
+        version: kVaultIndexVersion - 1,
+        queryVersion: kVaultQueryVersion - 1,
+      ),
+    );
+    final store = IndexDonorStore(storage);
+    expect(await store.load('phone'), isNull);
+    expect(store.lastReuse.skipped, 1);
+  });
+
+  test('pruning keeps a donor that is still re-derivable', () async {
+    await storage.writeText(
+      path('peer'),
+      _donorJson(version: kVaultIndexVersion - 1),
+    );
+    expect(await IndexDonorStore(storage).pruneUnusable('desktop'), 0);
+    expect(await storage.exists(path('peer')), isTrue);
+  });
+
   test('a device never merges its own donor', () async {
     await donors.publish('desktop', _index());
     expect(await IndexDonorStore(storage).load('desktop'), isNull);
@@ -80,7 +125,12 @@ void main() {
   // vault before this pruning existed.
   test('pruning deletes unusable donors and keeps the rest', () async {
     await storage.writeText(path('old-schema'), _donorJson(schema: 1));
-    await storage.writeText(path('old-version'), _donorJson(version: 1));
+    await storage.writeText(
+      path('old-version'),
+      // Unusable now means the *query* is stale: a merely older index version
+      // is re-derivable and must survive.
+      _donorJson(version: 1, queryVersion: kVaultQueryVersion - 1),
+    );
     await storage.writeText(path('corrupt'), 'not json at all');
     await storage.writeText(path('current'), _donorJson());
     await storage.writeText(path('mine'), _donorJson());
@@ -114,7 +164,10 @@ void main() {
   // back to recompiling everything looks exactly like a cache hit.
   test('load reports what it reused and what it skipped', () async {
     await storage.writeText(path('peer'), _donorJson());
-    await storage.writeText(path('stale'), _donorJson(version: 1));
+    await storage.writeText(
+      path('stale'),
+      _donorJson(version: 1, queryVersion: kVaultQueryVersion - 1),
+    );
 
     final store = IndexDonorStore(storage);
     await store.load('mine');

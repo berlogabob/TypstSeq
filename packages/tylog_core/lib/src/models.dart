@@ -86,6 +86,7 @@ class NoteRef {
     this.contentHash,
     this.modifiedMillis,
     this.metadataSource = 'fallback',
+    this.queryFacts,
   });
 
   final String id;
@@ -117,6 +118,21 @@ class NoteRef {
   final int? modifiedMillis;
   final String metadataSource;
 
+  /// The Typst query's own contribution to the fields that are unions of query
+  /// output and source parsing: `tags`, `links`, `dates`.
+  ///
+  /// Those unions cannot be taken apart after the fact — once a source-derived
+  /// tag is folded in by an old rule there is no way to tell it from a queried
+  /// one — which is why a change to the folding rules used to invalidate every
+  /// cached entry. Keeping the queried half lets the derivation be re-run
+  /// against the note's current bytes without a compile.
+  ///
+  /// Deliberately not everything the query returns: `attachments` and
+  /// `fileRefs` are pure functions of it and survive on this object already,
+  /// and the scalars (`id`, `title`, `kind`, `date`, `aliases`, `properties`)
+  /// are stored resolved. Null on entries written before index version 10.
+  final Map<String, Object?>? queryFacts;
+
   NoteRef copyWith({
     String? id,
     String? title,
@@ -135,6 +151,7 @@ class NoteRef {
     String? contentHash,
     int? modifiedMillis,
     String? metadataSource,
+    Map<String, Object?>? queryFacts,
   }) => NoteRef(
     id: id ?? this.id,
     path: path,
@@ -154,6 +171,7 @@ class NoteRef {
     contentHash: contentHash ?? this.contentHash,
     modifiedMillis: modifiedMillis ?? this.modifiedMillis,
     metadataSource: metadataSource ?? this.metadataSource,
+    queryFacts: queryFacts ?? this.queryFacts,
   );
 
   Map<String, Object?> toJson() => {
@@ -175,6 +193,7 @@ class NoteRef {
     'contentHash': contentHash,
     'modifiedMillis': modifiedMillis,
     'metadataSource': metadataSource,
+    if (queryFacts != null) 'queryFacts': queryFacts,
   };
 
   factory NoteRef.fromJson(Map<String, Object?> json) => NoteRef(
@@ -205,6 +224,7 @@ class NoteRef {
     contentHash: json['contentHash'] as String?,
     modifiedMillis: (json['modifiedMillis'] as num?)?.toInt(),
     metadataSource: json['metadataSource'] as String? ?? 'legacy',
+    queryFacts: (json['queryFacts'] as Map?)?.cast<String, Object?>(),
   );
 }
 
@@ -447,11 +467,35 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 /// 9: non-default kinds alias into tags (`kind: article` → tag `article`), so
 ///    kind filtering rides the existing tag machinery. Same reasoning as 7/8:
 ///    derived tags change while note bytes don't.
-const kVaultIndexVersion = 9;
+/// 10: entries carry [NoteRef.queryFacts]. From here a derive-only bump costs
+///    a re-derivation rather than a recompile — see [kVaultQueryVersion]. This
+///    bump itself is the last one that has to be paid the old way, because
+///    entries written before it have no facts to re-derive from.
+const kVaultIndexVersion = 10;
+
+/// Version of the *Typst query output* a cached entry was built from — the
+/// expensive half.
+///
+/// [kVaultIndexVersion] covers everything the scanner reads back, so bumping it
+/// invalidates every cached and donated entry. That is far too blunt: 6, 7, 8
+/// and 9 were every bump this index has ever had, and **not one of them changed
+/// the query**. They changed derivation — a pure Dart function over bytes the
+/// device already has. Yet each one made every phone recompile the whole vault
+/// (P30: 14.2 minutes for 5,086 notes) to recover data it was already holding.
+///
+/// So the two move independently. Raise this one only when the Typst query
+/// itself changes shape — a new or renamed field in `typst/tylog/lib.typ`, or a
+/// different meaning for an existing one. When only derivation changes, raise
+/// [kVaultIndexVersion] alone: a cached entry carrying [NoteRef.queryFacts] is
+/// then re-derived in place instead of recompiled.
+///
+/// 1: the query shape as of index version 6 — unchanged through 10.
+const kVaultQueryVersion = 1;
 
 class VaultIndex {
   const VaultIndex({
     this.version = kVaultIndexVersion,
+    this.queryVersion = kVaultQueryVersion,
     required this.notesByPath,
     required this.backlinksByTarget,
     this.attachmentBacklinksByPath = const {},
@@ -460,6 +504,11 @@ class VaultIndex {
   });
 
   final int version;
+
+  /// Which [kVaultQueryVersion] the cached entries' [NoteRef.queryFacts] came
+  /// from. An index whose [version] is stale but whose queries are current can
+  /// be re-derived rather than recompiled.
+  final int queryVersion;
   final Map<String, NoteRef> notesByPath;
   final Map<String, List<String>> backlinksByTarget;
   final Map<String, List<String>> attachmentBacklinksByPath;

@@ -477,6 +477,16 @@ Future<VaultIndex> scanVaultStorage(
         previous?.version == kVaultIndexVersion &&
         cached != null &&
         !stale.contains(relative);
+    // An entry from an older index version whose *query* half is current: the
+    // derivation moved, not the expensive part. Re-derived below against the
+    // note's bytes instead of recompiling it. This is the difference between a
+    // schema bump costing a file read per note and costing 14 minutes of Typst.
+    final rederivable =
+        !force &&
+        !reusable &&
+        cached?.queryFacts != null &&
+        previous?.queryVersion == kVaultQueryVersion &&
+        !stale.contains(relative);
 
     // Does the cached entry still describe the bytes on disk? mtime+size is
     // the cheap answer, but it is device-local — SAF and APFS stamp the same
@@ -485,7 +495,7 @@ Future<VaultIndex> scanVaultStorage(
     // and saves a Typst query, which is orders of magnitude more expensive.
     String? contentHash;
     var matchesDisk = false;
-    if (reusable) {
+    if ((reusable || rederivable) && cached != null) {
       if (cached.fingerprint == fingerprint) {
         matchesDisk = true;
       } else if (cached.contentHash != null) {
@@ -509,7 +519,24 @@ Future<VaultIndex> scanVaultStorage(
         reinspected < maxMetadataReinspectionsPerScan;
     if (reinspect) reinspected++;
 
-    if (matchesDisk && !reinspect) {
+    if (matchesDisk && !reinspect && rederivable) {
+      // The bytes still match the queried half, so only the derivation is
+      // stale. Reading the file is the whole cost; falls through to a full
+      // inspection if the entry turns out to have nothing to re-derive from.
+      final rederived = rederiveNote(
+        cached!,
+        utf8.decode(await storage.readBytes(relative)),
+        fingerprint,
+        file.modified?.millisecondsSinceEpoch ?? 0,
+        synonyms,
+      );
+      if (rederived != null) {
+        notes[relative] = rederived;
+        tasks.addAll(cachedTasks[relative] ?? const []);
+        onProgress?.call(fileIndex + 1, files.length);
+        continue;
+      }
+    } else if (matchesDisk && !reinspect) {
       // Re-stamp the cheap gate so the next scan on this device short-circuits
       // without hashing again.
       notes[relative] = cached!.fingerprint == fingerprint
@@ -1836,6 +1863,65 @@ NoteRef _queriedNote(
     ],
     properties: (note['properties'] as Map? ?? const {})
         .cast<String, Object?>(),
+    fingerprint: fingerprint,
+    modifiedMillis: modifiedMillis,
+    metadataSource: 'typst-query',
+    queryFacts: {
+      'tags': _sorted({...stringList(note['tags']), ...metadata.tags}),
+      'links': _sorted(metadata.links.toSet()),
+      'dates': metadata.dates,
+    },
+  );
+}
+
+/// Rebuilds a cached note's derived fields against its current bytes, without
+/// a Typst compile.
+///
+/// This is what makes a derive-only version bump cheap. Everything here is a
+/// pure function of the queried half ([NoteRef.queryFacts]) plus the source and
+/// the synonym map — exactly the inputs [_queriedNote] uses — so the result is
+/// identical to what a full re-inspection would produce, for a file read
+/// instead of seconds of compiling.
+///
+/// Returns null when the entry predates index version 10 and so has no facts to
+/// re-derive from; that note has to be inspected the old way.
+NoteRef? rederiveNote(
+  NoteRef cached,
+  String source,
+  String fingerprint,
+  int modifiedMillis, [
+  Map<String, String> synonyms = const {},
+]) {
+  final facts = cached.queryFacts;
+  if (facts == null) return null;
+  final queriedDates = (facts['dates'] as List? ?? const [])
+      .cast<Map>()
+      .map((item) => item.cast<String, Object?>())
+      .toList();
+  return cached.copyWith(
+    tags: _normalizedTags({
+      ...stringList(facts['tags']),
+      ..._legacyTags(source),
+      ..._kindTag(cached.kind),
+    }, synonyms),
+    outgoingLinks: _sorted({
+      ...stringList(facts['links']),
+      ..._legacySources(source),
+      ..._wikiLinkTargets(source),
+    }),
+    citations: _citations(source),
+    dateRefs: [
+      ...queriedDates
+          .where((item) => item['date'] != null)
+          .map(
+            (item) => DateRef(
+              date: item['date'].toString(),
+              text: _cleanContentText(item['text']),
+            ),
+          ),
+      ..._legacyDates(source),
+    ],
+    date: cached.date ?? _dailyDateFromPath(cached.kind, cached.path),
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
     metadataSource: 'typst-query',
