@@ -514,6 +514,20 @@ void main() {
       expect(result.conflicts, 0);
       final events = await _traceEvents(vault);
       expect(events.map((event) => event['event']), contains('no-change-shortcut'));
+
+      // Every terminal event carries a per-stage profile. Without it a pass
+      // that takes 22s reports only that it took 22s — the device numbers this
+      // work is aimed at were unattributable.
+      final shortcut = events.firstWhere(
+        (event) => event['event'] == 'no-change-shortcut',
+      );
+      final profile = shortcut['stageMillis'] as Map<String, Object?>?;
+      expect(profile, isNotNull);
+      expect(
+        profile!.keys,
+        isNot(contains(matches(RegExp(r'sync-file \d')))),
+        reason: 'per-file stages must collapse into one bucket, not 11k',
+      );
     },
   );
 

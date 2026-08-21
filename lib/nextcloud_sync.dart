@@ -355,10 +355,34 @@ class NextcloudSync {
     _RemoteArchiveSnapshot? archiveSnapshot;
     var pristineStarterPaths = const <String>[];
     final decisions = <SyncDecision>[];
+    // Per-stage wall time, accumulated through the hook every stage already
+    // calls. Measured on a real device, a pass that transferred nothing still
+    // took 30-57s and even the no-change shortcut cost 21-25s — with no way to
+    // tell which stage that was. The trace is buffered and written once per
+    // run, so this costs nothing extra in I/O.
+    //
+    // Keyed on the stage *name* with the per-file suffix stripped, or the
+    // 11,604 `sync-file i/N` transitions would each be their own bucket.
+    final stageMillis = <String, int>{};
+    final stageWatch = Stopwatch()..start();
+    var stageStartedAt = 0;
     void progress(String next, [String? path]) {
+      final bucket = stage.startsWith('sync-file') ? 'sync-file' : stage;
+      stageMillis[bucket] =
+          (stageMillis[bucket] ?? 0) + (stageWatch.elapsedMilliseconds - stageStartedAt);
+      stageStartedAt = stageWatch.elapsedMilliseconds;
       stage = next;
       currentPath = path;
       onProgress?.call(next, path);
+    }
+
+    /// Closes out the stage in flight so the last one is not lost.
+    Map<String, int> stageProfile() {
+      progress(stage);
+      return {
+        for (final entry in stageMillis.entries)
+          if (entry.value > 0) entry.key: entry.value,
+      };
     }
 
     // ponytail: trace events are buffered and written once per sync (one SAF
@@ -429,6 +453,7 @@ class NextcloudSync {
                 'timestamp': DateTime.now().toUtc().toIso8601String(),
                 'runId': runId,
                 'event': 'no-change-shortcut',
+        'stageMillis': stageProfile(),
                 'trigger': trigger,
                 'uploaded': 0,
                 'downloaded': 0,
@@ -698,6 +723,7 @@ class NextcloudSync {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
         'event': 'completed',
+        'stageMillis': stageProfile(),
         'trigger': trigger,
         'uploaded': up,
         'downloaded': down,
@@ -744,6 +770,7 @@ class NextcloudSync {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
         'event': 'failed',
+        'stageMillis': stageProfile(),
         'trigger': trigger,
         'stage': stage,
         'path': ?currentPath,
