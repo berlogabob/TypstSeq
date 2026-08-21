@@ -344,6 +344,51 @@ void main() {
     await _waitUntil(() => controller.communities != null);
   });
 
+  // `calendar` walks every note twice and sorts; `calendarDayMarks` walks the
+  // result again. Both used to run inside the shell's `build()` — guarded only
+  // by "a daily note is open", i.e. how the app launches — so they re-ran on
+  // every autosave, sync tick and tab tap.
+  test('calendar is derived once per index, not per build', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.openVault(
+      const VaultEntry(id: 'cal', name: 'Cal', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+
+    final calendar = controller.calendar;
+    final marks = controller.calendarDayMarks;
+    expect(calendar, isNotNull);
+    expect(
+      identical(controller.calendar, calendar),
+      isTrue,
+      reason: 'reading it again must not recompute — that was the per-frame bug',
+    );
+    expect(identical(controller.calendarDayMarks, marks), isTrue);
+
+    // A rebuild republishes it, even though the index object is retained.
+    final revision = controller.indexRevision;
+    await controller.rebuildIndex();
+    await _waitUntil(() => controller.indexRevision > revision);
+    expect(
+      identical(controller.calendar, calendar),
+      isFalse,
+      reason: 'a new index revision must republish the derived calendar',
+    );
+
+    // Closing a vault must not leave the previous vault's calendar behind.
+    controller.close('closed');
+    expect(controller.calendar, isEmpty);
+    expect(controller.communities, isNull);
+  });
+
   test('a derivation landing after dispose does not throw', () async {
     final storage = _MemoryStorage();
     final controller = WorkspaceController(

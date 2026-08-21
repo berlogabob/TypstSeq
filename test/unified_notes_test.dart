@@ -22,6 +22,8 @@ void main() {
   Widget surface() => MaterialApp(
     home: Scaffold(
       body: LibraryView(
+        calendar: const [],
+        dayMarks: (daily: <String>{}, refs: <String>{}),
         index: VaultIndex(
           notesByPath: {for (final n in notes) n.path: n},
           backlinksByTarget: const {},

@@ -826,7 +826,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: MonthCalendar(
-              index: index,
+              dayMarks: workspace.calendarDayMarks,
               initialMonth: _dailyDateOf(
                 vault == null || note == null ? null : note!,
               ),
@@ -3267,7 +3267,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentDaily = _navDay ?? _dailyDateOf(current);
     final dayItems = currentDaily == null
         ? const <CalendarItem>[]
-        : (index?.calendar ?? const <CalendarItem>[])
+        : workspace.calendar
               .where(
                 (item) =>
                     item.date == isoDay(currentDaily) &&
@@ -3310,6 +3310,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         index: index,
+        calendar: workspace.calendar,
+        dayMarks: workspace.calendarDayMarks,
         indexing: rebuilding || syncing,
         // Insertion order stays newest-opened-first — the shelf's
         // continue-reading card takes the first in-progress entry.

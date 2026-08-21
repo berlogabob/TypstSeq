@@ -9,12 +9,19 @@ class CalendarTab extends StatefulWidget {
   const CalendarTab({
     super.key,
     required this.index,
+    required this.calendar,
+    required this.dayMarks,
     this.indexing = false,
     required this.onOpenPath,
     required this.onOpenDay,
   });
 
   final VaultIndex? index;
+
+  /// Derived once per index by the controller — walking `index.calendar` here
+  /// meant two full passes over the vault plus a sort on every frame.
+  final List<CalendarItem> calendar;
+  final ({Set<String> daily, Set<String> refs}) dayMarks;
   final bool indexing;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
@@ -29,9 +36,7 @@ class _CalendarTabState extends State<CalendarTab> {
   @override
   Widget build(BuildContext context) {
     final iso = isoDay(selected);
-    final items = (widget.index?.calendar ?? const <CalendarItem>[])
-        .where((item) => item.date == iso)
-        .toList();
+    final items = widget.calendar.where((item) => item.date == iso).toList();
     const headerCount = 3;
     final itemCount = headerCount + (items.isEmpty ? 1 : items.length);
     return ListView.builder(
@@ -41,7 +46,7 @@ class _CalendarTabState extends State<CalendarTab> {
         switch (i) {
           case 0:
             return MonthCalendar(
-              index: widget.index,
+              dayMarks: widget.dayMarks,
               initialMonth: selected,
               onDaySelected: (day) => setState(() => selected = day),
               onOpenDay: widget.onOpenDay,

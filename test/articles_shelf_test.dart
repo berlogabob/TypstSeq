@@ -62,6 +62,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LibraryView(
+            calendar: const [],
+            dayMarks: (daily: <String>{}, refs: <String>{}),
             index: VaultIndex(
               notesByPath: {
                 for (final n in [unread, reading, summarized, plainNote])
@@ -154,6 +156,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LibraryView(
+            calendar: const [],
+            dayMarks: (daily: <String>{}, refs: <String>{}),
               index: VaultIndex(
                 notesByPath: const {},
                 backlinksByTarget: const {},

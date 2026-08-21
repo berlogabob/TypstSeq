@@ -93,6 +93,23 @@ class WorkspaceController extends ChangeNotifier {
   /// stays on the main thread — it just must not run on every frame.
   LinkResolver? linkResolver;
 
+  /// Calendar items for the current index, derived once per index.
+  ///
+  /// [VaultIndex.calendar] walks every note twice, allocates an item per daily,
+  /// per date ref and per due task, then sorts — 20-40 ms on a 6,200-note
+  /// vault. It used to run inside the shell's `build()`, guarded only by "a
+  /// daily note is open", which is the state the app launches in, so it re-ran
+  /// on every autosave, sync tick and tab tap. Same reasoning as
+  /// [linkResolver]: cheap once per index, ruinous per frame.
+  List<CalendarItem> calendar = const [];
+
+  /// Which days carry a journal file and which are only referenced. Walks
+  /// [calendar], so it is derived alongside it rather than per build.
+  ({Set<String> daily, Set<String> refs}) calendarDayMarks = (
+    daily: <String>{},
+    refs: <String>{},
+  );
+
   int _derivedRevision = -1;
 
   /// The isolate in [refreshDerived] can land after the controller is gone —
@@ -218,6 +235,11 @@ class WorkspaceController extends ChangeNotifier {
     // Tied to the index it was built from — a closed vault must not leave a
     // resolver behind that still answers for the old one.
     linkResolver = null;
+    _publishCalendar(null);
+    // Was left behind on vault switch, so a freshly opened vault could show the
+    // previous one's clusters until its first derivation landed.
+    communities = null;
+    _derivedRevision = -1;
     validation = null;
     searchIndex = PkmsSearchIndex.empty();
     helperSource = '';
@@ -308,6 +330,7 @@ class WorkspaceController extends ChangeNotifier {
       // mention chips well before the first scan finishes, and until now
       // linkResolver stayed null for all of that window.
       linkResolver = loaded == null ? null : LinkResolver(loaded.notes);
+    _publishCalendar(loaded);
       validation = null;
       searchIndex = PkmsSearchIndex.empty();
       helperSource = await opened.storage.readText(Vault.helperPath);
@@ -1085,6 +1108,12 @@ class WorkspaceController extends ChangeNotifier {
     return current;
   }
 
+  void _publishCalendar(VaultIndex? source) {
+    calendar = source?.calendar ?? const [];
+    calendarDayMarks =
+        source?.calendarDayMarks ?? (daily: <String>{}, refs: <String>{});
+  }
+
   VaultIndex _retainIndex(VaultIndex next) {
     // Bumped for every index assignment, including the in-place path below.
     // Anything derived from the index caches against this, and must not cache
@@ -1098,6 +1127,10 @@ class WorkspaceController extends ChangeNotifier {
     // build: without a retained resolver they each construct a whole-vault one
     // per link (O(vault) per mention chip per repaint).
     linkResolver = LinkResolver(next.notes);
+    // From `next`, never `index`: the retain path below mutates the *existing*
+    // object in place, so reading `index` here would derive from pre-update
+    // contents.
+    _publishCalendar(next);
     final current = index;
     if (current == null || current.version != next.version) return next;
     current.notesByPath

@@ -253,6 +253,8 @@ class LibraryView extends StatelessWidget {
   const LibraryView({
     super.key,
     required this.index,
+    required this.calendar,
+    required this.dayMarks,
     this.indexing = false,
     required this.progressByPath,
     required this.onOpenPath,
@@ -271,6 +273,10 @@ class LibraryView extends StatelessWidget {
   });
 
   final VaultIndex? index;
+
+  /// Derived once per index by the controller, not per build.
+  final List<CalendarItem> calendar;
+  final ({Set<String> daily, Set<String> refs}) dayMarks;
   final bool indexing;
   final Map<String, double> progressByPath;
   final Map<String, String> noteToCluster;
@@ -333,6 +339,8 @@ class LibraryView extends StatelessWidget {
               ),
               CalendarTab(
                 index: index,
+                calendar: calendar,
+                dayMarks: dayMarks,
                 indexing: indexing,
                 onOpenPath: onOpenPath,
                 onOpenDay: onOpenDay,

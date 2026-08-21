@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 
-import 'models.dart';
 
 /// Logseq-style month grid: days carrying journal entries or references are
 /// marked, tapping any day opens (or creates) that day's journal file.
 class MonthCalendar extends StatefulWidget {
   const MonthCalendar({
     super.key,
-    required this.index,
+    required this.dayMarks,
     required this.onOpenDay,
     this.initialMonth,
     this.onDaySelected,
   });
 
-  final VaultIndex? index;
+  /// Which days have a journal file and which are only referenced, derived
+  /// once per index by the controller. Deriving it here re-walked the whole
+  /// vault on every month page and every rebuild.
+  final ({Set<String> daily, Set<String> refs}) dayMarks;
   final ValueChanged<DateTime> onOpenDay;
   final DateTime? initialMonth;
 
@@ -60,9 +62,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
 
   @override
   Widget build(BuildContext context) {
-    final marks =
-        widget.index?.calendarDayMarks ??
-        (daily: const <String>{}, refs: const <String>{});
+    final marks = widget.dayMarks;
     final scheme = Theme.of(context).colorScheme;
     final today = DateTime.now();
     final leading = DateTime(month.year, month.month, 1).weekday - 1;
