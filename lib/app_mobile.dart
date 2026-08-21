@@ -2084,6 +2084,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onSync: () => _syncNow(),
           onConfigure: _showSyncSettings,
           onResolve: _resolveSyncConflict,
+          onResolveAll: _resolveAllSyncConflicts,
           onCopyDiagnostics: _copySyncDiagnostics,
         ),
       ),
@@ -2142,6 +2143,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       storageHealthy: healthy,
       conflicts: syncConflicts,
       events: events.reversed.toList(),
+    );
+  }
+
+  Future<void> _resolveAllSyncConflicts(
+    SyncConflictResolution resolution,
+  ) async {
+    final pending = workspace.syncConflicts.length;
+    if (pending == 0) return;
+    final keepingLocal = resolution == SyncConflictResolution.keepLocal;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Resolve $pending conflicts?',
+      message: keepingLocal
+          ? "This uploads this device's copy of $pending files, replacing what "
+                'is on Nextcloud. Anything the other side added to them is lost.'
+          : 'This overwrites this device\'s copy of $pending files with what '
+                'is on Nextcloud. Anything you changed here is lost.',
+      confirmLabel: 'Resolve $pending',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    final resolved = await workspace.resolveAllConflicts(resolution);
+    if (!mounted) return;
+    final left = workspace.syncConflicts.length;
+    showSnack(
+      context,
+      left == 0
+          ? 'Resolved $resolved conflicts'
+          : 'Resolved $resolved; $left still need review',
     );
   }
 

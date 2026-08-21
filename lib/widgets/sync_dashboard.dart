@@ -50,6 +50,7 @@ class SyncDashboardScreen extends StatefulWidget {
     required this.onSync,
     required this.onConfigure,
     required this.onResolve,
+    required this.onResolveAll,
     required this.onCopyDiagnostics,
   });
 
@@ -57,6 +58,10 @@ class SyncDashboardScreen extends StatefulWidget {
   final Future<void> Function() onSync;
   final Future<bool> Function() onConfigure;
   final Future<void> Function(SyncConflict) onResolve;
+
+  /// Applies one choice across every listed conflict. The caller owns the
+  /// confirmation and the batching; this screen only asks which side.
+  final Future<void> Function(SyncConflictResolution) onResolveAll;
   final Future<void> Function() onCopyDiagnostics;
 
   @override
@@ -151,6 +156,48 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
         _resolving.remove(conflict.id);
       }
     }
+  }
+
+  /// Asks which side wins, then hands the whole batch to the caller.
+  ///
+  /// Deliberately not a default: applying "keep this device" across a backlog
+  /// can discard whatever the other side added, and that is precisely the
+  /// mistake the single-conflict dialog was changed to stop making.
+  Future<void> _resolveAll(int count) async {
+    final choice = await showModalBottomSheet<SyncConflictResolution>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text('Resolve $count conflicts'),
+              subtitle: const Text(
+                'One choice, applied to every file listed below.',
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.smartphone),
+              title: const Text("Keep this device's version"),
+              subtitle: const Text('Uploads each local copy to Nextcloud'),
+              onTap: () =>
+                  Navigator.pop(sheet, SyncConflictResolution.keepLocal),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text("Keep Nextcloud's version"),
+              subtitle: const Text('Overwrites each local copy'),
+              onTap: () =>
+                  Navigator.pop(sheet, SyncConflictResolution.keepRemote),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await widget.onResolveAll(choice);
+    await _reload();
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -300,9 +347,26 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                   ),
                   if (value.conflicts.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      'Conflicts',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Conflicts',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        // Only worth offering for a backlog. One conflict is
+                        // a decision, not a chore.
+                        if (value.conflicts.length > 1)
+                          TextButton(
+                            onPressed: _resolving.isEmpty
+                                ? () => unawaited(
+                                    _resolveAll(value.conflicts.length),
+                                  )
+                                : null,
+                            child: Text('Resolve all ${value.conflicts.length}'),
+                          ),
+                      ],
                     ),
                     for (final conflict in value.conflicts)
                       Card(

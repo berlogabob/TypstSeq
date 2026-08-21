@@ -438,6 +438,58 @@ void main() {
     },
   );
 
+  test('a half-failed batch reports what actually resolved', () async {
+    // A batch that stops partway must not claim success: whatever stopped it
+    // will stop the next one too, and the untouched records are still there.
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response.statusCode = HttpStatus.internalServerError;
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: _MemoryStorage(),
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = NextcloudConfig(
+      serverUrl:
+          'http://${server.address.address}:${server.port}'
+          '/remote.php/dav/files/alice/TyLogVault',
+      username: 'alice',
+      password: 'secret',
+    );
+    controller.syncConflicts = [
+      for (final name in ['a', 'b', 'c'])
+        SyncConflict(
+          id: name,
+          path: 'notes/$name.typ',
+          recordPath: '.tylog/conflicts/$name.json',
+          createdAt: DateTime.utc(2026),
+          localExists: true,
+          remoteExists: true,
+        ),
+    ];
+
+    final resolved = await controller.resolveAllConflicts(
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(resolved, 0, reason: 'the first failure stops the batch');
+    expect(controller.syncError, isNotNull);
+  });
+
   test('a resolve announces itself before the reindex it triggers', () async {
     // resolveConflict used to notify exactly once, at the very end, and the
     // end was gated on refreshIndex(always: true) - a full scan plus one

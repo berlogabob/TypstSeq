@@ -75,6 +75,7 @@ void main() {
             // Stands in for the inline full-vault rescan.
             await Future<void>.delayed(const Duration(seconds: 30));
           },
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -110,6 +111,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async => resolved++,
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -140,6 +142,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async => finish.future,
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -181,6 +184,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async {},
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -207,6 +211,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async {},
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -235,6 +240,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async {},
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),
@@ -246,6 +252,69 @@ void main() {
     expect(find.text('Upload failed: connection reset'), findsOneWidget);
     // The conflict is still listed too; they are different facts.
     expect(find.text('notes/A.typ'), findsOneWidget);
+  });
+
+  testWidgets('resolve all asks which side, then applies one choice', (
+    tester,
+  ) async {
+    SyncConflictResolution? applied;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: false,
+            conflicts: [
+              _conflict('notes/A.typ'),
+              _conflict('notes/B.typ'),
+              _conflict('notes/C.typ'),
+            ],
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onResolveAll: (choice) async => applied = choice,
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Resolve all 3'));
+    await tester.pumpAndSettle();
+
+    // Nothing is preselected: a bulk choice can discard whatever the other
+    // side added, which is the mistake the single dialog was fixed to stop
+    // making.
+    expect(find.text('Resolve 3 conflicts'), findsOneWidget);
+    expect(applied, isNull);
+
+    await tester.tap(find.text("Keep Nextcloud's version"));
+    await tester.pumpAndSettle();
+
+    expect(applied, SyncConflictResolution.keepRemote);
+  });
+
+  testWidgets('resolve all is not offered for a single conflict', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async =>
+              _data(syncing: false, conflicts: [_conflict('notes/A.typ')]),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onResolveAll: (_) async {},
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Resolve all'), findsNothing);
   });
 
   testWidgets('a slow load landing late does not overwrite a fresher one', (
@@ -272,6 +341,7 @@ void main() {
           onSync: () async {},
           onConfigure: () async => true,
           onResolve: (_) async => resolved++,
+          onResolveAll: (_) async {},
           onCopyDiagnostics: () async {},
         ),
       ),

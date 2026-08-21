@@ -988,10 +988,28 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  /// Applies one choice to every pending conflict, reindexing once at the end
+  /// rather than once per record.
+  ///
+  /// Returns how many resolved. Stops at the first failure and leaves the rest
+  /// pending: a batch that half-worked must not report success, and whatever
+  /// stopped it will stop the next one too.
+  Future<int> resolveAllConflicts(SyncConflictResolution resolution) async {
+    var resolved = 0;
+    for (final conflict in [...syncConflicts]) {
+      await resolveConflict(conflict, resolution, reindex: false);
+      if (syncError != null) break;
+      resolved++;
+    }
+    unawaited(refreshIndex(updateStatus: false, always: true));
+    return resolved;
+  }
+
   Future<void> resolveConflict(
     SyncConflict conflict,
     SyncConflictResolution resolution, {
     String? mergedText,
+    bool reindex = true,
   }) async {
     final opened = vault;
     final config = cloud;
@@ -1017,7 +1035,9 @@ class WorkspaceController extends ChangeNotifier {
       // and awaiting it here meant waiting on a full scan *plus one queued
       // repeat* (see _scan) before saying anything — the ten minutes the user
       // spent staring at an unchanged row.
-      unawaited(refreshIndex(updateStatus: false, always: true));
+      if (reindex) {
+        unawaited(refreshIndex(updateStatus: false, always: true));
+      }
     } catch (error) {
       // Keep the conflict in the list rather than silently dropping it —
       // an error here (e.g. the remote moved again) must stay visible, not
