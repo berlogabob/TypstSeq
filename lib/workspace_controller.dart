@@ -554,7 +554,13 @@ class WorkspaceController extends ChangeNotifier {
             indexedRevision = revision;
             opened.clearStaleNotes(stale);
             if (showProgress) {
-              status = 'Indexed · ${index.notes.length} notes · building search…';
+              final reuse = event.donorReuse;
+              final shared = reuse == null || reuse.isEmpty
+                  ? ''
+                  : ' · reused ${reuse.notes} from ${reuse.devices} device'
+                        '${reuse.devices == 1 ? '' : 's'}';
+              status =
+                  'Indexed · ${index.notes.length} notes$shared · building search…';
             }
             notifyListeners();
             unawaited(_reconcileTasks(index.tasks));

@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:tylog_core/graph.dart';
+import 'package:tylog_core/index_donor.dart';
 
 import 'models.dart';
 import 'pkms_registry.dart';
@@ -122,9 +123,14 @@ class IndexProgressEvent extends VaultWorkerEvent {
 /// render notes while validation and the search index are still building — on
 /// SAF vaults that build reads many files and must never gate Journal/Library.
 class IndexBuiltEvent extends VaultWorkerEvent {
-  const IndexBuiltEvent(this.index);
+  const IndexBuiltEvent(this.index, {this.donorReuse});
 
   final VaultIndex index;
+
+  /// What this scan took from other devices' donors, when it consulted them.
+  /// Reported so "the laptop did the work" is observable instead of a silent
+  /// fallback to recompiling everything locally.
+  final DonorReuse? donorReuse;
 }
 
 class CommunitiesBuiltEvent extends VaultWorkerEvent {
@@ -252,7 +258,7 @@ class _VaultWorker {
           _send(IndexProgressEvent(complete, total));
         },
       );
-      _send(IndexBuiltEvent(index));
+      _send(IndexBuiltEvent(index, donorReuse: _vault.donorReuse));
 
       // Derived state is an optimization; the UI degrades to null on failure.
       try {

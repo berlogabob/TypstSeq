@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:tylog_core/index_donor.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
@@ -15,62 +15,6 @@ import 'tylog_assets.dart';
 export 'package:tylog_core/vault.dart'
     show VaultStorageInspection, VaultStorageKind, inspectVaultStorage;
 
-/// Shape of `_system/index/<deviceId>.json`.
-///
-/// 2 added `tasks`. A schema-1 donor is skipped rather than read: it carries
-/// every note, so every note hits the scanner's cached branch, and the tasks
-/// it does not carry are never re-derived.
-///
-/// 3 stopped publishing user-authored note properties. Schema-2 donors are
-/// skipped for the same reason *and* because they contain the values this
-/// change exists to stop shipping — see [_donorSafeProperties].
-const _indexDonorSchema = 3;
-
-/// Property keys TyLog or article-pipeline writes, and therefore the only ones
-/// a donor may carry off-device.
-///
-/// A donor is published to `_system/index/`, which is inside the sync allowlist
-/// (`isSyncableVaultPath`), so every key here is uploaded to the server and
-/// handed to every other device. `NoteRef.toJson` serialises `properties`
-/// verbatim, so before this list a note's hand-written `pswrd:`/`login:` values
-/// travelled with it. Allowlist, never denylist: an unknown key is by
-/// definition one we did not write and cannot vouch for.
-const _donorSafeProperties = {
-  'import_format',
-  'import_source_name',
-  'import_source_path',
-  'import_sha256',
-  'status',
-  'relevance',
-  'rating',
-  'citation-key',
-  'type',
-  'icon',
-  'llm_provider',
-  'llm_model',
-  'extraction',
-  'processed',
-  'url',
-  'source',
-  'source_url',
-  'share_url',
-  'author',
-  'updated',
-  'week',
-};
-
-/// Whether [note] may be published to peers.
-///
-/// A note carrying any key outside [_donorSafeProperties] is left out of the
-/// donor entirely rather than published with its properties stripped: the
-/// scanner's cached branch reuses a donor entry wholesale when the content hash
-/// matches, so a half-populated entry would read as authoritative and the note
-/// would lose its properties on every peer. Omitting it costs that one note a
-/// re-parse and keeps the result correct. Measured on the real vault: 3323 of
-/// 3345 notes still ship (99.3%); 22 are re-parsed.
-bool _isDonorSafe(NoteRef note) =>
-    note.properties.keys.every(_donorSafeProperties.contains);
-
 class Vault {
   Vault(Directory root) : storage = LocalVaultStorage(root);
   Vault.withStorage(this.storage);
@@ -82,15 +26,6 @@ class Vault {
   /// same-size edit landing in the same second would otherwise be skipped.
   final _staleNotes = <String>{};
 
-  /// Whether this instance has confirmed the donor on disk is current-schema.
-  ///
-  /// The unchanged-vault early-out in [_writeIndexDonor] never encodes and
-  /// never reads, so on its own it would leave a device that upgraded but
-  /// whose vault has not changed serving its old schema-1 donor forever — and
-  /// peers now skip those. Clearing this each launch costs one encode per app
-  /// run and lets the upgrade actually happen.
-  bool _donorSchemaConfirmed = false;
-
   /// Snapshot of the pending stale paths. The worker isolate scans through its
   /// *own* [Vault] instance, which never saw this one's [saveNote] calls, so the
   /// set has to travel with the rebuild command — see [rebuildIndex]'s `stale`.
@@ -99,6 +34,9 @@ class Vault {
   /// Drops paths a completed scan covered. Only the ones it was handed: a save
   /// landing mid-scan must stay queued for the next one.
   void clearStaleNotes(Iterable<String> paths) => _staleNotes.removeAll(paths);
+
+  /// Reads and writes `_system/index/` donors — shared with the CLI.
+  late final IndexDonorStore _donors = IndexDonorStore(storage);
 
   /// sha256 of the last index-cache bytes this process wrote; a rebuild that
   /// re-derives identical bytes skips the multi-megabyte rewrite.
@@ -321,187 +259,21 @@ _index
     return index;
   }
 
-  /// Publishes this device's notes for its peers.
-  ///
-  /// [VaultIndex.notes] is path-sorted and [NoteRef.toJson] is stable, so an
-  /// unchanged vault re-renders to identical bytes — and those bytes are
-  /// compared before writing. Skipping the write, not just producing equal
-  /// content, is what keeps this quiet: on desktop the vault belongs to the
-  /// Nextcloud client, which detects changes by mtime+size, and an atomic
-  /// write renames a fresh temp file into place. Rewriting an identical donor
-  /// would re-upload megabytes after every save.
-  ///
-  /// Notes *and* tasks. Backlinks and problems really are recomputed from
-  /// scratch every scan, but tasks are not: the scanner's cached branch reuses
-  /// `previous.tasks` for any note whose bytes still match, so a donor without
-  /// them hands a fresh device a complete note index and an empty task list —
-  /// every note matches by content hash, every one contributes zero tasks, and
-  /// the Tasks view comes up blank until a forced rebuild.
-  ///
-  /// Notes carrying properties we did not write are held back entirely — see
-  /// [_isDonorSafe]. This file leaves the device, so what goes into it is a
-  /// privacy decision, not a caching one.
+  /// Publishes this device's notes for its peers. Implementation lives in
+  /// tylog_core's [IndexDonorStore] so the CLI publishes the same format.
   Future<void> _writeIndexDonor(
     String deviceId,
     VaultIndex index,
     VaultIndex? previous,
-  ) async {
-    try {
-      final path = '${TylogVaultPaths.indexDonors}/$deviceId.json';
-      final published = await storage.exists(path);
-      // Cheapest early-out, and the one that matters most on a phone: if we
-      // already published and the scan changed nothing, don't encode ~2 MB of
-      // JSON and read the same amount back over SAF just to discover the bytes
-      // are identical. O(n) over maps already in memory.
-      if (published && _donorSchemaConfirmed && _sameNotes(previous, index)) {
-        return;
-      }
-      final publishable = <String>{
-        for (final note in index.notes)
-          if (_isDonorSafe(note)) note.path,
-      };
-      // Compact, unlike index.json: nothing reads this by eye, and it is the
-      // one index artifact that crosses the network.
-      final donor = jsonEncode({
-        'schema': _indexDonorSchema,
-        'indexVersion': index.version,
-        // Which synonym map produced these tags. A peer whose map differs must
-        // re-derive rather than inherit tags folded by rules it no longer uses.
-        'synonymsHash': await _synonymsHash(),
-        'notes': [
-          for (final note in index.notes)
-            if (publishable.contains(note.path)) note.toJson(),
-        ],
-        // A task rides with its note or not at all: the peer only consults
-        // donated tasks for a note it also took from the donor, so tasks for an
-        // omitted note are dead weight that would still cross the network.
-        'tasks': [
-          for (final task in index.tasks)
-            if (publishable.contains(task.notePath)) task.toJson(),
-        ],
-      });
-      // Second guard, for the cases the note comparison can't settle: a first
-      // publish after a version bump, or a donor whose file drifted from what
-      // the index says. Byte-identical means don't touch the file at all —
-      // on desktop the Nextcloud client watches mtime, so a redundant rewrite
-      // re-uploads megabytes.
-      if (published && await storage.readText(path) == donor) {
-        _donorSchemaConfirmed = true;
-        return;
-      }
-      await storage.writeText(path, donor);
-      _donorSchemaConfirmed = true;
-    } catch (_) {
-      // A donor is a cache. Failing to publish one must never fail a rebuild.
-    }
-  }
+  ) => _donors.publish(deviceId, index, previous: previous);
 
-  /// Fingerprint of `_system/tag-synonyms.json`, or '' when there is none.
-  ///
-  /// Cheap and read once per rebuild; it only gates donor reuse.
-  Future<String> _synonymsHash() async {
-    try {
-      if (!await storage.exists(TylogVaultPaths.tagSynonyms)) return '';
-      return sha256
-          .convert(await storage.readBytes(TylogVaultPaths.tagSynonyms))
-          .toString();
-    } catch (_) {
-      return '';
-    }
-  }
+  /// Merges every *other* device's donor into one index the scanner can use
+  /// as its cache. See tylog_core's [IndexDonorStore].
+  Future<VaultIndex?> _loadDonatedIndex(String? deviceId) =>
+      _donors.load(deviceId);
 
-  /// Whether two indexes describe the same notes, as far as a donor cares.
-  ///
-  /// Only path and content hash matter: those are what a peer matches against
-  /// its own files. A note whose mtime moved but whose bytes did not is the
-  /// same note to everyone else.
-  static bool _sameNotes(VaultIndex? previous, VaultIndex next) {
-    if (previous == null) return false;
-    if (previous.version != next.version) return false;
-    if (previous.notesByPath.length != next.notesByPath.length) return false;
-    for (final entry in next.notesByPath.entries) {
-      final before = previous.notesByPath[entry.key];
-      if (before == null) return false;
-      // A null hash on either side means "unknown", which is never a match —
-      // republish so the peer gets an entry it can actually use.
-      if (before.contentHash == null ||
-          before.contentHash != entry.value.contentHash) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// Merges every *other* device's donor into one index the scanner can use as
-  /// its cache. Best-effort throughout: an unreadable, corrupt or
-  /// wrong-version donor is skipped, never fatal.
-  ///
-  /// ponytail: merged by path only. A note renamed on another device arrives
-  /// already renamed (sync issues a MOVE), so a content-hash reverse map would
-  /// buy nothing yet — add one if renames start showing up as cache misses.
-  Future<VaultIndex?> _loadDonatedIndex(String? deviceId) async {
-    final own = deviceId == null || deviceId.isEmpty
-        ? null
-        : '${TylogVaultPaths.indexDonors}/$deviceId.json';
-    List<VaultStorageEntry> files;
-    try {
-      files = await storage.list(path: TylogVaultPaths.indexDonors);
-    } catch (_) {
-      return null;
-    }
-    final notes = <String, NoteRef>{};
-    // Tasks follow whichever donor won each note: they are derived from that
-    // note's bytes, so mixing one donor's note with another's tasks would put
-    // the scanner's cached branch out of step with the file on disk.
-    final tasksByPath = <String, List<TaskRef>>{};
-    for (final file in files) {
-      if (file.isDirectory ||
-          !file.path.endsWith('.json') ||
-          file.path == own) {
-        continue;
-      }
-      try {
-        final json =
-            (jsonDecode(await storage.readText(file.path)) as Map)
-                .cast<String, Object?>();
-        if (json['indexVersion'] != kVaultIndexVersion) continue;
-        // schema 1 donors carry notes but no tasks. Reusing one seeds a full
-        // note index whose every entry hits the cached branch, so no note is
-        // ever re-queried and the task list stays empty. Skipping it costs one
-        // slow first scan; using it costs a silently empty Tasks view.
-        if (json['schema'] != _indexDonorSchema) continue;
-        final donorTasks = <String, List<TaskRef>>{};
-        for (final item in (json['tasks'] as List? ?? const []).cast<Map>()) {
-          final task = TaskRef.fromJson(item.cast<String, Object?>());
-          (donorTasks[task.notePath] ??= <TaskRef>[]).add(task);
-        }
-        // The donor's tags were folded by whatever map its author had. If ours
-        // differs, its NoteRefs are as stale as an old-schema entry — the
-        // content hashes would still match and the change would be invisible.
-        if (json['synonymsHash'] != await _synonymsHash()) continue;
-        for (final item in (json['notes'] as List).cast<Map>()) {
-          final note = NoteRef.fromJson(item.cast<String, Object?>());
-          final existing = notes[note.path];
-          // Whichever device saw the note last wins. The scanner verifies
-          // every entry against the bytes on disk regardless, so a wrong guess
-          // costs one re-parse, not a wrong index.
-          if (existing == null ||
-              (note.modifiedMillis ?? 0) >= (existing.modifiedMillis ?? 0)) {
-            notes[note.path] = note;
-            tasksByPath[note.path] = donorTasks[note.path] ?? const [];
-          }
-        }
-      } catch (_) {
-        continue;
-      }
-    }
-    if (notes.isEmpty) return null;
-    return VaultIndex(
-      notesByPath: notes,
-      backlinksByTarget: const {},
-      tasks: [for (final list in tasksByPath.values) ...list],
-    );
-  }
+  /// What the last donor load actually reused, for the status line.
+  DonorReuse get donorReuse => _donors.lastReuse;
 
   Future<VaultIndex?> loadIndex() async {
     if (!await storage.exists(indexPath)) return null;

@@ -2,6 +2,7 @@ library;
 
 export 'src/cli_typst_inspector.dart';
 export 'src/graph.dart';
+export 'src/index_donor.dart';
 export 'src/models.dart';
 export 'src/report.dart';
 export 'src/scanner.dart';

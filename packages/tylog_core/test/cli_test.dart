@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -44,6 +45,37 @@ void main() {
       await File('${root.path}/${TylogVaultPaths.index}').readAsBytes(),
     );
     expect(indexed.notes.map((note) => note.path), contains(notePath));
+
+    // The desktop is where the expensive Typst inspection is cheap, so the CLI
+    // must publish a donor: without one every phone recompiles the same notes
+    // for itself (measured: 14.2 min on a P30 for notes the Mac had already
+    // inspected). Same format the app publishes, so peers can read it.
+    final donors = Directory('${root.path}/${TylogVaultPaths.indexDonors}')
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.json'))
+        .toList();
+    expect(donors, hasLength(1), reason: 'CLI must publish exactly one donor');
+    final donor = (jsonDecode(donors.single.readAsStringSync()) as Map)
+        .cast<String, Object?>();
+    expect(donor['schema'], indexDonorSchema);
+    expect(donor['indexVersion'], kVaultIndexVersion);
+    expect(
+      (donor['notes'] as List).map((n) => (n as Map)['path']),
+      contains(notePath),
+    );
+    // Stable per machine: a second run republishes rather than accumulating a
+    // new donor file per invocation.
+    final again = await _cli(['index', root.path], environment);
+    expect(again.exitCode, 0, reason: again.stderr.toString());
+    expect(
+      Directory('${root.path}/${TylogVaultPaths.indexDonors}')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.json'))
+          .length,
+      1,
+    );
 
     final doctor = await _cli(['doctor', root.path], environment);
     expect(doctor.exitCode, 0, reason: doctor.stdout.toString());

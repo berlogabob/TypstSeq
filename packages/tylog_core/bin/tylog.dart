@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:tylog_core/tylog_core.dart';
 
@@ -73,6 +76,11 @@ Future<int> _index(List<String> args) async {
     force: force,
   );
   await storage.writeBytes(TylogVaultPaths.index, encodeVaultIndexBytes(index));
+  // Publish for the phones. Indexing on a desktop is minutes of Typst compiles
+  // that every other device would otherwise repeat for itself; a donor lets
+  // them match by content hash and skip the compile entirely.
+  final deviceId = await _cliDeviceId(storage);
+  await IndexDonorStore(storage).publish(deviceId, index, previous: previous);
   final search = await PkmsSearchIndex.buildStorage(
     storage,
     index,
@@ -81,7 +89,7 @@ Future<int> _index(List<String> args) async {
   await search.saveStorage(storage, TylogVaultPaths.searchIndex);
   stdout.writeln(
     'Indexed ${index.notes.length} notes and ${index.tasks.length} tasks '
-    '(${index.problems.length} warnings)',
+    '(${index.problems.length} warnings); published donor $deviceId',
   );
   for (final problem in index.problems) {
     stderr.writeln(
@@ -89,6 +97,31 @@ Future<int> _index(List<String> args) async {
     );
   }
   return 0;
+}
+
+/// A stable id for this machine's donor, kept in `.tylog/` (device-local, and
+/// outside the sync allowlist) so repeated runs republish one file instead of
+/// littering `_system/index/` with a new donor per invocation.
+Future<String> _cliDeviceId(VaultStorage storage) async {
+  const path = '.tylog/cli-device-id';
+  try {
+    if (await storage.exists(path)) {
+      final existing = (await storage.readText(path)).trim();
+      if (existing.isNotEmpty) return existing;
+    }
+  } catch (_) {
+    // Fall through and mint a new one.
+  }
+  // Host-derived, so a machine keeps its identity even if `.tylog/` is wiped.
+  final seed = '${Platform.localHostname}|${Platform.operatingSystem}';
+  final id = 'cli-${sha256.convert(utf8.encode(seed)).toString().substring(0, 12)}';
+  try {
+    await storage.createDirectory('.tylog');
+    await storage.writeText(path, id);
+  } catch (_) {
+    // Not being able to remember it only costs a re-derive next run.
+  }
+  return id;
 }
 
 Future<int> _doctor(List<String> args) async {
