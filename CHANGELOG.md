@@ -3,6 +3,68 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.4.0+95
+
+Sync stops freezing over conflicts nobody made, an index bump stops costing the
+whole fleet a recompile, and the numbers behind both are measured rather than
+guessed.
+
+**This release forces one re-index** (index version 10) — the last one that
+will. Run `tylog index` on the desktop first and the phones pick the result up
+from its donor instead of recompiling.
+
+### Added
+
+- **Sync records where its time goes.** Every terminal trace event now carries
+  a per-stage profile. First real numbers, P30 / 11,610 files / a pass that
+  transferred nothing: `scan-local` 9.3 s, `list-remote` 5.6 s,
+  `prepare-remote-folder` 1.2 s, and the entire per-file loop over all 11,610
+  files **96 ms**. That retired two planned optimisations before they were
+  written — both targeted half a percent of the cost.
+
+### Fixed
+
+- **One conflict no longer suspends the whole vault's sync.** Five conflicts,
+  none of them files the user had edited, left the A24 695 articles behind for
+  four hours. The sync loop already skipped conflicted paths individually; only
+  the poll gate was vault-wide.
+- **A conflict whose remote was deleted can be resolved.** It compared the
+  record against a missing remote and threw on every attempt, while the only
+  code that could repair the record ran solely when the remote still existed.
+  The escape was deleting the record by hand over adb.
+- **Append-only conflicts resolve themselves.** When one copy is the other plus
+  an appended block, the longer side wins — lossless by definition, counted as
+  repaired and named in the trace. A genuine two-sided edit still stops for
+  review.
+- **The resolve dialog no longer defaults to destroying the newer side.** It
+  preselected keep-local unconditionally; on one real daily note that would
+  have silently deleted an appended line. A default is offered only where it is
+  provably lossless, and each side is described against the other rather than
+  in raw byte counts.
+- **A not-yet-synced image no longer costs a note its metadata.** A note whose
+  `#image()` target had not arrived could not compile, so it fell back to the
+  source parser — 432 of 4,225 notes (10%) on the mid-sync A24 against 18 on
+  the fully-synced P30.
+- **A stray keystroke no longer strands a daily note.** Removing the character
+  failed forever, leaving a 2-byte file nothing could clean up and the editor
+  permanently dirty — which also disabled idle maintenance and the midnight
+  rollover.
+- **Temp files from interrupted writes are swept**, after an hour untouched so
+  an in-flight write is never disturbed.
+- **The vault is no longer walked twice per sync**, and the root folder is no
+  longer re-created on every run to be told it already exists. The no-change
+  pass fell from 21–25 s to 5.9–9.8 s.
+
+### Changed
+
+- **A derive-only index bump costs a re-derivation, not a recompile.** Versions
+  6, 7, 8 and 9 were every bump this index has ever had and none changed the
+  Typst query, yet each made every device recompile the whole vault — 14.2
+  minutes for 5,086 notes on the P30. The query version and the index version
+  now move independently, and entries carry the queried half they need to be
+  re-derived from. Donors (schema 4) survive such a bump instead of being
+  deleted.
+
 ## 0.3.0+94
 
 Indexing gets cheaper, the journal shows today again, and the desktop starts
