@@ -20,6 +20,7 @@ import 'markdown_article_import.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
+import 'nextcloud_sync/conflict_choice.dart';
 import 'pkms_registry.dart';
 import 'platform_file_actions.dart';
 import 'report.dart';
@@ -2161,8 +2162,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? utf8.decode(remoteBytes, allowMalformed: true)
         : null;
     if (!mounted) return;
-    final selected = ValueNotifier<SyncConflictResolution>(
-      SyncConflictResolution.keepLocal,
+    final shape = conflictShape(local: localText, remote: remoteText);
+    // Null preselects nothing, forcing an explicit choice wherever a default
+    // could discard the other side. See defaultResolution.
+    final selected = ValueNotifier<SyncConflictResolution?>(
+      defaultResolution(shape),
     );
     final merged = TextEditingController(text: localText ?? '');
     final save = await showDialog<bool>(
@@ -2185,7 +2189,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
-              ValueListenableBuilder<SyncConflictResolution>(
+              if (conflictShapeHint(shape) case final hint?) ...[
+                Text(
+                  hint,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 8),
+              ],
+              ValueListenableBuilder<SyncConflictResolution?>(
                 valueListenable: selected,
                 builder: (context, value, _) =>
                     RadioGroup<SyncConflictResolution>(
@@ -2210,9 +2221,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ? 'Keep this device version'
                                   : 'Keep deletion from this device',
                             ),
-                            subtitle: localBytes == null
-                                ? const Text('File deleted')
-                                : Text('${localBytes.length} bytes'),
+                            subtitle: Text(
+                              conflictSideLabel(
+                                shape,
+                                isLocal: true,
+                                text: localText,
+                                byteLength: localBytes?.length,
+                              ),
+                            ),
                           ),
                           RadioListTile<SyncConflictResolution>(
                             value: SyncConflictResolution.keepRemote,
@@ -2221,9 +2237,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ? 'Keep Nextcloud version'
                                   : 'Keep deletion from Nextcloud',
                             ),
-                            subtitle: remoteBytes == null
-                                ? const Text('File deleted')
-                                : Text('${remoteBytes.length} bytes'),
+                            subtitle: Text(
+                              conflictSideLabel(
+                                shape,
+                                isLocal: false,
+                                text: remoteText,
+                                byteLength: remoteBytes?.length,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -2253,22 +2274,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           bottomNavigationBar: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: FilledButton.icon(
-                onPressed: () => Navigator.pop(context, true),
-                icon: const Icon(Icons.check),
-                label: const Text('Save resolution'),
+              child: ValueListenableBuilder<SyncConflictResolution?>(
+                valueListenable: selected,
+                builder: (context, value, _) => FilledButton.icon(
+                  // Disabled until a side is chosen: with nothing preselected
+                  // there is no safe action to take on the user's behalf.
+                  onPressed: value == null
+                      ? null
+                      : () => Navigator.pop(context, true),
+                  icon: const Icon(Icons.check),
+                  label: Text(
+                    value == null
+                        ? 'Choose a version to keep'
+                        : 'Save resolution',
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
     );
-    if (save == true) {
+    final resolution = selected.value;
+    if (save == true && resolution != null) {
       try {
         await workspace.resolveConflict(
           conflict,
-          selected.value,
-          mergedText: selected.value == SyncConflictResolution.merge
+          resolution,
+          mergedText: resolution == SyncConflictResolution.merge
               ? merged.text
               : null,
         );
