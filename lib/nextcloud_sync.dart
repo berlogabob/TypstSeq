@@ -230,6 +230,18 @@ class WebDavStatusException extends HttpException {
 class NextcloudSync {
   NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
 
+  /// Raised when the remote copy changed into something genuinely different
+  /// while the user was deciding, so their choice was made about content that
+  /// is no longer there.
+  ///
+  /// Only reached after one refresh-and-recompare: a file re-uploaded with
+  /// identical bytes moves its etag without changing anything the user saw,
+  /// and that case now proceeds instead of failing. Named so tests and
+  /// [friendlySyncError] can pin it.
+  static const remoteMovedDuringResolve =
+      'Nextcloud changed this file while you were deciding. '
+      'Reopen the conflict to see the new version.';
+
   final NextcloudConfig config;
   final void Function(String stage, String? path)? onProgress;
   final bool Function(String path)? canReplaceLocal;
@@ -809,6 +821,8 @@ class NextcloudSync {
 
   Future<void> resolveConflict(
     Vault vault,
+    // Reassigned when the record is refreshed against a moved remote.
+    // ignore: parameter_assignments
     SyncConflict conflict,
     SyncConflictResolution resolution, {
     String? mergedText,
@@ -834,15 +848,37 @@ class NextcloudSync {
       }
       // A single-resource Depth:0 probe instead of a whole-tree PROPFIND —
       // resolving one conflict shouldn't cost a full remote crawl.
-      final currentRemote = await _probeRemoteFile(conflict.path);
-      if (conflict.remoteExists != (currentRemote != null) ||
-          conflict.remoteEtag != null &&
-              NextcloudSync._normEtag(currentRemote?.etag) !=
-                  NextcloudSync._normEtag(conflict.remoteEtag)) {
-        throw StateError(
-          'Nextcloud changed again; run sync and review the new conflict',
-        );
+      //
+      // The record's etag is frozen at write time, so on a vault with a live
+      // producer it goes stale constantly — and this used to *throw* whenever
+      // it had, which made the common case an error the user could do nothing
+      // about. The guard is right to exist; refusing to re-decide was the bug.
+      // Refresh the record against the live remote, then compare the bytes the
+      // user was actually shown: identical means the file was merely
+      // re-uploaded and their choice still applies. Genuinely different means
+      // they were deciding about something else, and that has to be said.
+      var active = conflict;
+      final shownRemote = await _conflictRemoteBytes(vault, active);
+      var currentRemote = await _probeRemoteFile(active.path);
+      var refreshed = false;
+      while (_conflictRemoteMoved(active, currentRemote)) {
+        // One refresh, not a loop: a file being rewritten faster than we can
+        // read it must surface rather than spin.
+        if (refreshed || currentRemote == null) {
+          throw StateError(NextcloudSync.remoteMovedDuringResolve);
+        }
+        refreshed = true;
+        await _refreshConflictRemote(vault, active, currentRemote, null);
+        final reloaded = await _reloadConflict(vault, active);
+        // Gone from disk: self-heal already resolved it.
+        if (reloaded == null) return;
+        active = reloaded;
+        if (!_sameBytes(shownRemote, await _conflictRemoteBytes(vault, active))) {
+          throw StateError(NextcloudSync.remoteMovedDuringResolve);
+        }
+        currentRemote = await _probeRemoteFile(active.path);
       }
+      conflict = active;
 
       String? remoteEtag;
       if (resolution == SyncConflictResolution.keepRemote) {
@@ -1199,6 +1235,15 @@ bool isSafBackupPath(String path) {
 ///
 /// Nothing is lost by taking the remote copy: a donor is derived data, and the
 /// worst case is that this device prunes it again on the next scan.
+bool _sameBytes(List<int>? a, List<int>? b) {
+  if (a == null || b == null) return a == null && b == null;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 bool isRegenerableCachePath(String path) =>
     path.startsWith('_system/index/') && path.endsWith('.json');
 

@@ -2229,6 +2229,85 @@ void main() {
     });
   });
 
+  group('a moved remote is re-decided, not refused', () {
+    // The record's etag is frozen at write time, so on a vault with a live
+    // producer it goes stale constantly. Throwing on every mismatch made the
+    // common case an error the user could do nothing about.
+    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote, SyncConflict conflict})>
+    setup({required String remoteAfter}) async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/live.typ': _remoteText('remote note'),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_moved_remote_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/live.typ', 'local note');
+      // Recorded by a real sync, so the record carries the observed etag the
+      // guard actually compares against. createSyncConflict writes none.
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      // The producer rewrites the file after the record was written, moving
+      // its etag.
+      remote['notes/live.typ'] = _MutableRemoteFile(
+        bytes: utf8.encode(remoteAfter),
+        etag: '"moved-on"',
+        modified: DateTime.now().toUtc(),
+      );
+      return (
+        vault: vault,
+        server: server,
+        remote: remote,
+        conflict: (await loadSyncConflicts(vault)).single,
+      );
+    }
+
+    test('identical bytes under a new etag still resolve', () async {
+      // A re-upload of the same content moves the etag without changing
+      // anything the user was shown.
+      final s = await setup(remoteAfter: 'remote note');
+
+      await NextcloudSync(_config(s.server)).resolveConflict(
+        s.vault,
+        s.conflict,
+        SyncConflictResolution.keepLocal,
+      );
+
+      expect(await loadSyncConflicts(s.vault), isEmpty);
+      expect(utf8.decode(s.remote['notes/live.typ']!.bytes), 'local note');
+    });
+
+    test('genuinely different bytes say so instead of failing vaguely', () async {
+      final s = await setup(remoteAfter: 'remote note, rewritten');
+
+      await expectLater(
+        () => NextcloudSync(_config(s.server)).resolveConflict(
+          s.vault,
+          s.conflict,
+          SyncConflictResolution.keepLocal,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            NextcloudSync.remoteMovedDuringResolve,
+          ),
+        ),
+      );
+
+      // The record survives, refreshed, so reopening shows the new version.
+      final refreshed = (await loadSyncConflicts(s.vault)).single;
+      expect(
+        utf8.decode(await s.vault.storage.readBytes(refreshed.remoteSnapshot!)),
+        'remote note, rewritten',
+        reason: 'the snapshot must hold what is actually on the server now',
+      );
+    });
+  });
+
   test(
     'a conflict whose remote was deleted becomes resolvable instead of stuck',
     () async {

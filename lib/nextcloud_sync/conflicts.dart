@@ -132,6 +132,44 @@ extension _SyncConflicts on NextcloudSync {
     );
   }
 
+  /// The remote snapshot bytes a conflict record currently points at — what
+  /// the user was shown in the dialog. Null when there is no snapshot.
+  ///
+  /// Must be read *before* [_refreshConflictRemote], which overwrites the
+  /// snapshot in place.
+  Future<List<int>?> _conflictRemoteBytes(
+    Vault vault,
+    SyncConflict conflict,
+  ) async {
+    final path = conflict.remoteSnapshot;
+    if (path == null) return null;
+    try {
+      if (!await vault.storage.exists(path)) return null;
+      return await vault.storage.readBytes(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Re-reads a conflict record from disk after it has been rewritten, so the
+  /// in-memory copy stops carrying the etag the refresh just replaced.
+  Future<SyncConflict?> _reloadConflict(
+    Vault vault,
+    SyncConflict conflict,
+  ) async {
+    for (final candidate in await loadSyncConflicts(vault)) {
+      if (candidate.id == conflict.id) return candidate;
+    }
+    return null;
+  }
+
+  /// Whether the live remote disagrees with what the record was written from.
+  bool _conflictRemoteMoved(SyncConflict conflict, _RemoteFile? current) =>
+      conflict.remoteExists != (current != null) ||
+      conflict.remoteEtag != null &&
+          NextcloudSync._normEtag(current?.etag) !=
+              NextcloudSync._normEtag(conflict.remoteEtag);
+
   /// Rewrites an unresolved conflict to the "Nextcloud deleted it" shape after
   /// the remote really did disappear.
   ///

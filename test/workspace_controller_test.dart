@@ -833,16 +833,14 @@ void main() {
       'Nextcloud rejected the login. Re-enter the app password.',
     );
     // resolveConflict's etag-mismatch guard throws a StateError whose own
-    // message tells the user what to do ("run sync and review the new
-    // conflict"); friendlySyncError must not swallow that into a generic
-    // message, since the fallback path is the only thing that surfaces it.
+    // message tells the user what to do; friendlySyncError must not swallow
+    // that into a generic message, since the fallback path is the only thing
+    // that surfaces it. The guard now refreshes and re-decides first, so this
+    // only fires when the remote genuinely became something else — and the
+    // message says so rather than "run sync and review".
     expect(
-      friendlySyncError(
-        StateError(
-          'Nextcloud changed again; run sync and review the new conflict',
-        ),
-      ),
-      contains('Nextcloud changed again; run sync and review the new conflict'),
+      friendlySyncError(StateError(NextcloudSync.remoteMovedDuringResolve)),
+      contains(NextcloudSync.remoteMovedDuringResolve),
     );
   });
 
