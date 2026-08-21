@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import '../controlled_editor.dart' show mentionExcerpts;
@@ -55,9 +56,11 @@ class _LinkedReferencesState extends State<LinkedReferences> {
   @override
   void didUpdateWidget(LinkedReferences old) {
     super.didUpdateWidget(old);
-    // Targets change when the open note changes; its excerpts are keyed on
-    // them, so stale entries would just accumulate.
-    if (old.targets != widget.targets) _excerpts.clear();
+    // By content, not identity: the parent builds `targets: {…}` as a fresh
+    // set literal on every build, so `!=` would be true every time and the
+    // cache would clear on every rebuild — exactly the cost it exists to
+    // avoid.
+    if (!setEquals(old.targets, widget.targets)) _excerpts.clear();
   }
 
   @override
