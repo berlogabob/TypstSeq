@@ -366,10 +366,41 @@ _index
 
   Future<void> saveNote(String path, String text) async {
     if (path.endsWith('.typ') && text.trim().isEmpty) {
+      // Refusing the write protects a real note from being blanked. It also
+      // used to strand the exact case that produced it: a stray character
+      // typed into the Today editor materialises the daily file, and removing
+      // that character then fails forever. The 2-byte file stays on disk with
+      // nothing able to clean it up, and — because `dirty` only clears on a
+      // successful save — the editor stays dirty, which in turn disables idle
+      // maintenance and the midnight rollover. One keystroke, permanently.
+      //
+      // So: if what is on disk was never a real note, emptying it removes it.
+      // Anything carrying a note header is real content and still refuses.
+      if (await _isDisposableNote(path)) {
+        await storage.delete(path);
+        _staleNotes.add(path);
+        return;
+      }
       throw ArgumentError('A TyLog note cannot be empty');
     }
     await storage.writeText(path, text);
     _staleNotes.add(path);
+  }
+
+  /// Whether the note at [path] holds nothing worth keeping: absent, blank, an
+  /// untouched starter daily, or a file with no TyLog note header at all (what
+  /// a stray keystroke leaves behind). Unreadable counts as *not* disposable —
+  /// never delete on the strength of a failed read.
+  Future<bool> _isDisposableNote(String path) async {
+    try {
+      if (!await storage.exists(path)) return true;
+      final source = await storage.readText(path);
+      return source.trim().isEmpty ||
+          !source.contains(noteHeaderMarker) ||
+          isPristineStarterNote(path, source);
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<String> readText(String path) => storage.readText(path);
@@ -436,6 +467,11 @@ String _noteSource({
 = ${escapeMarkup(title)}
 
 ''';
+
+/// The line every TyLog-written note carries. Its absence means the file was
+/// never a structured note — an empty buffer saved over a path, or foreign
+/// content that has not been converted.
+const noteHeaderMarker = '#show: tylog.note';
 
 bool isPristineStarterNote(String path, String source) {
   final match = RegExp(

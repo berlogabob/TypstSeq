@@ -345,6 +345,13 @@ void main() {
     final vault = Vault(dir);
     await vault.ensureCreated();
     final note = await vault.todayNote(DateTime(2026, 7, 4));
+    // Written into, so it is real content rather than the untouched starter —
+    // emptying a starter daily now removes it instead, which is the point of
+    // test/empty_note_cleanup_test.dart.
+    await vault.saveNote(
+      note,
+      '${await vault.readText(note)}\nSomething the user wrote.\n',
+    );
     final original = await vault.readText(note);
     await expectLater(vault.saveNote(note, '  \n'), throwsArgumentError);
     expect(await vault.readText(note), original);
