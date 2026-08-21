@@ -132,6 +132,23 @@ and resolving.
   succeeds when content is unchanged, and shows the new diff when it isn't —
   proven with a test that mutates the remote between probe and apply.
 
+## Phase 3d — The default resolution can destroy the newer side — S
+
+The dialog preselects **keep-local** unconditionally
+(`lib/app_mobile.dart:2131`). Observed at 02:47 on the A24:
+`daily/2026-08-21.typ` had local 184 bytes and remote 221 — remote being local
+plus the appended line *"today we will play concert with Flor"*. Accepting the
+default would have silently deleted that line; only reading the byte counts
+caught it. A default that can destroy the strictly-newer side is the wrong
+default on a data-safety screen.
+*Fix:* preselect nothing when both sides exist and neither is a prefix of the
+other (force an explicit choice); preselect the superset when one side
+fast-forwards the other (and let Phase 2 resolve that case without a dialog at
+all); label each option with its relationship ("adds 1 line", "identical
+content") rather than raw byte counts.
+*Exit metric:* replaying this conflict offers the superset as the default and
+never silently drops the appended line.
+
 ## Phase 4 — Never fail invisibly; resolve in bulk — S
 
 - The error banner must not lose its slot to the "Syncing…" card: render
