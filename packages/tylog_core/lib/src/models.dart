@@ -50,6 +50,22 @@ class PkmsProblem {
   );
 }
 
+/// The ISO day a daily note is for: its `date:` header, or the day in its
+/// `daily/YYYY/MM/YYYY-MM-DD.typ` path when the header omits one.
+///
+/// Read-side, deliberately. The scanner fills `date` for daily notes now, but
+/// entries cached by an earlier build still carry null — and re-deriving those
+/// would mean bumping the index version, i.e. every device recompiling its
+/// whole vault to repair a handful of notes. Five such notes on the real vault
+/// were missing from the calendar and sorted above today in the journal.
+String? dailyDayOf(NoteRef note) {
+  if (note.date != null) return note.date;
+  if (note.kind != 'daily') return null;
+  return _dayInDailyPath.firstMatch(note.path)?.group(1);
+}
+
+final _dayInDailyPath = RegExp(r'(\d{4}-\d{2}-\d{2})\.typ$');
+
 class NoteRef {
   const NoteRef({
     required this.id,
@@ -456,9 +472,9 @@ class VaultIndex {
   List<CalendarItem> get calendar {
     final items = <CalendarItem>[
       for (final note in notes)
-        if (note.kind == 'daily' && note.date != null)
+        if (note.kind == 'daily' && dailyDayOf(note) != null)
           CalendarItem(
-            date: note.date!,
+            date: dailyDayOf(note)!,
             kind: CalendarItemKind.daily,
             title: note.title,
             notePath: note.path,

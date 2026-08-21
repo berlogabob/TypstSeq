@@ -1693,7 +1693,7 @@ NoteRef _queriedNote(
     title: _text(note['title']) ?? stem,
     kind: kind,
     project: _text(note['project']),
-    date: _text(note['date']),
+    date: _text(note['date']) ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ...stringList(note['tags']),
       ...metadata.tags,
@@ -1763,7 +1763,7 @@ NoteRef _fallbackNote(
     title: _field(header, 'title') ?? stem,
     kind: kind,
     project: _field(header, 'project'),
-    date: _field(header, 'date'),
+    date: _field(header, 'date') ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ..._parseList(header, 'tags'),
       ..._firstArguments(calls, 'tylog.tag'),
@@ -2156,6 +2156,22 @@ List<String> _sorted(Set<String> values) => values.toList()..sort();
 ///
 /// Index-only, both of them: the note's own text is never rewritten, so undoing
 /// a bad merge means editing the synonym file, not hundreds of notes.
+/// The ISO day a `daily/YYYY/MM/YYYY-MM-DD.typ` note is for, when its header
+/// omits `date:`.
+///
+/// Index-only, like the tag aliases: the note's own text is never rewritten.
+/// Without it such a note is invisible on the calendar (which requires a date)
+/// and sorts *above* every dated note in the journal feed, because the feed
+/// falls back to the path as its key and `daily/…` sorts above `2026-…`
+/// descending — five notes on the real vault put today six entries down.
+String? _dailyDateFromPath(String kind, String path) {
+  if (kind != 'daily') return null;
+  final match = _dailyPathDay.firstMatch(path);
+  return match?.group(1);
+}
+
+final _dailyPathDay = RegExp(r'(\d{4}-\d{2}-\d{2})\.typ$');
+
 /// The kind→tag alias (plan: "Kinds become tags"): non-default kinds join the
 /// note's tags so the existing tag filters slice by article/person/daily with
 /// no UI changes. Index-only — like tag synonyms, the note's text is never

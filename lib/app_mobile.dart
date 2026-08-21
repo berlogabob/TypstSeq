@@ -770,6 +770,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _openNote(await v.dailyNote(day));
   }
 
+  /// The day the arrows have stepped to but not opened yet. The header reads
+  /// this first so a tap moves the date immediately.
+  DateTime? _navDay;
+  Timer? _navDebounce;
+
+  /// Steps the journal by [delta] days.
+  ///
+  /// Coalesced, because one step is not cheap: opening a day saves the dirty
+  /// buffer, creates the month directory, checks for the file, writes it when
+  /// missing and reads it back — five SAF round-trips that queue behind any
+  /// running sync. Uncoalesced, a user who taps `>` four times waited for four
+  /// of those sequences *and* left an empty daily note behind for every day
+  /// merely passed through. Now the label moves on the tap, the taps collapse,
+  /// and only the day actually landed on is created.
+  void _stepDay(int delta) {
+    final from = _navDay ?? _dailyDateOf(note);
+    if (from == null) return;
+    final next = DateTime(from.year, from.month, from.day + delta);
+    setState(() => _navDay = next);
+    _navDebounce?.cancel();
+    _navDebounce = Timer(const Duration(milliseconds: 180), () {
+      final target = _navDay;
+      if (target == null || !mounted) return;
+      unawaited(
+        _openDay(target).whenComplete(() {
+          if (!mounted) return;
+          // Only clear when nothing has stepped past this open in the meantime.
+          if (_navDay == target) setState(() => _navDay = null);
+        }),
+      );
+    });
+  }
+
   /// Date of the currently open note when it is a daily journal file.
   DateTime? _dailyDateOf(String? path) {
     if (path == null) return null;
@@ -3229,7 +3262,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final desktopManaged =
         _localVaultDirectory != null &&
         isNextcloudManagedVault(_localVaultDirectory!);
-    final currentDaily = _dailyDateOf(current);
+    // The pending step wins so the arrows feel instant; it clears when the
+    // open lands (see [_stepDay]).
+    final currentDaily = _navDay ?? _dailyDateOf(current);
     final dayItems = currentDaily == null
         ? const <CalendarItem>[]
         : (index?.calendar ?? const <CalendarItem>[])
@@ -3684,16 +3719,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   IconButton(
                     tooltip: 'Previous day',
                     icon: const Icon(Icons.chevron_left),
-                    // Calendar day, not 24h: DST-safe.
-                    onPressed: () => unawaited(
-                      _openDay(
-                        DateTime(
-                          currentDaily.year,
-                          currentDaily.month,
-                          currentDaily.day - 1,
-                        ),
-                      ),
-                    ),
+                    // Calendar day, not 24h: DST-safe (see [_stepDay]).
+                    onPressed: () => _stepDay(-1),
                   ),
                   Flexible(
                     child: Tooltip(
@@ -3723,15 +3750,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   IconButton(
                     tooltip: 'Next day',
                     icon: const Icon(Icons.chevron_right),
-                    onPressed: () => unawaited(
-                      _openDay(
-                        DateTime(
-                          currentDaily.year,
-                          currentDaily.month,
-                          currentDaily.day + 1,
-                        ),
-                      ),
-                    ),
+                    onPressed: () => _stepDay(1),
                   ),
                 ],
               )

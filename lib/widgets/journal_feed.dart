@@ -84,11 +84,23 @@ class _JournalFeedState extends State<JournalFeed> {
     super.dispose();
   }
 
+  /// Newest day first.
+  ///
+  /// Keyed on the day, never the path: a daily whose header omitted `date:`
+  /// used to fall back to `daily/2026/08/...`, and `d` sorts above `2` — so a
+  /// handful of undated notes pushed *today* six entries down a feed that
+  /// loads one day at a time. The scanner now derives the day from the path,
+  /// and this fallback keeps a stray null from ever outranking a real day.
   List<NoteRef> _days() =>
       (widget.index?.notes ?? const <NoteRef>[])
           .where((note) => note.kind == 'daily')
           .toList()
-        ..sort((a, b) => (b.date ?? b.path).compareTo(a.date ?? a.path));
+        ..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
+
+  static final _dayInPath = RegExp(r'(\d{4}-\d{2}-\d{2})\.typ$');
+
+  static String _dayKey(NoteRef note) =>
+      note.date ?? _dayInPath.firstMatch(note.path)?.group(1) ?? '';
 
   // Grows the window by one day at a time as the user nears the bottom of
   // the loaded content. `_growing` blocks re-entry until the frame that
