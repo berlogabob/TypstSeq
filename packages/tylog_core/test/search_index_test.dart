@@ -114,6 +114,36 @@ void main() {
     expect(third.search('Renamed'), isNotEmpty);
   });
 
+  // The identity early-out now runs *before* task/attachment docs are built
+  // (they were re-tokenised every rebuild and then discarded). A deletion must
+  // still invalidate: fewer note docs than before means a real rebuild.
+  test('deleting a note invalidates the cached index', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_search_del_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    final notesDir = await Directory('${root.path}/notes').create();
+    for (var i = 0; i < 3; i++) {
+      await File(
+        '${notesDir.path}/n$i.typ',
+      ).writeAsString(_note(id: 'n$i', title: 'Note $i'));
+    }
+    final first = await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage),
+    );
+    expect(first.search('Note 1'), isNotEmpty);
+
+    await File('${notesDir.path}/n1.typ').delete();
+    final second = await PkmsSearchIndex.buildStorage(
+      storage,
+      await scanVaultStorage(storage),
+      previous: first,
+    );
+
+    expect(identical(second, first), isFalse);
+    expect(second.search('Note 1'), isEmpty);
+  });
+
   group('searchPrefix', () {
     late Directory root;
 

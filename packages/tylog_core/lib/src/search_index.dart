@@ -144,6 +144,11 @@ class PkmsSearchIndex {
     }
   }
 
+  /// Task and attachment documents, which derive from notes rather than being
+  /// keyed by note path.
+  static bool _isDerivedKey(String key) =>
+      key.startsWith('task:') || key.startsWith('attachment:');
+
   static const _readConcurrency = 16;
 
   static Future<PkmsSearchIndex> buildStorage(
@@ -213,6 +218,18 @@ class PkmsSearchIndex {
         contentHash: note.contentHash,
         snippet: _snippet(source),
       );
+    }
+    // Task and attachment docs derive entirely from notes, so when every note
+    // came from the cache they are provably identical to `previous`'s — and
+    // rebuilding them meant re-tokenising 3,725 task docs on every rebuild only
+    // to throw the result away at the identity check below.
+    if (previous != null && misses.isEmpty) {
+      final previousNoteDocs = previous._documents.keys
+          .where((key) => !_isDerivedKey(key))
+          .length;
+      // Same note docs, all served from cache: a deletion shows up here as a
+      // smaller count and falls through to a full rebuild.
+      if (documents.length == previousNoteDocs) return previous;
     }
     for (final task in vault.tasks) {
       documents['task:${task.id}'] = _SearchDocument(
