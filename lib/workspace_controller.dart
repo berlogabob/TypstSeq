@@ -992,16 +992,28 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final config = cloud;
     if (opened == null || config == null || !config.isReady) return;
+    // Announce the attempt before doing any of it. A resolve is a network
+    // write plus an index refresh — seconds to minutes on a busy vault — and
+    // this method used to notify exactly once, at the very end, so nothing
+    // could tell "working" from "dead button". During the A24 incident I twice
+    // concluded a resolve had failed while it was still running.
+    status = 'Resolving conflict…';
+    notifyListeners();
     try {
       await NextcloudSync(
         config,
       ).resolveConflict(opened, conflict, resolution, mergedText: mergedText);
-      await refreshIndex(updateStatus: false, always: true);
       // Refresh from disk rather than just filtering out this one id: a
       // resolve can also self-heal other now-matching records.
       syncConflicts = await loadSyncConflicts(opened);
       syncError = null;
       status = syncConflicts.isEmpty ? 'Conflict resolved' : 'Needs attention';
+      // The resolution is complete once the remote write and the record
+      // cleanup have landed. Reindexing is bookkeeping that follows from it,
+      // and awaiting it here meant waiting on a full scan *plus one queued
+      // repeat* (see _scan) before saying anything — the ten minutes the user
+      // spent staring at an unchanged row.
+      unawaited(refreshIndex(updateStatus: false, always: true));
     } catch (error) {
       // Keep the conflict in the list rather than silently dropping it —
       // an error here (e.g. the remote moved again) must stay visible, not

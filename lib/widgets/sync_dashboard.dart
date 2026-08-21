@@ -70,6 +70,14 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   bool _reloading = false;
   Timer? _refresh;
 
+  /// Conflicts whose resolve is in flight, keyed by id.
+  ///
+  /// Lives on the State, not on [SyncDashboardData]: `_reload` replaces that
+  /// snapshot wholesale twice a second, so anything stored there is destroyed
+  /// on the next tick — while the row itself stays until the record is gone
+  /// from disk, which is exactly the span the user needs to see.
+  final Set<String> _resolving = {};
+
   /// This screen holds a *snapshot*, not a live view of the controller, and
   /// `_run` refuses to act while that snapshot says a sync is in flight. So a
   /// snapshot that gets stuck on `syncing: true` disables every action on the
@@ -131,8 +139,18 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   /// That was the whole reported symptom — "I can resolve one, then nothing
   /// happens until I force-quit the app."
   Future<void> _resolve(SyncConflict conflict) async {
-    await widget.onResolve(conflict);
-    await _reload();
+    if (_resolving.contains(conflict.id)) return;
+    setState(() => _resolving.add(conflict.id));
+    try {
+      await widget.onResolve(conflict);
+      await _reload();
+    } finally {
+      if (mounted) {
+        setState(() => _resolving.remove(conflict.id));
+      } else {
+        _resolving.remove(conflict.id);
+      }
+    }
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -271,19 +289,30 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                     ),
                     for (final conflict in value.conflicts)
                       Card(
+                        // Keyed by id, not by position. The rows rebuild twice
+                        // a second from a fresh snapshot; unkeyed, a list that
+                        // reorders or shrinks between two reloads moves a
+                        // different record under the finger mid-tap.
+                        key: ValueKey('conflict-${conflict.id}'),
                         color: Theme.of(context).colorScheme.errorContainer,
                         child: ListTile(
                           leading: const Icon(Icons.warning_amber_rounded),
                           title: Text(conflict.path),
                           subtitle: Text(
-                            conflict.localExists && conflict.remoteExists
+                            _resolving.contains(conflict.id)
+                                ? 'Resolving… uploading and cleaning up'
+                                : conflict.localExists && conflict.remoteExists
                                 ? 'Both copies changed'
                                 : conflict.localExists
                                 ? 'Nextcloud deleted; this device changed'
                                 : 'This device deleted; Nextcloud changed',
                           ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => unawaited(_resolve(conflict)),
+                          trailing: _resolving.contains(conflict.id)
+                              ? const LoadingIndicator(size: 24, strokeWidth: 2)
+                              : const Icon(Icons.chevron_right),
+                          onTap: _resolving.contains(conflict.id)
+                              ? null
+                              : () => unawaited(_resolve(conflict)),
                         ),
                       ),
                   ],

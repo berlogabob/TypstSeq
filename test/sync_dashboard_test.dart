@@ -1,7 +1,10 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
+import 'package:tylog/widgets/loading.dart';
 import 'package:tylog/widgets/sync_dashboard.dart';
 
 /// The Sync dashboard holds a *snapshot* of the controller rather than
@@ -114,6 +117,75 @@ void main() {
     await tester.pump();
 
     expect(resolved, 1);
+  });
+
+  // A resolve is a network write plus an index refresh - seconds to minutes on
+  // a busy vault - and the row used to be byte-identical to one nobody had
+  // tapped for the whole of it. Twice during the A24 incident that made a
+  // working resolve look like a dead button, and both times the conclusion
+  // drawn from it was wrong.
+  testWidgets('a resolve in flight says so on its own row', (tester) async {
+    final finish = Completer<void>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: false,
+            conflicts: [_conflict('notes/A.typ'), _conflict('notes/B.typ')],
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async => finish.future,
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(LoadingIndicator), findsNothing);
+
+    await tester.tap(find.text('notes/A.typ'));
+    await tester.pump();
+
+    expect(
+      find.text('Resolving… uploading and cleaning up'),
+      findsOneWidget,
+      reason: 'the tapped row must say it is working',
+    );
+    // Only the tapped row: the other conflict is untouched.
+    expect(find.text('Both copies changed'), findsOneWidget);
+
+    finish.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Resolving… uploading and cleaning up'), findsNothing);
+    expect(find.text('Both copies changed'), findsNWidgets(2));
+  });
+
+  testWidgets('conflict rows are keyed by id, not by position', (tester) async {
+    // The rows rebuild twice a second from a fresh snapshot. Unkeyed, a list
+    // that reorders between two reloads moves a different record under the
+    // finger mid-tap.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: false,
+            conflicts: [_conflict('notes/A.typ'), _conflict('notes/B.typ')],
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('conflict-c-notes/A.typ')), findsOneWidget);
+    expect(find.byKey(const ValueKey('conflict-c-notes/B.typ')), findsOneWidget);
   });
 
   testWidgets('a slow load landing late does not overwrite a fresher one', (

@@ -438,6 +438,76 @@ void main() {
     },
   );
 
+  test('a resolve announces itself before the reindex it triggers', () async {
+    // resolveConflict used to notify exactly once, at the very end, and the
+    // end was gated on refreshIndex(always: true) - a full scan plus one
+    // queued repeat. Ten minutes of a row that looked untapped. The
+    // resolution is complete when the remote write and record cleanup land;
+    // reindexing follows from it and must not gate the report.
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+
+    // A server that never answers, so the resolve stays in flight.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final stalled = Completer<void>();
+    server.listen((request) async {
+      await stalled.future;
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+    });
+    addTearDown(() {
+      if (!stalled.isCompleted) stalled.complete();
+      return server.close(force: true);
+    });
+
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = NextcloudConfig(
+      serverUrl:
+          'http://${server.address.address}:${server.port}'
+          '/remote.php/dav/files/alice/TyLogVault',
+      username: 'alice',
+      password: 'secret',
+    );
+
+    var notifications = 0;
+    controller.addListener(() => notifications++);
+
+    final resolving = controller.resolveConflict(
+      SyncConflict(
+        id: 'stuck',
+        path: 'notes/a.typ',
+        recordPath: '.tylog/conflicts/stuck.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: true,
+      ),
+      SyncConflictResolution.keepLocal,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      notifications,
+      greaterThan(0),
+      reason: 'the attempt must be observable while it is still running',
+    );
+    expect(controller.status, 'Resolving conflict…');
+
+    stalled.complete();
+    await resolving;
+  });
+
   test('failed initial sync does not activate draft cloud config', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
