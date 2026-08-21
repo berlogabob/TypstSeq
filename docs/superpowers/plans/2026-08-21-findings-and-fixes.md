@@ -115,3 +115,58 @@ duplicated compute after every schema change. 1a alone (CLI publishes a donor,
 drain runs it) recovers most of the value for a small change; 1b is what keeps
 it working across future releases. 2 is a small fix with a visible quality
 payoff on any syncing device. 3 is opportunistic.
+
+---
+
+## 4. Sync cost, measured on the P30 — 2026-08-21
+
+Stage timings now ride in `sync_trace.jsonl` on every terminal event. First
+real numbers, P30 / 11,610 files / a pass that transferred nothing (18.1 s):
+
+| stage | ms | | stage | ms |
+|---|---:|---|---|---:|
+| scan-local | 9348 | | detect-renames | 366 |
+| list-remote | 5590 | | load-local-state | 141 |
+| prepare-remote-folder | 1180 | | **sync-file (all 11,610)** | **96** |
+| probe-root | 778 | | save-local-state | 597 |
+
+**This retired two planned optimisations before they were written.** Both
+targeted the per-file loop — partitioning unchanged paths out of it, and making
+the 5 s checkpoint O(changed). The loop is 96 ms of 18,100, and the checkpoint
+never fires at all in a no-change pass because the loop it guards finishes in a
+fiftieth of one interval. The "~1,440 checkpoint writes per pass" figure came
+from reasoning about a 2-hour transferring pass and does not describe the
+common case.
+
+Fixed instead, from what the numbers actually showed:
+
+- **The tree was walked twice.** The no-change shortcut takes a full recursive
+  listing to compare mtime+size, discards it on any mismatch, and `scan-local`
+  immediately re-walks the identical tree. Only a network PROPFIND separates
+  them, so the snapshot is the same either way. One 9.3 s walk instead of two
+  on every changed pass.
+- **A guaranteed-405 MKCOL per run.** `prepare-remote-folder` ran *above* the
+  shortcut, so every sync paid a round trip to be told the folder already
+  exists. Moved below it, still above `list-remote` so a folder that really
+  vanished is recreated on the full path.
+
+Measured after: the no-change shortcut is **9.8 s, from 21–25 s** (load-state
+183, probe-root 1154, scan-local-shortcut 8455), with no MKCOL at all.
+
+### What is left, and it is one thing
+
+`scan-local` is now **86% of a shortcut pass**. It is a single
+`storage.list(recursive: true)`, but SafBridge answers it with one
+`ContentResolver.query` per directory (`SafBridge.kt:471-513`), and nothing
+caches it across calls — the indexer (`scanner.dart:417`), the validator
+(`validation.dart:61`) and the backup sweep each walk the same tree again
+afterwards. Options, cheapest first:
+
+1. Share one listing between sync and the scan that follows it, invalidated on
+   any local write. Bounded risk: a stale listing must never hide a file.
+2. A `ContentObserver` on the tree URI so an unchanged vault skips the walk
+   entirely. Bigger change, native side, and SAF's change notifications are not
+   guaranteed granular — needs a fallback walk on a timer.
+
+Not scheduled yet. Moving sync off the root isolate stays unscheduled for the
+same reasons as before (conflicts, SAF tokens, the foreground service).
