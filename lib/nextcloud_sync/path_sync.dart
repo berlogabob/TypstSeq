@@ -488,6 +488,25 @@ extension _PathSync on NextcloudSync {
         reason = possibleRename
             ? 'possible-rename-kept'
             : 'local-delete-remote-edit';
+      } else if (isRegenerableCachePath(path)) {
+        // Never propagate. This device's copy is absent because its own prune
+        // dropped a donor it could not read - not because anyone deleted
+        // anything - and propagating that removed the desktop's freshly
+        // published donor from the server, which is the one file the whole
+        // fleet was waiting on.
+        action = SyncAction.download;
+        final download = await _downloadStorage(
+          path,
+          vault.storage,
+          protectNonEmpty: true,
+          archive: archive,
+          remoteFile: remoteFile,
+        );
+        observedRemoteEtag = download.etag;
+        downloadedHash = download.localSha256;
+        downloaded++;
+        repaired++;
+        reason = 'cache-refetched';
       } else {
         try {
           action = SyncAction.deleteRemote;

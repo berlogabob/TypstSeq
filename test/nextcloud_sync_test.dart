@@ -2044,6 +2044,37 @@ void main() {
     expect(await vault.storage.readText(donor), contains('republished'));
   });
 
+  test('an absent donor is refetched, never deleted from the server', () async {
+    // The P30 did exactly this: its prune dropped an unusable local replica,
+    // and the next sync read the absence as a user deletion and removed the
+    // desktop's freshly published donor from Nextcloud - the one file the
+    // whole fleet was waiting on.
+    const donor = '_system/index/cli-7e1afd3ac405.json';
+    final remote = <String, _MutableRemoteFile>{
+      donor: _remoteText('{"schema":4,"from":"desktop"}'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_donor_del_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText(donor, '{"schema":4,"from":"desktop"}');
+    await NextcloudSync(_config(server)).sync(vault);
+
+    // The prune drops the local replica. The remote is untouched.
+    await vault.storage.delete(donor);
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'poll');
+
+    expect(result.deletedRemote, 0, reason: 'a peer\'s donor is not ours');
+    expect(remote.containsKey(donor), isTrue);
+    expect(await vault.storage.readText(donor), contains('desktop'));
+  });
+
   test('a conflict already recorded on a donor clears itself', () async {
     // The P30 carried exactly this record after its version-10 rebuild. The
     // sync loop skips a conflicted path before reaching the branches that know

@@ -57,6 +57,12 @@ void main() {
 
   String path(String id) => '${TylogVaultPaths.indexDonors}/$id.json';
 
+  /// Ages a donor past [IndexDonorStore.staleDonorAge] so the prune may touch
+  /// it. A fresh peer donor is deliberately untouchable.
+  void age(String id) => File('${root.path}/${path(id)}').setLastModifiedSync(
+    DateTime.now().subtract(const Duration(days: 30)),
+  );
+
   test('publishing writes a donor a peer can read back', () async {
     await donors.publish('desktop', _index());
 
@@ -70,6 +76,18 @@ void main() {
     // A peer (different device id) merges it.
     final reused = await IndexDonorStore(storage).load('phone');
     expect(reused?.notesByPath['notes/a.typ']?.title, 'Alpha');
+  });
+
+  test('a peer donor written moments ago is never pruned', () async {
+    // The P30 dropped its unusable replica of the desktop's donor seconds
+    // after the desktop had replaced it with a readable one, then propagated
+    // that deletion to the server - removing the one file the whole fleet was
+    // waiting on. A donor lives in a shared folder; deleting someone else's
+    // needs proof that nobody is still publishing it.
+    await storage.writeText(path('desktop'), _donorJson(schema: 1));
+
+    expect(await donors.pruneUnusable('mine'), 0);
+    expect(await storage.exists(path('desktop')), isTrue);
   });
 
   test('a donor survives a derive-only index bump', () async {
@@ -134,6 +152,9 @@ void main() {
     await storage.writeText(path('corrupt'), 'not json at all');
     await storage.writeText(path('current'), _donorJson());
     await storage.writeText(path('mine'), _donorJson());
+    for (final id in ['old-schema', 'old-version', 'corrupt', 'current']) {
+      age(id);
+    }
 
     final deleted = await donors.pruneUnusable('mine');
 
@@ -155,6 +176,7 @@ void main() {
 
   test('publishing prunes as a side effect', () async {
     await storage.writeText(path('old-schema'), _donorJson(schema: 1));
+    age('old-schema');
     await donors.publish('desktop', _index());
     expect(await storage.exists(path('old-schema')), isFalse);
     expect(await storage.exists(path('desktop')), isTrue);

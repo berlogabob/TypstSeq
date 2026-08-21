@@ -191,15 +191,30 @@ class IndexDonorStore {
     }
   }
 
-  /// Deletes peers' donors this build could never read anyway.
+  /// Deletes donors this build could never read anyway, once they are old
+  /// enough that no device is still publishing them.
   ///
   /// `_system/index/` is inside the sync allowlist, so a donor written by an
   /// older schema is downloaded by every device forever and never used —
   /// measured at 5.7 MB of permanently dead weight across four files on the
-  /// real vault. A device still running the old build simply republishes its
-  /// own on the next scan, so deleting one costs at most one re-publish.
-  /// Never touches [ownDeviceId], and never a donor it merely disagrees with
-  /// on synonyms (that one becomes usable again when the maps converge).
+  /// real vault.
+  ///
+  /// The age bound is what makes this safe to do to *someone else's* file. A
+  /// donor is deleted from a shared folder, so a device that prunes a peer's
+  /// current donor destroys work the whole fleet was waiting on: the P30 did
+  /// exactly that after the version-10 bump, dropping its unusable local
+  /// replica of the desktop's donor seconds after the desktop had replaced it
+  /// with a readable one, and then propagating the deletion to the server.
+  /// Anything a live device owns is rewritten far inside [staleDonorAge], so
+  /// what is left past it belongs to a device that is gone or is not indexing.
+  ///
+  /// Never touches [ownDeviceId] — that one is replaced wholesale on publish —
+  /// and never a donor it merely disagrees with on synonyms (that one becomes
+  /// usable again when the maps converge).
+  /// How long an unreadable donor must sit untouched before a peer may delete
+  /// it. Longer than any indexing interval and any plausible offline stretch.
+  static const staleDonorAge = Duration(days: 7);
+
   Future<int> pruneUnusable(String? ownDeviceId) async {
     final own = ownDeviceId == null || ownDeviceId.isEmpty
         ? null
@@ -210,6 +225,13 @@ class IndexDonorStore {
         if (file.isDirectory ||
             !file.path.endsWith('.json') ||
             file.path == own) {
+          continue;
+        }
+        // Someone else's file. Only once nothing has rewritten it for a week,
+        // and never on the strength of an unknown timestamp.
+        final modified = file.modified;
+        if (modified == null ||
+            DateTime.now().difference(modified) < staleDonorAge) {
           continue;
         }
         try {
