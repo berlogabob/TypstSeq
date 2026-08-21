@@ -277,9 +277,23 @@ extension _PathSync on NextcloudSync {
       // whenever the remote moves again — permanently, since nothing here
       // ever refreshed it. Catch up the record so the guard can pass once
       // the user reviews the current remote content.
-      if (remoteFile != null &&
-          NextcloudSync._normEtag(remoteFile.etag) != NextcloudSync._normEtag(unresolvedConflict.remoteEtag)) {
-        await _refreshConflictRemote(vault, unresolvedConflict, remoteFile, archive);
+      if (remoteFile != null) {
+        if (NextcloudSync._normEtag(remoteFile.etag) !=
+            NextcloudSync._normEtag(unresolvedConflict.remoteEtag)) {
+          await _refreshConflictRemote(
+            vault,
+            unresolvedConflict,
+            remoteFile,
+            archive,
+          );
+        }
+      } else if (unresolvedConflict.remoteExists) {
+        // The remote is gone. Left as-is the record is unresolvable forever:
+        // resolveConflict's guard compares remoteExists (true) against a
+        // missing remote and throws on every attempt, and the refresh above
+        // can never run. Rewrite it to the delete-vs-changed shape the
+        // existing UI already knows how to resolve.
+        await _markConflictRemoteDeleted(vault, unresolvedConflict);
       }
     } else if (initialMode == InitialSyncMode.downloadRemote) {
       if (remoteExists) {

@@ -132,6 +132,42 @@ extension _SyncConflicts on NextcloudSync {
     );
   }
 
+  /// Rewrites an unresolved conflict to the "Nextcloud deleted it" shape after
+  /// the remote really did disappear.
+  ///
+  /// Without this such a record can never be resolved. `resolveConflict`
+  /// compares the record's `remoteExists: true` against a remote that is now
+  /// absent and throws `Nextcloud changed again` on every attempt, while
+  /// [_refreshConflictRemote] — the only thing that could correct the record —
+  /// is reached only when the remote file exists. Proven on the A24 with
+  /// `articles/coqui.ai - Site not found GitHub Pages.typ`, recorded at 17:00
+  /// and deleted server-side afterwards: it gated auto-sync indefinitely and
+  /// the only escape was deleting the record by hand over adb.
+  ///
+  /// The remote snapshot is kept: it is the last known content of a file that
+  /// no longer exists anywhere else, so the "keep Nextcloud version" branch
+  /// can still restore it.
+  Future<void> _markConflictRemoteDeleted(
+    Vault vault,
+    SyncConflict conflict,
+  ) async {
+    await vault.storage.writeText(
+      conflict.recordPath,
+      jsonEncode({
+        'id': conflict.id,
+        'path': conflict.path,
+        'createdAt': conflict.createdAt.toUtc().toIso8601String(),
+        'localExists': conflict.localExists,
+        'remoteExists': false,
+        'localModified': conflict.localModified?.millisecondsSinceEpoch,
+        if (conflict.localSnapshot != null)
+          'localSnapshot': conflict.localSnapshot,
+        if (conflict.remoteSnapshot != null)
+          'remoteSnapshot': conflict.remoteSnapshot,
+      }),
+    );
+  }
+
   Future<int> _cleanResolvedConflictCopies(
     Vault vault,
     List<VaultStorageEntry> entries,

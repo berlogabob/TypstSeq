@@ -2007,6 +2007,65 @@ void main() {
   });
 
   test(
+    'a conflict whose remote was deleted becomes resolvable instead of stuck',
+    () async {
+      // Proven on the A24 with `articles/coqui.ai - Site not found GitHub
+      // Pages.typ`: recorded with remoteExists: true, then deleted
+      // server-side. resolveConflict compared the record against a missing
+      // remote and threw 'Nextcloud changed again' on every attempt, while
+      // the only code that could repair the record ran solely when the remote
+      // still existed. It gated auto-sync indefinitely; the only escape was
+      // deleting the record by hand over adb.
+      final remote = <String, _MutableRemoteFile>{
+        'notes/gone.typ': _MutableRemoteFile(
+          bytes: utf8.encode('remote note'),
+          etag: '"remote"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_gone_remote_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/gone.typ', 'local text');
+      await createSyncConflict(
+        vault,
+        'notes/gone.typ',
+        localBytes: utf8.encode('local text'),
+        remoteBytes: utf8.encode('remote note'),
+      );
+      expect((await loadSyncConflicts(vault)).single.remoteExists, isTrue);
+
+      // The remote disappears after the record was written.
+      remote.remove('notes/gone.typ');
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+      final repaired = (await loadSyncConflicts(vault)).single;
+      expect(
+        repaired.remoteExists,
+        isFalse,
+        reason: 'the record must catch up with the deletion',
+      );
+      expect(
+        repaired.remoteSnapshot,
+        isNotNull,
+        reason: 'the last known remote content is still restorable',
+      );
+
+      // And it now resolves rather than throwing.
+      await NextcloudSync(
+        _config(server),
+      ).resolveConflict(vault, repaired, SyncConflictResolution.keepLocal);
+      expect(await loadSyncConflicts(vault), isEmpty);
+      expect(await vault.storage.readText('notes/gone.typ'), 'local text');
+    },
+  );
+
+  test(
     'resolveConflict prunes an orphaned record instead of throwing',
     () async {
       final remote = <String, _MutableRemoteFile>{
