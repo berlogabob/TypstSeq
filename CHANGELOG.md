@@ -3,6 +3,46 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.3.0+94
+
+Indexing gets cheaper, the journal shows today again, and the desktop starts
+pulling its weight. No re-index is forced by this release.
+
+### Fixed
+
+- **Journal opens on today.** Five daily notes have no `date:` in their header,
+  and the feed sorted on `date ?? path` — so their key became
+  `daily/2026/08/…`, and `d` sorts above `2`. Every undated note outranked every
+  dated one, which is why the journal sat on 08-17 with today six entries down
+  in a list that loads one day at a time. The same five were missing from the
+  calendar entirely. The day is now derived from the path, on both the scanner
+  and the read paths, so it needs no re-index.
+- **The day arrows respond immediately.** Each `<` / `>` press did five storage
+  round-trips (save, mkdir, exists, write, read) queued behind any running sync,
+  with the date frozen until they finished — so people pressed again — and every
+  day merely passed through left an empty daily note behind. The label now moves
+  on the tap, presses coalesce, and only the day you land on is created.
+
+### Changed
+
+- **Rebuilds stop repeating work.** A rebuild re-read and re-decoded the whole
+  index (1.65 MB gz → 8.82 MB plain, ~13k objects) even though the worker
+  already held it, then re-encoded and re-hashed all of it just to decide
+  whether to write. Both are now skipped when nothing changed. The search index
+  also stops re-tokenising every task and attachment document on rebuilds where
+  no note changed.
+- **WebP images are no longer read during indexing.** The placeholder trick
+  shipped in +93 covered png/jpg/gif/svg but missed webp — 598 files, 38.6 MB of
+  the 50.4 MB still pulled through storage on any changed note. The inspect
+  payload is now 11.3 MB across 35 files. Measured on a real device: a
+  donor-seeded rebuild of 6,214 notes fell from 211 s to **172 s**, with
+  metadata quality unchanged (20 fallbacks).
+- **The desktop can publish an index for the phones.** `tylog index` now writes
+  a donor under a stable per-machine id, and prunes donors this build can never
+  read — `_system/index/` syncs, so those were downloaded by every device
+  forever (5.7 MB of dead weight on the real vault). A scan also reports what it
+  reused from other devices, so the feature can no longer fail silently.
+
 ## 0.3.0+93
 
 Performance floor, linking that just works, and kinds-as-tags. One forced full
