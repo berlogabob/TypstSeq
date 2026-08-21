@@ -424,6 +424,9 @@ Future<VaultIndex> scanVaultStorage(
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   Map<String, Uint8List>? inspectionFiles;
+  /// Which support paths the vault actually holds, so a note referencing one
+  /// it does not can be given a placeholder instead of failing to compile.
+  var inspectionKeys = const <String>{};
   // A poisoned note can wedge the inspector's single native worker, so a
   // single timeout only skips its own note (still recorded as a
   // metadata-query-failed problem). After [maxConsecutiveInspectTimeouts]
@@ -531,6 +534,7 @@ Future<VaultIndex> scanVaultStorage(
         inspectionFiles = const <String, Uint8List>{};
       } else {
         final shared = await _inspectionFiles(storage);
+        inspectionKeys = shared.keys.toSet();
         final inspector = activeInspector;
         if (inspector is BaseFilesInspector) {
           try {
@@ -557,7 +561,12 @@ Future<VaultIndex> scanVaultStorage(
                 TypstDocumentInput(
                   path: relative,
                   source: source,
-                  files: inspectionFiles,
+                  files: _withMissingImages(
+                    inspectionFiles,
+                    source: source,
+                    notePath: relative,
+                    available: inspectionKeys,
+                  ),
                 ),
               )
               .timeout(typstInspectTimeout),
@@ -713,6 +722,89 @@ Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
         imagePlaceholder(entry.path) ?? await storage.readBytes(entry.path);
   }
   return files;
+}
+
+/// [base] plus placeholders for whatever images [source] references and the
+/// vault lacks. Returns [base] itself when nothing is missing, so the common
+/// case still ships the const-empty map the base-layer handoff installs.
+Map<String, Uint8List> _withMissingImages(
+  Map<String, Uint8List> base, {
+  required String source,
+  required String notePath,
+  required Set<String> available,
+}) {
+  final missing = missingImagePlaceholders(
+    source: source,
+    notePath: notePath,
+    available: available,
+  );
+  if (missing.isEmpty) return base;
+  return <String, Uint8List>{...base, ...missing};
+}
+
+/// Placeholders for image paths a note *references* but the vault does not
+/// hold yet.
+///
+/// [imagePlaceholder] only substitutes files that are present in the listing.
+/// A note whose `#image("/assets/…")` target has not synced yet is a different
+/// case and the one that actually bites: the compile fails outright, so the
+/// note degrades to the source-based fallback parser and loses its metadata.
+/// On the A24 mid-sync that was 432 of 4,225 notes (10%) against the
+/// fully-synced P30's 18 (0.35%) — the fallback was measuring sync progress,
+/// not note quality.
+///
+/// Supplying a 1×1 image lets the metadata query run; it cannot mask a real
+/// problem, because a genuinely missing attachment is reported independently
+/// by `validatePkms` as `missing-attachment`.
+///
+/// Typst resolves a leading-slash path from the vault root and anything else
+/// relative to the containing file, which is why [notePath] is needed. A key
+/// guessed wrong simply goes unused — the note falls back exactly as it does
+/// today.
+Map<String, Uint8List> missingImagePlaceholders({
+  required String source,
+  required String notePath,
+  required Set<String> available,
+}) {
+  var files = const <String, Uint8List>{};
+  for (final match in _imageRefPattern.allMatches(source)) {
+    final raw = match.group(1)!;
+    if (raw.isEmpty || raw.contains(r'\')) continue;
+    final key = _resolveVfsKey(raw, notePath);
+    if (key == null || available.contains(key) || files.containsKey(key)) {
+      continue;
+    }
+    final placeholder = imagePlaceholder(key);
+    if (placeholder == null) continue;
+    if (files.isEmpty) files = <String, Uint8List>{};
+    files[key] = placeholder;
+  }
+  return files;
+}
+
+/// `image("…")`, with or without a leading `#`, and inside `figure(image(…))`.
+final RegExp _imageRefPattern = RegExp(r'\bimage\s*\(\s*"([^"\\]*)"');
+
+/// Vault-relative VFS key for a Typst path reference, mirroring the Rust
+/// side's `get_without_slash` normalisation. Null if it escapes the root.
+String? _resolveVfsKey(String reference, String notePath) {
+  if (reference.startsWith('/')) return reference.substring(1);
+  final dir = notePath.contains('/')
+      ? notePath.substring(0, notePath.lastIndexOf('/'))
+      : '';
+  final segments = <String>[
+    ...dir.split('/').where((s) => s.isNotEmpty),
+  ];
+  for (final segment in reference.split('/')) {
+    if (segment.isEmpty || segment == '.') continue;
+    if (segment == '..') {
+      if (segments.isEmpty) return null;
+      segments.removeLast();
+      continue;
+    }
+    segments.add(segment);
+  }
+  return segments.isEmpty ? null : segments.join('/');
 }
 
 /// A minimal valid image of the same format as [path], or null for non-image
