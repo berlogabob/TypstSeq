@@ -51,6 +51,15 @@ String _note(String id) =>
     '  kind: "note",\n'
     ')\n';
 
+/// Every format the vault actually contains. webp was the gap that mattered:
+/// 598 webp files on the real vault, 38.6 MB of the 50.4 MB pulled through SAF
+/// on any changed note, because they fell through to a real read.
+/// Only formats Typst can actually decode — verified against the 0.15 CLI,
+/// which accepts webp and rejects bmp/avif with "unknown image format". A note
+/// referencing a format Typst cannot read fails to compile whatever bytes we
+/// ship, so a placeholder would buy nothing there.
+const _placeholderFormats = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
+
 void main() {
   late Directory root;
   late LocalVaultStorage storage;
@@ -107,14 +116,15 @@ void main() {
       print('typst CLI not found; placeholder compile check skipped');
       return;
     }
-    for (final ext in ['png', 'jpg', 'jpeg', 'gif', 'svg']) {
+    for (final ext in _placeholderFormats) {
       await File('${root.path}/p.$ext').writeAsBytes(
         imagePlaceholder('x.$ext')!,
       );
     }
-    await File('${root.path}/t.typ').writeAsString(
-      '#image("p.png")\n#image("p.jpg")\n#image("p.gif")\n#image("p.svg")\n',
-    );
+    await File('${root.path}/t.typ').writeAsString([
+      for (final ext in _placeholderFormats)
+        if (ext != 'jpeg') '#image("p.$ext")',
+    ].join('\n'));
     final result = await Process.run('typst', [
       'compile',
       '--root',

@@ -92,6 +92,16 @@ class DonorReuse {
       '${skipped > 0 ? ', skipped $skipped unusable donor(s)' : ''}';
 }
 
+/// Whether two indexes describe the same notes — same paths, same content
+/// hashes, same schema version.
+///
+/// Everything else in a [VaultIndex] (backlinks, problems, tasks) is derived
+/// from those bytes, so an unchanged answer here means an unchanged index. Used
+/// to skip work that would otherwise re-encode the whole index just to discover
+/// nothing moved.
+bool sameIndexedContent(VaultIndex? previous, VaultIndex next) =>
+    IndexDonorStore._sameNotes(previous, next);
+
 /// Reads and writes the per-device index donors under `_system/index/`.
 ///
 /// Lives in tylog_core, not the app, so the CLI can publish one too: the

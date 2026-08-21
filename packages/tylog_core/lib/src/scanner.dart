@@ -725,6 +725,10 @@ Uint8List? imagePlaceholder(String path) {
     'jpg' || 'jpeg' => _placeholderJpeg,
     'gif' => _placeholderGif,
     'svg' => _placeholderSvg,
+    // 598 files / 38.6 MB of the real vault's 50.4 MB inspect payload. Missing
+    // it meant every changed note still pulled all of them through SAF and
+    // held them twice. Typst 0.15 decodes webp (verified against the CLI).
+    'webp' => _placeholderWebp,
     _ => null,
   };
 }
@@ -739,6 +743,11 @@ final Uint8List _placeholderJpeg = base64Decode(
 final Uint8List _placeholderGif = base64Decode(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
 );
+/// 1x1 lossless WebP (VP8L).
+final Uint8List _placeholderWebp = base64Decode(
+  'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==',
+);
+
 final Uint8List _placeholderSvg = Uint8List.fromList(
   utf8.encode('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'),
 );

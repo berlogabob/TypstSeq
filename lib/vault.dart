@@ -38,6 +38,10 @@ class Vault {
   /// Reads and writes `_system/index/` donors — shared with the CLI.
   late final IndexDonorStore _donors = IndexDonorStore(storage);
 
+  /// The index this instance built last. Serves as `previous` for the next
+  /// rebuild so the on-disk copy never has to be decoded again.
+  VaultIndex? _lastBuiltIndex;
+
   /// sha256 of the last index-cache bytes this process wrote; a rebuild that
   /// re-derives identical bytes skips the multi-megabyte rewrite.
   String? _lastIndexDigest;
@@ -204,7 +208,12 @@ _index
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    var previous = await loadIndex();
+    // The index this instance last built is byte-equivalent to what is on
+    // disk, so re-reading and re-decoding it is pure waste — 8.8 MB of JSON and
+    // ~13k objects rebuilt on every rebuild, on the worker isolate that already
+    // holds them. The scanner re-verifies every entry against the bytes on disk
+    // regardless, so a stale cache can only cost a re-parse, never correctness.
+    var previous = _lastBuiltIndex ?? await loadIndex();
     // Only *our own* last index says anything about what our donor holds; a
     // peer's donated index does not, so it must not suppress a republish.
     final ownPrevious = previous?.version == kVaultIndexVersion
@@ -244,15 +253,23 @@ _index
     // Gzip via the shared codec (readers accept the old plain JSON), and skip
     // the write entirely when this process already wrote identical bytes —
     // the encoded index was ~6.7 MB plain and is rewritten on every rebuild.
-    final encoded = encodeVaultIndexBytes(index);
-    final digest = sha256.convert(encoded).toString();
-    // The existence check keeps an externally-deleted `_index/` from being
-    // treated as already-written just because this process wrote the same
-    // bytes earlier.
-    if (digest != _lastIndexDigest || !await storage.exists(indexPath)) {
-      await storage.writeBytes(indexPath, encoded);
-      _lastIndexDigest = digest;
+    // Skip the *encode*, not just the write: jsonEncode + gzip of the whole
+    // index ran unconditionally just to compute a digest to compare. Comparing
+    // note content hashes answers the same question for the price of one pass
+    // over a map already in memory. The existence check keeps an
+    // externally-deleted `_index/` from being treated as already-written.
+    final unchanged =
+        sameIndexedContent(_lastBuiltIndex, index) &&
+        await storage.exists(indexPath);
+    if (!unchanged) {
+      final encoded = encodeVaultIndexBytes(index);
+      final digest = sha256.convert(encoded).toString();
+      if (digest != _lastIndexDigest || !await storage.exists(indexPath)) {
+        await storage.writeBytes(indexPath, encoded);
+        _lastIndexDigest = digest;
+      }
     }
+    _lastBuiltIndex = index;
     if (deviceId != null && deviceId.isNotEmpty) {
       await _writeIndexDonor(deviceId, index, ownPrevious);
     }
