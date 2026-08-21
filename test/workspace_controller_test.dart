@@ -859,6 +859,67 @@ void main() {
     },
   );
 
+  test(
+    'a pending conflict no longer suspends sync for the rest of the vault',
+    () async {
+      // The A24 sat 695 articles behind for four hours because five junk
+      // conflicts - none of them files the user had touched - suspended
+      // polling vault-wide. The sync loop already skips conflicted paths one
+      // by one, so the rest of the vault was never in danger.
+      // TestWidgetsFlutterBinding fakes every HttpClient; this test needs the
+      // real one to reach the loopback server.
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      controller.deviceId = 'test-device';
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+
+      // A conflict record that is real on disk, so refreshSyncConflicts keeps
+      // it rather than clearing it as a phantom.
+      await storage.writeText(
+        '.tylog/conflicts/stuck.json',
+        jsonEncode({
+          'id': 'stuck',
+          'path': 'articles/junk.typ',
+          'createdAt': DateTime.utc(2026).toIso8601String(),
+          'localExists': true,
+          'remoteExists': true,
+        }),
+      );
+      await controller.refreshSyncConflicts();
+      expect(controller.hasSyncConflicts, isTrue);
+
+      // An unrelated local note that has never been uploaded.
+      await storage.writeText('notes/unrelated.typ', '#let x = 1\n');
+
+      await controller.pollTick();
+      await _waitUntil(() => !controller.syncing);
+
+      expect(
+        server.uploaded,
+        contains('notes/unrelated.typ'),
+        reason: 'the rest of the vault must keep syncing',
+      );
+      expect(controller.hasSyncConflicts, isTrue,
+          reason: 'the conflict itself still waits for review');
+    },
+  );
+
   test('reloadReadingState merges device files, newest openedAt wins, '
       'corrupt files are skipped', () async {
     final storage = _MemoryStorage();
@@ -1154,6 +1215,8 @@ class _GatedWebDavServer {
 
   final HttpServer server;
   final Map<String, List<int>> _files = {};
+  /// Paths the client PUT, so a test can assert what actually synced.
+  final uploaded = <String>[];
   final Map<String, String> _etags = {};
   var _gateArmed = false;
   var gateReached = Completer<void>();
@@ -1224,6 +1287,7 @@ class _GatedWebDavServer {
             (all, chunk) => all..addAll(chunk),
           );
           _files[path] = bytes;
+          uploaded.add(path);
           _etags[path] = '"etag-${DateTime.now().microsecondsSinceEpoch}"';
           request.response.statusCode = HttpStatus.created;
           request.response.headers.set('OC-Etag', _etags[path]!);

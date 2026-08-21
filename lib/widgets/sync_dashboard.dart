@@ -554,7 +554,7 @@ class _SyncStatusCard extends StatelessWidget {
       SyncStatusKind.syncing => 'Checking this device and Nextcloud.',
       SyncStatusKind.paused => error!,
       SyncStatusKind.conflicts =>
-        'Sync is paused until you review the conflicts. Your files are safe.',
+        'Everything else keeps syncing. Your files are safe.',
       SyncStatusKind.ready => 'No sync has completed in this session.',
       SyncStatusKind.upToDate => _lastChecked(lastSyncAt),
       SyncStatusKind.synced =>

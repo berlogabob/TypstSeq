@@ -716,22 +716,29 @@ class WorkspaceController extends ChangeNotifier {
     if (hasSyncConflicts) {
       // A conflict record self-healed on disk (loadSyncConflicts deletes
       // matching snapshots) doesn't refresh this in-memory list on its own,
-      // and hasSyncConflicts gates every poll — without this refresh a
-      // phantom conflict would suppress auto-sync forever. Cheap: only
-      // lists the conflicts directory, no full sync.
+      // so re-read before deciding anything. Cheap: only lists the conflicts
+      // directory, no full sync.
       await refreshSyncConflicts();
-      return;
+      // Deliberately no early return. A pending conflict used to suspend
+      // polling vault-wide, which left the A24 695 articles behind for four
+      // hours over five junk conflicts that had nothing to do with them. The
+      // sync loop already skips each conflicted path individually
+      // (path_sync.dart, reason 'unresolved-conflict'), so the rest of the
+      // vault is safe to sync while those wait for review.
+      if (syncing || editingRecently) return;
     }
     final opened = vault;
     final config = cloud;
-    if (opened != null && config != null && config.isReady) {
-      final unchanged = await NextcloudSync(
-        config,
-      ).pollIsUnchanged(opened, dirty: dirty || isComposing());
-      // State may have changed while the network probe was in flight.
-      if (syncing || editingRecently) return;
-      if (unchanged) return;
-    }
+    // syncNow throws WorkspaceSyncNotConfigured without a ready config, so a
+    // poll must not reach it. Previously unreachable only because the conflict
+    // gate above returned first.
+    if (opened == null || config == null || !config.isReady) return;
+    final unchanged = await NextcloudSync(
+      config,
+    ).pollIsUnchanged(opened, dirty: dirty || isComposing());
+    // State may have changed while the network probe was in flight.
+    if (syncing || editingRecently) return;
+    if (unchanged) return;
     await syncNow(trigger: 'poll');
   }
 
@@ -1161,7 +1168,8 @@ class WorkspaceController extends ChangeNotifier {
       _cloudAutosave = Timer(const Duration(seconds: 1), _runIdleMaintenance);
       return;
     }
-    if ((cloud?.isReady ?? false) && !hasSyncConflicts) {
+    if (cloud?.isReady ?? false) {
+      // Conflicted paths are skipped per-path by the sync loop; see pollTick.
       await syncNow(trigger: 'autosave');
       return;
     }
