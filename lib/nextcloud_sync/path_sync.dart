@@ -206,7 +206,9 @@ extension _PathSync on NextcloudSync {
     required SyncCursor? previous,
     required bool stateRecovered,
     required InitialSyncMode? initialMode,
-    required SyncConflict? unresolvedConflict,
+    // Reassigned when a cache conflict is discarded below.
+    // ignore: parameter_assignments
+    SyncConflict? unresolvedConflict,
     required bool possibleRename,
     required bool allowLocalDeletes,
     required _RemoteArchiveSnapshot? archive,
@@ -268,6 +270,17 @@ extension _PathSync on NextcloudSync {
     var repaired = 0;
     var deletedRemote = 0;
     var deletedLocal = 0;
+
+    if (unresolvedConflict != null && isRegenerableCachePath(path)) {
+      // A conflict already recorded against a cache file would otherwise sit
+      // there forever: the loop skips a conflicted path before reaching the
+      // branches that know a donor is regenerable, so the record is the only
+      // thing keeping it alive. Drop it and let this pass handle the path
+      // normally.
+      await _discardConflictsForPath(vault, path);
+      unresolvedConflict = null;
+      repaired++;
+    }
 
     if (unresolvedConflict != null) {
       skipped++;

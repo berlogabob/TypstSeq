@@ -2044,6 +2044,37 @@ void main() {
     expect(await vault.storage.readText(donor), contains('republished'));
   });
 
+  test('a conflict already recorded on a donor clears itself', () async {
+    // The P30 carried exactly this record after its version-10 rebuild. The
+    // sync loop skips a conflicted path before reaching the branches that know
+    // a donor is regenerable, so without this the record outlives the fix that
+    // stops new ones being made.
+    const donor = '_system/index/cli-7e1afd3ac405.json';
+    final remote = <String, _MutableRemoteFile>{
+      donor: _remoteText('{"schema":4,"from":"desktop"}'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_donor_stuck_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await createSyncConflict(
+      vault,
+      donor,
+      localBytes: utf8.encode('{"schema":3,"from":"me"}'),
+      remoteBytes: utf8.encode('{"schema":3}'),
+    );
+    expect(await loadSyncConflicts(vault), hasLength(1));
+
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+    expect(await loadSyncConflicts(vault), isEmpty);
+    expect(await vault.storage.readText(donor), contains('desktop'));
+  });
+
   test('two devices disagreeing about a donor is not a conflict', () async {
     // The same rule on the first-sync path: no cursor, both sides present and
     // different. A user has no business arbitrating between two derived
