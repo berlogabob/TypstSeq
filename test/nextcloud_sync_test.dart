@@ -2607,6 +2607,47 @@ void main() {
   );
 
   test(
+    'a shortcut that falls through reuses its listing and defers the MKCOL',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp('tylog_shortcut_reuse_');
+      final storage = _ListCountingStorage(dir);
+      final vault = Vault.withStorage(storage);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+      // A clean shortcut walks once and issues no MKCOL at all.
+      metrics.mkcols.clear();
+      storage.recursiveLists = 0;
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      expect(storage.recursiveLists, 1);
+      expect(metrics.mkcols, isEmpty, reason: 'root MKCOL always answers 405');
+
+      // A local edit makes the shortcut fall through to the full run, which
+      // must reuse the listing the shortcut already took, not walk again.
+      await vault.storage.writeText('notes/local.typ', 'local edit');
+      metrics.mkcols.clear();
+      storage.recursiveLists = 0;
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(result.uploaded, 1);
+      expect(storage.recursiveLists, 1);
+      expect(metrics.mkcols, isNotEmpty, reason: 'full run still ensures it');
+    },
+  );
+
+  test(
     'path transfers use two to eight workers and one MKCOL per parent',
     () async {
       final remote = <String, _MutableRemoteFile>{};
@@ -2876,6 +2917,23 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
   username: 'alice',
   password: 'secret',
 );
+
+/// Counts recursive tree walks. On the P30's 11,610-file vault one walk is
+/// 9.3s of an 18.1s pass, so a pass must never pay for two.
+class _ListCountingStorage extends LocalVaultStorage {
+  _ListCountingStorage(super.root);
+
+  int recursiveLists = 0;
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) {
+    if (recursive) recursiveLists++;
+    return super.list(path: path, recursive: recursive);
+  }
+}
 
 class _HashCountingStorage extends LocalVaultStorage {
   _HashCountingStorage(super.root);

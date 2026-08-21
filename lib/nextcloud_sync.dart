@@ -388,6 +388,11 @@ class NextcloudSync {
     // ponytail: trace events are buffered and written once per sync (one SAF
     // write instead of a full read+rewrite per event); a hard process kill
     // loses that run's trace, acceptable for diagnostics.
+    /// The no-change shortcut's local listing, kept so the full path can reuse
+    /// it instead of walking the tree again.
+    ({List<VaultStorageEntry> raw, Map<String, VaultStorageEntry> syncable})?
+    scannedListing;
+
     final traceEvents = <Map<String, Object?>>[];
     progress(stage);
     traceEvents.add({
@@ -398,10 +403,6 @@ class NextcloudSync {
     });
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
-      progress('prepare-remote-folder');
-      // The pre-loop stages need the same transient-error protection as the
-      // per-file loop: a socket abort here otherwise kills every run at start.
-      await _retryTransient(_ensureConfiguredFolder);
       progress('load-local-state');
       final loadedState = await _loadSyncState(vault);
       syncState = initialMode == null
@@ -446,8 +447,8 @@ class NextcloudSync {
             currentEtag: probedEtag,
           )) {
             progress('scan-local-shortcut');
-            final localListing = await _localFiles(vault.storage);
-            if (_matchesLocalCursorSnapshot(localListing.syncable, syncState)) {
+            scannedListing = await _localFiles(vault.storage);
+            if (_matchesLocalCursorSnapshot(scannedListing.syncable, syncState)) {
               remoteCount = syncState.length;
               traceEvents.add({
                 'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -477,6 +478,12 @@ class NextcloudSync {
           }
         }
       }
+      progress('prepare-remote-folder');
+      // MKCOLs the configured folder; it answers 405 every run after the
+      // first, so it is deliberately below the shortcut rather than above it.
+      // The pre-loop stages need the same transient-error protection as the
+      // per-file loop: a socket abort here otherwise kills every run at start.
+      await _retryTransient(_ensureConfiguredFolder);
       progress('list-remote');
       final remoteResult = (await _retryTransient(_remoteFiles))!;
       final remote = remoteResult.files;
@@ -518,8 +525,13 @@ class NextcloudSync {
         }
         pristineStarterPaths = local.pristineStarterPaths;
       }
+      // The shortcut above already walked the tree; on a pass where it found a
+      // local change, re-walking cost a second full SAF listing (9.3s of an
+      // 18.1s pass on the P30's 11,610 files). Nothing local is written
+      // between the two points, so the snapshot is the same one either way.
       progress('scan-local');
-      final localListing = await _localFiles(vault.storage);
+      final localListing =
+          scannedListing ?? await _localFiles(vault.storage);
       final localEntries = localListing.syncable;
       repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
       if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
