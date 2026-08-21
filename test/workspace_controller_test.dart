@@ -438,6 +438,37 @@ void main() {
     },
   );
 
+  test('a scan that changes nothing does not rewrite the search index', () async {
+    // The search index is ~43 MB of JSON encoded to ~12 MB of gzip.
+    // buildStorage returns the *same instance* when every note hit the cache,
+    // so identity is an exact "nothing to write" test. The worker path has
+    // always had that guard; this in-process path - the one the suite
+    // overwhelmingly exercises - and the Android background service did not,
+    // so every no-op scan rewrote the whole file.
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    await controller.refreshIndex(always: true);
+
+    storage.writes.clear();
+    await controller.refreshIndex(always: true);
+
+    expect(
+      storage.writes.where((path) => path.contains('search-index')),
+      isEmpty,
+      reason: 'nothing changed, so there is nothing to write',
+    );
+  });
+
   test('a half-failed batch reports what actually resolved', () async {
     // A batch that stops partway must not claim success: whatever stopped it
     // will stop the next one too, and the untouched records are still there.
@@ -1229,6 +1260,9 @@ class _GatedScanStorage extends _MemoryStorage {
 
 class _MemoryStorage extends VaultStorage {
   final Map<String, Uint8List> _files = {};
+
+  /// Paths written, so a test can assert a write did *not* happen.
+  final writes = <String>[];
   final Set<String> _directories = {''};
 
   @override
@@ -1300,6 +1334,7 @@ class _MemoryStorage extends VaultStorage {
 
   @override
   Future<void> writeBytes(String path, List<int> bytes) async {
+    writes.add(path);
     final slash = path.lastIndexOf('/');
     if (slash > 0) await createDirectory(path.substring(0, slash));
     _files[path] = Uint8List.fromList(bytes);

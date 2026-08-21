@@ -89,7 +89,15 @@ Future<void> _runOnce() async {
         index,
         previous: cached,
       );
-      await search.saveStorage(storage, Vault.searchIndexPath);
+      // buildStorage returns the *same instance* when every note hit the
+      // cache and the key set is unchanged, so identity is an exact "nothing
+      // to write" test. Without it a no-op scan re-encoded ~43 MB of JSON and
+      // rewrote ~12 MB of gzip for a file byte-identical to the one already
+      // there. vault_worker.dart has always had this guard; these two paths
+      // did not.
+      if (!identical(search, cached)) {
+        await search.saveStorage(storage, Vault.searchIndexPath);
+      }
     } finally {
       inspector?.dispose();
     }
