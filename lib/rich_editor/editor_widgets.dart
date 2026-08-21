@@ -788,6 +788,13 @@ class _InlineImage extends StatelessWidget {
           child: Image.memory(
             data,
             fit: BoxFit.contain,
+            // Decode to roughly the width it is drawn at, not the file's own.
+            // A 4000x3000 photo otherwise decodes to a ~48 MB RGBA bitmap and
+            // sits in the image cache at that size; the box above never shows
+            // more than the screen's width.
+            cacheWidth: (MediaQuery.sizeOf(context).width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .round(),
             errorBuilder: (context, _, _) => fallback,
           ),
         ),

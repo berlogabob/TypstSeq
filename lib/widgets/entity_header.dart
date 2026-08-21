@@ -107,7 +107,17 @@ class _Avatar extends StatelessWidget {
       builder: (context, snapshot) {
         final data = snapshot.data;
         if (data == null || data.isEmpty) return fallback;
-        return CircleAvatar(radius: 26, backgroundImage: MemoryImage(data));
+        // A 26pt avatar has no use for a full-resolution decode.
+        final side =
+            (52 * MediaQuery.devicePixelRatioOf(context)).round();
+        return CircleAvatar(
+          radius: 26,
+          backgroundImage: ResizeImage(
+            MemoryImage(data),
+            width: side,
+            height: side,
+          ),
+        );
       },
     );
   }
