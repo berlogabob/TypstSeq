@@ -1,20 +1,33 @@
 # Sync conflict recovery — scope of work
 
-**Status:** **Phases 1, 3b and 3d done** 2026-08-21 — the vault-wide freeze is gone; a
-pending conflict now blocks only its own path, and the exit metric is pinned by
-a test in `test/workspace_controller_test.dart` that fails on the old code.
-Phase 3b (a deleted remote left the record permanently unresolvable) and
-Phase 3d (the default could destroy the strictly newer side) are done too, each
-with a test that fails on the previous code. **Remaining: Phase 2**
-(auto-resolve the provably-lossless cases), **3a** (show that a resolve is
-working — it takes minutes and looks dead), **3c** (refresh and re-decide on an
-ETag mismatch instead of throwing), **Phase 4** (never fail invisibly; resolve
-in bulk). Written 2026-08-21 from a live incident on the A24
-(Android 16, release 0.3.0+93).
+**Status: complete.** All four phases shipped 2026-08-21/22. Written from a live
+incident on the A24 (Android 16, release 0.3.0+93); kept because the incident
+analysis is the reason each fix looks the way it does.
 
-Fixed in passing: `pollTick` fell through to `syncNow`, which throws
-`WorkspaceSyncNotConfigured` without a ready config — unreachable before only
-because the conflict gate returned first.
+| Phase | What shipped |
+|---|---|
+| 1 | The gate is per-path. A pending conflict no longer suspends the vault's sync. |
+| 2 | Append-only differences resolve themselves. Rule 1 already existed; rule 3 was **dropped as unsound** — `import_sha256` hashes the upstream markdown, not the note file, so it cannot prove the absence of local edits. |
+| 3a | A resolve announces itself and reports when the remote write lands, not after the reindex it triggers. Rows show their own progress. |
+| 3b | A conflict whose remote was deleted rewrites to the delete-vs-changed shape instead of being unresolvable forever. |
+| 3c | An etag mismatch refreshes and re-decides. Identical bytes under a new etag proceed; genuinely different content says so. |
+| 3d | The dialog preselects nothing where a default could destroy the newer side. |
+| 4 | Errors are never invisible, and a backlog resolves in one action. |
+
+### Two corrections to the analysis below
+
+- **The swallowed-tap theory (point 5) was wrong.** The dashboard does not
+  listen to `syncProgressTick`; it repaints from its own 500 ms timer, and a
+  test already proved a tap lands during a sync. The two real mechanisms were
+  the invisible error (fixed in phase 4) and **unkeyed positional rows**, where
+  a reload between frames moved a different record under the finger.
+- **The verification section claimed five real conflict records were checked in
+  under `test/fixtures/sync_conflicts/`. They never were.** Coverage is instead
+  behavioural, in `test/nextcloud_sync_test.dart`, `test/sync_dashboard_test.dart`
+  and `test/conflict_choice_test.dart`, each written to fail on the code it
+  replaced.
+
+---
 
 ## Context — what actually happened
 
@@ -184,8 +197,17 @@ is a data-safety concern, so it ships with Phase 3 rather than after.
 
 ## Verification
 
-Fixture-driven: the five real conflict records from tonight are checked in
-(`test/fixtures/sync_conflicts/2026-08-21/`) and every phase replays them.
-Device gate unchanged from the repo norm — release build, real vault, both the
-P30 and A24, since this is a sync path and SAF/Android-version differences are
-exactly where it bites.
+Behavioural, not fixture-driven — see the correction above. Each fix has a test
+written to fail on the code it replaced:
+
+- `test/nextcloud_sync_test.dart` — per-path gate, append-only auto-resolution,
+  deleted-remote repair, refresh-and-re-decide.
+- `test/sync_dashboard_test.dart` — per-row progress, keyed rows, error
+  visibility during a sync and alongside conflicts, bulk resolve.
+- `test/conflict_choice_test.dart` — the lossless-default rules.
+- `test/workspace_controller_test.dart` — the resolve announces itself before
+  the reindex; a half-failed batch reports what actually resolved.
+
+Device gate unchanged from the repo norm — release build, real vault, the P30,
+since this is a sync path and SAF/Android-version differences are exactly where
+it bites.
