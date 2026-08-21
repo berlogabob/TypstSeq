@@ -1186,6 +1186,21 @@ bool isSafBackupPath(String path) {
       name.contains('.tylog-');
 }
 
+/// Orphan of an interrupted atomic write: `.index.json.tylog-<micros>.tmp`
+/// (SAF) or `notes/a.typ.<micros>.tmp` (local). Both writers rename the temp
+/// over its target, so one that outlives the write is dead weight nothing will
+/// ever look at again. Three were sitting in the live vault, the oldest three
+/// weeks old — two of them whole articles that never landed.
+bool isOrphanedTempPath(String path) =>
+    _orphanTempPattern.hasMatch(path.split('/').last);
+
+final RegExp _orphanTempPattern = RegExp(r'\.(?:tylog-)?\d+\.tmp$');
+
+/// How long a `.tmp` must sit untouched before the sweep will remove it. The
+/// background service is a separate process writing the same vault, so a temp
+/// file created seconds ago may be an atomic write still in flight.
+const orphanTempGrace = Duration(hours: 1);
+
 /// A vault lock forked by a SAF rename collision: `.tylog/vault (1).lock`.
 ///
 /// When two engines raced to create the lock, the provider de-duplicated the
