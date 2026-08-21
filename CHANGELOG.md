@@ -3,6 +3,41 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.4.2+97
+
+Resolving a sync conflict stops being a guessing game. No re-index.
+
+### Added
+
+- **Resolve all.** A backlog of conflicts takes one choice applied to every
+  file, reindexing once at the end rather than once per record. Nothing is
+  preselected and the confirmation says plainly what is lost — a bulk
+  keep-local can discard whatever the other side added to every file at once.
+  Offered only for more than one conflict; a single conflict is a decision, not
+  a chore. A batch that fails partway stops and reports what actually resolved.
+
+### Fixed
+
+- **A resolve says it is working.** It is a network write plus an index
+  refresh, and for all of it the row stayed identical to one nobody had tapped.
+  The row now shows its own progress, and the resolve reports as soon as the
+  remote write and cleanup land instead of waiting on a full rescan plus a
+  queued repeat — the ten minutes that made a working resolve look broken.
+- **A moved remote is re-decided, not refused.** A conflict record freezes the
+  remote ETag, so on a vault with a live producer it goes stale constantly, and
+  every resolve threw "Nextcloud changed again". It now refreshes and compares
+  the bytes you were actually shown: a file re-uploaded with identical content
+  proceeds, and only genuinely different content stops — saying so, rather than
+  telling you to go run a sync.
+- **A failure is never invisible.** Two separate mechanisms hid sync errors:
+  the status ranked "Syncing…" above them, and any pending conflict discarded
+  them outright. Errors now have their own place on the Sync screen.
+- **Conflict rows are keyed by file**, so a list that refreshes under your
+  finger can no longer move a different record under the tap.
+- **The search index is no longer rewritten when nothing changed** — ~43 MB
+  encoded and ~12 MB written on every no-op scan, on two of the four paths that
+  save it.
+
 ## 0.4.1+96
 
 Three fixes for a class of problem 0.4.0's own schema bump exposed on the
