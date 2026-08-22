@@ -290,9 +290,53 @@ void main() {
     expect(applied, isNull);
 
     await tester.tap(find.text("Keep Nextcloud's version"));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(applied, SyncConflictResolution.keepRemote);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a bulk resolve marks every row it covers', (tester) async {
+    // A batch is N network writes. Without this the whole list sits unchanged
+    // for all of them - the same "dead button" the single-row case had.
+    final finish = Completer<void>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncDashboardScreen(
+          load: () async => _data(
+            syncing: false,
+            conflicts: [_conflict('notes/A.typ'), _conflict('notes/B.typ')],
+          ),
+          onSync: () async {},
+          onConfigure: () async => true,
+          onResolve: (_) async {},
+          onResolveAll: (_) async => finish.future,
+          onCopyDiagnostics: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Resolve all 2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Keep this device's version"));
+    await tester.pump();
+
+    expect(
+      find.text('Resolving… uploading and cleaning up'),
+      findsNWidgets(2),
+      reason: 'every row in the batch must say it is working',
+    );
+    // And the button cannot start a second batch over the first.
+    expect(
+      tester.widget<TextButton>(find.widgetWithText(TextButton, 'Resolve all 2')).onPressed,
+      isNull,
+    );
+
+    finish.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Resolving… uploading and cleaning up'), findsNothing);
   });
 
   testWidgets('resolve all is not offered for a single conflict', (

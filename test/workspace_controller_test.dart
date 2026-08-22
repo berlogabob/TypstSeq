@@ -469,6 +469,55 @@ void main() {
     );
   });
 
+  test('a bulk resolve clears every record it covers', () async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = server.config;
+
+    for (final name in ['a', 'b', 'c']) {
+      await storage.writeText('notes/$name.typ', 'local $name');
+      await createSyncConflict(
+        controller.vault!,
+        'notes/$name.typ',
+        localBytes: utf8.encode('local $name'),
+        // Nextcloud deleted, this device changed - a real conflict shape, and
+        // the one this fake server can represent without a prior upload.
+        remoteBytes: null,
+      );
+    }
+    await controller.refreshSyncConflicts();
+    expect(controller.syncConflicts, hasLength(3));
+
+    final resolved = await controller.resolveAllConflicts(
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(resolved, 3);
+    expect(controller.syncConflicts, isEmpty);
+    expect(controller.syncError, isNull);
+    // Every local copy won, and each was uploaded once.
+    for (final name in ['a', 'b', 'c']) {
+      expect(server.uploaded, contains('notes/$name.typ'));
+      expect(await storage.readText('notes/$name.typ'), 'local $name');
+    }
+  });
+
   test('a half-failed batch reports what actually resolved', () async {
     // A batch that stops partway must not claim success: whatever stopped it
     // will stop the next one too, and the untouched records are still there.

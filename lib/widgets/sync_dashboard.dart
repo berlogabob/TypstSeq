@@ -163,7 +163,8 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   /// Deliberately not a default: applying "keep this device" across a backlog
   /// can discard whatever the other side added, and that is precisely the
   /// mistake the single-conflict dialog was changed to stop making.
-  Future<void> _resolveAll(int count) async {
+  Future<void> _resolveAll(List<SyncConflict> conflicts) async {
+    final count = conflicts.length;
     final choice = await showModalBottomSheet<SyncConflictResolution>(
       context: context,
       builder: (sheet) => SafeArea(
@@ -196,8 +197,23 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
       ),
     );
     if (choice == null || !mounted) return;
-    await widget.onResolveAll(choice);
-    await _reload();
+    // Every row it covers, for the same reason a single resolve marks its own:
+    // a batch is N network writes, and without this the whole list sits
+    // unchanged exactly as it did before Block A. It also stops the button
+    // launching a second batch over the first, and stops a row being resolved
+    // individually while the batch already owns it.
+    final ids = conflicts.map((conflict) => conflict.id).toList();
+    setState(() => _resolving.addAll(ids));
+    try {
+      await widget.onResolveAll(choice);
+      await _reload();
+    } finally {
+      if (mounted) {
+        setState(() => _resolving.removeAll(ids));
+      } else {
+        _resolving.removeAll(ids);
+      }
+    }
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -360,9 +376,8 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                         if (value.conflicts.length > 1)
                           TextButton(
                             onPressed: _resolving.isEmpty
-                                ? () => unawaited(
-                                    _resolveAll(value.conflicts.length),
-                                  )
+                                ? () =>
+                                      unawaited(_resolveAll(value.conflicts))
                                 : null,
                             child: Text('Resolve all ${value.conflicts.length}'),
                           ),
