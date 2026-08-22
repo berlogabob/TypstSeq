@@ -305,11 +305,16 @@ class IndexDonorStore {
         // against the bytes on disk instead of recompiling them. Every index
         // bump so far (6, 7, 8, 9) was derive-only, and each one made every
         // device recompile the entire vault for nothing.
-        final sameIndex = json['indexVersion'] == kVaultIndexVersion;
-        if (!sameIndex && json['queryVersion'] != kVaultQueryVersion) {
+        // Unconditional, not only when the index version differs. Whatever
+        // the index version says, entries produced by a different Typst query
+        // carry queryFacts we cannot re-derive from — and merging them would
+        // launder those facts into this device's own index, stamped with our
+        // current query version.
+        if (json['queryVersion'] != kVaultQueryVersion) {
           skipped++;
           continue;
         }
+        final sameIndex = json['indexVersion'] == kVaultIndexVersion;
         if (!sameIndex) staleDerivation = true;
         final donorTasks = <String, List<TaskRef>>{};
         for (final item in (json['tasks'] as List? ?? const []).cast<Map>()) {

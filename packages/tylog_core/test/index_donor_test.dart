@@ -124,6 +124,19 @@ void main() {
     expect(store.lastReuse.skipped, 1);
   });
 
+  test('a donor from a different query is never merged', () async {
+    // Even at the current index version: its queryFacts came from a query we
+    // cannot re-derive from, and merging them would launder those facts into
+    // this device's own index under our current query version.
+    await storage.writeText(
+      path('peer'),
+      _donorJson(queryVersion: kVaultQueryVersion + 1),
+    );
+    final store = IndexDonorStore(storage);
+    expect(await store.load('mine'), isNull);
+    expect(store.lastReuse.skipped, 1);
+  });
+
   test('pruning keeps a donor that is still re-derivable', () async {
     await storage.writeText(
       path('peer'),
