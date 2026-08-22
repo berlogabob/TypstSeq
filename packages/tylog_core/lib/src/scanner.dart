@@ -568,7 +568,14 @@ Future<VaultIndex> scanVaultStorage(
     // emit lowercase-hex sha256, so cached hashes still match.
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
-    contentHash ??= sha256.convert(bytes).toString();
+    // Always from *these* bytes, never the earlier probe hash. Reaching here
+    // means that probe did not match, so it describes a version of the file we
+    // are not about to index — and two SAF round trips is plenty of room for
+    // an autosave to land between them. Keeping it stamped an entry with one
+    // version's identity and another version's metadata: it then passed every
+    // later check, was never re-inspected, and went to peers through the donor
+    // as authoritative, since donors match on exactly this hash.
+    contentHash = sha256.convert(bytes).toString();
     if (inspectionFiles == null) {
       if (activeInspector == null) {
         inspectionFiles = const <String, Uint8List>{};

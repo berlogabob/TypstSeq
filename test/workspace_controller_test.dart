@@ -574,6 +574,70 @@ void main() {
     );
   });
 
+  test('a batch skips records that vanished under it', () async {
+    // Every iteration reloads syncConflicts from disk, and that reload
+    // self-heals - so a record captured in the snapshot can already be gone.
+    // Resolving it anyway uploads the live local file for a path that no
+    // longer disagrees, and counts work that did not happen.
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = server.config;
+
+    for (final name in ['gone', 'real']) {
+      await storage.writeText('notes/$name.typ', 'local $name');
+    }
+    // Only 'real' has a record on disk; 'gone' is the shape a self-heal leaves
+    // behind — still in the in-memory snapshot, already absent from the vault.
+    await createSyncConflict(
+      controller.vault!,
+      'notes/real.typ',
+      localBytes: utf8.encode('local real'),
+      remoteBytes: null,
+    );
+    await controller.refreshSyncConflicts();
+    // Ordered second on purpose: resolving the first record reloads the list
+    // from disk, and that reload is what drops this one.
+    controller.syncConflicts = [
+      ...controller.syncConflicts,
+      SyncConflict(
+        id: 'gone',
+        path: 'notes/gone.typ',
+        recordPath: '.tylog/conflicts/gone.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: false,
+      ),
+    ];
+
+    final resolved = await controller.resolveAllConflicts(
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(resolved, 1, reason: 'only the record that still existed');
+    expect(server.uploaded, contains('notes/real.typ'));
+    expect(
+      server.uploaded,
+      isNot(contains('notes/gone.typ')),
+      reason: 'a vanished record must not push its local file',
+    );
+  });
+
   test('a half-failed batch reports what actually resolved', () async {
     // Nothing half-succeeded in the original version of this test: every
     // request failed, so it asserted 0 of 3 and never exercised the partial

@@ -1005,6 +1005,13 @@ class WorkspaceController extends ChangeNotifier {
   Future<int> resolveAllConflicts(SyncConflictResolution resolution) async {
     var resolved = 0;
     for (final conflict in [...syncConflicts]) {
+      // Re-check against the live list before acting. Every iteration reloads
+      // syncConflicts from disk, and that reload self-heals — so a record
+      // captured in the snapshot above may already be gone, and resolving it
+      // would apply the user's choice to a path that no longer disagrees, or
+      // to a *new* record for the same path holding content they never saw.
+      // Counting it would then report work that did not happen.
+      if (!syncConflicts.any((live) => live.id == conflict.id)) continue;
       // The per-conflict result, not the shared syncError slot. syncNow clears
       // that slot as it starts and a concurrent poll can set it, so reading it
       // here attributed unrelated failures to the batch — and a resolve that
