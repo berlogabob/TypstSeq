@@ -1389,11 +1389,27 @@ fn assemble_note(
         }),
         typst_string(source_name)
     ));
+    // A Typst dictionary rejects a repeated key outright, so the note stops
+    // compiling and every reader falls back to source parsing. Logseq pages
+    // routinely repeat a property line — one imported daily carried `login::`
+    // and `pswrd::` eleven times each, and had been unqueryable ever since.
+    // Suffixing keeps every value: dropping the duplicates would silently
+    // delete ten of eleven credentials.
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    seen.insert("import_format".to_owned(), 1);
+    seen.insert("import_source_name".to_owned(), 1);
     for (key, value) in &meta.properties {
         if matches!(key.as_str(), "import_format" | "import_source_name") {
             continue;
         }
-        out.push_str(&format!(", {}: {}", typst_string(key), typst_string(value)));
+        let count = seen.entry(key.clone()).or_insert(0);
+        *count += 1;
+        let key = if *count == 1 {
+            key.clone()
+        } else {
+            format!("{key}-{count}")
+        };
+        out.push_str(&format!(", {}: {}", typst_string(&key), typst_string(value)));
     }
     out.push_str(",),\n)\n\n");
     out.push_str(converted);
@@ -1561,6 +1577,38 @@ mod tests {
         assert!(note.typst.contains("after"));
         assert!(!note.typst.contains(":END:"));
         assert!(!note.typst.contains("LOGBOOK"));
+    }
+
+    #[test]
+    fn repeated_property_keys_do_not_break_the_dictionary() {
+        // A Typst dictionary rejects a repeated key, so this note stopped
+        // compiling and every reader fell back to source parsing. One imported
+        // daily in the real vault carried `login::` and `pswrd::` eleven times
+        // each and had been unqueryable since the import.
+        let note = convert_logseq_note(
+            "journals/2025_03_14.md",
+            "login:: a@example.com\npswrd:: one\nlogin:: b@example.com\npswrd:: two\n\n- entry",
+        )
+        .unwrap();
+        let typst = assemble_note(SourceDialect::Logseq, &note.meta, "2025_03_14.md", "");
+
+        assert!(typst.contains("\"login\": \"a@example.com\""));
+        assert!(typst.contains("\"login-2\": \"b@example.com\""));
+        assert!(typst.contains("\"pswrd\": \"one\""));
+        assert!(
+            typst.contains("\"pswrd-2\": \"two\""),
+            "every value survives - dropping duplicates would delete data"
+        );
+        // And no key appears twice, which is the whole point.
+        let keys: Vec<&str> = typst
+            .split(", \"")
+            .skip(1)
+            .filter_map(|part| part.split("\": ").next())
+            .collect();
+        let mut unique = keys.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(keys.len(), unique.len(), "duplicate key in {typst}");
     }
 
     #[test]
