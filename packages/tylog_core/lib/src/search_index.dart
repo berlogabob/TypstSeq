@@ -132,6 +132,13 @@ class PkmsSearchIndex {
       final bytes = gzip.decode(await storage.readBytes(path));
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
       if (json['version'] != 2) return empty();
+      // The *derivation* the documents were built from, not the file format.
+      // A document is cached against its note's content hash, so a derive-only
+      // index bump — which changes tags without touching a byte of any note —
+      // left every search document holding pre-fold spellings forever, and
+      // tag-filtered search silently disagreed with the index it came from.
+      // `version: 2` cannot catch that: it describes the envelope.
+      if (json['indexVersion'] != kVaultIndexVersion) return empty();
       final documents = (json['documents'] as Map).map<String, _SearchDocument>(
         (key, value) => MapEntry(
           key.toString(),
@@ -286,6 +293,7 @@ class PkmsSearchIndex {
     final data = utf8.encode(
       jsonEncode({
         'version': 2,
+        'indexVersion': kVaultIndexVersion,
         'documents': {
           for (final path in (_documents.keys.toList()..sort()))
             path: _documents[path]!.toJson(),

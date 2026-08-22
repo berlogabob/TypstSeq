@@ -365,13 +365,24 @@ void main() {
 
     final calendar = controller.calendar;
     final marks = controller.calendarDayMarks;
-    expect(calendar, isNotNull);
+    // Non-empty first: `calendar` is non-nullable and defaults to `const []`,
+    // so `isNotNull` was dead and identity between two `const []`s is trivially
+    // true — the assertions below only mean something once there is something
+    // to reuse.
+    expect(calendar, isNotEmpty);
+    expect(marks.daily, isNotEmpty);
     expect(
       identical(controller.calendar, calendar),
       isTrue,
       reason: 'reading it again must not recompute — that was the per-frame bug',
     );
     expect(identical(controller.calendarDayMarks, marks), isTrue);
+    // This identity is the whole contract. VaultIndex.calendar walks every
+    // note twice, allocates per daily, per date ref and per due task, and
+    // sorts the result — 20-40 ms on a 6,200-note vault — and it used to run
+    // inside the shell build(), so every autosave, sync tick and tab tap paid
+    // it. Caching it here is what fixed that, and reusing the same instance is
+    // how you can tell it is still cached.
 
     // A rebuild republishes it, even though the index object is retained.
     final revision = controller.indexRevision;
@@ -458,6 +469,14 @@ void main() {
     );
     await _waitUntil(() => controller.index != null);
     await controller.refreshIndex(always: true);
+
+    // Positive control first: without it this test passes vacuously if the
+    // search index is never written at all, or if the filename changes.
+    expect(
+      storage.writes.where((path) => path.contains('search-index')),
+      isNotEmpty,
+      reason: 'the first build must actually write one',
+    );
 
     storage.writes.clear();
     await controller.refreshIndex(always: true);

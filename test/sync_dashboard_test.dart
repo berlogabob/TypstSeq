@@ -285,9 +285,15 @@ void main() {
 
     // Nothing is preselected: a bulk choice can discard whatever the other
     // side added, which is the mistake the single dialog was fixed to stop
-    // making.
+    // making. Asserting `applied` is null here would be asserting a variable
+    // the test set itself — the sheet has only just opened. What matters is
+    // that the sheet offers both sides and commits to neither.
     expect(find.text('Resolve 3 conflicts'), findsOneWidget);
-    expect(applied, isNull);
+    expect(find.text("Keep this device's version"), findsOneWidget);
+    expect(find.text("Keep Nextcloud's version"), findsOneWidget);
+    for (final tile in tester.widgetList<ListTile>(find.byType(ListTile))) {
+      expect(tile.selected, isFalse, reason: 'no side may be preselected');
+    }
 
     await tester.tap(find.text("Keep Nextcloud's version"));
     await tester.pump();

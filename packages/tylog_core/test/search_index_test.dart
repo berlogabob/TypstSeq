@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -30,6 +31,53 @@ String _note({
     'Body of $title.';
 
 void main() {
+  test('a derive-only index bump invalidates the search documents', () async {
+    // Documents are cached against a note's content hash, so a bump that
+    // changes tags without touching a byte of any note left search holding
+    // pre-fold spellings forever - silently disagreeing with the index it was
+    // built from. The file-format version cannot catch it.
+    final root = await Directory.systemTemp.createTemp('tylog_search_ver_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText('notes/a.typ', 'alpha beta');
+    final index = VaultIndex(
+      notesByPath: {
+        'notes/a.typ': const NoteRef(
+          id: 'a',
+          path: 'notes/a.typ',
+          title: 'Alpha',
+          outgoingLinks: [],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    final built = await PkmsSearchIndex.buildStorage(storage, index);
+    await built.saveStorage(storage, '_index/search-index.json.gz');
+
+    // Rewrite the stamp as an older derivation, as an upgrade would leave it.
+    final raw = jsonDecode(
+      utf8.decode(gzip.decode(
+        await storage.readBytes('_index/search-index.json.gz'),
+      )),
+    ) as Map<String, Object?>;
+    expect(raw['indexVersion'], kVaultIndexVersion);
+    raw['indexVersion'] = kVaultIndexVersion - 1;
+    await storage.writeBytes(
+      '_index/search-index.json.gz',
+      gzip.encode(utf8.encode(jsonEncode(raw))),
+    );
+
+    final reloaded = await PkmsSearchIndex.loadStorage(
+      storage,
+      '_index/search-index.json.gz',
+    );
+    expect(
+      reloaded.search('alpha'),
+      isEmpty,
+      reason: 'documents from an older derivation must not be reused',
+    );
+  });
+
   // The scanner re-stamps every warm note's fingerprint to the new mtime, so
   // keying this cache on the fingerprint meant a sync that only moved
   // timestamps invalidated the WHOLE corpus: the scanner correctly reused every
