@@ -1280,6 +1280,34 @@ Future<int> sweepVaultLeftovers(VaultStorage storage) async {
   return deleted;
 }
 
+/// Appends diagnostic events to `.tylog/sync_trace.jsonl`, trimming the file
+/// when it grows past half a megabyte.
+///
+/// Top-level rather than a method on [NextcloudSync] because indexing needs it
+/// too, and indexing happens whether or not a cloud is configured — the case
+/// where donor health matters most is a device that cannot sync at all.
+Future<void> appendVaultTrace(
+  Vault vault,
+  List<Map<String, Object?>> events,
+) async {
+  if (events.isEmpty) return;
+  const path = '.tylog/sync_trace.jsonl';
+  var bytes = await vault.storage.exists(path)
+      ? await vault.storage.readBytes(path)
+      : <int>[];
+  if (bytes.length > 512 * 1024) {
+    var start = bytes.length - 256 * 1024;
+    while (start < bytes.length && bytes[start] != 10) {
+      start++;
+    }
+    bytes = bytes.sublist(start < bytes.length ? start + 1 : bytes.length);
+  }
+  await vault.storage.writeBytes(path, [
+    ...bytes,
+    for (final event in events) ...utf8.encode('${jsonEncode(event)}\n'),
+  ]);
+}
+
 /// A path holding a regenerable cache rather than anything a user wrote.
 ///
 /// Index donors are the only such thing inside the sync allowlist. They matter

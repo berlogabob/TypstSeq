@@ -591,6 +591,31 @@ class WorkspaceController extends ChangeNotifier {
             this.index = _retainIndex(index);
             indexedRevision = revision;
             opened.clearStaleNotes(stale);
+            // Indexing wrote nothing to the diagnostics until now, so "was
+            // donor sharing working last Tuesday?" had no answer at all. The
+            // sync trace already solves this shape — same file, same trim,
+            // same Copy diagnostics button. Only when there is something worth
+            // saying, or it would outnumber the sync events it sits beside.
+            final reuseNow = event.donorReuse;
+            if ((reuseNow != null && !reuseNow.isEmpty) ||
+                event.donorPublishError != null) {
+              unawaited(
+                appendVaultTrace(opened, [
+                  {
+                    'timestamp': DateTime.now().toUtc().toIso8601String(),
+                    'event': 'indexed',
+                    'trigger': showProgress ? 'manual' : 'auto',
+                    'notes': index.notes.length,
+                    'tasks': index.tasks.length,
+                    'reusedNotes': reuseNow?.notes ?? 0,
+                    'reusedDevices': reuseNow?.devices ?? 0,
+                    'skippedDonors': reuseNow?.skipped ?? 0,
+                    if (event.donorPublishError != null)
+                      'errorMessage': event.donorPublishError,
+                  },
+                ]).catchError((_) {}),
+              );
+            }
             if (showProgress) {
               final reuse = event.donorReuse;
               final shared = reuse == null || reuse.isEmpty

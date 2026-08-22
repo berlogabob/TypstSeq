@@ -442,6 +442,29 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                             leading: const Icon(Icons.error_outline),
                             title: Text(event['errorMessage'].toString()),
                           ),
+                        // Recorded on every pass since the timings landed, and
+                        // rendered nowhere — the numbers that decided what to
+                        // optimise had to be read out of the clipboard.
+                        if (event['stageMillis'] is Map)
+                          for (final stage
+                              in (event['stageMillis']! as Map).entries)
+                            ListTile(
+                              dense: true,
+                              title: Text(stage.key.toString()),
+                              trailing: Text('${stage.value} ms'),
+                            ),
+                        if (event['reusedNotes'] != null)
+                          ListTile(
+                            dense: true,
+                            title: Text(
+                              'Reused ${event['reusedNotes']} notes from '
+                              '${event['reusedDevices']} device(s)',
+                            ),
+                            subtitle: Text(
+                              '${event['notes']} notes indexed · '
+                              '${event['skippedDonors']} donor(s) skipped',
+                            ),
+                          ),
                         for (final decision
                             in event['decisions'] is List
                                 ? event['decisions']! as List

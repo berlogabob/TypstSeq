@@ -300,6 +300,13 @@ class Vault {
   /// What the last donor load actually reused, for the status line.
   DonorReuse get donorReuse => _donors.lastReuse;
 
+  /// Why the last donor publish failed, or null if it succeeded.
+  ///
+  /// A device that stops publishing makes every peer recompile the whole vault
+  /// from scratch. The store has recorded this since the failure stopped being
+  /// swallowed silently; nothing read it, so the channel ended in a field.
+  Object? get donorPublishError => _donors.lastPublishError;
+
   Future<VaultIndex?> loadIndex() async {
     if (!await storage.exists(indexPath)) return null;
     try {

@@ -138,22 +138,5 @@ extension _SyncStatePersistence on NextcloudSync {
   Future<void> _appendTrace(
     Vault vault,
     List<Map<String, Object?>> events,
-  ) async {
-    if (events.isEmpty) return;
-    const path = '.tylog/sync_trace.jsonl';
-    var bytes = await vault.storage.exists(path)
-        ? await vault.storage.readBytes(path)
-        : <int>[];
-    if (bytes.length > 512 * 1024) {
-      var start = bytes.length - 256 * 1024;
-      while (start < bytes.length && bytes[start] != 10) {
-        start++;
-      }
-      bytes = bytes.sublist(start < bytes.length ? start + 1 : bytes.length);
-    }
-    await vault.storage.writeBytes(path, [
-      ...bytes,
-      for (final event in events) ...utf8.encode('${jsonEncode(event)}\n'),
-    ]);
-  }
+  ) => appendVaultTrace(vault, events);
 }

@@ -123,7 +123,7 @@ class IndexProgressEvent extends VaultWorkerEvent {
 /// render notes while validation and the search index are still building — on
 /// SAF vaults that build reads many files and must never gate Journal/Library.
 class IndexBuiltEvent extends VaultWorkerEvent {
-  const IndexBuiltEvent(this.index, {this.donorReuse});
+  const IndexBuiltEvent(this.index, {this.donorReuse, this.donorPublishError});
 
   final VaultIndex index;
 
@@ -131,6 +131,10 @@ class IndexBuiltEvent extends VaultWorkerEvent {
   /// Reported so "the laptop did the work" is observable instead of a silent
   /// fallback to recompiling everything locally.
   final DonorReuse? donorReuse;
+
+  /// Why this device could not share its own index, if it could not. Already a
+  /// string: the error object itself does not cross an isolate port.
+  final String? donorPublishError;
 }
 
 class CommunitiesBuiltEvent extends VaultWorkerEvent {
@@ -258,7 +262,13 @@ class _VaultWorker {
           _send(IndexProgressEvent(complete, total));
         },
       );
-      _send(IndexBuiltEvent(index, donorReuse: _vault.donorReuse));
+      _send(
+        IndexBuiltEvent(
+          index,
+          donorReuse: _vault.donorReuse,
+          donorPublishError: _vault.donorPublishError?.toString(),
+        ),
+      );
 
       // Derived state is an optimization; the UI degrades to null on failure.
       try {
@@ -285,6 +295,45 @@ class _VaultWorker {
                 'Usually a missing or mismatched native library — rebuild it '
                 '(make setup-native) and reinstall.',
             detail: inspectorError,
+          ),
+        );
+      }
+      final donorPublishError = _vault.donorPublishError;
+      if (donorPublishError != null) {
+        report.problems.add(
+          PkmsProblem(
+            code: 'donor-publish-failed',
+            severity: PkmsSeverity.warning,
+            subject: Vault.indexDonorsPath,
+            message:
+                'This device could not share its index with your other '
+                'devices, so they will each rebuild it from scratch.',
+            fix:
+                'Usually a full disk or a vault folder this app cannot write '
+                'to. Check free space and the folder permission.',
+            detail: '$donorPublishError',
+          ),
+        );
+      }
+      final reuse = _vault.donorReuse;
+      // Only when *nothing* was usable. A fleet mid-upgrade always has some
+      // skipped donors while peers catch up, and that is a healthy,
+      // self-healing state — raising it every scan for a week would be noise,
+      // and validation's summary puts warnings in the status line.
+      if (reuse.skipped > 0 && reuse.devices == 0) {
+        report.problems.add(
+          PkmsProblem(
+            code: 'donor-skipped',
+            severity: PkmsSeverity.info,
+            subject: Vault.indexDonorsPath,
+            message:
+                'None of your other devices shared a usable index, so this '
+                'one rebuilt everything itself.',
+            fix:
+                'Normal right after an update — it clears once the other '
+                'devices reindex. Persisting means their format never caught '
+                'up.',
+            detail: 'skipped ${reuse.skipped} donor(s)',
           ),
         );
       }

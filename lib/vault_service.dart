@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import 'nextcloud_sync.dart';
@@ -90,10 +92,16 @@ Future<void> _runOnce() async {
     if (!result.requiresIndexRefresh) return;
 
     FlutterTypstInspector? inspector;
+    Object? inspectorError;
     try {
       inspector = await FlutterTypstInspector.create();
-    } catch (_) {
+    } catch (error) {
       // Native Typst stays optional; the scanner falls back to source parsing.
+      // But this process runs unattended for hours, so swallowing the reason
+      // meant the context with the least observability had none at all: a
+      // background rebuild could degrade the whole vault to source parsing
+      // with nothing anywhere recording why.
+      inspectorError = error;
     }
     try {
       final index = await vault.rebuildIndex(
@@ -104,6 +112,26 @@ Future<void> _runOnce() async {
         // that passed nothing, so a cold rebuild was guaranteed to be killed
         // partway on a large vault.
         isCancelled: () => DateTime.now().isAfter(deadline),
+      );
+      // The trace is the only channel this process has — it raises no
+      // PkmsProblems, because nothing here renders them.
+      unawaited(
+        appendVaultTrace(vault, [
+          {
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'event': 'indexed',
+            'trigger': 'background',
+            'notes': index.notes.length,
+            'tasks': index.tasks.length,
+            'reusedNotes': vault.donorReuse.notes,
+            'reusedDevices': vault.donorReuse.devices,
+            'skippedDonors': vault.donorReuse.skipped,
+            if (inspectorError != null)
+              'errorMessage': 'Native Typst did not start: $inspectorError',
+            if (vault.donorPublishError != null)
+              'donorPublishError': '${vault.donorPublishError}',
+          },
+        ]).catchError((_) {}),
       );
       // Refresh the search index too, so the next app open starts warm
       // instead of paying the SAF-heavy build on the user's time.
