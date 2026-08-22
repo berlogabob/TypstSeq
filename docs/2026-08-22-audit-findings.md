@@ -97,8 +97,10 @@ hand-written dailies with no managed metadata at all — which is not a failure,
 and after F1b they are marked `no-metadata` and no longer recompiled.
 
 Both broken notes were repaired in the live vault: values preserved verbatim,
-bodies untouched, each verified by compiling it before and after. The vault now
-holds 6,210 queried notes and five deliberately plain ones.
+bodies untouched, each verified by compiling it before and after. The A24 now reports 6,209
+queried notes and six `no-metadata` ones — hand-written days with no managed
+header, which is a shape TyLog supports, not a failure. Nothing is left in
+`fallback-inspected`.
 
 The A24 arrived on 0.4.2 with a v9 index, zero query facts, and a pending
 conflict **on the donor file itself**. On launch it cleared that conflict
