@@ -518,6 +518,43 @@ void main() {
     }
   });
 
+  test('a failed save is reported even if the user kept typing', () async {
+    // The revision guard was on the failure branch too, so a save that failed
+    // while the user typed one more character was discarded: no status, no
+    // notify, and the autosave timer already cancelled. The edit was gone with
+    // the UI still showing a save as pending.
+    final storage = _FailingWriteStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+
+    controller.edit('#import "/_system/tylog.typ" as tylog\n// first\n');
+    storage.failWrites = true;
+    final saving = controller.save();
+    // The user types again while the write is in flight, moving the revision.
+    controller.edit('#import "/_system/tylog.typ" as tylog\n// second\n');
+    await saving;
+
+    expect(
+      controller.status,
+      contains('Save failed'),
+      reason: 'a write that never landed must say so',
+    );
+    expect(
+      controller.dirty,
+      isTrue,
+      reason: 'still unsaved, so idle maintenance retries it',
+    );
+  });
+
   test('a half-failed batch reports what actually resolved', () async {
     // Nothing half-succeeded in the original version of this test: every
     // request failed, so it asserted 0 of 3 and never exercised the partial
@@ -1339,6 +1376,19 @@ class _GatedScanStorage extends _MemoryStorage {
       await gate.future;
     }
     return result;
+  }
+}
+
+/// Fails writes on demand, to prove a lost write is never silent.
+class _FailingWriteStorage extends _MemoryStorage {
+  bool failWrites = false;
+
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    if (failWrites && path.endsWith('.typ')) {
+      throw const FileSystemException('disk full');
+    }
+    return super.writeBytes(path, bytes);
   }
 }
 

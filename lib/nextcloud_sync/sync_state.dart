@@ -47,6 +47,17 @@ extension _SyncStatePersistence on NextcloudSync {
       if (decoded is! Map || decoded['cursors'] is! Map) {
         throw const FormatException('sync state requires a cursors map');
       }
+      // `schema` and `remoteKey` absent means the file predates those fields,
+      // and both are deliberately tolerated rather than treated as unknown.
+      // An audit flagged this as "absent read as current", the same shape as a
+      // real bug elsewhere — but here the safe-looking alternatives are worse.
+      // Rejecting the file discards a deliberate, tested migration; accepting
+      // it as *recovered* turns every path into a comparison and hands the
+      // user a conflict per file on their first sync after upgrading. And the
+      // risk it guards against is not real: an unbound cursor carries a
+      // server-generated etag, so against a different server it simply fails
+      // to match and the pass re-decides the path correctly. Each cursor entry
+      // is validated on its own by _validSyncCursor regardless.
       if (decoded['schema'] != null && decoded['schema'] != 2) {
         throw const FormatException('unsupported sync state schema');
       }

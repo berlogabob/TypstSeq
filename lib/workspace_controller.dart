@@ -429,10 +429,18 @@ class WorkspaceController extends ChangeNotifier {
         notifyListeners();
       }
     } catch (error) {
-      if (revision == editRevision && path == note) {
-        status = 'Save failed: $error';
-        notifyListeners();
-      }
+      // The revision guard belongs on the *success* branch, where a newer edit
+      // means this save's result is simply out of date. A failure is not out
+      // of date: those bytes never reached disk, and if the user typed one
+      // more character while the write was in flight the failure used to be
+      // discarded — no status, no notify, autosave timer already cancelled, so
+      // the edit was gone with the UI still claiming a save was pending.
+      status = path == note
+          ? 'Save failed: $error'
+          : 'Save failed for $path: $error';
+      // Still dirty, so idle maintenance and the next edit both retry.
+      _setDirty(true);
+      notifyListeners();
     }
   }
 
