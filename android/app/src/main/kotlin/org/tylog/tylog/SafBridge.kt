@@ -7,6 +7,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import io.flutter.plugin.common.BinaryMessenger
@@ -56,6 +57,26 @@ class SafBridge(
         // a dead one. Keyed by (tree, path), so instances cannot collide.
         private val uriCache = ConcurrentHashMap<Pair<String, String>, Uri>()
 
+        // The whole-vault recursive listing, and only that one. A changed pass
+        // walks the tree four times — sync, the scan, the Typst support-file
+        // set, and validation — and on an 11.6k-file vault one walk measured
+        // 22 seconds on an A24, because a recursive list is one
+        // ContentResolver.query per directory. Ninety seconds of a pass was
+        // re-enumerating directories nothing had touched.
+        //
+        // Restricted to the root recursive listing on purpose: it is the only
+        // shape that is asked for repeatedly, and it bounds the cache to a
+        // single listing per vault rather than one per directory.
+        //
+        // Shared across both engines for the same reason uriCache is, and
+        // dropped by invalidate() on every write this process makes. The TTL
+        // is the only cover for a writer outside this process — a file manager
+        // dropping notes into the folder — so it is short enough that such a
+        // change is picked up by the following pass.
+        private const val LISTING_TTL_MILLIS = 60_000L
+        private val listingCache =
+            ConcurrentHashMap<String, Pair<Long, List<Map<String, Any?>>>>()
+
         /**
          * Drops every memoised document uri.
          *
@@ -67,7 +88,10 @@ class SafBridge(
          * one is caught by the retry in withResolved.
          */
         @androidx.annotation.VisibleForTesting
-        internal fun clearUriCache() = uriCache.clear()
+        internal fun clearUriCache() {
+            uriCache.clear()
+            listingCache.clear()
+        }
     }
 
     private val resolver = context.contentResolver
@@ -392,6 +416,20 @@ class SafBridge(
     private fun invalidate(tree: Uri, path: String) {
         val safe = safePath(path)
         val vault = tree.toString()
+        // Any write to real vault content drops the whole-vault listing — it
+        // goes in full rather than trying to patch one entry.
+        //
+        // Bookkeeping this device writes on literally every pass is exempt:
+        // the sync trace, the sync state, the index and the search index. They
+        // live in the listing, but nothing decides anything from their entries
+        // — sync filters them out as internal, and the leftover sweep works on
+        // an hour's grace, so a minute of staleness cannot change its answer.
+        // Without this exemption a pass invalidated the cache with its own
+        // trace write and every pass re-walked the tree, which on an A24 is
+        // 22 seconds to learn nothing.
+        if (!safe.startsWith(".tylog") && !safe.startsWith("_index")) {
+            listingCache.remove(vault)
+        }
         uriCache.keys.removeAll { (owner, cached) ->
             owner == vault &&
                 (safe.isEmpty() || cached == safe || cached.startsWith("$safe/"))
@@ -469,10 +507,20 @@ class SafBridge(
     }
 
     private fun list(tree: Uri, path: String, recursive: Boolean): List<Map<String, Any?>> {
+        val cacheable = recursive && path.isEmpty()
+        val key = tree.toString()
+        if (cacheable) {
+            listingCache[key]?.let { (at, entries) ->
+                if (SystemClock.elapsedRealtime() - at < LISTING_TTL_MILLIS) return entries
+            }
+        }
         val parent = resolve(tree, path) ?: return emptyList()
         require(isDirectory(parent)) { "$path is not a folder" }
         val out = mutableListOf<Map<String, Any?>>()
         listInto(tree, parent, path, recursive, out)
+        if (cacheable) {
+            listingCache[key] = SystemClock.elapsedRealtime() to out.toList()
+        }
         return out
     }
 

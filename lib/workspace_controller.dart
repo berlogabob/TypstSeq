@@ -597,8 +597,16 @@ class WorkspaceController extends ChangeNotifier {
             // same Copy diagnostics button. Only when there is something worth
             // saying, or it would outnumber the sync events it sits beside.
             final reuseNow = event.donorReuse;
-            if ((reuseNow != null && !reuseNow.isEmpty) ||
-                event.donorPublishError != null) {
+            // Every state the donor machinery can be in that is worth knowing
+            // about: it fed us, it rejected something, or it could not share.
+            // `isEmpty` alone was wrong — it is true whenever no notes were
+            // reused, which includes the case where donors were *skipped*, and
+            // that is precisely the symptom worth a record.
+            final worthRecording =
+                (reuseNow?.notes ?? 0) > 0 ||
+                (reuseNow?.skipped ?? 0) > 0 ||
+                event.donorPublishError != null;
+            if (worthRecording) {
               unawaited(
                 appendVaultTrace(opened, [
                   {
