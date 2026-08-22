@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:tylog_core/image_identity.dart';
+import 'package:tylog_core/maintenance.dart';
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show compute, visibleForTesting;
@@ -13,6 +14,14 @@ import 'package:path_provider/path_provider.dart';
 
 import 'vault.dart';
 import 'vault_storage.dart';
+
+export 'package:tylog_core/maintenance.dart'
+    show
+        isForkedVaultLockPath,
+        isOrphanedTempPath,
+        isSafBackupPath,
+        orphanTempGrace,
+        sweepVaultLeftovers;
 
 part 'nextcloud_sync/conflicts.dart';
 part 'nextcloud_sync/path_sync.dart';
@@ -1242,52 +1251,6 @@ bool isSyncInternalPath(String path) =>
     path.endsWith('.tmp') ||
     isSafBackupPath(path);
 
-// Orphan of an interrupted SAF atomic replace: `.<name>.tylog-<nanos>.backup`.
-bool isSafBackupPath(String path) {
-  final name = path.split('/').last;
-  return name.startsWith('.') &&
-      name.endsWith('.backup') &&
-      name.contains('.tylog-');
-}
-
-/// Deletes what interrupted writes and SAF rename collisions leave behind:
-/// `.backup` orphans, forked vault locks, and `.tmp` files old enough to prove
-/// no write is still using them.
-///
-/// Returns how many it removed. Every item is attempted on its own — one
-/// locked file used to abort the whole pass through a single `catch (_)` around
-/// the loop, so an unlucky third file out of 11,610 meant nothing after it was
-/// ever swept, silently, on every open forever.
-Future<int> sweepVaultLeftovers(VaultStorage storage) async {
-  final tempCutoff = DateTime.now().subtract(orphanTempGrace);
-  var deleted = 0;
-  List<VaultStorageEntry> items;
-  try {
-    items = await storage.list(recursive: true);
-  } catch (_) {
-    return 0;
-  }
-  for (final item in items) {
-    if (item.isDirectory) continue;
-    final backup =
-        isSafBackupPath(item.path) || isForkedVaultLockPath(item.path);
-    // An unknown mtime is never old enough.
-    final modified = item.modified;
-    final staleTemp =
-        isOrphanedTempPath(item.path) &&
-        modified != null &&
-        modified.isBefore(tempCutoff);
-    if (!backup && !staleTemp) continue;
-    try {
-      await storage.delete(item.path);
-      deleted++;
-    } catch (_) {
-      // This one is in use or gone; the rest of the sweep still runs.
-    }
-  }
-  return deleted;
-}
-
 /// Appends diagnostic events to `.tylog/sync_trace.jsonl`, trimming the file
 /// when it grows past half a megabyte.
 ///
@@ -1341,34 +1304,14 @@ bool _sameBytes(List<int>? a, List<int>? b) {
 bool isRegenerableCachePath(String path) =>
     path.startsWith('_system/index/') && path.endsWith('.json');
 
-/// Orphan of an interrupted atomic write: `.index.json.tylog-<micros>.tmp`
-/// (SAF) or `notes/a.typ.<micros>.tmp` (local). Both writers rename the temp
-/// over its target, so one that outlives the write is dead weight nothing will
-/// ever look at again. Three were sitting in the live vault, the oldest three
-/// weeks old — two of them whole articles that never landed.
-bool isOrphanedTempPath(String path) =>
-    _orphanTempPattern.hasMatch(path.split('/').last);
-
-final RegExp _orphanTempPattern = RegExp(r'\.(?:tylog-)?\d+\.tmp$');
-
-/// How long a `.tmp` must sit untouched before the sweep will remove it. The
-/// background service is a separate process writing the same vault, so a temp
-/// file created seconds ago may be an atomic write still in flight.
-const orphanTempGrace = Duration(hours: 1);
-
-/// A vault lock forked by a SAF rename collision: `.tylog/vault (1).lock`.
-///
-/// When two engines raced to create the lock, the provider de-duplicated the
-/// loser's rename instead of overwriting, leaving a file nothing can find again
-/// — `VaultLock` looks up `vault.lock` exactly, so it can neither read nor
-/// release it. Harmless in itself but permanent, and a clear sign the lock was
-/// not arbitrating anything for the length of that sync.
-///
-/// Matched exactly, never generalised to "anything with (n)": `Report (1).typ`
-/// is perfectly ordinary user content, and a broader sweep would delete notes.
-final _forkedVaultLock = RegExp(r'^\.tylog/vault \(\d+\)\.lock$');
-
-bool isForkedVaultLockPath(String path) => _forkedVaultLock.hasMatch(path);
+// The leftover predicates and the sweep itself now live in tylog_core, beside
+// the maintenance routine that runs them, so the CLI sweeps too. Notes kept
+// there: a `.tmp` that outlives its rename is dead weight nothing will ever
+// look at again (three were sitting in the live vault, the oldest three weeks
+// old, two of them whole articles that never landed), and the forked-lock
+// pattern is matched exactly rather than generalised to "anything with (n)" —
+// `Report (1).typ` is perfectly ordinary user content and a broader sweep would
+// delete notes.
 
 /// This device's own bookkeeping inside the syncable `_system/` tree: reading
 /// progress (rewritten on every note open) and the index donor (rewritten

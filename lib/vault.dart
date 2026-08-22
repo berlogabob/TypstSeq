@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:tylog_core/index_donor.dart';
+import 'package:tylog_core/maintenance.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
@@ -72,16 +72,11 @@ class Vault {
   void clearPendingSyncWrites(Iterable<String> paths) =>
       _pendingSyncWrites.removeAll(paths);
 
-  /// Reads and writes `_system/index/` donors — shared with the CLI.
-  late final IndexDonorStore _donors = IndexDonorStore(storage);
-
-  /// The index this instance built last. Serves as `previous` for the next
-  /// rebuild so the on-disk copy never has to be decoded again.
-  VaultIndex? _lastBuiltIndex;
-
-  /// sha256 of the last index-cache bytes this process wrote; a rebuild that
-  /// re-derives identical bytes skips the multi-megabyte rewrite.
-  String? _lastIndexDigest;
+  /// Indexing, validation, search and the orphan sweep — the routine all four
+  /// contexts share, and the caches that make a repeat pass cheap. Lives in
+  /// tylog_core so the CLI and the background service run the same steps in the
+  /// same order rather than each keeping their own subset.
+  late final VaultMaintenance maintenance = VaultMaintenance(storage);
 
   static const indexPath = TylogVaultPaths.index;
   static const searchIndexPath = TylogVaultPaths.searchIndex;
@@ -216,20 +211,6 @@ class Vault {
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    // The index this instance last built is byte-equivalent to what is on
-    // disk, so re-reading and re-decoding it is pure waste — 8.8 MB of JSON and
-    // ~13k objects rebuilt on every rebuild, on the worker isolate that already
-    // holds them. The scanner re-verifies every entry against the bytes on disk
-    // regardless, so a stale cache can only cost a re-parse, never correctness.
-    var previous = _lastBuiltIndex ?? await loadIndex();
-    // Only *our own* last index says anything about what our donor holds; a
-    // peer's donated index does not, so it must not suppress a republish.
-    final ownPrevious = previous?.version == kVaultIndexVersion
-        ? previous
-        : null;
-    if (previous == null || previous.version != kVaultIndexVersion) {
-      previous = await _loadDonatedIndex(deviceId) ?? previous;
-    }
     final staleNow = stale ?? Set<String>.of(_staleNotes);
     FlutterTypstInspector? ownedInspector;
     if (inspector == null) {
@@ -242,11 +223,10 @@ class Vault {
     }
     final VaultIndex index;
     try {
-      index = await scanVaultStorage(
-        storage,
+      index = await maintenance.buildIndex(
         inspector: inspector,
-        previous: previous,
         force: force,
+        deviceId: deviceId,
         stale: staleNow,
         onProgress: onProgress,
         isCancelled: isCancelled,
@@ -258,63 +238,20 @@ class Vault {
     // queued for the next one. A no-op when `stale` came from outside — that
     // caller owns the clearing.
     _staleNotes.removeAll(staleNow);
-    // Gzip via the shared codec (readers accept the old plain JSON), and skip
-    // the write entirely when this process already wrote identical bytes —
-    // the encoded index was ~6.7 MB plain and is rewritten on every rebuild.
-    // Skip the *encode*, not just the write: jsonEncode + gzip of the whole
-    // index ran unconditionally just to compute a digest to compare. Comparing
-    // note content hashes answers the same question for the price of one pass
-    // over a map already in memory. The existence check keeps an
-    // externally-deleted `_index/` from being treated as already-written.
-    final unchanged =
-        sameIndexedContent(_lastBuiltIndex, index) &&
-        await storage.exists(indexPath);
-    if (!unchanged) {
-      final encoded = encodeVaultIndexBytes(index);
-      final digest = sha256.convert(encoded).toString();
-      if (digest != _lastIndexDigest || !await storage.exists(indexPath)) {
-        await storage.writeBytes(indexPath, encoded);
-        _lastIndexDigest = digest;
-      }
-    }
-    _lastBuiltIndex = index;
-    if (deviceId != null && deviceId.isNotEmpty) {
-      await _writeIndexDonor(deviceId, index, ownPrevious);
-    }
     return index;
   }
 
-  /// Publishes this device's notes for its peers. Implementation lives in
-  /// tylog_core's [IndexDonorStore] so the CLI publishes the same format.
-  Future<void> _writeIndexDonor(
-    String deviceId,
-    VaultIndex index,
-    VaultIndex? previous,
-  ) => _donors.publish(deviceId, index, previous: previous);
-
-  /// Merges every *other* device's donor into one index the scanner can use
-  /// as its cache. See tylog_core's [IndexDonorStore].
-  Future<VaultIndex?> _loadDonatedIndex(String? deviceId) =>
-      _donors.load(deviceId);
-
   /// What the last donor load actually reused, for the status line.
-  DonorReuse get donorReuse => _donors.lastReuse;
+  DonorReuse get donorReuse => maintenance.donorReuse;
 
   /// Why the last donor publish failed, or null if it succeeded.
   ///
   /// A device that stops publishing makes every peer recompile the whole vault
   /// from scratch. The store has recorded this since the failure stopped being
   /// swallowed silently; nothing read it, so the channel ended in a field.
-  Object? get donorPublishError => _donors.lastPublishError;
+  Object? get donorPublishError => maintenance.donorPublishError;
 
-  Future<VaultIndex?> loadIndex() async {
-    if (!await storage.exists(indexPath)) return null;
-    try {
-      return decodeVaultIndexBytes(await storage.readBytes(indexPath));
-    } catch (_) {
-      return null;
-    }
-  }
+  Future<VaultIndex?> loadIndex() => loadVaultIndex(storage);
 
   /// [knownIds] lets a caller creating several notes at once own the id
   /// namespace for the whole batch. Without it each call re-reads the on-disk

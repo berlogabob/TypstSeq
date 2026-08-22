@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:flutter/services.dart';
 import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/index_donor.dart';
+import 'package:tylog_core/maintenance.dart';
 
 import 'models.dart';
 import 'pkms_registry.dart';
@@ -195,10 +196,6 @@ class _VaultWorker {
   /// window anyway (`PkmsSearchIndex.empty()` from openVault).
   PkmsSearchIndex _search = PkmsSearchIndex.empty();
 
-  /// Whether [_search] holds a real build from this worker (as opposed to the
-  /// initial empty placeholder). Only then can a warm rebuild reuse it and
-  /// skip re-loading the saved index from disk.
-  bool _searchBuilt = false;
   bool _cancelled = false;
   bool _busy = false;
 
@@ -249,121 +246,61 @@ class _VaultWorker {
     _cancelled = false;
     try {
       _inspector ??= await _createInspector();
-      final index = await _vault.rebuildIndex(
+      // One routine, shared with the background service and the CLI. What used
+      // to be inlined here — the index write, the donor publish, the donor
+      // problems, the search identity guard, the orphan sweep — is the same
+      // code in all three now, so a fix to any of it can no longer land in one
+      // context and be missing from the others.
+      await for (final event in _vault.maintenance.run(
         inspector: _inspector,
         force: command.force,
         deviceId: _boot.deviceId,
         stale: command.stale,
         isCancelled: () => _cancelled,
-        // Throttled here rather than on the far side so the ticks the UI would
-        // have discarded never cross the port at all.
-        onProgress: (complete, total) {
-          if (complete % 100 != 0 && complete != total) return;
-          _send(IndexProgressEvent(complete, total));
-        },
-      );
-      _send(
-        IndexBuiltEvent(
-          index,
-          donorReuse: _vault.donorReuse,
-          donorPublishError: _vault.donorPublishError?.toString(),
-        ),
-      );
-
-      // Derived state is an optimization; the UI degrades to null on failure.
-      try {
-        _send(CommunitiesBuiltEvent(computeCommunities(index)));
-      } catch (_) {}
-
-      final report = await validatePkmsStorage(_vault.storage, index);
-      // Unparseable task recurrence rules — rrule lives in the app layer, not
-      // tylog_core — into the same Problems report the UI already shows.
-      report.problems.addAll(validateTaskRecurrences(index.tasks));
-      final inspectorError = _inspectorError;
-      if (inspectorError != null) {
-        // Same channel as every other degradation, so it needs no new event, no
-        // controller plumbing and no UI: Problems already renders this list.
-        report.problems.add(
-          PkmsProblem(
-            code: 'typst-engine-unavailable',
-            severity: PkmsSeverity.error,
-            subject: '_system',
-            message:
-                'Native Typst did not start, so note metadata came from source '
-                'parsing instead of a Typst query.',
-            fix:
-                'Usually a missing or mismatched native library — rebuild it '
-                '(make setup-native) and reinstall.',
-            detail: inspectorError,
-          ),
-        );
-      }
-      final donorPublishError = _vault.donorPublishError;
-      if (donorPublishError != null) {
-        report.problems.add(
-          PkmsProblem(
-            code: 'donor-publish-failed',
-            severity: PkmsSeverity.warning,
-            subject: Vault.indexDonorsPath,
-            message:
-                'This device could not share its index with your other '
-                'devices, so they will each rebuild it from scratch.',
-            fix:
-                'Usually a full disk or a vault folder this app cannot write '
-                'to. Check free space and the folder permission.',
-            detail: '$donorPublishError',
-          ),
-        );
-      }
-      final reuse = _vault.donorReuse;
-      // Only when *nothing* was usable. A fleet mid-upgrade always has some
-      // skipped donors while peers catch up, and that is a healthy,
-      // self-healing state — raising it every scan for a week would be noise,
-      // and validation's summary puts warnings in the status line.
-      if (reuse.skipped > 0 && reuse.devices == 0) {
-        report.problems.add(
-          PkmsProblem(
-            code: 'donor-skipped',
-            severity: PkmsSeverity.info,
-            subject: Vault.indexDonorsPath,
-            message:
-                'None of your other devices shared a usable index, so this '
-                'one rebuilt everything itself.',
-            fix:
-                'Normal right after an update — it clears once the other '
-                'devices reindex. Persisting means their format never caught '
-                'up.',
-            detail: 'skipped ${reuse.skipped} donor(s)',
-          ),
-        );
-      }
-      // The in-memory index from the previous rebuild is exactly what was
-      // last saved, so a warm rebuild skips the gzip-decode/jsonDecode round
-      // trip entirely; the disk load only happens on this worker's first
-      // rebuild. buildStorage returns `cached` itself when nothing changed —
-      // that identity is the signal that re-encoding and re-writing the
-      // multi-megabyte index file would be a no-op too.
-      final cached = _searchBuilt
-          ? _search
-          : await PkmsSearchIndex.loadStorage(
-              _vault.storage,
-              Vault.searchIndexPath,
+        extraProblems: (index) => [
+          // Unparseable task recurrence rules — rrule lives in the app layer,
+          // not tylog_core — into the same Problems report the UI shows.
+          ...validateTaskRecurrences(index.tasks),
+          ...?_engineProblem(),
+        ],
+      )) {
+        switch (event) {
+          case MaintenanceProgress(:final complete, :final total):
+            // Throttled here rather than on the far side so the ticks the UI
+            // would have discarded never cross the port at all.
+            if (complete % 100 == 0 || complete == total) {
+              _send(IndexProgressEvent(complete, total));
+            }
+          case MaintenanceIndexed(
+            :final index,
+            :final donorReuse,
+            :final donorPublishError,
+          ):
+            _send(
+              IndexBuiltEvent(
+                index,
+                donorReuse: donorReuse,
+                donorPublishError: donorPublishError?.toString(),
+              ),
             );
-      final search = await PkmsSearchIndex.buildStorage(
-        _vault.storage,
-        index,
-        previous: cached,
-      );
-      if (!identical(search, cached)) {
-        await search.saveStorage(_vault.storage, Vault.searchIndexPath);
+            // Derived state is an optimization; the UI degrades to null on
+            // failure.
+            try {
+              _send(CommunitiesBuiltEvent(computeCommunities(index)));
+            } catch (_) {}
+          case MaintenanceValidated(:final report):
+            _send(PkmsBuiltEvent(report));
+          case MaintenanceSearchBuilt(:final search):
+            // Published to this isolate's own field, not over the port:
+            // shipping it cost ~71 ms of root-isolate time per rebuild on a
+            // P30. Swapped whole rather than `replaceWith`-ed — nothing here
+            // holds the old instance, so rebuilding 107k posting Sets to
+            // preserve an identity no one depends on would be pure waste.
+            _search = search;
+          case MaintenanceSwept():
+            break;
+        }
       }
-      // Published to this isolate's own field, not over the port. Swapped whole
-      // rather than `replaceWith`-ed: nothing here holds the old instance, so
-      // rebuilding 107k posting Sets to preserve an identity no one depends on
-      // would be pure waste.
-      _search = search;
-      _searchBuilt = true;
-      _send(PkmsBuiltEvent(report));
       _send(const WorkDoneEvent());
     } on IndexBuildCancelled {
       _send(const WorkFailedEvent('cancelled', cancelled: true));
@@ -372,6 +309,27 @@ class _VaultWorker {
     } finally {
       _busy = false;
     }
+  }
+
+  List<PkmsProblem>? _engineProblem() {
+    final error = _inspectorError;
+    if (error == null) return null;
+    // Same channel as every other degradation, so it needs no new event, no
+    // controller plumbing and no UI: Problems already renders this list.
+    return [
+      PkmsProblem(
+        code: 'typst-engine-unavailable',
+        severity: PkmsSeverity.error,
+        subject: '_system',
+        message:
+            'Native Typst did not start, so note metadata came from source '
+            'parsing instead of a Typst query.',
+        fix:
+            'Usually a missing or mismatched native library — rebuild it '
+            '(make setup-native) and reinstall.',
+        detail: error,
+      ),
+    ];
   }
 
   /// Why native Typst is unavailable, if it is. Reported as a problem rather than

@@ -57,46 +57,31 @@ Future<int> _index(List<String> args) async {
   final root = Directory(args.firstOrNull ?? '.').absolute;
   final storage = LocalVaultStorage(root);
   await _openVault(storage);
-  VaultIndex? previous;
-  if (!force && await storage.exists(TylogVaultPaths.index)) {
-    try {
-      previous = decodeVaultIndexBytes(
-        await storage.readBytes(TylogVaultPaths.index),
-      );
-    } catch (_) {}
-  }
-  final previousSearch = await PkmsSearchIndex.loadStorage(
-    storage,
-    TylogVaultPaths.searchIndex,
-  );
-  final index = await scanVaultStorage(
-    storage,
-    inspector: CliTypstInspector(root),
-    previous: previous,
-    force: force,
-  );
-  // Same skips the app has. `sameIndexedContent` and the search index's
-  // identity return both mean "nothing to write"; ignoring them re-encoded the
-  // whole corpus every run — and on a Nextcloud-managed desktop vault the
-  // rewritten files are then uploaded by the desktop client for nothing.
-  if (!sameIndexedContent(previous, index)) {
-    await storage.writeBytes(
-      TylogVaultPaths.index,
-      encodeVaultIndexBytes(index),
-    );
-  }
-  // Publish for the phones. Indexing on a desktop is minutes of Typst compiles
-  // that every other device would otherwise repeat for itself; a donor lets
-  // them match by content hash and skip the compile entirely.
+  // The same routine the app's worker and the background service run: scan,
+  // write the index, publish this machine's donor, rebuild search, sweep the
+  // leftovers. Indexing on a desktop is minutes of Typst compiles that every
+  // other device would otherwise repeat for itself, so the donor is the whole
+  // point of running it here — and until this shared it, the CLI published one
+  // but never *consumed* the peers', and never swept.
+  final maintenance = VaultMaintenance(storage);
   final deviceId = await _cliDeviceId(storage);
-  await IndexDonorStore(storage).publish(deviceId, index, previous: previous);
-  final search = await PkmsSearchIndex.buildStorage(
-    storage,
-    index,
-    previous: previousSearch,
-  );
-  if (!identical(search, previousSearch)) {
-    await search.saveStorage(storage, TylogVaultPaths.searchIndex);
+  late final VaultIndex index;
+  await for (final event in maintenance.run(
+    inspector: CliTypstInspector(root),
+    force: force,
+    deviceId: deviceId,
+    // Nothing here renders a problems report; `tylog doctor` is the command
+    // that does, and it prints them.
+    validate: false,
+  )) {
+    switch (event) {
+      case MaintenanceIndexed(index: final built):
+        index = built;
+      case MaintenanceSwept(:final deleted):
+        if (deleted > 0) stdout.writeln('Swept $deleted leftover file(s)');
+      default:
+        break;
+    }
   }
   stdout.writeln(
     'Indexed ${index.notes.length} notes and ${index.tasks.length} tasks '
@@ -352,22 +337,17 @@ Future<void> _republishIndexArtifacts(
   LocalVaultStorage storage,
   Directory root,
 ) async {
-  final index = await scanVaultStorage(
-    storage,
+  final deviceId = await _cliDeviceId(storage);
+  var notes = 0;
+  await for (final event in VaultMaintenance(storage).run(
     inspector: CliTypstInspector(root),
     force: true,
-  );
-  await storage.writeBytes(
-    TylogVaultPaths.index,
-    encodeVaultIndexBytes(index),
-  );
-  final deviceId = await _cliDeviceId(storage);
-  await IndexDonorStore(storage).publish(deviceId, index);
-  final search = await PkmsSearchIndex.buildStorage(storage, index);
-  await search.saveStorage(storage, TylogVaultPaths.searchIndex);
-  stdout.writeln(
-    'Reindexed ${index.notes.length} notes; republished donor $deviceId',
-  );
+    deviceId: deviceId,
+    validate: false,
+  )) {
+    if (event case MaintenanceIndexed(:final index)) notes = index.notes.length;
+  }
+  stdout.writeln('Reindexed $notes notes; republished donor $deviceId');
 }
 
 int _compareArticleOwners(
