@@ -132,6 +132,50 @@ extension _SyncConflicts on NextcloudSync {
     );
   }
 
+  /// Whether a divergence about to be recorded is not really a disagreement.
+  ///
+  /// The both-sides-changed branch has grown six of these rules; the branches
+  /// that record an ETag race had none, and those are the ones *most* likely to
+  /// be spurious — the remote moved between our read and our write, which very
+  /// often means a peer uploaded the same bytes or appended to them. They went
+  /// straight to a record the user had to arbitrate.
+  ///
+  /// Returns the trace reason when the conflict can be resolved without asking,
+  /// or null when it is a genuine two-sided edit. Costs one GET on the race
+  /// path, which is rare and cheaper than a record nobody can act on.
+  Future<String?> _spuriousConflictReason(
+    Vault vault,
+    String path,
+    List<int> localBytes,
+    _RemoteFile? remoteFile,
+  ) async {
+    if (remoteFile == null) return null;
+    File? captured;
+    try {
+      captured = (await _captureRemote(path, remoteFile: remoteFile)).file;
+      final remoteBytes = await captured.readAsBytes();
+      if (_sameBytes(localBytes, remoteBytes)) return 'same-content';
+      final winner = fastForwardWinner(
+        local: localBytes,
+        remote: remoteBytes,
+        path: path,
+      );
+      if (winner == SyncConflictResolution.keepLocal) {
+        return 'auto-resolved-local-extends-remote';
+      }
+      if (winner == SyncConflictResolution.keepRemote) {
+        return 'auto-resolved-remote-extends-local';
+      }
+      return null;
+    } catch (_) {
+      // Could not read the remote to compare: fall through to recording a
+      // conflict, which is the conservative answer.
+      return null;
+    } finally {
+      if (captured != null && await captured.exists()) await captured.delete();
+    }
+  }
+
   /// The remote snapshot bytes a conflict record currently points at — what
   /// the user was shown in the dialog. Null when there is no snapshot.
   ///

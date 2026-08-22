@@ -2287,6 +2287,54 @@ void main() {
     expect(utf8.decode(remote['notes/live.typ']!.bytes), 'local A');
   });
 
+  test('an upload race over identical bytes is not a conflict', () async {
+    // The remote moving between our read and our PUT is the case *most* likely
+    // to be spurious - a peer very often uploaded the same bytes, or appended
+    // to them - and it was the one branch that applied none of the six rules
+    // the both-sides-changed branch has grown.
+    const settled = '#let x = 1 // shared\n';
+    final remote = <String, _MutableRemoteFile>{
+      'notes/race.typ': _remoteText('#let x = 1 // old\n'),
+    };
+    late HttpServer server;
+    server = await _mutableWebDavServer(
+      remote,
+      onBeforePut: (path) {
+        if (path != 'notes/race.typ') return;
+        // A peer lands the exact bytes we are about to send, under a new etag.
+        remote[path] = _MutableRemoteFile(
+          bytes: utf8.encode(settled),
+          etag: '"peer-won"',
+          modified: DateTime.now().toUtc(),
+        );
+      },
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_put_race_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    // Settle first, so this pass takes the upload branch (local newer, remote
+    // unchanged) rather than the first-sync both-sides-differ branch.
+    await vault.storage.writeText('notes/race.typ', '#let x = 1 // old\n');
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(await loadSyncConflicts(vault), isEmpty);
+
+    await vault.storage.writeText('notes/race.typ', settled);
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'poll');
+
+    expect(
+      result.conflicts,
+      0,
+      reason: 'both sides hold the same bytes; there is nothing to arbitrate',
+    );
+    expect(await loadSyncConflicts(vault), isEmpty);
+  });
+
   test('a same-size edit in the same second still reaches the server', () async {
     // The shortcut's local check is mtime+size, and SAF reports mtime at second
     // granularity, so a same-size edit landing in the same second as the
@@ -3712,6 +3760,9 @@ String _collectionEtag(Map<String, _MutableRemoteFile> files) {
 
 Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
+  /// Fires just before a PUT is evaluated, so a test can move the remote
+  /// between the client's read and its write — the ETag race itself.
+  void Function(String path)? onBeforePut,
   bool unquotedPutEtag = false,
   bool rejectDelete = false,
   bool rejectMove = false,
@@ -3898,6 +3949,7 @@ Future<HttpServer> _mutableWebDavServer(
           'checksum': request.headers.value('oc-checksum'),
           'ifMatch': request.headers.value(HttpHeaders.ifMatchHeader),
         });
+        onBeforePut?.call(path);
         // Real Nextcloud honours If-Match on PUT: a stale etag means the
         // remote moved since the client last looked, and answers 412.
         final ifMatch = request.headers.value(HttpHeaders.ifMatchHeader);

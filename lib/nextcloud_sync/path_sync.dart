@@ -601,16 +601,31 @@ extension _PathSync on NextcloudSync {
         uploaded++;
         reason = remoteExists ? 'local-newer' : 'remote-missing';
       } on _RemoteChanged {
-        action = SyncAction.conflict;
-        await _storeConflict(
+        // The remote moved between our read and our PUT. Ask the same question
+        // the both-sides-changed branch asks before assuming a disagreement:
+        // very often a peer uploaded these exact bytes, or appended to them.
+        final spurious = await _spuriousConflictReason(
           vault,
           path,
-          localExists: true,
-          remoteExists: true,
-          remoteFile: remoteFile,
+          localBytes ?? await vault.storage.readBytes(path),
+          remoteFile,
         );
-        conflicts++;
-        reason = 'remote-changed-during-upload';
+        if (spurious != null) {
+          skipped++;
+          repaired++;
+          reason = spurious;
+        } else {
+          action = SyncAction.conflict;
+          await _storeConflict(
+            vault,
+            path,
+            localExists: true,
+            remoteExists: true,
+            remoteFile: remoteFile,
+          );
+          conflicts++;
+          reason = 'remote-changed-during-upload';
+        }
       }
     } else {
       skipped++;
