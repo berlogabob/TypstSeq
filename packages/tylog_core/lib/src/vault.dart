@@ -171,6 +171,42 @@ Future<void> initializeVaultStorage(
   if (!await storage.exists(TylogVaultPaths.bibliography)) {
     await storage.writeText(TylogVaultPaths.bibliography, '{}\n');
   }
+  await writeSyncExcludes(storage);
+}
+
+/// Keeps the device-local caches out of a desktop sync client's upload.
+///
+/// A vault commonly lives *inside* `~/Nextcloud`, and the client uploads
+/// whatever it finds there — on a real vault ~27 MB of cache, and because the
+/// search index tokenises whole note bodies it carries note text with it,
+/// including values from `pswrd:` lines. The client reads `.sync-exclude.lst`
+/// from a synced directory, so one file settles it.
+///
+/// Lives here rather than in the app because the CLI is the context most likely
+/// to be pointed at a desktop vault inside a synced folder, and it never called
+/// the app's copy — the hardening existed in exactly the place that needed it
+/// least.
+///
+/// Written for every vault, not just detected-managed ones: a vault can be
+/// moved into a synced folder later, and a stray exclude file in a folder no
+/// client watches is inert. It does not remove what has already been uploaded —
+/// that is a deliberate deletion, not something to do behind the user's back.
+Future<void> writeSyncExcludes(VaultStorage storage) async {
+  const path = '.sync-exclude.lst';
+  const contents = '''
+# Written by TyLog. Device-local caches — rebuildable, and large.
+# The search index contains note text, so this also keeps note contents out of
+# a desktop client's upload.
+_index
+.tylog
+''';
+  try {
+    if (await storage.exists(path)) return;
+    await storage.writeText(path, contents);
+  } catch (_) {
+    // A read-only or restricted vault still opens; this is a hardening step,
+    // not a precondition.
+  }
 }
 
 /// Delete files under `_system/packages/tylog/<version>/` for versions the

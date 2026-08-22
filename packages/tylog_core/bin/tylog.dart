@@ -331,7 +331,43 @@ Future<int> _dedupe(List<String> args) async {
   stdout.writeln(
     'Summary: groups=${duplicates.length} deletions=$deletions merges=$merges reassigned=$reassigned skipped=$skipped',
   );
+  if (apply && (deletions > 0 || merges > 0 || reassigned > 0)) {
+    // The index and this machine's donor now describe files that are gone or
+    // ids that moved — and the donor *syncs*, so leaving them stale propagates
+    // the lie to every phone. Every other mutating path in the app reindexes
+    // after writing; this one returned straight to the shell.
+    await _republishIndexArtifacts(
+      storage,
+      Directory(args.single).absolute,
+    );
+  }
   return 0;
+}
+
+/// Rebuilds and republishes everything derived from the notes on disk.
+///
+/// Shared with [_index]'s tail so a command that mutates notes cannot forget
+/// half of it: the index, the donor peers read, and the search index.
+Future<void> _republishIndexArtifacts(
+  LocalVaultStorage storage,
+  Directory root,
+) async {
+  final index = await scanVaultStorage(
+    storage,
+    inspector: CliTypstInspector(root),
+    force: true,
+  );
+  await storage.writeBytes(
+    TylogVaultPaths.index,
+    encodeVaultIndexBytes(index),
+  );
+  final deviceId = await _cliDeviceId(storage);
+  await IndexDonorStore(storage).publish(deviceId, index);
+  final search = await PkmsSearchIndex.buildStorage(storage, index);
+  await search.saveStorage(storage, TylogVaultPaths.searchIndex);
+  stdout.writeln(
+    'Reindexed ${index.notes.length} notes; republished donor $deviceId',
+  );
 }
 
 int _compareArticleOwners(

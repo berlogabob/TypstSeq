@@ -2335,6 +2335,33 @@ void main() {
     expect(await loadSyncConflicts(vault), isEmpty);
   });
 
+  test('a downloaded note is marked stale for the scan cache', () async {
+    // A peer's edit arriving as a download is the write most likely to collide
+    // with the scan cache's mtime+size key: a daily note that changed by a few
+    // bytes. The stale set was fed only by the editor, so exactly that write
+    // was the one it could not see.
+    final remote = <String, _MutableRemoteFile>{
+      'notes/peer.typ': _remoteText('from a peer\n'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_dl_stale_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    await NextcloudSync(_config(server)).sync(vault);
+
+    expect(await vault.storage.readText('notes/peer.typ'), 'from a peer\n');
+    expect(
+      vault.staleNotes,
+      contains('notes/peer.typ'),
+      reason: 'the scan must be told these bytes are new',
+    );
+  });
+
   test('a same-size edit in the same second still reaches the server', () async {
     // The shortcut's local check is mtime+size, and SAF reports mtime at second
     // granularity, so a same-size edit landing in the same second as the

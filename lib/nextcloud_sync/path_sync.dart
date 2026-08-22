@@ -521,6 +521,16 @@ extension _PathSync on NextcloudSync {
           deletedRemote++;
           reason = 'local-deleted';
         } on _RemoteChanged {
+          // No spuriousness rules here, deliberately, unlike the upload race
+          // below. An audit flagged this branch as the sibling that never got
+          // them, but the two applicable ones cannot apply: the regenerable
+          // cache rule already ran above, and every content rule needs a local
+          // side to compare against — this path is reached precisely because
+          // the local file is gone.
+          //
+          // A peer edited a file while this device deleted it. That is a real
+          // delete-versus-edit disagreement and the one thing a person should
+          // decide.
           action = SyncAction.conflict;
           await _storeConflict(
             vault,
@@ -669,6 +679,11 @@ extension _PathSync on NextcloudSync {
       uploadedRemoteEtag = (await _probeRemoteFile(path))?.etag;
     }
     final wasDownloaded = action == SyncAction.download;
+    // Tell the scan cache these bytes are new. Without this a downloaded note
+    // whose mtime lands in the same second as the scan's listing, at the same
+    // size, is indexed as unchanged — and stays that way until something else
+    // moves it.
+    if (wasDownloaded) vault.markLocallyWritten(path);
     final nextLocal = wasDownloaded
         ? await vault.storage.stat(path)
         : localStat;

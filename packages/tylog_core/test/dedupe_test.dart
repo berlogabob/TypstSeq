@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -137,6 +138,52 @@ void main() {
       expect(
         await File('${root.path}/articles/Different two.typ').readAsString(),
         contains('id: "different-hashes-2",'),
+      );
+
+      // The index and the donor must describe what is now on disk. They used
+      // to be left untouched by --apply, and the donor *syncs*, so a deleted
+      // note and a reassigned id propagated to every device as though they
+      // were still current.
+      expect(applied.stdout, contains('republished donor'));
+      final index = jsonDecode(
+        utf8.decode(
+          gzip.decode(
+            await File('${root.path}/_index/index.json').readAsBytes(),
+          ),
+        ),
+      ) as Map<String, Object?>;
+      final paths = {
+        for (final note in (index['notes'] as List).cast<Map>())
+          note['path'] as String,
+      };
+      expect(
+        paths,
+        isNot(contains('articles/Home.typ')),
+        reason: 'a deleted note must not survive in the index',
+      );
+      expect(paths, contains('articles/A descriptive article.typ'));
+      expect(
+        paths,
+        isNot(contains('daily/2022/01/2022-01-05-01.typ')),
+        reason: 'a merged-away note must not survive either',
+      );
+
+      final donors = Directory('${root.path}/_system/index')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.json'))
+          .toList();
+      expect(donors, hasLength(1));
+      final donor =
+          jsonDecode(await donors.single.readAsString()) as Map<String, Object?>;
+      final donorPaths = {
+        for (final note in (donor['notes'] as List).cast<Map>())
+          note['path'] as String,
+      };
+      expect(
+        donorPaths,
+        isNot(contains('articles/Home.typ')),
+        reason: 'peers must not inherit a note this machine deleted',
       );
       // Same-title pair untouched even with --apply.
       expect(

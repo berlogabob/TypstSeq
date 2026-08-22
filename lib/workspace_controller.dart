@@ -64,11 +64,17 @@ class WorkspaceController extends ChangeNotifier {
   int savedRevision = 0;
   int indexedRevision = 0;
 
-  /// The exact text this controller last wrote to disk. The post-sync
-  /// divergence check uses it to tell "disk holds our own mid-sync
-  /// autosave" (benign, even when the buffer has since moved on) apart
-  /// from genuinely foreign disk content (a real conflict).
+  /// The exact text this controller last wrote to disk, and the note it
+  /// belongs to. The post-sync divergence check uses it to tell "disk holds our
+  /// own mid-sync autosave" (benign, even when the buffer has since moved on)
+  /// apart from genuinely foreign disk content (a real conflict).
+  ///
+  /// Path-qualified because it is compared against one specific note's bytes.
+  /// As a bare string it kept whatever note `save()` last wrote, so after the
+  /// user switched notes it was answering a question about a different file —
+  /// and a match then meant nothing at all.
   String? _lastSavedSource;
+  String? _lastSavedPath;
   DateTime? lastEditAt;
   String helperSource = '';
   Map<String, Uint8List> typstPackageFiles = const {};
@@ -421,6 +427,7 @@ class WorkspaceController extends ChangeNotifier {
     try {
       await opened.saveNote(path, value);
       _lastSavedSource = value;
+      _lastSavedPath = path;
       if (revision == editRevision && path == note) {
         savedRevision = revision;
         _setDirty(false);
@@ -892,7 +899,8 @@ class WorkspaceController extends ChangeNotifier {
         if (editorChanged &&
             diskSource != sourceBeforeSync &&
             diskSource != source &&
-            diskSource != _lastSavedSource) {
+            !(syncedNote == _lastSavedPath &&
+                diskSource == _lastSavedSource)) {
           await createSyncConflict(
             opened,
             syncedNote,
@@ -901,6 +909,7 @@ class WorkspaceController extends ChangeNotifier {
           );
           await opened.saveNote(syncedNote, source);
           _lastSavedSource = source;
+          _lastSavedPath = syncedNote;
           concurrentConflict = true;
         } else if (editorChanged && diskSource != sourceBeforeSync) {
           // The disk holds something this controller itself wrote — either
@@ -911,6 +920,7 @@ class WorkspaceController extends ChangeNotifier {
           if (diskSource != source) {
             await opened.saveNote(syncedNote, source);
             _lastSavedSource = source;
+            _lastSavedPath = syncedNote;
           }
         } else if (!editorChanged && diskSource != sourceBeforeSync) {
           source = diskSource ?? '';

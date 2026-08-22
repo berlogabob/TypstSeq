@@ -53,6 +53,18 @@ class Vault {
   /// Snapshot, for a caller that will clear what it covered.
   Set<String> get pendingSyncWrites => Set<String>.of(_pendingSyncWrites);
 
+  /// Records a local write this app made outside [saveNote] — a sync download.
+  ///
+  /// The scan cache keys on mtime+size at second granularity, and a peer's edit
+  /// arriving as a download is the write *most* likely to collide: a daily note
+  /// that changed by a few bytes, landing in the same second as the listing.
+  /// The stale set was fed only by the editor, so exactly that write was the
+  /// one it could not see.
+  ///
+  /// Deliberately not added to the sync-pending set: sync itself produced these
+  /// bytes, so there is nothing to send back.
+  void markLocallyWritten(String path) => _staleNotes.add(path);
+
   /// Whether this path was written since a sync pass last considered it.
   bool isPendingSyncWrite(String path) => _pendingSyncWrites.contains(path);
 
@@ -97,36 +109,7 @@ class Vault {
   ///
   /// `_index/` is derived data — the note index, the search index, the tag
   /// embeddings — and TyLog never syncs it: it is not in `isSyncableVaultPath`.
-  /// But the vault commonly *lives inside* `~/Nextcloud`, and the desktop
-  /// client uploads whatever it finds there. On this vault that is ~27 MB of
-  /// cache, and because the search index tokenises whole note bodies it also
-  /// carries note text — including, verifiably, values from `pswrd:` lines.
-  ///
-  /// The Nextcloud/ownCloud desktop client reads a `.sync-exclude.lst` from a
-  /// synced directory, so one file keeps the caches local. Written for every
-  /// vault, not just detected-managed ones: a vault can be moved into a synced
-  /// folder later, and a stray exclude file in a folder no client watches is
-  /// inert.
-  ///
-  /// It does not remove what has already been uploaded — that is a deliberate
-  /// deletion, not something to do behind the user's back.
-  Future<void> _writeSyncExcludes() async {
-    const path = '.sync-exclude.lst';
-    const contents = '''
-# Written by TyLog. Device-local caches — rebuildable, and large.
-# The search index contains note text, so this also keeps note contents out of
-# a desktop client's upload.
-_index
-.tylog
-''';
-    try {
-      if (await storage.exists(path)) return;
-      await storage.writeText(path, contents);
-    } catch (_) {
-      // A read-only or restricted vault still opens; this is a hardening step,
-      // not a precondition.
-    }
-  }
+  Future<void> _writeSyncExcludes() => writeSyncExcludes(storage);
 
   Future<String> todayNote([DateTime? now]) async {
     final instant = now ?? DateTime.now();

@@ -21,6 +21,14 @@ void main() {
 
     final init = await _cli(['init', root.path], environment);
     expect(init.exitCode, 0, reason: init.stderr.toString());
+    // The desktop client uploads whatever it finds in ~/Nextcloud, and the
+    // search index carries note text. The app wrote this file; the CLI - the
+    // context most likely to be pointed at a vault inside a synced folder -
+    // did not.
+    expect(
+      await File('${root.path}/.sync-exclude.lst').readAsString(),
+      allOf(contains('_index'), contains('.tylog')),
+    );
     const notePath = 'notes/CLI.typ';
     await File('${root.path}/$notePath').writeAsString(
       '''#import "/_system/tylog.typ" as tylog
