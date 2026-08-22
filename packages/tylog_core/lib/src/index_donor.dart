@@ -186,10 +186,23 @@ class IndexDonorStore {
       await storage.writeText(path, donor);
       _schemaConfirmed = true;
       await pruneUnusable(deviceId);
-    } catch (_) {
-      // A donor is a cache. Failing to publish one must never fail a rebuild.
+    } catch (error) {
+      // A donor is a cache. Failing to publish one must never fail a rebuild —
+      // but it must not be invisible either. This file's own history is the
+      // argument: the mechanism was dead for days precisely because a silent
+      // fallback to recompiling looks exactly like a cache hit. `load` reports
+      // through DonorReuse; this is the write half of the same channel.
+      lastPublishError = error;
+      return;
     }
+    lastPublishError = null;
   }
+
+  /// Why the last [publish] failed, or null if it succeeded.
+  ///
+  /// A device that stops sharing makes every peer recompile the whole vault,
+  /// so the failure has to be reportable rather than merely survivable.
+  Object? lastPublishError;
 
   /// Deletes donors this build could never read anyway, once they are old
   /// enough that no device is still publishing them.
@@ -249,11 +262,17 @@ class IndexDonorStore {
         } catch (_) {
           // Unreadable or not JSON: dead weight by definition.
         }
-        await storage.delete(file.path);
-        deleted++;
+        try {
+          await storage.delete(file.path);
+          deleted++;
+        } catch (_) {
+          // Per item. One undeletable donor used to abort the whole pass
+          // through the outer catch, leaving every donor after it in place —
+          // silently, and forever, since the count is discarded by the caller.
+        }
       }
     } catch (_) {
-      // Housekeeping only.
+      // Listing the directory failed; nothing to do this pass.
     }
     return deleted;
   }

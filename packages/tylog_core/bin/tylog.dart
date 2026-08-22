@@ -75,7 +75,16 @@ Future<int> _index(List<String> args) async {
     previous: previous,
     force: force,
   );
-  await storage.writeBytes(TylogVaultPaths.index, encodeVaultIndexBytes(index));
+  // Same skips the app has. `sameIndexedContent` and the search index's
+  // identity return both mean "nothing to write"; ignoring them re-encoded the
+  // whole corpus every run — and on a Nextcloud-managed desktop vault the
+  // rewritten files are then uploaded by the desktop client for nothing.
+  if (!sameIndexedContent(previous, index)) {
+    await storage.writeBytes(
+      TylogVaultPaths.index,
+      encodeVaultIndexBytes(index),
+    );
+  }
   // Publish for the phones. Indexing on a desktop is minutes of Typst compiles
   // that every other device would otherwise repeat for itself; a donor lets
   // them match by content hash and skip the compile entirely.
@@ -86,7 +95,9 @@ Future<int> _index(List<String> args) async {
     index,
     previous: previousSearch,
   );
-  await search.saveStorage(storage, TylogVaultPaths.searchIndex);
+  if (!identical(search, previousSearch)) {
+    await search.saveStorage(storage, TylogVaultPaths.searchIndex);
+  }
   stdout.writeln(
     'Indexed ${index.notes.length} notes and ${index.tasks.length} tasks '
     '(${index.problems.length} warnings); published donor $deviceId',
@@ -158,7 +169,15 @@ Future<int> _dedupe(List<String> args) async {
       VaultStorageKind.validVault) {
     throw StateError('TyLog vault marker is missing or invalid');
   }
-  final index = await scanVaultStorage(storage, force: true);
+  // With an inspector, like index and doctor. Without one every note falls to
+  // the source parser, and this command decides which files to *delete* from
+  // `id` and `import_sha256` — reading those from a fallback parse and then
+  // acting on it under --apply is the one place a wrong id is destructive.
+  final index = await scanVaultStorage(
+    storage,
+    inspector: CliTypstInspector(Directory(args.single).absolute),
+    force: true,
+  );
   final groups = <String, List<NoteRef>>{};
   for (final note in index.notes) {
     groups.putIfAbsent(note.id, () => []).add(note);

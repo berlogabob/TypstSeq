@@ -41,6 +41,32 @@ String _donorJson({
   'tasks': const [],
 });
 
+/// Refuses to delete one path, to prove a prune survives it.
+class _RefusingDeleteStorage extends LocalVaultStorage {
+  _RefusingDeleteStorage(super.root, {required this.refuse});
+
+  final String refuse;
+
+  @override
+  Future<void> delete(String path) async {
+    if (path == refuse) throw const FileSystemException('locked');
+    return super.delete(path);
+  }
+}
+
+/// Refuses to write the donor at all.
+class _RefusingWriteStorage extends LocalVaultStorage {
+  _RefusingWriteStorage(super.root);
+
+  @override
+  Future<void> writeText(String path, String contents) async {
+    if (path.startsWith(TylogVaultPaths.indexDonors)) {
+      throw const FileSystemException('read-only');
+    }
+    return super.writeText(path, contents);
+  }
+}
+
 void main() {
   late Directory root;
   late LocalVaultStorage storage;
@@ -76,6 +102,41 @@ void main() {
     // A peer (different device id) merges it.
     final reused = await IndexDonorStore(storage).load('phone');
     expect(reused?.notesByPath['notes/a.typ']?.title, 'Alpha');
+  });
+
+  test('one undeletable donor does not abort the whole prune', () async {
+    // The delete used to sit inside a catch wrapping the entire loop, so an
+    // unlucky first file meant every donor after it stayed - silently, and
+    // forever, because the caller discards the count.
+    final storage = _RefusingDeleteStorage(root, refuse: path('locked'));
+    await storage.createDirectory(TylogVaultPaths.indexDonors);
+    for (final id in ['locked', 'dead-a', 'dead-b']) {
+      await storage.writeText(path(id), _donorJson(schema: 1));
+      File('${root.path}/${path(id)}').setLastModifiedSync(
+        DateTime.now().subtract(const Duration(days: 30)),
+      );
+    }
+
+    final deleted = await IndexDonorStore(storage).pruneUnusable('mine');
+
+    expect(deleted, 2, reason: 'the other two are still reclaimed');
+    expect(await storage.exists(path('locked')), isTrue);
+    expect(await storage.exists(path('dead-a')), isFalse);
+    expect(await storage.exists(path('dead-b')), isFalse);
+  });
+
+  test('a publish failure is reportable, not just survivable', () async {
+    final storage = _RefusingWriteStorage(root);
+    await storage.createDirectory(TylogVaultPaths.indexDonors);
+    final store = IndexDonorStore(storage);
+
+    await store.publish('desktop', _index());
+
+    expect(
+      store.lastPublishError,
+      isNotNull,
+      reason: 'a device that stops sharing makes every peer recompile',
+    );
   });
 
   test('a peer donor written moments ago is never pruned', () async {

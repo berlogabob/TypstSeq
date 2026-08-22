@@ -1245,24 +1245,8 @@ class WorkspaceController extends ChangeNotifier {
     await refreshIndex();
   }
 
-  Future<void> _sweepSafBackups(Vault opened) async {
-    final tempCutoff = DateTime.now().subtract(orphanTempGrace);
-    try {
-      for (final item in await opened.storage.list(recursive: true)) {
-        if (item.isDirectory) continue;
-        if (isSafBackupPath(item.path) || isForkedVaultLockPath(item.path)) {
-          await opened.storage.delete(item.path);
-        } else if (isOrphanedTempPath(item.path)) {
-          // Only once it is old enough to prove no write is still using it;
-          // an unknown mtime is never old enough.
-          final modified = item.modified;
-          if (modified != null && modified.isBefore(tempCutoff)) {
-            await opened.storage.delete(item.path);
-          }
-        }
-      }
-    } catch (_) {}
-  }
+  Future<void> _sweepSafBackups(Vault opened) =>
+      sweepVaultLeftovers(opened.storage);
 
   void _cancelTimers() {
     _autosave?.cancel();

@@ -1223,6 +1223,44 @@ bool isSafBackupPath(String path) {
       name.contains('.tylog-');
 }
 
+/// Deletes what interrupted writes and SAF rename collisions leave behind:
+/// `.backup` orphans, forked vault locks, and `.tmp` files old enough to prove
+/// no write is still using them.
+///
+/// Returns how many it removed. Every item is attempted on its own — one
+/// locked file used to abort the whole pass through a single `catch (_)` around
+/// the loop, so an unlucky third file out of 11,610 meant nothing after it was
+/// ever swept, silently, on every open forever.
+Future<int> sweepVaultLeftovers(VaultStorage storage) async {
+  final tempCutoff = DateTime.now().subtract(orphanTempGrace);
+  var deleted = 0;
+  List<VaultStorageEntry> items;
+  try {
+    items = await storage.list(recursive: true);
+  } catch (_) {
+    return 0;
+  }
+  for (final item in items) {
+    if (item.isDirectory) continue;
+    final backup =
+        isSafBackupPath(item.path) || isForkedVaultLockPath(item.path);
+    // An unknown mtime is never old enough.
+    final modified = item.modified;
+    final staleTemp =
+        isOrphanedTempPath(item.path) &&
+        modified != null &&
+        modified.isBefore(tempCutoff);
+    if (!backup && !staleTemp) continue;
+    try {
+      await storage.delete(item.path);
+      deleted++;
+    } catch (_) {
+      // This one is in use or gone; the rest of the sweep still runs.
+    }
+  }
+  return deleted;
+}
+
 /// A path holding a regenerable cache rather than anything a user wrote.
 ///
 /// Index donors are the only such thing inside the sync allowlist. They matter

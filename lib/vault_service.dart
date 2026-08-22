@@ -105,6 +105,11 @@ Future<void> _runOnce() async {
     } finally {
       inspector?.dispose();
     }
+    // This process is the one most likely to be killed mid-write — WorkManager
+    // destroys the engine on timeout — and it is the reason the temp grace
+    // period exists, yet it never swept. The orphans it created waited for the
+    // next time a human opened the app.
+    await sweepVaultLeftovers(storage);
   } finally {
     await VaultLock.release(storage, 'service');
   }
