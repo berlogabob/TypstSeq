@@ -152,6 +152,7 @@ class NoteRef {
     int? modifiedMillis,
     String? metadataSource,
     Map<String, Object?>? queryFacts,
+    bool clearQueryFacts = false,
   }) => NoteRef(
     id: id ?? this.id,
     path: path,
@@ -171,7 +172,10 @@ class NoteRef {
     contentHash: contentHash ?? this.contentHash,
     modifiedMillis: modifiedMillis ?? this.modifiedMillis,
     metadataSource: metadataSource ?? this.metadataSource,
-    queryFacts: queryFacts ?? this.queryFacts,
+    // Explicit, because `??` cannot express "drop this". A reused entry whose
+    // query provenance we cannot vouch for must lose its facts rather than
+    // carry them forward as current.
+    queryFacts: clearQueryFacts ? null : (queryFacts ?? this.queryFacts),
   );
 
   Map<String, Object?> toJson() => {

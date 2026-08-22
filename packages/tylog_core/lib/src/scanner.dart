@@ -539,9 +539,22 @@ Future<VaultIndex> scanVaultStorage(
     } else if (matchesDisk && !reinspect) {
       // Re-stamp the cheap gate so the next scan on this device short-circuits
       // without hashing again.
-      notes[relative] = cached!.fingerprint == fingerprint
+      //
+      // Reuse is safe here whatever the query version says: a matching
+      // *index* version means these derived fields came from the current
+      // derivation rules. What is not safe is carrying their queryFacts
+      // forward — those came from a query we cannot vouch for, and the built
+      // index is stamped with the current query version, so keeping them would
+      // launder stale facts into this device's own index and out to every peer
+      // through the donor. Dropping them only costs that note its
+      // re-derivability until it is next inspected.
+      final trustFacts = previous?.queryVersion == kVaultQueryVersion;
+      notes[relative] = cached!.fingerprint == fingerprint && trustFacts
           ? cached
-          : cached.copyWith(fingerprint: fingerprint);
+          : cached.copyWith(
+              fingerprint: fingerprint,
+              clearQueryFacts: !trustFacts,
+            );
       tasks.addAll(cachedTasks[relative] ?? const []);
       if (cached.metadataSource != 'typst-query') {
         problems.add(_fallbackProblem(relative));

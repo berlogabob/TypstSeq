@@ -237,12 +237,14 @@ class IndexDonorStore {
         try {
           final json = (jsonDecode(await storage.readText(file.path)) as Map)
               .cast<String, Object?>();
-          // Re-derivable counts as usable: deleting a donor whose queried
-          // half is current would throw away exactly what saves the recompile.
+          // Exactly what load() will accept, or prune and load disagree: the
+          // `||` here kept donors matching only on index version, which load
+          // skips unconditionally on query version — so they were retained
+          // forever and read never, which is precisely the dead synced weight
+          // this function exists to remove.
           final usable =
               json['schema'] == indexDonorSchema &&
-              (json['indexVersion'] == kVaultIndexVersion ||
-                  json['queryVersion'] == kVaultQueryVersion);
+              json['queryVersion'] == kVaultQueryVersion;
           if (usable) continue;
         } catch (_) {
           // Unreadable or not JSON: dead weight by definition.
@@ -357,6 +359,11 @@ class IndexDonorStore {
       // Reporting the older version is what routes these entries through the
       // scanner's re-derivation branch rather than its straight-reuse one.
       version: staleDerivation ? kVaultIndexVersion - 1 : kVaultIndexVersion,
+      // Stated, not left to the default. It is only true because of the gate
+      // above, and an implicit "current" that some other line has to keep
+      // honest is the exact shape of the bug this pair of versions exists to
+      // prevent — `version` is threaded through explicitly two lines up.
+      queryVersion: kVaultQueryVersion,
       notesByPath: notes,
       backlinksByTarget: const {},
       tasks: tasks,

@@ -169,6 +169,55 @@ void main() {
     );
   });
 
+  test('a current index with a stale query does not launder its facts', () async {
+    // The combination no test covered: version matches, query does not. The
+    // entries are reusable (the derivation rules match) but their facts came
+    // from a query we cannot vouch for - and the built index is stamped with
+    // the *current* query version, so keeping them would export stale facts to
+    // every peer through the donor.
+    final root = await Directory.systemTemp.createTemp('tylog_launder_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#import "/_system/tylog.typ" as tylog\n\n= Title\n',
+    );
+
+    final inspector = _Inspector();
+    final full = await scanVaultStorage(storage, inspector: inspector);
+    expect(full.notesByPath['notes/a.typ']!.queryFacts, isNotNull);
+
+    final staleQuery = VaultIndex(
+      version: kVaultIndexVersion,
+      queryVersion: kVaultQueryVersion - 1,
+      notesByPath: full.notesByPath,
+      backlinksByTarget: full.backlinksByTarget,
+    );
+    inspector.inspected = 0;
+    final rebuilt = await scanVaultStorage(
+      storage,
+      inspector: inspector,
+      previous: staleQuery,
+    );
+
+    expect(
+      inspector.inspected,
+      0,
+      reason: 'the entry is still reusable - no recompile',
+    );
+    expect(
+      rebuilt.notesByPath['notes/a.typ']!.queryFacts,
+      isNull,
+      reason: 'but its unvouchable facts must not survive',
+    );
+    expect(rebuilt.queryVersion, kVaultQueryVersion);
+    // The derived half is untouched: only provenance was dropped.
+    expect(
+      rebuilt.notesByPath['notes/a.typ']!.tags,
+      full.notesByPath['notes/a.typ']!.tags,
+    );
+  });
+
   test('re-derivation picks up an edit to the source-parsed half', () async {
     final root = await Directory.systemTemp.createTemp('tylog_rederive2_');
     addTearDown(() => root.delete(recursive: true));
