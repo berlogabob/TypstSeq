@@ -61,6 +61,8 @@ reason to close the finding.
 | F1 | A note the Typst inspector already failed on was **never retried**. The marker `fallback-inspected` was written to mean "try again" and nothing consumed it, so a wedged worker or a timeout under load was permanent until the note was edited or the index rebuilt by hand. Retrying them all would spend the whole budget on known-bad notes, so they get their own small slice of it: `maxFailedReinspectionsPerScan`. | 3 |
 | F2 | A `sync_state.json` predating `schema`/`remoteKey` is trusted. Rejecting it discards a tested migration; treating it as recovered hands the user a comparison per file on their first sync after upgrading. So neither: the pass forces the rewrite, and the window is provably one pass wide. | 2 |
 | D | The four contexts each held their own version of the post-change routine. Between them they skipped every step at least once — the search identity guard only in the worker, the orphan sweep only in the UI (the process *least* likely to be killed mid-write), the donor load only in the app, so the CLI published a donor every run and consumed none. Now one routine in `tylog_core`, pinned by a source scan with its own negative control. | 1 |
+| F1b | The retry F1 added recompiled **six headerless dailies every scan forever**. Their query does not fail — it succeeds and finds nothing, because there is nothing to find, and both outcomes shared the marker `fallback-inspected`. Split: a query that threw or timed out is retried, one that succeeded over a headerless note is `no-metadata` and left alone. Found by shipping F1 to the A24 and reading what it actually retried. | 2 |
+| I1 | The Logseq importer emitted a **Typst dictionary with repeated keys** — one imported daily carries `login` and `pswrd` eleven times each — so the note has not compiled since the import and every reader fell back to source parsing. Suffixed (`login-2`) rather than deduplicated: dropping the extras would delete ten of eleven credentials. | — |
 | L | **`resolveConflict` took no lock** — the one operation that deliberately overwrites a side of a disagreement, and the only vault write with no arbitration against the background service. Under its own owner name, because the lock is re-entrant by owner and releasing it under `'ui'` would have handed a running sync's lock away. | — |
 
 ## Still open
@@ -83,6 +85,13 @@ Both phones, after the batch:
 | Fallback parser | 8 (0.13%) | 8 (0.13%) — was 432/4,225 (10%) |
 | Notes carrying re-derivation facts | 6,207 | 6,207 |
 | Pending conflicts | 0 | 0 |
+
+After this batch, on the A24: index version 10, query 1, 6,215 notes, 6,208
+Typst-queried, zero conflicts, no crash, no leftovers, index and donor and
+search index all rewritten in the right order on launch. The fallback count went
+8 → 7 on the first scan under F1 — one note recovered from what had been a
+permanent failure. Of the remaining seven, six are headerless dailies (F1b, not
+failures at all) and one is the duplicate-key import (I1).
 
 The A24 arrived on 0.4.2 with a v9 index, zero query facts, and a pending
 conflict **on the donor file itself**. On launch it cleared that conflict
