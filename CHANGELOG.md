@@ -3,6 +3,50 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.4.3+98
+
+An audit of the 0.4.x batch, several of whose findings were created by that
+batch's own fixes interacting. No re-index.
+
+### Fixed
+
+- **"Keep Nextcloud's version" could delete the file it offered to keep.** A
+  conflict whose remote was deleted keeps its last known content as evidence,
+  and the dialog was showing that as a live side. When it happened to contain
+  more than the local file, the dialog preselected it and promised "Keeping it
+  loses nothing" — while resolving it deleted the local file. The record is now
+  authoritative about which sides exist.
+- **A conflict could be deleted while you were still holding an edit.** The
+  self-heal that removes spurious conflicts compared two *frozen* copies rather
+  than the file as it stands. Edit a note, have another device upload the older
+  copy, and the conflict vanished with your edit never reaching the server.
+- **Background sync stopped for the whole vault over one conflict.** The
+  foreground stopped doing this in 0.4.0; the background service kept it — the
+  unattended path, and the one that caused the original four-hour stall. It was
+  self-perpetuating, because the repairs that clear such a conflict only run
+  inside the sync it was blocking.
+- **A bulk resolve could report successes it had not performed**, including
+  "Resolved 3" over a vault with no connection configured. It now refuses
+  visibly and counts only what actually landed.
+- **A failed save is no longer discarded** when you keep typing. The write had
+  not reached disk, but the error was dropped and the editor still showed a
+  save as pending.
+- **A note whose formatting could not be read no longer keeps old metadata
+  under the new file's identity** — it described one version of a note while
+  claiming to be another, was never re-read, and was shared with your other
+  devices in that state.
+- **Search stops disagreeing with the index it was built from.** Its documents
+  are cached against note content, so a change to how tags are derived never
+  reached them.
+- Index sharing is more careful about provenance: entries whose origin cannot
+  be vouched for no longer travel to other devices as though they were current,
+  and stale shared indexes that could never be read are now cleaned up.
+- The desktop CLI stopped rewriting both indexes on every run, and `tylog
+  dedupe` now reads note metadata properly before deciding what to delete.
+- Housekeeping no longer gives up after the first file it cannot touch, and the
+  background service cleans up after itself rather than leaving it for the next
+  time the app is opened.
+
 ## 0.4.2+97
 
 Resolving a sync conflict stops being a guessing game. No re-index.
