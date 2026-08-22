@@ -2229,6 +2229,102 @@ void main() {
     });
   });
 
+  test('a remote converging on the frozen snapshot never drops the choice', () async {
+    // The record freezes the local snapshot at creation time; the live file
+    // moves on. When a peer re-uploads that frozen copy, the refresh made the
+    // two snapshots match and loadSyncConflicts' self-heal deleted the record
+    // mid-resolve - so the user's explicit choice was dropped, no cursor was
+    // written, and the UI said "Conflict resolved".
+    final remote = <String, _MutableRemoteFile>{
+      'notes/live.typ': _remoteText('remote note'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_converge_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/live.typ', 'local A');
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+    final conflict = (await loadSyncConflicts(vault)).single;
+
+    // The user edits on after the record was written...
+    await vault.storage.writeText('notes/live.typ', 'local C');
+    // ...and a peer uploads exactly the frozen local snapshot.
+    remote['notes/live.typ'] = _MutableRemoteFile(
+      bytes: utf8.encode('local A'),
+      etag: '"peer-uploaded"',
+      modified: DateTime.now().toUtc(),
+    );
+
+    await expectLater(
+      () => NextcloudSync(
+        _config(server),
+      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          NextcloudSync.remoteMovedDuringResolve,
+        ),
+      ),
+      reason: 'the remote became something the user never saw',
+    );
+
+    // What matters is that nothing was silently discarded: the record survives
+    // so the choice can be made again against what is actually there now, and
+    // neither side was written behind the user's back.
+    final survived = (await loadSyncConflicts(vault)).single;
+    expect(survived.id, conflict.id);
+    expect(
+      utf8.decode(await vault.storage.readBytes(survived.remoteSnapshot!)),
+      'local A',
+      reason: 'reopening must show what is on the server now',
+    );
+    expect(await vault.storage.readText('notes/live.typ'), 'local C');
+    expect(utf8.decode(remote['notes/live.typ']!.bytes), 'local A');
+  });
+
+  test('a pending conflict does not stop the rest of the vault syncing', () async {
+    // The engine-level guarantee the background service now relies on. Its own
+    // blanket gate used to return before sync() was ever called, so one
+    // pending record stopped everything on the unattended path - and the
+    // repairs that would clear that record live inside sync(), behind the gate
+    // that was stopping it.
+    final remote = <String, _MutableRemoteFile>{
+      'notes/stuck.typ': _remoteText('remote stuck'),
+      'notes/fine.typ': _remoteText('remote fine'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_pending_ok_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/stuck.typ', 'local stuck');
+    await createSyncConflict(
+      vault,
+      'notes/stuck.typ',
+      localBytes: utf8.encode('local stuck'),
+      remoteBytes: utf8.encode('remote stuck'),
+    );
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'background');
+
+    // The unrelated file arrived...
+    expect(await vault.storage.readText('notes/fine.typ'), 'remote fine');
+    // ...and the conflicted path was left exactly as it was, for review.
+    expect(await vault.storage.readText('notes/stuck.typ'), 'local stuck');
+    expect(await loadSyncConflicts(vault), hasLength(1));
+    expect(result.skipped, greaterThan(0));
+  });
+
   group('a moved remote is re-decided, not refused', () {
     // The record's etag is frozen at write time, so on a vault with a live
     // producer it goes stale constantly. Throwing on every mismatch made the
@@ -2498,6 +2594,12 @@ void main() {
       final vault = Vault(dir);
       await vault.ensureCreated();
 
+      // The live files, not just the snapshots: _storeConflict always captures
+      // localSnapshot *from* the file on disk, and self-heal now asks whether
+      // the file as it stands matches the remote — the frozen pair cannot
+      // answer that.
+      await vault.storage.writeText('notes/spurious.typ', 'same content');
+      await vault.storage.writeText('notes/real.typ', 'local content');
       await createSyncConflict(
         vault,
         'notes/spurious.typ',

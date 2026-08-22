@@ -151,16 +151,30 @@ extension _SyncConflicts on NextcloudSync {
     }
   }
 
-  /// Re-reads a conflict record from disk after it has been rewritten, so the
+  /// Re-reads one conflict record from disk after it has been rewritten, so the
   /// in-memory copy stops carrying the etag the refresh just replaced.
-  Future<SyncConflict?> _reloadConflict(
+  ///
+  /// Reads the record file directly rather than going through
+  /// [loadSyncConflicts], which self-heals: it deletes any record whose two
+  /// snapshots match byte-for-byte. Mid-resolve that was a live hazard, because
+  /// the refresh above has just overwritten the remote snapshot — so a remote
+  /// that converged on the *frozen* local snapshot deleted the record under us.
+  /// The local snapshot is frozen at record time and is not the live file, so
+  /// the user could be left with neither side applied, no cursor written, and
+  /// "Conflict resolved" on screen.
+  Future<SyncConflict?> _readConflictRecord(
     Vault vault,
     SyncConflict conflict,
   ) async {
-    for (final candidate in await loadSyncConflicts(vault)) {
-      if (candidate.id == conflict.id) return candidate;
+    try {
+      if (!await vault.storage.exists(conflict.recordPath)) return null;
+      final json =
+          (jsonDecode(await vault.storage.readText(conflict.recordPath)) as Map)
+              .cast<String, Object?>();
+      return conflictFromRecordJson(json, conflict.recordPath);
+    } catch (_) {
+      return null;
     }
-    return null;
   }
 
   /// Whether the live remote disagrees with what the record was written from.
@@ -182,9 +196,12 @@ extension _SyncConflicts on NextcloudSync {
   /// and deleted server-side afterwards: it gated auto-sync indefinitely and
   /// the only escape was deleting the record by hand over adb.
   ///
-  /// The remote snapshot is kept: it is the last known content of a file that
-  /// no longer exists anywhere else, so the "keep Nextcloud version" branch
-  /// can still restore it.
+  /// The remote snapshot is kept as evidence — it is the last known content of
+  /// a file that no longer exists on the server — but it is deliberately NOT
+  /// shown as a choice. "Keep Nextcloud's version" of a deleted file means
+  /// accepting the deletion, which is what the resolve does; presenting the
+  /// snapshot as a restorable side made the dialog offer "loses nothing" for an
+  /// action that deletes the local file. See [conflictRemoteBytesToShow].
   Future<void> _markConflictRemoteDeleted(
     Vault vault,
     SyncConflict conflict,

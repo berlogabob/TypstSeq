@@ -869,8 +869,9 @@ class NextcloudSync {
         }
         refreshed = true;
         await _refreshConflictRemote(vault, active, currentRemote, null);
-        final reloaded = await _reloadConflict(vault, active);
-        // Gone from disk: self-heal already resolved it.
+        final reloaded = await _readConflictRecord(vault, active);
+        // The record can only be gone if something outside this resolve
+        // removed it, which means there is nothing left to apply.
         if (reloaded == null) return;
         active = reloaded;
         if (!_sameBytes(shownRemote, await _conflictRemoteBytes(vault, active))) {
@@ -1392,43 +1393,39 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
           .cast<String, Object?>();
       final localSnapshot = json['localSnapshot'] as String?;
       final remoteSnapshot = json['remoteSnapshot'] as String?;
-      if (localSnapshot != null &&
+      // A record that says the remote is gone keeps its snapshot as evidence,
+      // not as a side to compare. Self-healing on snapshot equality there would
+      // delete a real delete-vs-edit conflict without anyone deciding it.
+      // Self-heal compares the **live file** against the remote snapshot, not
+      // the two frozen snapshots against each other.
+      //
+      // localSnapshot is frozen when the record is written; the file keeps
+      // moving. Comparing the frozen pair answered "were these two copies once
+      // equal", which is not the question — and it deleted live conflicts:
+      // record written (local A / remote B), user edits to C, a peer uploads A,
+      // the remote snapshot refreshes to A, frozen A == frozen A, record gone,
+      // while C never reached the server. The right question is whether the
+      // file on disk now equals the remote, in which case there is genuinely
+      // nothing left to review.
+      //
+      // A record whose remote is gone keeps its snapshot only as evidence, so
+      // it is never a candidate.
+      final path = json['path'] as String?;
+      if (json['remoteExists'] != false &&
+          path != null &&
           remoteSnapshot != null &&
-          await vault.storage.exists(localSnapshot) &&
           await vault.storage.exists(remoteSnapshot) &&
-          sha256.convert(await vault.storage.readBytes(localSnapshot)) ==
+          await vault.storage.exists(path) &&
+          sha256.convert(await vault.storage.readBytes(path)) ==
               sha256.convert(await vault.storage.readBytes(remoteSnapshot))) {
-        // Both snapshots agree byte-for-byte: there is nothing to review.
-        // This self-heals spurious conflicts (e.g. our own autosave racing
-        // sync before the fix below existed) with no manual steps.
-        await vault.storage.delete(localSnapshot);
+        if (localSnapshot != null && await vault.storage.exists(localSnapshot)) {
+          await vault.storage.delete(localSnapshot);
+        }
         await vault.storage.delete(remoteSnapshot);
         await vault.storage.delete(entry.path);
         continue;
       }
-      conflicts.add(
-        SyncConflict(
-          id: json['id']! as String,
-          path: json['path']! as String,
-          recordPath: entry.path,
-          createdAt: DateTime.parse(json['createdAt']! as String),
-          localExists: json['localExists']! as bool,
-          remoteExists: json['remoteExists']! as bool,
-          localSnapshot: localSnapshot,
-          remoteSnapshot: remoteSnapshot,
-          localModified: json['localModified'] == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(
-                  (json['localModified'] as num).toInt(),
-                ),
-          remoteModified: json['remoteModified'] == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(
-                  (json['remoteModified'] as num).toInt(),
-                ),
-          remoteEtag: json['remoteEtag'] as String?,
-        ),
-      );
+      conflicts.add(conflictFromRecordJson(json, entry.path));
     } catch (_) {
       // A damaged record remains in diagnostics but cannot block every sync.
     }
@@ -1436,6 +1433,36 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
   conflicts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   return conflicts;
 }
+
+/// Builds a [SyncConflict] from one record's JSON.
+///
+/// Shared by the directory scan and by the single-record read, so the two can
+/// never drift on which keys they honour — the field sets the three writers
+/// emit already differ, and a parser that disagreed with them would be silent.
+SyncConflict conflictFromRecordJson(
+  Map<String, Object?> json,
+  String recordPath,
+) => SyncConflict(
+  id: json['id']! as String,
+  path: json['path']! as String,
+  recordPath: recordPath,
+  createdAt: DateTime.parse(json['createdAt']! as String),
+  localExists: json['localExists']! as bool,
+  remoteExists: json['remoteExists']! as bool,
+  localSnapshot: json['localSnapshot'] as String?,
+  remoteSnapshot: json['remoteSnapshot'] as String?,
+  localModified: json['localModified'] == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(
+          (json['localModified'] as num).toInt(),
+        ),
+  remoteModified: json['remoteModified'] == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(
+          (json['remoteModified'] as num).toInt(),
+        ),
+  remoteEtag: json['remoteEtag'] as String?,
+);
 
 /// Deletes any existing unresolved conflict record (and its snapshots) for
 /// [path] so a fresh record replaces it instead of stacking. Conflicts are

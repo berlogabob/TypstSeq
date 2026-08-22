@@ -2182,9 +2182,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final localBytes = await v.storage.exists(conflict.path)
         ? await v.storage.readBytes(conflict.path)
         : null;
-    final remoteBytes = conflict.remoteSnapshot == null
-        ? null
-        : await v.storage.readBytes(conflict.remoteSnapshot!);
+    // The record decides whether a remote side exists at all; the snapshot of a
+    // deleted remote must never be presented as "the Nextcloud version".
+    final remoteBytes = conflictRemoteBytesToShow(
+      conflict,
+      conflict.remoteSnapshot == null
+          ? null
+          : await v.storage.readBytes(conflict.remoteSnapshot!),
+    );
     final localText = conflict.isText && localBytes != null
         ? utf8.decode(localBytes, allowMalformed: true)
         : null;

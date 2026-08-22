@@ -21,6 +21,24 @@ enum ConflictShape {
   incomparable,
 }
 
+/// The remote bytes a dialog may show, given what the record says exists.
+///
+/// A record marked `remoteExists: false` still carries `remoteSnapshot` — the
+/// last known content of a file that was deleted on the server. Showing those
+/// bytes as "the Nextcloud version" is a lie with teeth: if the snapshot is a
+/// superset of the local file, [conflictShape] reads `remoteSuperset`,
+/// [defaultResolution] preselects keepRemote, and the hint promises "Keeping it
+/// loses nothing" — while the resolve takes the `remoteExists == false` branch
+/// and *deletes the local file*. The two halves are each correct alone and
+/// destructive together.
+///
+/// So the record is authoritative about existence, and the snapshot is only
+/// shown for a side that still exists.
+List<int>? conflictRemoteBytesToShow(
+  SyncConflict conflict,
+  List<int>? snapshotBytes,
+) => conflict.remoteExists ? snapshotBytes : null;
+
 ConflictShape conflictShape({String? local, String? remote}) {
   if (local == null || remote == null) return ConflictShape.incomparable;
   if (local == remote) return ConflictShape.identical;

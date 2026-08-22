@@ -52,11 +52,15 @@ Future<void> _runOnce() async {
     return;
   }
   try {
-    // The conflict gate stays authoritative in the background too.
-    if ((await loadSyncConflicts(vault)).isNotEmpty) {
-      debugPrint('vaultService: conflicts pending, sync stays suspended');
-      return;
-    }
+    // No conflict gate. This path kept the blanket suspend that the foreground
+    // dropped, so one pending record still stopped the whole vault syncing —
+    // on the *unattended* path, which is the one that runs for hours and caused
+    // the original 695-article stall. It was also self-perpetuating: the three
+    // repairs that clear such a record (the donor-conflict discard,
+    // _refreshConflictRemote and _markConflictRemoteDeleted) all live inside
+    // sync(), i.e. behind this gate. The loop skips conflicted paths one by one
+    // and pollIsUnchanged already refuses to shortcut while a conflict is
+    // pending, so nothing else was relying on it.
     // Cheap Depth:0 etag probe first — most periodic runs find nothing new
     // and should cost one request, not a full crawl.
     if (await NextcloudSync(cloud).pollIsUnchanged(vault, dirty: false)) {

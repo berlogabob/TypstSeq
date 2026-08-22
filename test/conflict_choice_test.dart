@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/nextcloud_sync/conflict_choice.dart';
@@ -72,6 +74,66 @@ void main() {
 
     test('identical content may default — either choice is lossless', () {
       expect(defaultResolution(ConflictShape.identical), isNotNull);
+    });
+  });
+
+  group('a deleted remote is never shown as a version to keep', () {
+    // _markConflictRemoteDeleted keeps remoteSnapshot as evidence. Showing
+    // those bytes as "the Nextcloud version" made the dialog offer the
+    // strictly-worse outcome as the safe one: shape reads remoteSuperset,
+    // defaultResolution preselects keepRemote, the hint promises "loses
+    // nothing" - and the resolve deletes the local file.
+    SyncConflict deletedRemote() => SyncConflict(
+      id: 'c',
+      path: 'notes/a.typ',
+      recordPath: '.tylog/conflicts/c.json',
+      createdAt: DateTime.utc(2026),
+      localExists: true,
+      remoteExists: false,
+      localSnapshot: '.tylog/conflicts/c.local',
+      remoteSnapshot: '.tylog/conflicts/c.remote',
+    );
+
+    test('its snapshot bytes are withheld from the dialog', () {
+      expect(
+        conflictRemoteBytesToShow(deletedRemote(), utf8.encode(extended)),
+        isNull,
+      );
+    });
+
+    test('a live remote still shows its snapshot', () {
+      final live = SyncConflict(
+        id: 'c',
+        path: 'notes/a.typ',
+        recordPath: '.tylog/conflicts/c.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: true,
+        remoteSnapshot: '.tylog/conflicts/c.remote',
+      );
+      expect(
+        conflictRemoteBytesToShow(live, utf8.encode(extended)),
+        isNotNull,
+      );
+    });
+
+    test('so it can never be preselected as the lossless side', () {
+      // The exact destructive combination: local is a strict prefix of the
+      // deleted remote's last known content.
+      final shown = conflictRemoteBytesToShow(
+        deletedRemote(),
+        utf8.encode(extended),
+      );
+      final shape = conflictShape(
+        local: base,
+        remote: shown == null ? null : utf8.decode(shown),
+      );
+      expect(shape, ConflictShape.incomparable);
+      expect(
+        defaultResolution(shape),
+        isNull,
+        reason: 'deleting the local file must never be the default',
+      );
     });
   });
 
