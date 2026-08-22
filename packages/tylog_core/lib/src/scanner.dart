@@ -696,8 +696,18 @@ Future<VaultIndex> scanVaultStorage(
       // derived by rules that no longer apply — it kept pre-merge tags through
       // two version bumps, which quietly un-clustered the notes that carried
       // them.
+      //
+      // And only when the bytes are the ones it was derived from. Without
+      // `matchesDisk` this branch kept metadata describing the *old* content
+      // and then stamped it with the new file's fingerprint and content hash
+      // below — an entry that describes one version of a note while claiming
+      // to be another. It passed every later check, was never re-inspected,
+      // and went out to peers through the donor as authoritative. When the
+      // bytes really did change, the source-parsed fallback at least describes
+      // what is actually in the file, and its 'fallback-inspected' source
+      // marks it for another attempt.
       notes[relative] =
-          (reusable && cached.metadataSource == 'typst-query'
+          (reusable && matchesDisk && cached.metadataSource == 'typst-query'
               ? cached.copyWith(fingerprint: fingerprint)
               : null) ??
           fallback;

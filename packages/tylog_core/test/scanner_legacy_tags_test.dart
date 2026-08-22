@@ -278,14 +278,19 @@ void _staleCacheTests() {
 
   test('a current-schema cached note still survives a failed query', () async {
     final storage = await vaultWith('"kept"');
+    // Carrying the identity of the bytes it describes, as a real cached entry
+    // always does — the scan stamps one. Without it nothing can tell this
+    // entry apart from metadata left over from a different version of the
+    // file, which is the case that must NOT survive a failed query.
     final current = VaultIndex(
       notesByPath: {
-        'notes/a.typ': const NoteRef(
+        'notes/a.typ': NoteRef(
           id: 'a',
           path: 'notes/a.typ',
           title: 'Queried title',
-          outgoingLinks: [],
-          tags: ['kept'],
+          outgoingLinks: const [],
+          tags: const ['kept'],
+          contentHash: await storage.hash('notes/a.typ'),
           metadataSource: 'typst-query',
         ),
       },
