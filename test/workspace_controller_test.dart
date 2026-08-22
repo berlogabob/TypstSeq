@@ -519,19 +519,60 @@ void main() {
   });
 
   test('a half-failed batch reports what actually resolved', () async {
-    // A batch that stops partway must not claim success: whatever stopped it
-    // will stop the next one too, and the untouched records are still there.
+    // Nothing half-succeeded in the original version of this test: every
+    // request failed, so it asserted 0 of 3 and never exercised the partial
+    // case - which is the risky one, because the count is incremented after
+    // the break check and a resolve could return early without erroring.
     final previousOverrides = HttpOverrides.current;
     HttpOverrides.global = null;
     addTearDown(() => HttpOverrides.global = previousOverrides);
 
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    server.listen((request) async {
-      request.response.statusCode = HttpStatus.internalServerError;
-      await request.response.close();
-    });
-    addTearDown(() => server.close(force: true));
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = server.config;
 
+    for (final name in ['a', 'b', 'c']) {
+      await storage.writeText('notes/$name.typ', 'local $name');
+      await createSyncConflict(
+        controller.vault!,
+        'notes/$name.typ',
+        localBytes: utf8.encode('local $name'),
+        remoteBytes: null,
+      );
+    }
+    await controller.refreshSyncConflicts();
+    // The second upload fails; the first has already landed.
+    server.failUploadsAfter = 1;
+
+    final resolved = await controller.resolveAllConflicts(
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(resolved, 1, reason: 'exactly what actually landed');
+    expect(
+      controller.syncConflicts, hasLength(2),
+      reason: 'the untouched records must still be there',
+    );
+    expect(controller.syncError, isNotNull);
+  });
+
+  test('a batch over a disconnected vault refuses instead of claiming success',
+      () async {
+    // resolveConflict used to return silently when the config was not ready,
+    // so the batch counted every no-op as a success and the snackbar said
+    // "Resolved 3" over a vault where nothing had happened.
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
       inspector: _FakeInspector(),
@@ -543,13 +584,7 @@ void main() {
       storage: _MemoryStorage(),
     );
     await _waitUntil(() => controller.index != null);
-    controller.cloud = NextcloudConfig(
-      serverUrl:
-          'http://${server.address.address}:${server.port}'
-          '/remote.php/dav/files/alice/TyLogVault',
-      username: 'alice',
-      password: 'secret',
-    );
+    controller.cloud = null;
     controller.syncConflicts = [
       for (final name in ['a', 'b', 'c'])
         SyncConflict(
@@ -562,12 +597,12 @@ void main() {
         ),
     ];
 
-    final resolved = await controller.resolveAllConflicts(
-      SyncConflictResolution.keepLocal,
+    expect(
+      await controller.resolveAllConflicts(SyncConflictResolution.keepLocal),
+      0,
     );
-
-    expect(resolved, 0, reason: 'the first failure stops the batch');
-    expect(controller.syncError, isNotNull);
+    expect(controller.syncError, isNotNull, reason: 'it must say why');
+    expect(controller.syncConflicts, hasLength(3));
   });
 
   test('a resolve announces itself before the reindex it triggers', () async {
@@ -1421,6 +1456,9 @@ class _GatedWebDavServer {
   final Map<String, List<int>> _files = {};
   /// Paths the client PUT, so a test can assert what actually synced.
   final uploaded = <String>[];
+
+  /// Fail every PUT past this many, so a batch can half-succeed.
+  int? failUploadsAfter;
   final Map<String, String> _etags = {};
   var _gateArmed = false;
   var gateReached = Completer<void>();
@@ -1490,6 +1528,11 @@ class _GatedWebDavServer {
             [],
             (all, chunk) => all..addAll(chunk),
           );
+          if (failUploadsAfter != null &&
+              uploaded.length >= failUploadsAfter!) {
+            request.response.statusCode = HttpStatus.internalServerError;
+            break;
+          }
           _files[path] = bytes;
           uploaded.add(path);
           _etags[path] = '"etag-${DateTime.now().microsecondsSinceEpoch}"';

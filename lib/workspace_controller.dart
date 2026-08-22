@@ -997,15 +997,21 @@ class WorkspaceController extends ChangeNotifier {
   Future<int> resolveAllConflicts(SyncConflictResolution resolution) async {
     var resolved = 0;
     for (final conflict in [...syncConflicts]) {
-      await resolveConflict(conflict, resolution, reindex: false);
-      if (syncError != null) break;
+      // The per-conflict result, not the shared syncError slot. syncNow clears
+      // that slot as it starts and a concurrent poll can set it, so reading it
+      // here attributed unrelated failures to the batch — and a resolve that
+      // returned early without setting it let the batch report "Resolved N"
+      // with nothing resolved at all.
+      if (!await resolveConflict(conflict, resolution, reindex: false)) break;
       resolved++;
     }
     unawaited(refreshIndex(updateStatus: false, always: true));
     return resolved;
   }
 
-  Future<void> resolveConflict(
+  /// Returns whether the conflict was resolved. Callers that batch must use
+  /// this rather than inspecting [syncError], which is shared with sync.
+  Future<bool> resolveConflict(
     SyncConflict conflict,
     SyncConflictResolution resolution, {
     String? mergedText,
@@ -1013,7 +1019,15 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     final config = cloud;
-    if (opened == null || config == null || !config.isReady) return;
+    if (opened == null || config == null || !config.isReady) {
+      // Never refuse silently — the norm this codebase states at
+      // SyncDashboardScreen._run, and the reason a bulk resolve could report
+      // success over an untouched vault.
+      syncError = 'Nextcloud is not connected, so conflicts cannot be resolved.';
+      status = 'Needs attention';
+      notifyListeners();
+      return false;
+    }
     // Announce the attempt before doing any of it. A resolve is a network
     // write plus an index refresh — seconds to minutes on a busy vault — and
     // this method used to notify exactly once, at the very end, so nothing
@@ -1044,8 +1058,11 @@ class WorkspaceController extends ChangeNotifier {
       // leave the user thinking it resolved when it didn't.
       syncError = friendlySyncError(error);
       status = 'Needs attention';
+      notifyListeners();
+      return false;
     }
     notifyListeners();
+    return true;
   }
 
   Future<bool> probeStorage() async {
