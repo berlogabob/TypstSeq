@@ -1078,6 +1078,30 @@ String replaceNoteHeader(String source, NoteMetadataDraft draft) {
   return '#import "/_system/tylog.typ" as tylog\n\n$withHeader';
 }
 
+/// Prepends the helper import when [text] calls into `tylog.` without it.
+///
+/// A `#tylog.ref-note(...)` in a file with no `#import "/_system/tylog.typ"` is
+/// `unknown variable: tylog` — the note does not compile, its metadata query
+/// fails, and every reader silently falls back to source parsing. It is easy to
+/// reach without doing anything strange: empty a starter daily (which deletes
+/// it), type a plain line, then pick a note from the link autocomplete. The
+/// file is recreated from the buffer, so it never had the import, and the
+/// insertion has no idea.
+///
+/// This is the write-side counterpart to a read-side guard that already
+/// existed. [managedNoteSource] has guaranteed the import since notes could be
+/// converted; the ordinary save path — the one every editor insertion goes
+/// through — did not.
+String withTylogImport(String path, String text) {
+  if (!path.endsWith('.typ')) return text;
+  if (!_tylogCall.hasMatch(text)) return text;
+  if (text.contains('/_system/tylog.typ')) return text;
+  return '#import "/_system/tylog.typ" as tylog\n\n$text';
+}
+
+/// A call into the helper: `#tylog.foo(`, or `#show: tylog.note.with(`.
+final RegExp _tylogCall = RegExp(r'#(?:show:\s*)?tylog\.[a-z-]');
+
 /// Repairs markdown-import artifacts that break Typst compilation — so a note's
 /// metadata query stops failing (`metadata-query-failed` / "formatting couldn't
 /// be read"). Conservative and idempotent: only rewrites the exact patterns the

@@ -83,6 +83,40 @@ void main() {
     expect(await storage.exists(path), isTrue);
   });
 
+  test('a tylog call is never saved without the import it needs', () async {
+    // The exact file this came from, found on the A24: two lines of Russian and
+    // a #tylog.ref-note, no import. `unknown variable: tylog` — the note has
+    // not compiled since it was written, and every reader fell back to source
+    // parsing without saying so. Reachable in three ordinary steps: empty the
+    // starter daily (which deletes it), type a plain line, pick a note from the
+    // link autocomplete.
+    const path = 'daily/2026/08/2026-08-20.typ';
+    await vault.saveNote(
+      path,
+      'сегодня репетировали с Флор\n#tylog.ref-note("Флор")[Флор]\n',
+    );
+
+    final saved = await storage.readText(path);
+    expect(saved, startsWith('#import "/_system/tylog.typ" as tylog'));
+    expect(saved, contains('#tylog.ref-note("Флор")[Флор]'));
+    expect(saved, contains('сегодня репетировали с Флор'));
+  });
+
+  test('and it is added once, not on every save', () async {
+    const path = 'notes/a.typ';
+    await vault.saveNote(path, '#tylog.ref-note("x")[X]\n');
+    final once = await storage.readText(path);
+    await vault.saveNote(path, once);
+    expect(await storage.readText(path), once);
+  });
+
+  test('plain prose is left exactly as typed', () async {
+    // The guard must not turn every scratch line into a managed note.
+    const path = 'daily/2026/08/2026-08-21.typ';
+    await vault.saveNote(path, 'просто заметка\n');
+    expect(await storage.readText(path), 'просто заметка\n');
+  });
+
   test('a non-.typ file is untouched by the rule', () async {
     const path = 'assets/notes.txt';
     await storage.writeText(path, 'x');

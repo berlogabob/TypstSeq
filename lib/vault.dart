@@ -336,7 +336,7 @@ class Vault {
       }
       throw ArgumentError('A TyLog note cannot be empty');
     }
-    await storage.writeText(path, text);
+    await storage.writeText(path, withTylogImport(path, text));
     _staleNotes.add(path);
     _pendingSyncWrites.add(path);
   }
