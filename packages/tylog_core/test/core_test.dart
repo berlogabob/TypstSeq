@@ -319,6 +319,28 @@ void main() {
     },
   );
 
+  test('a note with no managed header is not a failure, and is not retried',
+      () async {
+    // Six of the seven fallbacks in the real vault are hand-written dailies:
+    // the query ran, succeeded, and found no metadata because there is none to
+    // find. Marking that the same way as a *failed* inspection would have the
+    // retry recompile them on every scan forever, for an answer that cannot
+    // change while the bytes do not.
+    final root = await Directory.systemTemp.createTemp('tylog_core_bare_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText('daily/2026-08-20.typ', 'a hand-written day\n');
+
+    final inspector = _EmptyInspector();
+    final first = await scanVaultStorage(storage, inspector: inspector);
+    expect(inspector.calls, 1);
+    expect(first.notes.single.metadataSource, 'no-metadata');
+
+    final second = _EmptyInspector();
+    await scanVaultStorage(storage, inspector: second, previous: first);
+    expect(second.calls, 0, reason: 'nothing to learn from asking again');
+  });
+
   test('a failed inspection is retried, so it is not permanent', () async {
     // The marker was written to mean "try again", and nothing consumed it: a
     // note the engine failed on once - a wedged worker, a timeout under load -
@@ -332,10 +354,10 @@ void main() {
       'notes/a.typ',
       '#show: tylog.note.with(id: "a", title: "A")',
     );
-    final emptyInspector = _EmptyInspector();
-
-    final first = await scanVaultStorage(storage, inspector: emptyInspector);
-    expect(emptyInspector.calls, 1);
+    final first = await scanVaultStorage(
+      storage,
+      inspector: _FailingInspector(),
+    );
     expect(first.notes.single.metadataSource, 'fallback-inspected');
 
     final healthyInspector = _SourceInspector();
@@ -370,7 +392,10 @@ void main() {
       );
     }
 
-    final first = await scanVaultStorage(storage, inspector: _EmptyInspector());
+    final first = await scanVaultStorage(
+      storage,
+      inspector: _FailingInspector(),
+    );
     expect(
       first.notes.every((n) => n.metadataSource == 'fallback-inspected'),
       isTrue,

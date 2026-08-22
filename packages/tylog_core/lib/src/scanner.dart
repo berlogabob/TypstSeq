@@ -222,16 +222,22 @@ Duration typstInspectTimeout = const Duration(seconds: 30);
 /// hours and starves sync. Capped, the backlog drains a slice per scan instead.
 int maxMetadataReinspectionsPerScan = 50;
 
-/// Upper bound on how many *already-inspected* fallbacks a single scan retries.
+/// Upper bound on how many *failed* inspections a single scan retries.
 ///
-/// A `fallback-inspected` note is one the inspector already ran on and failed.
-/// Retrying them all every scan would spend the whole re-inspection budget on
-/// known-bad notes and starve the never-inspected ones, so for a long time they
-/// were never retried at all — which made a transient engine failure (a wedged
-/// worker, an OOM-killed inspect, a timeout under load) permanent until the
-/// note was next edited or the index was rebuilt by hand. A small separate
-/// slice is the middle: a genuine syntax error costs a handful of compiles per
-/// scan forever, and a transient failure clears on its own within a few passes.
+/// A `fallback-inspected` note is one the inspector ran on and that threw or
+/// timed out. Retrying them all every scan would spend the whole re-inspection
+/// budget on known-bad notes and starve the never-inspected ones, so for a long
+/// time they were never retried at all — which made a transient engine failure
+/// (a wedged worker, an OOM-killed inspect, a timeout under load) permanent
+/// until the note was next edited or the index was rebuilt by hand. A small
+/// separate slice is the middle: a genuine syntax error costs a handful of
+/// compiles per scan forever, and a transient failure clears within a few
+/// passes.
+///
+/// A note whose query *succeeded* and found no managed header is `no-metadata`,
+/// not this, and is never retried — the answer cannot change while the bytes do
+/// not. That distinction is what keeps the cost bounded in practice: six of the
+/// seven fallbacks in the real vault are hand-written dailies.
 int maxFailedReinspectionsPerScan = 5;
 
 /// Consecutive inspect timeouts tolerated before the native worker is
@@ -659,7 +665,13 @@ Future<VaultIndex> scanVaultStorage(
               fingerprint: fingerprint,
               modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
               synonyms: synonyms,
-              inspectionAttempted: inspectionAttempted,
+              // The query *succeeded* and the file simply carries no managed
+              // header — six of the seven such notes in the real vault are
+              // hand-written dailies. That is a stable fact about these bytes,
+              // not a failure, so it must not share a marker with one: the
+              // retry below would recompile them every scan forever for an
+              // answer that cannot change.
+              metadataSource: inspectionAttempted ? 'no-metadata' : 'fallback',
             )
           : _queriedNote(
               relative,
@@ -720,7 +732,7 @@ Future<VaultIndex> scanVaultStorage(
         fingerprint: fingerprint,
         modifiedMillis: file.modified?.millisecondsSinceEpoch ?? 0,
         synonyms: synonyms,
-        inspectionAttempted: inspectionAttempted,
+        metadataSource: inspectionAttempted ? 'fallback-inspected' : 'fallback',
       );
       // Keeping the cached note is right for a *transient* inspect failure: a
       // previously-queried note should not be downgraded to a worse source
@@ -1991,7 +2003,7 @@ NoteRef _fallbackNote(
   String? fingerprint,
   int? modifiedMillis,
   Map<String, String> synonyms = const {},
-  bool inspectionAttempted = false,
+  String metadataSource = 'fallback',
 }) {
   final stem = path.split('/').last.replaceFirst(_typExtension, '');
   final calls = locateTypstCalls(source);
@@ -2045,7 +2057,7 @@ NoteRef _fallbackNote(
     properties: _parseProperties(header),
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
-    metadataSource: inspectionAttempted ? 'fallback-inspected' : 'fallback',
+    metadataSource: metadataSource,
   );
 }
 
