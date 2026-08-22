@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
+import 'package:tylog/vault_lock.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
@@ -723,6 +724,94 @@ void main() {
     );
     expect(controller.syncError, isNotNull, reason: 'it must say why');
     expect(controller.syncConflicts, hasLength(3));
+  });
+
+  test('a resolve refuses while another owner holds the vault lock', () async {
+    // The resolve is the one operation that deliberately overwrites a side of a
+    // disagreement, and it was the only vault write that took no lock at all.
+    // A background pass mid-flight would be reconciling against a listing taken
+    // before this write landed.
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'http://127.0.0.1:1/remote.php/dav/files/alice/V',
+      username: 'alice',
+      password: 'secret',
+    );
+
+    expect(await VaultLock.acquire(storage, 'service'), isTrue);
+
+    final resolved = await controller.resolveConflict(
+      SyncConflict(
+        id: 'c',
+        path: 'notes/a.typ',
+        recordPath: '.tylog/conflicts/c.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: true,
+      ),
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(resolved, isFalse);
+    expect(controller.syncError, contains('sync is running'));
+    // And it left the other owner's lock alone.
+    expect(await VaultLock.heldByOther(storage, 'ui-resolve'), isTrue);
+  });
+
+  test('a resolve does not hand the vault away mid-sync', () async {
+    // The lock is re-entrant by owner and release() deletes the file, so a
+    // resolve taken under syncNow's own 'ui' name would have released the
+    // running sync's lock the moment it finished - inviting the background
+    // service in mid-pass, from the same process.
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'http://127.0.0.1:1/remote.php/dav/files/alice/V',
+      username: 'alice',
+      password: 'secret',
+    );
+
+    // A sync in flight, holding the lock as the UI does.
+    expect(await VaultLock.acquire(storage, 'ui'), isTrue);
+
+    await controller.resolveConflict(
+      SyncConflict(
+        id: 'c',
+        path: 'notes/a.typ',
+        recordPath: '.tylog/conflicts/c.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: true,
+      ),
+      SyncConflictResolution.keepLocal,
+    );
+
+    expect(
+      await VaultLock.heldByOther(storage, 'service'),
+      isTrue,
+      reason: "the running sync's lock must survive the resolve",
+    );
   });
 
   test('a resolve announces itself before the reindex it triggers', () async {

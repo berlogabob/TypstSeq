@@ -1093,6 +1093,25 @@ class WorkspaceController extends ChangeNotifier {
     // concluded a resolve had failed while it was still running.
     status = 'Resolving conflict…';
     notifyListeners();
+    // Same single-owner rule as syncNow, and for a stronger reason: this is the
+    // one operation that deliberately overwrites one side of a disagreement.
+    // The background service can be mid-sync in its own engine, and a resolve
+    // landing inside that pass writes the losing side to a server the other
+    // process is still reconciling against a listing taken before the write.
+    // syncNow has taken the lock since the service existed; the resolve — the
+    // more destructive of the two — took nothing.
+    //
+    // A distinct owner from syncNow's 'ui', not a nicety: the lock is
+    // re-entrant by owner and [VaultLock.release] deletes the file, so a
+    // resolve tapped during a running auto-sync would take the same lock, then
+    // hand the service the vault the moment it finished — mid-sync, in the same
+    // process. Under its own name it is simply refused instead.
+    if (!await VaultLock.acquire(opened.storage, 'ui-resolve')) {
+      syncError = 'A sync is running. Try again in a moment.';
+      status = 'Needs attention';
+      notifyListeners();
+      return false;
+    }
     try {
       await NextcloudSync(
         config,
@@ -1118,6 +1137,8 @@ class WorkspaceController extends ChangeNotifier {
       status = 'Needs attention';
       notifyListeners();
       return false;
+    } finally {
+      await VaultLock.release(opened.storage, 'ui-resolve');
     }
     notifyListeners();
     return true;
