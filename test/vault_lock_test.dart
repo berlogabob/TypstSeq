@@ -3,9 +3,72 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault_lock.dart';
+import 'package:tylog/vault_service.dart';
 import 'package:tylog_core/storage.dart';
 
 void main() {
+  test('the background budget matches the timeout the platform enforces', () {
+    // The bug was never the number - it was that the lock's expiry and the
+    // process's lifetime were unrelated constants in two languages. Derived
+    // from the Kotlin source so it cannot drift silently, the same way
+    // package_contract_test derives its check from the package.
+    final kotlin = File(
+      'android/app/src/main/kotlin/org/tylog/tylog/VaultSyncWorker.kt',
+    ).readAsStringSync();
+    final match = RegExp(
+      r'TIMEOUT_MILLIS\s*=\s*([0-9]+)\s*\*\s*([0-9]+)\s*\*\s*([0-9]+)L',
+    ).firstMatch(kotlin);
+    expect(match, isNotNull, reason: 'TIMEOUT_MILLIS moved or changed shape');
+    final millis =
+        int.parse(match!.group(1)!) *
+        int.parse(match.group(2)!) *
+        int.parse(match.group(3)!);
+    expect(
+      backgroundRunBudget.inMilliseconds,
+      lessThanOrEqualTo(millis),
+      reason: 'the declared deadline must not outlive the process',
+    );
+  });
+
+  test('a declared deadline expires without waiting for staleAfter', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_lock_deadline_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.createDirectory('.tylog');
+
+    expect(
+      await VaultLock.acquire(
+        storage,
+        'service',
+        validFor: const Duration(milliseconds: 1),
+      ),
+      isTrue,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(
+      await VaultLock.heldByOther(storage, 'ui'),
+      isFalse,
+      reason: 'a holder that declared 1ms must not block for ten minutes',
+    );
+  });
+
+  test('a declared deadline still blocks before it elapses', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_lock_holds_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.createDirectory('.tylog');
+
+    await VaultLock.acquire(
+      storage,
+      'service',
+      validFor: const Duration(minutes: 5),
+    );
+
+    expect(await VaultLock.heldByOther(storage, 'ui'), isTrue);
+    expect(await VaultLock.acquire(storage, 'ui'), isFalse);
+  });
+
   late Directory dir;
   late LocalVaultStorage storage;
 

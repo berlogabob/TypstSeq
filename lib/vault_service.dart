@@ -20,6 +20,14 @@ import 'vault_storage.dart';
 /// conflict gate the same way the UI's auto-sync does, and never calls
 /// `ensureCreated()` — a background pass must not up/downgrade the vault's
 /// managed Typst files.
+/// How long a single background run may take before the platform kills it.
+///
+/// Must stay in step with `VaultSyncWorker.TIMEOUT_MILLIS`; the test in
+/// `test/vault_lock_test.dart` pins the two together, because nothing else
+/// stops one constant in Kotlin and one in Dart drifting apart — which is
+/// precisely how a lock outlived the process holding it.
+const backgroundRunBudget = Duration(minutes: 9);
+
 @pragma('vm:entry-point')
 Future<void> vaultServiceMain() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,7 +55,17 @@ Future<void> _runOnce() async {
   final storage = entry.storage;
   final vault = Vault.withStorage(storage);
 
-  if (!await VaultLock.acquire(storage, 'service')) {
+  // Declare the ceiling the platform actually enforces. WorkManager destroys
+  // this engine at `VaultSyncWorker.TIMEOUT_MILLIS` without unwinding Dart, so
+  // the `finally` below — and with it VaultLock.release — simply does not run.
+  // Saying so up front means the lock expires exactly when the process can no
+  // longer be holding it, instead of a minute later.
+  final deadline = DateTime.now().add(backgroundRunBudget);
+  if (!await VaultLock.acquire(
+    storage,
+    'service',
+    validFor: backgroundRunBudget,
+  )) {
     debugPrint('vaultService: UI holds the vault lock, skipping');
     return;
   }
@@ -81,6 +99,11 @@ Future<void> _runOnce() async {
       final index = await vault.rebuildIndex(
         inspector: inspector,
         deviceId: registry.deviceId,
+        // Stop cooperatively before the platform stops us mid-write. The
+        // scanner already honours this hook; the service was the one caller
+        // that passed nothing, so a cold rebuild was guaranteed to be killed
+        // partway on a large vault.
+        isCancelled: () => DateTime.now().isAfter(deadline),
       );
       // Refresh the search index too, so the next app open starts warm
       // instead of paying the SAF-heavy build on the user's time.
