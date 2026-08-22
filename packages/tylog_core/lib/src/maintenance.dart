@@ -100,6 +100,17 @@ class VaultMaintenance {
   /// gzip-decode/jsonDecode round trip through disk.
   PkmsSearchIndex? _lastSearch;
 
+  /// When this instance last swept, so a long-lived process does not walk the
+  /// whole vault on every incremental refresh.
+  DateTime? _lastSweep;
+
+  /// How often the sweep is worth running. Not a guess: a `.tmp` is only
+  /// removable once it is [orphanTempGrace] old, so a second sweep inside that
+  /// window cannot find anything the first one left. It costs a full recursive
+  /// listing — 22 s on an A24 without the SAF listing cache — and the worker
+  /// refreshes many times an hour.
+  static const sweepInterval = orphanTempGrace;
+
   /// What the last donor load actually reused, for the status line.
   DonorReuse get donorReuse => donors.lastReuse;
 
@@ -240,7 +251,11 @@ class VaultMaintenance {
           out.add(MaintenanceSearchBuilt(search, written: written));
         }
 
-        if (sweep) {
+        final lastSweep = _lastSweep;
+        if (sweep &&
+            (lastSweep == null ||
+                DateTime.now().difference(lastSweep) >= sweepInterval)) {
+          _lastSweep = DateTime.now();
           out.add(MaintenanceSwept(await sweepVaultLeftovers(storage)));
         }
       } catch (error, stack) {

@@ -175,6 +175,26 @@ void main() {
       },
     );
 
+    test('a refresh minutes later does not re-walk the whole vault', () async {
+      // The sweep is a full recursive listing - 22 s on an A24 without the SAF
+      // listing cache - and the worker refreshes many times an hour. Running it
+      // every pass would have been a straight regression on the slowest device.
+      // Safe to skip because a `.tmp` is only removable once it is an hour old,
+      // so a second sweep inside that window cannot find anything the first one
+      // left behind.
+      final maintenance = VaultMaintenance(storage);
+      expect(
+        (await run(maintenance)).whereType<MaintenanceSwept>(),
+        hasLength(1),
+      );
+      expect((await run(maintenance)).whereType<MaintenanceSwept>(), isEmpty);
+      // But a fresh process - a CLI run, a background pass - always sweeps.
+      expect(
+        (await run(VaultMaintenance(storage))).whereType<MaintenanceSwept>(),
+        hasLength(1),
+      );
+    });
+
     test('a peer donor is consumed, not just published', () async {
       // The CLI published one for years and read none, so the machine that can
       // index in seconds never saved itself the work its own peers had done.

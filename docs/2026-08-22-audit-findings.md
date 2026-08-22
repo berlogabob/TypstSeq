@@ -6,18 +6,24 @@ created by that week's own fixes interacting. Everything below is either fixed
 with a test proven to fail on the previous code, or explicitly recorded as not
 a bug.
 
-## The three shapes
+## The four shapes
 
 Every finding is an instance of one of these. They are worth knowing by name,
 because each has now bitten more than once.
 
 1. **A fix applied to some of N equivalent paths.** The vault is written by four
    contexts — UI isolate, worker isolate, Android background service, CLI — and
-   a fix that lands in one is invisible in the others.
+   a fix that lands in one is invisible in the others. Now structurally closed:
+   the maintenance routine lives in `tylog_core`, and
+   `test/maintenance_parity_test.dart` fails if any context writes a derived
+   artifact itself.
 2. **"Absent" read as "current".** A field that was never written defaults to
    today's value, so stale data claims to be fresh.
 3. **A guard on the read side with no write-side counterpart**, so the thing it
    protects is laundered back in.
+4. **A frozen value read as live.** A snapshot taken for one purpose — a
+   listing, a conflict record, a cached hash — is later consulted as if it
+   described the file now.
 
 ## Fixed
 
@@ -41,27 +47,30 @@ because each has now bitten more than once.
 
 ## Not a bug
 
-**`sync_state.json` reads absent `schema`/`remoteKey` as current.** Flagged as
-shape 2, and it looks exactly like one. Both safe-looking fixes are worse:
-rejecting the file discards a deliberate, tested migration, and accepting it as
-*recovered* hands the user a conflict per file on their first sync after
-upgrading. The risk is also not real — an unbound cursor carries a
-server-generated etag, so against a different server it simply fails to match
-and the pass re-decides correctly. Recorded in the code at the check itself.
+Nothing remains here. Both entries that once did — the `sync_state.json`
+absent-field default and the never-retried `fallback-inspected` marker — were
+recorded as deliberate because the two obvious fixes were each worse than the
+symptom. Reopening them found a third option in both cases, which is the lesson
+worth keeping: "both fixes are worse" is a reason to look for a third, not a
+reason to close the finding.
+
+## Closed since
+
+| # | Finding | Shape |
+|---|---|---|
+| F1 | A note the Typst inspector already failed on was **never retried**. The marker `fallback-inspected` was written to mean "try again" and nothing consumed it, so a wedged worker or a timeout under load was permanent until the note was edited or the index rebuilt by hand. Retrying them all would spend the whole budget on known-bad notes, so they get their own small slice of it: `maxFailedReinspectionsPerScan`. | 3 |
+| F2 | A `sync_state.json` predating `schema`/`remoteKey` is trusted. Rejecting it discards a tested migration; treating it as recovered hands the user a comparison per file on their first sync after upgrading. So neither: the pass forces the rewrite, and the window is provably one pass wide. | 2 |
+| D | The four contexts each held their own version of the post-change routine. Between them they skipped every step at least once — the search identity guard only in the worker, the orphan sweep only in the UI (the process *least* likely to be killed mid-write), the donor load only in the app, so the CLI published a donor every run and consumed none. Now one routine in `tylog_core`, pinned by a source scan with its own negative control. | 1 |
+| L | **`resolveConflict` took no lock** — the one operation that deliberately overwrites a side of a disagreement, and the only vault write with no arbitration against the background service. Under its own owner name, because the lock is re-entrant by owner and releasing it under `'ui'` would have handed a running sync's lock away. | — |
 
 ## Still open
 
-- **Locking is inconsistent.** The worker isolate writes the index, the donor
-  and the search index under no `VaultLock`; the UI holds it only across
-  `syncNow`; `resolveConflict` holds none. Separately, a `VaultSyncWorker`
-  timeout destroys the engine without Dart's `finally`, stranding the lock for
-  up to the 10-minute stale window — and a rebuild longer than that lets the UI
-  barge in mid-run. Pre-existing, bounded, and needs a heartbeat rather than a
-  one-line change.
-- **`fallback-inspected` notes are never retried** on unchanged bytes. This is
-  deliberate — retrying known-bad notes would spend the whole inspection budget
-  every scan — but it means a transient engine failure is sticky until the next
-  edit or a forced rebuild.
+Nothing. The remaining locking item from the earlier write-up — the cold rebuild
+running unlocked — is now a decision rather than an oversight: it writes only
+`_index/` (device-local, never synced) and this device's own donor (a per-device
+path no peer writes), so concurrency there costs duplicate CPU and not
+correctness. The `VaultSyncWorker` timeout strand is closed by the declared
+deadline in the lock file.
 
 ## Verified on hardware
 
