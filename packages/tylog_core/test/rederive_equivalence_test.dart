@@ -115,6 +115,60 @@ void main() {
     expect(b.toJson(), a.toJson());
   });
 
+  test('queryVersion survives a round trip through the index file', () {
+    // It used to be defaulted on read rather than persisted, so a cached index
+    // written before a query bump would read back as *current* and its stale
+    // facts would be trusted for re-derivation. Found on the P30, whose
+    // index.json carried 6,208 sets of queryFacts and no queryVersion at all.
+    final index = VaultIndex(
+      notesByPath: const {},
+      backlinksByTarget: const {},
+    );
+    expect(index.queryVersion, kVaultQueryVersion);
+    expect(
+      VaultIndex.fromJson(index.toJson()).queryVersion,
+      kVaultQueryVersion,
+    );
+
+    // And an index from before the field existed must not claim to be current.
+    final legacy = index.toJson()..remove('queryVersion');
+    expect(
+      VaultIndex.fromJson(legacy).queryVersion,
+      isNot(kVaultQueryVersion),
+      reason: 'it cannot vouch for which query produced it',
+    );
+  });
+
+  test('an index whose queryVersion is unknown is not re-derived', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_rederive3_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#import "/_system/tylog.typ" as tylog\n\n= Title\n',
+    );
+
+    final inspector = _Inspector();
+    final full = await scanVaultStorage(storage, inspector: inspector);
+
+    // Exactly what a pre-version-10 index.json deserialises to.
+    final legacy = VaultIndex.fromJson(
+      VaultIndex(
+        version: kVaultIndexVersion - 1,
+        notesByPath: full.notesByPath,
+        backlinksByTarget: full.backlinksByTarget,
+      ).toJson()..remove('queryVersion'),
+    );
+    inspector.inspected = 0;
+    await scanVaultStorage(storage, inspector: inspector, previous: legacy);
+
+    expect(
+      inspector.inspected,
+      1,
+      reason: 'unknown query provenance must force a real inspection',
+    );
+  });
+
   test('re-derivation picks up an edit to the source-parsed half', () async {
     final root = await Directory.systemTemp.createTemp('tylog_rederive2_');
     addTearDown(() => root.delete(recursive: true));

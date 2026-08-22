@@ -562,6 +562,11 @@ class VaultIndex {
 
   Map<String, Object?> toJson() => {
     'version': version,
+    // Persisted, not defaulted on read. Without it a cached index written
+    // before a query bump reads back as *current*, and its stale queryFacts
+    // would be trusted for re-derivation — the exact silent wrong-index the
+    // split exists to make impossible.
+    'queryVersion': queryVersion,
     'notes': notes.map((note) => note.toJson()).toList(),
     'backlinksByTarget': _sortedLists(backlinksByTarget),
     'attachmentBacklinksByPath': _sortedLists(attachmentBacklinksByPath),
@@ -575,6 +580,10 @@ class VaultIndex {
     );
     return VaultIndex(
       version: (json['version'] as num?)?.toInt() ?? 1,
+      // 0, not the current version: an index written before this field existed
+      // cannot vouch for which query produced it, so it must never be treated
+      // as re-derivable.
+      queryVersion: (json['queryVersion'] as num?)?.toInt() ?? 0,
       notesByPath: {for (final note in notes) note.path: note},
       backlinksByTarget: _stringLists(json['backlinksByTarget']),
       attachmentBacklinksByPath: _stringLists(
