@@ -222,6 +222,18 @@ Duration typstInspectTimeout = const Duration(seconds: 30);
 /// hours and starves sync. Capped, the backlog drains a slice per scan instead.
 int maxMetadataReinspectionsPerScan = 50;
 
+/// Upper bound on how many *already-inspected* fallbacks a single scan retries.
+///
+/// A `fallback-inspected` note is one the inspector already ran on and failed.
+/// Retrying them all every scan would spend the whole re-inspection budget on
+/// known-bad notes and starve the never-inspected ones, so for a long time they
+/// were never retried at all — which made a transient engine failure (a wedged
+/// worker, an OOM-killed inspect, a timeout under load) permanent until the
+/// note was next edited or the index was rebuilt by hand. A small separate
+/// slice is the middle: a genuine syntax error costs a handful of compiles per
+/// scan forever, and a transient failure clears on its own within a few passes.
+int maxFailedReinspectionsPerScan = 5;
+
 /// Consecutive inspect timeouts tolerated before the native worker is
 /// treated as wedged. A single transient timeout skips only its own note (it
 /// still records a metadata-query-failed problem); on a sustained run the
@@ -436,6 +448,7 @@ Future<VaultIndex> scanVaultStorage(
   // whole tail as fallback); a non-recoverable one drops to the source scan.
   var activeInspector = inspector;
   var reinspected = 0;
+  var failedReinspected = 0;
   var consecutiveTimeouts = 0;
   var recoveries = 0;
   var inspectorStopped = false;
@@ -511,12 +524,25 @@ Future<VaultIndex> scanVaultStorage(
     // compile, and an uncapped backlog pins the device CPU for hours. Only
     // otherwise-reusable notes count against the cap; a genuinely changed note
     // is re-read regardless, so charging it here would starve the upgrades.
-    final reinspect =
+    //
+    // A note the inspector already failed on ('fallback-inspected') is retried
+    // too, but out of its own much smaller slice — see
+    // [maxFailedReinspectionsPerScan]. Both draw on the same overall cap, so
+    // the worst case per scan is unchanged.
+    final retryFailed =
         matchesDisk &&
-        (cached!.metadataSource == 'fallback' ||
-            cached.metadataSource == 'legacy') &&
+        cached!.metadataSource == 'fallback-inspected' &&
         activeInspector != null &&
+        failedReinspected < maxFailedReinspectionsPerScan &&
         reinspected < maxMetadataReinspectionsPerScan;
+    final reinspect =
+        retryFailed ||
+        (matchesDisk &&
+            (cached!.metadataSource == 'fallback' ||
+                cached.metadataSource == 'legacy') &&
+            activeInspector != null &&
+            reinspected < maxMetadataReinspectionsPerScan);
+    if (retryFailed) failedReinspected++;
     if (reinspect) reinspected++;
 
     if (matchesDisk && !reinspect && rederivable) {
@@ -711,8 +737,9 @@ Future<VaultIndex> scanVaultStorage(
       // to be another. It passed every later check, was never re-inspected,
       // and went out to peers through the donor as authoritative. When the
       // bytes really did change, the source-parsed fallback at least describes
-      // what is actually in the file, and its 'fallback-inspected' source
-      // marks it for another attempt.
+      // what is actually in the file, and its 'fallback-inspected' source marks
+      // it for another attempt — [maxFailedReinspectionsPerScan] of them per
+      // scan, so a wedged worker costs a few passes rather than being final.
       notes[relative] =
           (reusable && matchesDisk && cached.metadataSource == 'typst-query'
               ? cached.copyWith(fingerprint: fingerprint)

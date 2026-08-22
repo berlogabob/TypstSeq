@@ -299,7 +299,9 @@ void main() {
 
       // Same fingerprints (files untouched) but this pass's inspector is
       // healthy — the uninspected cached fallback note must not shortcut past
-      // it. The poison note was already attempted, so it stays cached.
+      // it. The poison note is retried too: it hung because the *worker* hung,
+      // and that is exactly the case a permanent marker would have made
+      // permanent. Both recover in one pass.
       final healthyInspector = _SourceInspector();
       final second = await scanVaultStorage(
         storage,
@@ -307,17 +309,20 @@ void main() {
         previous: first,
       );
 
-      expect(healthyInspector.calls, 1);
+      expect(healthyInspector.calls, 2);
       expect(
-        second.problems
-            .where((problem) => problem.code == 'metadata-fallback')
-            .map((problem) => problem.subject),
-        ['notes/poison.typ'],
+        second.problems.where(
+          (problem) => problem.code == 'metadata-fallback',
+        ),
+        isEmpty,
       );
     },
   );
 
-  test('an inspected fallback is not re-inspected unchanged', () async {
+  test('a failed inspection is retried, so it is not permanent', () async {
+    // The marker was written to mean "try again", and nothing consumed it: a
+    // note the engine failed on once - a wedged worker, a timeout under load -
+    // stayed a fallback until someone edited it or rebuilt the index by hand.
     final root = await Directory.systemTemp.createTemp(
       'tylog_core_inspected_fallback_',
     );
@@ -340,11 +345,49 @@ void main() {
       previous: first,
     );
 
-    expect(healthyInspector.calls, 0);
-    expect(second.notes.single.metadataSource, 'fallback-inspected');
+    expect(healthyInspector.calls, 1, reason: 'the same bytes are retried');
+    expect(second.notes.single.metadataSource, 'typst-query');
     expect(
       second.problems.where((problem) => problem.code == 'metadata-fallback'),
-      hasLength(1),
+      isEmpty,
+      reason: 'and the problem it raised is gone',
+    );
+  });
+
+  test('but only a few per scan, so a broken vault cannot pin the CPU',
+      () async {
+    // The reason it was never retried at all: a vault with hundreds of
+    // genuinely broken notes would spend the whole budget recompiling them
+    // every scan and never upgrade a never-inspected one. The retry gets its
+    // own small slice instead of the whole cap.
+    final root = await Directory.systemTemp.createTemp('tylog_core_retry_cap_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    for (var i = 0; i < maxFailedReinspectionsPerScan + 4; i++) {
+      await storage.writeText(
+        'notes/n$i.typ',
+        '#show: tylog.note.with(id: "n$i", title: "N$i")',
+      );
+    }
+
+    final first = await scanVaultStorage(storage, inspector: _EmptyInspector());
+    expect(
+      first.notes.every((n) => n.metadataSource == 'fallback-inspected'),
+      isTrue,
+    );
+
+    final healthy = _SourceInspector();
+    final second = await scanVaultStorage(
+      storage,
+      inspector: healthy,
+      previous: first,
+    );
+
+    expect(healthy.calls, maxFailedReinspectionsPerScan);
+    expect(
+      second.notes.where((n) => n.metadataSource == 'typst-query'),
+      hasLength(maxFailedReinspectionsPerScan),
+      reason: 'the rest wait for the next scan',
     );
   });
 

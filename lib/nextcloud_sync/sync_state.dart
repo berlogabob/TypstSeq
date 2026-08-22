@@ -29,6 +29,7 @@ extension _SyncStatePersistence on NextcloudSync {
       bool recovered,
       bool remoteMismatch,
       String? rootEtag,
+      bool legacy,
     })
   >
   _loadSyncState(Vault vault) async {
@@ -39,6 +40,7 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: false,
         remoteMismatch: false,
         rootEtag: null,
+        legacy: false,
       );
     }
     final source = await vault.storage.readText(path);
@@ -74,6 +76,7 @@ extension _SyncStatePersistence on NextcloudSync {
           recovered: false,
           remoteMismatch: true,
           rootEtag: null,
+          legacy: false,
         );
       }
       final cursors = <String, SyncCursor>{};
@@ -92,6 +95,11 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: false,
         remoteMismatch: false,
         rootEtag: decoded['rootEtag'] as String?,
+        // Written before `schema`/`remoteKey` existed. Accepted rather than
+        // discarded — that migration is deliberate — but reported, so the pass
+        // rewrites the file and the ambiguity lasts exactly one pass instead
+        // of until something else happens to change.
+        legacy: decoded['schema'] == null || decoded['remoteKey'] == null,
       );
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
@@ -107,6 +115,7 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: true,
         remoteMismatch: false,
         rootEtag: null,
+        legacy: false,
       );
     }
   }

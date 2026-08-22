@@ -422,6 +422,14 @@ class NextcloudSync {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
       progress('load-local-state');
       final loadedState = await _loadSyncState(vault);
+      // A state file predating `schema`/`remoteKey` is trusted, and an audit
+      // was right to call that "absent read as current". The answer is not to
+      // reject it — that discards a tested migration — nor to treat it as
+      // recovered, which hands the user a comparison per file on their first
+      // sync after upgrading. It is to end the ambiguity immediately: force
+      // the rewrite, so the cursors are bound to this server from the next
+      // pass onward and the window is provably one pass wide.
+      cursorsDirty = loadedState.legacy;
       syncState = initialMode == null
           ? loadedState.cursors
           : <String, SyncCursor>{};

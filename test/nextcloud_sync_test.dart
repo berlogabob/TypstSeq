@@ -729,6 +729,41 @@ void main() {
     expect(result.conflicts, 1);
   });
 
+  test('a legacy state file is bound to this server on the first pass', () async {
+    // A file written before `schema`/`remoteKey` existed is accepted, not
+    // discarded - that migration is deliberate. But it is unbound: nothing in
+    // it says which server its cursors describe. The pass now rewrites it, so
+    // the ambiguity lasts one pass rather than until something else changes.
+    final server = await _webDavServer(remoteContent: 'remote note');
+    final dir = await Directory.systemTemp.createTemp('tylog_legacy_bind_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final note = File('${dir.path}/daily/2026/07/note.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('local note');
+    await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
+    final seeded =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map<String, Object?>;
+    expect(seeded['remoteKey'], isNull, reason: 'the legacy shape');
+
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+    final bound =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map<String, Object?>;
+    expect(bound['schema'], 2);
+    expect(
+      bound['remoteKey'],
+      isA<String>(),
+      reason: 'the cursors now say which server they describe',
+    );
+  });
+
   test('sync excludes operational state and keeps durable v5 roots', () {
     expect(isSyncInternalPath('_index/index.json'), isTrue);
     expect(isSyncInternalPath('_index/search-index.json.gz'), isTrue);
