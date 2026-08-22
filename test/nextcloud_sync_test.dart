@@ -2287,6 +2287,49 @@ void main() {
     expect(utf8.decode(remote['notes/live.typ']!.bytes), 'local A');
   });
 
+  test('a same-size edit in the same second still reaches the server', () async {
+    // The shortcut's local check is mtime+size, and SAF reports mtime at second
+    // granularity, so a same-size edit landing in the same second as the
+    // cursor's recorded mtime looks identical to it. The failure is permanent
+    // rather than transient: the shortcut writes nothing, so the cursor is
+    // never updated and every later pass repeats the mistake. The scanner has
+    // carried a set for exactly this hazard from the start; sync had none.
+    final remote = <String, _MutableRemoteFile>{
+      'notes/a.typ': _remoteText('#let x = 1 // aaaa\n'),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_same_second_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault.withStorage(_SecondGranularityStorage(dir));
+    await vault.ensureCreated();
+    // Bootstrap, then a settling run: a pass that changes the remote leaves the
+    // root etag one run behind, so the shortcut cannot fire until the next one.
+    await NextcloudSync(_config(server)).sync(vault);
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+    expect(
+      (await _traceEvents(vault)).map((event) => event['event']),
+      isNot(contains('no-change-shortcut')),
+    );
+
+    // Same length, different content, forced back to the mtime the cursor
+    // recorded — which is what second granularity does for free on a device.
+    final file = File('${dir.path}/notes/a.typ');
+    final stamped = await file.lastModified();
+    await vault.saveNote('notes/a.typ', '#let x = 1 // bbbb\n');
+    await file.setLastModified(stamped);
+
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+    expect(
+      utf8.decode(remote['notes/a.typ']!.bytes),
+      contains('bbbb'),
+      reason: 'an edit the clock cannot see must still be uploaded',
+    );
+  });
+
   test('a pending conflict does not stop the rest of the vault syncing', () async {
     // The engine-level guarantee the background service now relies on. Its own
     // blanket gate used to return before sync() was ever called, so one
@@ -3396,6 +3439,41 @@ class _ListCountingStorage extends LocalVaultStorage {
     if (recursive) recursiveLists++;
     return super.list(path: path, recursive: recursive);
   }
+}
+
+/// Reports mtime at whole-second granularity, the way SAF does on Android.
+///
+/// Desktop filesystems give millisecond mtimes, so the hazard the scanner
+/// documents — two different contents sharing a timestamp — simply cannot be
+/// reproduced against LocalVaultStorage. This is the device's behaviour, not a
+/// contrivance: SafBridge reads DocumentsContract's COLUMN_LAST_MODIFIED.
+class _SecondGranularityStorage extends LocalVaultStorage {
+  _SecondGranularityStorage(super.root);
+
+  VaultStorageEntry _truncate(VaultStorageEntry e) => VaultStorageEntry(
+    path: e.path,
+    isDirectory: e.isDirectory,
+    size: e.size,
+    modified: e.modified == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(
+            (e.modified!.millisecondsSinceEpoch ~/ 1000) * 1000,
+          ),
+  );
+
+  @override
+  Future<VaultStorageEntry?> stat(String path) async {
+    final entry = await super.stat(path);
+    return entry == null ? null : _truncate(entry);
+  }
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async => (await super.list(path: path, recursive: recursive))
+      .map(_truncate)
+      .toList();
 }
 
 class _HashCountingStorage extends LocalVaultStorage {

@@ -221,7 +221,14 @@ extension _PathSync on NextcloudSync {
     String? downloadedHash;
     if (localExists) {
       final millis = localStat.modified?.millisecondsSinceEpoch;
+      // The same mtime+size gate as the shortcut, and the same blind spot: at
+      // SAF's second granularity a same-size edit inside one second reuses the
+      // *previous* hash and the path is then judged unchanged. Skipping the
+      // shortcut is not enough on its own — the full pass reaches this and
+      // makes the identical mistake — so a path with a pending local write is
+      // always re-hashed. That costs one digest for a file we know just moved.
       if (previous?.localSha256 != null &&
+          !vault.isPendingSyncWrite(path) &&
           millis != null &&
           millis == previous!.localMillis &&
           localStat.size != null &&

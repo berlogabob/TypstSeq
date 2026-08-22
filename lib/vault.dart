@@ -35,6 +35,31 @@ class Vault {
   /// landing mid-scan must stay queued for the next one.
   void clearStaleNotes(Iterable<String> paths) => _staleNotes.removeAll(paths);
 
+  /// Notes written since the last sync pass considered them.
+  ///
+  /// Deliberately a *second* set rather than a reader of [staleNotes]: the scan
+  /// clears those when the index catches up, which says nothing about whether
+  /// the bytes reached the server. Sync's no-change shortcut compares mtime and
+  /// size, and SAF reports mtime at second granularity — so a same-size edit
+  /// landing in the same second as the cursor's recorded mtime is invisible to
+  /// it, and permanently, because the shortcut writes nothing and the cursor is
+  /// therefore never updated. The scanner has carried a set for exactly this
+  /// hazard since the beginning; sync had none.
+  final _pendingSyncWrites = <String>{};
+
+  /// Whether a local write is waiting for a sync pass to look at it.
+  bool get hasPendingSyncWrites => _pendingSyncWrites.isNotEmpty;
+
+  /// Snapshot, for a caller that will clear what it covered.
+  Set<String> get pendingSyncWrites => Set<String>.of(_pendingSyncWrites);
+
+  /// Whether this path was written since a sync pass last considered it.
+  bool isPendingSyncWrite(String path) => _pendingSyncWrites.contains(path);
+
+  /// Drops paths a completed sync pass covered.
+  void clearPendingSyncWrites(Iterable<String> paths) =>
+      _pendingSyncWrites.removeAll(paths);
+
   /// Reads and writes `_system/index/` donors — shared with the CLI.
   late final IndexDonorStore _donors = IndexDonorStore(storage);
 
@@ -379,12 +404,14 @@ _index
       if (await _isDisposableNote(path)) {
         await storage.delete(path);
         _staleNotes.add(path);
+        _pendingSyncWrites.add(path);
         return;
       }
       throw ArgumentError('A TyLog note cannot be empty');
     }
     await storage.writeText(path, text);
     _staleNotes.add(path);
+    _pendingSyncWrites.add(path);
   }
 
   /// Whether the note at [path] holds nothing worth keeping: absent, blank, an

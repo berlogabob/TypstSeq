@@ -400,6 +400,11 @@ class NextcloudSync {
     // ponytail: trace events are buffered and written once per sync (one SAF
     // write instead of a full read+rewrite per event); a hard process kill
     // loses that run's trace, acceptable for diagnostics.
+    // Local writes this pass will have accounted for by the time it completes.
+    // Snapshotted before any work so a save landing mid-pass is not cleared
+    // unseen.
+    final coveredWrites = vault.pendingSyncWrites;
+
     /// The no-change shortcut's local listing, kept so the full path can reuse
     /// it instead of walking the tree again.
     ({List<VaultStorageEntry> raw, Map<String, VaultStorageEntry> syncable})?
@@ -445,9 +450,18 @@ class NextcloudSync {
       // detection, conflict-copy scan and per-path loop can all be skipped.
       // Any mismatch falls straight through to the full run below — this
       // must never be the thing that decides a local edit is safe to skip.
+      // `!vault.hasPendingSyncWrites` is load-bearing, not belt-and-braces.
+      // The shortcut's local check is mtime+size, and SAF reports mtime at
+      // second granularity, so a same-size edit landing in the same second as
+      // the cursor's recorded mtime looks identical to it. Worse, the failure
+      // is permanent rather than transient: the shortcut writes nothing, so the
+      // cursor is never updated and every later pass makes the same mistake
+      // until something unrelated moves the file's mtime. The scanner has
+      // carried a set for this hazard from the start; sync had none.
       if (initialMode == null &&
           !stateRecovered &&
           !loadedState.remoteMismatch &&
+          !vault.hasPendingSyncWrites &&
           loadedState.rootEtag != null) {
         progress('probe-root');
         final unresolvedForShortcut = await loadSyncConflicts(vault);
@@ -743,6 +757,11 @@ class NextcloudSync {
       if (cursorsDirty || freshRootEtag != loadedState.rootEtag) {
         await _saveSyncState(vault, syncState, rootEtag: freshRootEtag);
       }
+      // Only what this pass actually looked at. A save landing mid-pass stays
+      // queued for the next one — the same contract the scan cache uses for
+      // its own stale set, and the reason both take a snapshot up front rather
+      // than clearing wholesale at the end.
+      vault.clearPendingSyncWrites(coveredWrites);
       traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
