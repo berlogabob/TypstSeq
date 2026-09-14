@@ -1,0 +1,10 @@
+run=2
+LaunchState: COLD
+TotalTime: 633
+WaitTime: 635
+run=2 search_ready=no elapsed=31s pid=11625
+Total frames rendered: 1
+Janky frames: 1 (100.00%)
+50th percentile: 22ms
+95th percentile: 22ms
+Number Frame deadline missed: 1

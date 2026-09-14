@@ -1,0 +1,88 @@
+Resolving dependencies...
+Downloading packages...
+  archive 4.0.9 (4.2.0 available)
+  cli_util 0.4.2 (0.6.0 available)
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.0.0 available)
+  cross_file 0.3.5+4 (0.3.5+5 available)
+  dbus 0.7.14 (0.7.15 available)
+  file_picker 12.0.0-beta.7 (12.2.0 available)
+  flutter_local_notifications 22.0.1 (22.3.0 available)
+  flutter_local_notifications_platform_interface 12.0.0 (12.2.0 available)
+  flutter_rust_bridge 2.12.0 (2.13.0 available)
+  flutter_secure_storage 10.3.1 (11.0.0 available)
+  flutter_secure_storage_darwin 0.3.2 (0.4.1 available)
+  flutter_secure_storage_linux 3.0.1 (3.0.2 available)
+  flutter_secure_storage_platform_interface 2.0.1 (2.0.3 available)
+  hooks 2.0.2 (2.2.0 available)
+  image 4.8.0 (4.9.2 available)
+  jni 1.0.0 (1.0.3 available)
+  jni_flutter 1.0.1 (1.0.3 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.0 (1.19.0 available)
+  mime 2.0.0 (2.1.0 available)
+  objective_c 9.4.1 (9.6.0 available)
+  package_config 2.2.0 (3.0.0 available)
+  platform 3.1.6 (3.2.0 available)
+  posix 6.5.0 (6.5.2 available)
+  process 5.0.5 (5.0.6 available)
+  pub_semver 2.2.0 (2.2.1 available)
+  record_use 0.6.0 (1.1.1 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  test_api 0.7.11 (0.7.14 available)
+  url_launcher_android 6.3.32 (6.3.33 available)
+  url_launcher_ios 6.4.1 (6.4.2 available)
+  url_launcher_linux 3.2.2 (3.2.3 available)
+  url_launcher_macos 3.2.5 (3.2.6 available)
+  url_launcher_windows 3.1.5 (3.1.6 available)
+  vector_graphics 1.2.2 (1.2.3 available)
+  vector_graphics_compiler 1.2.6 (1.3.0 available)
+  vector_math 2.2.0 (2.4.2 available)
+  vm_service 15.2.0 (15.3.0 available)
+  win32 6.3.0 (6.4.0 available)
+  xml 6.6.1 (7.0.1 available)
+  yaml 3.1.3 (3.1.4 available)
+Got dependencies!
+43 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Running Gradle task 'assembleProfile'...                        
+WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): flutter_timezone
+Future versions of Flutter will fail to build if your app uses plugins that apply KGP.
+
+Please check the changelogs of these plugins and upgrade to a version that supports Built-in Kotlin.
+If no such version exists, report the issue to the plugin. If necessary, here is a guide on filing 
+an issue against a plugin: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers#report-incompatible-kotlin-gradle-plugin-usage-to-plugin-authors
+
+If you are a plugin author, please migrate your plugin to Built-in Kotlin using this guide: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors
+Running Gradle task 'assembleProfile'...                           10.6s
+✓ Built build/app/outputs/flutter-apk/app-profile.apk (174.9MB)
+Installing build/app/outputs/flutter-apk/app-profile.apk...         5.0s
+VMServiceFlutterDriver: Connecting to Flutter application at http://127.0.0.1:53334/PwyFhcKAF-k=/
+VMServiceFlutterDriver: Isolate found with number: 3654956500140407
+VMServiceFlutterDriver: Isolate 3654956500140407 is runnable.
+VMServiceFlutterDriver: Isolate is paused at start.
+VMServiceFlutterDriver: Attempting to resume isolate
+I/flutter (15177): 00:00 +0: SAF sync dashboard trace reload profile
+VMServiceFlutterDriver: Connected to Flutter application.
+D/NtViewRootImpl(15177): mPopUpViewOffsets: offset=(0.0, 0.0), scale=(1.0, 1.0)
+D/InsetsController(15177): hide(ime(), fromIme=false)
+I/ImeTracker(15177): org.tylog.tylog:25506b3e: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+W/WindowOnBackDispatcher(15177): sendCancelIfRunning: isInProgress=false callback=android.view.ImeBackAnimationController@f5f35f4
+I/ImeTracker(15177): system_server:41e37cee: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+D/ProfileInstaller(15177): Installing profile for org.tylog.tylog
+W/FinalizerDaemon(15177): type=1400 audit(0.0:152997): avc:  denied  { getopt } for  path="/dev/socket/usap_pool_primary" scontext=u:r:untrusted_app:s0:c52,c258,c512,c768 tcontext=u:r:zygote:s0 tclass=unix_stream_socket permissive=0 app=org.tylog.tylog
+I/flutter ( 6183): NtQueueManager: Add task trySendAndroidMessageList 1
+I/flutter ( 6183): NtQueueManager: Running task trySendAndroidMessageList 1, retry count: 0, maxRetryCount: 1
+I/flutter ( 6183): NtQueueManager: Task trySendAndroidMessageList 1 is sending
+I/flutter ( 6183): NtQueueManager: Task trySendAndroidMessageList 1 sent successfully
+I/flutter ( 6183): NtQueueManager: No more tasks to execute
+I/flutter ( 6183): length:0,msgLength:11,header:true
+I/flutter ( 6183): NtQueueManager: Handle message, params: {realMac: 3C:B0:ED:40:AA:70, cmd: 3, ability: 101, count: 1, index: 1}
+I/flutter ( 6183): removeTask: trySendAndroidMessageList
+I/flutter ( 6183): NtQueueManager: Task trySendAndroidMessageList 1 response received
+I/flutter (15177): DASHBOARD-PROFILE seconds=60 reloads=121 exists=121 reads=121 bytes=3191980 loadParse(p50=46.516ms p95=56.548ms max=60.893ms) parse(p50=1.194ms p95=2.118ms max=5.837ms) frames=3752 dropped=0 worstGap=19ms
+I/flutter (15177): 01:00 +1: (tearDownAll)
+I/flutter (15177): 01:00 +2: All tests passed!
+All tests passed.
+Leaving the application running.

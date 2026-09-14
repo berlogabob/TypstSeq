@@ -20,6 +20,9 @@ class KnowledgeScreen extends StatefulWidget {
     required this.search,
     required this.problems,
     required this.onOpenNote,
+    this.searchState,
+    this.searchReady,
+    this.searchRevision,
     this.onFixProblems,
     this.savedSearches = const <SavedSearch>[],
     this.onSaveSearch,
@@ -32,11 +35,21 @@ class KnowledgeScreen extends StatefulWidget {
   /// Runs a full-text query. A callback rather than a [PkmsSearchIndex] because
   /// the index itself lives in the worker isolate — shipping it to the UI cost
   /// ~71 ms of root-isolate time per rebuild on a P30.
-  final Future<List<PkmsSearchResult>> Function(String query, String? tag, String? status)
+  final Future<List<PkmsSearchResult>> Function(
+    String query,
+    String? tag,
+    String? status,
+  )
   search;
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
+
+  /// Optional controller notifications used to refresh an already-open search
+  /// screen when the background search index becomes usable or is replaced.
+  final Listenable? searchState;
+  final bool Function()? searchReady;
+  final int Function()? searchRevision;
 
   /// Resolves the given problems (a single tile or a whole group). Returns the
   /// refreshed problem list to redraw when the fix changes the vault, or null
@@ -88,7 +101,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   final Set<String> _expandedCodes = {};
   // Local copy so a fix can redraw the list without popping the screen.
   late List<PkmsProblem> _problemList = widget.problems;
+  late List<SavedSearch> _savedSearches = List.of(widget.savedSearches);
+  bool _presetBusy = false;
   bool _fixing = false;
+  bool _isSearchReady = true;
+  int _observedSearchRevision = -1;
 
   bool _canFix(String code) =>
       widget.onFixProblems != null &&
@@ -127,16 +144,59 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   @override
   void initState() {
     super.initState();
+    _isSearchReady = widget.searchReady?.call() ?? true;
+    _observedSearchRevision = widget.searchRevision?.call() ?? 0;
+    widget.searchState?.addListener(_searchStateChanged);
     // The screen can open straight onto Search with a tag or empty query, and
     // an empty query is a real query here (it lists everything).
-    _runSearch(immediate: true);
+    if (_isSearchReady) _runSearch(immediate: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant KnowledgeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.searchState != widget.searchState) {
+      oldWidget.searchState?.removeListener(_searchStateChanged);
+      widget.searchState?.addListener(_searchStateChanged);
+    }
+    if (oldWidget.searchState != widget.searchState ||
+        oldWidget.searchReady != widget.searchReady ||
+        oldWidget.searchRevision != widget.searchRevision) {
+      _searchStateChanged();
+    }
   }
 
   @override
   void dispose() {
+    widget.searchState?.removeListener(_searchStateChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _searchStateChanged() {
+    if (!mounted) return;
+    final ready = widget.searchReady?.call() ?? true;
+    final revision = widget.searchRevision?.call() ?? 0;
+    if (!ready) {
+      if (_isSearchReady) {
+        setState(() {
+          _isSearchReady = false;
+          _results = const [];
+        });
+      }
+      _searchDebounce?.cancel();
+      _searchGeneration++;
+      return;
+    }
+    if (!_isSearchReady || revision != _observedSearchRevision) {
+      setState(() {
+        _isSearchReady = true;
+        _observedSearchRevision = revision;
+        _results = const [];
+      });
+      _runSearch(immediate: true);
+    }
   }
 
   /// Re-queries for the current [query]/[selectedTag]/[selectedStatus].
@@ -148,6 +208,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void _runSearch({bool immediate = false}) {
     _searchDebounce?.cancel();
     final generation = ++_searchGeneration;
+    if (!_isSearchReady) return;
     Future<void> run() async {
       final results = await widget.search(query, selectedTag, selectedStatus);
       // A newer query was issued while this one was in flight; its own reply owns
@@ -210,7 +271,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final results = _results;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: 1 + results.length,
+      itemCount: 1 + (results.isEmpty ? 1 : results.length),
       itemBuilder: (context, i) {
         if (i == 0) {
           return Column(
@@ -229,13 +290,14 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   _runSearch();
                 },
               ),
-              if (widget.savedSearches.isNotEmpty || widget.onSaveSearch != null) ...[
+              if (widget.savedSearches.isNotEmpty ||
+                  widget.onSaveSearch != null) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final preset in widget.savedSearches)
+                    for (final preset in _savedSearches)
                       GestureDetector(
                         onLongPress: () async {
                           final confirm = await showDialog<bool>(
@@ -245,7 +307,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                               content: Text('Delete "${preset.name}"?'),
                               actions: [
                                 TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
                                   child: const Text('Cancel'),
                                 ),
                                 TextButton(
@@ -255,8 +318,23 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                               ],
                             ),
                           );
-                          if (confirm == true && mounted) {
-                            await widget.onDeleteSearch?.call(preset);
+                          if (confirm == true && mounted && !_presetBusy) {
+                            setState(() => _presetBusy = true);
+                            try {
+                              await widget.onDeleteSearch?.call(preset);
+                              if (mounted) {
+                                setState(() => _savedSearches.remove(preset));
+                              }
+                            } catch (error) {
+                              if (mounted) {
+                                showSnack(
+                                  context,
+                                  'Could not delete search: $error',
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _presetBusy = false);
+                            }
                           }
                         },
                         child: ChoiceChip(
@@ -281,7 +359,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                         ),
                       ),
                     if (widget.onSaveSearch != null &&
-                        (query.isNotEmpty || selectedTag != null || selectedStatus != null))
+                        !_presetBusy &&
+                        (query.isNotEmpty ||
+                            selectedTag != null ||
+                            selectedStatus != null))
                       ActionChip(
                         avatar: const Icon(Icons.add),
                         label: const Text('Save'),
@@ -305,7 +386,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                                     child: const Text('Cancel'),
                                   ),
                                   TextButton(
-                                    onPressed: () => Navigator.pop(context, controller.text),
+                                    onPressed: () =>
+                                        Navigator.pop(context, controller.text),
                                     child: const Text('Save'),
                                   ),
                                 ],
@@ -313,14 +395,33 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                             },
                           );
                           if (name != null && name.isNotEmpty && mounted) {
-                            await widget.onSaveSearch?.call(
-                              SavedSearch(
-                                name: name,
-                                query: query,
-                                tag: selectedTag,
-                                status: selectedStatus,
-                              ),
+                            final search = SavedSearch(
+                              name: name,
+                              query: query,
+                              tag: selectedTag,
+                              status: selectedStatus,
                             );
+                            setState(() => _presetBusy = true);
+                            try {
+                              await widget.onSaveSearch?.call(search);
+                              if (mounted) {
+                                setState(() {
+                                  _savedSearches.removeWhere(
+                                    (s) => s.name == search.name,
+                                  );
+                                  _savedSearches.add(search);
+                                });
+                              }
+                            } catch (error) {
+                              if (mounted) {
+                                showSnack(
+                                  context,
+                                  'Could not save search: $error',
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _presetBusy = false);
+                            }
                           }
                         },
                       ),
@@ -362,6 +463,14 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ),
               const SizedBox(height: 8),
             ],
+          );
+        }
+        if (results.isEmpty) {
+          return ListTile(
+            leading: Icon(
+              _isSearchReady ? Icons.search_off : Icons.hourglass_top,
+            ),
+            title: Text(_isSearchReady ? 'No matches' : 'Indexing search…'),
           );
         }
         final result = results[i - 1];
@@ -617,7 +726,10 @@ class _TriageMissingPagesScreenState extends State<TriageMissingPagesScreen> {
 
   void _selectAtLeast(int references) => setState(() {
     for (final target in widget.targets.where((t) => t.count >= references)) {
-      _picked.putIfAbsent(target.target, () => defaultKindForTarget(target.target));
+      _picked.putIfAbsent(
+        target.target,
+        () => defaultKindForTarget(target.target),
+      );
     }
   });
 
@@ -679,7 +791,8 @@ class _TriageMissingPagesScreenState extends State<TriageMissingPagesScreen> {
                 options: missingPageKinds,
                 labels: const {},
                 tooltip: 'Create as',
-                onChanged: (next) => setState(() => _picked[item.target] = next),
+                onChanged: (next) =>
+                    setState(() => _picked[item.target] = next),
               ),
             ],
           ),

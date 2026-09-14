@@ -1,0 +1,18 @@
+Starting: Intent { cmp=org.tylog.tylog/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: org.tylog.tylog/.MainActivity
+TotalTime: 894
+WaitTime: 896
+Complete
+settled index=1788949468:102658 search=1788948663:108663
+idle=30s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=60s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=90s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=121s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=151s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=181s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=212s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=242s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=272s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=
+idle=303s pid=15590 index=1788949468:102658 search=1788948663:108663 fatal=

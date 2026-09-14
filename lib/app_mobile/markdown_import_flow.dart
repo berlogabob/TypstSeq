@@ -39,7 +39,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
       allowedExtensions: const ['md', 'markdown'],
     );
     if (picked == null || picked.files.isEmpty) return;
-    if (dirty) await _save(syncAfter: false);
+    if (dirty && !await _save(syncAfter: false)) return;
     if (!mounted || vault != opened) return;
 
     final progress = ValueNotifier<String>(
@@ -130,7 +130,8 @@ extension _MarkdownImportFlow on _HomeScreenState {
                 storage: opened.storage,
               );
         final typstSource = assets.typst;
-        final warningCount = draft.diagnostics.length + assets.diagnostics.length;
+        final warningCount =
+            draft.diagnostics.length + assets.diagnostics.length;
         final warningDetail = warningCount == 0
             ? null
             : '$warningCount conversion warning${warningCount == 1 ? '' : 's'}';
@@ -182,7 +183,12 @@ extension _MarkdownImportFlow on _HomeScreenState {
             final source = decision.choice == _MarkdownDuplicateChoice.merged
                 ? decision.source!
                 : typstSource;
-            await opened.saveNote(existing.path, source);
+            if (note == existing.path && dirty) {
+              throw StateError(
+                'Save the open note before replacing it from the import.',
+              );
+            }
+            await workspace.mutateNote(existing.path, (_) => source);
             final position = articles.indexOf(existing);
             if (position >= 0) {
               articles[position] = _noteForImportedArticle(
@@ -248,8 +254,6 @@ extension _MarkdownImportFlow on _HomeScreenState {
     String path,
     List<String> targetPaths,
   ) async {
-    final source = await vault!.readText(path);
-    final stripped = stripAutoRelated(source);
     final lines = [
       for (final targetPath in targetPaths)
         if (index!.notesByPath[targetPath] case final target?)
@@ -258,15 +262,16 @@ extension _MarkdownImportFlow on _HomeScreenState {
           // produces byte-identical markup.
           '- #tylog.ref-note(${typstString(target.id)})[${escapeMarkup(target.title)}]',
     ];
-    if (lines.isNotEmpty) {
-      await vault!.saveNote(
-        path,
-        '$stripped\n\n$_autoRelatedMarker\n== Related\n${lines.join('\n')}\n',
-      );
-      return 1;
-    }
-    if (stripped != source) await vault!.saveNote(path, stripped);
-    return 0;
+    var changed = false;
+    await workspace.mutateNote(path, (source) {
+      final stripped = stripAutoRelated(source);
+      final updated = lines.isNotEmpty
+          ? '$stripped\n\n$_autoRelatedMarker\n== Related\n${lines.join('\n')}\n'
+          : stripped;
+      changed = updated != source;
+      return updated;
+    });
+    return changed ? 1 : 0;
   }
 
   /// Appends a clearly-labeled links section to freshly imported articles
@@ -289,7 +294,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
           await _appendRelatedSection(entry.key, entry.value) > 0 || appended;
     }
     if (appended) {
-      await workspace.refreshIndex(updateStatus: false, always: true);
+      await workspace.waitForMutationRefresh();
     }
   }
 
@@ -348,7 +353,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
         Navigator.of(context, rootNavigator: true).pop();
       }
     }
-    await workspace.refreshIndex(always: true);
+    await workspace.waitForMutationRefresh();
     if (!mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text('Relinked ${articles.length} articles')),

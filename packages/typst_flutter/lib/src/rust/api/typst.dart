@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `add_base_files`, `add_fonts`, `map_diagnostic`, `map_errors`, `new`, `resolve_span`, `set_files`, `set_inputs`, `set_markup`, `set_sys_time`, `vfs_get`, `vfs_key`
+// These functions are ignored because they are not marked as `pub`: `add_base_files`, `add_fonts`, `map_diagnostic`, `map_errors`, `new`, `record_file_request`, `resolve_span`, `set_files`, `set_inputs`, `set_markup`, `set_sys_time`, `take_requested_files`, `vfs_get`, `vfs_key`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SimpleWorld`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `book`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `file`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `font`, `library`, `main`, `source`, `today`
 
@@ -83,6 +83,13 @@ abstract class TypstEngine implements RustOpaqueInterface {
     required CompiledDocument document,
     required String selector,
   });
+
+  /// Returns the canonical VFS paths requested since the previous call.
+  ///
+  /// Paths are recorded by the world's real `source` and `file` resolvers,
+  /// so imports, assets, data files, and vendored package files all use the
+  /// same canonical key as their lookup. The returned set is drained.
+  Future<List<String>> takeRequestedFiles();
 }
 
 class PageInfo {

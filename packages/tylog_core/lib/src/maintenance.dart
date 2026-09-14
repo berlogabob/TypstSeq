@@ -218,9 +218,15 @@ class VaultMaintenance {
             donorPublishError: donorPublishError,
           ),
         );
+        if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
 
         if (validate) {
-          final report = await validatePkmsStorage(storage, index);
+          final report = await validatePkmsStorage(
+            storage,
+            index,
+            isCancelled: isCancelled,
+          );
+          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
           report.problems.addAll(extraProblems?.call(index) ?? const []);
           report.problems.addAll(donorProblems(index));
           out.add(MaintenanceValidated(report));
@@ -237,7 +243,9 @@ class VaultMaintenance {
             storage,
             index,
             previous: cached,
+            isCancelled: isCancelled,
           );
+          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
           // buildStorage returns the *same instance* when every note hit the
           // cache and the key set is unchanged, so identity is an exact
           // "nothing to write" test. Without it a no-op pass re-encoded ~43 MB
@@ -247,16 +255,19 @@ class VaultMaintenance {
           if (written) {
             await search.saveStorage(storage, TylogVaultPaths.searchIndex);
           }
+          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
           _lastSearch = search;
           out.add(MaintenanceSearchBuilt(search, written: written));
         }
 
+        if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
         final lastSweep = _lastSweep;
         if (sweep &&
             (lastSweep == null ||
                 DateTime.now().difference(lastSweep) >= sweepInterval)) {
           _lastSweep = DateTime.now();
           out.add(MaintenanceSwept(await sweepVaultLeftovers(storage)));
+          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
         }
       } catch (error, stack) {
         out.addError(error, stack);

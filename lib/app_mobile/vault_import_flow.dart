@@ -67,7 +67,7 @@ class _VaultImportReport {
 
 extension _VaultImportFlow on _HomeScreenState {
   Future<void> _importVault() async {
-    if (dirty) await _save(syncAfter: false);
+    if (dirty && !await _save(syncAfter: false)) return;
     final opened = vault;
     if (!mounted || opened == null) return;
 
@@ -168,11 +168,11 @@ extension _VaultImportFlow on _HomeScreenState {
         if (isJournal &&
             existingPaths.contains(result.relPath) &&
             !used.contains(result.relPath)) {
-          final current = await opened.storage.readText(result.relPath);
-          await opened.storage.writeText(
+          await workspace.mutateNote(
             result.relPath,
-            '$current\n== From ${dialect == 'logseq' ? 'Logseq' : 'Obsidian'}\n\n'
-            '${importedNoteBody(typst)}',
+            (current) =>
+                '$current\n== From ${dialect == 'logseq' ? 'Logseq' : 'Obsidian'}\n\n'
+                '${importedNoteBody(typst)}',
           );
           used.add(result.relPath);
           writtenPaths.add(result.relPath);

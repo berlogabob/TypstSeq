@@ -1,0 +1,311 @@
+Resolving dependencies...
+Downloading packages...
+  archive 4.0.9 (4.2.0 available)
+  cli_util 0.4.2 (0.6.0 available)
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.0.0 available)
+  cross_file 0.3.5+4 (0.3.5+5 available)
+  dbus 0.7.14 (0.7.15 available)
+  file_picker 12.0.0-beta.7 (12.2.0 available)
+  flutter_local_notifications 22.0.1 (22.3.0 available)
+  flutter_local_notifications_platform_interface 12.0.0 (12.2.0 available)
+  flutter_rust_bridge 2.12.0 (2.13.0 available)
+  flutter_secure_storage 10.3.1 (11.0.0 available)
+  flutter_secure_storage_darwin 0.3.2 (0.4.1 available)
+  flutter_secure_storage_linux 3.0.1 (3.0.2 available)
+  flutter_secure_storage_platform_interface 2.0.1 (2.0.3 available)
+  hooks 2.0.2 (2.2.0 available)
+  image 4.8.0 (4.9.2 available)
+  jni 1.0.0 (1.0.3 available)
+  jni_flutter 1.0.1 (1.0.3 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.0 (1.19.0 available)
+  mime 2.0.0 (2.1.0 available)
+  objective_c 9.4.1 (9.6.0 available)
+  package_config 2.2.0 (3.0.0 available)
+  platform 3.1.6 (3.2.0 available)
+  posix 6.5.0 (6.5.2 available)
+  process 5.0.5 (5.0.6 available)
+  pub_semver 2.2.0 (2.2.1 available)
+  record_use 0.6.0 (1.1.1 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  test_api 0.7.11 (0.7.14 available)
+  url_launcher_android 6.3.32 (6.3.33 available)
+  url_launcher_ios 6.4.1 (6.4.2 available)
+  url_launcher_linux 3.2.2 (3.2.3 available)
+  url_launcher_macos 3.2.5 (3.2.6 available)
+  url_launcher_windows 3.1.5 (3.1.6 available)
+  vector_graphics 1.2.2 (1.2.3 available)
+  vector_graphics_compiler 1.2.6 (1.3.0 available)
+  vector_math 2.2.0 (2.4.2 available)
+  vm_service 15.2.0 (15.3.0 available)
+  win32 6.3.0 (6.4.0 available)
+  xml 6.6.1 (7.0.1 available)
+  yaml 3.1.3 (3.1.4 available)
+Got dependencies!
+43 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Running Gradle task 'assembleProfile'...                        
+WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): flutter_timezone
+Future versions of Flutter will fail to build if your app uses plugins that apply KGP.
+
+Please check the changelogs of these plugins and upgrade to a version that supports Built-in Kotlin.
+If no such version exists, report the issue to the plugin. If necessary, here is a guide on filing 
+an issue against a plugin: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers#report-incompatible-kotlin-gradle-plugin-usage-to-plugin-authors
+
+If you are a plugin author, please migrate your plugin to Built-in Kotlin using this guide: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors
+Running Gradle task 'assembleProfile'...                           14.7s
+✓ Built build/app/outputs/flutter-apk/app-profile.apk (174.9MB)
+Installing build/app/outputs/flutter-apk/app-profile.apk...         5.0s
+VMServiceFlutterDriver: Connecting to Flutter application at http://127.0.0.1:56411/qPwrYYAi8l0=/
+VMServiceFlutterDriver: Isolate found with number: 7493424503301975
+VMServiceFlutterDriver: Isolate 7493424503301975 is runnable.
+VMServiceFlutterDriver: Isolate is paused at start.
+VMServiceFlutterDriver: Attempting to resume isolate
+I/flutter (19510): 00:00 +0: Android taps every Magic action and keeps IME input alive
+VMServiceFlutterDriver: Connected to Flutter application.
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a303e38) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a3037f8) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a307038) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a3063b8) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a30c178) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(19510): AssetManager2(0xb400006e2a30be58) locale list changing from [] to [en-GB]
+D/NtViewRootImpl(19510): mPopUpViewOffsets: offset=(0.0, 0.0), scale=(1.0, 1.0)
+D/InsetsController(19510): hide(ime(), fromIme=false)
+I/ImeTracker(19510): org.tylog.tylog:1edd2d7b: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+I/ImeTracker(19510): org.tylog.tylog:8f6d5019: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/AssistStructure(19510): Flattened final assist data: 492 bytes, containing 1 windows, 3 views
+W/InteractionJankMonitor(19510): Initializing without READ_DEVICE_CONFIG permission. enabled=false, interval=1, missedFrameThreshold=3, frameTimeThreshold=64, package=org.tylog.tylog
+I/ImeTracker(19510): org.tylog.tylog:8f6d5019: onShown
+I/ImeTracker(19510): org.tylog.tylog:8d032588: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+D/CompatChangeReporter(19510): Compat change id reported: 395521150; UID 10566; state: ENABLED
+I/ImeTracker(19510): system_server:120413b0: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:370436fa: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:370436fa: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:370436fa: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:1f290a1f: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:a5c7f9e5: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:57eecb96: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:57eecb96: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:57eecb96: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+D/ProfileInstaller(19510): Installing profile for org.tylog.tylog
+I/ImeTracker(19510): org.tylog.tylog:8742d561: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:5adf055d: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:ee95f591: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/ImeTracker(19510): org.tylog.tylog:ee95f591: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:ee95f591: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:bbc89230: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:8c5d4aae: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:c5b0e7a7: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/ImeTracker(19510): org.tylog.tylog:c5b0e7a7: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:c5b0e7a7: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:a5f9933: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:7df371ea: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:35bb1dd4: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/ImeTracker(19510): org.tylog.tylog:35bb1dd4: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+W/FinalizerDaemon(19510): type=1400 audit(0.0:153547): avc:  denied  { getopt } for  path="/dev/socket/usap_pool_primary" scontext=u:r:untrusted_app:s0:c54,c258,c512,c768 tcontext=u:r:zygote:s0 tclass=unix_stream_socket permissive=0 app=org.tylog.tylog
+I/ImeTracker(19510): org.tylog.tylog:35bb1dd4: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:fcafcc3c: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:de04b552: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:a755f58: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:a755f58: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:a755f58: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:36ea066c: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:8472bf19: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:2b7d51ac: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:2b7d51ac: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:2b7d51ac: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:eaf323ec: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:a476333e: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:2d32489d: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:2d32489d: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:2d32489d: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:3c387577: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:3d624078: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:f9ba7ecc: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:f9ba7ecc: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:f9ba7ecc: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:6042e9e4: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:d201f23c: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:136e08e1: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:136e08e1: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:136e08e1: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:b1aa665a: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:575879e1: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:a9e010a4: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:a9e010a4: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:a9e010a4: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:a29acb1d: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+W/RemoteInputConnectionImpl(19510): requestCursorUpdates on inactive InputConnection
+I/ImeTracker(19510): system_server:b630db80: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:46e1684b: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:46e1684b: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:46e1684b: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:aca86fa: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:918f7b49: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:749fe73d: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:749fe73d: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:749fe73d: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:7b7d69e2: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:6b37b45c: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:13434271: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:13434271: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:13434271: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+W/JobService(19510): onNetworkChanged() not implemented in androidx.work.impl.background.systemjob.SystemJobService. Must override in a subclass.
+I/ImeTracker(19510): org.tylog.tylog:cf00ed45: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:12e5af5f: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:1963f6f9: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:1963f6f9: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:1963f6f9: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:5e2c53a5: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:d45a1035: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:6d7b4a32: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/ImeTracker(19510): org.tylog.tylog:6d7b4a32: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+W/JobService(19510): onNetworkChanged() not implemented in androidx.work.impl.background.systemjob.SystemJobService. Must override in a subclass.
+I/ImeTracker(19510): org.tylog.tylog:6d7b4a32: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:74bfc943: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:80528a73: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:f141e6ce: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+I/ImeTracker(19510): org.tylog.tylog:f141e6ce: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:f141e6ce: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/ImeTracker(19510): org.tylog.tylog:8124b856: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/ImeTracker(19510): system_server:380b6f65: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(19510): org.tylog.tylog:7be82610: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(19510): show(ime(), fromIme=false)
+D/InsetsController(19510): Setting requestedVisibleTypes to -1 (was -9)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=io.flutter.embedding.android.FlutterActivity$1@6bffb50
+I/ImeTracker(19510): org.tylog.tylog:7be82610: onShown
+W/RemoteInputConnectionImpl(19510): getSurroundingText on inactive InputConnection
+W/RemoteInputConnectionImpl(19510): getTextBeforeCursor on inactive InputConnection
+I/flutter (19510): 00:31 +1: (tearDownAll)
+I/ImeTracker(19510): org.tylog.tylog:3efcbbd0: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser false
+D/InsetsController(19510): hide(ime(), fromIme=false)
+W/WindowOnBackDispatcher(19510): sendCancelIfRunning: isInProgress=false callback=android.view.ImeBackAnimationController@8dd684c
+D/InsetsController(19510): Setting requestedVisibleTypes to -9 (was -1)
+I/flutter (19510): 00:31 +2: All tests passed!
+All tests passed.
+Leaving the application running.

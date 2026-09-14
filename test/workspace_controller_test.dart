@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
@@ -27,6 +27,128 @@ Future<void> _waitUntil(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
+  setUp(() => NextcloudSync.connectionRetryDelays = const [Duration.zero]);
+  tearDown(() => NextcloudSync.connectionRetryDelays = defaultRetryDelays);
+
+  test(
+    'late open success and failure cannot replace the newer vault',
+    () async {
+      final oldStorage = _GatedOpenStorage();
+      final newStorage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      oldStorage.arm();
+      final oldOpen = controller.openVault(
+        const VaultEntry(id: 'old', name: 'Old', path: '/old'),
+        storage: oldStorage,
+      );
+      await oldStorage.reached.future;
+      await controller.openVault(
+        const VaultEntry(id: 'new', name: 'New', path: '/new'),
+        storage: newStorage,
+      );
+      oldStorage.release();
+      await oldOpen;
+      expect(controller.entry?.id, 'new');
+
+      final failingStorage = _GatedOpenStorage()..failAfterGate = true;
+      failingStorage.arm();
+      final failedOpen = controller.openVault(
+        const VaultEntry(id: 'failed', name: 'Failed', path: '/failed'),
+        storage: failingStorage,
+      );
+      await failingStorage.reached.future;
+      await controller.openVault(
+        const VaultEntry(id: 'newer', name: 'Newer', path: '/newer'),
+        storage: _MemoryStorage(),
+      );
+      failingStorage.release();
+      await failedOpen;
+      expect(controller.entry?.id, 'newer');
+    },
+  );
+
+  test(
+    'late sync success and failure cannot clear newer vault state',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      Future<void> run({required bool fail}) async {
+        final server = await _GatedWebDavServer.start();
+        addTearDown(() => server.server.close(force: true));
+        server.propfindStatus = 207;
+        final controller = WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          inspector: _FakeInspector(),
+          reconcileTasks: (_) async {},
+        );
+        addTearDown(controller.dispose);
+        await controller.openVault(
+          const VaultEntry(id: 'old-sync', name: 'Old', path: '/old'),
+          storage: _MemoryStorage(),
+        );
+        await _waitUntil(
+          () => controller.index != null && !controller.rebuilding,
+        );
+        controller.cloud = server.config;
+        expect(await controller.syncNow(trigger: 'setup'), isTrue);
+        server.propfindStatus = fail ? HttpStatus.internalServerError : 207;
+        server.armGate();
+        final oldSync = controller.syncNow(trigger: 'manual');
+        await server.gateReached.future;
+        await controller.openVault(
+          const VaultEntry(id: 'new-sync', name: 'New', path: '/new'),
+          storage: _MemoryStorage(),
+        );
+        server.releaseGate.complete();
+        await oldSync.timeout(const Duration(seconds: 1));
+        expect(controller.entry?.id, 'new-sync');
+        expect(controller.syncing, isFalse);
+        expect(controller.syncError, isNull);
+      }
+
+      await run(fail: false);
+      await run(fail: true);
+    },
+  );
+
+  test(
+    'late scan settles after close without publishing old index state',
+    () async {
+      final storage = _GatedScanStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'scan', name: 'Scan', path: '/scan'),
+        storage: storage,
+      );
+      await _waitUntil(
+        () => controller.index != null && !controller.rebuilding,
+      );
+      storage.armGate();
+      final oldScan = controller.refreshIndex(always: true);
+      await storage.gateReached.future;
+      controller.close('closed');
+      storage.release();
+      await oldScan.timeout(const Duration(seconds: 1));
+      expect(controller.vault, isNull);
+      expect(controller.index, isNull);
+      expect(controller.searchReady, isFalse);
+      expect(controller.searchRevision, 0);
+      expect(controller.status, 'closed');
+    },
+  );
 
   test(
     'controller owns open, source, save, and index with fake boundaries',
@@ -56,10 +178,12 @@ void main() {
       await _waitUntil(() => controller.index != null);
       expect(controller.index?.notes, hasLength(1));
       expect(inspector.calls, 1);
+      expect(controller.searchReady, isTrue);
+      expect(controller.searchRevision, greaterThan(0));
 
       controller.edit('${controller.source}\nController edit.\n');
       expect(controller.dirty, isTrue);
-      await controller.save(syncAfter: false);
+      expect(await controller.save(syncAfter: false), isTrue);
       expect(controller.dirty, isFalse);
       expect(
         await storage.readText(controller.note!),
@@ -71,6 +195,177 @@ void main() {
       expect(inspector.calls, 2);
     },
   );
+
+  test(
+    'mutateNote preserves a newer open edit during its gated save',
+    () async {
+      final storage = _GatedWriteStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'mutate-open', name: 'Mutate', path: '/mutate'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      storage.armWrite();
+      final mutation = controller.mutateNote(
+        path,
+        (value) => '$value\nmutated',
+      );
+      await storage.gateReached.future;
+      controller.edit('${controller.source}\nnewer');
+      storage.releaseWrite();
+      expect(await mutation, isFalse);
+      expect(controller.dirty, isTrue);
+      expect(controller.source, endsWith('newer'));
+      await controller.save(syncAfter: false);
+      expect(await storage.readText(path), endsWith('newer'));
+    },
+  );
+
+  test('mutateNote serializes delayed closed-note read-modify-write', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'mutate-closed', name: 'Mutate', path: '/mutate'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    final path = 'notes/closed.typ';
+    await storage.writeText(path, 'base');
+    final first = controller.mutateNote(path, (value) => '$value\nfirst');
+    final second = controller.mutateNote(path, (value) => '$value\nsecond');
+    expect(await Future.wait([first, second]), [true, true]);
+    expect(await storage.readText(path), 'base\nfirst\nsecond');
+  });
+
+  test(
+    'queued old-vault mutation cannot write the replacement vault',
+    () async {
+      final oldStorage = _GatedWriteStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'mutation-old', name: 'Old', path: '/old'),
+        storage: oldStorage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      oldStorage.armWrite();
+      final first = controller.mutateNote(path, (value) => '$value\nfirst');
+      await oldStorage.gateReached.future;
+      final queued = controller.mutateNote(path, (value) => '$value\nqueued');
+      final newStorage = _MemoryStorage();
+      final replacement = controller.openVault(
+        const VaultEntry(id: 'mutation-new', name: 'New', path: '/new'),
+        storage: newStorage,
+      );
+      oldStorage.releaseWrite();
+      await Future.wait([first, queued, replacement]);
+      expect(controller.entry?.id, 'mutation-new');
+      expect(await newStorage.readText(path), isNot(contains('queued')));
+    },
+  );
+
+  test(
+    'task mutations preserve recurring behavior and surface bad IDs',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'task-mutate', name: 'Tasks', path: '/tasks'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const path = 'notes/tasks.typ';
+      await storage.writeText(
+        path,
+        '#tylog.task(id: "once", text: "One", status: "todo")\n'
+        '#tylog.task(id: "repeat", text: "Repeat", recurrence: "weekly", '
+        'status: "todo")\n',
+      );
+      expect(
+        await controller.mutateNote(
+          path,
+          (source) => replaceTaskStatus(source, 'once', 'done'),
+        ),
+        isTrue,
+      );
+      expect(
+        await controller.mutateNote(
+          path,
+          (source) =>
+              completeTaskOccurrence(source, 'repeat', '2026-09-09T00:00:00Z'),
+        ),
+        isTrue,
+      );
+      final updated = await storage.readText(path);
+      expect(updated, contains('status: "done"'));
+      expect(updated, contains('2026-09-09T00:00:00Z'));
+      expect(
+        () => controller.mutateNote(
+          path,
+          (source) => replaceTaskStatus(source, 'missing', 'done'),
+        ),
+        throwsStateError,
+      );
+      await controller.mutateNote(
+        path,
+        (source) =>
+            '$source'
+            '#tylog.task(id: "duplicate", text: "Two", status: "todo")\n'
+            '#tylog.task(id: "duplicate", text: "Three", status: "todo")\n',
+      );
+      expect(
+        () => controller.mutateNote(
+          path,
+          (source) => replaceTaskStatus(source, 'duplicate', 'done'),
+        ),
+        throwsStateError,
+      );
+    },
+  );
+
+  test('mutateNote propagates a storage write failure', () async {
+    final storage = _FailingWriteStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'task-failure', name: 'Tasks', path: '/tasks'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    const path = 'notes/fail.typ';
+    await storage.writeText(path, 'base');
+    storage.failWrites = true;
+    expect(
+      () => controller.mutateNote(path, (source) => '$source\nchanged'),
+      throwsA(isA<FileSystemException>()),
+    );
+  });
 
   test(
     'openVault loads user-vendored packages from _system/packages',
@@ -208,54 +503,206 @@ void main() {
     },
   );
 
+  test('a warm index rebuilds without waiting for the sync', () async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final storage = _MemoryStorage();
+
+    // First open with no cloud: leaves a current index.json behind.
+    final warmup = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    await warmup.openVault(
+      const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => warmup.index != null);
+    warmup.dispose();
+
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+
+    server.armGate();
+    await controller.openVault(
+      VaultEntry(
+        id: 'warm',
+        name: 'Warm vault',
+        path: '/not-used',
+        cloud: server.config,
+      ),
+      storage: storage,
+      trigger: 'resume',
+    );
+    await server.gateReached.future;
+
+    // The cache is current, so there is nothing a donor could add — the
+    // rebuild runs concurrently with the sync exactly as it always did.
+    await _waitUntil(() => controller.index != null);
+    expect(server.releaseGate.isCompleted, isFalse);
+    server.releaseGate.complete();
+  });
+
   test(
-    'a warm index rebuilds without waiting for the sync',
+    'startup foreground service has one owner and stops on success/failure',
     () async {
       final previousOverrides = HttpOverrides.current;
       HttpOverrides.global = null;
       addTearDown(() => HttpOverrides.global = previousOverrides);
+      const channel = MethodChannel('org.tylog.tylog/saf');
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call.method);
+            return null;
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+
       final server = await _GatedWebDavServer.start();
       addTearDown(() => server.server.close(force: true));
-      final storage = _MemoryStorage();
-
-      // First open with no cloud: leaves a current index.json behind.
-      final warmup = WorkspaceController(
-        taskScheduler: TaskScheduler(),
-        inspector: _FakeInspector(),
-        reconcileTasks: (_) async {},
-      );
-      await warmup.openVault(
-        const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
-        storage: storage,
-      );
-      await _waitUntil(() => warmup.index != null);
-      warmup.dispose();
-
+      server.armGate();
       final controller = WorkspaceController(
         taskScheduler: TaskScheduler(),
         inspector: _FakeInspector(),
         reconcileTasks: (_) async {},
+        useForegroundService: true,
       );
       addTearDown(controller.dispose);
-
-      server.armGate();
       await controller.openVault(
         VaultEntry(
-          id: 'warm',
-          name: 'Warm vault',
+          id: 'foreground-success',
+          name: 'Foreground success',
           path: '/not-used',
           cloud: server.config,
         ),
-        storage: storage,
-        trigger: 'resume',
+        storage: _MemoryStorage(),
+        trigger: 'startup',
       );
       await server.gateReached.future;
-
-      // The cache is current, so there is nothing a donor could add — the
-      // rebuild runs concurrently with the sync exactly as it always did.
-      await _waitUntil(() => controller.index != null);
-      expect(server.releaseGate.isCompleted, isFalse);
+      expect(
+        calls.where((method) => method == 'startSyncForeground'),
+        hasLength(1),
+      );
+      expect(await controller.syncNow(trigger: 'resume'), isFalse);
+      expect(
+        calls.where((method) => method == 'startSyncForeground'),
+        hasLength(1),
+      );
       server.releaseGate.complete();
+      await _waitUntil(() => !controller.syncing && !controller.rebuilding);
+      expect(
+        calls.where((method) => method == 'stopSyncForeground'),
+        hasLength(1),
+      );
+
+      final failedServer = await _GatedWebDavServer.start();
+      addTearDown(() => failedServer.server.close(force: true));
+      failedServer.propfindStatus = HttpStatus.internalServerError;
+      final failed = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        useForegroundService: true,
+      );
+      addTearDown(failed.dispose);
+      await failed.openVault(
+        VaultEntry(
+          id: 'foreground-failure',
+          name: 'Foreground failure',
+          path: '/not-used',
+          cloud: failedServer.config,
+        ),
+        storage: _MemoryStorage(),
+        trigger: 'startup',
+      );
+      await _waitUntil(() => failed.index != null && !failed.syncing);
+      expect(
+        calls.where((method) => method == 'startSyncForeground'),
+        hasLength(2),
+      );
+      expect(
+        calls.where((method) => method == 'stopSyncForeground'),
+        hasLength(2),
+      );
+    },
+  );
+
+  test(
+    'cold startup publishes one index for transfer, unchanged, or failure',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+
+      Future<int> openAndCount({
+        required int status,
+        Map<String, List<int>> files = const {},
+      }) async {
+        final server = await _GatedWebDavServer.start();
+        addTearDown(() => server.server.close(force: true));
+        server.propfindStatus = status;
+        for (final entry in files.entries) {
+          server._files[entry.key] = entry.value;
+          server._etags[entry.key] = '"${entry.key}-etag"';
+        }
+        final inspector = _FakeInspector();
+        var publications = 0;
+        final controller = WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          inspector: inspector,
+          reconcileTasks: (_) async {
+            publications++;
+          },
+        );
+        addTearDown(controller.dispose);
+        await controller.openVault(
+          VaultEntry(
+            id: 'cold-$status-${files.length}',
+            name: 'Cold vault',
+            path: '/not-used',
+            cloud: server.config,
+          ),
+          storage: _MemoryStorage(),
+          trigger: 'startup',
+        );
+        await _waitUntil(
+          () =>
+              controller.index != null &&
+              !controller.syncing &&
+              !controller.rebuilding,
+        );
+        return publications;
+      }
+
+      expect(
+        await openAndCount(
+          status: 207,
+          files: {'notes/remote.typ': utf8.encode('#let remote = true\n')},
+        ),
+        1,
+        reason: 'transferred content is indexed by sync exactly once',
+      );
+      expect(
+        await openAndCount(status: 207),
+        1,
+        reason: 'unchanged remote still gets one usable startup index',
+      );
+      expect(
+        await openAndCount(status: HttpStatus.internalServerError),
+        1,
+        reason: 'pre-transfer failure still gets one usable startup index',
+      );
     },
   );
 
@@ -305,45 +752,48 @@ void main() {
     );
   });
 
-  test('index-derived state is computed once per index, not per build', () async {
-    final storage = _MemoryStorage();
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
+  test(
+    'index-derived state is computed once per index, not per build',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
 
-    await controller.openVault(
-      const VaultEntry(id: 'derived', name: 'Derived', path: '/not-used'),
-      storage: storage,
-    );
-    await _waitUntil(() => controller.index != null);
-    await _waitUntil(() => controller.communities != null);
+      await controller.openVault(
+        const VaultEntry(id: 'derived', name: 'Derived', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      await _waitUntil(() => controller.communities != null);
 
-    final revisionAfterOpen = controller.indexRevision;
-    expect(revisionAfterOpen, greaterThan(0));
-    expect(controller.linkResolver, isNotNull);
-    final derived = controller.communities;
+      final revisionAfterOpen = controller.indexRevision;
+      expect(revisionAfterOpen, greaterThan(0));
+      expect(controller.linkResolver, isNotNull);
+      final derived = controller.communities;
 
-    // Re-deriving at the same revision is a no-op: the object is reused, not
-    // recomputed. This is what stops the shell paying for it on every notify.
-    await controller.refreshDerived();
-    expect(identical(controller.communities, derived), isTrue);
+      // Re-deriving at the same revision is a no-op: the object is reused, not
+      // recomputed. This is what stops the shell paying for it on every notify.
+      await controller.refreshDerived();
+      expect(identical(controller.communities, derived), isTrue);
 
-    // A real rebuild bumps the revision even though _retainIndex hands back
-    // the *same* VaultIndex object — the reason the cache cannot key on
-    // index identity.
-    final indexBefore = controller.index;
-    await controller.rebuildIndex();
-    await _waitUntil(() => controller.indexRevision > revisionAfterOpen);
-    expect(
-      identical(controller.index, indexBefore),
-      isTrue,
-      reason: 'the index is retained in place, so identity never changes',
-    );
-    await _waitUntil(() => controller.communities != null);
-  });
+      // A real rebuild bumps the revision even though _retainIndex hands back
+      // the *same* VaultIndex object — the reason the cache cannot key on
+      // index identity.
+      final indexBefore = controller.index;
+      await controller.rebuildIndex();
+      await _waitUntil(() => controller.indexRevision > revisionAfterOpen);
+      expect(
+        identical(controller.index, indexBefore),
+        isTrue,
+        reason: 'the index is retained in place, so identity never changes',
+      );
+      await _waitUntil(() => controller.communities != null);
+    },
+  );
 
   // `calendar` walks every note twice and sorts; `calendarDayMarks` walks the
   // result again. Both used to run inside the shell's `build()` — guarded only
@@ -375,7 +825,8 @@ void main() {
     expect(
       identical(controller.calendar, calendar),
       isTrue,
-      reason: 'reading it again must not recompute — that was the per-frame bug',
+      reason:
+          'reading it again must not recompute — that was the per-frame bug',
     );
     expect(identical(controller.calendarDayMarks, marks), isTrue);
     // This identity is the whole contract. VaultIndex.calendar walks every
@@ -450,44 +901,47 @@ void main() {
     },
   );
 
-  test('a scan that changes nothing does not rewrite the search index', () async {
-    // The search index is ~43 MB of JSON encoded to ~12 MB of gzip.
-    // buildStorage returns the *same instance* when every note hit the cache,
-    // so identity is an exact "nothing to write" test. The worker path has
-    // always had that guard; this in-process path - the one the suite
-    // overwhelmingly exercises - and the Android background service did not,
-    // so every no-op scan rewrote the whole file.
-    final storage = _MemoryStorage();
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
-    await controller.openVault(
-      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
-      storage: storage,
-    );
-    await _waitUntil(() => controller.index != null);
-    await controller.refreshIndex(always: true);
+  test(
+    'a scan that changes nothing does not rewrite the search index',
+    () async {
+      // The search index is ~43 MB of JSON encoded to ~12 MB of gzip.
+      // buildStorage returns the *same instance* when every note hit the cache,
+      // so identity is an exact "nothing to write" test. The worker path has
+      // always had that guard; this in-process path - the one the suite
+      // overwhelmingly exercises - and the Android background service did not,
+      // so every no-op scan rewrote the whole file.
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      await controller.refreshIndex(always: true);
 
-    // Positive control first: without it this test passes vacuously if the
-    // search index is never written at all, or if the filename changes.
-    expect(
-      storage.writes.where((path) => path.contains('search-index')),
-      isNotEmpty,
-      reason: 'the first build must actually write one',
-    );
+      // Positive control first: without it this test passes vacuously if the
+      // search index is never written at all, or if the filename changes.
+      expect(
+        storage.writes.where((path) => path.contains('search-index')),
+        isNotEmpty,
+        reason: 'the first build must actually write one',
+      );
 
-    storage.writes.clear();
-    await controller.refreshIndex(always: true);
+      storage.writes.clear();
+      await controller.refreshIndex(always: true);
 
-    expect(
-      storage.writes.where((path) => path.contains('search-index')),
-      isEmpty,
-      reason: 'nothing changed, so there is nothing to write',
-    );
-  });
+      expect(
+        storage.writes.where((path) => path.contains('search-index')),
+        isEmpty,
+        reason: 'nothing changed, so there is nothing to write',
+      );
+    },
+  );
 
   test('a bulk resolve clears every record it covers', () async {
     final previousOverrides = HttpOverrides.current;
@@ -508,6 +962,9 @@ void main() {
       storage: storage,
     );
     await _waitUntil(() => controller.index != null);
+    await controller
+        .refreshIndex(always: true)
+        .timeout(const Duration(seconds: 5));
     controller.cloud = server.config;
 
     for (final name in ['a', 'b', 'c']) {
@@ -561,7 +1018,7 @@ void main() {
     final saving = controller.save();
     // The user types again while the write is in flight, moving the revision.
     controller.edit('#import "/_system/tylog.typ" as tylog\n// second\n');
-    await saving;
+    expect(await saving, isFalse);
 
     expect(
       controller.status,
@@ -574,6 +1031,37 @@ void main() {
       reason: 'still unsaved, so idle maintenance retries it',
     );
   });
+
+  test(
+    'a save of an older snapshot reports false and keeps the newer edit',
+    () async {
+      final storage = _GatedWriteStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+
+      controller.edit('#import "/_system/tylog.typ" as tylog\n// first\n');
+      storage.armWrite();
+      final saving = controller.save(syncAfter: false);
+      await storage.gateReached.future;
+      controller.edit('#import "/_system/tylog.typ" as tylog\n// second\n');
+      controller.cancelPendingWork();
+      storage.releaseWrite();
+
+      expect(await saving, isFalse);
+      expect(controller.dirty, isTrue);
+      expect(controller.source, contains('// second'));
+      expect(await storage.readText(controller.note!), contains('// first'));
+    },
+  );
 
   test('a batch skips records that vanished under it', () async {
     // Every iteration reloads syncConflicts from disk, and that reload
@@ -598,6 +1086,9 @@ void main() {
       storage: storage,
     );
     await _waitUntil(() => controller.index != null);
+    await controller
+        .refreshIndex(always: true)
+        .timeout(const Duration(seconds: 5));
     controller.cloud = server.config;
 
     for (final name in ['gone', 'real']) {
@@ -683,48 +1174,51 @@ void main() {
 
     expect(resolved, 1, reason: 'exactly what actually landed');
     expect(
-      controller.syncConflicts, hasLength(2),
+      controller.syncConflicts,
+      hasLength(2),
       reason: 'the untouched records must still be there',
     );
     expect(controller.syncError, isNotNull);
   });
 
-  test('a batch over a disconnected vault refuses instead of claiming success',
-      () async {
-    // resolveConflict used to return silently when the config was not ready,
-    // so the batch counted every no-op as a success and the snackbar said
-    // "Resolved 3" over a vault where nothing had happened.
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
-    await controller.openVault(
-      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
-      storage: _MemoryStorage(),
-    );
-    await _waitUntil(() => controller.index != null);
-    controller.cloud = null;
-    controller.syncConflicts = [
-      for (final name in ['a', 'b', 'c'])
-        SyncConflict(
-          id: name,
-          path: 'notes/$name.typ',
-          recordPath: '.tylog/conflicts/$name.json',
-          createdAt: DateTime.utc(2026),
-          localExists: true,
-          remoteExists: true,
-        ),
-    ];
+  test(
+    'a batch over a disconnected vault refuses instead of claiming success',
+    () async {
+      // resolveConflict used to return silently when the config was not ready,
+      // so the batch counted every no-op as a success and the snackbar said
+      // "Resolved 3" over a vault where nothing had happened.
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = null;
+      controller.syncConflicts = [
+        for (final name in ['a', 'b', 'c'])
+          SyncConflict(
+            id: name,
+            path: 'notes/$name.typ',
+            recordPath: '.tylog/conflicts/$name.json',
+            createdAt: DateTime.utc(2026),
+            localExists: true,
+            remoteExists: true,
+          ),
+      ];
 
-    expect(
-      await controller.resolveAllConflicts(SyncConflictResolution.keepLocal),
-      0,
-    );
-    expect(controller.syncError, isNotNull, reason: 'it must say why');
-    expect(controller.syncConflicts, hasLength(3));
-  });
+      expect(
+        await controller.resolveAllConflicts(SyncConflictResolution.keepLocal),
+        0,
+      );
+      expect(controller.syncError, isNotNull, reason: 'it must say why');
+      expect(controller.syncConflicts, hasLength(3));
+    },
+  );
 
   test('a resolve refuses while another owner holds the vault lock', () async {
     // The resolve is the one operation that deliberately overwrites a side of a
@@ -1151,53 +1645,122 @@ void main() {
     },
   );
 
-  test('the post-sync reindex goes through the scan driver, not an inline one', () async {
-    // The post-sync reindex is the *most frequent* reindex trigger — any sync
-    // that changed anything — and it used to call `opened.rebuildIndex` inline,
-    // bypassing the worker entirely. Nothing pinned that, so nothing noticed.
-    //
-    // The donor file is the observable proof: the inline call passed no
-    // `deviceId`, so `_writeIndexDonor` never ran on this path. Going through
-    // `_scan` supplies it, which both fixes the missing donor (peers were not
-    // seeing this device's notes after a sync-triggered reindex) and shows the
-    // reindex is on the shared driver rather than a hand-rolled copy.
-    final previousOverrides = HttpOverrides.current;
-    HttpOverrides.global = null;
-    addTearDown(() => HttpOverrides.global = previousOverrides);
-    final server = await _GatedWebDavServer.start();
-    addTearDown(() => server.server.close(force: true));
-    final storage = _MemoryStorage();
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
-    controller.deviceId = 'test-device';
-    await controller.openVault(
-      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
-      storage: storage,
-    );
-    await _waitUntil(() => controller.index != null);
-    controller.cloud = server.config;
+  test(
+    'the post-sync reindex goes through the scan driver, not an inline one',
+    () async {
+      // The post-sync reindex is the *most frequent* reindex trigger — any sync
+      // that changed anything — and it used to call `opened.rebuildIndex` inline,
+      // bypassing the worker entirely. Nothing pinned that, so nothing noticed.
+      //
+      // The donor file is the observable proof: the inline call passed no
+      // `deviceId`, so `_writeIndexDonor` never ran on this path. Going through
+      // `_scan` supplies it, which both fixes the missing donor (peers were not
+      // seeing this device's notes after a sync-triggered reindex) and shows the
+      // reindex is on the shared driver rather than a hand-rolled copy.
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      controller.deviceId = 'test-device';
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
 
-    const donor = '_system/index/test-device.json';
-    // Whatever the open-time rebuild published, so the assertion below is about
-    // the sync path and not about openVault.
-    await storage.delete(donor);
+      const donor = '_system/index/test-device.json';
+      // Whatever the open-time rebuild published, so the assertion below is about
+      // the sync path and not about openVault.
+      await storage.delete(donor);
 
-    // An unsaved edit guarantees the reindex branch is taken: syncNow flushes it,
-    // which lifts savedRevision above indexedRevision.
-    controller.edit('#import "/_system/tylog.typ" as tylog\n// synced edit\n');
-    expect(await controller.syncNow(trigger: 'setup'), isTrue);
+      // An unsaved edit guarantees the reindex branch is taken: syncNow flushes it,
+      // which lifts savedRevision above indexedRevision.
+      controller.edit(
+        '#import "/_system/tylog.typ" as tylog\n// synced edit\n',
+      );
+      expect(await controller.syncNow(trigger: 'setup'), isTrue);
 
-    expect(
-      await storage.exists(donor),
-      isTrue,
-      reason: 'the sync-triggered reindex did not publish the index donor, so it '
-          'is not going through _scan',
-    );
-  });
+      expect(
+        await storage.exists(donor),
+        isTrue,
+        reason:
+            'the sync-triggered reindex did not publish the index donor, so it '
+            'is not going through _scan',
+      );
+    },
+  );
+
+  test(
+    'failed syncs refresh only downloaded content and report the error first',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _GatedScanStorage();
+      final inspector = _FakeInspector();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: inspector,
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      controller.deviceId = 'test-device';
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+      const donor = '_system/index/test-device.json';
+
+      server.propfindStatus = HttpStatus.unauthorized;
+      storage.writes.clear();
+      expect(await controller.syncNow(trigger: 'manual'), isFalse);
+      expect(await controller.syncNow(trigger: 'manual'), isFalse);
+      expect(
+        storage.writes.where((path) => path == donor),
+        isEmpty,
+        reason: 'two 401s must not publish a new index',
+      );
+
+      server.propfindStatus = 207;
+      server._files['notes/a.typ'] = utf8.encode('#let a = "remote"');
+      server._etags['notes/a.typ'] = '"remote-a"';
+      server._files['notes/b.typ'] = utf8.encode('#let b = "remote"');
+      server._etags['notes/b.typ'] = '"remote-b"';
+      server.failGets.add('notes/b.typ');
+      final downloadedA = Completer<void>();
+      server.onGet = (path) {
+        if (path == 'notes/a.typ') {
+          storage.armGate();
+          downloadedA.complete();
+        }
+      };
+      final scansBeforeFailure = inspector.calls;
+
+      final failed = controller.syncNow(trigger: 'manual');
+      await downloadedA.future.timeout(const Duration(seconds: 5));
+      await storage.gateReached.future.timeout(const Duration(seconds: 5));
+      expect(controller.syncError, isNotNull);
+      expect(controller.syncing, isTrue);
+
+      storage.release();
+      expect(await failed.timeout(const Duration(seconds: 10)), isFalse);
+      expect(inspector.calls, scansBeforeFailure + 1);
+      expect(await storage.readText('notes/a.typ'), '#let a = "remote"');
+    },
+  );
 
   test('sync errors explain resumable network and authentication failures', () {
     expect(
@@ -1266,6 +1829,129 @@ void main() {
       canSkipPoll(dirty: false, lastEtag: '"same"', currentEtag: null),
       isFalse,
     );
+  });
+
+  test(
+    'poll pauses rejected credentials until config changes or retry runs',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      var now = DateTime.utc(2026);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        now: () => now,
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+      server.propfindStatus = HttpStatus.unauthorized;
+      server.armGate();
+
+      final first = controller.pollTick();
+      await server.gateReached.future;
+      await controller.pollTick();
+      expect(server.propfinds, 1, reason: 'preflight stays single-flight');
+      server.releaseGate.complete();
+      await first;
+      expect(server.propfinds, 1);
+
+      now = now.add(const Duration(hours: 1));
+      await controller.pollTick();
+      expect(server.propfinds, 1, reason: '401 pauses automatic attempts');
+
+      // The same pause applies to forbidden credentials and automatic startup,
+      // resume, and autosave triggers after a manual auth failure.
+      server.propfindStatus = HttpStatus.forbidden;
+      controller.cloud = NextcloudConfig(
+        serverUrl: server.config.serverUrl,
+        username: 'alice',
+        password: 'forbidden',
+      );
+      await controller.pollTick();
+      final after403 = server.propfinds;
+      expect(await controller.syncNow(trigger: 'setup'), isFalse);
+      expect(await controller.syncNow(trigger: 'resume'), isFalse);
+      expect(await controller.syncNow(trigger: 'autosave'), isFalse);
+      expect(
+        server.propfinds,
+        after403,
+        reason: 'automatic triggers stay paused after 403',
+      );
+
+      server.propfindStatus = 207;
+      controller.cloud = NextcloudConfig(
+        serverUrl: server.config.serverUrl,
+        username: 'alice',
+        password: 'changed',
+      );
+      await controller.pollTick();
+      expect(
+        server.propfinds,
+        3,
+        reason: 'changed credentials retry automatically',
+      );
+
+      expect(await controller.syncNow(trigger: 'retry'), isTrue);
+      expect(server.propfinds, 4, reason: 'retry bypasses the auth pause');
+    },
+  );
+
+  test('poll backoff grows to five minutes and resets after success', () async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    var now = DateTime.utc(2026);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: _MemoryStorage(),
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = server.config;
+    server.propfindStatus = HttpStatus.internalServerError;
+
+    for (final delay in const [25, 50, 100, 200, 300]) {
+      final before = server.propfinds;
+      await controller.pollTick();
+      expect(server.propfinds, before + 1);
+      now = now.add(Duration(seconds: delay - 1));
+      await controller.pollTick();
+      expect(server.propfinds, before + 1);
+      now = now.add(const Duration(seconds: 1));
+    }
+
+    server.propfindStatus = 207;
+    final beforeSuccess = server.propfinds;
+    await controller.pollTick();
+    expect(server.propfinds, beforeSuccess + 1);
+
+    server.propfindStatus = HttpStatus.internalServerError;
+    final beforeResetFailure = server.propfinds;
+    await controller.pollTick();
+    expect(server.propfinds, beforeResetFailure + 1);
+    now = now.add(const Duration(seconds: 24));
+    await controller.pollTick();
+    expect(server.propfinds, beforeResetFailure + 1);
+    now = now.add(const Duration(seconds: 1));
+    await controller.pollTick();
+    expect(server.propfinds, beforeResetFailure + 2);
   });
 
   test(
@@ -1359,8 +2045,11 @@ void main() {
         contains('notes/unrelated.typ'),
         reason: 'the rest of the vault must keep syncing',
       );
-      expect(controller.hasSyncConflicts, isTrue,
-          reason: 'the conflict itself still waits for review');
+      expect(
+        controller.hasSyncConflicts,
+        isTrue,
+        reason: 'the conflict itself still waits for review',
+      );
     },
   );
 
@@ -1468,6 +2157,66 @@ void main() {
     },
   );
 
+  test(
+    'rating and deletion during a scan queue one follow-up without cancelling',
+    () async {
+      final storage = _GatedScanStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(
+          id: 'mutations',
+          name: 'Mutations',
+          path: '/mutations',
+        ),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const kept = 'articles/kept.typ';
+      const removed = 'articles/removed.typ';
+      const source = '''
+#show: tylog.note.with(
+  id: "article",
+  title: "Article",
+  kind: "article",
+  properties: ("rating": "unread",),
+)
+''';
+      await controller.vault!.saveNote(kept, source);
+      await controller.vault!.saveNote(
+        removed,
+        source.replaceAll('article', 'removed'),
+      );
+      await controller.refreshIndex(always: true);
+      expect(controller.index!.notesByPath, containsPair(kept, isNotNull));
+      expect(controller.index!.notesByPath, containsPair(removed, isNotNull));
+
+      storage.armGate();
+      final scan = controller.refreshIndex(always: true);
+      await storage.gateReached.future;
+      final rating = controller.mutateNote(
+        kept,
+        (value) => replaceNoteProperty(value, 'rating', '4'),
+      );
+      await controller.vault!.storage.delete(removed);
+      final deletionRefresh = controller.refreshIndex(always: true);
+      storage.release();
+      await scan;
+      await Future.wait([rating, deletionRefresh]);
+
+      expect(controller.cancelRebuild, isFalse);
+      expect(controller.status, isNot('Index rebuild cancelled'));
+      final keptNote = controller.index!.notesByPath[kept];
+      expect(keptNote, isNotNull);
+      expect(keptNote!.properties['rating'], '4');
+      expect(controller.index!.notesByPath, isNot(contains(removed)));
+    },
+  );
+
   test('shouldRolloverToday detects a calendar day change', () {
     final openedAt = DateTime(2026, 7, 15, 23, 55);
     expect(
@@ -1551,6 +2300,35 @@ class _GatedScanStorage extends _MemoryStorage {
   }
 }
 
+class _GatedOpenStorage extends _MemoryStorage {
+  Completer<void> reached = Completer<void>();
+  Completer<void> _release = Completer<void>();
+  bool _armed = false;
+  bool failAfterGate = false;
+
+  void arm() {
+    reached = Completer<void>();
+    _release = Completer<void>();
+    _armed = true;
+  }
+
+  void release() {
+    _armed = false;
+    _release.complete();
+  }
+
+  @override
+  Future<String> readText(String path) async {
+    if (_armed && path.endsWith('.typ')) {
+      _armed = false;
+      reached.complete();
+      await _release.future;
+      if (failAfterGate) throw const FileSystemException('old open failed');
+    }
+    return super.readText(path);
+  }
+}
+
 /// Fails writes on demand, to prove a lost write is never silent.
 class _FailingWriteStorage extends _MemoryStorage {
   bool failWrites = false;
@@ -1559,6 +2337,33 @@ class _FailingWriteStorage extends _MemoryStorage {
   Future<void> writeBytes(String path, List<int> bytes) async {
     if (failWrites && path.endsWith('.typ')) {
       throw const FileSystemException('disk full');
+    }
+    return super.writeBytes(path, bytes);
+  }
+}
+
+class _GatedWriteStorage extends _MemoryStorage {
+  Completer<void> gateReached = Completer<void>();
+  Completer<void> _release = Completer<void>();
+  var _gateWrite = false;
+
+  void armWrite() {
+    gateReached = Completer<void>();
+    _release = Completer<void>();
+    _gateWrite = true;
+  }
+
+  void releaseWrite() {
+    _gateWrite = false;
+    _release.complete();
+  }
+
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    if (_gateWrite && path.endsWith('.typ')) {
+      _gateWrite = false;
+      gateReached.complete();
+      await _release.future;
     }
     return super.writeBytes(path, bytes);
   }
@@ -1676,11 +2481,16 @@ class _GatedWebDavServer {
 
   final HttpServer server;
   final Map<String, List<int>> _files = {};
+
   /// Paths the client PUT, so a test can assert what actually synced.
   final uploaded = <String>[];
 
   /// Fail every PUT past this many, so a batch can half-succeed.
   int? failUploadsAfter;
+  int propfindStatus = 207;
+  int propfinds = 0;
+  final failGets = <String>{};
+  void Function(String path)? onGet;
   final Map<String, String> _etags = {};
   var _gateArmed = false;
   var gateReached = Completer<void>();
@@ -1717,12 +2527,13 @@ class _GatedWebDavServer {
         case 'MKCOL':
           request.response.statusCode = HttpStatus.methodNotAllowed;
         case 'PROPFIND':
+          propfinds++;
           if (_gateArmed) {
             _gateArmed = false;
             gateReached.complete();
             await releaseGate.future;
           }
-          request.response.statusCode = 207;
+          request.response.statusCode = propfindStatus;
           request.response.write('<d:multistatus xmlns:d="DAV:">');
           for (final entry in _files.entries) {
             request.response.write(
@@ -1739,11 +2550,14 @@ class _GatedWebDavServer {
           request.response.write('</d:multistatus>');
         case 'GET':
           final bytes = _files[path];
-          if (bytes == null) {
+          if (failGets.contains(path)) {
+            request.response.statusCode = HttpStatus.internalServerError;
+          } else if (bytes == null) {
             request.response.statusCode = HttpStatus.notFound;
           } else {
             request.response.headers.set(HttpHeaders.etagHeader, _etags[path]!);
             request.response.add(bytes);
+            onGet?.call(path);
           }
         case 'PUT':
           final bytes = await request.fold<List<int>>(

@@ -62,7 +62,7 @@ extension _PathSync on NextcloudSync {
       }
       if (status >= 400) {
         await response.drain<void>();
-        throw WebDavStatusException('GET archive $status');
+        throw WebDavStatusException('GET archive $status', status);
       }
       await response
           .pipe(temporary.openWrite())
@@ -593,6 +593,7 @@ extension _PathSync on NextcloudSync {
       // since the last sync still win: localChanged falls through to upload.
       action = SyncAction.deleteLocal;
       await vault.storage.delete(path);
+      _recordLocalContentChange(path);
       deletedLocal++;
       reason = 'remote-deleted';
     } else if ((localExists && !remoteExists) ||
@@ -890,12 +891,16 @@ extension _PathSync on NextcloudSync {
               ? await vault.storage.readBytes(old.key)
               : await source.readAsBytes();
           await vault.storage.writeBytes(replacement, bytes);
+          _recordLocalContentChange(replacement);
           if (await vault.storage.hash(replacement) != group.key) {
             await vault.storage.delete(replacement);
             throw StateError('Local rename verification failed: $replacement');
           }
         }
-        if (oldStat != null) await vault.storage.delete(old.key);
+        if (oldStat != null) {
+          await vault.storage.delete(old.key);
+          _recordLocalContentChange(old.key);
+        }
         final nextStat = await vault.storage.stat(replacement);
         if (nextStat == null) {
           throw StateError('Local rename did not create $replacement');

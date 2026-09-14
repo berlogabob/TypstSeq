@@ -1,0 +1,33 @@
+Starting: Intent { cmp=org.tylog.tylog/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: org.tylog.tylog/.MainActivity
+TotalTime: 596
+WaitTime: 598
+Complete
+elapsed=0s pid=10952 index_bytes=374 foreground_service=
+elapsed=2s pid=10952 index_bytes=374 foreground_service=
+elapsed=5s pid=10952 index_bytes=374 foreground_service=
+elapsed=7s pid=10952 index_bytes=374 foreground_service=
+elapsed=9s pid=10952 index_bytes=374 foreground_service=
+elapsed=11s pid=10952 index_bytes=374 foreground_service=
+elapsed=13s pid=10952 index_bytes=374 foreground_service=
+elapsed=15s pid=10952 index_bytes=374 foreground_service=
+elapsed=18s pid=10952 index_bytes=374 foreground_service=
+elapsed=20s pid=10952 index_bytes=374 foreground_service=
+elapsed=22s pid=10952 index_bytes=374 foreground_service=
+elapsed=24s pid=10952 index_bytes=374 foreground_service=
+elapsed=26s pid=10952 index_bytes=374 foreground_service=
+elapsed=28s pid=10952 index_bytes=374 foreground_service=
+elapsed=31s pid=10952 index_bytes=374 foreground_service=
+elapsed=33s pid=10952 index_bytes=374 foreground_service=
+elapsed=35s pid=10952 index_bytes=374 foreground_service=
+elapsed=37s pid=10952 index_bytes=374 foreground_service=
+elapsed=39s pid=10952 index_bytes=374 foreground_service=
+elapsed=41s pid=10952 index_bytes=374 foreground_service=
+elapsed=43s pid=10952 index_bytes=374 foreground_service=
+elapsed=46s pid=10952 index_bytes=374 foreground_service=
+elapsed=48s pid=10952 index_bytes=374 foreground_service=
+elapsed=50s pid=10952 index_bytes=374 foreground_service=
+elapsed=52s pid=10952 index_bytes=374 foreground_service=
+elapsed=54s pid=10952 index_bytes=103595 foreground_service=

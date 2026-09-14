@@ -25,6 +25,8 @@ extension _VaultLifecycle on _HomeScreenState {
             }
             return;
           }
+          if (!registry.onboardingComplete) await registry.completeOnboarding();
+          return;
         } else if (vaultNeedsAndroidTreeMigration(registry.active)) {
           if (!await _migrateAndroidVault(registry.active)) {
             _closeVault('Choose a vault folder to continue');
@@ -107,7 +109,7 @@ extension _VaultLifecycle on _HomeScreenState {
   Future<void> _switchVault(VaultEntry entry) async {
     final registry = vaultRegistry;
     if (registry == null || registry.activeId == entry.id) return;
-    if (dirty) await _save(syncAfter: false);
+    if (dirty && !await _save(syncAfter: false)) return;
     var next = entry;
     if (vaultNeedsAndroidTreeMigration(next)) {
       if (!await _migrateAndroidVault(next)) {
@@ -122,6 +124,8 @@ extension _VaultLifecycle on _HomeScreenState {
   }
 
   Future<bool> _pickVault({bool closeCurrent = true}) async {
+    if (closeCurrent && dirty && !await _save(syncAfter: false)) return false;
+    if (!mounted) return false;
     if (closeCurrent && Navigator.canPop(context)) Navigator.pop(context);
     if (Platform.isAndroid) {
       final selected = await _chooseAndroidVault(allowEmpty: true);
@@ -316,6 +320,11 @@ extension _VaultLifecycle on _HomeScreenState {
     );
     if (!confirmed || !mounted) return;
     final registry = vaultRegistry!;
+    if (entry.id == registry.activeId &&
+        dirty &&
+        !await _save(syncAfter: false)) {
+      return;
+    }
     try {
       workspace.cancelPendingWork();
       final wasActive = entry.id == registry.activeId;
@@ -379,9 +388,14 @@ extension _VaultLifecycle on _HomeScreenState {
     );
     if (confirmed != true) return;
 
+    final registry = vaultRegistry!;
+    if (entry.id == registry.activeId &&
+        dirty &&
+        !await _save(syncAfter: false)) {
+      return;
+    }
     workspace.cancelPendingWork();
     try {
-      final registry = vaultRegistry!;
       final wasActive = registry.activeId == entry.id;
       await registry.delete(entry);
       if (shouldCreateDefaultReplacementVault(

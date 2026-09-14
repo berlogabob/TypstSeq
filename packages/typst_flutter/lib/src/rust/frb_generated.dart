@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 618104202;
+  int get rustContentHash => 873011556;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -132,6 +132,10 @@ abstract class RustLibApi extends BaseApi {
     required TypstEngine that,
     required CompiledDocument document,
     required String selector,
+  });
+
+  Future<List<String>> crateApiTypstTypstEngineTakeRequestedFiles({
+    required TypstEngine that,
   });
 
   Future<MarkdownTypstResult> crateApiMarkdownImportConvertMarkdown({
@@ -575,6 +579,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<String>> crateApiTypstTypstEngineTakeRequestedFiles({
+    required TypstEngine that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEngine(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTypstTypstEngineTakeRequestedFilesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTypstTypstEngineTakeRequestedFilesConstMeta =>
+      const TaskConstMeta(
+        debugName: "TypstEngine_take_requested_files",
+        argNames: ["that"],
+      );
+
+  @override
   Future<MarkdownTypstResult> crateApiMarkdownImportConvertMarkdown({
     required String markdown,
     required String title,
@@ -590,7 +630,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -627,7 +667,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -654,7 +694,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2184,4 +2224,12 @@ class TypstEngineImpl extends RustOpaque implements TypstEngine {
     document: document,
     selector: selector,
   );
+
+  /// Returns the canonical VFS paths requested since the previous call.
+  ///
+  /// Paths are recorded by the world's real `source` and `file` resolvers,
+  /// so imports, assets, data files, and vendored package files all use the
+  /// same canonical key as their lookup. The returned set is drained.
+  Future<List<String>> takeRequestedFiles() => RustLib.instance.api
+      .crateApiTypstTypstEngineTakeRequestedFiles(that: this);
 }

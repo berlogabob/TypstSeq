@@ -396,6 +396,7 @@ void main() {
       // Disable transient retries so the interruption aborts this run and the
       // checkpoint/resume path is what gets exercised.
       NextcloudSync.connectionRetryDelays = const [];
+      final changed = <String>[];
       final dir = await Directory.systemTemp.createTemp('tylog_checkpoint_');
       final storage = _CheckpointCountingStorage(dir);
       final vault = Vault.withStorage(storage);
@@ -409,9 +410,12 @@ void main() {
       await expectLater(
         NextcloudSync(
           _config(server),
+          onLocalContentChanged: changed.add,
         ).sync(vault, initialMode: InitialSyncMode.downloadRemote),
         throwsA(anything),
       );
+
+      expect(changed, contains('notes/10.typ'));
 
       final checkpoint =
           jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))

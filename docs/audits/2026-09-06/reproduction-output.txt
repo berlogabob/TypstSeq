@@ -1,0 +1,134 @@
+00:00 +0: loading /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart
+00:00 +0: AUDIT disposing worker terminates its active command
+00:01 +0 -1: AUDIT disposing worker terminates its active command [E]
+  TimeoutException after 0:00:01.000000: Future not completed
+  dart:async  _startMicrotaskLoop
+  
+00:01 +0 -1: AUDIT navigation retains edits when save fails
+AUDIT after rejected save + navigation: note=notes/b.typ, dirty=false
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: 'notes/a.typ'
+  Actual: 'notes/b.typ'
+   Which: is different.
+          Expected: notes/a.typ
+            Actual: notes/b.typ
+                          ^
+           Differ at offset 6
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart:74:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart line 74
+The test description was:
+  AUDIT navigation retains edits when save fails
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: AUDIT navigation retains edits when save fails [E]
+  Test failed. See exception logs above.
+  The test description was: AUDIT navigation retains edits when save fails
+  
+00:01 +0 -2: AUDIT saved search additions preserve earlier additions
+AUDIT saved searches after two saves: [Second]
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: contains all of ['First', 'Second']
+  Actual: MappedListIterable<SavedSearch, String>:['Second']
+   Which: has too few elements (1 < 2)
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart:92:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart line 92
+The test description was:
+  AUDIT saved search additions preserve earlier additions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -3: AUDIT saved search additions preserve earlier additions [E]
+  Test failed. See exception logs above.
+  The test description was: AUDIT saved search additions preserve earlier additions
+  
+00:01 +0 -3: AUDIT cold startup publishes index only once
+AUDIT cold startup index publications: 2
+00:02 +0 -4: AUDIT cold startup publishes index only once [E]
+  Expected: <1>
+    Actual: <2>
+  
+  package:matcher                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18   expect
+  docs/audits/2026-09-06/reproduction_test.dart 114:5  main.<fn>
+  
+00:02 +0 -4: AUDIT failed polls without downloads do not reindex
+Nextcloud sync failed: HttpException: MKCOL 401
+#0      _WebDavClient._mkcol (package:tylog/nextcloud_sync/webdav_client.dart:332:7)
+<asynchronous suspension>
+#1      _WebDavClient._ensureConfiguredFolder (package:tylog/nextcloud_sync/webdav_client.dart:318:7)
+<asynchronous suspension>
+#2      _WebDavClient._retryTransient (package:tylog/nextcloud_sync/webdav_client.dart:389:16)
+<asynchronous suspension>
+#3      NextcloudSync.sync (package:tylog/nextcloud_sync.dart:529:7)
+<asynchronous suspension>
+#4      WorkspaceController.syncNow (package:tylog/workspace_controller.dart:900:22)
+<asynchronous suspension>
+#5      WorkspaceController.pollTick (package:tylog/workspace_controller.dart:790:5)
+<asynchronous suspension>
+#6      main.<anonymous closure> (file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart:135:5)
+<asynchronous suspension>
+#7      Declarer.test.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/declarer.dart:253:15)
+<asynchronous suspension>
+#8      Declarer.test.<anonymous closure> (package:test_api/src/backend/declarer.dart:250:11)
+<asynchronous suspension>
+#9      Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:9)
+<asynchronous suspension>
+Nextcloud sync failed: HttpException: MKCOL 401
+#0      _WebDavClient._mkcol (package:tylog/nextcloud_sync/webdav_client.dart:332:7)
+<asynchronous suspension>
+#1      _WebDavClient._ensureConfiguredFolder (package:tylog/nextcloud_sync/webdav_client.dart:318:7)
+<asynchronous suspension>
+#2      _WebDavClient._retryTransient (package:tylog/nextcloud_sync/webdav_client.dart:389:16)
+<asynchronous suspension>
+#3      NextcloudSync.sync (package:tylog/nextcloud_sync.dart:529:7)
+<asynchronous suspension>
+#4      WorkspaceController.syncNow (package:tylog/workspace_controller.dart:900:22)
+<asynchronous suspension>
+#5      WorkspaceController.pollTick (package:tylog/workspace_controller.dart:790:5)
+<asynchronous suspension>
+#6      main.<anonymous closure> (file:///Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart:136:5)
+<asynchronous suspension>
+#7      Declarer.test.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/declarer.dart:253:15)
+<asynchronous suspension>
+#8      Declarer.test.<anonymous closure> (package:test_api/src/backend/declarer.dart:250:11)
+<asynchronous suspension>
+#9      Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:9)
+<asynchronous suspension>
+AUDIT index publications after two rejected polls: 2
+00:02 +0 -5: AUDIT failed polls without downloads do not reindex [E]
+  Expected: <1>
+    Actual: <3>
+  
+  package:matcher                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18   expect
+  docs/audits/2026-09-06/reproduction_test.dart 138:5  main.<fn>
+  
+00:02 +0 -5: Some tests failed.
+
+Failing tests:
+  /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart: AUDIT cold startup publishes index only once
+  /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart: AUDIT disposing worker terminates its active command
+  /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart: AUDIT failed polls without downloads do not reindex
+  /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart: AUDIT navigation retains edits when save fails
+  /Users/berloga/Documents/GitHub/TypstSeq/docs/audits/2026-09-06/reproduction_test.dart: AUDIT saved search additions preserve earlier additions

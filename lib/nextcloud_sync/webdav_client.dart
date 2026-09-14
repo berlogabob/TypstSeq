@@ -19,6 +19,7 @@ extension _WebDavClient on NextcloudSync {
     if (response.statusCode != 207) {
       throw WebDavStatusException(
         'PROPFIND unexpected status ${response.statusCode}',
+        response.statusCode,
       );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
@@ -57,6 +58,7 @@ extension _WebDavClient on NextcloudSync {
     if (response.statusCode != 207) {
       throw WebDavStatusException(
         'PROPFIND unexpected status ${response.statusCode}',
+        response.statusCode,
       );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
@@ -93,6 +95,7 @@ extension _WebDavClient on NextcloudSync {
     if (response.statusCode != 207) {
       throw WebDavStatusException(
         'PROPFIND unexpected status ${response.statusCode}',
+        response.statusCode,
       );
     }
     if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
@@ -160,7 +163,7 @@ extension _WebDavClient on NextcloudSync {
       throw const _RemoteChanged();
     }
     if (response.statusCode >= 400) {
-      throw WebDavStatusException('PUT $path ${response.statusCode}');
+      throw WebDavStatusException('PUT $path ${response.statusCode}', response.statusCode);
     }
     final remoteHash = response.headers.value('x-hash-sha256');
     if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
@@ -197,7 +200,7 @@ extension _WebDavClient on NextcloudSync {
     request.headers.set('X-Hash', 'sha256');
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
-      throw WebDavStatusException('GET $path ${response.statusCode}');
+      throw WebDavStatusException('GET $path ${response.statusCode}', response.statusCode);
     }
     final etag =
         response.headers.value(HttpHeaders.etagHeader) ??
@@ -258,6 +261,7 @@ extension _WebDavClient on NextcloudSync {
       }
       _requireLocalReplacementAllowed(path);
       await storage.writeBytes(path, bytes);
+      _recordLocalContentChange(path);
       return _DownloadResult(
         protected: false,
         etag: remoteFile?.etag,
@@ -286,6 +290,7 @@ extension _WebDavClient on NextcloudSync {
       _requireLocalReplacementAllowed(path);
       final bytes = await temporary.readAsBytes();
       await storage.writeBytes(path, bytes);
+      _recordLocalContentChange(path);
       return _DownloadResult(
         protected: result.protected,
         etag: result.etag,
@@ -329,7 +334,7 @@ extension _WebDavClient on NextcloudSync {
     )).close().timeout(const Duration(seconds: 20));
     await response.drain<void>();
     if (response.statusCode >= 400 && response.statusCode != 405) {
-      throw WebDavStatusException('MKCOL ${response.statusCode}');
+      throw WebDavStatusException('MKCOL ${response.statusCode}', response.statusCode);
     }
   }
 
@@ -357,7 +362,7 @@ extension _WebDavClient on NextcloudSync {
       throw const _RemoteChanged();
     }
     if (status >= 400) {
-      throw WebDavStatusException('MOVE $from ${response.statusCode}');
+      throw WebDavStatusException('MOVE $from ${response.statusCode}', response.statusCode);
     }
     return _RemoteFile(
       modified: DateTime.now().toUtc(),
@@ -376,7 +381,7 @@ extension _WebDavClient on NextcloudSync {
     }
     if (response.statusCode >= 400 &&
         response.statusCode != HttpStatus.notFound) {
-      throw WebDavStatusException('DELETE $path ${response.statusCode}');
+      throw WebDavStatusException('DELETE $path ${response.statusCode}', response.statusCode);
     }
   }
 

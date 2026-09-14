@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::Mutex;
 
 use flutter_rust_bridge::frb;
 use typst::diag::FileError;
@@ -203,6 +204,15 @@ impl TypstEngine {
         self.world.add_base_files(files, first, last);
     }
 
+    /// Returns the canonical VFS paths requested since the previous call.
+    ///
+    /// Paths are recorded by the world's real `source` and `file` resolvers,
+    /// so imports, assets, data files, and vendored package files all use the
+    /// same canonical key as their lookup. The returned set is drained.
+    pub fn take_requested_files(&mut self) -> Vec<String> {
+        self.world.take_requested_files()
+    }
+
     /// Compile Typst markup into a CompiledDocument handle.
     pub fn compile(
         &mut self,
@@ -244,12 +254,12 @@ impl TypstEngine {
         selector: String,
     ) -> Result<String, String> {
         use comemo::Track;
-        use typst::World;
         use typst::engine::Sink;
         use typst::foundations::{Context, IntoValue, LocatableSelector, Scope};
         use typst::introspection::{EmptyIntrospector, Introspector};
         use typst::routines::SpanMode;
         use typst::syntax::{Span, SyntaxMode};
+        use typst::World;
         use typst_eval::eval_string;
 
         let sel_value = eval_string(
@@ -303,6 +313,8 @@ struct SimpleWorld {
     base_files: HashMap<String, Bytes>,
     /// Keys staged by the in-progress `add_base_files` generation.
     staged_base_keys: std::collections::HashSet<String>,
+    /// Canonical non-main VFS keys requested by Typst since the last drain.
+    requested_files: Mutex<BTreeSet<String>>,
     sys_time: Option<i64>,
 }
 
@@ -335,6 +347,7 @@ impl SimpleWorld {
             files: HashMap::new(),
             base_files: HashMap::new(),
             staged_base_keys: std::collections::HashSet::new(),
+            requested_files: Mutex::new(BTreeSet::new()),
             sys_time: None,
         }
     }
@@ -412,6 +425,20 @@ impl SimpleWorld {
         self.files.get(key).or_else(|| self.base_files.get(key))
     }
 
+    fn record_file_request(&self, id: FileId) -> String {
+        let key = self.vfs_key(id);
+        if id != self.source.id() {
+            self.requested_files.lock().unwrap().insert(key.clone());
+        }
+        key
+    }
+
+    fn take_requested_files(&self) -> Vec<String> {
+        std::mem::take(&mut *self.requested_files.lock().unwrap())
+            .into_iter()
+            .collect()
+    }
+
     fn set_sys_time(&mut self, sys_time: Option<i64>) {
         self.sys_time = sys_time;
     }
@@ -467,7 +494,7 @@ impl typst::World for SimpleWorld {
 
         // Included `.typ` files: look them up in the virtual file system,
         // parse the bytes as UTF-8, and return a fresh Source.
-        let key = self.vfs_key(id);
+        let key = self.record_file_request(id);
 
         match self.vfs_get(&key) {
             Some(bytes) => {
@@ -486,7 +513,7 @@ impl typst::World for SimpleWorld {
         // Resolve the file id to its VFS lookup key (accounting for
         // package-rooted paths) and look it up in our in-memory virtual file
         // system.
-        let key = self.vfs_key(id);
+        let key = self.record_file_request(id);
 
         self.vfs_get(&key)
             .cloned()
@@ -813,8 +840,8 @@ mod tests {
 
     #[test]
     fn resolves_package_rooted_fileid_via_name_version_key() {
-        use typst::World;
         use typst::syntax::package::{PackageSpec, PackageVersion};
+        use typst::World;
 
         let mut world = SimpleWorld::new();
         let files = vec![VirtualFile {
@@ -826,7 +853,11 @@ mod tests {
         let spec = PackageSpec {
             namespace: "preview".into(),
             name: "tylog".into(),
-            version: PackageVersion { major: 0, minor: 1, patch: 0 },
+            version: PackageVersion {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
         };
         let pkg_id = FileId::new(RootedPath::new(
             VirtualRoot::Package(spec),
@@ -861,6 +892,124 @@ mod tests {
 
         let file = world.file(project_id).unwrap();
         assert_eq!(file.as_slice(), b"= Project file");
+    }
+
+    #[test]
+    fn requested_files_are_canonical_drained_and_retry_safe() {
+        let mut engine = TypstEngine::new();
+        let markup = r#"
+#import "static.typ": static
+#let dynamic_path = "dynamic.typ"
+#import dynamic_path: dynamic
+#static()
+#dynamic()
+"#;
+
+        // The first failed attempt names only the static import. Its key is
+        // drained before a caller supplies the requested bytes for a retry.
+        assert!(engine.compile(markup.into(), vec![], None, None).is_err());
+        assert_eq!(engine.take_requested_files(), vec!["static.typ"]);
+        assert!(engine.take_requested_files().is_empty());
+
+        // Supplying the static file exposes its transitive request.
+        assert!(engine
+            .compile(
+                markup.into(),
+                vec![VirtualFile {
+                    path: "static.typ".into(),
+                    bytes: b"#import \"transitive.typ\": transitive\n#let static() = transitive()"
+                        .to_vec(),
+                }],
+                None,
+                None,
+            )
+            .is_err());
+        assert_eq!(
+            engine.take_requested_files(),
+            vec!["static.typ", "transitive.typ"]
+        );
+
+        // After the transitive retry succeeds, Typst evaluates the dynamic
+        // import and records the concrete path from the same resolver.
+        assert!(engine
+            .compile(
+                markup.into(),
+                vec![
+                    VirtualFile {
+                        path: "static.typ".into(),
+                        bytes:
+                            b"#import \"transitive.typ\": transitive\n#let static() = transitive()"
+                                .to_vec(),
+                    },
+                    VirtualFile {
+                        path: "transitive.typ".into(),
+                        bytes: b"#let transitive() = [transitive]".to_vec(),
+                    },
+                ],
+                None,
+                None,
+            )
+            .is_err());
+        assert_eq!(
+            engine.take_requested_files(),
+            vec!["dynamic.typ", "static.typ", "transitive.typ"]
+        );
+
+        engine
+            .compile(
+                markup.into(),
+                vec![
+                    VirtualFile {
+                        path: "static.typ".into(),
+                        bytes:
+                            b"#import \"transitive.typ\": transitive\n#let static() = transitive()"
+                                .to_vec(),
+                    },
+                    VirtualFile {
+                        path: "transitive.typ".into(),
+                        bytes: b"#let transitive() = [transitive]".to_vec(),
+                    },
+                    VirtualFile {
+                        path: "dynamic.typ".into(),
+                        bytes: b"#let dynamic() = [dynamic]".to_vec(),
+                    },
+                ],
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            engine.take_requested_files(),
+            vec!["dynamic.typ", "static.typ", "transitive.typ"]
+        );
+        assert!(engine.take_requested_files().is_empty());
+    }
+
+    #[test]
+    fn requested_package_file_uses_vendored_vfs_key() {
+        use typst::syntax::package::{PackageSpec, PackageVersion};
+        use typst::World;
+
+        let world = SimpleWorld::new();
+        let id = FileId::new(RootedPath::new(
+            VirtualRoot::Package(PackageSpec {
+                namespace: "preview".into(),
+                name: "tylog".into(),
+                version: PackageVersion {
+                    major: 0,
+                    minor: 1,
+                    patch: 0,
+                },
+            }),
+            VirtualPath::new("lib.typ").unwrap(),
+        ));
+
+        assert!(world.source(id).is_err());
+        assert_eq!(
+            world.take_requested_files(),
+            vec!["_system/packages/tylog/0.1.0/lib.typ"]
+        );
+        assert!(world.take_requested_files().is_empty());
     }
 
     #[test]

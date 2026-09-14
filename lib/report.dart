@@ -12,6 +12,21 @@ export 'package:tylog_core/report.dart'
         selectReportNotes,
         writeReportStorage;
 
+class ReportPreparationException implements Exception {
+  const ReportPreparationException(
+    this.message, {
+    this.attempts = 0,
+    this.loadedPaths = const [],
+  });
+
+  final String message;
+  final int attempts;
+  final List<String> loadedPaths;
+
+  @override
+  String toString() => 'Report preparation failed: $message';
+}
+
 /// Compiles Typst [source] straight to PDF bytes, without writing anything.
 ///
 /// [files] is the same virtual filesystem the preview hands the compiler — the
@@ -48,38 +63,73 @@ Future<File> exportReportPdf(Directory root, File report) async {
 /// Writes `<report>.pdf` next to the report source and also returns the bytes,
 /// so a caller can hand them straight to the share sheet without re-reading
 /// what it just wrote through SAF.
-Future<({String path, Uint8List bytes})> exportReportPdfStorage(
-  VaultStorage storage,
-  String report,
-) async {
+Future<
+  ({
+    String path,
+    Uint8List bytes,
+    List<String> loadedPaths,
+    int loadedBytes,
+    int attempts,
+  })
+>
+exportReportPdfStorage(VaultStorage storage, String report) async {
   final virtual = <String, Uint8List>{};
-  for (final entity in await storage.list(recursive: true)) {
-    if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
-    final relative = entity.path;
-    if (relative.startsWith('_index/') ||
-        // TylogVaultPaths.indexDonors: index caches, megabytes each, and never
-        // referenced by a report.
-        relative.startsWith('_system/index/') ||
-        relative.startsWith('.tylog/')) {
-      continue;
-    }
-    final bytes = await storage.readBytes(relative);
-    virtual[relative] = bytes;
-    virtual['/$relative'] = bytes;
-  }
+  final loadedPaths = <String>{};
+  var loadedBytes = 0;
+  var attempts = 0;
+  final source = await storage.readText(report);
   final compiler = await TypstCompiler.create();
   try {
-    final document = await compiler.compile(
-      source: await storage.readText(report),
-      files: virtual,
-    );
-    try {
-      final output = '${report.substring(0, report.length - 4)}.pdf';
-      final bytes = await document.exportPdf();
-      await storage.writeBytes(output, bytes);
-      return (path: output, bytes: bytes);
-    } finally {
-      document.dispose();
+    while (true) {
+      attempts++;
+      try {
+        final document = await compiler.compile(source: source, files: virtual);
+        await compiler.takeRequestedFiles();
+        try {
+          final output = '${report.substring(0, report.length - 4)}.pdf';
+          final bytes = await document.exportPdf();
+          await storage.writeBytes(output, bytes);
+          return (
+            path: output,
+            bytes: bytes,
+            loadedPaths: loadedPaths.toList()..sort(),
+            loadedBytes: loadedBytes,
+            attempts: attempts,
+          );
+        } finally {
+          document.dispose();
+        }
+      } on TypstCompileException catch (error) {
+        final requested = (await compiler.takeRequestedFiles()).toSet();
+        final missing =
+            requested.where((path) => !virtual.containsKey(path)).toList()
+              ..sort();
+        if (missing.isEmpty) {
+          throw ReportPreparationException(
+            error.toString(),
+            attempts: attempts,
+            loadedPaths: loadedPaths.toList()..sort(),
+          );
+        }
+        for (final path in missing) {
+          try {
+            validateVaultPath(path);
+            if (!await storage.exists(path)) {
+              throw StateError('file does not exist');
+            }
+            final bytes = await storage.readBytes(path);
+            virtual[path] = bytes;
+            loadedPaths.add(path);
+            loadedBytes += bytes.length;
+          } catch (cause) {
+            throw ReportPreparationException(
+              '$path: $cause',
+              attempts: attempts,
+              loadedPaths: loadedPaths.toList()..sort(),
+            );
+          }
+        }
+      }
     }
   } finally {
     compiler.dispose();

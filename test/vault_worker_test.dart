@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -45,9 +46,26 @@ void main() {
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);
     addTearDown(worker.dispose);
 
-    final events = await worker
-        .run(const RebuildIndexCommand(force: true, stale: {}))
-        .toList();
+    expect(
+      await worker.search('unit'),
+      isEmpty,
+      reason: 'search is not ready before the first atomic swap',
+    );
+
+    final events = <VaultWorkerEvent>[];
+    await for (final event in worker.run(
+      const RebuildIndexCommand(force: true, stale: {}),
+    )) {
+      events.add(event);
+      if (event is SearchReadyEvent) {
+        final hits = await worker.search('unit');
+        expect(
+          hits,
+          isNotEmpty,
+          reason: 'readiness is published after the worker swap',
+        );
+      }
+    }
 
     final failures = events.whereType<WorkFailedEvent>();
     expect(failures, isEmpty, reason: '${failures.map((e) => e.message)}');
@@ -67,6 +85,7 @@ void main() {
       contains('typst-engine-unavailable'),
       reason: 'a failed native init must be reported, not swallowed',
     );
+    expect(events.whereType<SearchReadyEvent>().single.revision, 1);
   });
 
   test('the worker answers a search without shipping the index', () async {
@@ -74,7 +93,9 @@ void main() {
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);
     addTearDown(worker.dispose);
 
-    await worker.run(const RebuildIndexCommand(force: true, stale: {})).toList();
+    await worker
+        .run(const RebuildIndexCommand(force: true, stale: {}))
+        .toList();
 
     final hits = await worker.search('unit');
     expect(hits, isNotEmpty);
@@ -97,47 +118,55 @@ void main() {
     await first.toList();
 
     // ...and the guard clears, so the next command still works.
-    final again = await worker.run(const RebuildIndexCommand(stale: {})).toList();
+    final again = await worker
+        .run(const RebuildIndexCommand(stale: {}))
+        .toList();
     expect(again.whereType<WorkFailedEvent>(), isEmpty);
   });
 
-  test('a cancelled rebuild publishes no index and leaves the worker usable', () async {
-    final vault = await seed(400);
-    final worker = await VaultWorkerClient.spawn(entry: vault.entry);
-    addTearDown(worker.dispose);
+  test(
+    'a cancelled rebuild publishes no index and leaves the worker usable',
+    () async {
+      final vault = await seed(400);
+      final worker = await VaultWorkerClient.spawn(entry: vault.entry);
+      addTearDown(worker.dispose);
 
-    final collected = <VaultWorkerEvent>[];
-    await for (final event in worker.run(
-      const RebuildIndexCommand(force: true, stale: {}),
-    )) {
-      collected.add(event);
-      if (event is IndexProgressEvent &&
-          event.complete >= 100 &&
-          event.complete < event.total) {
-        worker.cancel();
+      final collected = <VaultWorkerEvent>[];
+      await for (final event in worker.run(
+        const RebuildIndexCommand(force: true, stale: {}),
+      )) {
+        collected.add(event);
+        if (event is IndexProgressEvent &&
+            event.complete >= 100 &&
+            event.complete < event.total) {
+          worker.cancel();
+        }
       }
-    }
 
-    final failure = collected.whereType<WorkFailedEvent>().single;
-    expect(failure.cancelled, isTrue);
-    expect(collected.whereType<IndexBuiltEvent>(), isEmpty);
+      final failure = collected.whereType<WorkFailedEvent>().single;
+      expect(failure.cancelled, isTrue);
+      expect(collected.whereType<IndexBuiltEvent>(), isEmpty);
+      expect(collected.whereType<SearchReadyEvent>(), isEmpty);
 
-    final after = await worker
-        .run(const RebuildIndexCommand(stale: {}))
-        .toList();
-    expect(after.whereType<WorkFailedEvent>(), isEmpty);
-    expect(
-      after.whereType<IndexBuiltEvent>().single.index.notesByPath,
-      hasLength(400),
-    );
-  });
+      final after = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      expect(after.whereType<WorkFailedEvent>(), isEmpty);
+      expect(
+        after.whereType<IndexBuiltEvent>().single.index.notesByPath,
+        hasLength(400),
+      );
+    },
+  );
 
   test('search results survive a query issued during a rebuild', () async {
     final vault = await seed(400);
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);
     addTearDown(worker.dispose);
 
-    await worker.run(const RebuildIndexCommand(force: true, stale: {})).toList();
+    await worker
+        .run(const RebuildIndexCommand(force: true, stale: {}))
+        .toList();
 
     List<PkmsSearchResult>? midScan;
     await for (final event in worker.run(
@@ -153,5 +182,52 @@ void main() {
 
     expect(midScan, isNotNull, reason: 'nothing was queried mid-scan');
     expect(midScan, isNotEmpty);
+  });
+
+  test('disposing an active worker settles its unread command once', () async {
+    final vault = await seed(400);
+    final worker = await VaultWorkerClient.spawn(entry: vault.entry);
+
+    final stream = worker
+        .run(const RebuildIndexCommand(stale: {}))
+        .asBroadcastStream();
+    final started = Completer<void>();
+    final eventsFuture = stream.toList();
+    stream.listen((event) {
+      if (event is IndexProgressEvent && !started.isCompleted) {
+        started.complete();
+      }
+    });
+    await started.future.timeout(const Duration(seconds: 2));
+    await worker.dispose();
+    await worker.dispose();
+    final events = await eventsFuture.timeout(const Duration(seconds: 1));
+    final terminal = events
+        .where((event) => event is WorkDoneEvent || event is WorkFailedEvent)
+        .toList();
+    expect(terminal, hasLength(1));
+    expect(terminal.single, isA<WorkFailedEvent>());
+    expect((terminal.single as WorkFailedEvent).cancelled, isTrue);
+    expect(
+      () => worker.run(const RebuildIndexCommand(stale: {})),
+      throwsStateError,
+    );
+    expect(
+      await worker.search('unit').timeout(const Duration(seconds: 1)),
+      isEmpty,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(
+      events.whereType<WorkDoneEvent>(),
+      isEmpty,
+      reason: 'a disposed worker must not publish a late completion',
+    );
+
+    final replacement = await VaultWorkerClient.spawn(entry: vault.entry);
+    addTearDown(replacement.dispose);
+    final rebuilt = await replacement
+        .run(const RebuildIndexCommand(stale: {}))
+        .toList();
+    expect(rebuilt.last, isA<WorkDoneEvent>());
   });
 }

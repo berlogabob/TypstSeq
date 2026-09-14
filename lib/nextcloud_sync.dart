@@ -233,11 +233,18 @@ bool canSkipPoll({
 /// cannot change the outcome, so [NextcloudSync._retryTransient] rethrows these
 /// at once instead of burning the retry budget at every sync stage.
 class WebDavStatusException extends HttpException {
-  WebDavStatusException(super.message);
+  WebDavStatusException(super.message, this.statusCode);
+
+  final int statusCode;
 }
 
 class NextcloudSync {
-  NextcloudSync(this.config, {this.onProgress, this.canReplaceLocal});
+  NextcloudSync(
+    this.config, {
+    this.onProgress,
+    this.canReplaceLocal,
+    this.onLocalContentChanged,
+  });
 
   /// Raised when the remote copy changed into something genuinely different
   /// while the user was deciding, so their choice was made about content that
@@ -254,8 +261,13 @@ class NextcloudSync {
   final NextcloudConfig config;
   final void Function(String stage, String? path)? onProgress;
   final bool Function(String path)? canReplaceLocal;
+  final void Function(String path)? onLocalContentChanged;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   final _ensuredParents = <String>{};
+
+  void _recordLocalContentChange(String path) {
+    if (!isDeviceScopedVaultPath(path)) onLocalContentChanged?.call(path);
+  }
 
   /// How often a run may persist its cursor map mid-loop.
   ///
@@ -634,6 +646,7 @@ class NextcloudSync {
       if (archiveSnapshot != null) progress('extract-archive');
       for (final path in pristineStarterPaths) {
         await vault.storage.delete(path);
+        _recordLocalContentChange(path);
         localEntries.remove(path);
       }
       final unresolved = {

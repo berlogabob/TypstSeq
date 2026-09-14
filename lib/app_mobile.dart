@@ -192,12 +192,20 @@ class HomeScreen extends StatefulWidget {
     super.key,
     this.themeMode = ThemeMode.system,
     this.onThemeModeChanged,
+    this.onCompilePdf,
+    this.onSharePdf,
   });
 
   /// Current app-wide appearance and the callback to change it, both owned by
   /// [TyLogApp]. Optional so tests can mount HomeScreen without wiring theming.
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
+  final Future<Uint8List> Function({
+    required String source,
+    required Map<String, Uint8List> files,
+  })?
+  onCompilePdf;
+  final Future<void> Function(String name, Uint8List pdf)? onSharePdf;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -210,6 +218,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
+
+  /// Test seam for the asynchronous export path; the production entry point is
+  /// the Share as PDF item in the More menu.
+  @visibleForTesting
+  Future<void> sharePdfForTesting() => _sharePdf();
   // Graph overview mode: 'conceptMap' (default), 'local', or 'allFiles'.
   String _graphMode = 'conceptMap';
   // Concept/note path the local graph is rooted at when expanded from the map.
@@ -264,6 +277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // spam a snackbar per tick — only a genuinely new failure/conflict does.
   String? _lastSnackedSyncError;
   int _lastSnackedConflictCount = 0;
+  bool _newPageInFlight = false;
 
   Vault? get vault => workspace.vault;
   VaultIndex? get index => workspace.index;
@@ -328,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _openGeneration++;
     _previewDebounceTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     workspace
@@ -387,11 +402,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return workspace.localDirectory;
   }
 
-  Future<void> _save({bool syncAfter = true}) async {
+  Future<bool> _save({bool syncAfter = true}) async {
     if (_currentSource() != workspace.source) {
       workspace.source = _currentSource();
     }
-    await workspace.save(syncAfter: syncAfter);
+    return workspace.save(syncAfter: syncAfter);
   }
 
   void _queueCloudSync() => workspace.queueCloudSync();
@@ -403,6 +418,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _editingRecently => workspace.editingRecently;
 
   void _queueAutosave() {
+    _refreshNoteAssets(_currentSource());
     workspace.edit(_currentSource());
   }
 
@@ -411,6 +427,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Vault-relative asset bytes for the open note, loaded by [_loadNoteAssets]
   /// so the synchronous [_typstFiles] can hand them to the Typst compiler.
   final Map<String, Uint8List> _noteAssetFiles = {};
+  int _assetRevision = 0;
+  Future<void>? _assetLoadFuture;
 
   /// The `kind` of the note a `#tylog.ref-note("target")` points at, or a
   /// resolution-status sentinel; null when the index or resolver is absent.
@@ -454,10 +472,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Loads every `assets/...` image referenced by [source] into
   /// [_noteAssetFiles] (keyed with and without a leading slash) so `#image(...)`
   /// resolves at compile time. Async; triggers a rebuild when it finishes.
-  Future<void> _loadNoteAssets(String source) async {
-    _noteAssetFiles.clear();
+  Future<void> _refreshNoteAssets(String source) {
+    final revision = ++_assetRevision;
+    final future = _loadNoteAssets(source, revision: revision);
+    _assetLoadFuture = future;
+    unawaited(future);
+    return future;
+  }
+
+  Future<void> _loadNoteAssets(String source, {required int revision}) async {
     final v = vault;
-    if (v == null) return;
+    final loaded = <String, Uint8List>{};
+    if (v == null) {
+      if (mounted && revision == _assetRevision) {
+        _noteAssetFiles.clear();
+        setState(() {});
+      }
+      return;
+    }
     final paths = RegExp(
       r'"(/?assets/[^"]+\.(?:png|jpe?g|gif|svg|webp|bmp))"',
       caseSensitive: false,
@@ -466,13 +498,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final relative = path.replaceFirst(RegExp(r'^/+'), '');
       try {
         final bytes = await v.storage.readBytes(relative);
-        _noteAssetFiles[relative] = bytes;
-        _noteAssetFiles['/$relative'] = bytes;
+        loaded[relative] = bytes;
+        loaded['/$relative'] = bytes;
       } catch (_) {
         // Missing asset: leave it out; the compiler reports file-not-found.
       }
     }
-    if (mounted && _noteAssetFiles.isNotEmpty) setState(() {});
+    if (!mounted || revision != _assetRevision || vault != v) return;
+    _noteAssetFiles
+      ..clear()
+      ..addAll(loaded);
+    setState(() {});
   }
 
   Map<String, Uint8List> _typstFiles() {
@@ -539,7 +575,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _loadSource(String source) {
     sourceController.text = source;
     richController.loadSource(source);
-    unawaited(_loadNoteAssets(source));
+    _refreshNoteAssets(source);
   }
 
   void _acceptRichSource(String source) {
@@ -625,6 +661,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _createFromLink(String target, {String? heading}) async {
+    final generation = ++_openGeneration;
     final v = vault;
     if (v == null) return;
     // The resolver lags behind a just-created note until the background
@@ -634,7 +671,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final direct =
         'notes/${target.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
     if (await v.storage.exists(direct)) {
-      await _openNote(direct, heading: heading);
+      await _openNote(direct, heading: heading, generation: generation);
       return;
     }
     if (!mounted) return;
@@ -648,7 +685,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = await v.page(target);
     // Open first — the refresh only serves future link resolution and can
     // block for minutes behind an in-flight full rebuild.
-    await _openNote(file, heading: heading);
+    await _openNote(file, heading: heading, generation: generation);
     if (heading == null && mounted) showSnack(context, 'Created $file');
     unawaited(workspace.refreshIndex(always: true));
   }
@@ -658,6 +695,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<String> candidates, {
     String? heading,
   }) async {
+    final generation = ++_openGeneration;
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -678,7 +716,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (choice != null) await _openNote(choice, heading: heading);
+    if (choice != null) {
+      await _openNote(choice, heading: heading, generation: generation);
+    }
   }
 
   Future<void> _editProtectedBlock(String id) async {
@@ -714,11 +754,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (updated != null) richController.replaceProtected(id, updated);
   }
 
-  Future<void> _openNote(String path, {String? heading}) async {
+  Future<bool> _openNote(
+    String path, {
+    String? heading,
+    int? generation,
+  }) async {
+    final request = generation ??= ++_openGeneration;
     final v = vault;
-    if (v == null) return;
-    if (dirty) await _save();
+    if (v == null) return false;
+    if (dirty && !await _save()) return false;
+    if (!mounted || request != _openGeneration || vault != v) return false;
     final source = await v.storage.readText(path);
+    if (!mounted || request != _openGeneration || vault != v) return false;
     _loadSource(source);
     workspace.replaceNote(path, source);
     setState(() {
@@ -754,27 +801,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .then((_) => _writeReadingFile()),
       );
     }
+    return true;
   }
 
-  Future<void> _openToday() async {
+  Future<bool> _openToday() async {
+    final generation = ++_openGeneration;
     final v = vault;
-    if (v == null) return;
+    if (v == null) return false;
+    if (dirty && !await _save()) return false;
     final path = await v.todayNote();
-    await _openNote(path);
+    if (!await _openNote(path, generation: generation)) return false;
     _todayNotePath = path;
     _todayOpenedAt = DateTime.now();
+    return true;
   }
 
-  Future<void> _openDay(DateTime day) async {
+  Future<bool> _openDay(DateTime day) async {
+    final generation = ++_openGeneration;
     final v = vault;
-    if (v == null) return;
-    await _openNote(await v.dailyNote(day));
+    if (v == null) return false;
+    if (dirty && !await _save()) return false;
+    return _openNote(await v.dailyNote(day), generation: generation);
   }
 
   /// The day the arrows have stepped to but not opened yet. The header reads
   /// this first so a tap moves the date immediately.
   DateTime? _navDay;
   Timer? _navDebounce;
+  int _openGeneration = 0;
 
   /// Steps the journal by [delta] days.
   ///
@@ -841,15 +895,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openLink(String title) async {
+    final generation = ++_openGeneration;
     final v = vault;
     if (v == null) return;
     final existing = _pathForLink(title);
     if (existing != null) {
-      await _openNote(existing);
+      await _openNote(existing, generation: generation);
       return;
     }
     final file = await v.page(title);
-    await _openNote(file);
+    await _openNote(file, generation: generation);
     if (mounted) showSnack(context, 'Created $file');
     // Without the refresh the new note stays unresolvable to every chip
     // until the next unrelated scan; run it behind the navigation.
@@ -857,16 +912,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _newPage({String kind = 'note'}) async {
-    final v = vault;
-    if (v == null) return;
-    final title = await _askPageTitle();
-    if (title == null || title.trim().isEmpty) return;
-    final template = await _chooseTemplate(v);
-    if (dirty) await _save();
-    final file = await v.page(title, kind: kind, template: template);
-    await workspace.refreshIndex(always: true);
-    await _openNote(file);
-    if (mounted) showSnack(context, 'Created $file');
+    if (_newPageInFlight) return;
+    _newPageInFlight = true;
+    final generation = ++_openGeneration;
+    try {
+      final v = vault;
+      if (v == null) return;
+      final title = await _askPageTitle();
+      if (!mounted || generation != _openGeneration || vault != v) return;
+      if (title == null || title.trim().isEmpty) return;
+      final template = await _chooseTemplate(v);
+      if (!mounted || generation != _openGeneration || vault != v) return;
+      if (dirty && !await _save()) return;
+      if (!mounted || generation != _openGeneration || vault != v) return;
+      final file = await v.page(title, kind: kind, template: template);
+      if (!await _openNote(file, generation: generation)) return;
+      unawaited(workspace.refreshIndex(always: true));
+      if (mounted) showSnack(context, 'Created $file');
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not create page: $error');
+    } finally {
+      _newPageInFlight = false;
+    }
   }
 
   Future<String?> _chooseTemplate(Vault v) async {
@@ -1028,13 +1095,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Nothing here needs a fresh scan: worker searches are answered at the
     // scanner's next yield (vault_worker.dart), and _retainIndex mutates this
     // very VaultIndex in place, so the screen picks up the new scan itself.
-    if (dirty) await _save();
+    if (dirty && !await _save()) return;
     if (!mounted) return;
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
     final searchStore = SavedSearchStore(v.storage);
-    final savedSearches = await searchStore.load();
+    var savedSearches = await searchStore.load();
     if (!mounted) return;
     unawaited(workspace.refreshIndex());
     // Acknowledge the tap: without this the Search icon never highlights,
@@ -1049,6 +1116,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           index: ix,
           search: (query, tag, status) =>
               workspace.searchNotes(query, tag: tag, status: status),
+          searchState: workspace,
+          searchReady: () => workspace.searchReady,
+          searchRevision: () => workspace.searchRevision,
           savedSearches: savedSearches,
           onSaveSearch: (search) async {
             final next = [
@@ -1056,12 +1126,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               search,
             ];
             await searchStore.save(next);
+            savedSearches = next;
             _queueCloudSync();
           },
           onDeleteSearch: (search) async {
-            await searchStore.save(
-              savedSearches.where((s) => s.name != search.name).toList(),
-            );
+            final next = savedSearches
+                .where((s) => s.name != search.name)
+                .toList();
+            await searchStore.save(next);
+            savedSearches = next;
             _queueCloudSync();
           },
           problems: _knowledgeProblems(),
@@ -1163,13 +1236,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return null;
     for (final problem in problems) {
-      final source = await v.storage.readText(problem.subject);
-      final repaired = repairArticleTypst(source);
-      if (repaired != source) {
-        await v.saveNote(problem.subject, repaired);
+      if (!await workspace.mutateNote(problem.subject, repairArticleTypst)) {
+        if (mounted) {
+          showSnack(context, 'Repair stopped because the vault changed.');
+        }
+        return null;
       }
     }
-    await workspace.refreshIndex(always: true);
+    await workspace.waitForMutationRefresh();
     if (!mounted) return null;
     final remaining = _stillFlagged(problems, 'metadata-query-failed');
     final resolved = problems.length - remaining;
@@ -1199,25 +1273,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     for (final problem in problems) {
       final note = ix.notesByPath[problem.subject];
       if (note == null) continue;
-      final source = await v.storage.readText(problem.subject);
-      if (source.contains('tylog.note.with(')) {
-        // The header is fine — the note is flagged because Typst couldn't
-        // verify it (engine timeout/death). Rewriting the header from
-        // fallback-parsed metadata fixes nothing and risks baking
-        // body-recovered tags into it.
-        alreadyManaged++;
-        continue;
+      var changed = false;
+      if (!await workspace.mutateNote(problem.subject, (source) {
+        if (source.contains('tylog.note.with(')) {
+          // The header is fine — the note is flagged because Typst couldn't
+          // verify it (engine timeout/death). Rewriting the header from
+          // fallback-parsed metadata fixes nothing and risks baking
+          // body-recovered tags into it.
+          return source;
+        }
+        final updated = replaceNoteHeader(
+          source,
+          NoteMetadataDraft.fromNote(note),
+        );
+        changed = updated != source;
+        return updated;
+      })) {
+        if (mounted) {
+          showSnack(context, 'Conversion stopped because the vault changed.');
+        }
+        return null;
       }
-      final updated = replaceNoteHeader(
-        source,
-        NoteMetadataDraft.fromNote(note),
-      );
-      if (updated != source) {
-        await v.saveNote(problem.subject, updated);
-        converted++;
-      }
+      if (changed) converted++;
+      if (!changed) alreadyManaged++;
     }
-    await workspace.refreshIndex(always: true);
+    await workspace.waitForMutationRefresh();
     if (!mounted) return null;
     final remaining = _stillFlagged(problems, 'metadata-fallback');
     final parts = [
@@ -1276,14 +1356,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
-    final v = vault;
-    if (v == null) return;
+    if (vault == null) return;
     final file = task.notePath;
-    final source = await v.storage.readText(file);
     try {
-      await v.saveNote(
+      final updated = await workspace.mutateNote(
         file,
-        task.recurrence != null && nextStatus == 'done'
+        (source) => task.recurrence != null && nextStatus == 'done'
             ? completeTaskOccurrence(
                 source,
                 task.id,
@@ -1291,6 +1369,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               )
             : replaceTaskStatus(source, task.id, nextStatus),
       );
+      if (!updated && mounted) {
+        showSnack(context, 'Could not update that task: the vault changed.');
+      }
     } on StateError catch (error) {
       // The task writers throw when they cannot find the call — an id the
       // index still lists but the file no longer has, or two tasks sharing an
@@ -1300,21 +1381,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       showSnack(context, 'Could not update that task: ${error.message}');
       return;
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, 'Could not update that task: $error');
+      return;
     }
-    // refreshIndex, not rebuildIndex: the latter's guard cancels an in-flight
-    // scan (`cancelRebuild = true; _worker?.cancel()`), so ticking a checkbox
-    // while the vault was being scanned threw that whole scan away — and it
-    // was only re-triggered later. A one-note edit does not need the
-    // progress-UI rebuild path either.
-    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
-    final v = vault;
-    if (v == null) return;
-    final source = await v.storage.readText(note.path);
+    if (vault == null) return;
     try {
-      await v.saveNote(note.path, replaceNoteProperty(source, name, value));
+      final updated = await workspace.mutateNote(
+        note.path,
+        (source) => replaceNoteProperty(source, name, value),
+      );
+      if (!updated && mounted) {
+        showSnack(context, 'Could not update that note: the vault changed.');
+      }
     } on StateError catch (error) {
       // `replaceNoteProperty` throws on a note with no managed header — four
       // in this vault. Both call sites are `unawaited(...)` dropdowns, so
@@ -1323,8 +1406,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       showSnack(context, 'Could not update that note: ${error.message}');
       return;
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, 'Could not update that note: $error');
+      return;
     }
-    await workspace.refreshIndex(always: true);
   }
 
   Future<void> _setReadStatus(NoteRef note, String status) =>
@@ -1374,11 +1460,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final ix = index;
     if (v == null || ix == null) return;
 
-    final pending = <String, String>{};
+    final pending = <String>{};
     for (final note in ix.notes) {
-      final source = await v.storage.readText(note.path);
+      final source = note.path == workspace.note
+          ? _currentSource()
+          : await v.storage.readText(note.path);
       final updated = transform(source);
-      if (updated != source) pending[note.path] = updated;
+      if (updated != source) pending.add(note.path);
     }
     if (!mounted) return;
     if (pending.isEmpty) {
@@ -1399,9 +1487,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (!confirmed || !mounted) return;
 
+    // The editor may have changed while the confirmation dialog was open.
+    // Persist it before taking the undo snapshot, so the backup and the
+    // subsequent mutateNote both start from the latest user-visible source.
+    if (pending.contains(workspace.note) &&
+        dirty &&
+        !await _save(syncAfter: false)) {
+      if (mounted) showSnack(context, 'Could not save the open note.');
+      return;
+    }
+
     final String undoDirectory;
     try {
-      undoDirectory = await v.snapshotNotes(pending.keys);
+      undoDirectory = await v.snapshotNotes(pending);
     } catch (error) {
       // No snapshot, no rewrite. The whole point of the copy is that it exists
       // before anything is overwritten.
@@ -1413,10 +1511,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    for (final entry in pending.entries) {
-      await v.saveNote(entry.key, entry.value);
+    for (final path in pending) {
+      if (!await workspace.mutateNote(path, transform)) {
+        if (mounted) {
+          showSnack(context, 'Rewrite stopped because the vault changed.');
+        }
+        return;
+      }
     }
-    await workspace.refreshIndex(always: true);
+    await workspace.waitForMutationRefresh();
     if (!mounted) return;
     showSnack(context, '$pastTense $count — previous copies in $undoDirectory');
   }
@@ -1886,7 +1989,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showToday() async {
-    if (dirty) await _save();
+    if (dirty && !await _save()) return;
     if (!mounted) return;
     setState(() => primaryDestination = 0);
     await _openToday();
@@ -2050,22 +2153,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (note == ref.path) {
       // Move the editor off the doomed file first, so a dirty autosave
       // can't resurrect it; then return to the library shelf.
-      await _openToday();
+      if (!await _openToday()) {
+        if (mounted) showSnack(context, 'Could not save the open article.');
+        return;
+      }
       if (mounted) setState(() => mode = 'library');
     }
-    await v.storage.delete(ref.path);
-    await _rebuildIndex();
+    try {
+      await v.storage.delete(ref.path);
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not delete ${ref.title}: $error');
+      return;
+    }
+    await workspace.refreshIndex(always: true);
     if (mounted) showSnack(context, 'Deleted ${ref.title}');
   }
 
   Future<void> _rateArticle(String path, String value) async {
-    final v = vault;
-    if (v == null) return;
-    final source = await v.storage.readText(path);
-    await v.saveNote(path, replaceNoteProperty(source, 'rating', value));
+    if (vault == null) return;
+    try {
+      final updated = await workspace.mutateNote(
+        path,
+        (source) => replaceNoteProperty(source, 'rating', value),
+      );
+      if (!updated) {
+        if (mounted) {
+          showSnack(context, 'Could not rate that article: the vault changed.');
+        }
+        return;
+      }
+    } on StateError catch (error) {
+      if (mounted) {
+        showSnack(context, 'Could not rate that article: ${error.message}');
+      }
+      return;
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not rate that article: $error');
+      return;
+    }
     final title = index?.notesByPath[path]?.title;
     if (title != null) await _logReading(title, rating: value);
-    await _rebuildIndex();
     if (value != 'shit' || !mounted) return;
     final rated = index?.notesByPath[path];
     if (rated != null) await _deleteArticle(rated);
@@ -2179,6 +2306,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final cfg = cloud;
     if (v == null || cfg == null || !cfg.isReady) return;
+    if (note == conflict.path && dirty && !await _save(syncAfter: false)) {
+      if (mounted) showSnack(context, 'Could not save the open note.');
+      return;
+    }
     final localBytes = await v.storage.exists(conflict.path)
         ? await v.storage.readBytes(conflict.path)
         : null;
@@ -2225,10 +2356,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 8),
               if (conflictShapeHint(shape) case final hint?) ...[
-                Text(
-                  hint,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                Text(hint, style: Theme.of(context).textTheme.bodyMedium),
                 const SizedBox(height: 8),
               ],
               ValueListenableBuilder<SyncConflictResolution?>(
@@ -2479,11 +2607,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             _dialogField(title, label: 'Name', autofocus: true),
             const SizedBox(height: 12),
-            _dialogField(
-              kind,
-              label: 'Kind',
-              hint: 'person, place, castle…',
-            ),
+            _dialogField(kind, label: 'Kind', hint: 'person, place, castle…'),
             const SizedBox(height: 12),
             _dialogField(aliases, label: 'Aliases, comma-separated'),
             const SizedBox(height: 12),
@@ -2580,9 +2704,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         if (!mounted) return;
         if (chosen == null) return;
-        _applyMagic(
-          MagicRequest(action: MagicAction.highlight, value: chosen),
-        );
+        _applyMagic(MagicRequest(action: MagicAction.highlight, value: chosen));
         return;
       case MagicAction.equation:
         final selected = _selectedText();
@@ -2861,19 +2983,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Compiles the *preview* source and file map, so what gets shared is exactly
   /// what Preview renders, bibliography and all.
   Future<void> _sharePdf() async {
-    final path = note;
-    if (path == null) {
+    final exportVault = vault;
+    final exportPath = note;
+    if (exportVault == null || exportPath == null) {
       _magicFeedback('Open a note first');
       return;
     }
     // A dirty buffer would otherwise share the last-saved bytes.
-    if (dirty) await _save(syncAfter: false);
+    if (dirty && !await _save(syncAfter: false)) return;
+    if (!mounted || vault != exportVault || note != exportPath) return;
+    final exportSource = _previewSource();
+    final exportRevision = _assetRevision + 1;
+    _refreshNoteAssets(exportSource);
+    try {
+      await _assetLoadFuture!;
+    } catch (error) {
+      _magicFeedback('Could not load assets: $error');
+      return;
+    }
+    if (!mounted ||
+        vault != exportVault ||
+        note != exportPath ||
+        _assetRevision != exportRevision ||
+        _previewSource() != exportSource) {
+      _magicFeedback('Note changed before PDF export');
+      return;
+    }
+    final exportFiles = _typstFiles();
     _magicFeedback('Building PDF…');
     final Uint8List pdf;
     try {
-      pdf = await compileSourcePdf(
-        source: _previewSource(),
-        files: _typstFiles(),
+      pdf = await (widget.onCompilePdf ?? compileSourcePdf)(
+        source: exportSource,
+        files: exportFiles,
       );
     } catch (error) {
       if (!mounted) return;
@@ -2882,9 +3024,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unawaited(_showTypstHelp(error: error.toString()));
       return;
     }
-    if (!mounted) return;
-    final name = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
-    await _sharePdfBytes(name, pdf);
+    if (!mounted ||
+        vault != exportVault ||
+        note != exportPath ||
+        _previewSource() != exportSource) {
+      _magicFeedback('Note changed before PDF export');
+      return;
+    }
+    final name = exportPath.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+    await (widget.onSharePdf ?? _sharePdfBytes)(name, pdf);
   }
 
   Future<void> _sharePdfBytes(String name, Uint8List pdf) async {
@@ -3154,7 +3302,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (destination == 4) return;
-    if (dirty) await _save();
+    if (dirty && !await _save()) return;
     if (!mounted) return;
     switch (destination) {
       case 0:

@@ -29,12 +29,18 @@ class WorkspaceController extends ChangeNotifier {
     this.isComposing = _notComposing,
     this.inspector,
     Future<void> Function(Iterable<TaskRef>)? reconcileTasks,
-  }) : _reconcileTasks = reconcileTasks ?? taskScheduler.reconcile;
+    DateTime Function()? now,
+    bool? useForegroundService,
+  }) : _reconcileTasks = reconcileTasks ?? taskScheduler.reconcile,
+       _now = now ?? DateTime.now,
+       _useForegroundService = useForegroundService ?? Platform.isAndroid;
 
   final TaskScheduler taskScheduler;
   final bool Function() isComposing;
   final TypstInspector? inspector;
   final Future<void> Function(Iterable<TaskRef>) _reconcileTasks;
+  final DateTime Function() _now;
+  final bool _useForegroundService;
 
   Vault? vault;
   VaultEntry? entry;
@@ -122,6 +128,13 @@ class WorkspaceController extends ChangeNotifier {
   /// closing a vault, or a hot restart. Notifying then throws.
   bool _disposed = false;
 
+  // Every open/close starts a new ownership epoch. Async I/O may finish after
+  // a vault switch; only the epoch that started it may publish its result.
+  int _vaultGeneration = 0;
+
+  bool _owns(Vault opened, int generation) =>
+      !_disposed && identical(vault, opened) && _vaultGeneration == generation;
+
   /// Indexing and sync are async and deliberately unawaited, so a vault close,
   /// a hot restart or a test teardown can land between an await and the notify
   /// that follows it. [_disposed] already existed for that hazard in
@@ -173,6 +186,8 @@ class WorkspaceController extends ChangeNotifier {
   String? deviceId;
   NextcloudConfig? cloud;
   PkmsSearchIndex searchIndex = PkmsSearchIndex.empty();
+  bool searchReady = false;
+  int searchRevision = 0;
   PkmsValidationReport? validation;
   SyncResult? lastSync;
   List<SyncConflict> syncConflicts = const [];
@@ -212,7 +227,39 @@ class WorkspaceController extends ChangeNotifier {
   Timer? _autosave;
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
+  final Map<String, Future<bool>> _noteMutations = {};
+  bool _mutationRefreshQueued = false;
+  Future<void>? _mutationRefreshFuture;
   DateTime? _lastForegroundNotice;
+  String? _pollConfigKey;
+  bool _pollBlocked = false;
+  DateTime? _pollNextAt;
+  int _pollFailures = 0;
+  bool _pollInFlight = false;
+  int? _foregroundGeneration;
+
+  String _cloudKey(NextcloudConfig value) =>
+      '${value.serverUrl}\u0000${value.username}\u0000${value.password}\u0000${value.remoteFolder}';
+
+  bool _isAuthFailure(Object error) {
+    return error is WebDavStatusException &&
+        (error.statusCode == HttpStatus.unauthorized ||
+            error.statusCode == HttpStatus.forbidden);
+  }
+
+  void _setPollConfig(String key) {
+    if (_pollConfigKey == key) return;
+    _pollConfigKey = key;
+    _pollBlocked = false;
+    _pollNextAt = null;
+    _pollFailures = 0;
+  }
+
+  void _resetPollRetry() {
+    _pollBlocked = false;
+    _pollNextAt = null;
+    _pollFailures = 0;
+  }
 
   Directory? get localDirectory =>
       entry?.storageKind == 'local-path' ? Directory(entry!.path) : null;
@@ -228,12 +275,25 @@ class WorkspaceController extends ChangeNotifier {
     if (dirty || isComposing()) return true;
     final edited = lastEditAt;
     return edited != null &&
-        DateTime.now().difference(edited) < const Duration(seconds: 10);
+        _now().difference(edited) < const Duration(seconds: 10);
   }
 
   void close(String message, {NextcloudConfig? nextCloud}) {
+    _vaultGeneration++;
+    if (_foregroundGeneration != null) {
+      _foregroundGeneration = null;
+      unawaited(_stopSyncForeground());
+    }
     _cancelTimers();
     _shutdownWorker();
+    _noteMutations.clear();
+    _mutationRefreshQueued = false;
+    _mutationRefreshFuture = null;
+    _rescanQueued = false;
+    syncing = false;
+    syncStage = null;
+    rebuilding = false;
+    rebuildProgress = null;
     vault = null;
     entry = null;
     note = null;
@@ -248,6 +308,8 @@ class WorkspaceController extends ChangeNotifier {
     _derivedRevision = -1;
     validation = null;
     searchIndex = PkmsSearchIndex.empty();
+    searchReady = false;
+    searchRevision = 0;
     helperSource = '';
     typstPackageFiles = const {};
     bibliographySource = '';
@@ -273,8 +335,21 @@ class WorkspaceController extends ChangeNotifier {
     String? trigger,
     VaultStorage? storage,
   }) async {
+    final generation = ++_vaultGeneration;
     _cancelTimers();
     _shutdownWorker();
+    _noteMutations.clear();
+    _mutationRefreshQueued = false;
+    _mutationRefreshFuture = null;
+    if (_foregroundGeneration != null) {
+      _foregroundGeneration = null;
+      unawaited(_stopSyncForeground());
+    }
+    syncing = false;
+    syncStage = null;
+    rebuilding = false;
+    rebuildProgress = null;
+    _pollInFlight = false;
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
       await opened.ensureCreated(
@@ -282,7 +357,9 @@ class WorkspaceController extends ChangeNotifier {
             next.storageKind != 'android-tree' &&
             !vaultNeedsAndroidTreeMigration(next),
       );
+      if (_disposed || generation != _vaultGeneration) return;
       final today = await opened.todayNote();
+      if (_disposed || generation != _vaultGeneration) return;
       final loadedFiles = <String, Uint8List>{};
       // Load user-vendored Typst packages (e.g. @preview/<name>:<ver> dropped
       // into _system/packages/<name>/<ver>/...) so notes can import them.
@@ -292,12 +369,14 @@ class WorkspaceController extends ChangeNotifier {
       // recursive scan is the slow operation on SAF vaults that the fast
       // path/background-index split exists to avoid.
       if (await opened.storage.exists('_system/packages')) {
+        if (_disposed || generation != _vaultGeneration) return;
         final directories = <String>['_system/packages'];
         while (directories.isNotEmpty) {
           final dir = directories.removeLast();
           List<VaultStorageEntry> entries;
           try {
             entries = await opened.storage.list(path: dir);
+            if (_disposed || generation != _vaultGeneration) return;
           } catch (_) {
             continue;
           }
@@ -308,6 +387,7 @@ class WorkspaceController extends ChangeNotifier {
             }
             try {
               final bytes = await opened.storage.readBytes(entry.path);
+              if (_disposed || generation != _vaultGeneration) return;
               loadedFiles[entry.path] = bytes;
               loadedFiles['/${entry.path}'] = bytes;
             } catch (_) {
@@ -318,10 +398,12 @@ class WorkspaceController extends ChangeNotifier {
       }
       for (final asset
           in (await TylogAssets.load()).managedVaultFiles.entries) {
+        if (_disposed || generation != _vaultGeneration) return;
         final bytes = await opened.storage.readBytes(asset.key);
         loadedFiles[asset.key] = bytes;
         loadedFiles['/${asset.key}'] = bytes;
       }
+      if (_disposed || generation != _vaultGeneration) return;
       // Fast path: assign what a handful of reads can give us right away so
       // the UI is usable immediately, instead of waiting on a full index +
       // search-index rebuild (thousands of sequential reads on SAF vaults).
@@ -329,6 +411,7 @@ class WorkspaceController extends ChangeNotifier {
       entry = next;
       note = today;
       final loaded = await opened.loadIndex();
+      if (_disposed || generation != _vaultGeneration) return;
       index = loaded;
       // Not via _retainIndex — a new vault must not inherit the previous one's
       // index object. But the resolver still has to exist from the moment the
@@ -336,20 +419,26 @@ class WorkspaceController extends ChangeNotifier {
       // mention chips well before the first scan finishes, and until now
       // linkResolver stayed null for all of that window.
       linkResolver = loaded == null ? null : LinkResolver(loaded.notes);
-    _publishCalendar(loaded);
+      _publishCalendar(loaded);
       validation = null;
       searchIndex = PkmsSearchIndex.empty();
+      searchReady = false;
+      searchRevision = 0;
       helperSource = await opened.storage.readText(Vault.helperPath);
+      if (_disposed || generation != _vaultGeneration) return;
       typstPackageFiles = loadedFiles;
       bibliographySource = await opened.storage.exists(Vault.bibliographyPath)
           ? await opened.storage.readText(Vault.bibliographyPath)
           : '';
+      if (_disposed || generation != _vaultGeneration) return;
       zoteroBibSource = await opened.storage.exists(Vault.zoteroBibPath)
           ? await opened.storage.readText(Vault.zoteroBibPath)
           : '';
-      cloud = next.cloud;
+      if (_disposed || generation != _vaultGeneration) return;
       lastSync = null;
       syncConflicts = await loadSyncConflicts(opened);
+      if (_disposed || generation != _vaultGeneration) return;
+      cloud = next.cloud;
       lastSyncAt = null;
       syncError = null;
       storageHealthy = null;
@@ -358,10 +447,22 @@ class WorkspaceController extends ChangeNotifier {
       lastEditAt = null;
       _setDirty(false);
       source = await opened.storage.readText(today);
+      if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
       unawaited(_sweepSafBackups(opened));
-      unawaited(reloadReadingState());
+      unawaited(reloadReadingState(opened: opened, generation: generation));
+      if (_useWorker && storage == null) {
+        final worker = await VaultWorkerClient.spawn(
+          entry: next,
+          deviceId: deviceId,
+        );
+        if (!_owns(opened, generation)) {
+          await worker.dispose();
+          return;
+        }
+        _worker = worker;
+      }
       // No usable cache on disk: this open faces a full Typst pass over the
       // whole vault unless another device's index donor is already here.
       final coldIndex = index == null || index!.version != kVaultIndexVersion;
@@ -385,26 +486,27 @@ class WorkspaceController extends ChangeNotifier {
       // then: a failed sync must still leave the vault indexed.
       // A storage override can't be rebuilt from `next` inside the isolate, so
       // that (test-only) path stays in-process.
-      if (_useWorker && storage == null) {
-        _worker = await VaultWorkerClient.spawn(
-          entry: next,
-          deviceId: deviceId,
-        );
-      }
       unawaited(
         coldIndex && firstSync != null
-            ? firstSync.whenComplete(() => rebuildIndex(force: false))
+            ? firstSync.whenComplete(() {
+                if (_owns(opened, generation) &&
+                    (index == null || index!.version != kVaultIndexVersion)) {
+                  return rebuildIndex(force: false);
+                }
+              })
             : rebuildIndex(force: false),
       );
     } catch (error) {
-      close('Open failed: $error', nextCloud: next.cloud);
+      if (!_disposed && generation == _vaultGeneration) {
+        close('Open failed: $error', nextCloud: next.cloud);
+      }
     }
   }
 
   void edit(String value) {
     source = value;
     editRevision++;
-    lastEditAt = DateTime.now();
+    lastEditAt = _now();
     final becameDirty = !dirty;
     _setDirty(true);
     if (becameDirty) status = 'Autosave pending...';
@@ -412,20 +514,22 @@ class WorkspaceController extends ChangeNotifier {
     _autosave = Timer(const Duration(milliseconds: 400), save);
   }
 
-  Future<void> save({bool syncAfter = true}) async {
+  Future<bool> save({bool syncAfter = true}) async {
     _autosave?.cancel();
     final opened = vault;
     final path = note;
     if (opened == null) {
       status = 'Waiting for vault…';
       notifyListeners();
-      return;
+      return false;
     }
-    if (path == null) return;
+    if (path == null) return false;
     final revision = editRevision;
     final value = source;
+    final generation = _vaultGeneration;
     try {
       await opened.saveNote(path, value);
+      if (!_owns(opened, generation)) return false;
       _lastSavedSource = value;
       _lastSavedPath = path;
       if (revision == editRevision && path == note) {
@@ -435,7 +539,9 @@ class WorkspaceController extends ChangeNotifier {
         if (syncAfter) queueCloudSync();
         notifyListeners();
       }
+      return revision == editRevision && path == note;
     } catch (error) {
+      if (!_owns(opened, generation)) return false;
       // The revision guard belongs on the *success* branch, where a newer edit
       // means this save's result is simply out of date. A failure is not out
       // of date: those bytes never reached disk, and if the user typed one
@@ -448,7 +554,100 @@ class WorkspaceController extends ChangeNotifier {
       // Still dirty, so idle maintenance and the next edit both retry.
       _setDirty(true);
       notifyListeners();
+      return false;
     }
+  }
+
+  /// Applies one metadata/body transform without racing the editor or another
+  /// writer for the same path. Open notes use the latest buffer; closed notes
+  /// read and rewrite disk in order.
+  Future<bool> mutateNote(
+    String path,
+    String Function(String current) transform,
+  ) {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return Future<bool>.value(false);
+    final previous = _noteMutations[path];
+    final wait = previous == null
+        ? Future<void>.value()
+        : previous.then<void>((_) {}, onError: (_, _) {});
+    late final Future<bool> operation;
+    operation = wait.then(
+      (_) => _mutateNote(opened, generation, path, transform),
+    );
+    _noteMutations[path] = operation;
+    unawaited(
+      operation.then<void>(
+        (_) {
+          if (identical(_noteMutations[path], operation)) {
+            _noteMutations.remove(path);
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (identical(_noteMutations[path], operation)) {
+            _noteMutations.remove(path);
+          }
+        },
+      ),
+    );
+    return operation;
+  }
+
+  Future<bool> _mutateNote(
+    Vault opened,
+    int generation,
+    String path,
+    String Function(String current) transform,
+  ) async {
+    if (!_owns(opened, generation)) return false;
+    if (note == path) {
+      edit(transform(source));
+      final saved = await save(syncAfter: false);
+      if (!_owns(opened, generation)) return false;
+      if (saved) _queueMutationRefresh();
+      return saved;
+    }
+    final current = await opened.storage.readText(path);
+    if (!_owns(opened, generation)) return false;
+    await opened.saveNote(path, transform(current));
+    if (!_owns(opened, generation)) return false;
+    opened.markLocallyWritten(path);
+    _queueMutationRefresh();
+    return true;
+  }
+
+  Future<void> _queueMutationRefresh() {
+    final existing = _mutationRefreshFuture;
+    if (_mutationRefreshQueued && existing != null) return existing;
+    final generation = _vaultGeneration;
+    _mutationRefreshQueued = true;
+    final refresh = refreshIndex(always: true);
+    _mutationRefreshFuture = refresh;
+    unawaited(
+      refresh.then<void>(
+        (_) {
+          if (_vaultGeneration == generation &&
+              identical(_mutationRefreshFuture, refresh)) {
+            _mutationRefreshQueued = false;
+            _mutationRefreshFuture = null;
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (_vaultGeneration == generation &&
+              identical(_mutationRefreshFuture, refresh)) {
+            _mutationRefreshQueued = false;
+            _mutationRefreshFuture = null;
+          }
+        },
+      ),
+    );
+    return refresh;
+  }
+
+  Future<void> waitForMutationRefresh() async {
+    final refresh = _mutationRefreshFuture;
+    if (refresh != null) await refresh;
   }
 
   /// [always] runs the scan even when the editor-revision guard says nothing
@@ -462,7 +661,11 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
-    await _scan(opened, updateStatus: updateStatus);
+    await _scan(
+      opened,
+      generation: _vaultGeneration,
+      updateStatus: updateStatus,
+    );
   }
 
   /// [force] discards the scan cache and re-compiles every note — the manual
@@ -470,6 +673,7 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> rebuildIndex({bool force = false}) async {
     final opened = vault;
     if (opened == null) return;
+    final generation = _vaultGeneration;
     if (rebuilding || _indexing) {
       cancelRebuild = true;
       _worker?.cancel();
@@ -481,11 +685,18 @@ class WorkspaceController extends ChangeNotifier {
     status = 'Rebuilding index...';
     notifyListeners();
     try {
-      await _scan(opened, force: force, showProgress: true);
+      await _scan(
+        opened,
+        generation: generation,
+        force: force,
+        showProgress: true,
+      );
     } finally {
-      rebuilding = false;
-      rebuildProgress = null;
-      notifyListeners();
+      if (_owns(opened, generation)) {
+        rebuilding = false;
+        rebuildProgress = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -499,11 +710,14 @@ class WorkspaceController extends ChangeNotifier {
   /// [syncProgressTick] instead of `status` + `notifyListeners`.
   Future<void> _scan(
     Vault opened, {
+    int? generation,
     bool force = false,
     bool showProgress = false,
     bool updateStatus = true,
     void Function(int complete, int total)? onProgress,
   }) async {
+    generation ??= _vaultGeneration;
+    if (!_owns(opened, generation)) return;
     if (_indexing) {
       // Never drop the trigger. A sync that just downloaded files must get a
       // scan even if one was already running when it landed, or those bytes stay
@@ -531,22 +745,26 @@ class WorkspaceController extends ChangeNotifier {
         _rescanQueued = false;
         await _scanOnce(
           opened,
+          generation: generation,
           force: force && !repeat,
           showProgress: showProgress,
           updateStatus: updateStatus,
           onProgress: onProgress,
         );
         repeat = true;
-      } while (_rescanQueued && opened == vault && !_disposed);
+      } while (_rescanQueued && _owns(opened, generation));
     } finally {
-      _indexing = false;
-      _activeScan = null;
+      if (_vaultGeneration == generation) {
+        _indexing = false;
+        _activeScan = null;
+      }
       done.complete();
     }
   }
 
   Future<void> _scanOnce(
     Vault opened, {
+    required int generation,
     required bool force,
     required bool showProgress,
     required bool updateStatus,
@@ -557,6 +775,7 @@ class WorkspaceController extends ChangeNotifier {
     if (worker == null) {
       await _scanInProcess(
         opened,
+        generation: generation,
         revision: revision,
         force: force,
         showProgress: showProgress,
@@ -565,106 +784,111 @@ class WorkspaceController extends ChangeNotifier {
       );
       return;
     }
-      // The worker holds its own Vault, which never saw this one's saveNote
-      // calls, so the pending set travels with the command and is cleared only
-      // once the scan reports back covering it.
-      final stale = opened.staleNotes;
-      await for (final event in worker.run(
-        RebuildIndexCommand(force: force, stale: stale),
-      )) {
-        // Vault closed (or swapped) under us — the events belong to nothing now.
-        if (opened != vault) return;
-        switch (event) {
-          case IndexProgressEvent(:final complete, :final total):
-            if (onProgress != null) {
-              onProgress(complete, total);
-            } else if (showProgress) {
-              rebuildProgress = total == 0 ? 1 : complete / total;
-              status = 'Rebuilding index: $complete / $total';
-              notifyListeners();
-            }
-          case IndexBuiltEvent(:final index):
-            // Publish notes and tasks now, before the much slower validation +
-            // search-index build — on SAF vaults that build reads many files and
-            // must never gate the notes the UI needs (Journal, Library, Today).
-            // _retainIndex builds linkResolver too; communities arrive below.
-            this.index = _retainIndex(index);
-            indexedRevision = revision;
-            opened.clearStaleNotes(stale);
-            // Indexing wrote nothing to the diagnostics until now, so "was
-            // donor sharing working last Tuesday?" had no answer at all. The
-            // sync trace already solves this shape — same file, same trim,
-            // same Copy diagnostics button. Only when there is something worth
-            // saying, or it would outnumber the sync events it sits beside.
-            final reuseNow = event.donorReuse;
-            // Every state the donor machinery can be in that is worth knowing
-            // about: it fed us, it rejected something, or it could not share.
-            // `isEmpty` alone was wrong — it is true whenever no notes were
-            // reused, which includes the case where donors were *skipped*, and
-            // that is precisely the symptom worth a record.
-            final worthRecording =
-                (reuseNow?.notes ?? 0) > 0 ||
-                (reuseNow?.skipped ?? 0) > 0 ||
-                event.donorPublishError != null;
-            if (worthRecording) {
-              unawaited(
-                appendVaultTrace(opened, [
-                  {
-                    'timestamp': DateTime.now().toUtc().toIso8601String(),
-                    'event': 'indexed',
-                    'trigger': showProgress ? 'manual' : 'auto',
-                    'notes': index.notes.length,
-                    'tasks': index.tasks.length,
-                    'reusedNotes': reuseNow?.notes ?? 0,
-                    'reusedDevices': reuseNow?.devices ?? 0,
-                    'skippedDonors': reuseNow?.skipped ?? 0,
-                    if (event.donorPublishError != null)
-                      'errorMessage': event.donorPublishError,
-                  },
-                ]).catchError((_) {}),
-              );
-            }
-            if (showProgress) {
-              final reuse = event.donorReuse;
-              final shared = reuse == null || reuse.isEmpty
-                  ? ''
-                  : ' · reused ${reuse.notes} from ${reuse.devices} device'
-                        '${reuse.devices == 1 ? '' : 's'}';
-              status =
-                  'Indexed · ${index.notes.length} notes$shared · building search…';
-            }
+    // The worker holds its own Vault, which never saw this one's saveNote
+    // calls, so the pending set travels with the command and is cleared only
+    // once the scan reports back covering it.
+    final stale = opened.staleNotes;
+    await for (final event in worker.run(
+      RebuildIndexCommand(force: force, stale: stale),
+    )) {
+      // Vault closed (or swapped) under us — the events belong to nothing now.
+      if (!_owns(opened, generation)) return;
+      switch (event) {
+        case IndexProgressEvent(:final complete, :final total):
+          if (onProgress != null) {
+            onProgress(complete, total);
+          } else if (showProgress) {
+            rebuildProgress = total == 0 ? 1 : complete / total;
+            status = 'Rebuilding index: $complete / $total';
             notifyListeners();
-            unawaited(_reconcileTasks(index.tasks));
-          case CommunitiesBuiltEvent(:final communities):
-            unawaited(refreshDerived(precomputed: communities));
-          case PkmsBuiltEvent(:final report):
-            // No search index to copy — it stays in the worker and is reached
-            // through [searchNotes].
-            validation = _retainValidation(report);
-            if (showProgress) {
-              status = 'Index rebuilt · ${report.summary()}';
-            } else if (updateStatus) {
-              status = 'Indexed · ${report.summary()}';
-            }
+          }
+        case IndexBuiltEvent(:final index):
+          // Publish notes and tasks now, before the much slower validation +
+          // search-index build — on SAF vaults that build reads many files and
+          // must never gate the notes the UI needs (Journal, Library, Today).
+          // _retainIndex builds linkResolver too; communities arrive below.
+          this.index = _retainIndex(index);
+          indexedRevision = revision;
+          opened.clearStaleNotes(stale);
+          // Indexing wrote nothing to the diagnostics until now, so "was
+          // donor sharing working last Tuesday?" had no answer at all. The
+          // sync trace already solves this shape — same file, same trim,
+          // same Copy diagnostics button. Only when there is something worth
+          // saying, or it would outnumber the sync events it sits beside.
+          final reuseNow = event.donorReuse;
+          // Every state the donor machinery can be in that is worth knowing
+          // about: it fed us, it rejected something, or it could not share.
+          // `isEmpty` alone was wrong — it is true whenever no notes were
+          // reused, which includes the case where donors were *skipped*, and
+          // that is precisely the symptom worth a record.
+          final worthRecording =
+              (reuseNow?.notes ?? 0) > 0 ||
+              (reuseNow?.skipped ?? 0) > 0 ||
+              event.donorPublishError != null;
+          if (worthRecording) {
+            unawaited(
+              appendVaultTrace(opened, [
+                {
+                  'timestamp': DateTime.now().toUtc().toIso8601String(),
+                  'event': 'indexed',
+                  'trigger': showProgress ? 'manual' : 'auto',
+                  'notes': index.notes.length,
+                  'tasks': index.tasks.length,
+                  'reusedNotes': reuseNow?.notes ?? 0,
+                  'reusedDevices': reuseNow?.devices ?? 0,
+                  'skippedDonors': reuseNow?.skipped ?? 0,
+                  if (event.donorPublishError != null)
+                    'errorMessage': event.donorPublishError,
+                },
+              ]).catchError((_) {}),
+            );
+          }
+          if (showProgress) {
+            final reuse = event.donorReuse;
+            final shared = reuse == null || reuse.isEmpty
+                ? ''
+                : ' · reused ${reuse.notes} from ${reuse.devices} device'
+                      '${reuse.devices == 1 ? '' : 's'}';
+            status =
+                'Indexed · ${index.notes.length} notes$shared · building search…';
+          }
+          notifyListeners();
+          unawaited(_reconcileTasks(index.tasks));
+        case CommunitiesBuiltEvent(:final communities):
+          unawaited(refreshDerived(precomputed: communities));
+        case PkmsBuiltEvent(:final report):
+          // No search index to copy — it stays in the worker and is reached
+          // through [searchNotes].
+          validation = _retainValidation(report);
+          if (showProgress) {
+            status = 'Index rebuilt · ${report.summary()}';
+          } else if (updateStatus) {
+            status = 'Indexed · ${report.summary()}';
+          }
+          notifyListeners();
+        case SearchReadyEvent(:final revision):
+          searchReady = true;
+          searchRevision = revision;
+          notifyListeners();
+        case WorkFailedEvent(:final message, :final cancelled):
+          if (cancelled) {
+            status = 'Index rebuild cancelled';
             notifyListeners();
-          case WorkFailedEvent(:final message, :final cancelled):
-            if (cancelled) {
-              status = 'Index rebuild cancelled';
-              notifyListeners();
-            } else if (showProgress || updateStatus) {
-              status = 'Index refresh failed: $message';
-              notifyListeners();
-            }
-          case WorkDoneEvent():
-            break;
-        }
+          } else if (showProgress || updateStatus) {
+            status = 'Index refresh failed: $message';
+            notifyListeners();
+          }
+        case WorkDoneEvent():
+          break;
       }
+    }
   }
 
   /// Pre-worker path, kept for controllers built with an explicit [inspector]
   /// (tests) and for the storage-override open.
   Future<void> _scanInProcess(
     Vault opened, {
+    required int generation,
     required int revision,
     required bool force,
     required bool showProgress,
@@ -683,6 +907,7 @@ class WorkspaceController extends ChangeNotifier {
             ? null
             : (complete, total) {
                 if (complete % 100 != 0 && complete != total) return;
+                if (!_owns(opened, generation)) return;
                 if (onProgress != null) {
                   onProgress(complete, total);
                   return;
@@ -693,35 +918,50 @@ class WorkspaceController extends ChangeNotifier {
               },
       );
       if (showProgress) {
-        if (opened != vault) return;
+        if (!_owns(opened, generation)) return;
         index = _retainIndex(built);
         unawaited(refreshDerived());
         indexedRevision = revision;
         status = 'Indexed · ${built.notes.length} notes · building search…';
         notifyListeners();
         unawaited(_reconcileTasks(built.tasks));
-        final pkms = await _readPkms(opened, built);
+        final pkms = await _readPkms(
+          opened,
+          built,
+          isCancelled: () => !_owns(opened, generation),
+        );
+        if (!_owns(opened, generation)) return;
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
+        searchReady = true;
+        searchRevision++;
         status = 'Index rebuilt · ${pkms.report.summary()}';
         notifyListeners();
         return;
       }
-      final pkms = await _readPkms(opened, built);
-      if (opened != vault) return;
+      final pkms = await _readPkms(
+        opened,
+        built,
+        isCancelled: () => !_owns(opened, generation),
+      );
+      if (!_owns(opened, generation)) return;
       index = _retainIndex(built);
       unawaited(refreshDerived());
       validation = _retainValidation(pkms.report);
       searchIndex.replaceWith(pkms.search);
+      searchReady = true;
+      searchRevision++;
       indexedRevision = revision;
       if (updateStatus) status = 'Indexed · ${pkms.report.summary()}';
       notifyListeners();
       unawaited(_reconcileTasks(built.tasks));
     } on IndexBuildCancelled {
-      status = 'Index rebuild cancelled';
-      notifyListeners();
+      if (_owns(opened, generation)) {
+        status = 'Index rebuild cancelled';
+        notifyListeners();
+      }
     } catch (error) {
-      if (showProgress || updateStatus) {
+      if (_owns(opened, generation) && (showProgress || updateStatus)) {
         status = 'Index refresh failed: $error';
         notifyListeners();
       }
@@ -731,9 +971,7 @@ class WorkspaceController extends ChangeNotifier {
   void queueCloudSync() {
     _cloudAutosave?.cancel();
     final edited = lastEditAt;
-    final elapsed = edited == null
-        ? Duration.zero
-        : DateTime.now().difference(edited);
+    final elapsed = edited == null ? Duration.zero : _now().difference(edited);
     final remaining = const Duration(seconds: 10) - elapsed;
     _cloudAutosave = Timer(
       remaining.isNegative ? Duration.zero : remaining,
@@ -760,34 +998,44 @@ class WorkspaceController extends ChangeNotifier {
   /// of waiting on a real 25-second timer.
   @visibleForTesting
   Future<void> pollTick() async {
-    if (syncing || editingRecently) return;
-    if (hasSyncConflicts) {
-      // A conflict record self-healed on disk (loadSyncConflicts deletes
-      // matching snapshots) doesn't refresh this in-memory list on its own,
-      // so re-read before deciding anything. Cheap: only lists the conflicts
-      // directory, no full sync.
-      await refreshSyncConflicts();
-      // Deliberately no early return. A pending conflict used to suspend
-      // polling vault-wide, which left the A24 695 articles behind for four
-      // hours over five junk conflicts that had nothing to do with them. The
-      // sync loop already skips each conflicted path individually
-      // (path_sync.dart, reason 'unresolved-conflict'), so the rest of the
-      // vault is safe to sync while those wait for review.
+    final generation = _vaultGeneration;
+    if (syncing || editingRecently || _pollInFlight) return;
+    _pollInFlight = true;
+    try {
+      if (hasSyncConflicts) {
+        // A conflict record self-healed on disk (loadSyncConflicts deletes
+        // matching snapshots) doesn't refresh this in-memory list on its own,
+        // so re-read before deciding anything. Cheap: only lists the conflicts
+        // directory, no full sync.
+        await refreshSyncConflicts();
+        // Deliberately no early return. A pending conflict used to suspend
+        // polling vault-wide, which left the A24 695 articles behind for four
+        // hours over five junk conflicts that had nothing to do with them. The
+        // sync loop already skips each conflicted path individually
+        // (path_sync.dart, reason 'unresolved-conflict'), so the rest of the
+        // vault is safe to sync while those wait for review.
+        if (syncing || editingRecently) return;
+      }
+      final opened = vault;
+      final config = cloud;
+      // syncNow throws WorkspaceSyncNotConfigured without a ready config, so a
+      // poll must not reach it. Previously unreachable only because the conflict
+      // gate above returned first.
+      if (opened == null || config == null || !config.isReady) return;
+      final configKey = _cloudKey(config);
+      _setPollConfig(configKey);
+      if (_pollBlocked) return;
+      if (_pollNextAt != null && _now().isBefore(_pollNextAt!)) return;
+      final unchanged = await NextcloudSync(
+        config,
+      ).pollIsUnchanged(opened, dirty: dirty || isComposing());
+      // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
+      if (unchanged) return;
+      await syncNow(trigger: 'poll');
+    } finally {
+      if (_vaultGeneration == generation) _pollInFlight = false;
     }
-    final opened = vault;
-    final config = cloud;
-    // syncNow throws WorkspaceSyncNotConfigured without a ready config, so a
-    // poll must not reach it. Previously unreachable only because the conflict
-    // gate above returned first.
-    if (opened == null || config == null || !config.isReady) return;
-    final unchanged = await NextcloudSync(
-      config,
-    ).pollIsUnchanged(opened, dirty: dirty || isComposing());
-    // State may have changed while the network probe was in flight.
-    if (syncing || editingRecently) return;
-    if (unchanged) return;
-    await syncNow(trigger: 'poll');
   }
 
   /// Re-reads conflict records from disk and refreshes [syncConflicts].
@@ -796,16 +1044,20 @@ class WorkspaceController extends ChangeNotifier {
   /// dashboard in sync with disk state when it opens.
   Future<void> refreshSyncConflicts() async {
     final opened = vault;
+    final generation = _vaultGeneration;
     if (opened == null) return;
-    syncConflicts = await loadSyncConflicts(opened);
+    final conflicts = await loadSyncConflicts(opened);
+    if (!_owns(opened, generation)) return;
+    syncConflicts = conflicts;
     notifyListeners();
   }
 
   /// Rebuilds [mergedReading] from every `_system/reading/*.json` device
   /// file in the vault: union of all recents, newest openedAt wins per path.
   /// Corrupt or unreadable files are skipped — reading state is best-effort.
-  Future<void> reloadReadingState() async {
-    final opened = vault;
+  Future<void> reloadReadingState({Vault? opened, int? generation}) async {
+    opened ??= vault;
+    generation ??= _vaultGeneration;
     if (opened == null) return;
     final byPath = <String, RecentNote>{};
     List<VaultStorageEntry> files;
@@ -833,6 +1085,7 @@ class WorkspaceController extends ChangeNotifier {
         // Skip this device file; the rest still merge.
       }
     }
+    if (!_owns(opened, generation)) return;
     mergedReading = byPath.values.toList()
       ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
     notifyListeners();
@@ -849,6 +1102,7 @@ class WorkspaceController extends ChangeNotifier {
     if (config == null || !config.isReady) {
       throw const WorkspaceSyncNotConfigured();
     }
+    final generation = _vaultGeneration;
     if (syncing) return false;
     final local = localDirectory;
     if (local != null && isNextcloudManagedVault(local)) {
@@ -864,29 +1118,58 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+    if (!_owns(opened, generation)) {
+      await VaultLock.release(opened.storage, 'ui');
+      return false;
+    }
+    final configKey = _cloudKey(config);
+    _setPollConfig(configKey);
+    if (trigger != 'manual' && trigger != 'retry' && _pollBlocked) {
+      await VaultLock.release(opened.storage, 'ui');
+      return false;
+    }
+    if (trigger != 'manual' &&
+        trigger != 'retry' &&
+        _pollNextAt != null &&
+        _now().isBefore(_pollNextAt!)) {
+      await VaultLock.release(opened.storage, 'ui');
+      return false;
+    }
+    if (trigger == 'manual' || trigger == 'retry') {
+      _resetPollRetry();
+    }
     // 'resume' included: a resume sync starts the instant the app foregrounds,
     // and users routinely background it again mid-run — without the service
     // Android freezes the run at its first network stage ("stuck on
     // prepare-remote-folder") until the next foreground.
     final keepRunningOffscreen =
-        Platform.isAndroid &&
-        const {'setup', 'manual', 'retry', 'resume'}.contains(trigger);
+        _useForegroundService &&
+        const {
+          'startup',
+          'setup',
+          'manual',
+          'retry',
+          'resume',
+        }.contains(trigger);
     syncing = true;
     syncError = null;
     status = 'Syncing…';
     _cloudAutosave?.cancel();
     notifyListeners();
+    var localContentChanged = false;
     // Inside the try from here on. `_startSyncForeground` swallows its own
     // throws, but a platform channel that never *completes* would strand
     // `syncing` at true with no sync running — and every Sync-dashboard action
     // refuses to act while that flag is set.
     try {
       if (keepRunningOffscreen) {
+        _foregroundGeneration = generation;
         await _startSyncForeground('Preparing Nextcloud sync…');
       }
       if (dirty) {
-        await save(syncAfter: false);
-        if (dirty) {
+        final saved = await save(syncAfter: false);
+        if (!_owns(opened, generation)) return false;
+        if (!saved || dirty) {
           // Without this the status string stays 'Syncing…' forever, which is
           // what made the dashboard claim a sync was running while the banner
           // said sync was paused.
@@ -900,6 +1183,7 @@ class WorkspaceController extends ChangeNotifier {
       final result = await NextcloudSync(
         config,
         onProgress: (stage, path) {
+          if (!_owns(opened, generation)) return;
           syncStage = stage == 'idle'
               ? null
               : path == null
@@ -921,26 +1205,33 @@ class WorkspaceController extends ChangeNotifier {
         canReplaceLocal: (path) =>
             path != syncedNote ||
             (revisionBeforeSync == editRevision && !dirty),
+        onLocalContentChanged: (path) {
+          localContentChanged = true;
+          opened.markLocallyWritten(path);
+        },
       ).sync(opened, trigger: trigger, initialMode: initialMode);
+      if (!_owns(opened, generation)) return false;
       var concurrentConflict = false;
       if (syncedNote != null && syncedNote == note) {
         final diskExists = await opened.storage.exists(syncedNote);
         final diskSource = diskExists
             ? await opened.storage.readText(syncedNote)
             : null;
+        if (!_owns(opened, generation)) return false;
         final editorChanged = revisionBeforeSync != editRevision || dirty;
         if (editorChanged &&
             diskSource != sourceBeforeSync &&
             diskSource != source &&
-            !(syncedNote == _lastSavedPath &&
-                diskSource == _lastSavedSource)) {
+            !(syncedNote == _lastSavedPath && diskSource == _lastSavedSource)) {
           await createSyncConflict(
             opened,
             syncedNote,
             localBytes: utf8.encode(source),
             remoteBytes: diskSource == null ? null : utf8.encode(diskSource),
           );
+          if (!_owns(opened, generation)) return false;
           await opened.saveNote(syncedNote, source);
+          if (!_owns(opened, generation)) return false;
           _lastSavedSource = source;
           _lastSavedPath = syncedNote;
           concurrentConflict = true;
@@ -952,6 +1243,7 @@ class WorkspaceController extends ChangeNotifier {
           // the buffer if it has moved past the autosave on disk.
           if (diskSource != source) {
             await opened.saveNote(syncedNote, source);
+            if (!_owns(opened, generation)) return false;
             _lastSavedSource = source;
             _lastSavedPath = syncedNote;
           }
@@ -960,10 +1252,13 @@ class WorkspaceController extends ChangeNotifier {
         }
       }
       final conflicts = await loadSyncConflicts(opened);
+      if (!_owns(opened, generation)) return false;
       // Decoupled from the scan below: a peer's reading file is the whole
       // point of cross-device progress, but pulling it says nothing about the
       // vault's *content*, so it must not drag a full rescan along with it.
-      if (result.downloadedReadingState) await reloadReadingState();
+      if (result.downloadedReadingState) {
+        await reloadReadingState(opened: opened, generation: generation);
+      }
       if (result.requiresIndexRefresh ||
           concurrentConflict ||
           indexedRevision < savedRevision) {
@@ -979,6 +1274,7 @@ class WorkspaceController extends ChangeNotifier {
           // syncProgressTick instead.
           await _scan(
             opened,
+            generation: generation,
             updateStatus: false,
             onProgress: (complete, total) {
               rebuildProgress = total == 0 ? 1 : complete / total;
@@ -986,12 +1282,17 @@ class WorkspaceController extends ChangeNotifier {
             },
           );
         } finally {
-          rebuildProgress = null;
-          syncProgressTick.notifyListeners();
+          if (_owns(opened, generation)) {
+            rebuildProgress = null;
+            syncProgressTick.notifyListeners();
+          }
         }
       }
+      if (!_owns(opened, generation)) return false;
       lastSync = result;
-      lastSyncAt = DateTime.now();
+      _pollNextAt = null;
+      _pollFailures = 0;
+      lastSyncAt = _now();
       syncConflicts = conflicts;
       final changed =
           result.uploaded +
@@ -1008,34 +1309,69 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     } on SyncDeferred {
+      if (!_owns(opened, generation)) return false;
       status = 'Sync deferred while editing';
       queueCloudSync();
       notifyListeners();
+      if (localContentChanged) {
+        unawaited(_scan(opened, generation: generation, updateStatus: false));
+      }
       return false;
     } catch (error, stack) {
       debugPrintStack(
         label: 'Nextcloud sync failed: $error',
         stackTrace: stack,
       );
-      syncConflicts = await loadSyncConflicts(opened);
-      await refreshIndex(updateStatus: false, always: true);
       // A failed sync and a pending conflict are different facts. Nulling the
       // error whenever any conflict existed meant that on a vault with one
       // stale record — which is where sync problems are most likely — every
       // sync failure was silently discarded.
+      if (!_owns(opened, generation)) return false;
       syncError = friendlySyncError(error);
-      status = syncConflicts.isEmpty ? syncError! : 'Needs attention';
+      if (_isAuthFailure(error)) {
+        _pollBlocked = true;
+        _pollNextAt = null;
+        _pollFailures = 0;
+      } else {
+        const delays = <Duration>[
+          Duration(seconds: 25),
+          Duration(seconds: 50),
+          Duration(seconds: 100),
+          Duration(seconds: 200),
+          Duration(seconds: 300),
+        ];
+        final delay = delays[_pollFailures.clamp(0, delays.length - 1)];
+        _pollFailures++;
+        _pollNextAt = _now().add(delay);
+      }
+      status = syncError!;
       notifyListeners();
+      final conflicts = await loadSyncConflicts(opened);
+      if (!_owns(opened, generation)) return false;
+      syncConflicts = conflicts;
+      if (localContentChanged) {
+        await _scan(opened, generation: generation, updateStatus: false);
+        if (!_owns(opened, generation)) return false;
+      }
+      if (syncConflicts.isNotEmpty) {
+        status = 'Needs attention';
+        notifyListeners();
+      }
       return false;
     } finally {
       // Clear the flag *before* the two awaits, not after: a hang in either
       // would otherwise leave `syncing` true with no sync running, which locks
       // every action on the Sync dashboard.
-      syncing = false;
-      syncStage = null;
-      notifyListeners();
+      if (_owns(opened, generation)) {
+        syncing = false;
+        syncStage = null;
+        notifyListeners();
+      }
       await VaultLock.release(opened.storage, 'ui');
-      if (keepRunningOffscreen) await _stopSyncForeground();
+      if (keepRunningOffscreen && _owns(opened, generation)) {
+        await _stopSyncForeground();
+        if (_foregroundGeneration == generation) _foregroundGeneration = null;
+      }
     }
   }
 
@@ -1081,10 +1417,20 @@ class WorkspaceController extends ChangeNotifier {
       // Never refuse silently — the norm this codebase states at
       // SyncDashboardScreen._run, and the reason a bulk resolve could report
       // success over an untouched vault.
-      syncError = 'Nextcloud is not connected, so conflicts cannot be resolved.';
+      syncError =
+          'Nextcloud is not connected, so conflicts cannot be resolved.';
       status = 'Needs attention';
       notifyListeners();
       return false;
+    }
+    if (dirty && note == conflict.path) {
+      final saved = await save(syncAfter: false);
+      if (!saved || dirty) {
+        syncError = 'Save the open note before resolving this conflict.';
+        status = 'Needs attention';
+        notifyListeners();
+        return false;
+      }
     }
     // Announce the attempt before doing any of it. A resolve is a network
     // write plus an index refresh — seconds to minutes on a busy vault — and
@@ -1219,9 +1565,14 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(
     Vault opened,
-    VaultIndex built,
-  ) async {
-    final report = await validatePkmsStorage(opened.storage, built);
+    VaultIndex built, {
+    bool Function()? isCancelled,
+  }) async {
+    final report = await validatePkmsStorage(
+      opened.storage,
+      built,
+      isCancelled: isCancelled,
+    );
     // Surface unparseable task recurrence rules (rrule lives in the app layer,
     // not tylog_core) into the same Problems report the UI already shows.
     report.problems.addAll(validateTaskRecurrences(built.tasks));
@@ -1233,6 +1584,7 @@ class WorkspaceController extends ChangeNotifier {
       opened.storage,
       built,
       previous: cached,
+      isCancelled: isCancelled,
     );
     // buildStorage returns the *same instance* when every note hit the
     // cache and the key set is unchanged, so identity is an exact "nothing
@@ -1241,6 +1593,9 @@ class WorkspaceController extends ChangeNotifier {
     // there. vault_worker.dart has always had this guard; these two paths
     // did not.
     if (!identical(search, cached)) {
+      if (isCancelled?.call() ?? false) {
+        return (report: report, search: search);
+      }
       await search.saveStorage(opened.storage, Vault.searchIndexPath);
     }
     return (report: report, search: search);
@@ -1335,6 +1690,10 @@ class WorkspaceController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    if (_foregroundGeneration != null) {
+      _foregroundGeneration = null;
+      unawaited(_stopSyncForeground());
+    }
     dirtyNotifier.dispose();
     syncProgressTick.dispose();
     _cancelTimers();

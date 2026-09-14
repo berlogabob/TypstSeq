@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'scanner.dart';
 import 'storage.dart';
 import 'values.dart';
 
@@ -163,6 +164,7 @@ class PkmsSearchIndex {
     VaultIndex vault, {
     PkmsSearchIndex? previous,
     void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final documents = <String, _SearchDocument>{};
     final misses = <NoteRef>[];
@@ -187,6 +189,7 @@ class PkmsSearchIndex {
     final sources = <String, String>{};
     var done = 0;
     for (var i = 0; i < misses.length; i += _readConcurrency) {
+      if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
       final end = i + _readConcurrency < misses.length
           ? i + _readConcurrency
           : misses.length;
@@ -202,6 +205,7 @@ class PkmsSearchIndex {
           }
         }),
       );
+      if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
       for (final result in results) {
         if (result.value != null) sources[result.key] = result.value!;
       }

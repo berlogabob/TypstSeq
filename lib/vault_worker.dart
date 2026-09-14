@@ -155,6 +155,13 @@ class PkmsBuiltEvent extends VaultWorkerEvent {
   final PkmsValidationReport report;
 }
 
+/// Sent only after the worker has atomically replaced its search index.
+class SearchReadyEvent extends VaultWorkerEvent {
+  const SearchReadyEvent(this.revision);
+
+  final int revision;
+}
+
 class WorkDoneEvent extends VaultWorkerEvent {
   const WorkDoneEvent();
 }
@@ -195,9 +202,12 @@ class _VaultWorker {
   /// first rebuild finishes, which mirrors what the UI used to hold in that
   /// window anyway (`PkmsSearchIndex.empty()` from openVault).
   PkmsSearchIndex _search = PkmsSearchIndex.empty();
+  // Monotonic successful-build generation for this worker lifetime.
+  int _searchRevision = 0;
 
   bool _cancelled = false;
   bool _busy = false;
+  bool _shutdownRequested = false;
 
   Future<void> serve() async {
     _boot.commands.send(_commands.sendPort);
@@ -210,7 +220,8 @@ class _VaultWorker {
           _cancelled = true;
         case ShutdownCommand():
           _cancelled = true;
-          if (!_stopped.isCompleted) _stopped.complete();
+          _shutdownRequested = true;
+          if (!_busy && !_stopped.isCompleted) _stopped.complete();
         case final SearchCommand command:
           // Answered even while _busy, like Cancel above and for the same
           // reason: `search` is synchronous, so handling it never awaits and the
@@ -244,6 +255,7 @@ class _VaultWorker {
   Future<void> _rebuild(RebuildIndexCommand command) async {
     _busy = true;
     _cancelled = false;
+    PkmsSearchIndex? pendingSearch;
     try {
       _inspector ??= await _createInspector();
       // One routine, shared with the background service and the CLI. What used
@@ -291,15 +303,23 @@ class _VaultWorker {
           case MaintenanceValidated(:final report):
             _send(PkmsBuiltEvent(report));
           case MaintenanceSearchBuilt(:final search):
-            // Published to this isolate's own field, not over the port:
-            // shipping it cost ~71 ms of root-isolate time per rebuild on a
-            // P30. Swapped whole rather than `replaceWith`-ed — nothing here
-            // holds the old instance, so rebuilding 107k posting Sets to
-            // preserve an identity no one depends on would be pure waste.
-            _search = search;
+            // Keep the candidate private until maintenance completes. A
+            // cancellation or later failure must leave the old queryable
+            // index and readiness revision untouched.
+            pendingSearch = search;
           case MaintenanceSwept():
             break;
         }
+      }
+      if (_cancelled) throw const IndexBuildCancelled();
+      final ready = pendingSearch;
+      if (ready != null) {
+        // Published to this isolate's own field, not over the port: shipping
+        // it cost ~71 ms of root-isolate time per rebuild on a P30. Swap whole
+        // rather than `replaceWith`-ing; no caller depends on identity.
+        _search = ready;
+        _searchRevision++;
+        _send(SearchReadyEvent(_searchRevision));
       }
       _send(const WorkDoneEvent());
     } on IndexBuildCancelled {
@@ -308,6 +328,9 @@ class _VaultWorker {
       _send(WorkFailedEvent('$error'));
     } finally {
       _busy = false;
+      if (_shutdownRequested && !_stopped.isCompleted) {
+        _stopped.complete();
+      }
     }
   }
 
@@ -357,9 +380,8 @@ class _VaultWorker {
 // ── UI-side handle ───────────────────────────────────────────────────────────
 
 class VaultWorkerClient {
-  VaultWorkerClient._(this._isolate, this._commands, this._events, this._errors);
+  VaultWorkerClient._(this._commands, this._events, this._errors);
 
-  final Isolate _isolate;
   final SendPort _commands;
   final ReceivePort _events;
   final ReceivePort _errors;
@@ -379,9 +401,16 @@ class VaultWorkerClient {
     // a Dart-level crash or a kill does not) would otherwise hang the caller
     // forever. `onExit` also lands here, with a null message.
     _errors.listen((message) {
-      if (!_relay.isClosed) {
-        _relay.add(WorkFailedEvent('worker stopped: $message'));
+      if (message == null) {
+        _finishRunning(const WorkFailedEvent('worker stopped'));
+        _events.close();
+        _errors.close();
+        unawaited(_relay.close());
+        return;
       }
+      if (_disposed || _relay.isClosed) return;
+      _disposed = true;
+      _finishRunning(WorkFailedEvent('worker stopped: $message'));
     });
   }
 
@@ -392,7 +421,7 @@ class VaultWorkerClient {
     final events = ReceivePort('tylog-vault-worker-events');
     final errors = ReceivePort('tylog-vault-worker-errors');
     final handshake = ReceivePort('tylog-vault-worker-handshake');
-    final isolate = await Isolate.spawn(
+    await Isolate.spawn(
       vaultWorkerMain,
       VaultWorkerBoot(
         entry: entry,
@@ -407,8 +436,7 @@ class VaultWorkerClient {
     );
     final commands = await handshake.first as SendPort;
     handshake.close();
-    return VaultWorkerClient._(isolate, commands, events, errors)
-      .._startRelay();
+    return VaultWorkerClient._(commands, events, errors).._startRelay();
   }
 
   /// Runs one command, yielding its events until a terminal one.
@@ -418,9 +446,14 @@ class VaultWorkerClient {
   /// events and both mis-report. Throwing here turns that into an obvious bug at
   /// the call site instead of silent cross-talk.
   Stream<VaultWorkerEvent> run(VaultWorkerCommand command) {
+    if (_disposed) {
+      throw StateError('VaultWorkerClient.run called after disposal');
+    }
     if (_running) {
-      throw StateError('VaultWorkerClient.run is single-flight; a command is '
-          'already in flight');
+      throw StateError(
+        'VaultWorkerClient.run is single-flight; a command is '
+        'already in flight',
+      );
     }
     _running = true;
     // Buffered (non-broadcast) on purpose: the command goes out before the
@@ -440,6 +473,14 @@ class VaultWorkerClient {
   }
 
   bool _running = false;
+  bool _disposed = false;
+  Future<void>? _disposeFuture;
+
+  void _finishRunning(WorkFailedEvent event) {
+    if (!_running || _relay.isClosed) return;
+    _running = false;
+    _relay.add(event);
+  }
 
   /// Cooperative — observed at the scanner's per-32-note yield.
   void cancel() => _commands.send(const CancelWorkCommand());
@@ -456,7 +497,7 @@ class VaultWorkerClient {
     String? status,
     int limit = 50,
   }) async {
-    if (_relay.isClosed) return const [];
+    if (_disposed || _relay.isClosed) return const [];
     final reply = ReceivePort('tylog-vault-worker-search');
     try {
       _commands.send(
@@ -484,13 +525,17 @@ class VaultWorkerClient {
     }
   }
 
-  Future<void> dispose() async {
+  Future<void> dispose() {
+    final existing = _disposeFuture;
+    if (existing != null) return existing;
+    _disposed = true;
+    _finishRunning(const WorkFailedEvent('worker disposed', cancelled: true));
     _commands.send(const ShutdownCommand());
-    // Don't wait on a wedged native compile to notice the shutdown: the engine
-    // holds no vault lock we need back, and nobody is reading its events now.
-    _isolate.kill(priority: Isolate.beforeNextEvent);
-    _events.close();
-    _errors.close();
-    await _relay.close();
+    // Keep the isolate alive while its current storage/native await drains.
+    // SAF replies target this isolate's platform-message port; killing it here
+    // makes a later result.success/error fatal in the engine. A permanently
+    // wedged native call leaves a detached isolate by design; there is no safe
+    // timeout kill for a platform reply whose port may still be in flight.
+    return _disposeFuture = _relay.close();
   }
 }

@@ -17,8 +17,9 @@ class PkmsValidationReport {
 
 Future<PkmsValidationReport> validatePkmsStorage(
   VaultStorage storage,
-  VaultIndex index,
-) async {
+  VaultIndex index, {
+  bool Function()? isCancelled,
+}) async {
   final problems = <PkmsProblem>[...index.problems];
   if (await storage.exists('_system/tylog.typ') &&
       classifyTylogHelper(await storage.readText('_system/tylog.typ')) ==
@@ -65,6 +66,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
   };
 
   for (final note in index.notes) {
+    if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
     if (note.id.trim().isEmpty) {
       problems.add(
         PkmsProblem(
@@ -122,6 +124,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
   }
 
   for (final task in index.tasks) {
+    if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
     if (task.id.trim().isEmpty) {
       problems.add(
         PkmsProblem(
@@ -165,6 +168,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
   }
 
   for (final entity in listing) {
+    if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
     if (entity.isDirectory || !entity.path.contains('.remote-conflict-')) {
       continue;
     }

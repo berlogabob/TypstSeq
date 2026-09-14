@@ -1,0 +1,116 @@
+Resolving dependencies...
+Downloading packages...
+  archive 4.0.9 (4.2.0 available)
+  cli_util 0.4.2 (0.6.0 available)
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.0.0 available)
+  cross_file 0.3.5+4 (0.3.5+5 available)
+  dbus 0.7.14 (0.7.15 available)
+  file_picker 12.0.0-beta.7 (12.2.0 available)
+  flutter_local_notifications 22.0.1 (22.3.0 available)
+  flutter_local_notifications_platform_interface 12.0.0 (12.2.0 available)
+  flutter_rust_bridge 2.12.0 (2.13.0 available)
+  flutter_secure_storage 10.3.1 (11.0.0 available)
+  flutter_secure_storage_darwin 0.3.2 (0.4.1 available)
+  flutter_secure_storage_linux 3.0.1 (3.0.2 available)
+  flutter_secure_storage_platform_interface 2.0.1 (2.0.3 available)
+  hooks 2.0.2 (2.2.0 available)
+  image 4.8.0 (4.9.2 available)
+  jni 1.0.0 (1.0.3 available)
+  jni_flutter 1.0.1 (1.0.3 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.0 (1.19.0 available)
+  mime 2.0.0 (2.1.0 available)
+  objective_c 9.4.1 (9.6.0 available)
+  package_config 2.2.0 (3.0.0 available)
+  platform 3.1.6 (3.2.0 available)
+  posix 6.5.0 (6.5.2 available)
+  process 5.0.5 (5.0.6 available)
+  pub_semver 2.2.0 (2.2.1 available)
+  record_use 0.6.0 (1.1.1 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  test_api 0.7.11 (0.7.14 available)
+  url_launcher_android 6.3.32 (6.3.33 available)
+  url_launcher_ios 6.4.1 (6.4.2 available)
+  url_launcher_linux 3.2.2 (3.2.3 available)
+  url_launcher_macos 3.2.5 (3.2.6 available)
+  url_launcher_windows 3.1.5 (3.1.6 available)
+  vector_graphics 1.2.2 (1.2.3 available)
+  vector_graphics_compiler 1.2.6 (1.3.0 available)
+  vector_math 2.2.0 (2.4.2 available)
+  vm_service 15.2.0 (15.3.0 available)
+  win32 6.3.0 (6.4.0 available)
+  xml 6.6.1 (7.0.1 available)
+  yaml 3.1.3 (3.1.4 available)
+Got dependencies!
+43 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Running Gradle task 'assembleProfile'...                        
+WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP): flutter_timezone
+Future versions of Flutter will fail to build if your app uses plugins that apply KGP.
+
+Please check the changelogs of these plugins and upgrade to a version that supports Built-in Kotlin.
+If no such version exists, report the issue to the plugin. If necessary, here is a guide on filing 
+an issue against a plugin: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers#report-incompatible-kotlin-gradle-plugin-usage-to-plugin-authors
+
+If you are a plugin author, please migrate your plugin to Built-in Kotlin using this guide: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors
+Running Gradle task 'assembleProfile'...                           14.3s
+✓ Built build/app/outputs/flutter-apk/app-profile.apk (174.9MB)
+Installing build/app/outputs/flutter-apk/app-profile.apk...         5.1s
+VMServiceFlutterDriver: Connecting to Flutter application at http://127.0.0.1:54015/U_OudHvYTI8=/
+VMServiceFlutterDriver: Isolate found with number: 2374255480397159
+VMServiceFlutterDriver: Isolate 2374255480397159 is runnable.
+VMServiceFlutterDriver: Isolate is paused at start.
+VMServiceFlutterDriver: Attempting to resume isolate
+I/flutter (15928): 00:00 +0: Android taps every Magic action and keeps IME input alive
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a2ec738) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a307358) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a307678) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a305a58) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a302538) locale list changing from [] to [en-GB]
+I/org.tylog.tylog(15928): AssetManager2(0xb400006e2a301598) locale list changing from [] to [en-GB]
+VMServiceFlutterDriver: Connected to Flutter application.
+D/NtViewRootImpl(15928): mPopUpViewOffsets: offset=(0.0, 0.0), scale=(1.0, 1.0)
+D/InsetsController(15928): hide(ime(), fromIme=false)
+I/ImeTracker(15928): org.tylog.tylog:a7263334: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+I/ImeTracker(15928): system_server:6f1f310a: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+W/WindowOnBackDispatcher(15928): sendCancelIfRunning: isInProgress=false callback=android.view.ImeBackAnimationController@ac082de
+I/ImeTracker(15928): org.tylog.tylog:fd32f389: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+D/InsetsController(15928): show(ime(), fromIme=false)
+D/InsetsController(15928): Setting requestedVisibleTypes to -1 (was -9)
+W/InteractionJankMonitor(15928): Initializing without READ_DEVICE_CONFIG permission. enabled=false, interval=1, missedFrameThreshold=3, frameTimeThreshold=64, package=org.tylog.tylog
+I/AssistStructure(15928): Flattened final assist data: 492 bytes, containing 1 windows, 3 views
+I/ImeTracker(15928): org.tylog.tylog:fd32f389: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+I/ImeTracker(15928): org.tylog.tylog:fd32f389: onShown
+I/flutter (15928): Expected: exactly one matching candidate
+I/flutter (15928):   Actual: _WidgetPredicateWidgetFinder:<Found 0 widgets with widget matching predicate: []>
+I/flutter (15928):    Which: means none were found but one was expected
+I/flutter (15928): magic dock should be open for noteLink
+I/flutter (15928): 
+I/flutter (15928): #0      fail (package:matcher/src/expect/expect.dart:187)
+I/flutter (15928): #1      _expect (package:matcher/src/expect/expect.dart:182)
+I/flutter (15928): #2      expect (package:matcher/src/expect/expect.dart:65)
+I/flutter (15928): #3      expect (package:flutter_test/src/widget_tester.dart:473)
+I/flutter (15928): #4      main.<anonymous closure> (file:///Users/berloga/Documents/GitHub/TypstSeq/integration_test/rich_editor_native_test.dart:43)
+I/flutter (15928): <asynchronous suspension>
+I/flutter (15928): #5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192)
+I/flutter (15928): <asynchronous suspension>
+I/flutter (15928): #6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952)
+I/flutter (15928): <asynchronous suspension>
+I/flutter (15928): #7      TestWidgetsFlutterBinding._createTestCompletionHandler.<anonymous closure> (package:flutter_test/src/binding.dart:1706)
+I/flutter (15928): <asynchronous suspension>
+I/flutter (15928): 00:00 +0: Android taps every Magic action and keeps IME input alive [E]
+I/flutter (15928):   Test failed. See exception logs above.
+I/flutter (15928):   The test description was: Android taps every Magic action and keeps IME input alive
+I/flutter (15928):   
+I/flutter (15928): 00:00 +0 -1: (tearDownAll)
+I/flutter (15928): 00:00 +1 -1: Some tests failed.
+Failure Details:
+Failure in method: Android taps every Magic action and keeps IME input alive
+Instance of 'FlutterErrorDetails'
+end of failure 1
+
+
+
+Leaving the application running.

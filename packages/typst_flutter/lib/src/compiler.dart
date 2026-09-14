@@ -128,6 +128,9 @@ class TypstCompiler implements Finalizable {
     await flush(last: true); // Also clears the layer for an empty map.
   }
 
+  /// Returns and clears the canonical VFS paths requested by the last compile.
+  Future<List<String>> takeRequestedFiles() => _engine.takeRequestedFiles();
+
   /// Queries the compiled [document] using a Typst [selector] string.
   ///
   /// Returns a JSON string containing the queried elements (e.g. headings).

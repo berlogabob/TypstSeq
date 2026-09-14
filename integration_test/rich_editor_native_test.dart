@@ -24,14 +24,11 @@ void main() {
       await tester.pump();
 
       final field = find.byKey(const Key('rich-journal-editor'));
-      // `showKeyboard`, not `tap`: the dock subtree does not exist at all while
-      // the editor is unfocused (editor_widgets.dart renders a zero-height box
-      // instead), so `find.byTooltip('Insert')` returns 0 widgets rather than
-      // failing a hit test. Tapping is also unreliable on a real device — the
-      // IME resizes the viewport between iterations, so the field's old centre
-      // can land outside it and `onTapOutside` immediately unfocuses again.
-      // `showKeyboard` focuses without hit-testing and attaches the text-input
-      // client that the composing-text assertions below depend on.
+      final textField = tester.widget<TextField>(field);
+      // Focus directly because showKeyboard attaches the test input client but
+      // does not promise to change the widget's FocusNode on a physical device.
+      // Avoid tapping: IME resize can move the field between iterations.
+      textField.focusNode!.requestFocus();
       await tester.showKeyboard(field);
       harness.controller.selection = TextSelection.collapsed(
         offset: harness.controller.text.length,
@@ -40,6 +37,10 @@ void main() {
       // then expands through a 150ms AnimatedSize from height zero. A single
       // pump leaves the button either absent or unhittable.
       await tester.pumpAndSettle();
+      if (find.byTooltip('Insert').evaluate().isEmpty) {
+        await tester.drag(find.byType(ListView), const Offset(-1000, 0));
+        await tester.pumpAndSettle();
+      }
       expect(
         find.byTooltip('Insert'),
         findsOneWidget,
@@ -62,13 +63,12 @@ void main() {
       await tester.tap(choice);
       await tester.pumpAndSettle();
 
-      final textField = tester.widget<TextField>(field);
       expect(textField.focusNode!.hasFocus, isTrue, reason: action.name);
       final sentinel = '|тест-${action.name}|';
-      _typeComposing(tester, harness.controller, sentinel);
+      _typeComposing(harness.controller, sentinel);
       await tester.pump();
-      tester.testTextInput.updateEditingValue(
-        harness.controller.value.copyWith(composing: TextRange.empty),
+      harness.controller.value = harness.controller.value.copyWith(
+        composing: TextRange.empty,
       );
       await tester.pump();
 
@@ -205,21 +205,15 @@ MagicRequest _requestFor(MagicAction action) => switch (action) {
   MagicAction.report => const MagicRequest(action: MagicAction.report),
 };
 
-void _typeComposing(
-  WidgetTester tester,
-  TyLogEditingController controller,
-  String text,
-) {
+void _typeComposing(TyLogEditingController controller, String text) {
   final selection = controller.selection;
   final start = selection.isValid ? selection.start : controller.text.length;
   final end = selection.isValid ? selection.end : controller.text.length;
   final next = controller.text.replaceRange(start, end, text);
-  tester.testTextInput.updateEditingValue(
-    TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: start + text.length),
-      composing: TextRange(start: start, end: start + text.length),
-    ),
+  controller.value = TextEditingValue(
+    text: next,
+    selection: TextSelection.collapsed(offset: start + text.length),
+    composing: TextRange(start: start, end: start + text.length),
   );
 }
 
