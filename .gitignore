@@ -73,6 +73,9 @@ audit/
 # Local fixture vault; tests use test/fixtures/tylog_format_v1
 sample_vault/
 
+# Reproducible synthetic scale data; commit the generator and manifest evidence.
+/tylog-scale-fixture/
+
 # Brand source assets live on the design drive, not in git.
 # Exception: the icon sources flutter_launcher_icons reads (pubspec.yaml).
 docs/brand/*
