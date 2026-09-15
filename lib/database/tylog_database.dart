@@ -289,6 +289,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   }) =>
       (select(importItems)
             ..where((t) => t.jobId.equals(jobId) & t.state.equals('pending'))
+            ..orderBy([(t) => OrderingTerm.asc(t.sourcePath)])
             ..limit(limit))
           .get();
 
