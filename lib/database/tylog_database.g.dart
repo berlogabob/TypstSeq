@@ -2813,6 +2813,1177 @@ class DerivedInvalidationsCompanion
   }
 }
 
+class $ImportJobsTable extends ImportJobs
+    with TableInfo<$ImportJobsTable, ImportJobData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ImportJobsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceKindMeta = const VerificationMeta(
+    'sourceKind',
+  );
+  @override
+  late final GeneratedColumn<String> sourceKind = GeneratedColumn<String>(
+    'source_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceLocatorMeta = const VerificationMeta(
+    'sourceLocator',
+  );
+  @override
+  late final GeneratedColumn<String> sourceLocator = GeneratedColumn<String>(
+    'source_locator',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceFingerprintMeta = const VerificationMeta(
+    'sourceFingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> sourceFingerprint =
+      GeneratedColumn<String>(
+        'source_fingerprint',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _totalCountMeta = const VerificationMeta(
+    'totalCount',
+  );
+  @override
+  late final GeneratedColumn<int> totalCount = GeneratedColumn<int>(
+    'total_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _completedCountMeta = const VerificationMeta(
+    'completedCount',
+  );
+  @override
+  late final GeneratedColumn<int> completedCount = GeneratedColumn<int>(
+    'completed_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: Constant(0),
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMsMeta = const VerificationMeta(
+    'updatedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAtMs = GeneratedColumn<int>(
+    'updated_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _errorJsonMeta = const VerificationMeta(
+    'errorJson',
+  );
+  @override
+  late final GeneratedColumn<String> errorJson = GeneratedColumn<String>(
+    'error_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: Constant('{}'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceKind,
+    sourceLocator,
+    sourceFingerprint,
+    status,
+    totalCount,
+    completedCount,
+    createdAtMs,
+    updatedAtMs,
+    errorJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'import_jobs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ImportJobData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source_kind')) {
+      context.handle(
+        _sourceKindMeta,
+        sourceKind.isAcceptableOrUnknown(data['source_kind']!, _sourceKindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceKindMeta);
+    }
+    if (data.containsKey('source_locator')) {
+      context.handle(
+        _sourceLocatorMeta,
+        sourceLocator.isAcceptableOrUnknown(
+          data['source_locator']!,
+          _sourceLocatorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_fingerprint')) {
+      context.handle(
+        _sourceFingerprintMeta,
+        sourceFingerprint.isAcceptableOrUnknown(
+          data['source_fingerprint']!,
+          _sourceFingerprintMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceFingerprintMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('total_count')) {
+      context.handle(
+        _totalCountMeta,
+        totalCount.isAcceptableOrUnknown(data['total_count']!, _totalCountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_totalCountMeta);
+    }
+    if (data.containsKey('completed_count')) {
+      context.handle(
+        _completedCountMeta,
+        completedCount.isAcceptableOrUnknown(
+          data['completed_count']!,
+          _completedCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    if (data.containsKey('updated_at_ms')) {
+      context.handle(
+        _updatedAtMsMeta,
+        updatedAtMs.isAcceptableOrUnknown(
+          data['updated_at_ms']!,
+          _updatedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMsMeta);
+    }
+    if (data.containsKey('error_json')) {
+      context.handle(
+        _errorJsonMeta,
+        errorJson.isAcceptableOrUnknown(data['error_json']!, _errorJsonMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ImportJobData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ImportJobData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_kind'],
+      )!,
+      sourceLocator: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_locator'],
+      ),
+      sourceFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_fingerprint'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      totalCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_count'],
+      )!,
+      completedCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}completed_count'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+      updatedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at_ms'],
+      )!,
+      errorJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_json'],
+      )!,
+    );
+  }
+
+  @override
+  $ImportJobsTable createAlias(String alias) {
+    return $ImportJobsTable(attachedDatabase, alias);
+  }
+}
+
+class ImportJobData extends DataClass implements Insertable<ImportJobData> {
+  final String id;
+  final String sourceKind;
+  final String? sourceLocator;
+  final String sourceFingerprint;
+  final String status;
+  final int totalCount;
+  final int completedCount;
+  final int createdAtMs;
+  final int updatedAtMs;
+  final String errorJson;
+  const ImportJobData({
+    required this.id,
+    required this.sourceKind,
+    this.sourceLocator,
+    required this.sourceFingerprint,
+    required this.status,
+    required this.totalCount,
+    required this.completedCount,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    required this.errorJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source_kind'] = Variable<String>(sourceKind);
+    if (!nullToAbsent || sourceLocator != null) {
+      map['source_locator'] = Variable<String>(sourceLocator);
+    }
+    map['source_fingerprint'] = Variable<String>(sourceFingerprint);
+    map['status'] = Variable<String>(status);
+    map['total_count'] = Variable<int>(totalCount);
+    map['completed_count'] = Variable<int>(completedCount);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    map['updated_at_ms'] = Variable<int>(updatedAtMs);
+    map['error_json'] = Variable<String>(errorJson);
+    return map;
+  }
+
+  ImportJobsCompanion toCompanion(bool nullToAbsent) {
+    return ImportJobsCompanion(
+      id: Value(id),
+      sourceKind: Value(sourceKind),
+      sourceLocator: sourceLocator == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceLocator),
+      sourceFingerprint: Value(sourceFingerprint),
+      status: Value(status),
+      totalCount: Value(totalCount),
+      completedCount: Value(completedCount),
+      createdAtMs: Value(createdAtMs),
+      updatedAtMs: Value(updatedAtMs),
+      errorJson: Value(errorJson),
+    );
+  }
+
+  factory ImportJobData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ImportJobData(
+      id: serializer.fromJson<String>(json['id']),
+      sourceKind: serializer.fromJson<String>(json['sourceKind']),
+      sourceLocator: serializer.fromJson<String?>(json['sourceLocator']),
+      sourceFingerprint: serializer.fromJson<String>(json['sourceFingerprint']),
+      status: serializer.fromJson<String>(json['status']),
+      totalCount: serializer.fromJson<int>(json['totalCount']),
+      completedCount: serializer.fromJson<int>(json['completedCount']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      updatedAtMs: serializer.fromJson<int>(json['updatedAtMs']),
+      errorJson: serializer.fromJson<String>(json['errorJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceKind': serializer.toJson<String>(sourceKind),
+      'sourceLocator': serializer.toJson<String?>(sourceLocator),
+      'sourceFingerprint': serializer.toJson<String>(sourceFingerprint),
+      'status': serializer.toJson<String>(status),
+      'totalCount': serializer.toJson<int>(totalCount),
+      'completedCount': serializer.toJson<int>(completedCount),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'updatedAtMs': serializer.toJson<int>(updatedAtMs),
+      'errorJson': serializer.toJson<String>(errorJson),
+    };
+  }
+
+  ImportJobData copyWith({
+    String? id,
+    String? sourceKind,
+    Value<String?> sourceLocator = const Value.absent(),
+    String? sourceFingerprint,
+    String? status,
+    int? totalCount,
+    int? completedCount,
+    int? createdAtMs,
+    int? updatedAtMs,
+    String? errorJson,
+  }) => ImportJobData(
+    id: id ?? this.id,
+    sourceKind: sourceKind ?? this.sourceKind,
+    sourceLocator: sourceLocator.present
+        ? sourceLocator.value
+        : this.sourceLocator,
+    sourceFingerprint: sourceFingerprint ?? this.sourceFingerprint,
+    status: status ?? this.status,
+    totalCount: totalCount ?? this.totalCount,
+    completedCount: completedCount ?? this.completedCount,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    errorJson: errorJson ?? this.errorJson,
+  );
+  ImportJobData copyWithCompanion(ImportJobsCompanion data) {
+    return ImportJobData(
+      id: data.id.present ? data.id.value : this.id,
+      sourceKind: data.sourceKind.present
+          ? data.sourceKind.value
+          : this.sourceKind,
+      sourceLocator: data.sourceLocator.present
+          ? data.sourceLocator.value
+          : this.sourceLocator,
+      sourceFingerprint: data.sourceFingerprint.present
+          ? data.sourceFingerprint.value
+          : this.sourceFingerprint,
+      status: data.status.present ? data.status.value : this.status,
+      totalCount: data.totalCount.present
+          ? data.totalCount.value
+          : this.totalCount,
+      completedCount: data.completedCount.present
+          ? data.completedCount.value
+          : this.completedCount,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+      updatedAtMs: data.updatedAtMs.present
+          ? data.updatedAtMs.value
+          : this.updatedAtMs,
+      errorJson: data.errorJson.present ? data.errorJson.value : this.errorJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportJobData(')
+          ..write('id: $id, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceLocator: $sourceLocator, ')
+          ..write('sourceFingerprint: $sourceFingerprint, ')
+          ..write('status: $status, ')
+          ..write('totalCount: $totalCount, ')
+          ..write('completedCount: $completedCount, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('updatedAtMs: $updatedAtMs, ')
+          ..write('errorJson: $errorJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sourceKind,
+    sourceLocator,
+    sourceFingerprint,
+    status,
+    totalCount,
+    completedCount,
+    createdAtMs,
+    updatedAtMs,
+    errorJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ImportJobData &&
+          other.id == this.id &&
+          other.sourceKind == this.sourceKind &&
+          other.sourceLocator == this.sourceLocator &&
+          other.sourceFingerprint == this.sourceFingerprint &&
+          other.status == this.status &&
+          other.totalCount == this.totalCount &&
+          other.completedCount == this.completedCount &&
+          other.createdAtMs == this.createdAtMs &&
+          other.updatedAtMs == this.updatedAtMs &&
+          other.errorJson == this.errorJson);
+}
+
+class ImportJobsCompanion extends UpdateCompanion<ImportJobData> {
+  final Value<String> id;
+  final Value<String> sourceKind;
+  final Value<String?> sourceLocator;
+  final Value<String> sourceFingerprint;
+  final Value<String> status;
+  final Value<int> totalCount;
+  final Value<int> completedCount;
+  final Value<int> createdAtMs;
+  final Value<int> updatedAtMs;
+  final Value<String> errorJson;
+  final Value<int> rowid;
+  const ImportJobsCompanion({
+    this.id = const Value.absent(),
+    this.sourceKind = const Value.absent(),
+    this.sourceLocator = const Value.absent(),
+    this.sourceFingerprint = const Value.absent(),
+    this.status = const Value.absent(),
+    this.totalCount = const Value.absent(),
+    this.completedCount = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.updatedAtMs = const Value.absent(),
+    this.errorJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ImportJobsCompanion.insert({
+    required String id,
+    required String sourceKind,
+    this.sourceLocator = const Value.absent(),
+    required String sourceFingerprint,
+    required String status,
+    required int totalCount,
+    this.completedCount = const Value.absent(),
+    required int createdAtMs,
+    required int updatedAtMs,
+    this.errorJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceKind = Value(sourceKind),
+       sourceFingerprint = Value(sourceFingerprint),
+       status = Value(status),
+       totalCount = Value(totalCount),
+       createdAtMs = Value(createdAtMs),
+       updatedAtMs = Value(updatedAtMs);
+  static Insertable<ImportJobData> custom({
+    Expression<String>? id,
+    Expression<String>? sourceKind,
+    Expression<String>? sourceLocator,
+    Expression<String>? sourceFingerprint,
+    Expression<String>? status,
+    Expression<int>? totalCount,
+    Expression<int>? completedCount,
+    Expression<int>? createdAtMs,
+    Expression<int>? updatedAtMs,
+    Expression<String>? errorJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceKind != null) 'source_kind': sourceKind,
+      if (sourceLocator != null) 'source_locator': sourceLocator,
+      if (sourceFingerprint != null) 'source_fingerprint': sourceFingerprint,
+      if (status != null) 'status': status,
+      if (totalCount != null) 'total_count': totalCount,
+      if (completedCount != null) 'completed_count': completedCount,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (updatedAtMs != null) 'updated_at_ms': updatedAtMs,
+      if (errorJson != null) 'error_json': errorJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ImportJobsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sourceKind,
+    Value<String?>? sourceLocator,
+    Value<String>? sourceFingerprint,
+    Value<String>? status,
+    Value<int>? totalCount,
+    Value<int>? completedCount,
+    Value<int>? createdAtMs,
+    Value<int>? updatedAtMs,
+    Value<String>? errorJson,
+    Value<int>? rowid,
+  }) {
+    return ImportJobsCompanion(
+      id: id ?? this.id,
+      sourceKind: sourceKind ?? this.sourceKind,
+      sourceLocator: sourceLocator ?? this.sourceLocator,
+      sourceFingerprint: sourceFingerprint ?? this.sourceFingerprint,
+      status: status ?? this.status,
+      totalCount: totalCount ?? this.totalCount,
+      completedCount: completedCount ?? this.completedCount,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      errorJson: errorJson ?? this.errorJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceKind.present) {
+      map['source_kind'] = Variable<String>(sourceKind.value);
+    }
+    if (sourceLocator.present) {
+      map['source_locator'] = Variable<String>(sourceLocator.value);
+    }
+    if (sourceFingerprint.present) {
+      map['source_fingerprint'] = Variable<String>(sourceFingerprint.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (totalCount.present) {
+      map['total_count'] = Variable<int>(totalCount.value);
+    }
+    if (completedCount.present) {
+      map['completed_count'] = Variable<int>(completedCount.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (updatedAtMs.present) {
+      map['updated_at_ms'] = Variable<int>(updatedAtMs.value);
+    }
+    if (errorJson.present) {
+      map['error_json'] = Variable<String>(errorJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportJobsCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceLocator: $sourceLocator, ')
+          ..write('sourceFingerprint: $sourceFingerprint, ')
+          ..write('status: $status, ')
+          ..write('totalCount: $totalCount, ')
+          ..write('completedCount: $completedCount, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('updatedAtMs: $updatedAtMs, ')
+          ..write('errorJson: $errorJson, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ImportItemsTable extends ImportItems
+    with TableInfo<$ImportItemsTable, ImportItemData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ImportItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES import_jobs (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _sourcePathMeta = const VerificationMeta(
+    'sourcePath',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePath = GeneratedColumn<String>(
+    'source_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceSha256Meta = const VerificationMeta(
+    'sourceSha256',
+  );
+  @override
+  late final GeneratedColumn<String> sourceSha256 = GeneratedColumn<String>(
+    'source_sha256',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+    'state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetNodeIdMeta = const VerificationMeta(
+    'targetNodeId',
+  );
+  @override
+  late final GeneratedColumn<String> targetNodeId = GeneratedColumn<String>(
+    'target_node_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _targetPathMeta = const VerificationMeta(
+    'targetPath',
+  );
+  @override
+  late final GeneratedColumn<String> targetPath = GeneratedColumn<String>(
+    'target_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorJsonMeta = const VerificationMeta(
+    'errorJson',
+  );
+  @override
+  late final GeneratedColumn<String> errorJson = GeneratedColumn<String>(
+    'error_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: Constant('{}'),
+  );
+  static const VerificationMeta _updatedAtMsMeta = const VerificationMeta(
+    'updatedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAtMs = GeneratedColumn<int>(
+    'updated_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    jobId,
+    sourcePath,
+    sourceSha256,
+    state,
+    targetNodeId,
+    targetPath,
+    errorJson,
+    updatedAtMs,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'import_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ImportItemData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('source_path')) {
+      context.handle(
+        _sourcePathMeta,
+        sourcePath.isAcceptableOrUnknown(data['source_path']!, _sourcePathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourcePathMeta);
+    }
+    if (data.containsKey('source_sha256')) {
+      context.handle(
+        _sourceSha256Meta,
+        sourceSha256.isAcceptableOrUnknown(
+          data['source_sha256']!,
+          _sourceSha256Meta,
+        ),
+      );
+    }
+    if (data.containsKey('state')) {
+      context.handle(
+        _stateMeta,
+        state.isAcceptableOrUnknown(data['state']!, _stateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stateMeta);
+    }
+    if (data.containsKey('target_node_id')) {
+      context.handle(
+        _targetNodeIdMeta,
+        targetNodeId.isAcceptableOrUnknown(
+          data['target_node_id']!,
+          _targetNodeIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('target_path')) {
+      context.handle(
+        _targetPathMeta,
+        targetPath.isAcceptableOrUnknown(data['target_path']!, _targetPathMeta),
+      );
+    }
+    if (data.containsKey('error_json')) {
+      context.handle(
+        _errorJsonMeta,
+        errorJson.isAcceptableOrUnknown(data['error_json']!, _errorJsonMeta),
+      );
+    }
+    if (data.containsKey('updated_at_ms')) {
+      context.handle(
+        _updatedAtMsMeta,
+        updatedAtMs.isAcceptableOrUnknown(
+          data['updated_at_ms']!,
+          _updatedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {jobId, sourcePath};
+  @override
+  ImportItemData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ImportItemData(
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      sourcePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_path'],
+      )!,
+      sourceSha256: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_sha256'],
+      ),
+      state: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}state'],
+      )!,
+      targetNodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_node_id'],
+      ),
+      targetPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_path'],
+      ),
+      errorJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_json'],
+      )!,
+      updatedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $ImportItemsTable createAlias(String alias) {
+    return $ImportItemsTable(attachedDatabase, alias);
+  }
+}
+
+class ImportItemData extends DataClass implements Insertable<ImportItemData> {
+  final String jobId;
+  final String sourcePath;
+  final String? sourceSha256;
+  final String state;
+  final String? targetNodeId;
+  final String? targetPath;
+  final String errorJson;
+  final int updatedAtMs;
+  const ImportItemData({
+    required this.jobId,
+    required this.sourcePath,
+    this.sourceSha256,
+    required this.state,
+    this.targetNodeId,
+    this.targetPath,
+    required this.errorJson,
+    required this.updatedAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['job_id'] = Variable<String>(jobId);
+    map['source_path'] = Variable<String>(sourcePath);
+    if (!nullToAbsent || sourceSha256 != null) {
+      map['source_sha256'] = Variable<String>(sourceSha256);
+    }
+    map['state'] = Variable<String>(state);
+    if (!nullToAbsent || targetNodeId != null) {
+      map['target_node_id'] = Variable<String>(targetNodeId);
+    }
+    if (!nullToAbsent || targetPath != null) {
+      map['target_path'] = Variable<String>(targetPath);
+    }
+    map['error_json'] = Variable<String>(errorJson);
+    map['updated_at_ms'] = Variable<int>(updatedAtMs);
+    return map;
+  }
+
+  ImportItemsCompanion toCompanion(bool nullToAbsent) {
+    return ImportItemsCompanion(
+      jobId: Value(jobId),
+      sourcePath: Value(sourcePath),
+      sourceSha256: sourceSha256 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceSha256),
+      state: Value(state),
+      targetNodeId: targetNodeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetNodeId),
+      targetPath: targetPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetPath),
+      errorJson: Value(errorJson),
+      updatedAtMs: Value(updatedAtMs),
+    );
+  }
+
+  factory ImportItemData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ImportItemData(
+      jobId: serializer.fromJson<String>(json['jobId']),
+      sourcePath: serializer.fromJson<String>(json['sourcePath']),
+      sourceSha256: serializer.fromJson<String?>(json['sourceSha256']),
+      state: serializer.fromJson<String>(json['state']),
+      targetNodeId: serializer.fromJson<String?>(json['targetNodeId']),
+      targetPath: serializer.fromJson<String?>(json['targetPath']),
+      errorJson: serializer.fromJson<String>(json['errorJson']),
+      updatedAtMs: serializer.fromJson<int>(json['updatedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'jobId': serializer.toJson<String>(jobId),
+      'sourcePath': serializer.toJson<String>(sourcePath),
+      'sourceSha256': serializer.toJson<String?>(sourceSha256),
+      'state': serializer.toJson<String>(state),
+      'targetNodeId': serializer.toJson<String?>(targetNodeId),
+      'targetPath': serializer.toJson<String?>(targetPath),
+      'errorJson': serializer.toJson<String>(errorJson),
+      'updatedAtMs': serializer.toJson<int>(updatedAtMs),
+    };
+  }
+
+  ImportItemData copyWith({
+    String? jobId,
+    String? sourcePath,
+    Value<String?> sourceSha256 = const Value.absent(),
+    String? state,
+    Value<String?> targetNodeId = const Value.absent(),
+    Value<String?> targetPath = const Value.absent(),
+    String? errorJson,
+    int? updatedAtMs,
+  }) => ImportItemData(
+    jobId: jobId ?? this.jobId,
+    sourcePath: sourcePath ?? this.sourcePath,
+    sourceSha256: sourceSha256.present ? sourceSha256.value : this.sourceSha256,
+    state: state ?? this.state,
+    targetNodeId: targetNodeId.present ? targetNodeId.value : this.targetNodeId,
+    targetPath: targetPath.present ? targetPath.value : this.targetPath,
+    errorJson: errorJson ?? this.errorJson,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+  ImportItemData copyWithCompanion(ImportItemsCompanion data) {
+    return ImportItemData(
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      sourcePath: data.sourcePath.present
+          ? data.sourcePath.value
+          : this.sourcePath,
+      sourceSha256: data.sourceSha256.present
+          ? data.sourceSha256.value
+          : this.sourceSha256,
+      state: data.state.present ? data.state.value : this.state,
+      targetNodeId: data.targetNodeId.present
+          ? data.targetNodeId.value
+          : this.targetNodeId,
+      targetPath: data.targetPath.present
+          ? data.targetPath.value
+          : this.targetPath,
+      errorJson: data.errorJson.present ? data.errorJson.value : this.errorJson,
+      updatedAtMs: data.updatedAtMs.present
+          ? data.updatedAtMs.value
+          : this.updatedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportItemData(')
+          ..write('jobId: $jobId, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceSha256: $sourceSha256, ')
+          ..write('state: $state, ')
+          ..write('targetNodeId: $targetNodeId, ')
+          ..write('targetPath: $targetPath, ')
+          ..write('errorJson: $errorJson, ')
+          ..write('updatedAtMs: $updatedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    jobId,
+    sourcePath,
+    sourceSha256,
+    state,
+    targetNodeId,
+    targetPath,
+    errorJson,
+    updatedAtMs,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ImportItemData &&
+          other.jobId == this.jobId &&
+          other.sourcePath == this.sourcePath &&
+          other.sourceSha256 == this.sourceSha256 &&
+          other.state == this.state &&
+          other.targetNodeId == this.targetNodeId &&
+          other.targetPath == this.targetPath &&
+          other.errorJson == this.errorJson &&
+          other.updatedAtMs == this.updatedAtMs);
+}
+
+class ImportItemsCompanion extends UpdateCompanion<ImportItemData> {
+  final Value<String> jobId;
+  final Value<String> sourcePath;
+  final Value<String?> sourceSha256;
+  final Value<String> state;
+  final Value<String?> targetNodeId;
+  final Value<String?> targetPath;
+  final Value<String> errorJson;
+  final Value<int> updatedAtMs;
+  final Value<int> rowid;
+  const ImportItemsCompanion({
+    this.jobId = const Value.absent(),
+    this.sourcePath = const Value.absent(),
+    this.sourceSha256 = const Value.absent(),
+    this.state = const Value.absent(),
+    this.targetNodeId = const Value.absent(),
+    this.targetPath = const Value.absent(),
+    this.errorJson = const Value.absent(),
+    this.updatedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ImportItemsCompanion.insert({
+    required String jobId,
+    required String sourcePath,
+    this.sourceSha256 = const Value.absent(),
+    required String state,
+    this.targetNodeId = const Value.absent(),
+    this.targetPath = const Value.absent(),
+    this.errorJson = const Value.absent(),
+    required int updatedAtMs,
+    this.rowid = const Value.absent(),
+  }) : jobId = Value(jobId),
+       sourcePath = Value(sourcePath),
+       state = Value(state),
+       updatedAtMs = Value(updatedAtMs);
+  static Insertable<ImportItemData> custom({
+    Expression<String>? jobId,
+    Expression<String>? sourcePath,
+    Expression<String>? sourceSha256,
+    Expression<String>? state,
+    Expression<String>? targetNodeId,
+    Expression<String>? targetPath,
+    Expression<String>? errorJson,
+    Expression<int>? updatedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (jobId != null) 'job_id': jobId,
+      if (sourcePath != null) 'source_path': sourcePath,
+      if (sourceSha256 != null) 'source_sha256': sourceSha256,
+      if (state != null) 'state': state,
+      if (targetNodeId != null) 'target_node_id': targetNodeId,
+      if (targetPath != null) 'target_path': targetPath,
+      if (errorJson != null) 'error_json': errorJson,
+      if (updatedAtMs != null) 'updated_at_ms': updatedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ImportItemsCompanion copyWith({
+    Value<String>? jobId,
+    Value<String>? sourcePath,
+    Value<String?>? sourceSha256,
+    Value<String>? state,
+    Value<String?>? targetNodeId,
+    Value<String?>? targetPath,
+    Value<String>? errorJson,
+    Value<int>? updatedAtMs,
+    Value<int>? rowid,
+  }) {
+    return ImportItemsCompanion(
+      jobId: jobId ?? this.jobId,
+      sourcePath: sourcePath ?? this.sourcePath,
+      sourceSha256: sourceSha256 ?? this.sourceSha256,
+      state: state ?? this.state,
+      targetNodeId: targetNodeId ?? this.targetNodeId,
+      targetPath: targetPath ?? this.targetPath,
+      errorJson: errorJson ?? this.errorJson,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (sourcePath.present) {
+      map['source_path'] = Variable<String>(sourcePath.value);
+    }
+    if (sourceSha256.present) {
+      map['source_sha256'] = Variable<String>(sourceSha256.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (targetNodeId.present) {
+      map['target_node_id'] = Variable<String>(targetNodeId.value);
+    }
+    if (targetPath.present) {
+      map['target_path'] = Variable<String>(targetPath.value);
+    }
+    if (errorJson.present) {
+      map['error_json'] = Variable<String>(errorJson.value);
+    }
+    if (updatedAtMs.present) {
+      map['updated_at_ms'] = Variable<int>(updatedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportItemsCompanion(')
+          ..write('jobId: $jobId, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceSha256: $sourceSha256, ')
+          ..write('state: $state, ')
+          ..write('targetNodeId: $targetNodeId, ')
+          ..write('targetPath: $targetPath, ')
+          ..write('errorJson: $errorJson, ')
+          ..write('updatedAtMs: $updatedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$TyLogDatabase extends GeneratedDatabase {
   _$TyLogDatabase(QueryExecutor e) : super(e);
   $TyLogDatabaseManager get managers => $TyLogDatabaseManager(this);
@@ -2826,6 +3997,8 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   late final $OutboxEntriesTable outboxEntries = $OutboxEntriesTable(this);
   late final $DerivedInvalidationsTable derivedInvalidations =
       $DerivedInvalidationsTable(this);
+  late final $ImportJobsTable importJobs = $ImportJobsTable(this);
+  late final $ImportItemsTable importItems = $ImportItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2838,7 +4011,19 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
     revisions,
     outboxEntries,
     derivedInvalidations,
+    importJobs,
+    importItems,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'import_jobs',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('import_items', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$DatabaseMetadataTableCreateCompanionBuilder =
@@ -5343,6 +6528,800 @@ typedef $$DerivedInvalidationsTableProcessedTableManager =
       DerivedInvalidation,
       PrefetchHooks Function({bool revisionId})
     >;
+typedef $$ImportJobsTableCreateCompanionBuilder =
+    ImportJobsCompanion Function({
+      required String id,
+      required String sourceKind,
+      Value<String?> sourceLocator,
+      required String sourceFingerprint,
+      required String status,
+      required int totalCount,
+      Value<int> completedCount,
+      required int createdAtMs,
+      required int updatedAtMs,
+      Value<String> errorJson,
+      Value<int> rowid,
+    });
+typedef $$ImportJobsTableUpdateCompanionBuilder =
+    ImportJobsCompanion Function({
+      Value<String> id,
+      Value<String> sourceKind,
+      Value<String?> sourceLocator,
+      Value<String> sourceFingerprint,
+      Value<String> status,
+      Value<int> totalCount,
+      Value<int> completedCount,
+      Value<int> createdAtMs,
+      Value<int> updatedAtMs,
+      Value<String> errorJson,
+      Value<int> rowid,
+    });
+
+final class $$ImportJobsTableReferences
+    extends BaseReferences<_$TyLogDatabase, $ImportJobsTable, ImportJobData> {
+  $$ImportJobsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ImportItemsTable, List<ImportItemData>>
+  _importItemsRefsTable(_$TyLogDatabase db) => MultiTypedResultKey.fromTable(
+    db.importItems,
+    aliasName: 'import_jobs__id__import_items__job_id',
+  );
+
+  $$ImportItemsTableProcessedTableManager get importItemsRefs {
+    final manager = $$ImportItemsTableTableManager(
+      $_db,
+      $_db.importItems,
+    ).filter((f) => f.jobId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_importItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ImportJobsTableFilterComposer
+    extends Composer<_$TyLogDatabase, $ImportJobsTable> {
+  $$ImportJobsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceKind => $composableBuilder(
+    column: $table.sourceKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceLocator => $composableBuilder(
+    column: $table.sourceLocator,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceFingerprint => $composableBuilder(
+    column: $table.sourceFingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalCount => $composableBuilder(
+    column: $table.totalCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get completedCount => $composableBuilder(
+    column: $table.completedCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorJson => $composableBuilder(
+    column: $table.errorJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> importItemsRefs(
+    Expression<bool> Function($$ImportItemsTableFilterComposer f) f,
+  ) {
+    final $$ImportItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importItems,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.importItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ImportJobsTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $ImportJobsTable> {
+  $$ImportJobsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceKind => $composableBuilder(
+    column: $table.sourceKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceLocator => $composableBuilder(
+    column: $table.sourceLocator,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceFingerprint => $composableBuilder(
+    column: $table.sourceFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalCount => $composableBuilder(
+    column: $table.totalCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get completedCount => $composableBuilder(
+    column: $table.completedCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorJson => $composableBuilder(
+    column: $table.errorJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ImportJobsTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $ImportJobsTable> {
+  $$ImportJobsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceKind => $composableBuilder(
+    column: $table.sourceKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceLocator => $composableBuilder(
+    column: $table.sourceLocator,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceFingerprint => $composableBuilder(
+    column: $table.sourceFingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get totalCount => $composableBuilder(
+    column: $table.totalCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get completedCount => $composableBuilder(
+    column: $table.completedCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorJson =>
+      $composableBuilder(column: $table.errorJson, builder: (column) => column);
+
+  Expression<T> importItemsRefs<T extends Object>(
+    Expression<T> Function($$ImportItemsTableAnnotationComposer a) f,
+  ) {
+    final $$ImportItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importItems,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.importItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ImportJobsTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $ImportJobsTable,
+          ImportJobData,
+          $$ImportJobsTableFilterComposer,
+          $$ImportJobsTableOrderingComposer,
+          $$ImportJobsTableAnnotationComposer,
+          $$ImportJobsTableCreateCompanionBuilder,
+          $$ImportJobsTableUpdateCompanionBuilder,
+          (ImportJobData, $$ImportJobsTableReferences),
+          ImportJobData,
+          PrefetchHooks Function({bool importItemsRefs})
+        > {
+  $$ImportJobsTableTableManager(_$TyLogDatabase db, $ImportJobsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ImportJobsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ImportJobsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ImportJobsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sourceKind = const Value.absent(),
+                Value<String?> sourceLocator = const Value.absent(),
+                Value<String> sourceFingerprint = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> totalCount = const Value.absent(),
+                Value<int> completedCount = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> updatedAtMs = const Value.absent(),
+                Value<String> errorJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImportJobsCompanion(
+                id: id,
+                sourceKind: sourceKind,
+                sourceLocator: sourceLocator,
+                sourceFingerprint: sourceFingerprint,
+                status: status,
+                totalCount: totalCount,
+                completedCount: completedCount,
+                createdAtMs: createdAtMs,
+                updatedAtMs: updatedAtMs,
+                errorJson: errorJson,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sourceKind,
+                Value<String?> sourceLocator = const Value.absent(),
+                required String sourceFingerprint,
+                required String status,
+                required int totalCount,
+                Value<int> completedCount = const Value.absent(),
+                required int createdAtMs,
+                required int updatedAtMs,
+                Value<String> errorJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImportJobsCompanion.insert(
+                id: id,
+                sourceKind: sourceKind,
+                sourceLocator: sourceLocator,
+                sourceFingerprint: sourceFingerprint,
+                status: status,
+                totalCount: totalCount,
+                completedCount: completedCount,
+                createdAtMs: createdAtMs,
+                updatedAtMs: updatedAtMs,
+                errorJson: errorJson,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ImportJobsTable, ImportJobData>(table),
+                  $$ImportJobsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({importItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (importItemsRefs) db.importItems],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (importItemsRefs)
+                    await $_getPrefetchedData<
+                      ImportJobData,
+                      $ImportJobsTable,
+                      ImportItemData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ImportJobsTableReferences
+                          ._importItemsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$ImportJobsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).importItemsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.jobId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ImportJobsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $ImportJobsTable,
+      ImportJobData,
+      $$ImportJobsTableFilterComposer,
+      $$ImportJobsTableOrderingComposer,
+      $$ImportJobsTableAnnotationComposer,
+      $$ImportJobsTableCreateCompanionBuilder,
+      $$ImportJobsTableUpdateCompanionBuilder,
+      (ImportJobData, $$ImportJobsTableReferences),
+      ImportJobData,
+      PrefetchHooks Function({bool importItemsRefs})
+    >;
+typedef $$ImportItemsTableCreateCompanionBuilder =
+    ImportItemsCompanion Function({
+      required String jobId,
+      required String sourcePath,
+      Value<String?> sourceSha256,
+      required String state,
+      Value<String?> targetNodeId,
+      Value<String?> targetPath,
+      Value<String> errorJson,
+      required int updatedAtMs,
+      Value<int> rowid,
+    });
+typedef $$ImportItemsTableUpdateCompanionBuilder =
+    ImportItemsCompanion Function({
+      Value<String> jobId,
+      Value<String> sourcePath,
+      Value<String?> sourceSha256,
+      Value<String> state,
+      Value<String?> targetNodeId,
+      Value<String?> targetPath,
+      Value<String> errorJson,
+      Value<int> updatedAtMs,
+      Value<int> rowid,
+    });
+
+final class $$ImportItemsTableReferences
+    extends BaseReferences<_$TyLogDatabase, $ImportItemsTable, ImportItemData> {
+  $$ImportItemsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ImportJobsTable _jobIdTable(_$TyLogDatabase db) =>
+      db.importJobs.createAlias('import_items__job_id__import_jobs__id');
+
+  $$ImportJobsTableProcessedTableManager get jobId {
+    final $_column = $_itemColumn<String>('job_id')!;
+
+    final manager = $$ImportJobsTableTableManager(
+      $_db,
+      $_db.importJobs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_jobIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ImportItemsTableFilterComposer
+    extends Composer<_$TyLogDatabase, $ImportItemsTable> {
+  $$ImportItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceSha256 => $composableBuilder(
+    column: $table.sourceSha256,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetNodeId => $composableBuilder(
+    column: $table.targetNodeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorJson => $composableBuilder(
+    column: $table.errorJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ImportJobsTableFilterComposer get jobId {
+    final $$ImportJobsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.importJobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportJobsTableFilterComposer(
+            $db: $db,
+            $table: $db.importJobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ImportItemsTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $ImportItemsTable> {
+  $$ImportItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceSha256 => $composableBuilder(
+    column: $table.sourceSha256,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetNodeId => $composableBuilder(
+    column: $table.targetNodeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorJson => $composableBuilder(
+    column: $table.errorJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ImportJobsTableOrderingComposer get jobId {
+    final $$ImportJobsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.importJobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportJobsTableOrderingComposer(
+            $db: $db,
+            $table: $db.importJobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ImportItemsTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $ImportItemsTable> {
+  $$ImportItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceSha256 => $composableBuilder(
+    column: $table.sourceSha256,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<String> get targetNodeId => $composableBuilder(
+    column: $table.targetNodeId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorJson =>
+      $composableBuilder(column: $table.errorJson, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => column,
+  );
+
+  $$ImportJobsTableAnnotationComposer get jobId {
+    final $$ImportJobsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.importJobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportJobsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.importJobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ImportItemsTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $ImportItemsTable,
+          ImportItemData,
+          $$ImportItemsTableFilterComposer,
+          $$ImportItemsTableOrderingComposer,
+          $$ImportItemsTableAnnotationComposer,
+          $$ImportItemsTableCreateCompanionBuilder,
+          $$ImportItemsTableUpdateCompanionBuilder,
+          (ImportItemData, $$ImportItemsTableReferences),
+          ImportItemData,
+          PrefetchHooks Function({bool jobId})
+        > {
+  $$ImportItemsTableTableManager(_$TyLogDatabase db, $ImportItemsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ImportItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ImportItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ImportItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> jobId = const Value.absent(),
+                Value<String> sourcePath = const Value.absent(),
+                Value<String?> sourceSha256 = const Value.absent(),
+                Value<String> state = const Value.absent(),
+                Value<String?> targetNodeId = const Value.absent(),
+                Value<String?> targetPath = const Value.absent(),
+                Value<String> errorJson = const Value.absent(),
+                Value<int> updatedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImportItemsCompanion(
+                jobId: jobId,
+                sourcePath: sourcePath,
+                sourceSha256: sourceSha256,
+                state: state,
+                targetNodeId: targetNodeId,
+                targetPath: targetPath,
+                errorJson: errorJson,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String jobId,
+                required String sourcePath,
+                Value<String?> sourceSha256 = const Value.absent(),
+                required String state,
+                Value<String?> targetNodeId = const Value.absent(),
+                Value<String?> targetPath = const Value.absent(),
+                Value<String> errorJson = const Value.absent(),
+                required int updatedAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => ImportItemsCompanion.insert(
+                jobId: jobId,
+                sourcePath: sourcePath,
+                sourceSha256: sourceSha256,
+                state: state,
+                targetNodeId: targetNodeId,
+                targetPath: targetPath,
+                errorJson: errorJson,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ImportItemsTable, ImportItemData>(table),
+                  $$ImportItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({jobId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (jobId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.jobId,
+                                referencedTable: $$ImportItemsTableReferences
+                                    ._jobIdTable(db),
+                                referencedColumn: $$ImportItemsTableReferences
+                                    ._jobIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ImportItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $ImportItemsTable,
+      ImportItemData,
+      $$ImportItemsTableFilterComposer,
+      $$ImportItemsTableOrderingComposer,
+      $$ImportItemsTableAnnotationComposer,
+      $$ImportItemsTableCreateCompanionBuilder,
+      $$ImportItemsTableUpdateCompanionBuilder,
+      (ImportItemData, $$ImportItemsTableReferences),
+      ImportItemData,
+      PrefetchHooks Function({bool jobId})
+    >;
 
 class $TyLogDatabaseManager {
   final _$TyLogDatabase _db;
@@ -5361,4 +7340,8 @@ class $TyLogDatabaseManager {
       $$OutboxEntriesTableTableManager(_db, _db.outboxEntries);
   $$DerivedInvalidationsTableTableManager get derivedInvalidations =>
       $$DerivedInvalidationsTableTableManager(_db, _db.derivedInvalidations);
+  $$ImportJobsTableTableManager get importJobs =>
+      $$ImportJobsTableTableManager(_db, _db.importJobs);
+  $$ImportItemsTableTableManager get importItems =>
+      $$ImportItemsTableTableManager(_db, _db.importItems);
 }

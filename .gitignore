@@ -73,6 +73,10 @@ audit/
 # Local fixture vault; tests use test/fixtures/tylog_format_v1
 sample_vault/
 
+# Private embedding benchmark vectors.
+*.npy
+*.npz
+
 # Reproducible synthetic scale data; commit the generator and manifest evidence.
 /tylog-scale-fixture/
 

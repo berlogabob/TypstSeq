@@ -362,8 +362,8 @@ void main() {
       await db.close();
     });
 
-    test('v2 database migrates to v4 preserving metadata', () async {
-      final file = File('${tempDir.path}/v2_to_v3.db');
+    test('v2 database migrates to v5 preserving metadata', () async {
+      final file = File('${tempDir.path}/v2_to_v5.db');
 
       // Create a v2 database file
       final sqlite = sqlite3.open(file.path);
@@ -383,7 +383,7 @@ void main() {
 
       // Open with Drift to trigger migration
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(4));
+      expect(db.schemaVersion, equals(5));
 
       // Verify metadata preserved
       final metadata = await db.select(db.databaseMetadata).get();
@@ -403,7 +403,7 @@ void main() {
         SELECT name FROM sqlite_master
         WHERE type='index' AND name LIKE 'idx_%'
       ''').get();
-      expect(indexes.length, equals(10));
+      expect(indexes.length, equals(11));
 
       await db.close();
     });

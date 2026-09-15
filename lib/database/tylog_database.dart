@@ -119,6 +119,53 @@ class DerivedInvalidations extends Table {
   Set<Column> get primaryKey => {revisionId};
 }
 
+@DataClassName('ImportJobData')
+class ImportJobs extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceKind => text()();
+  TextColumn get sourceLocator => text().nullable()();
+  TextColumn get sourceFingerprint => text()();
+  TextColumn get status => text()();
+  IntColumn get totalCount => integer()();
+  IntColumn get completedCount => integer().withDefault(Constant(0))();
+  IntColumn get createdAtMs => integer()();
+  IntColumn get updatedAtMs => integer()();
+  TextColumn get errorJson => text().withDefault(Constant('{}'))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (json_valid(error_json))',
+    'CHECK (total_count >= 0)',
+    'CHECK (completed_count >= 0 AND completed_count <= total_count)',
+    "CHECK (status IN ('running', 'completed', 'failed', 'cancelled'))",
+  ];
+}
+
+@DataClassName('ImportItemData')
+class ImportItems extends Table {
+  TextColumn get jobId =>
+      text().references(ImportJobs, #id, onDelete: KeyAction.cascade)();
+  TextColumn get sourcePath => text()();
+  TextColumn get sourceSha256 => text().nullable()();
+  TextColumn get state => text()();
+  TextColumn get targetNodeId => text().nullable()();
+  TextColumn get targetPath => text().nullable()();
+  TextColumn get errorJson => text().withDefault(Constant('{}'))();
+  IntColumn get updatedAtMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {jobId, sourcePath};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (json_valid(error_json))',
+    "CHECK (state IN ('pending', 'written', 'skipped', 'failed'))",
+  ];
+}
+
 @DriftDatabase(
   tables: [
     DatabaseMetadata,
@@ -128,13 +175,15 @@ class DerivedInvalidations extends Table {
     Revisions,
     OutboxEntries,
     DerivedInvalidations,
+    ImportJobs,
+    ImportItems,
   ],
 )
 class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -143,9 +192,10 @@ class TyLogDatabase extends _$TyLogDatabase {
       await _createIndexes(m);
       await _createQueueIndexes(m);
       await _createRevisionGuards(m);
+      await _createImportIndexes(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 4 || from < 1 || from > 3) {
+      if (to != 5 || from < 1 || from > 4) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -156,10 +206,17 @@ class TyLogDatabase extends _$TyLogDatabase {
       if (from < 3) {
         await _createGraphSchema(m);
       }
-      await m.create(outboxEntries);
-      await m.create(derivedInvalidations);
-      await _createQueueIndexes(m);
-      await _createRevisionGuards(m);
+      if (from < 4) {
+        await m.create(outboxEntries);
+        await m.create(derivedInvalidations);
+        await _createQueueIndexes(m);
+        await _createRevisionGuards(m);
+      }
+      if (from < 5) {
+        await m.create(importJobs);
+        await m.create(importItems);
+        await _createImportIndexes(m);
+      }
     },
   );
 
@@ -220,6 +277,82 @@ class TyLogDatabase extends _$TyLogDatabase {
     ''');
   }
 
+  Future<void> _createImportIndexes(Migrator m) async {
+    await m.database.customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_import_items_job_state ON import_items(job_id, state)',
+    );
+  }
+
+  Future<List<ImportItemData>> pendingImportItems(
+    String jobId, {
+    int limit = 100,
+  }) =>
+      (select(importItems)
+            ..where((t) => t.jobId.equals(jobId) & t.state.equals('pending'))
+            ..limit(limit))
+          .get();
+
+  Future<void> markImportItem({
+    required ImportItemData item,
+    required int completedCount,
+    required String status,
+  }) async {
+    await transaction(() async {
+      await into(importItems).insertOnConflictUpdate(item);
+      await (update(importJobs)..where((t) => t.id.equals(item.jobId))).write(
+        ImportJobsCompanion(
+          completedCount: Value(completedCount),
+          status: Value(status),
+          updatedAtMs: Value(item.updatedAtMs),
+        ),
+      );
+    });
+  }
+
+  Future<void> createOrResumeImportJob(
+    ImportJobData job,
+    List<ImportItemData> items,
+  ) async {
+    final paths = <String>{};
+    for (final item in items) {
+      if (item.jobId != job.id || !paths.add(item.sourcePath)) {
+        throw ArgumentError(
+          'Import items must belong to the job and be unique',
+        );
+      }
+      if (item.state != 'pending') {
+        throw ArgumentError('New import items must be pending');
+      }
+    }
+    if (job.status != 'running' ||
+        job.completedCount != 0 ||
+        items.length != job.totalCount) {
+      throw ArgumentError(
+        'Import job must start running with all pending items',
+      );
+    }
+    await transaction(() async {
+      final existing = await (select(
+        importJobs,
+      )..where((table) => table.id.equals(job.id))).getSingleOrNull();
+      if (existing != null) {
+        if (existing.sourceKind != job.sourceKind ||
+            existing.sourceFingerprint != job.sourceFingerprint ||
+            existing.totalCount != job.totalCount) {
+          throw ArgumentError('Import job identity cannot change');
+        }
+        await batch((batch) {
+          batch.insertAll(importItems, items, mode: InsertMode.insertOrIgnore);
+        });
+        return;
+      }
+      await into(importJobs).insert(job);
+      await batch((batch) {
+        batch.insertAll(importItems, items);
+      });
+    });
+  }
+
   Future<void> commitNodeEdit({
     required NodeData node,
     required RevisionData revision,
@@ -228,15 +361,56 @@ class TyLogDatabase extends _$TyLogDatabase {
       throw ArgumentError('Revision must describe the edited node');
     }
     await transaction(() async {
-      await into(nodes).insertOnConflictUpdate(node);
-      await into(revisions).insert(revision);
-      await into(outboxEntries).insert(
-        OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
-      );
-      await into(derivedInvalidations).insert(
-        DerivedInvalidation(
-          revisionId: revision.id,
-          createdAtMs: revision.createdAtMs,
+      await _commitNodeRows(node: node, revision: revision);
+    });
+  }
+
+  Future<void> _commitNodeRows({
+    required NodeData node,
+    required RevisionData revision,
+  }) async {
+    await into(nodes).insertOnConflictUpdate(node);
+    await into(revisions).insert(revision);
+    await into(outboxEntries).insert(
+      OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
+    );
+    await into(derivedInvalidations).insert(
+      DerivedInvalidation(
+        revisionId: revision.id,
+        createdAtMs: revision.createdAtMs,
+      ),
+    );
+  }
+
+  Future<void> commitImportedNode({
+    required NodeData node,
+    required RevisionData revision,
+    required ImportItemData item,
+    required int completedCount,
+    required String status,
+  }) async {
+    if (revision.entityKind != 'node' || revision.entityId != node.id) {
+      throw ArgumentError('Revision must describe the edited node');
+    }
+    if (item.jobId.isEmpty ||
+        item.targetNodeId != node.id ||
+        item.state != 'written') {
+      throw ArgumentError('Import item must target the imported node');
+    }
+    await transaction(() async {
+      final job = await (select(
+        importJobs,
+      )..where((table) => table.id.equals(item.jobId))).getSingleOrNull();
+      if (job == null) throw ArgumentError('Import job does not exist');
+      await _commitNodeRows(node: node, revision: revision);
+      await into(importItems).insertOnConflictUpdate(item);
+      await (update(
+        importJobs,
+      )..where((table) => table.id.equals(item.jobId))).write(
+        ImportJobsCompanion(
+          completedCount: Value(completedCount),
+          status: Value(status),
+          updatedAtMs: Value(item.updatedAtMs),
         ),
       );
     });

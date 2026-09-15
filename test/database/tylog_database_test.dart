@@ -18,10 +18,10 @@ void main() {
       }
     });
 
-    test('fresh creation has schema version 4', () async {
+    test('fresh creation has schema version 5', () async {
       final file = File('${tempDir.path}/fresh.db');
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(4));
+      expect(db.schemaVersion, equals(5));
       await db.close();
     });
 
@@ -89,7 +89,7 @@ void main() {
       await db.close();
     });
 
-    test('v1 database migrates to v4, preserving rows', () async {
+    test('v1 database migrates to v5, preserving rows', () async {
       final file = File('${tempDir.path}/v1_migration.db');
 
       // Create a v1 database file using sqlite3
@@ -109,9 +109,9 @@ void main() {
       ''');
       sqlite.close();
 
-      // Now open with Drift, which should migrate to v4
+      // Now open with Drift, which should migrate to v5
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(4));
+      expect(db.schemaVersion, equals(5));
 
       // Verify the row was preserved
       final rows = await db.select(db.databaseMetadata).get();
@@ -167,10 +167,10 @@ void main() {
     test('unsupported migration version is rejected', () async {
       final file = File('${tempDir.path}/unsupported_migration.db');
 
-      // Create a v5 database file (unsupported)
+      // Create a v6 database file (unsupported)
       final sqlite = sqlite3.open(file.path);
       sqlite.execute('''
-        PRAGMA user_version = 5;
+        PRAGMA user_version = 6;
       ''');
       sqlite.execute('''
         CREATE TABLE database_metadata (
