@@ -5,7 +5,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:tylog/database/tylog_database.dart';
 
 void main() {
-  group('TyLogDatabase Graph Schema (v3)', () {
+  group('TyLogDatabase Graph Schema', () {
     late Directory tempDir;
 
     setUp(() async {
@@ -362,7 +362,7 @@ void main() {
       await db.close();
     });
 
-    test('v2 database migrates to v3 preserving metadata', () async {
+    test('v2 database migrates to v4 preserving metadata', () async {
       final file = File('${tempDir.path}/v2_to_v3.db');
 
       // Create a v2 database file
@@ -383,7 +383,7 @@ void main() {
 
       // Open with Drift to trigger migration
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(3));
+      expect(db.schemaVersion, equals(4));
 
       // Verify metadata preserved
       final metadata = await db.select(db.databaseMetadata).get();
@@ -403,7 +403,7 @@ void main() {
         SELECT name FROM sqlite_master
         WHERE type='index' AND name LIKE 'idx_%'
       ''').get();
-      expect(indexes.length, equals(8));
+      expect(indexes.length, equals(10));
 
       await db.close();
     });

@@ -2,7 +2,7 @@
 
 Contract: [plan.md](plan.md). Updated 2026-09-15. Coordinator owns this file.
 
-**Main milestones: 5/26 DONE. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 6/26 DONE. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
@@ -13,7 +13,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-15. Coordinator owns this file.
 | P05 | Offline embedding/vector feasibility | P04 | TODO | Runtime/model, quality, latency, memory, sustained run |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
-| P08 | Transactional edit/outbox/jobs | P07 | TODO | Failure injection all-or-nothing |
+| P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
 | P09 | Resumable legacy import | P07 | TODO | Interruption/retry, every source accounted for |
 | P10 | Portable export/conflict-aware re-import | P09 | TODO | Complete round trip |
 | P11 | Route existing edits/buttons through DB | P08,P10 | TODO | Existing controls and save-failure protection |
@@ -49,6 +49,6 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 
 - P01b: DONE; actual A024 backup and independent verification recorded in [evidence](evidence/P01/result.md).
 - P04b: DONE; the existing scanner plus `/usr/bin/time` supplies the timing/memory runner, and the privacy-safe aggregate manifest covers production and fixtures.
-- P08: READY; commit edit, revision, outbox and derived-data invalidation in one transaction.
+- P08: DONE; content, immutable revision, outbox and derived invalidation commit atomically.
 - P09: READY; import the legacy corpus in resumable, accountable batches.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.

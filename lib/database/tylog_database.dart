@@ -101,21 +101,51 @@ class Revisions extends Table {
   List<String> get customConstraints => ['CHECK (json_valid(payload_json))'];
 }
 
-@DriftDatabase(tables: [DatabaseMetadata, Nodes, Edges, Sources, Revisions])
+class OutboxEntries extends Table {
+  TextColumn get revisionId =>
+      text().references(Revisions, #id, onDelete: KeyAction.restrict)();
+  IntColumn get createdAtMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {revisionId};
+}
+
+class DerivedInvalidations extends Table {
+  TextColumn get revisionId =>
+      text().references(Revisions, #id, onDelete: KeyAction.restrict)();
+  IntColumn get createdAtMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {revisionId};
+}
+
+@DriftDatabase(
+  tables: [
+    DatabaseMetadata,
+    Nodes,
+    Edges,
+    Sources,
+    Revisions,
+    OutboxEntries,
+    DerivedInvalidations,
+  ],
+)
 class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) async {
       await m.createAll();
       await _createIndexes(m);
+      await _createQueueIndexes(m);
+      await _createRevisionGuards(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 3 || (from != 1 && from != 2)) {
+      if (to != 4 || from < 1 || from > 3) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -123,13 +153,23 @@ class TyLogDatabase extends _$TyLogDatabase {
       if (from == 1) {
         await m.addColumn(databaseMetadata, databaseMetadata.updatedAtMs);
       }
-      await m.create(nodes);
-      await m.create(edges);
-      await m.create(sources);
-      await m.create(revisions);
-      await _createIndexes(m);
+      if (from < 3) {
+        await _createGraphSchema(m);
+      }
+      await m.create(outboxEntries);
+      await m.create(derivedInvalidations);
+      await _createQueueIndexes(m);
+      await _createRevisionGuards(m);
     },
   );
+
+  Future<void> _createGraphSchema(Migrator m) async {
+    await m.create(nodes);
+    await m.create(edges);
+    await m.create(sources);
+    await m.create(revisions);
+    await _createIndexes(m);
+  }
 
   Future<void> _createIndexes(Migrator m) async {
     await m.database.customStatement(
@@ -156,6 +196,50 @@ class TyLogDatabase extends _$TyLogDatabase {
     await m.database.customStatement(
       'CREATE INDEX IF NOT EXISTS idx_revisions_parent ON revisions(parent_revision_id)',
     );
+  }
+
+  Future<void> _createQueueIndexes(Migrator m) async {
+    await m.database.customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_outbox_created_at_ms ON outbox_entries(created_at_ms)',
+    );
+    await m.database.customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_invalidations_created_at_ms ON derived_invalidations(created_at_ms)',
+    );
+  }
+
+  Future<void> _createRevisionGuards(Migrator m) async {
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS revisions_no_update
+      BEFORE UPDATE ON revisions
+      BEGIN SELECT RAISE(ABORT, 'revisions are immutable'); END
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS revisions_no_delete
+      BEFORE DELETE ON revisions
+      BEGIN SELECT RAISE(ABORT, 'revisions are immutable'); END
+    ''');
+  }
+
+  Future<void> commitNodeEdit({
+    required NodeData node,
+    required RevisionData revision,
+  }) async {
+    if (revision.entityKind != 'node' || revision.entityId != node.id) {
+      throw ArgumentError('Revision must describe the edited node');
+    }
+    await transaction(() async {
+      await into(nodes).insertOnConflictUpdate(node);
+      await into(revisions).insert(revision);
+      await into(outboxEntries).insert(
+        OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
+      );
+      await into(derivedInvalidations).insert(
+        DerivedInvalidation(
+          revisionId: revision.id,
+          createdAtMs: revision.createdAtMs,
+        ),
+      );
+    });
   }
 }
 

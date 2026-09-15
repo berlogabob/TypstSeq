@@ -2353,6 +2353,466 @@ class RevisionsCompanion extends UpdateCompanion<RevisionData> {
   }
 }
 
+class $OutboxEntriesTable extends OutboxEntries
+    with TableInfo<$OutboxEntriesTable, OutboxEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OutboxEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _revisionIdMeta = const VerificationMeta(
+    'revisionId',
+  );
+  @override
+  late final GeneratedColumn<String> revisionId = GeneratedColumn<String>(
+    'revision_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES revisions (id) ON DELETE RESTRICT',
+    ),
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [revisionId, createdAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'outbox_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OutboxEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('revision_id')) {
+      context.handle(
+        _revisionIdMeta,
+        revisionId.isAcceptableOrUnknown(data['revision_id']!, _revisionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revisionIdMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {revisionId};
+  @override
+  OutboxEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OutboxEntry(
+      revisionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revision_id'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $OutboxEntriesTable createAlias(String alias) {
+    return $OutboxEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class OutboxEntry extends DataClass implements Insertable<OutboxEntry> {
+  final String revisionId;
+  final int createdAtMs;
+  const OutboxEntry({required this.revisionId, required this.createdAtMs});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['revision_id'] = Variable<String>(revisionId);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  OutboxEntriesCompanion toCompanion(bool nullToAbsent) {
+    return OutboxEntriesCompanion(
+      revisionId: Value(revisionId),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory OutboxEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OutboxEntry(
+      revisionId: serializer.fromJson<String>(json['revisionId']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'revisionId': serializer.toJson<String>(revisionId),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  OutboxEntry copyWith({String? revisionId, int? createdAtMs}) => OutboxEntry(
+    revisionId: revisionId ?? this.revisionId,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+  );
+  OutboxEntry copyWithCompanion(OutboxEntriesCompanion data) {
+    return OutboxEntry(
+      revisionId: data.revisionId.present
+          ? data.revisionId.value
+          : this.revisionId,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OutboxEntry(')
+          ..write('revisionId: $revisionId, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(revisionId, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OutboxEntry &&
+          other.revisionId == this.revisionId &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class OutboxEntriesCompanion extends UpdateCompanion<OutboxEntry> {
+  final Value<String> revisionId;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const OutboxEntriesCompanion({
+    this.revisionId = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OutboxEntriesCompanion.insert({
+    required String revisionId,
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : revisionId = Value(revisionId),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<OutboxEntry> custom({
+    Expression<String>? revisionId,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (revisionId != null) 'revision_id': revisionId,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OutboxEntriesCompanion copyWith({
+    Value<String>? revisionId,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return OutboxEntriesCompanion(
+      revisionId: revisionId ?? this.revisionId,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (revisionId.present) {
+      map['revision_id'] = Variable<String>(revisionId.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OutboxEntriesCompanion(')
+          ..write('revisionId: $revisionId, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DerivedInvalidationsTable extends DerivedInvalidations
+    with TableInfo<$DerivedInvalidationsTable, DerivedInvalidation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DerivedInvalidationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _revisionIdMeta = const VerificationMeta(
+    'revisionId',
+  );
+  @override
+  late final GeneratedColumn<String> revisionId = GeneratedColumn<String>(
+    'revision_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES revisions (id) ON DELETE RESTRICT',
+    ),
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [revisionId, createdAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'derived_invalidations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DerivedInvalidation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('revision_id')) {
+      context.handle(
+        _revisionIdMeta,
+        revisionId.isAcceptableOrUnknown(data['revision_id']!, _revisionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revisionIdMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {revisionId};
+  @override
+  DerivedInvalidation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DerivedInvalidation(
+      revisionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revision_id'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $DerivedInvalidationsTable createAlias(String alias) {
+    return $DerivedInvalidationsTable(attachedDatabase, alias);
+  }
+}
+
+class DerivedInvalidation extends DataClass
+    implements Insertable<DerivedInvalidation> {
+  final String revisionId;
+  final int createdAtMs;
+  const DerivedInvalidation({
+    required this.revisionId,
+    required this.createdAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['revision_id'] = Variable<String>(revisionId);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  DerivedInvalidationsCompanion toCompanion(bool nullToAbsent) {
+    return DerivedInvalidationsCompanion(
+      revisionId: Value(revisionId),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory DerivedInvalidation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DerivedInvalidation(
+      revisionId: serializer.fromJson<String>(json['revisionId']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'revisionId': serializer.toJson<String>(revisionId),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  DerivedInvalidation copyWith({String? revisionId, int? createdAtMs}) =>
+      DerivedInvalidation(
+        revisionId: revisionId ?? this.revisionId,
+        createdAtMs: createdAtMs ?? this.createdAtMs,
+      );
+  DerivedInvalidation copyWithCompanion(DerivedInvalidationsCompanion data) {
+    return DerivedInvalidation(
+      revisionId: data.revisionId.present
+          ? data.revisionId.value
+          : this.revisionId,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DerivedInvalidation(')
+          ..write('revisionId: $revisionId, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(revisionId, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DerivedInvalidation &&
+          other.revisionId == this.revisionId &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class DerivedInvalidationsCompanion
+    extends UpdateCompanion<DerivedInvalidation> {
+  final Value<String> revisionId;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const DerivedInvalidationsCompanion({
+    this.revisionId = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DerivedInvalidationsCompanion.insert({
+    required String revisionId,
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : revisionId = Value(revisionId),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<DerivedInvalidation> custom({
+    Expression<String>? revisionId,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (revisionId != null) 'revision_id': revisionId,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DerivedInvalidationsCompanion copyWith({
+    Value<String>? revisionId,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return DerivedInvalidationsCompanion(
+      revisionId: revisionId ?? this.revisionId,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (revisionId.present) {
+      map['revision_id'] = Variable<String>(revisionId.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DerivedInvalidationsCompanion(')
+          ..write('revisionId: $revisionId, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$TyLogDatabase extends GeneratedDatabase {
   _$TyLogDatabase(QueryExecutor e) : super(e);
   $TyLogDatabaseManager get managers => $TyLogDatabaseManager(this);
@@ -2363,6 +2823,9 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   late final $EdgesTable edges = $EdgesTable(this);
   late final $SourcesTable sources = $SourcesTable(this);
   late final $RevisionsTable revisions = $RevisionsTable(this);
+  late final $OutboxEntriesTable outboxEntries = $OutboxEntriesTable(this);
+  late final $DerivedInvalidationsTable derivedInvalidations =
+      $DerivedInvalidationsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2373,6 +2836,8 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
     edges,
     sources,
     revisions,
+    outboxEntries,
+    derivedInvalidations,
   ];
 }
 
@@ -3823,6 +4288,49 @@ final class $$RevisionsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$OutboxEntriesTable, List<OutboxEntry>>
+  _outboxEntriesRefsTable(_$TyLogDatabase db) => MultiTypedResultKey.fromTable(
+    db.outboxEntries,
+    aliasName: 'revisions__id__outbox_entries__revision_id',
+  );
+
+  $$OutboxEntriesTableProcessedTableManager get outboxEntriesRefs {
+    final manager = $$OutboxEntriesTableTableManager(
+      $_db,
+      $_db.outboxEntries,
+    ).filter((f) => f.revisionId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_outboxEntriesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $DerivedInvalidationsTable,
+    List<DerivedInvalidation>
+  >
+  _derivedInvalidationsRefsTable(_$TyLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.derivedInvalidations,
+        aliasName: 'revisions__id__derived_invalidations__revision_id',
+      );
+
+  $$DerivedInvalidationsTableProcessedTableManager
+  get derivedInvalidationsRefs {
+    final manager = $$DerivedInvalidationsTableTableManager(
+      $_db,
+      $_db.derivedInvalidations,
+    ).filter((f) => f.revisionId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _derivedInvalidationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$RevisionsTableFilterComposer
@@ -3880,6 +4388,56 @@ class $$RevisionsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> outboxEntriesRefs(
+    Expression<bool> Function($$OutboxEntriesTableFilterComposer f) f,
+  ) {
+    final $$OutboxEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.outboxEntries,
+      getReferencedColumn: (t) => t.revisionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OutboxEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.outboxEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> derivedInvalidationsRefs(
+    Expression<bool> Function($$DerivedInvalidationsTableFilterComposer f) f,
+  ) {
+    final $$DerivedInvalidationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.derivedInvalidations,
+      getReferencedColumn: (t) => t.revisionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DerivedInvalidationsTableFilterComposer(
+            $db: $db,
+            $table: $db.derivedInvalidations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -3993,6 +4551,57 @@ class $$RevisionsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> outboxEntriesRefs<T extends Object>(
+    Expression<T> Function($$OutboxEntriesTableAnnotationComposer a) f,
+  ) {
+    final $$OutboxEntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.outboxEntries,
+      getReferencedColumn: (t) => t.revisionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OutboxEntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.outboxEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> derivedInvalidationsRefs<T extends Object>(
+    Expression<T> Function($$DerivedInvalidationsTableAnnotationComposer a) f,
+  ) {
+    final $$DerivedInvalidationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.derivedInvalidations,
+          getReferencedColumn: (t) => t.revisionId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DerivedInvalidationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.derivedInvalidations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$RevisionsTableTableManager
@@ -4008,7 +4617,11 @@ class $$RevisionsTableTableManager
           $$RevisionsTableUpdateCompanionBuilder,
           (RevisionData, $$RevisionsTableReferences),
           RevisionData,
-          PrefetchHooks Function({bool parentRevisionId})
+          PrefetchHooks Function({
+            bool parentRevisionId,
+            bool outboxEntriesRefs,
+            bool derivedInvalidationsRefs,
+          })
         > {
   $$RevisionsTableTableManager(_$TyLogDatabase db, $RevisionsTable table)
     : super(
@@ -4065,7 +4678,330 @@ class $$RevisionsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({parentRevisionId = false}) {
+          prefetchHooksCallback:
+              ({
+                parentRevisionId = false,
+                outboxEntriesRefs = false,
+                derivedInvalidationsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (outboxEntriesRefs) db.outboxEntries,
+                    if (derivedInvalidationsRefs) db.derivedInvalidations,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (parentRevisionId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.parentRevisionId,
+                                    referencedTable: $$RevisionsTableReferences
+                                        ._parentRevisionIdTable(db),
+                                    referencedColumn: $$RevisionsTableReferences
+                                        ._parentRevisionIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (outboxEntriesRefs)
+                        await $_getPrefetchedData<
+                          RevisionData,
+                          $RevisionsTable,
+                          OutboxEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RevisionsTableReferences
+                              ._outboxEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RevisionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).outboxEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.revisionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (derivedInvalidationsRefs)
+                        await $_getPrefetchedData<
+                          RevisionData,
+                          $RevisionsTable,
+                          DerivedInvalidation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RevisionsTableReferences
+                              ._derivedInvalidationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RevisionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).derivedInvalidationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.revisionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$RevisionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $RevisionsTable,
+      RevisionData,
+      $$RevisionsTableFilterComposer,
+      $$RevisionsTableOrderingComposer,
+      $$RevisionsTableAnnotationComposer,
+      $$RevisionsTableCreateCompanionBuilder,
+      $$RevisionsTableUpdateCompanionBuilder,
+      (RevisionData, $$RevisionsTableReferences),
+      RevisionData,
+      PrefetchHooks Function({
+        bool parentRevisionId,
+        bool outboxEntriesRefs,
+        bool derivedInvalidationsRefs,
+      })
+    >;
+typedef $$OutboxEntriesTableCreateCompanionBuilder =
+    OutboxEntriesCompanion Function({
+      required String revisionId,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$OutboxEntriesTableUpdateCompanionBuilder =
+    OutboxEntriesCompanion Function({
+      Value<String> revisionId,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+final class $$OutboxEntriesTableReferences
+    extends BaseReferences<_$TyLogDatabase, $OutboxEntriesTable, OutboxEntry> {
+  $$OutboxEntriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $RevisionsTable _revisionIdTable(_$TyLogDatabase db) =>
+      db.revisions.createAlias('outbox_entries__revision_id__revisions__id');
+
+  $$RevisionsTableProcessedTableManager get revisionId {
+    final $_column = $_itemColumn<String>('revision_id')!;
+
+    final manager = $$RevisionsTableTableManager(
+      $_db,
+      $_db.revisions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_revisionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$OutboxEntriesTableFilterComposer
+    extends Composer<_$TyLogDatabase, $OutboxEntriesTable> {
+  $$OutboxEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$RevisionsTableFilterComposer get revisionId {
+    final $$RevisionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableFilterComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OutboxEntriesTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $OutboxEntriesTable> {
+  $$OutboxEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$RevisionsTableOrderingComposer get revisionId {
+    final $$RevisionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OutboxEntriesTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $OutboxEntriesTable> {
+  $$OutboxEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  $$RevisionsTableAnnotationComposer get revisionId {
+    final $$RevisionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OutboxEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $OutboxEntriesTable,
+          OutboxEntry,
+          $$OutboxEntriesTableFilterComposer,
+          $$OutboxEntriesTableOrderingComposer,
+          $$OutboxEntriesTableAnnotationComposer,
+          $$OutboxEntriesTableCreateCompanionBuilder,
+          $$OutboxEntriesTableUpdateCompanionBuilder,
+          (OutboxEntry, $$OutboxEntriesTableReferences),
+          OutboxEntry,
+          PrefetchHooks Function({bool revisionId})
+        > {
+  $$OutboxEntriesTableTableManager(
+    _$TyLogDatabase db,
+    $OutboxEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OutboxEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OutboxEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OutboxEntriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> revisionId = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OutboxEntriesCompanion(
+                revisionId: revisionId,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String revisionId,
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => OutboxEntriesCompanion.insert(
+                revisionId: revisionId,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$OutboxEntriesTable, OutboxEntry>(table),
+                  $$OutboxEntriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({revisionId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -4085,15 +5021,15 @@ class $$RevisionsTableTableManager
                       dynamic
                     >
                   >(state) {
-                    if (parentRevisionId) {
+                    if (revisionId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.parentRevisionId,
-                                referencedTable: $$RevisionsTableReferences
-                                    ._parentRevisionIdTable(db),
-                                referencedColumn: $$RevisionsTableReferences
-                                    ._parentRevisionIdTable(db)
+                                currentColumn: table.revisionId,
+                                referencedTable: $$OutboxEntriesTableReferences
+                                    ._revisionIdTable(db),
+                                referencedColumn: $$OutboxEntriesTableReferences
+                                    ._revisionIdTable(db)
                                     .id,
                               )
                               as T;
@@ -4110,19 +5046,302 @@ class $$RevisionsTableTableManager
       );
 }
 
-typedef $$RevisionsTableProcessedTableManager =
+typedef $$OutboxEntriesTableProcessedTableManager =
     ProcessedTableManager<
       _$TyLogDatabase,
-      $RevisionsTable,
-      RevisionData,
-      $$RevisionsTableFilterComposer,
-      $$RevisionsTableOrderingComposer,
-      $$RevisionsTableAnnotationComposer,
-      $$RevisionsTableCreateCompanionBuilder,
-      $$RevisionsTableUpdateCompanionBuilder,
-      (RevisionData, $$RevisionsTableReferences),
-      RevisionData,
-      PrefetchHooks Function({bool parentRevisionId})
+      $OutboxEntriesTable,
+      OutboxEntry,
+      $$OutboxEntriesTableFilterComposer,
+      $$OutboxEntriesTableOrderingComposer,
+      $$OutboxEntriesTableAnnotationComposer,
+      $$OutboxEntriesTableCreateCompanionBuilder,
+      $$OutboxEntriesTableUpdateCompanionBuilder,
+      (OutboxEntry, $$OutboxEntriesTableReferences),
+      OutboxEntry,
+      PrefetchHooks Function({bool revisionId})
+    >;
+typedef $$DerivedInvalidationsTableCreateCompanionBuilder =
+    DerivedInvalidationsCompanion Function({
+      required String revisionId,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$DerivedInvalidationsTableUpdateCompanionBuilder =
+    DerivedInvalidationsCompanion Function({
+      Value<String> revisionId,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+final class $$DerivedInvalidationsTableReferences
+    extends
+        BaseReferences<
+          _$TyLogDatabase,
+          $DerivedInvalidationsTable,
+          DerivedInvalidation
+        > {
+  $$DerivedInvalidationsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $RevisionsTable _revisionIdTable(_$TyLogDatabase db) => db.revisions
+      .createAlias('derived_invalidations__revision_id__revisions__id');
+
+  $$RevisionsTableProcessedTableManager get revisionId {
+    final $_column = $_itemColumn<String>('revision_id')!;
+
+    final manager = $$RevisionsTableTableManager(
+      $_db,
+      $_db.revisions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_revisionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DerivedInvalidationsTableFilterComposer
+    extends Composer<_$TyLogDatabase, $DerivedInvalidationsTable> {
+  $$DerivedInvalidationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$RevisionsTableFilterComposer get revisionId {
+    final $$RevisionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableFilterComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DerivedInvalidationsTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $DerivedInvalidationsTable> {
+  $$DerivedInvalidationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$RevisionsTableOrderingComposer get revisionId {
+    final $$RevisionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DerivedInvalidationsTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $DerivedInvalidationsTable> {
+  $$DerivedInvalidationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  $$RevisionsTableAnnotationComposer get revisionId {
+    final $$RevisionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revisionId,
+      referencedTable: $db.revisions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevisionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.revisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DerivedInvalidationsTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $DerivedInvalidationsTable,
+          DerivedInvalidation,
+          $$DerivedInvalidationsTableFilterComposer,
+          $$DerivedInvalidationsTableOrderingComposer,
+          $$DerivedInvalidationsTableAnnotationComposer,
+          $$DerivedInvalidationsTableCreateCompanionBuilder,
+          $$DerivedInvalidationsTableUpdateCompanionBuilder,
+          (DerivedInvalidation, $$DerivedInvalidationsTableReferences),
+          DerivedInvalidation,
+          PrefetchHooks Function({bool revisionId})
+        > {
+  $$DerivedInvalidationsTableTableManager(
+    _$TyLogDatabase db,
+    $DerivedInvalidationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DerivedInvalidationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DerivedInvalidationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DerivedInvalidationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> revisionId = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DerivedInvalidationsCompanion(
+                revisionId: revisionId,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String revisionId,
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => DerivedInvalidationsCompanion.insert(
+                revisionId: revisionId,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$DerivedInvalidationsTable, DerivedInvalidation>(
+                    table,
+                  ),
+                  $$DerivedInvalidationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({revisionId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (revisionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.revisionId,
+                                referencedTable:
+                                    $$DerivedInvalidationsTableReferences
+                                        ._revisionIdTable(db),
+                                referencedColumn:
+                                    $$DerivedInvalidationsTableReferences
+                                        ._revisionIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DerivedInvalidationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $DerivedInvalidationsTable,
+      DerivedInvalidation,
+      $$DerivedInvalidationsTableFilterComposer,
+      $$DerivedInvalidationsTableOrderingComposer,
+      $$DerivedInvalidationsTableAnnotationComposer,
+      $$DerivedInvalidationsTableCreateCompanionBuilder,
+      $$DerivedInvalidationsTableUpdateCompanionBuilder,
+      (DerivedInvalidation, $$DerivedInvalidationsTableReferences),
+      DerivedInvalidation,
+      PrefetchHooks Function({bool revisionId})
     >;
 
 class $TyLogDatabaseManager {
@@ -4138,4 +5357,8 @@ class $TyLogDatabaseManager {
       $$SourcesTableTableManager(_db, _db.sources);
   $$RevisionsTableTableManager get revisions =>
       $$RevisionsTableTableManager(_db, _db.revisions);
+  $$OutboxEntriesTableTableManager get outboxEntries =>
+      $$OutboxEntriesTableTableManager(_db, _db.outboxEntries);
+  $$DerivedInvalidationsTableTableManager get derivedInvalidations =>
+      $$DerivedInvalidationsTableTableManager(_db, _db.derivedInvalidations);
 }
