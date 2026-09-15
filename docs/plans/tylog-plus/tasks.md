@@ -54,7 +54,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P09c1 atomic import materialization | Codex Luna | DONE | P09a,P08 | [Success + forced rollback proven](evidence/P09c1/result.md) |
 | P09c2a durable job initialization | Codex Luna | DONE | P09b,P09c1 | [Idempotent batch create/resume proven](evidence/P09c2a/result.md) |
 | P09c2b resumable batch runner | Codex Luna | DONE | P09c2a | [7 restart/accounting/privacy tests pass](evidence/P09c2b/result.md) |
-| P09d1 database lifecycle seam | Codex Luna | READY | P09c2b | One injected DB instance; reopen/dispose tests; existing startup unchanged |
+| P09d1 database lifecycle seam | Codex Luna | DONE | P09c2b | [One open/close per HomeScreen lifecycle](evidence/P09d1/result.md) |
 | P09d2 durable UI adapter | Codex Luna | READY | P09d1 | Existing paths/content/report retained; interruption resumes without duplicate revisions |
 | P09d3 assets + cancellation | Codex Luna | READY | P09d2 | Idempotent assets; cooperative cancel leaves pending work resumable |
 | P09d4 synthetic rehearsal | Coordinator + Codex Luna | READY | P09d3 | 10k restart run accounts all rows; measure batch-wide validation cost before optimizing |
@@ -64,8 +64,9 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.1b judged 90-query pack | Coordinator | WAITING | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU; whole-file hash recorded |
 | P05.2 numerical runner | Codex Luna | DONE | P05.0 | [6 tests + repeatable offline Mac smoke](evidence/P05/numerical-runner.md) |
 | P05.3 Mac exact-cosine benchmark | Codex Luna | DONE | P05.2 | [10k/250k latency and RSS pass](evidence/P05/mac-exact-search.md) |
-| P05.4a Rust ORT/tokenizer spike | Codex Luna | READY | P05.2 | Mac + A024 build; EN/PT/RU vectors agree with reference; finite normalized 384d |
-| P05.4b Android profile harness | Coordinator + Codex Luna | READY | P05.4a | Private verified model install; profile APK loads and embeds offline without vault access |
+| P05.4a1 isolated Rust ORT spike | Codex Luna | DONE | P05.2 | [Pinned build/test + offline Mac 384d smoke](evidence/P05/rust-ort-spike.md) |
+| P05.4a2 Android cross-build | Codex Luna | READY | P05.4a1 | arm64 ORT/tokenizer build; EN/PT/RU vectors agree with reference |
+| P05.4b Android profile harness | Coordinator + Codex Luna | READY | P05.4a2 | Private verified model install; profile APK loads and embeds offline without vault access |
 | P05.4c A024 exact search/PSS | Coordinator + Codex Luna | READY | P05.4b | 250k cold <=6 s, warm p95 <=3 s, PSS <=750 MB |
 | P05.4d sustained resume | Coordinator + Codex Luna | READY | P05.4c | Forced stop resumes bounded batches; final count/hash matches uninterrupted run |
 | P05.5 sqlite-vec fallback | Codex Luna | CONDITIONAL | P05.3 or P05.4 fails | Run only if exact search misses a gate; same vectors/query interface |
@@ -79,5 +80,5 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P01b: DONE; actual A024 backup and independent verification recorded in [evidence](evidence/P01/result.md).
 - P04b: DONE; the existing scanner plus `/usr/bin/time` supplies the timing/memory runner, and the privacy-safe aggregate manifest covers production and fixtures.
 - P08: DONE; content, immutable revision, outbox and derived invalidation commit atomically.
-- P09: RUNNING; P09d1 database lifecycle injection is the next checkpoint.
+- P09: RUNNING; P09d2 durable UI import adapter is the next checkpoint.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.

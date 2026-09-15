@@ -28,6 +28,7 @@ import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'task_scheduler.dart';
+import 'database/tylog_database.dart';
 import 'vault.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
@@ -194,6 +195,9 @@ class HomeScreen extends StatefulWidget {
     this.onThemeModeChanged,
     this.onCompilePdf,
     this.onSharePdf,
+    this.databaseOpener,
+    this.databaseCloser,
+    this.startup,
   });
 
   /// Current app-wide appearance and the callback to change it, both owned by
@@ -206,12 +210,16 @@ class HomeScreen extends StatefulWidget {
   })?
   onCompilePdf;
   final Future<void> Function(String name, Uint8List pdf)? onSharePdf;
+  final Future<TyLogDatabase> Function()? databaseOpener;
+  final Future<void> Function(TyLogDatabase database)? databaseCloser;
+  final Future<void> Function()? startup;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  late final Future<TyLogDatabase?> database;
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   late final TyLogEditingController richController;
@@ -315,6 +323,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    database = widget.databaseOpener != null
+        ? widget.databaseOpener!()
+        : Platform.environment.containsKey('FLUTTER_TEST')
+        ? Future.value(null)
+        : openDatabase();
     richController = TyLogEditingController(
       source: '',
       onSourceChanged: _acceptRichSource,
@@ -328,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isComposing: () => richController.isComposing,
     )..addListener(_workspaceChanged);
     WidgetsBinding.instance.addObserver(this);
-    _open();
+    unawaited((widget.startup ?? _open)());
     // One silent update check per launch on macOS (only prompts if newer).
     // Skipped under `flutter test`: it would hit GitHub and leave an unawaited
     // rootBundle/HTTP load pending past teardown, wedging the asset channel for
@@ -350,6 +363,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..dispose();
     richController.dispose();
     sourceController.dispose();
+    unawaited(
+      database.then((db) async {
+        if (db != null) {
+          await (widget.databaseCloser ?? (value) => value.close())(db);
+        }
+      }),
+    );
     super.dispose();
   }
 

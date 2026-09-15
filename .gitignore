@@ -77,6 +77,9 @@ sample_vault/
 *.npy
 *.npz
 
+# Standalone P05 ORT spike build output.
+/tool/p05_ort_spike/target/
+
 # Reproducible synthetic scale data; commit the generator and manifest evidence.
 /tylog-scale-fixture/
 
