@@ -25,4 +25,4 @@ The output directory must be absent or empty. The generator emits synthetic node
 
 ## Limits
 
-This is a bounded-memory fixture generation measurement, not application/database latency, real-source extraction, real language retrieval quality, or embedding throughput. Synthetic word sequences are not a judged semantic benchmark. Device corpus inventory and benchmark runner remain outstanding, so P04 stays incomplete.
+This is a bounded-memory fixture generation measurement, not application/database latency, real-source extraction, real language retrieval quality, or embedding throughput. Synthetic word sequences are not a judged semantic benchmark. Device corpus inventory and current-scanner measurements are recorded in P04b.

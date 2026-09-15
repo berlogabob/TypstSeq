@@ -1,15 +1,15 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-14. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-15. Coordinator owns this file.
 
-**Main milestones: 0/26 DONE. Production handoff: incomplete.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 3/26 DONE. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
-| P01 | Back up and inventory real phone vault/configuration | — | BLOCKED | Verified before/after/device/local hashes; phone currently disconnected |
-| P02 | Restore production selection and normal release without uninstall | P01 | TODO | Real notes/settings persist across restart |
-| P03 | Real Mac–phone sync and existing controls | P02 | TODO | Both-direction edit, attachment, offline retry, conflict |
-| P04 | Corpus fixtures and benchmark runner | P01 | RUNNING (synthetic subtask only) | Reproducible real/10k/100k manifests and baseline |
+| P01 | Back up and inventory real phone vault/configuration | — | DONE | [11,826 files verified](evidence/P01/result.md) |
+| P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
+| P03 | Real Mac–phone sync and existing controls | P02 | BLOCKED | No Nextcloud configuration on either device; credentials/user setup required |
+| P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
 | P05 | Offline embedding/vector feasibility | P04 | TODO | Runtime/model, quality, latency, memory, sustained run |
 | P06 | Database bootstrap/migration tests | P04 | TODO | WAL/FK, creation and upgrade tests |
 | P07 | Nodes/edges/sources/revisions | P06 | TODO | Atomic write, invalid reference, dates, duplicate ID |
@@ -39,7 +39,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-14. Coordinator owns this file.
 
 Own `tool/backup_android_vault.py` and `test/tool/test_backup_android_vault.py`. New private backup destination outside repository; validate device/source/destination; stop app without uninstall/clear; compare remote SHA256 before and after pull against independent local SHA256. Retain failed partial backup; no verified marker on failure. Best-effort app configuration archive explicitly distinguished from guaranteed full Android/Keystore recovery. No secrets in stdout or git. Unit tests: matching hashes, concurrent change, missing/truncated copy, spaces in paths, unsafe paths, unavailable settings. Device execution remains coordinator-owned.
 
-[Accepted tool evidence](evidence/P01a/result.md): 30 focused tests pass, including an interrupted-source main-flow check. P01 itself remains BLOCKED until a real device backup passes verification.
+[Accepted tool evidence](evidence/P01a/result.md): 30 focused tests pass, including an interrupted-source main-flow check. P01 is complete with the verified A024 backup.
 
 ### P04a — synthetic fixture generator (DONE; Codex Luna)
 
@@ -47,6 +47,6 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 
 ## Next tickets
 
-- P01b: actual device backup/verification; requires connected unlocked A024 and P01a acceptance.
-- P04b: reproducible timing/memory command runner and real-corpus manifest; requires P01.
+- P01b: DONE; actual A024 backup and independent verification recorded in [evidence](evidence/P01/result.md).
+- P04b: DONE; the existing scanner plus `/usr/bin/time` supplies the timing/memory runner, and the privacy-safe aggregate manifest covers production and fixtures.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
