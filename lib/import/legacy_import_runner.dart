@@ -9,6 +9,12 @@ import 'package:tylog_core/storage.dart';
 typedef LegacyNodeConverter =
     Future<({NodeData node, RevisionData revision, String targetPath})?>
     Function(LegacyImportEntry entry, String source, String sha256);
+typedef LegacyImportMaterializer =
+    Future<void> Function(
+      ImportItemData item,
+      NodeData node,
+      String targetPath,
+    );
 
 class LegacyImportRunner {
   LegacyImportRunner({
@@ -16,12 +22,14 @@ class LegacyImportRunner {
     required this.storage,
     required this.manifest,
     required this.converter,
+    this.materializer,
   });
 
   final TyLogDatabase database;
   final VaultStorage storage;
   final LegacyImportManifest manifest;
   final LegacyNodeConverter converter;
+  final LegacyImportMaterializer? materializer;
 
   Future<bool> runBatch(String jobId, {int batchSize = 50}) async {
     if (batchSize < 1) throw ArgumentError.value(batchSize, 'batchSize');
@@ -104,14 +112,23 @@ class LegacyImportRunner {
         final status = pendingCount - 1 == 0
             ? (failed == 0 ? 'completed' : 'failed')
             : 'running';
+        final targetPath = item.targetPath ?? result.targetPath;
+        final checkpoint = item.copyWith(
+          sourceSha256: Value(hash!),
+          targetPath: Value(targetPath),
+        );
+        await database.checkpointImportItem(item: checkpoint);
+        if (materializer != null) {
+          await materializer!(checkpoint, result.node, targetPath);
+        }
         await database.commitImportedNode(
           node: result.node,
           revision: result.revision,
           item: item.copyWith(
-            sourceSha256: Value(hash!),
+            sourceSha256: Value(hash),
             targetNodeId: Value(result.node.id),
             state: 'written',
-            targetPath: Value(result.targetPath),
+            targetPath: Value(targetPath),
           ),
           completedCount: count,
           status: status,

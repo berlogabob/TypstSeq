@@ -337,6 +337,67 @@ void main() {
     },
   );
 
+  test('resume reuses checkpointed materialization path', () async {
+    final storage = S({'pages/a.md': utf8.encode('source')});
+    final db = await _database(storage, addTearDown);
+    final manifest = await buildLegacyImportManifest(
+      storage,
+      LegacyImportDialect.logseq,
+    );
+    await _initialize(db, manifest);
+    var conversions = 0;
+    var materializations = 0;
+    final paths = <String>[];
+
+    LegacyImportRunner runner() => LegacyImportRunner(
+      database: db,
+      storage: storage,
+      manifest: manifest,
+      converter: (entry, source, hash) async {
+        conversions++;
+        return (
+          node: NodeData(
+            id: 'node-$hash',
+            type: 'note',
+            title: entry.path,
+            content: 'converted:$source',
+            attributesJson: '{}',
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+          revision: RevisionData(
+            id: 'revision-$hash',
+            entityKind: 'node',
+            entityId: 'node-$hash',
+            payloadJson: '{}',
+            createdAtMs: 1,
+          ),
+          targetPath: conversions == 1 ? 'pages/a.typ' : 'pages/a (2).typ',
+        );
+      },
+      materializer: (item, node, targetPath) async {
+        paths.add(targetPath);
+        expect(node.content, 'converted:source');
+        if (materializations++ == 0) throw StateError('interrupted');
+      },
+    );
+
+    await expectLater(runner().runBatch('job'), throwsStateError);
+    final checkpoint = await db.select(db.importItems).getSingle();
+    expect(checkpoint.state, 'pending');
+    expect(checkpoint.targetPath, 'pages/a.typ');
+    expect(checkpoint.sourceSha256, isA<String>());
+    expect(await db.select(db.revisions).get(), isEmpty);
+
+    expect(await runner().runBatch('job'), isFalse);
+    expect(paths, ['pages/a.typ', 'pages/a.typ']);
+    expect(await db.select(db.nodes).get(), hasLength(1));
+    expect(await db.select(db.revisions).get(), hasLength(1));
+    final completed = await db.select(db.importItems).getSingle();
+    expect(completed.state, 'written');
+    expect(completed.targetPath, 'pages/a.typ');
+  });
+
   test('terminal rows are unchanged on rerun', () async {
     final storage = S({
       'pages/a.md': [1],

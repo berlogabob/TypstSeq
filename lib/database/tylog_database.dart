@@ -310,6 +310,20 @@ class TyLogDatabase extends _$TyLogDatabase {
     });
   }
 
+  Future<void> checkpointImportItem({required ImportItemData item}) async {
+    await (update(importItems)..where(
+          (t) =>
+              t.jobId.equals(item.jobId) & t.sourcePath.equals(item.sourcePath),
+        ))
+        .write(
+          ImportItemsCompanion(
+            sourceSha256: Value(item.sourceSha256),
+            targetPath: Value(item.targetPath),
+            updatedAtMs: Value(item.updatedAtMs),
+          ),
+        );
+  }
+
   Future<void> createOrResumeImportJob(
     ImportJobData job,
     List<ImportItemData> items,
