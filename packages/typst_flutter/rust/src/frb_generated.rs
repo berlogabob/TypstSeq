@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 873011556;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1854961483;
 
 // Section: executor
 
@@ -749,6 +749,47 @@ fn wire__crate__api__vault_import__convert_vault_note_impl(
         },
     )
 }
+fn wire__crate__api__embedding__embed_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "embed",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api__model_path = <String>::sse_decode(&mut deserializer);
+            let api__tokenizer_path = <String>::sse_decode(&mut deserializer);
+            let api__kind = <String>::sse_decode(&mut deserializer);
+            let api__text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::embedding::embed(
+                        api__model_path,
+                        api__tokenizer_path,
+                        api__kind,
+                        api__text,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__typst__get_typst_version_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -853,6 +894,22 @@ impl SseDecode for bool {
     }
 }
 
+impl SseDecode for crate::api::embedding::EmbeddingResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_vector = <Vec<f32>>::sse_decode(deserializer);
+        let mut var_dimension = <u32>::sse_decode(deserializer);
+        let mut var_norm = <f32>::sse_decode(deserializer);
+        let mut var_finite = <bool>::sse_decode(deserializer);
+        return crate::api::embedding::EmbeddingResult {
+            vector: var_vector,
+            dimension: var_dimension,
+            norm: var_norm,
+            finite: var_finite,
+        };
+    }
+}
+
 impl SseDecode for f32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -914,6 +971,18 @@ impl SseDecode for Vec<crate::api::markdown_import::MarkdownImportDiagnostic> {
             ans_.push(
                 <crate::api::markdown_import::MarkdownImportDiagnostic>::sse_decode(deserializer),
             );
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<f32>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -1313,6 +1382,7 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
+        15 => wire__crate__api__embedding__embed_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1329,7 +1399,7 @@ fn pde_ffi_dispatcher_sync_impl(
         4 => wire__crate__api__typst__CompiledDocument_page_info_impl(ptr, rust_vec_len, data_len),
         6 => wire__crate__api__typst__CompiledDocument_warnings_impl(ptr, rust_vec_len, data_len),
         10 => wire__crate__api__typst__TypstEngine_new_impl(ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__typst__get_typst_version_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__typst__get_typst_version_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1366,6 +1436,29 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<TypstEngine>> for TypstEngine 
     }
 }
 
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::embedding::EmbeddingResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.vector.into_into_dart().into_dart(),
+            self.dimension.into_into_dart().into_dart(),
+            self.norm.into_into_dart().into_dart(),
+            self.finite.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::embedding::EmbeddingResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::embedding::EmbeddingResult>
+    for crate::api::embedding::EmbeddingResult
+{
+    fn into_into_dart(self) -> crate::api::embedding::EmbeddingResult {
+        self
+    }
+}
 // Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::markdown_import::MarkdownImportDiagnostic {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
@@ -1665,6 +1758,16 @@ impl SseEncode for bool {
     }
 }
 
+impl SseEncode for crate::api::embedding::EmbeddingResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<f32>>::sse_encode(self.vector, serializer);
+        <u32>::sse_encode(self.dimension, serializer);
+        <f32>::sse_encode(self.norm, serializer);
+        <bool>::sse_encode(self.finite, serializer);
+    }
+}
+
 impl SseEncode for f32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1719,6 +1822,16 @@ impl SseEncode for Vec<crate::api::markdown_import::MarkdownImportDiagnostic> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::markdown_import::MarkdownImportDiagnostic>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <f32>::sse_encode(item, serializer);
         }
     }
 }

@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/embedding.dart';
 import 'api/markdown_import.dart';
 import 'api/typst.dart';
 import 'api/vault_import.dart';
@@ -66,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 873011556;
+  int get rustContentHash => -1854961483;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -148,6 +149,13 @@ abstract class RustLibApi extends BaseApi {
     required String dialect,
     required String sourceRelPath,
     required String markdown,
+  });
+
+  Future<EmbeddingResult> crateApiEmbeddingEmbed({
+    required String modelPath,
+    required String tokenizerPath,
+    required String kind,
+    required String text,
   });
 
   String crateApiTypstGetTypstVersion();
@@ -689,12 +697,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<EmbeddingResult> crateApiEmbeddingEmbed({
+    required String modelPath,
+    required String tokenizerPath,
+    required String kind,
+    required String text,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(modelPath, serializer);
+          sse_encode_String(tokenizerPath, serializer);
+          sse_encode_String(kind, serializer);
+          sse_encode_String(text, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_embedding_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiEmbeddingEmbedConstMeta,
+        argValues: [modelPath, tokenizerPath, kind, text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiEmbeddingEmbedConstMeta => const TaskConstMeta(
+    debugName: "embed",
+    argNames: ["modelPath", "tokenizerPath", "kind", "text"],
+  );
+
+  @override
   String crateApiTypstGetTypstVersion() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -829,6 +875,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EmbeddingResult dco_decode_embedding_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return EmbeddingResult(
+      vector: dco_decode_list_prim_f_32_strict(arr[0]),
+      dimension: dco_decode_u_32(arr[1]),
+      norm: dco_decode_f_32(arr[2]),
+      finite: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
   double dco_decode_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -872,6 +932,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return (raw as List<dynamic>)
         .map(dco_decode_markdown_import_diagnostic)
         .toList();
+  }
+
+  @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Float32List;
   }
 
   @protected
@@ -1243,6 +1309,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EmbeddingResult sse_decode_embedding_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_vector = sse_decode_list_prim_f_32_strict(deserializer);
+    var var_dimension = sse_decode_u_32(deserializer);
+    var var_norm = sse_decode_f_32(deserializer);
+    var var_finite = sse_decode_bool(deserializer);
+    return EmbeddingResult(
+      vector: var_vector,
+      dimension: var_dimension,
+      norm: var_norm,
+      finite: var_finite,
+    );
+  }
+
+  @protected
   double sse_decode_f_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat32();
@@ -1304,6 +1385,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_markdown_import_diagnostic(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getFloat32List(len_);
   }
 
   @protected
@@ -1752,6 +1840,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_embedding_result(
+    EmbeddingResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_f_32_strict(self.vector, serializer);
+    sse_encode_u_32(self.dimension, serializer);
+    sse_encode_f_32(self.norm, serializer);
+    sse_encode_bool(self.finite, serializer);
+  }
+
+  @protected
   void sse_encode_f_32(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat32(self);
@@ -1806,6 +1906,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_markdown_import_diagnostic(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putFloat32List(self);
   }
 
   @protected

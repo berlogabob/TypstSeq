@@ -53,6 +53,83 @@ First paragraph.
     expect(importedNoteBody(typst), 'First paragraph.\n');
   });
 
+  test('durable adapter keeps deterministic IDs and final note content', () {
+    final job = legacyImportJobId('logseq', 'manifest');
+    expect(job, legacyImportJobId('logseq', 'manifest'));
+    expect(
+      legacyImportNodeId(job, 'pages/a.md', 'sha'),
+      legacyImportNodeId(job, 'pages/a.md', 'sha'),
+    );
+    expect(
+      legacyImportNodeId(job, 'pages/a.md', 'sha'),
+      isNot(legacyImportNodeId(job, 'pages/a.md', 'other')),
+    );
+    expect(
+      materializeLegacyImportNote(
+        typst: '#import "x"\n\n= A\n\nBody\n',
+        current: null,
+        sourceHash: 'sha',
+        dialect: 'logseq',
+      ),
+      (content: '#import "x"\n\n= A\n\nBody\n', appended: false),
+    );
+    expect(
+      materializeLegacyImportNote(
+        typst: '#import "x"\n\n= A\n\nBody\n',
+        current: '= Existing\n\nOld\n',
+        sourceHash: 'sha',
+        dialect: 'logseq',
+      ),
+      (
+        content: '= Existing\n\nOld\n\n== From Logseq\n\nBody\n',
+        appended: true,
+      ),
+    );
+  });
+
+  test('completed import rerun reports unchanged notes', () {
+    expect(
+      completedImportUnchangedCount(
+        sourcePaths: ['pages/a.md', 'journals/2025_01_01.md'],
+        sourceHashes: {'pages/a.md': 'a', 'journals/2025_01_01.md': 'b'},
+        imported: {
+          'a.md': {'a'},
+          '2025_01_01.md': {'b'},
+        },
+      ),
+      2,
+    );
+  });
+
+  test(
+    'resumed imports recover unique asset references from committed nodes',
+    () {
+      expect(
+        legacyImportedAssetPaths([
+          '{"referenced_assets":["assets/logo.png","assets/x.png"]}',
+          '{"referenced_assets":["assets/x.png","assets/diagram.svg"]}',
+        ]),
+        {'assets/logo.png', 'assets/x.png', 'assets/diagram.svg'},
+      );
+    },
+  );
+
+  test('resumed imports reconstruct full note counters', () {
+    expect(
+      legacyImportedCounts([
+        '{"import_is_journal":false,"import_changed_copy":true}',
+        '{"import_is_journal":true,"import_appended":true}',
+        '{"import_is_journal":true,"import_appended":false}',
+      ]),
+      (pages: 1, journals: 2, appended: 1, changedCopies: 1),
+    );
+  });
+
+  test('partial import report is not labelled complete', () {
+    expect(vaultImportReportTitle(true), 'Vault import complete');
+    expect(vaultImportReportTitle(false), 'Vault import paused');
+  });
+
   test('detectVaultDialect recognizes markers and rejects ambiguity', () {
     expect(
       detectVaultDialect(

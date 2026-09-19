@@ -56,9 +56,9 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P09c2b resumable batch runner | Codex Luna | DONE | P09c2a | [7 restart/accounting/privacy tests pass](evidence/P09c2b/result.md) |
 | P09d1 database lifecycle seam | Codex Luna | DONE | P09c2b | [One open/close per HomeScreen lifecycle](evidence/P09d1/result.md) |
 | P09d2a restart-safe materialization | Codex Luna | DONE | P09d1 | [Checkpointed path survives interruption](evidence/P09d2a/result.md); one node/revision after resume |
-| P09d2b durable UI adapter | Codex Luna | READY | P09d2a | Existing paths/content/report retained through durable runner |
-| P09d3 assets + cancellation | Codex Luna | READY | P09d2b | Idempotent assets; cooperative cancel leaves pending work resumable |
-| P09d4 synthetic rehearsal | Coordinator + Codex Luna | READY | P09d3 | 10k restart run accounts all rows; measure batch-wide validation cost before optimizing |
+| P09d2b durable UI adapter | Codex Luna | DONE | P09d2a | [Deterministic adapter, rerun accounting, and interruption-safe UI](evidence/P09d2b/result.md) |
+| P09d3 assets + cancellation | Codex Luna | DONE | P09d2b | [Assets recover from committed nodes; cancellation leaves pending work resumable](evidence/P09d3/result.md) |
+| P09d4 synthetic rehearsal | Coordinator + Codex Luna | DONE | P09d3 | [10k restart rehearsal and validation overhead measurement](evidence/P09d4/result.md) |
 | P09d5 private A024 rehearsal | Coordinator | READY | P09d4 | Aggregate manifest=terminal counts; vault remains readable; no private logs committed |
 | P05.0 model/runtime contract | Codex Luna | DONE | P04 | [Pinned and independently verified](evidence/P05/contract.md) |
 | P05.1a private-pack validator | Codex Luna | DONE | P05.0 | 5 tests enforce counts, labels, offsets, cross-language balance, and private output |
@@ -67,7 +67,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.3 Mac exact-cosine benchmark | Codex Luna | DONE | P05.2 | [10k/250k latency and RSS pass](evidence/P05/mac-exact-search.md) |
 | P05.4a1 isolated Rust ORT spike | Codex Luna | DONE | P05.2 | [Pinned build/test + offline Mac 384d smoke](evidence/P05/rust-ort-spike.md) |
 | P05.4a2 Android cross-build | Codex Luna | DONE | P05.4a1 | [ARM64 cross-build passes](evidence/P05/android-arm64-cross-build.md); device vector agreement pending P05.4b |
-| P05.4b Android profile harness | Coordinator + Codex Luna | READY | P05.4a2 | Private verified model install; profile APK loads and embeds offline without vault access |
+| P05.4b Android profile harness | Coordinator + Codex Luna | HOST COMPLETE / DEVICE PENDING | P05.4a2 | [ORT bridge, arm64 profile APK, and package inspection](evidence/P05/android-profile-harness.md); private model install and offline vector smoke remain device-gated |
 | P05.4c A024 exact search/PSS | Coordinator + Codex Luna | READY | P05.4b | 250k cold <=6 s, warm p95 <=3 s, PSS <=750 MB |
 | P05.4d sustained resume | Coordinator + Codex Luna | READY | P05.4c | Forced stop resumes bounded batches; final count/hash matches uninterrupted run |
 | P05.5 sqlite-vec fallback | Codex Luna | CONDITIONAL | P05.3 or P05.4 fails | Run only if exact search misses a gate; same vectors/query interface |

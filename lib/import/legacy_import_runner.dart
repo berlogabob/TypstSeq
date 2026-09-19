@@ -23,6 +23,7 @@ class LegacyImportRunner {
     required this.manifest,
     required this.converter,
     this.materializer,
+    this.shouldCancel,
   });
 
   final TyLogDatabase database;
@@ -30,6 +31,7 @@ class LegacyImportRunner {
   final LegacyImportManifest manifest;
   final LegacyNodeConverter converter;
   final LegacyImportMaterializer? materializer;
+  final bool Function()? shouldCancel;
 
   Future<bool> runBatch(String jobId, {int batchSize = 50}) async {
     if (batchSize < 1) throw ArgumentError.value(batchSize, 'batchSize');
@@ -54,6 +56,7 @@ class LegacyImportRunner {
     var pendingCount = stored.where((i) => i.state == 'pending').length;
     final pending = await database.pendingImportItems(jobId, limit: batchSize);
     for (final item in pending) {
+      if (shouldCancel?.call() ?? false) break;
       final entry = entries[item.sourcePath]!;
       if (entry.kind == LegacyImportEntryKind.asset ||
           entry.kind == LegacyImportEntryKind.unsupported) {
@@ -98,7 +101,7 @@ class LegacyImportRunner {
       }
       if (result == null) {
         await _mark(
-          item,
+          item.copyWith(sourceSha256: Value(hash)),
           'skipped',
           _code('empty'),
           terminal + 1,

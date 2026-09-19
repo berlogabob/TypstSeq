@@ -348,6 +348,7 @@ void main() {
     var conversions = 0;
     var materializations = 0;
     final paths = <String>[];
+    final materialized = <String, String>{};
 
     LegacyImportRunner runner() => LegacyImportRunner(
       database: db,
@@ -378,6 +379,7 @@ void main() {
       materializer: (item, node, targetPath) async {
         paths.add(targetPath);
         expect(node.content, 'converted:source');
+        materialized[targetPath] = node.content;
         if (materializations++ == 0) throw StateError('interrupted');
       },
     );
@@ -388,9 +390,11 @@ void main() {
     expect(checkpoint.targetPath, 'pages/a.typ');
     expect(checkpoint.sourceSha256, isA<String>());
     expect(await db.select(db.revisions).get(), isEmpty);
+    expect(materialized, {'pages/a.typ': 'converted:source'});
 
     expect(await runner().runBatch('job'), isFalse);
     expect(paths, ['pages/a.typ', 'pages/a.typ']);
+    expect(materialized, {'pages/a.typ': 'converted:source'});
     expect(await db.select(db.nodes).get(), hasLength(1));
     expect(await db.select(db.revisions).get(), hasLength(1));
     final completed = await db.select(db.importItems).getSingle();
@@ -425,6 +429,67 @@ void main() {
       isFalse,
     );
     expect(await db.select(db.importItems).getSingle(), before);
+  });
+
+  test('cancellation leaves unprocessed items pending for resume', () async {
+    final storage = S({
+      for (var i = 0; i < 3; i++) 'pages/$i.md': [i],
+    });
+    final db = await _database(storage, addTearDown);
+    final manifest = await buildLegacyImportManifest(
+      storage,
+      LegacyImportDialect.logseq,
+    );
+    await _initialize(db, manifest);
+    var cancelled = false;
+    var cancelAfterFirst = true;
+    Future<({NodeData node, RevisionData revision, String targetPath})?>
+    convert(LegacyImportEntry entry, String source, String hash) async => (
+      node: NodeData(
+        id: entry.path,
+        type: 'note',
+        title: entry.path,
+        content: source,
+        attributesJson: '{}',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      ),
+      revision: RevisionData(
+        id: 'r-${entry.path}',
+        entityKind: 'node',
+        entityId: entry.path,
+        payloadJson: '{}',
+        createdAtMs: 1,
+      ),
+      targetPath: '${entry.path}.typ',
+    );
+    final runner = LegacyImportRunner(
+      database: db,
+      storage: storage,
+      manifest: manifest,
+      shouldCancel: () => cancelled,
+      converter: convert,
+      materializer: (_, _, _) async {
+        if (cancelAfterFirst) {
+          cancelled = true;
+          cancelAfterFirst = false;
+        }
+      },
+    );
+
+    expect(await runner.runBatch('job', batchSize: 3), isTrue);
+    final paused = await db.select(db.importItems).get();
+    expect(paused.where((item) => item.state == 'written'), hasLength(1));
+    expect(paused.where((item) => item.state == 'pending'), hasLength(2));
+
+    cancelled = false;
+    expect(await runner.runBatch('job', batchSize: 3), isFalse);
+    expect(
+      (await db.select(db.importItems).get()).where(
+        (item) => item.state == 'written',
+      ),
+      hasLength(3),
+    );
   });
 }
 

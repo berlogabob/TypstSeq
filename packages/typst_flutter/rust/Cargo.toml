@@ -23,6 +23,11 @@ flutter_rust_bridge = "=2.12.0"
 time = "0.3.47"
 tylog_import_core = { path = "../../tylog_import_core" }
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndarray = "0.17.2"
+ort = { version = "2.0.0-rc.13", features = ["ndarray", "download-binaries"] }
+tokenizers = "0.23.2"
+
 [profile.release]
 opt-level = "z"      # optimise for binary size
 lto = "thin"         # cross-crate link-time optimisation (smaller binaries)

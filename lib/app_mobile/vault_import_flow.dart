@@ -49,6 +49,86 @@ String detectVaultDialect({
   return hasObsidianDir ? 'obsidian' : 'logseq';
 }
 
+String legacyImportJobId(String dialect, String fingerprint) =>
+    'legacy-${sha256.convert(utf8.encode('$dialect\n$fingerprint')).toString().substring(0, 32)}';
+
+String legacyImportNodeId(String jobId, String path, String sha) =>
+    _legacyImportId('node', jobId, path, sha);
+
+String legacyImportRevisionId(String jobId, String path, String sha) =>
+    _legacyImportId('revision', jobId, path, sha);
+
+({String content, bool appended}) materializeLegacyImportNote({
+  required String typst,
+  required String? current,
+  required String sourceHash,
+  required String dialect,
+}) {
+  final alreadyAppended = current?.contains(sourceHash) ?? false;
+  if (alreadyAppended) return (content: current!, appended: false);
+  if (current == null) return (content: typst, appended: false);
+  return (
+    content:
+        '$current\n== From ${dialect == 'logseq' ? 'Logseq' : 'Obsidian'}\n\n'
+        '${importedNoteBody(typst)}',
+    appended: true,
+  );
+}
+
+int completedImportUnchangedCount({
+  required Iterable<String> sourcePaths,
+  required Map<String, String?> sourceHashes,
+  required Map<String, Set<String>> imported,
+}) => sourcePaths.where((path) {
+  final hash = sourceHashes[path];
+  if (hash == null) return false;
+  return decideImportAction(
+        sourceName: path.split('/').last,
+        sha: hash,
+        imported: imported,
+      ) ==
+      ImportSourceDecision.skipUnchanged;
+}).length;
+
+Set<String> legacyImportedAssetPaths(Iterable<String> attributesJson) {
+  final assets = <String>{};
+  for (final raw in attributesJson) {
+    final value = jsonDecode(raw);
+    if (value is! Map) continue;
+    final paths = value['referenced_assets'];
+    if (paths is Iterable) assets.addAll(paths.whereType<String>());
+  }
+  return assets;
+}
+
+({int pages, int journals, int appended, int changedCopies})
+legacyImportedCounts(Iterable<String> attributesJson) {
+  var pages = 0;
+  var journals = 0;
+  var appended = 0;
+  var changedCopies = 0;
+  for (final raw in attributesJson) {
+    final value = jsonDecode(raw);
+    if (value is! Map) continue;
+    if (value['import_is_journal'] == true) {
+      journals++;
+    } else {
+      pages++;
+    }
+    if (value['import_appended'] == true) appended++;
+    if (value['import_changed_copy'] == true) changedCopies++;
+  }
+  return (
+    pages: pages,
+    journals: journals,
+    appended: appended,
+    changedCopies: changedCopies,
+  );
+}
+
+String vaultImportReportTitle(bool complete) =>
+    complete ? 'Vault import complete' : 'Vault import paused';
+
 class _VaultImportReport {
   int pages = 0;
   int journals = 0;
@@ -64,6 +144,9 @@ class _VaultImportReport {
 
   int get notes => pages + journals;
 }
+
+String _legacyImportId(String kind, String jobId, String path, String sha) =>
+    '$kind-${sha256.convert(utf8.encode('$jobId\n$path\n$sha')).toString().substring(0, 32)}';
 
 extension _VaultImportFlow on _HomeScreenState {
   Future<void> _importVault() async {
@@ -85,6 +168,47 @@ extension _VaultImportFlow on _HomeScreenState {
     if (dialect.isEmpty || !mounted || vault != opened) return;
 
     final sources = await _vaultImportSources(source, dialect);
+    final importDialect = dialect == 'logseq'
+        ? LegacyImportDialect.logseq
+        : LegacyImportDialect.obsidian;
+    final manifest = await buildLegacyImportManifest(source, importDialect);
+    final db = await database;
+    if (db == null) return;
+    final jobId = legacyImportJobId(dialect, manifest.fingerprint);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.createOrResumeImportJob(
+      ImportJobData(
+        id: jobId,
+        sourceKind: dialect,
+        sourceFingerprint: manifest.fingerprint,
+        status: 'running',
+        totalCount: manifest.entries.length,
+        completedCount: 0,
+        createdAtMs: now,
+        updatedAtMs: now,
+        errorJson: '{}',
+      ),
+      [
+        for (final entry in manifest.entries)
+          ImportItemData(
+            jobId: jobId,
+            sourcePath: entry.path,
+            sourceSha256: null,
+            state: 'pending',
+            targetNodeId: null,
+            targetPath: null,
+            errorJson: '{}',
+            updatedAtMs: now,
+          ),
+      ],
+    );
+    final storedItems = await (db.select(
+      db.importItems,
+    )..where((item) => item.jobId.equals(jobId))).get();
+    final checkpointedPaths = <String, String>{
+      for (final item in storedItems)
+        if (item.targetPath != null) item.sourcePath: item.targetPath!,
+    };
     final existingPaths = {
       for (final entry in await opened.storage.list(recursive: true))
         if (!entry.isDirectory) entry.path.replaceAll('\\', '/'),
@@ -100,6 +224,7 @@ extension _VaultImportFlow on _HomeScreenState {
     if (!mounted || vault != opened) return;
 
     final progress = ValueNotifier<String>('Converting 0 of ${sources.length}');
+    var cancelled = false;
     unawaited(
       showDialog<void>(
         context: context,
@@ -120,6 +245,17 @@ extension _VaultImportFlow on _HomeScreenState {
               ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: cancelled
+                  ? null
+                  : () {
+                      cancelled = true;
+                      progress.value = 'Cancelling…';
+                    },
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
       ),
     );
@@ -131,14 +267,25 @@ extension _VaultImportFlow on _HomeScreenState {
     final wikilinks = <String>{};
     final resolvedLinks = <String>{};
     final writtenPaths = <String>{};
-
-    for (var index = 0; index < sources.length; index++) {
-      final item = sources[index];
-      final name = item.path.split('/').last;
-      progress.value = 'Converting ${index + 1} of ${sources.length}\n$name';
-      try {
-        final markdown = await source.readText(item.path);
-        final sourceHash = await source.hash(item.path);
+    var convertedNotes = 0;
+    final metadata =
+        <
+          String,
+          ({bool appendExisting, String sourceName, String sourceHash})
+        >{};
+    final runner = LegacyImportRunner(
+      database: db,
+      storage: source,
+      manifest: manifest,
+      shouldCancel: () => cancelled,
+      converter: (entry, markdown, sourceHash) async {
+        if (entry.kind == LegacyImportEntryKind.asset ||
+            entry.kind == LegacyImportEntryKind.unsupported) {
+          return null;
+        }
+        final name = entry.path.split('/').last;
+        progress.value =
+            'Converting ${++convertedNotes} of ${sources.length}\n$name';
         final decision = decideImportAction(
           sourceName: name,
           sha: sourceHash,
@@ -146,79 +293,199 @@ extension _VaultImportFlow on _HomeScreenState {
         );
         if (decision == ImportSourceDecision.skipUnchanged) {
           report.unchanged++;
-          continue;
+          return null;
         }
         final result = await convertVaultNote(
           dialect: dialect,
-          sourceRelPath: item.path,
+          sourceRelPath: entry.path,
           markdown: markdown,
         );
         if (result == null) {
-          report.skippedEmpty++;
-          continue;
+          return null;
         }
-        // Logseq's `type::` survives conversion as a plain property. Fold it
-        // into `kind` on the way in so a typed page lands as an entity instead
-        // of needing the Settings > "Migrate entity types" pass afterwards.
         final typst = migrateEntityTypeToKind(
           replaceNoteProperty(result.typst, 'import_sha256', sourceHash),
         );
-
-        final isJournal = item.journal || result.kind == 'daily';
-        if (isJournal &&
-            existingPaths.contains(result.relPath) &&
-            !used.contains(result.relPath)) {
-          await workspace.mutateNote(
-            result.relPath,
-            (current) =>
-                '$current\n== From ${dialect == 'logseq' ? 'Logseq' : 'Obsidian'}\n\n'
-                '${importedNoteBody(typst)}',
-          );
-          used.add(result.relPath);
-          writtenPaths.add(result.relPath);
-          report.appended++;
-        } else {
-          final path = assignImportOutputPath(
-            result.relPath,
-            used,
-            existingPaths.contains,
-          );
-          await opened.saveNote(path, typst);
-          writtenPaths.add(path);
-        }
-
-        imported.putIfAbsent(name, () => <String>{}).add(sourceHash);
-        if (decision == ImportSourceDecision.importChangedCopy) {
-          report.changedCopies++;
-        }
-
-        if (isJournal) {
-          report.journals++;
-        } else {
-          report.pages++;
-        }
-        assets.addAll(result.referencedAssets);
-        wikilinks.addAll(result.wikilinkTargets);
-        resolvedLinks
-          ..add(result.title.toLowerCase())
-          ..addAll(result.aliases.map((alias) => alias.toLowerCase()));
-        if (result.date case final date?) resolvedLinks.add(date.toLowerCase());
-        report.details.addAll(
-          result.diagnostics.map((diagnostic) => '${item.path}: $diagnostic'),
+        final isJournal =
+            entry.kind == LegacyImportEntryKind.journal ||
+            result.kind == 'daily';
+        final path =
+            checkpointedPaths[entry.path] ??
+            (isJournal &&
+                    existingPaths.contains(result.relPath) &&
+                    !used.contains(result.relPath)
+                ? result.relPath
+                : assignImportOutputPath(
+                    result.relPath,
+                    used,
+                    existingPaths.contains,
+                  ));
+        used.add(path);
+        final current = isJournal && existingPaths.contains(path)
+            ? await opened.storage.readText(path)
+            : null;
+        final materialized = materializeLegacyImportNote(
+          typst: typst,
+          current: current,
+          sourceHash: sourceHash,
+          dialect: dialect,
         );
-      } catch (error) {
-        report.details.add('${item.path}: $error');
+        final content = materialized.content;
+        metadata[entry.path] = (
+          appendExisting: isJournal && current != null,
+          sourceName: name,
+          sourceHash: sourceHash,
+        );
+        final nodeId = legacyImportNodeId(jobId, entry.path, sourceHash);
+        final revisionId = legacyImportRevisionId(
+          jobId,
+          entry.path,
+          sourceHash,
+        );
+        return (
+          node: NodeData(
+            id: nodeId,
+            type: result.kind,
+            title: result.title,
+            content: content,
+            attributesJson: jsonEncode({
+              'import_source_path': entry.path,
+              'import_source_name': name,
+              'import_sha256': sourceHash,
+              'import_is_journal': isJournal,
+              'import_appended': materialized.appended,
+              'import_changed_copy':
+                  decision == ImportSourceDecision.importChangedCopy,
+              'referenced_assets': result.referencedAssets,
+              'wikilink_targets': result.wikilinkTargets,
+              'resolved_links': [result.title, ...result.aliases, ?result.date],
+              'diagnostics': result.diagnostics,
+            }),
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+          revision: RevisionData(
+            id: revisionId,
+            entityKind: 'node',
+            entityId: nodeId,
+            payloadJson: jsonEncode({
+              'source': entry.path,
+              'sha256': sourceHash,
+            }),
+            createdAtMs: now,
+          ),
+          targetPath: path,
+        );
+      },
+      materializer: (item, node, targetPath) async {
+        final info = metadata[item.sourcePath];
+        if (info?.appendExisting ?? false) {
+          if (!await workspace.mutateNote(targetPath, (_) => node.content)) {
+            throw StateError('vault materialization failed');
+          }
+        } else {
+          await opened.saveNote(targetPath, node.content);
+        }
+        if (info != null) {
+          imported
+              .putIfAbsent(info.sourceName, () => <String>{})
+              .add(info.sourceHash);
+        }
+        writtenPaths.add(targetPath);
+      },
+    );
+    var interrupted = false;
+    try {
+      var more = true;
+      while (more && !cancelled) {
+        more = await runner.runBatch(jobId);
       }
+    } catch (_) {
+      interrupted = true;
+      report.details.add(
+        'Import interrupted; pending items can resume. See the import job for details.',
+      );
+    }
+    if (cancelled) {
+      report.details.add('Import cancelled; pending items can resume.');
+    }
+    final finalItems = (await db.select(db.importItems).get())
+        .where((item) => item.jobId == jobId)
+        .toList();
+    final notePaths = manifest.entries
+        .where(
+          (entry) =>
+              entry.kind == LegacyImportEntryKind.page ||
+              entry.kind == LegacyImportEntryKind.journal,
+        )
+        .map((entry) => entry.path)
+        .toSet();
+    final skippedNotes = finalItems.where(
+      (item) => item.state == 'skipped' && notePaths.contains(item.sourcePath),
+    );
+    report.unchanged = completedImportUnchangedCount(
+      sourcePaths: skippedNotes.map((item) => item.sourcePath),
+      sourceHashes: {
+        for (final item in finalItems) item.sourcePath: item.sourceSha256,
+      },
+      imported: imported,
+    );
+    report.skippedEmpty = skippedNotes.length - report.unchanged;
+    for (final item in finalItems.where((item) => item.state == 'failed')) {
+      report.details.add('${item.sourcePath}: legacy import failed');
+    }
+    final complete = finalItems.every(
+      (item) => item.state != 'pending' && item.state != 'failed',
+    );
+    final writtenItemIds = finalItems
+        .where((item) => item.state == 'written' && item.targetNodeId != null)
+        .map((item) => item.targetNodeId!)
+        .toSet();
+    final importedNodes = (await db.select(db.nodes).get()).where(
+      (node) => writtenItemIds.contains(node.id),
+    );
+    assets.addAll(
+      legacyImportedAssetPaths(
+        importedNodes.map((node) => node.attributesJson),
+      ),
+    );
+    final importedCounts = legacyImportedCounts(
+      importedNodes.map((node) => node.attributesJson),
+    );
+    report
+      ..pages = importedCounts.pages
+      ..journals = importedCounts.journals
+      ..appended = importedCounts.appended
+      ..changedCopies = importedCounts.changedCopies;
+    for (final node in importedNodes) {
+      final attributes =
+          jsonDecode(node.attributesJson) as Map<String, dynamic>;
+      wikilinks.addAll(
+        (attributes['wikilink_targets'] as Iterable? ?? const [])
+            .whereType<String>(),
+      );
+      resolvedLinks.addAll(
+        (attributes['resolved_links'] as Iterable? ?? const [])
+            .whereType<String>()
+            .map((value) => value.toLowerCase()),
+      );
+      report.details.addAll(
+        (attributes['diagnostics'] as Iterable? ?? const [])
+            .whereType<String>()
+            .map((value) => '${attributes['import_source_path']}: $value'),
+      );
     }
 
-    progress.value = 'Copying ${assets.length} referenced assets';
-    await _copyVaultImportAssets(
-      source: source,
-      target: opened.storage,
-      dialect: dialect,
-      assets: assets,
-      report: report,
-    );
+    if (!interrupted && !cancelled) {
+      progress.value = 'Copying ${assets.length} referenced assets';
+      await _copyVaultImportAssets(
+        source: source,
+        target: opened.storage,
+        dialect: dialect,
+        assets: assets,
+        report: report,
+      );
+    }
 
     for (final path in {...existingPaths, ...writtenPaths}) {
       if (!path.toLowerCase().endsWith('.typ')) continue;
@@ -249,8 +516,12 @@ extension _VaultImportFlow on _HomeScreenState {
     await workspace.refreshIndex(updateStatus: false, always: true);
     if (!mounted || vault != opened) return;
     _queueCloudSync();
-    _rebuild(() => status = 'Vault import: ${report.notes} notes');
-    await _showVaultImportReport(report);
+    _rebuild(
+      () => status = complete
+          ? 'Vault import: ${report.notes} notes'
+          : 'Vault import paused: ${report.notes} notes',
+    );
+    await _showVaultImportReport(report, complete: complete);
   }
 
   Future<VaultStorage?> _pickVaultImportSource() async {
@@ -363,51 +634,53 @@ extension _VaultImportFlow on _HomeScreenState {
           await source.readBytes(sourcePath),
         );
         report.assetsCopied++;
-      } catch (error) {
+      } catch (_) {
         report.assetsMissing++;
-        report.details.add('$sourcePath: $error');
+        report.details.add('$sourcePath: asset copy failed');
       }
     }
   }
 
-  Future<void> _showVaultImportReport(_VaultImportReport report) =>
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Vault import complete'),
-          content: SizedBox(
-            width: 560,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                Text('Pages converted: ${report.pages}'),
-                Text('Journals converted: ${report.journals}'),
-                Text('Journals appended: ${report.appended}'),
-                Text('Files skipped-empty: ${report.skippedEmpty}'),
-                Text('Unchanged (skipped): ${report.unchanged}'),
-                Text('Changed (imported as copy): ${report.changedCopies}'),
-                Text('Assets copied: ${report.assetsCopied}'),
-                Text('Assets skipped: ${report.assetsSkipped}'),
-                Text('Assets missing: ${report.assetsMissing}'),
-                Text('Unresolved wikilinks: ${report.unresolvedWikilinks}'),
-                if (report.details.isNotEmpty) ...[
-                  const Divider(),
-                  for (final detail in report.details.take(50))
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.info_outline),
-                      title: Text(detail),
-                    ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
+  Future<void> _showVaultImportReport(
+    _VaultImportReport report, {
+    required bool complete,
+  }) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(vaultImportReportTitle(complete)),
+      content: SizedBox(
+        width: 560,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Text('Pages converted: ${report.pages}'),
+            Text('Journals converted: ${report.journals}'),
+            Text('Journals appended: ${report.appended}'),
+            Text('Files skipped-empty: ${report.skippedEmpty}'),
+            Text('Unchanged (skipped): ${report.unchanged}'),
+            Text('Changed (imported as copy): ${report.changedCopies}'),
+            Text('Assets copied: ${report.assetsCopied}'),
+            Text('Assets skipped: ${report.assetsSkipped}'),
+            Text('Assets missing: ${report.assetsMissing}'),
+            Text('Unresolved wikilinks: ${report.unresolvedWikilinks}'),
+            if (report.details.isNotEmpty) ...[
+              const Divider(),
+              for (final detail in report.details.take(50))
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(detail),
+                ),
+            ],
           ],
         ),
-      );
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
 }
