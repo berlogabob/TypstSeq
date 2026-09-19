@@ -137,7 +137,10 @@ String validateVaultPath(String path, {bool allowEmpty = false}) {
       path.startsWith('/') ||
       path.startsWith('\\') ||
       path.contains('\\') ||
-      path.split('/').any((part) => part.isEmpty || part == '..')) {
+      path.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f) ||
+      path
+          .split('/')
+          .any((part) => part.isEmpty || part == '.' || part == '..')) {
     throw ArgumentError.value(
       path,
       'path',

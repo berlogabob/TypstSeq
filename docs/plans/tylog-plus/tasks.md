@@ -1,8 +1,8 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-15. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 
-**Main milestones: 6/26 DONE. Active wave: P05 + P09. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 7/26 DONE. Active wave: P05 + P09. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-15. Coordinator owns this file.
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
 | P09 | Resumable legacy import | P07 | RUNNING | Interruption/retry, every source accounted for |
-| P10 | Portable export/conflict-aware re-import | P09 | TODO | Complete round trip |
+| P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | TODO | Existing controls and save-failure protection |
 | P12 | Paged startup/list reads | P11 | TODO | Startup/open/save gates |
 | P13 | Incremental FTS and filters | P11 | TODO | EN/PT/RU, latency, changed records only |
@@ -73,6 +73,9 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.5 sqlite-vec fallback | Codex Luna | CONDITIONAL | P05.3 or P05.4 fails | Run only if exact search misses a gate; same vectors/query interface |
 | P05.6 judged retrieval quality | Coordinator | WAITING | P05.1b-P05.4 | 90 judged queries; Recall@10 >=85% overall and >=80% per language/subgroup |
 | P05.7 reproduction/acceptance | Coordinator | READY | P05.0-P05.6 | Commands/hashes reproduced; redacted evidence linked; P05 marked DONE |
+| P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
+| P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
+| P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -81,5 +84,6 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P01b: DONE; actual A024 backup and independent verification recorded in [evidence](evidence/P01/result.md).
 - P04b: DONE; the existing scanner plus `/usr/bin/time` supplies the timing/memory runner, and the privacy-safe aggregate manifest covers production and fixtures.
 - P08: DONE; content, immutable revision, outbox and derived invalidation commit atomically.
-- P09: RUNNING; P09d2b durable UI import adapter is the next checkpoint.
+- P09: RUNNING; host work through P09d4 is complete, while P09d5 requires the private A024 vault.
+- P10: DONE; UI routing for portable export/import belongs to P11.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.

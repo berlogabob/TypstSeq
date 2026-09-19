@@ -11,6 +11,13 @@ import 'package:tylog/vault_storage.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('vault paths reject aliases and control characters', () {
+    for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
+      expect(() => validateVaultPath(path), throwsArgumentError);
+    }
+    expect(validateVaultPath('assets/a.bin'), 'assets/a.bin');
+  });
+
   test(
     'a stalled SAF call surfaces as a PlatformException instead of hanging',
     () async {
