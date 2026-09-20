@@ -18,6 +18,7 @@ class PkmsValidationReport {
 Future<PkmsValidationReport> validatePkmsStorage(
   VaultStorage storage,
   VaultIndex index, {
+  List<VaultStorageEntry>? entries,
   bool Function()? isCancelled,
 }) async {
   final problems = <PkmsProblem>[...index.problems];
@@ -59,7 +60,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
   // One recursive listing answers every attachment-existence check; a
   // per-attachment exists() was thousands of serial SAF binder calls on a
   // web-clip vault (tens of minutes with the UI stuck on "building search…").
-  final listing = await storage.list(recursive: true);
+  final listing = entries ?? await storage.list(recursive: true);
   final presentPaths = {
     for (final entity in listing)
       if (!entity.isDirectory) entity.path,

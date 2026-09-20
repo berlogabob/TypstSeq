@@ -127,6 +127,7 @@ class VaultMaintenance {
   /// instead of re-querying Typst for every note. Omit it and the rebuild is
   /// purely local.
   Future<VaultIndex> buildIndex({
+    List<VaultStorageEntry>? entries,
     TypstInspector? inspector,
     bool force = false,
     String? deviceId,
@@ -145,6 +146,7 @@ class VaultMaintenance {
     }
     final index = await scanVaultStorage(
       storage,
+      entries: entries,
       inspector: inspector,
       previous: previous,
       force: force,
@@ -201,7 +203,11 @@ class VaultMaintenance {
     final out = StreamController<VaultMaintenanceEvent>();
     out.onListen = () async {
       try {
+        final entries = List<VaultStorageEntry>.unmodifiable(
+          await storage.list(recursive: true),
+        );
         final index = await buildIndex(
+          entries: entries,
           inspector: inspector,
           force: force,
           deviceId: deviceId,
@@ -224,6 +230,7 @@ class VaultMaintenance {
           final report = await validatePkmsStorage(
             storage,
             index,
+            entries: entries,
             isCancelled: isCancelled,
           );
           if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
@@ -266,7 +273,11 @@ class VaultMaintenance {
             (lastSweep == null ||
                 DateTime.now().difference(lastSweep) >= sweepInterval)) {
           _lastSweep = DateTime.now();
-          out.add(MaintenanceSwept(await sweepVaultLeftovers(storage)));
+          out.add(
+            MaintenanceSwept(
+              await sweepVaultLeftovers(storage, entries: entries),
+            ),
+          );
           if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
         }
       } catch (error, stack) {
@@ -346,12 +357,15 @@ Future<VaultIndex?> loadVaultIndex(VaultStorage storage) async {
 /// file used to abort the whole pass through a single `catch (_)` around the
 /// loop, so an unlucky third file out of 11,610 meant nothing after it was ever
 /// swept, silently, on every open forever.
-Future<int> sweepVaultLeftovers(VaultStorage storage) async {
+Future<int> sweepVaultLeftovers(
+  VaultStorage storage, {
+  List<VaultStorageEntry>? entries,
+}) async {
   final tempCutoff = DateTime.now().subtract(orphanTempGrace);
   var deleted = 0;
   List<VaultStorageEntry> items;
   try {
-    items = await storage.list(recursive: true);
+    items = entries ?? await storage.list(recursive: true);
   } catch (_) {
     return 0;
   }

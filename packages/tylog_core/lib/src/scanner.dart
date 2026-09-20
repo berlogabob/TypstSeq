@@ -424,6 +424,7 @@ NoteRef scanNote(
 
 Future<VaultIndex> scanVaultStorage(
   VaultStorage storage, {
+  List<VaultStorageEntry>? entries,
   TypstInspector? inspector,
   VaultIndex? previous,
   bool force = false,
@@ -432,7 +433,7 @@ Future<VaultIndex> scanVaultStorage(
   bool Function()? isCancelled,
 }) async {
   final files = <VaultStorageEntry>[];
-  for (final entity in await storage.list(recursive: true)) {
+  for (final entity in entries ?? await storage.list(recursive: true)) {
     if (entity.isDirectory || !entity.path.endsWith('.typ')) continue;
     final relative = entity.path;
     if (!_noteRoots.any(relative.startsWith)) {
@@ -442,6 +443,7 @@ Future<VaultIndex> scanVaultStorage(
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   Map<String, Uint8List>? inspectionFiles;
+
   /// Which support paths the vault actually holds, so a note referencing one
   /// it does not can be given a placeholder instead of failing to compile.
   var inspectionKeys = const <String>{};
@@ -612,7 +614,7 @@ Future<VaultIndex> scanVaultStorage(
       if (activeInspector == null) {
         inspectionFiles = const <String, Uint8List>{};
       } else {
-        final shared = await _inspectionFiles(storage);
+        final shared = await _inspectionFiles(storage, entries: entries);
         inspectionKeys = shared.keys.toSet();
         final inspector = activeInspector;
         if (inspector is BaseFilesInspector) {
@@ -779,9 +781,12 @@ Future<VaultIndex> scanVaultStorage(
 
 const _noteRoots = ['daily/', 'notes/', 'projects/', 'articles/'];
 
-Future<Map<String, Uint8List>> _inspectionFiles(VaultStorage storage) async {
+Future<Map<String, Uint8List>> _inspectionFiles(
+  VaultStorage storage, {
+  List<VaultStorageEntry>? entries,
+}) async {
   final files = <String, Uint8List>{};
-  for (final entry in await storage.list(recursive: true)) {
+  for (final entry in entries ?? await storage.list(recursive: true)) {
     if (entry.isDirectory ||
         entry.path.startsWith('_index/') ||
         // TylogVaultPaths.indexDonors — index caches, not compile inputs, and
@@ -888,9 +893,7 @@ String? _resolveVfsKey(String reference, String notePath) {
   final dir = notePath.contains('/')
       ? notePath.substring(0, notePath.lastIndexOf('/'))
       : '';
-  final segments = <String>[
-    ...dir.split('/').where((s) => s.isNotEmpty),
-  ];
+  final segments = <String>[...dir.split('/').where((s) => s.isNotEmpty)];
   for (final segment in reference.split('/')) {
     if (segment.isEmpty || segment == '.') continue;
     if (segment == '..') {
@@ -931,6 +934,7 @@ final Uint8List _placeholderJpeg = base64Decode(
 final Uint8List _placeholderGif = base64Decode(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
 );
+
 /// 1x1 lossless WebP (VP8L).
 final Uint8List _placeholderWebp = base64Decode(
   'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==',
@@ -1118,10 +1122,7 @@ String repairArticleTypst(String source) {
   // A content block `]` abutting `(` or `[` (e.g. `#link("u")[label](2024)`)
   // re-parses as a call/second-content on the function. Space them apart.
   // (Only `]` — never `)`, so legit `#link("u")[label]` call syntax is kept.)
-  out = out.replaceAllMapped(
-    RegExp(r'\]([(\[])'),
-    (m) => '] ${m[1]}',
-  );
+  out = out.replaceAllMapped(RegExp(r'\]([(\[])'), (m) => '] ${m[1]}');
   // Bare `word@domain.tld` in prose parses as a Typst `@label` ref (e.g.
   // `20251186@iade.pt` -> `<iade.pt>` does not exist). Escape the `@` outside
   // quoted strings (mailto: URLs stay intact) and skip already-escaped `\@`.
@@ -1297,7 +1298,8 @@ _DictEntry? _locateDictEntry(String dictSource, String key) {
       if (decodedKey == key) {
         final leading = match.group(1)!.length;
         var valueStart = match.end;
-        while (valueStart < part.length && _space(part.codeUnitAt(valueStart))) {
+        while (valueStart < part.length &&
+            _space(part.codeUnitAt(valueStart))) {
           valueStart++;
         }
         return _DictEntry(
@@ -1449,9 +1451,7 @@ Object? _parsePropertyValue(String raw) {
   if (trimmed == 'none') return null;
   if (trimmed == 'true') return true;
   if (trimmed == 'false') return false;
-  final quoted = RegExp(
-    r'^"((?:\\.|[^"\\])*)"$',
-  ).firstMatch(trimmed);
+  final quoted = RegExp(r'^"((?:\\.|[^"\\])*)"$').firstMatch(trimmed);
   if (quoted != null) {
     return quoted
         .group(1)!
@@ -1467,16 +1467,12 @@ String replaceTaskStatus(String source, String id, String status) {
   final field = _locateTopLevelField(call.source, 'status');
   final replacement = field == null
       ? _appendCallField(
-            call.source,
-            'status',
-            '"$status"',
-            allowed: writableTaskFields,
-          )
-      : call.source.replaceRange(
-          field.start,
-          field.end,
-          'status: "$status"',
-        );
+          call.source,
+          'status',
+          '"$status"',
+          allowed: writableTaskFields,
+        )
+      : call.source.replaceRange(field.start, field.end, 'status: "$status"');
   return source.replaceRange(call.start, call.end, replacement);
 }
 
@@ -1485,11 +1481,11 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
   final field = _locateTopLevelField(call.source, 'completed');
   final replacement = field == null
       ? _appendCallField(
-            call.source,
-            'completed',
-            '("$timestamp",)',
-            allowed: writableTaskFields,
-          )
+          call.source,
+          'completed',
+          '("$timestamp",)',
+          allowed: writableTaskFields,
+        )
       : call.source.replaceRange(
           field.start,
           field.end,
@@ -1684,10 +1680,9 @@ String _setTaskProperty(String callSource, String key, String? rawValue) {
 /// Removes one entry from a dictionary literal, collapsing the comma it left.
 String _stripDictEntry(String dict, _DictEntry entry) {
   final without = dict.replaceRange(entry.start, entry.end, '');
-  final cleaned = without.replaceAll(RegExp(r',\s*,'), ',').replaceAll(
-    RegExp(r'\(\s*,'),
-    '(',
-  );
+  final cleaned = without
+      .replaceAll(RegExp(r',\s*,'), ',')
+      .replaceAll(RegExp(r'\(\s*,'), '(');
   return cleaned.trim() == '()' ? '(:)' : cleaned;
 }
 
@@ -1726,21 +1721,16 @@ String stopTaskClock(String source, String id, String endIso) {
 
 String replaceTaskText(String source, String id, String text) {
   final call = _locateTaskCall(source, id);
-  final quoted =
-      '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
+  final quoted = '"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   final field = _locateTopLevelField(call.source, 'text');
   final replacement = field == null
       ? _appendCallField(
-            call.source,
-            'text',
-            quoted,
-            allowed: writableTaskFields,
-          )
-      : call.source.replaceRange(
-          field.start,
-          field.end,
-          'text: $quoted',
-        );
+          call.source,
+          'text',
+          quoted,
+          allowed: writableTaskFields,
+        )
+      : call.source.replaceRange(field.start, field.end, 'text: $quoted');
   return source.replaceRange(call.start, call.end, replacement);
 }
 
@@ -1840,7 +1830,9 @@ _TopLevelField? _locateTopLevelField(String callSource, String name) {
       while (j < callSource.length && _space(callSource.codeUnitAt(j))) {
         j++;
       }
-      if (ident != name || j >= callSource.length || callSource.codeUnitAt(j) != 58) {
+      if (ident != name ||
+          j >= callSource.length ||
+          callSource.codeUnitAt(j) != 58) {
         continue;
       }
       var k = j + 1;
@@ -2457,15 +2449,14 @@ final _dailyPathDay = RegExp(r'(\d{4}-\d{2}-\d{2})\.typ$');
 /// no UI changes. Index-only — like tag synonyms, the note's text is never
 /// rewritten. The default `note` is not aliased: a mega-tag carried by every
 /// plain note filters nothing.
-Iterable<String> _kindTag(String kind) =>
-    kind == 'note' ? const [] : [kind];
+Iterable<String> _kindTag(String kind) => kind == 'note' ? const [] : [kind];
 
 List<String> _normalizedTags(
   Set<String> values, [
   Map<String, String> synonyms = const {},
-]) => _sorted({
-  for (final tag in values) normalizeTag(tag, synonyms),
-}..remove(''));
+]) => _sorted(
+  {for (final tag in values) normalizeTag(tag, synonyms)}..remove(''),
+);
 
 /// Folds a tag to the form the index stores (`3D` → `3d`, `quick capture` →
 /// `quick-capture`). Public because callers comparing arbitrary user text
