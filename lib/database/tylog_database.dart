@@ -168,6 +168,34 @@ class ImportItems extends Table {
   ];
 }
 
+class NodeSummary {
+  const NodeSummary({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.attributesJson,
+    required this.updatedAtMs,
+  });
+
+  final String id;
+  final String type;
+  final String title;
+  final String attributesJson;
+  final int updatedAtMs;
+}
+
+class NodeSummaryPage {
+  const NodeSummaryPage({
+    required this.nodes,
+    required this.nextCursor,
+    required this.complete,
+  });
+
+  final List<NodeSummary> nodes;
+  final String? nextCursor;
+  final bool complete;
+}
+
 @DriftDatabase(
   tables: [
     DatabaseMetadata,
@@ -182,6 +210,8 @@ class ImportItems extends Table {
   ],
 )
 class TyLogDatabase extends _$TyLogDatabase {
+  static const nodeProjectionKey = 'node_projection_complete_revision';
+
   TyLogDatabase(super.executor);
 
   @override
@@ -294,6 +324,69 @@ class TyLogDatabase extends _$TyLogDatabase {
             ..orderBy([(t) => OrderingTerm.asc(t.sourcePath)])
             ..limit(limit))
           .get();
+
+  Future<NodeSummaryPage> pageNodeSummaries({
+    String? afterId,
+    String? type,
+    int limit = 50,
+  }) async {
+    if (limit < 1 || limit > 100) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 100');
+    }
+    final conditions = <String>[];
+    final variables = <Variable<Object>>[];
+    if (afterId != null) {
+      conditions.add('id > ?');
+      variables.add(Variable.withString(afterId));
+    }
+    if (type != null) {
+      conditions.add('type = ?');
+      variables.add(Variable.withString(type));
+    }
+    variables.add(Variable.withInt(limit));
+    final where = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final rows = await customSelect('''
+      SELECT id, type, title, attributes_json, updated_at_ms
+      FROM nodes
+      $where
+      ORDER BY id ASC
+      LIMIT ?
+      ''', variables: variables).get();
+    final nodes = [
+      for (final row in rows)
+        NodeSummary(
+          id: row.read<String>('id'),
+          type: row.read<String>('type'),
+          title: row.read<String>('title'),
+          attributesJson: row.read<String>('attributes_json'),
+          updatedAtMs: row.read<int>('updated_at_ms'),
+        ),
+    ];
+    return NodeSummaryPage(
+      nodes: nodes,
+      nextCursor: nodes.length == limit ? nodes.last.id : null,
+      complete: await nodeProjectionComplete(),
+    );
+  }
+
+  Future<bool> nodeProjectionComplete() async {
+    final row = await (select(
+      databaseMetadata,
+    )..where((table) => table.key.equals(nodeProjectionKey))).getSingleOrNull();
+    final revision = row == null ? null : int.tryParse(row.value);
+    return revision != null && revision >= 0;
+  }
+
+  Future<void> markNodeProjectionComplete(int revision) async {
+    if (revision < 0) throw ArgumentError.value(revision, 'revision');
+    await into(databaseMetadata).insertOnConflictUpdate(
+      DatabaseMetadataData(
+        key: nodeProjectionKey,
+        value: '$revision',
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+  }
 
   Future<void> markImportItem({
     required ImportItemData item,
