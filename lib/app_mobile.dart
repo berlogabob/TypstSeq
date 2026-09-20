@@ -2611,9 +2611,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool create = false,
     String? heading,
   }) async {
-    final notes = (index?.notes ?? const <NoteRef>[])
-        .where((note) => kind == null || note.kind == kind)
-        .toList();
+    final notes =
+        await _pagedPickerNotes(kind: kind) ??
+        (index?.notes ?? const <NoteRef>[])
+            .where((note) => kind == null || note.kind == kind)
+            .toList();
+    if (!mounted) return null;
     final chosen = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
@@ -2642,17 +2645,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ..sort((a, b) => a.title.compareTo(b.title));
 
   Future<NoteRef?> _chooseEntity() async {
+    final paged = await _pagedPickerNotes();
+    if (!mounted) return null;
     final chosen = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
       builder: (context) => NotePickerSheet(
-        notes: _entities,
+        notes: paged ?? _entities,
         createLabel: 'New entity',
         subtitleFor: (note) => note.kind,
       ),
     );
     if (chosen is NoteRef) return chosen;
     return chosen == NotePickerSheet.createSentinel ? _createEntity() : null;
+  }
+
+  /// Reads picker candidates in bounded pages when the SQLite projection is
+  /// complete. An incomplete projection falls back to the live index so a
+  /// background scan never makes a picker appear empty.
+  Future<List<NoteRef>?> _pagedPickerNotes({String? kind}) async {
+    final activeEntry = workspace.entry;
+    if (activeEntry == null) return null;
+    try {
+      final db = await _databaseForVault(activeEntry);
+      if (db == null || !await db.nodeProjectionComplete()) return null;
+      final notes = <NoteRef>[];
+      String? cursor;
+      do {
+        final page = await db.pageNodeSummaries(afterId: cursor, type: kind);
+        for (final summary in page.nodes) {
+          final attributes = jsonDecode(summary.attributesJson);
+          if (attributes is! Map) continue;
+          final json = attributes.cast<String, Object?>()
+            ..['id'] = summary.id
+            ..['title'] = summary.title
+            ..['kind'] = summary.type;
+          if (json['deletedAtMs'] != null || json['path'] is! String) {
+            continue;
+          }
+          notes.add(NoteRef.fromJson(json));
+        }
+        cursor = page.nextCursor;
+      } while (cursor != null);
+      return notes;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<NoteRef?> _createEntity() async {
