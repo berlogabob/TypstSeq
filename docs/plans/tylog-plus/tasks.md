@@ -30,7 +30,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P22 | Evidence relations/bounded graph | P07,P12 | DONE | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | DONE | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | DONE | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
-| P25 | Production migration/release acceptance | P03,P24 | TODO | Integrity, sync, correct real vault/build on both devices |
+| P25 | Production migration/release acceptance | P03,P24 | BLOCKED | [Ready-to-run release acceptance; blocked by real Nextcloud/device access](evidence/P25/result.md) |
 | P26 | Daily-use acceptance/thesis freeze | P25 | TODO | Seven days; every required gate passes |
 
 ## Current bounded tickets
