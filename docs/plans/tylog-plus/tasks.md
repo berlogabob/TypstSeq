@@ -140,3 +140,5 @@ The first remediation removed a full document reparse for plain-note keystrokes.
 P22 follow-up: graph rendering now caps the UI layout at 200 nodes and 500 edges, retaining the current/high-degree nodes deterministically. Graph tests pass; graph UI interaction/export acceptance remains open.
 
 P22 export wiring: GraphView now offers `Export SVG`, sharing the bounded graph through the existing platform share path as `tylog-graph.svg`. Native share-sheet acceptance remains open.
+
+The graph widget test now covers the visible action and callback handoff; 19 graph tests pass. Native share-target verification remains open.

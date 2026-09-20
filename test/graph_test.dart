@@ -555,4 +555,29 @@ void main() {
     expect(viewer.transformationController!.value, fitted);
     semantics.dispose();
   });
+
+  testWidgets('graph export action hands bounded graph to share seam', (
+    tester,
+  ) async {
+    const graph = NoteGraph(
+      nodes: [GraphNode(path: 'a.typ', title: 'Alpha')],
+      edges: const [],
+    );
+    NoteGraph? exported;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GraphView(
+            graph: graph,
+            currentPath: 'a.typ',
+            onOpenPath: (_) {},
+            onExportSvg: (value) async => exported = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Export SVG'));
+    expect(exported, same(graph));
+  });
 }

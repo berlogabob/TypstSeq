@@ -24,6 +24,10 @@ sheet as `tylog-graph.svg`. The action is wired from `HomeScreen` into
 `GraphView`; graph tests still pass. Full native share-sheet acceptance remains
 device-gated.
 
+The widget-level export test now verifies the visible `Export SVG` action calls
+the share seam with the bounded graph (19 graph tests pass). Only the native
+share target/file handoff remains device-gated.
+
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
 
 Full regression after schema and graph changes: `flutter test` — 707 passed, 2 skipped.
