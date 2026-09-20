@@ -5,6 +5,8 @@ import 'tylog_database.dart';
 typedef RevisionFileUpload =
     Future<void> Function(String path, List<int> bytes);
 
+typedef RevisionEnvelope = ({RevisionData revision, NodeData? node});
+
 /// Publishes durable revision envelopes through the vault's existing file
 /// sync path. A failed upload leaves its outbox row pending for the next pass.
 class RevisionPublisher {
@@ -12,12 +14,27 @@ class RevisionPublisher {
 
   final TyLogDatabase database;
 
-  Future<int> publish({
-    required RevisionFileUpload upload,
+  static RevisionEnvelope decodeEnvelope(List<int> bytes) {
+    final json = (jsonDecode(utf8.decode(bytes)) as Map)
+        .cast<String, Object?>();
+    final revision = RevisionData.fromJson(
+      (json['revision'] as Map).cast<String, Object?>(),
+    );
+    final nodeJson = json['node'];
+    return (
+      revision: revision,
+      node: nodeJson == null
+          ? null
+          : NodeData.fromJson((nodeJson as Map).cast<String, Object?>()),
+    );
+  }
+
+  Future<List<String>> materialize({
+    required RevisionFileUpload write,
     int limit = 100,
   }) async {
+    final ids = <String>[];
     final pending = await database.pendingRevisionUploads(limit: limit);
-    var published = 0;
     for (final item in pending) {
       final path = '_system/revisions/${item.revision.id}.json';
       final bytes = utf8.encode(
@@ -26,10 +43,24 @@ class RevisionPublisher {
           if (item.node case final node?) 'node': node.toJson(),
         }),
       );
-      await upload(path, bytes);
-      await database.acknowledgeRevisionUpload(item.revision.id);
-      published++;
+      await write(path, bytes);
+      ids.add(item.revision.id);
     }
-    return published;
+    return ids;
+  }
+
+  Future<void> acknowledge(Iterable<String> revisionIds) async {
+    for (final id in revisionIds) {
+      await database.acknowledgeRevisionUpload(id);
+    }
+  }
+
+  Future<int> publish({
+    required RevisionFileUpload upload,
+    int limit = 100,
+  }) async {
+    final ids = await materialize(write: upload, limit: limit);
+    await acknowledge(ids);
+    return ids.length;
   }
 }

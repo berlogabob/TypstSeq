@@ -50,4 +50,25 @@ void main() {
     expect(paths.single, startsWith('_system/revisions/'));
     expect(await database.pendingRevisionUploads(), isEmpty);
   });
+
+  test('materialize can be decoded before acknowledgement', () async {
+    final database = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final saved = await persistNoteSource(
+      database: database,
+      path: 'notes/a.typ',
+      source: '#show: tylog.note.with(id: "a", title: "A")\nbody',
+      updatedAtMs: 1,
+    );
+    late List<int> bytes;
+    final ids = await RevisionPublisher(
+      database,
+    ).materialize(write: (_, value) async => bytes = value);
+    expect(ids, [saved.revision.id]);
+    expect(await database.pendingRevisionUploads(), hasLength(1));
+    expect(
+      RevisionPublisher.decodeEnvelope(bytes).revision.id,
+      saved.revision.id,
+    );
+  });
 }

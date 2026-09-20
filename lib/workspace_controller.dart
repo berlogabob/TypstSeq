@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:tylog_core/graph.dart';
 
 import 'database/note_persistence.dart';
+import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
@@ -1434,6 +1435,20 @@ class WorkspaceController extends ChangeNotifier {
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
       final revisionBeforeSync = editRevision;
+      final activeEntry = entry;
+      final revisionDatabase = activeEntry != null && databaseForVault != null
+          ? await databaseForVault!(activeEntry)
+          : null;
+      if (!_owns(opened, generation)) return false;
+      final revisionPublisher = revisionDatabase == null
+          ? null
+          : RevisionPublisher(revisionDatabase);
+      final materializedRevisionIds = revisionPublisher == null
+          ? const <String>[]
+          : await revisionPublisher.materialize(
+              write: opened.storage.writeBytes,
+            );
+      if (!_owns(opened, generation)) return false;
       final result = await NextcloudSync(
         config,
         onProgress: (stage, path) {
@@ -1465,6 +1480,32 @@ class WorkspaceController extends ChangeNotifier {
         },
       ).sync(opened, trigger: trigger, initialMode: initialMode);
       if (!_owns(opened, generation)) return false;
+      if (revisionDatabase != null) {
+        for (final file in await opened.storage.list(
+          path: '_system/revisions',
+        )) {
+          if (file.isDirectory || !file.path.endsWith('.json')) continue;
+          try {
+            final envelope = RevisionPublisher.decodeEnvelope(
+              await opened.storage.readBytes(file.path),
+            );
+            final node = envelope.node;
+            if (node != null) {
+              await revisionDatabase.receiveRevision(
+                node: node,
+                revision: envelope.revision,
+              );
+            }
+          } catch (_) {
+            // A malformed or partial envelope is retried on the next sync.
+          }
+        }
+      }
+      if (revisionPublisher != null &&
+          materializedRevisionIds.isNotEmpty &&
+          result.conflicts == 0) {
+        await revisionPublisher.acknowledge(materializedRevisionIds);
+      }
       var concurrentConflict = false;
       if (syncedNote != null && syncedNote == note) {
         final diskExists = await opened.storage.exists(syncedNote);
