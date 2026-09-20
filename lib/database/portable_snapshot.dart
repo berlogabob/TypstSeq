@@ -9,7 +9,7 @@ import 'tylog_database.dart';
 
 const _portableFormat = 'tylog-portable-snapshot';
 const _portableVersion = 1;
-const _portableSchemaVersion = 5;
+const _portableSchemaVersion = 6;
 const _manifestPath = 'manifest.json';
 const _recordNames = ['sources', 'nodes', 'edges', 'revisions'];
 

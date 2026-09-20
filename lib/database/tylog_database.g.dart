@@ -1914,6 +1914,421 @@ class SourcesCompanion extends UpdateCompanion<SourceData> {
   }
 }
 
+class $SourceVersionsTable extends SourceVersions
+    with TableInfo<$SourceVersionsTable, SourceVersionData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SourceVersionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES sources (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _sha256Meta = const VerificationMeta('sha256');
+  @override
+  late final GeneratedColumn<String> sha256 = GeneratedColumn<String>(
+    'sha256',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pagesJsonMeta = const VerificationMeta(
+    'pagesJson',
+  );
+  @override
+  late final GeneratedColumn<String> pagesJson = GeneratedColumn<String>(
+    'pages_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceId,
+    sha256,
+    status,
+    pagesJson,
+    createdAtMs,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'source_versions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SourceVersionData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceIdMeta);
+    }
+    if (data.containsKey('sha256')) {
+      context.handle(
+        _sha256Meta,
+        sha256.isAcceptableOrUnknown(data['sha256']!, _sha256Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_sha256Meta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('pages_json')) {
+      context.handle(
+        _pagesJsonMeta,
+        pagesJson.isAcceptableOrUnknown(data['pages_json']!, _pagesJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pagesJsonMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SourceVersionData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SourceVersionData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      )!,
+      sha256: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sha256'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      pagesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pages_json'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $SourceVersionsTable createAlias(String alias) {
+    return $SourceVersionsTable(attachedDatabase, alias);
+  }
+}
+
+class SourceVersionData extends DataClass
+    implements Insertable<SourceVersionData> {
+  final String id;
+  final String sourceId;
+  final String sha256;
+  final String status;
+  final String pagesJson;
+  final int createdAtMs;
+  const SourceVersionData({
+    required this.id,
+    required this.sourceId,
+    required this.sha256,
+    required this.status,
+    required this.pagesJson,
+    required this.createdAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source_id'] = Variable<String>(sourceId);
+    map['sha256'] = Variable<String>(sha256);
+    map['status'] = Variable<String>(status);
+    map['pages_json'] = Variable<String>(pagesJson);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  SourceVersionsCompanion toCompanion(bool nullToAbsent) {
+    return SourceVersionsCompanion(
+      id: Value(id),
+      sourceId: Value(sourceId),
+      sha256: Value(sha256),
+      status: Value(status),
+      pagesJson: Value(pagesJson),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory SourceVersionData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SourceVersionData(
+      id: serializer.fromJson<String>(json['id']),
+      sourceId: serializer.fromJson<String>(json['sourceId']),
+      sha256: serializer.fromJson<String>(json['sha256']),
+      status: serializer.fromJson<String>(json['status']),
+      pagesJson: serializer.fromJson<String>(json['pagesJson']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceId': serializer.toJson<String>(sourceId),
+      'sha256': serializer.toJson<String>(sha256),
+      'status': serializer.toJson<String>(status),
+      'pagesJson': serializer.toJson<String>(pagesJson),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  SourceVersionData copyWith({
+    String? id,
+    String? sourceId,
+    String? sha256,
+    String? status,
+    String? pagesJson,
+    int? createdAtMs,
+  }) => SourceVersionData(
+    id: id ?? this.id,
+    sourceId: sourceId ?? this.sourceId,
+    sha256: sha256 ?? this.sha256,
+    status: status ?? this.status,
+    pagesJson: pagesJson ?? this.pagesJson,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+  );
+  SourceVersionData copyWithCompanion(SourceVersionsCompanion data) {
+    return SourceVersionData(
+      id: data.id.present ? data.id.value : this.id,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      sha256: data.sha256.present ? data.sha256.value : this.sha256,
+      status: data.status.present ? data.status.value : this.status,
+      pagesJson: data.pagesJson.present ? data.pagesJson.value : this.pagesJson,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SourceVersionData(')
+          ..write('id: $id, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('sha256: $sha256, ')
+          ..write('status: $status, ')
+          ..write('pagesJson: $pagesJson, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, sourceId, sha256, status, pagesJson, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SourceVersionData &&
+          other.id == this.id &&
+          other.sourceId == this.sourceId &&
+          other.sha256 == this.sha256 &&
+          other.status == this.status &&
+          other.pagesJson == this.pagesJson &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class SourceVersionsCompanion extends UpdateCompanion<SourceVersionData> {
+  final Value<String> id;
+  final Value<String> sourceId;
+  final Value<String> sha256;
+  final Value<String> status;
+  final Value<String> pagesJson;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const SourceVersionsCompanion({
+    this.id = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.sha256 = const Value.absent(),
+    this.status = const Value.absent(),
+    this.pagesJson = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SourceVersionsCompanion.insert({
+    required String id,
+    required String sourceId,
+    required String sha256,
+    required String status,
+    required String pagesJson,
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceId = Value(sourceId),
+       sha256 = Value(sha256),
+       status = Value(status),
+       pagesJson = Value(pagesJson),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<SourceVersionData> custom({
+    Expression<String>? id,
+    Expression<String>? sourceId,
+    Expression<String>? sha256,
+    Expression<String>? status,
+    Expression<String>? pagesJson,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceId != null) 'source_id': sourceId,
+      if (sha256 != null) 'sha256': sha256,
+      if (status != null) 'status': status,
+      if (pagesJson != null) 'pages_json': pagesJson,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SourceVersionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sourceId,
+    Value<String>? sha256,
+    Value<String>? status,
+    Value<String>? pagesJson,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return SourceVersionsCompanion(
+      id: id ?? this.id,
+      sourceId: sourceId ?? this.sourceId,
+      sha256: sha256 ?? this.sha256,
+      status: status ?? this.status,
+      pagesJson: pagesJson ?? this.pagesJson,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (sha256.present) {
+      map['sha256'] = Variable<String>(sha256.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (pagesJson.present) {
+      map['pages_json'] = Variable<String>(pagesJson.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SourceVersionsCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('sha256: $sha256, ')
+          ..write('status: $status, ')
+          ..write('pagesJson: $pagesJson, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RevisionsTable extends Revisions
     with TableInfo<$RevisionsTable, RevisionData> {
   @override
@@ -3993,6 +4408,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   late final $NodesTable nodes = $NodesTable(this);
   late final $EdgesTable edges = $EdgesTable(this);
   late final $SourcesTable sources = $SourcesTable(this);
+  late final $SourceVersionsTable sourceVersions = $SourceVersionsTable(this);
   late final $RevisionsTable revisions = $RevisionsTable(this);
   late final $OutboxEntriesTable outboxEntries = $OutboxEntriesTable(this);
   late final $DerivedInvalidationsTable derivedInvalidations =
@@ -4008,6 +4424,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
     nodes,
     edges,
     sources,
+    sourceVersions,
     revisions,
     outboxEntries,
     derivedInvalidations,
@@ -4016,6 +4433,13 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'sources',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('source_versions', kind: UpdateKind.delete)],
+    ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'import_jobs',
@@ -5205,6 +5629,29 @@ typedef $$SourcesTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
+final class $$SourcesTableReferences
+    extends BaseReferences<_$TyLogDatabase, $SourcesTable, SourceData> {
+  $$SourcesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$SourceVersionsTable, List<SourceVersionData>>
+  _sourceVersionsRefsTable(_$TyLogDatabase db) => MultiTypedResultKey.fromTable(
+    db.sourceVersions,
+    aliasName: 'sources__id__source_versions__source_id',
+  );
+
+  $$SourceVersionsTableProcessedTableManager get sourceVersionsRefs {
+    final manager = $$SourceVersionsTableTableManager(
+      $_db,
+      $_db.sourceVersions,
+    ).filter((f) => f.sourceId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_sourceVersionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
 class $$SourcesTableFilterComposer
     extends Composer<_$TyLogDatabase, $SourcesTable> {
   $$SourcesTableFilterComposer({
@@ -5248,6 +5695,31 @@ class $$SourcesTableFilterComposer
     column: $table.updatedAtMs,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> sourceVersionsRefs(
+    Expression<bool> Function($$SourceVersionsTableFilterComposer f) f,
+  ) {
+    final $$SourceVersionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.sourceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableFilterComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SourcesTableOrderingComposer
@@ -5330,6 +5802,31 @@ class $$SourcesTableAnnotationComposer
     column: $table.updatedAtMs,
     builder: (column) => column,
   );
+
+  Expression<T> sourceVersionsRefs<T extends Object>(
+    Expression<T> Function($$SourceVersionsTableAnnotationComposer a) f,
+  ) {
+    final $$SourceVersionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.sourceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SourcesTableTableManager
@@ -5343,12 +5840,9 @@ class $$SourcesTableTableManager
           $$SourcesTableAnnotationComposer,
           $$SourcesTableCreateCompanionBuilder,
           $$SourcesTableUpdateCompanionBuilder,
-          (
-            SourceData,
-            BaseReferences<_$TyLogDatabase, $SourcesTable, SourceData>,
-          ),
+          (SourceData, $$SourcesTableReferences),
           SourceData,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool sourceVersionsRefs})
         > {
   $$SourcesTableTableManager(_$TyLogDatabase db, $SourcesTable table)
     : super(
@@ -5405,15 +5899,41 @@ class $$SourcesTableTableManager
               .map(
                 (e) => (
                   e.readTable<$SourcesTable, SourceData>(table),
-                  BaseReferences<_$TyLogDatabase, $SourcesTable, SourceData>(
-                    db,
-                    table,
-                    e,
-                  ),
+                  $$SourcesTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({sourceVersionsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (sourceVersionsRefs) db.sourceVersions,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (sourceVersionsRefs)
+                    await $_getPrefetchedData<
+                      SourceData,
+                      $SourcesTable,
+                      SourceVersionData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$SourcesTableReferences
+                          ._sourceVersionsRefsTable(db),
+                      managerFromTypedResult: (p0) => $$SourcesTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).sourceVersionsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.sourceId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
         ),
       );
 }
@@ -5428,9 +5948,359 @@ typedef $$SourcesTableProcessedTableManager =
       $$SourcesTableAnnotationComposer,
       $$SourcesTableCreateCompanionBuilder,
       $$SourcesTableUpdateCompanionBuilder,
-      (SourceData, BaseReferences<_$TyLogDatabase, $SourcesTable, SourceData>),
+      (SourceData, $$SourcesTableReferences),
       SourceData,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool sourceVersionsRefs})
+    >;
+typedef $$SourceVersionsTableCreateCompanionBuilder =
+    SourceVersionsCompanion Function({
+      required String id,
+      required String sourceId,
+      required String sha256,
+      required String status,
+      required String pagesJson,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$SourceVersionsTableUpdateCompanionBuilder =
+    SourceVersionsCompanion Function({
+      Value<String> id,
+      Value<String> sourceId,
+      Value<String> sha256,
+      Value<String> status,
+      Value<String> pagesJson,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+final class $$SourceVersionsTableReferences
+    extends
+        BaseReferences<
+          _$TyLogDatabase,
+          $SourceVersionsTable,
+          SourceVersionData
+        > {
+  $$SourceVersionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $SourcesTable _sourceIdTable(_$TyLogDatabase db) =>
+      db.sources.createAlias('source_versions__source_id__sources__id');
+
+  $$SourcesTableProcessedTableManager get sourceId {
+    final $_column = $_itemColumn<String>('source_id')!;
+
+    final manager = $$SourcesTableTableManager(
+      $_db,
+      $_db.sources,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sourceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$SourceVersionsTableFilterComposer
+    extends Composer<_$TyLogDatabase, $SourceVersionsTable> {
+  $$SourceVersionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pagesJson => $composableBuilder(
+    column: $table.pagesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$SourcesTableFilterComposer get sourceId {
+    final $$SourcesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceId,
+      referencedTable: $db.sources,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourcesTableFilterComposer(
+            $db: $db,
+            $table: $db.sources,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SourceVersionsTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $SourceVersionsTable> {
+  $$SourceVersionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pagesJson => $composableBuilder(
+    column: $table.pagesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$SourcesTableOrderingComposer get sourceId {
+    final $$SourcesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceId,
+      referencedTable: $db.sources,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourcesTableOrderingComposer(
+            $db: $db,
+            $table: $db.sources,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SourceVersionsTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $SourceVersionsTable> {
+  $$SourceVersionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sha256 =>
+      $composableBuilder(column: $table.sha256, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get pagesJson =>
+      $composableBuilder(column: $table.pagesJson, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  $$SourcesTableAnnotationComposer get sourceId {
+    final $$SourcesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceId,
+      referencedTable: $db.sources,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourcesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sources,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SourceVersionsTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $SourceVersionsTable,
+          SourceVersionData,
+          $$SourceVersionsTableFilterComposer,
+          $$SourceVersionsTableOrderingComposer,
+          $$SourceVersionsTableAnnotationComposer,
+          $$SourceVersionsTableCreateCompanionBuilder,
+          $$SourceVersionsTableUpdateCompanionBuilder,
+          (SourceVersionData, $$SourceVersionsTableReferences),
+          SourceVersionData,
+          PrefetchHooks Function({bool sourceId})
+        > {
+  $$SourceVersionsTableTableManager(
+    _$TyLogDatabase db,
+    $SourceVersionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SourceVersionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SourceVersionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SourceVersionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sourceId = const Value.absent(),
+                Value<String> sha256 = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String> pagesJson = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceVersionsCompanion(
+                id: id,
+                sourceId: sourceId,
+                sha256: sha256,
+                status: status,
+                pagesJson: pagesJson,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sourceId,
+                required String sha256,
+                required String status,
+                required String pagesJson,
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => SourceVersionsCompanion.insert(
+                id: id,
+                sourceId: sourceId,
+                sha256: sha256,
+                status: status,
+                pagesJson: pagesJson,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SourceVersionsTable, SourceVersionData>(table),
+                  $$SourceVersionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sourceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sourceId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sourceId,
+                                referencedTable: $$SourceVersionsTableReferences
+                                    ._sourceIdTable(db),
+                                referencedColumn:
+                                    $$SourceVersionsTableReferences
+                                        ._sourceIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SourceVersionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $SourceVersionsTable,
+      SourceVersionData,
+      $$SourceVersionsTableFilterComposer,
+      $$SourceVersionsTableOrderingComposer,
+      $$SourceVersionsTableAnnotationComposer,
+      $$SourceVersionsTableCreateCompanionBuilder,
+      $$SourceVersionsTableUpdateCompanionBuilder,
+      (SourceVersionData, $$SourceVersionsTableReferences),
+      SourceVersionData,
+      PrefetchHooks Function({bool sourceId})
     >;
 typedef $$RevisionsTableCreateCompanionBuilder =
     RevisionsCompanion Function({
@@ -7334,6 +8204,8 @@ class $TyLogDatabaseManager {
       $$EdgesTableTableManager(_db, _db.edges);
   $$SourcesTableTableManager get sources =>
       $$SourcesTableTableManager(_db, _db.sources);
+  $$SourceVersionsTableTableManager get sourceVersions =>
+      $$SourceVersionsTableTableManager(_db, _db.sourceVersions);
   $$RevisionsTableTableManager get revisions =>
       $$RevisionsTableTableManager(_db, _db.revisions);
   $$OutboxEntriesTableTableManager get outboxEntries =>

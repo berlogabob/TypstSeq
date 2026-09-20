@@ -97,7 +97,7 @@ void main() {
     expect(first, orderedEquals(second));
 
     final snapshot = parsePortableSnapshot(first);
-    expect(snapshot.schemaVersion, 5);
+    expect(snapshot.schemaVersion, 6);
     expect(snapshot.sources.single['attributesJson'], '{"year":2026}');
     expect(snapshot.nodes.single['content'], 'body');
     expect(snapshot.edges.single['fromNodeId'], 'node-1');

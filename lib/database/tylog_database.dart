@@ -6,6 +6,8 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../pdf/pdf_extraction.dart';
+
 part 'tylog_database.g.dart';
 
 @DataClassName('DatabaseMetadataData')
@@ -81,6 +83,26 @@ class Sources extends Table {
 
   @override
   List<String> get customConstraints => ['CHECK (json_valid(attributes_json))'];
+}
+
+@DataClassName('SourceVersionData')
+class SourceVersions extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceId =>
+      text().references(Sources, #id, onDelete: KeyAction.cascade)();
+  TextColumn get sha256 => text()();
+  TextColumn get status => text()();
+  TextColumn get pagesJson => text()();
+  IntColumn get createdAtMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (json_valid(pages_json))',
+    "CHECK (status IN ('extracted', 'unsupported', 'invalid'))",
+  ];
 }
 
 @DataClassName('RevisionData')
@@ -206,6 +228,7 @@ enum RevisionReceiveResult { applied, duplicate, conflict }
     Nodes,
     Edges,
     Sources,
+    SourceVersions,
     Revisions,
     OutboxEntries,
     DerivedInvalidations,
@@ -219,7 +242,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -229,9 +252,10 @@ class TyLogDatabase extends _$TyLogDatabase {
       await _createQueueIndexes(m);
       await _createRevisionGuards(m);
       await _createImportIndexes(m);
+      await _createSourceVersionIndexes(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 5 || from < 1 || from > 4) {
+      if (to != 6 || from < 1 || from > 5) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -252,6 +276,10 @@ class TyLogDatabase extends _$TyLogDatabase {
         await m.create(importJobs);
         await m.create(importItems);
         await _createImportIndexes(m);
+      }
+      if (from < 6) {
+        await m.create(sourceVersions);
+        await _createSourceVersionIndexes(m);
       }
     },
   );
@@ -290,6 +318,43 @@ class TyLogDatabase extends _$TyLogDatabase {
       'CREATE INDEX IF NOT EXISTS idx_revisions_parent ON revisions(parent_revision_id)',
     );
   }
+
+  Future<void> _createSourceVersionIndexes(Migrator m) async {
+    await m.database.customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_source_versions_source_created '
+      'ON source_versions(source_id, created_at_ms DESC)',
+    );
+  }
+
+  Future<void> savePdfExtraction({
+    required String sourceId,
+    required PdfExtraction extraction,
+    required int createdAtMs,
+  }) async {
+    await into(sourceVersions).insertOnConflictUpdate(
+      SourceVersionsCompanion.insert(
+        id: extraction.sourceVersionId,
+        sourceId: sourceId,
+        sha256: extraction.sha256,
+        status: extraction.status.name,
+        pagesJson: jsonEncode([
+          for (final page in extraction.pages)
+            {
+              'page': page.page,
+              'text': page.text,
+              'start': page.start,
+              'end': page.end,
+            },
+        ]),
+        createdAtMs: createdAtMs,
+      ),
+    );
+  }
+
+  Future<List<SourceVersionData>> sourceVersionsFor(String sourceId) async =>
+      (select(sourceVersions)..where((row) => row.sourceId.equals(sourceId))..orderBy([
+        (row) => OrderingTerm.desc(row.createdAtMs),
+      ])).get();
 
   Future<void> _createQueueIndexes(Migrator m) async {
     await m.database.customStatement(
