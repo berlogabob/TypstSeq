@@ -33,6 +33,7 @@ class NotePickerSheet extends StatefulWidget {
 
 class _NotePickerSheetState extends State<NotePickerSheet> {
   var _query = '';
+  var _visibleLimit = 50;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +47,7 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
       for (final note in widget.notes)
         if (matches(note)) note,
     ];
+    final visible = filtered.take(_visibleLimit).toList();
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -77,12 +79,20 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
                     onTap: () =>
                         Navigator.pop(context, NotePickerSheet.createSentinel),
                   ),
-                for (final item in filtered)
+                for (final item in visible)
                   ListTile(
                     leading: Icon(iconForKind(item.kind)),
                     title: Text(item.title),
                     subtitle: Text(widget.subtitleFor(item)),
                     onTap: () => Navigator.pop(context, item),
+                  ),
+                if (visible.length < filtered.length)
+                  ListTile(
+                    leading: const Icon(Icons.more_horiz),
+                    title: Text(
+                      'Load more (${filtered.length - visible.length})',
+                    ),
+                    onTap: () => setState(() => _visibleLimit += 50),
                   ),
               ],
             ),

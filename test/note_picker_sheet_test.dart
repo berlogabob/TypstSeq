@@ -27,8 +27,9 @@ void main() {
     ),
   );
 
-  testWidgets('filter narrows by substring across title and alias',
-      (tester) async {
+  testWidgets('filter narrows by substring across title and alias', (
+    tester,
+  ) async {
     await pump(tester);
     expect(find.text('ESP32'), findsOneWidget);
     expect(find.text('Home Assistant'), findsOneWidget);
@@ -48,5 +49,23 @@ void main() {
     await tester.enterText(find.byType(TextField), 'zzz-no-match');
     await tester.pump();
     expect(find.text('Create note'), findsOneWidget);
+  });
+
+  testWidgets('bounds initial rows and loads more on demand', (tester) async {
+    final many = [for (var i = 0; i < 51; i++) _note('n$i', 'Note $i')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: NotePickerSheet(notes: many)),
+      ),
+    );
+    expect(find.text('Note 0'), findsOneWidget);
+    expect(find.text('Note 50'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -10000));
+    await tester.pump();
+    expect(find.text('Load more (1)'), findsOneWidget);
+
+    await tester.tap(find.text('Load more (1)'));
+    await tester.pump();
+    expect(find.text('Note 50'), findsOneWidget);
   });
 }

@@ -84,7 +84,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12a one maintenance listing | Codex Luna | DONE | P11 | [One recursive vault listing per pass; index/validation/sweep results unchanged](evidence/P12a/result.md) |
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
-| P12d paged list surfaces | Unassigned | TODO | P12c | Library, Articles, and picker request bounded pages with hydration fallback |
+| P12d paged list surfaces | Coordinator | RUNNING | P12c | Picker now bounds rendered rows; Library/Articles DB-page hydration remains |
 | P12e latency acceptance | Coordinator | TODO | P12a-P12d | 30 startup and 100 open/save samples; required p95 gates recorded |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
