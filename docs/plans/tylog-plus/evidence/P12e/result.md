@@ -57,3 +57,17 @@ editor_save_ms p50=11 p95=15 max=179 samples=100
 
 The p95 save gate (150 ms) passed; one outlier reached 179 ms. This is still a
 debug integration runner, so the profile-build repetition remains required.
+
+### A24 profile save-path acceptance
+
+The same test ran through `flutter drive --profile` with the release-shaped
+profile APK and the integration driver:
+
+```text
+editor_save_ms p50=2 p95=3 max=16 samples=100
+```
+
+The profile save gate passed. Combined with the 30 production-package cold
+starts above (p95 450 ms), the startup and save timing gates are satisfied.
+The scripted five-minute frame-budget gate and normal note-open timing still
+need a dedicated profile workload.

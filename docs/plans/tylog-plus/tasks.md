@@ -17,7 +17,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P09 | Resumable legacy import | P07 | RUNNING | Interruption/retry, every source accounted for |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | RUNNING | Startup/open/save gates; A24 cold-start p95 450 ms, normal save/open still pending |
+| P12 | Paged startup/list reads | P11 | RUNNING | Startup/save pass on A24; normal note-open and five-minute frame gate remain |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
@@ -128,3 +128,5 @@ P12 follow-up: the bounded 30-startup/100-save workload passed on A24 in the deb
 Additional P12 evidence: 30 cold starts of the installed production profile package on A24 measured `TotalTime` p50 417 ms, p95 450 ms, max 452 ms. Startup passes the 2,000 ms gate; normal editor save/open timing remains pending.
 
 The A24 debug integration runner also exercised `WorkspaceController.save()` 100 times with a 50 KB note: p50 11 ms, p95 15 ms, max 179 ms. The p95 gate passed; profile-build repetition remains pending.
+
+Profile repetition completed through `flutter drive --profile`: 100 workspace saves measured p50 2 ms, p95 3 ms, max 16 ms. P12 startup/save timing gates now pass on A24; the five-minute frame-budget workload and normal note-open timing remain open.
