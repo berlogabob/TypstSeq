@@ -11,5 +11,6 @@ Evidence:
 - `flutter analyze lib/retrieval/cosine_search.dart test/retrieval_cosine_test.dart` — clean.
 - `flutter test test/retrieval_hybrid_test.dart` — agreement ranking and empty-limit behavior pass.
 - `flutter test test/database/chunk_persistence_test.dart` — retrieved chunks resolve to stable source ranges.
+- Host scale evidence: P05.3 exact-cosine benchmark measured 10,000 vectors at 1.266 ms warm p95 / 53.6 MB RSS and 250,000 vectors at 18.115 ms warm p95 / 427.7 MB RSS. Fusion is bounded to the returned keyword/vector candidate lists, so it does not add a corpus-sized pass.
 
 Remaining work: connect this target to the reader UI and measure corpus latency/memory gates.
