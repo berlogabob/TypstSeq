@@ -271,9 +271,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }),
       _ => buildLocalNoteGraph(idx, _graphFocusPath ?? current),
     };
-    _graphCache = built;
+    final bounded = boundGraphForLayout(built, currentPath: current);
+    _graphCache = bounded;
     _graphKey = key;
-    return built;
+    return bounded;
   }
 
   int primaryDestination = 0;

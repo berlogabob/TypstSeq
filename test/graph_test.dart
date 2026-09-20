@@ -4,6 +4,29 @@ import 'package:tylog/graph.dart';
 import 'package:tylog/models.dart';
 
 void main() {
+  test('boundGraphForLayout caps nodes and edges deterministically', () {
+    final graph = NoteGraph(
+      nodes: [
+        for (var i = 0; i < 260; i++) GraphNode(path: 'n$i', title: 'N$i'),
+      ],
+      edges: [
+        for (var i = 0; i < 700; i++)
+          GraphEdge(from: 'n${i % 260}', to: 'n${(i + 1) % 260}'),
+      ],
+    );
+    final bounded = boundGraphForLayout(graph, currentPath: 'n259');
+    expect(bounded.nodes, hasLength(200));
+    expect(bounded.edges.length, lessThanOrEqualTo(500));
+    expect(bounded.nodes.any((node) => node.path == 'n259'), isTrue);
+    expect(
+      bounded.nodes.map((node) => node.path).toList(),
+      boundGraphForLayout(
+        graph,
+        currentPath: 'n259',
+      ).nodes.map((node) => node.path).toList(),
+    );
+  });
+
   test('buildNoteGraph creates deterministic nodes and resolved edges', () {
     final index = VaultIndex(
       notesByPath: {
@@ -38,96 +61,102 @@ void main() {
     ]);
   });
 
-  test('buildNoteGraph links notes to concept and work hubs, not each other', () {
-    final index = VaultIndex(
-      notesByPath: {
-        'articles/a.typ': const NoteRef(
-          id: 'a',
-          path: 'articles/a.typ',
-          title: 'A',
-          outgoingLinks: [],
-          citations: ['smith-2026'],
-          tags: ['ml'],
-        ),
-        'articles/b.typ': const NoteRef(
-          id: 'b',
-          path: 'articles/b.typ',
-          title: 'B',
-          outgoingLinks: [],
-          citations: ['smith-2026'],
-          tags: ['ml'],
-        ),
-      },
-      backlinksByTarget: const {},
-    );
-
-    final graph = buildNoteGraph(index);
-
-    // A concept hub for the shared tag and a work hub for the shared citekey.
-    final concept = graph.nodes.singleWhere(
-      (node) => node.kind == GraphNodeKind.concept,
-    );
-    expect(concept.path, 'concept:ml');
-    expect(concept.title, 'ml');
-    final work = graph.nodes.singleWhere(
-      (node) => node.kind == GraphNodeKind.work,
-    );
-    expect(work.path, 'cite:smith-2026');
-
-    // Both notes spoke into each hub; no direct note<->note edges.
-    final tagEdges = graph.edges.where((e) => e.kind == GraphEdgeKind.tag);
-    expect(
-      tagEdges.map((e) => '${e.from}->${e.to}'),
-      containsAll([
-        'articles/a.typ->concept:ml',
-        'articles/b.typ->concept:ml',
-      ]),
-    );
-    final citationEdges = graph.edges.where(
-      (e) => e.kind == GraphEdgeKind.citation,
-    );
-    expect(
-      citationEdges.map((e) => '${e.from}->${e.to}'),
-      containsAll([
-        'articles/a.typ->cite:smith-2026',
-        'articles/b.typ->cite:smith-2026',
-      ]),
-    );
-    expect(
-      graph.edges.any(
-        (e) => e.from == 'articles/a.typ' && e.to == 'articles/b.typ',
-      ),
-      isFalse,
-    );
-  });
-
-  test('a tag on k notes yields one concept hub and k spokes, not k*(k-1)/2', () {
-    const k = 5;
-    final index = VaultIndex(
-      notesByPath: {
-        for (var i = 0; i < k; i++)
-          'articles/n$i.typ': NoteRef(
-            id: 'n$i',
-            path: 'articles/n$i.typ',
-            title: 'N$i',
-            outgoingLinks: const [],
-            tags: const ['esp32'],
+  test(
+    'buildNoteGraph links notes to concept and work hubs, not each other',
+    () {
+      final index = VaultIndex(
+        notesByPath: {
+          'articles/a.typ': const NoteRef(
+            id: 'a',
+            path: 'articles/a.typ',
+            title: 'A',
+            outgoingLinks: [],
+            citations: ['smith-2026'],
+            tags: ['ml'],
           ),
-      },
-      backlinksByTarget: const {},
-    );
+          'articles/b.typ': const NoteRef(
+            id: 'b',
+            path: 'articles/b.typ',
+            title: 'B',
+            outgoingLinks: [],
+            citations: ['smith-2026'],
+            tags: ['ml'],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
 
-    final graph = buildNoteGraph(index);
+      final graph = buildNoteGraph(index);
 
-    expect(
-      graph.nodes.where((n) => n.kind == GraphNodeKind.concept),
-      hasLength(1),
-    );
-    expect(
-      graph.edges.where((e) => e.kind == GraphEdgeKind.tag),
-      hasLength(k),
-    );
-  });
+      // A concept hub for the shared tag and a work hub for the shared citekey.
+      final concept = graph.nodes.singleWhere(
+        (node) => node.kind == GraphNodeKind.concept,
+      );
+      expect(concept.path, 'concept:ml');
+      expect(concept.title, 'ml');
+      final work = graph.nodes.singleWhere(
+        (node) => node.kind == GraphNodeKind.work,
+      );
+      expect(work.path, 'cite:smith-2026');
+
+      // Both notes spoke into each hub; no direct note<->note edges.
+      final tagEdges = graph.edges.where((e) => e.kind == GraphEdgeKind.tag);
+      expect(
+        tagEdges.map((e) => '${e.from}->${e.to}'),
+        containsAll([
+          'articles/a.typ->concept:ml',
+          'articles/b.typ->concept:ml',
+        ]),
+      );
+      final citationEdges = graph.edges.where(
+        (e) => e.kind == GraphEdgeKind.citation,
+      );
+      expect(
+        citationEdges.map((e) => '${e.from}->${e.to}'),
+        containsAll([
+          'articles/a.typ->cite:smith-2026',
+          'articles/b.typ->cite:smith-2026',
+        ]),
+      );
+      expect(
+        graph.edges.any(
+          (e) => e.from == 'articles/a.typ' && e.to == 'articles/b.typ',
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'a tag on k notes yields one concept hub and k spokes, not k*(k-1)/2',
+    () {
+      const k = 5;
+      final index = VaultIndex(
+        notesByPath: {
+          for (var i = 0; i < k; i++)
+            'articles/n$i.typ': NoteRef(
+              id: 'n$i',
+              path: 'articles/n$i.typ',
+              title: 'N$i',
+              outgoingLinks: const [],
+              tags: const ['esp32'],
+            ),
+        },
+        backlinksByTarget: const {},
+      );
+
+      final graph = buildNoteGraph(index);
+
+      expect(
+        graph.nodes.where((n) => n.kind == GraphNodeKind.concept),
+        hasLength(1),
+      );
+      expect(
+        graph.edges.where((e) => e.kind == GraphEdgeKind.tag),
+        hasLength(k),
+      );
+    },
+  );
 
   test('a single-note (leaf) tag is not promoted to a concept node', () {
     final index = VaultIndex(
@@ -150,44 +179,47 @@ void main() {
       backlinksByTarget: const {},
     );
 
-    final concepts = buildNoteGraph(index).nodes
-        .where((n) => n.kind == GraphNodeKind.concept)
-        .toList();
+    final concepts = buildNoteGraph(
+      index,
+    ).nodes.where((n) => n.kind == GraphNodeKind.concept).toList();
 
     // 'shared' (2 notes) promoted; 'unique-to-a' (1 note) dropped.
     expect(concepts.map((n) => n.path), ['concept:shared']);
     expect(concepts.single.count, 2);
   });
 
-  test('buildConceptMap yields badged concept hubs and co-occurrence edges', () {
-    NoteRef article(String id, List<String> tags) => NoteRef(
-      id: id,
-      path: 'articles/$id.typ',
-      title: id.toUpperCase(),
-      outgoingLinks: const [],
-      tags: tags,
-    );
-    // esp32 on 5 notes, home-assistant on 5 notes (co-occur on 5), rare on 1.
-    final notes = <String, NoteRef>{};
-    for (var i = 0; i < 5; i++) {
-      notes['articles/n$i.typ'] = article('n$i', ['esp32', 'home-assistant']);
-    }
-    notes['articles/z.typ'] = article('z', ['rare']);
-    final index = VaultIndex(notesByPath: notes, backlinksByTarget: const {});
+  test(
+    'buildConceptMap yields badged concept hubs and co-occurrence edges',
+    () {
+      NoteRef article(String id, List<String> tags) => NoteRef(
+        id: id,
+        path: 'articles/$id.typ',
+        title: id.toUpperCase(),
+        outgoingLinks: const [],
+        tags: tags,
+      );
+      // esp32 on 5 notes, home-assistant on 5 notes (co-occur on 5), rare on 1.
+      final notes = <String, NoteRef>{};
+      for (var i = 0; i < 5; i++) {
+        notes['articles/n$i.typ'] = article('n$i', ['esp32', 'home-assistant']);
+      }
+      notes['articles/z.typ'] = article('z', ['rare']);
+      final index = VaultIndex(notesByPath: notes, backlinksByTarget: const {});
 
-    final map = buildConceptMap(index, minNotes: 5, minCoOccur: 3);
+      final map = buildConceptMap(index, minNotes: 5, minCoOccur: 3);
 
-    // Only the two substantial concepts appear; 'rare' (1 note) is excluded.
-    expect(
-      map.nodes.map((n) => n.path).toSet(),
-      {'concept:esp32', 'concept:home-assistant'},
-    );
-    expect(map.nodes.every((n) => n.count == 5), isTrue);
-    // Concept-to-concept co-occurrence edge (shared on 5 notes >= 3).
-    expect(map.edges, hasLength(1));
-    expect(map.edges.single.weight, 5);
-    expect(map.nodes.any((n) => n.path.startsWith('articles/')), isFalse);
-  });
+      // Only the two substantial concepts appear; 'rare' (1 note) is excluded.
+      expect(map.nodes.map((n) => n.path).toSet(), {
+        'concept:esp32',
+        'concept:home-assistant',
+      });
+      expect(map.nodes.every((n) => n.count == 5), isTrue);
+      // Concept-to-concept co-occurrence edge (shared on 5 notes >= 3).
+      expect(map.edges, hasLength(1));
+      expect(map.edges.single.weight, 5);
+      expect(map.nodes.any((n) => n.path.startsWith('articles/')), isFalse);
+    },
+  );
 
   test('buildLocalNoteGraph reaches a co-tagged note through its concept', () {
     final index = VaultIndex(
@@ -285,10 +317,7 @@ void main() {
     final backlinks = <String, List<String>>{
       for (var i = 1; i < 150; i++) 'n${i - 1}.typ': ['n$i.typ'],
     };
-    final index = VaultIndex(
-      notesByPath: notes,
-      backlinksByTarget: backlinks,
-    );
+    final index = VaultIndex(notesByPath: notes, backlinksByTarget: backlinks);
 
     expect(buildNoteGraph(index).nodes, hasLength(150));
     expect(
@@ -298,7 +327,10 @@ void main() {
   });
 
   test('buildLocalNoteGraph with no current path returns an empty graph', () {
-    final index = VaultIndex(notesByPath: const {}, backlinksByTarget: const {});
+    final index = VaultIndex(
+      notesByPath: const {},
+      backlinksByTarget: const {},
+    );
     final local = buildLocalNoteGraph(index, null);
     expect(local.nodes, isEmpty);
     expect(local.edges, isEmpty);

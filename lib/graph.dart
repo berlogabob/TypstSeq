@@ -30,6 +30,57 @@ export 'package:tylog_core/graph.dart'
 /// unreadable "hairball" (community consensus from PKM tools like Obsidian).
 const _hairballThreshold = 180;
 
+/// Keeps the interactive graph bounded before layout work runs. High-degree
+/// nodes win, with the current note always retained when present; path order
+/// makes ties deterministic across rebuilds.
+NoteGraph boundGraphForLayout(
+  NoteGraph graph, {
+  String? currentPath,
+  int maxNodes = 200,
+  int maxEdges = 500,
+}) {
+  if (maxNodes < 1 || maxEdges < 0) {
+    throw ArgumentError('graph bounds must be non-negative');
+  }
+  if (graph.nodes.length <= maxNodes && graph.edges.length <= maxEdges) {
+    return graph;
+  }
+  final degree = <String, int>{};
+  for (final edge in graph.edges) {
+    degree[edge.from] = (degree[edge.from] ?? 0) + 1;
+    degree[edge.to] = (degree[edge.to] ?? 0) + 1;
+  }
+  final nodes = [...graph.nodes]
+    ..sort((a, b) {
+      final aCurrent = a.path == currentPath ? 1 : 0;
+      final bCurrent = b.path == currentPath ? 1 : 0;
+      final priority = bCurrent.compareTo(aCurrent);
+      if (priority != 0) return priority;
+      final degreeOrder = (degree[b.path] ?? 0).compareTo(degree[a.path] ?? 0);
+      return degreeOrder == 0 ? a.path.compareTo(b.path) : degreeOrder;
+    });
+  final kept = nodes.take(maxNodes).map((node) => node.path).toSet();
+  final boundedNodes = [
+    for (final node in graph.nodes)
+      if (kept.contains(node.path)) node,
+  ];
+  final boundedEdges =
+      [
+        for (final edge in graph.edges)
+          if (kept.contains(edge.from) && kept.contains(edge.to)) edge,
+      ]..sort((a, b) {
+        final from = a.from.compareTo(b.from);
+        if (from != 0) return from;
+        final to = a.to.compareTo(b.to);
+        if (to != 0) return to;
+        return a.kind.index.compareTo(b.kind.index);
+      });
+  return NoteGraph(
+    nodes: boundedNodes,
+    edges: boundedEdges.take(maxEdges).toList(growable: false),
+  );
+}
+
 /// A stable, evenly-spread hue for community [slot] of [total]. Saturation/
 /// value are tuned per theme so tints stay legible on light and dark. Shared
 /// by the force-directed graph and the Voronoi treemap so a community keeps
@@ -37,8 +88,12 @@ const _hairballThreshold = 180;
 Color colorForSlot(int slot, int total, ColorScheme scheme) {
   final hue = (slot * 360.0 / math.max(1, total)) % 360;
   final dark = scheme.brightness == Brightness.dark;
-  return HSVColor.fromAHSV(1, hue, dark ? 0.42 : 0.40, dark ? 0.55 : 0.82)
-      .toColor();
+  return HSVColor.fromAHSV(
+    1,
+    hue,
+    dark ? 0.42 : 0.40,
+    dark ? 0.55 : 0.82,
+  ).toColor();
 }
 
 class GraphView extends StatefulWidget {
@@ -117,7 +172,8 @@ class _GraphViewState extends State<GraphView>
   void _refreshClusters(NoteGraph graph) {
     final communities = widget.communities;
     final positions = _positions;
-    _clusters = (communities == null || positions == null || isTimelineGraph(graph))
+    _clusters =
+        (communities == null || positions == null || isTimelineGraph(graph))
         ? null
         : clusterAggregates(graph, positions, communities);
   }
@@ -200,12 +256,13 @@ class _GraphViewState extends State<GraphView>
     super.initState();
     _selectedPath = widget.currentPath;
     _transform.addListener(_onTransform);
-    _zoomCtl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-    )..addListener(() {
-      if (_zoomAnim case final anim?) _transform.value = anim.value;
-    });
+    _zoomCtl =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 260),
+        )..addListener(() {
+          if (_zoomAnim case final anim?) _transform.value = anim.value;
+        });
   }
 
   /// Repaints happen per-frame via the painter's `repaint:` listenable; here we
@@ -335,7 +392,8 @@ class _GraphViewState extends State<GraphView>
                           child: const Text('Focused view'),
                         ),
                       TextButton(
-                        onPressed: () => setState(() => _bannerDismissed = true),
+                        onPressed: () =>
+                            setState(() => _bannerDismissed = true),
                         child: const Text('Dismiss'),
                       ),
                     ],
@@ -496,9 +554,10 @@ class _GraphViewState extends State<GraphView>
         1,
       )
       ..scaleByDouble(scale, scale, scale, 1);
-    _zoomAnim = Matrix4Tween(begin: _transform.value.clone(), end: end).animate(
-      CurvedAnimation(parent: _zoomCtl, curve: Curves.easeInOut),
-    );
+    _zoomAnim = Matrix4Tween(
+      begin: _transform.value.clone(),
+      end: end,
+    ).animate(CurvedAnimation(parent: _zoomCtl, curve: Curves.easeInOut));
     _zoomCtl.forward(from: 0);
   }
 
@@ -713,7 +772,9 @@ Map<String, Offset> forceLayoutPositions(
   final gridH = gridRows == 0 ? 0.0 : gridRows * 46.0 + 24;
   final mainH = math.max(240.0, h - gridH);
 
-  final index = {for (var i = 0; i < connected.length; i++) connected[i].path: i};
+  final index = {
+    for (var i = 0; i < connected.length; i++) connected[i].path: i,
+  };
   // Edges + parallel weights over the connected set, built in lockstep.
   final edges = <(int, int)>[];
   final weightList = <double>[];
