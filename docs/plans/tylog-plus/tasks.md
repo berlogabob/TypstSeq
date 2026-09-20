@@ -2,7 +2,7 @@
 
 Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 
-**Main milestones: 8/26 DONE. Active wave: P05 + P09 + P12. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
@@ -22,7 +22,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
-| P17 | Snapshot bootstrap/recovery | P16 | TODO | Scale restore; damaged snapshot rejected |
+| P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
 | P18 | PDF reader/versioned extraction | P07,P14 | TODO | Selection/extraction; unsupported source accounting |
 | P19 | Durable annotations/navigation | P18 | TODO | Source return, stable re-index, ambiguous replacement |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | TODO | Versioned resumable changed-source processing |
