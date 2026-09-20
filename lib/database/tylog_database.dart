@@ -481,14 +481,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   }) async {
     await _ensureNodeSearch();
     await into(nodes).insertOnConflictUpdate(node);
-    await customStatement('DELETE FROM node_search_fts WHERE node_id = ?', [
-      node.id,
-    ]);
-    await customStatement(
-      'INSERT INTO node_search_fts(node_id, title, content, attributes) '
-      'VALUES (?, ?, ?, ?)',
-      [node.id, node.title, node.content, node.attributesJson],
-    );
+    await _upsertNodeSearch(node);
     await into(revisions).insert(revision);
     await into(outboxEntries).insert(
       OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
@@ -520,6 +513,36 @@ class TyLogDatabase extends _$TyLogDatabase {
         SELECT id, title, content, attributes_json FROM nodes
       ''');
     });
+  }
+
+  Future<void> _upsertNodeSearch(NodeData node) async {
+    await customStatement('DELETE FROM node_search_fts WHERE node_id = ?', [
+      node.id,
+    ]);
+    await customStatement(
+      'INSERT INTO node_search_fts(node_id, title, content, attributes) '
+      'VALUES (?, ?, ?, ?)',
+      [node.id, node.title, node.content, node.attributesJson],
+    );
+  }
+
+  /// Reindexes only the supplied IDs and returns the number inspected.
+  Future<int> refreshNodeSearch(Iterable<String> nodeIds) async {
+    final ids = nodeIds.toSet();
+    if (ids.isEmpty) return 0;
+    await transaction(() async {
+      await _ensureNodeSearch();
+      for (final id in ids) {
+        final node = await (select(
+          nodes,
+        )..where((t) => t.id.equals(id))).getSingleOrNull();
+        await customStatement('DELETE FROM node_search_fts WHERE node_id = ?', [
+          id,
+        ]);
+        if (node != null) await _upsertNodeSearch(node);
+      }
+    });
+    return ids.length;
   }
 
   Future<List<String>> searchNodeIds(String query, {int limit = 50}) async {

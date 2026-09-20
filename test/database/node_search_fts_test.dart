@@ -52,4 +52,22 @@ void main() {
     await database.rebuildNodeSearch();
     expect(await database.searchNodeIds('alpha'), ['a']);
   });
+
+  test('refreshNodeSearch reindexes only requested records', () async {
+    await persistNoteSource(
+      database: database,
+      path: 'notes/a.typ',
+      source: '#show: tylog.note.with(id: "a", title: "Alpha")\nbody',
+      updatedAtMs: 1,
+    );
+    await persistNoteSource(
+      database: database,
+      path: 'notes/b.typ',
+      source: '#show: tylog.note.with(id: "b", title: "Beta")\nbody',
+      updatedAtMs: 1,
+    );
+    expect(await database.refreshNodeSearch(['a', 'a']), 1);
+    expect(await database.searchNodeIds('alpha'), ['a']);
+    expect(await database.searchNodeIds('beta'), ['b']);
+  });
 }
