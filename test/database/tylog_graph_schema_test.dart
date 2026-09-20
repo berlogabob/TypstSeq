@@ -362,7 +362,7 @@ void main() {
       await db.close();
     });
 
-  test('v2 database migrates to v7 preserving metadata', () async {
+  test('v2 database migrates to v8 preserving metadata', () async {
       final file = File('${tempDir.path}/v2_to_v5.db');
 
       // Create a v2 database file
@@ -383,7 +383,7 @@ void main() {
 
       // Open with Drift to trigger migration
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(7));
+      expect(db.schemaVersion, equals(8));
 
       // Verify metadata preserved
       final metadata = await db.select(db.databaseMetadata).get();

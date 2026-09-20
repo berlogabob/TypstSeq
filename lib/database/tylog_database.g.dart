@@ -2908,6 +2908,581 @@ class AnnotationsCompanion extends UpdateCompanion<AnnotationData> {
   }
 }
 
+class $ChunksTable extends Chunks with TableInfo<$ChunksTable, ChunkData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChunksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceVersionIdMeta = const VerificationMeta(
+    'sourceVersionId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceVersionId = GeneratedColumn<String>(
+    'source_version_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES source_versions (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _startOffsetMeta = const VerificationMeta(
+    'startOffset',
+  );
+  @override
+  late final GeneratedColumn<int> startOffset = GeneratedColumn<int>(
+    'start_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endOffsetMeta = const VerificationMeta(
+    'endOffset',
+  );
+  @override
+  late final GeneratedColumn<int> endOffset = GeneratedColumn<int>(
+    'end_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sha256Meta = const VerificationMeta('sha256');
+  @override
+  late final GeneratedColumn<String> sha256 = GeneratedColumn<String>(
+    'sha256',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _embeddingModelMeta = const VerificationMeta(
+    'embeddingModel',
+  );
+  @override
+  late final GeneratedColumn<String> embeddingModel = GeneratedColumn<String>(
+    'embedding_model',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _embeddingMeta = const VerificationMeta(
+    'embedding',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> embedding = GeneratedColumn<Uint8List>(
+    'embedding',
+    aliasedName,
+    true,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceVersionId,
+    startOffset,
+    endOffset,
+    content,
+    sha256,
+    status,
+    embeddingModel,
+    embedding,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'chunks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ChunkData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source_version_id')) {
+      context.handle(
+        _sourceVersionIdMeta,
+        sourceVersionId.isAcceptableOrUnknown(
+          data['source_version_id']!,
+          _sourceVersionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceVersionIdMeta);
+    }
+    if (data.containsKey('start_offset')) {
+      context.handle(
+        _startOffsetMeta,
+        startOffset.isAcceptableOrUnknown(
+          data['start_offset']!,
+          _startOffsetMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startOffsetMeta);
+    }
+    if (data.containsKey('end_offset')) {
+      context.handle(
+        _endOffsetMeta,
+        endOffset.isAcceptableOrUnknown(data['end_offset']!, _endOffsetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endOffsetMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('sha256')) {
+      context.handle(
+        _sha256Meta,
+        sha256.isAcceptableOrUnknown(data['sha256']!, _sha256Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_sha256Meta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('embedding_model')) {
+      context.handle(
+        _embeddingModelMeta,
+        embeddingModel.isAcceptableOrUnknown(
+          data['embedding_model']!,
+          _embeddingModelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('embedding')) {
+      context.handle(
+        _embeddingMeta,
+        embedding.isAcceptableOrUnknown(data['embedding']!, _embeddingMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ChunkData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChunkData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceVersionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_version_id'],
+      )!,
+      startOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_offset'],
+      )!,
+      endOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_offset'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+      sha256: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sha256'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      embeddingModel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}embedding_model'],
+      ),
+      embedding: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}embedding'],
+      ),
+    );
+  }
+
+  @override
+  $ChunksTable createAlias(String alias) {
+    return $ChunksTable(attachedDatabase, alias);
+  }
+}
+
+class ChunkData extends DataClass implements Insertable<ChunkData> {
+  final String id;
+  final String sourceVersionId;
+  final int startOffset;
+  final int endOffset;
+  final String content;
+  final String sha256;
+  final String status;
+  final String? embeddingModel;
+  final Uint8List? embedding;
+  const ChunkData({
+    required this.id,
+    required this.sourceVersionId,
+    required this.startOffset,
+    required this.endOffset,
+    required this.content,
+    required this.sha256,
+    required this.status,
+    this.embeddingModel,
+    this.embedding,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source_version_id'] = Variable<String>(sourceVersionId);
+    map['start_offset'] = Variable<int>(startOffset);
+    map['end_offset'] = Variable<int>(endOffset);
+    map['content'] = Variable<String>(content);
+    map['sha256'] = Variable<String>(sha256);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || embeddingModel != null) {
+      map['embedding_model'] = Variable<String>(embeddingModel);
+    }
+    if (!nullToAbsent || embedding != null) {
+      map['embedding'] = Variable<Uint8List>(embedding);
+    }
+    return map;
+  }
+
+  ChunksCompanion toCompanion(bool nullToAbsent) {
+    return ChunksCompanion(
+      id: Value(id),
+      sourceVersionId: Value(sourceVersionId),
+      startOffset: Value(startOffset),
+      endOffset: Value(endOffset),
+      content: Value(content),
+      sha256: Value(sha256),
+      status: Value(status),
+      embeddingModel: embeddingModel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(embeddingModel),
+      embedding: embedding == null && nullToAbsent
+          ? const Value.absent()
+          : Value(embedding),
+    );
+  }
+
+  factory ChunkData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChunkData(
+      id: serializer.fromJson<String>(json['id']),
+      sourceVersionId: serializer.fromJson<String>(json['sourceVersionId']),
+      startOffset: serializer.fromJson<int>(json['startOffset']),
+      endOffset: serializer.fromJson<int>(json['endOffset']),
+      content: serializer.fromJson<String>(json['content']),
+      sha256: serializer.fromJson<String>(json['sha256']),
+      status: serializer.fromJson<String>(json['status']),
+      embeddingModel: serializer.fromJson<String?>(json['embeddingModel']),
+      embedding: serializer.fromJson<Uint8List?>(json['embedding']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceVersionId': serializer.toJson<String>(sourceVersionId),
+      'startOffset': serializer.toJson<int>(startOffset),
+      'endOffset': serializer.toJson<int>(endOffset),
+      'content': serializer.toJson<String>(content),
+      'sha256': serializer.toJson<String>(sha256),
+      'status': serializer.toJson<String>(status),
+      'embeddingModel': serializer.toJson<String?>(embeddingModel),
+      'embedding': serializer.toJson<Uint8List?>(embedding),
+    };
+  }
+
+  ChunkData copyWith({
+    String? id,
+    String? sourceVersionId,
+    int? startOffset,
+    int? endOffset,
+    String? content,
+    String? sha256,
+    String? status,
+    Value<String?> embeddingModel = const Value.absent(),
+    Value<Uint8List?> embedding = const Value.absent(),
+  }) => ChunkData(
+    id: id ?? this.id,
+    sourceVersionId: sourceVersionId ?? this.sourceVersionId,
+    startOffset: startOffset ?? this.startOffset,
+    endOffset: endOffset ?? this.endOffset,
+    content: content ?? this.content,
+    sha256: sha256 ?? this.sha256,
+    status: status ?? this.status,
+    embeddingModel: embeddingModel.present
+        ? embeddingModel.value
+        : this.embeddingModel,
+    embedding: embedding.present ? embedding.value : this.embedding,
+  );
+  ChunkData copyWithCompanion(ChunksCompanion data) {
+    return ChunkData(
+      id: data.id.present ? data.id.value : this.id,
+      sourceVersionId: data.sourceVersionId.present
+          ? data.sourceVersionId.value
+          : this.sourceVersionId,
+      startOffset: data.startOffset.present
+          ? data.startOffset.value
+          : this.startOffset,
+      endOffset: data.endOffset.present ? data.endOffset.value : this.endOffset,
+      content: data.content.present ? data.content.value : this.content,
+      sha256: data.sha256.present ? data.sha256.value : this.sha256,
+      status: data.status.present ? data.status.value : this.status,
+      embeddingModel: data.embeddingModel.present
+          ? data.embeddingModel.value
+          : this.embeddingModel,
+      embedding: data.embedding.present ? data.embedding.value : this.embedding,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChunkData(')
+          ..write('id: $id, ')
+          ..write('sourceVersionId: $sourceVersionId, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('content: $content, ')
+          ..write('sha256: $sha256, ')
+          ..write('status: $status, ')
+          ..write('embeddingModel: $embeddingModel, ')
+          ..write('embedding: $embedding')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sourceVersionId,
+    startOffset,
+    endOffset,
+    content,
+    sha256,
+    status,
+    embeddingModel,
+    $driftBlobEquality.hash(embedding),
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChunkData &&
+          other.id == this.id &&
+          other.sourceVersionId == this.sourceVersionId &&
+          other.startOffset == this.startOffset &&
+          other.endOffset == this.endOffset &&
+          other.content == this.content &&
+          other.sha256 == this.sha256 &&
+          other.status == this.status &&
+          other.embeddingModel == this.embeddingModel &&
+          $driftBlobEquality.equals(other.embedding, this.embedding));
+}
+
+class ChunksCompanion extends UpdateCompanion<ChunkData> {
+  final Value<String> id;
+  final Value<String> sourceVersionId;
+  final Value<int> startOffset;
+  final Value<int> endOffset;
+  final Value<String> content;
+  final Value<String> sha256;
+  final Value<String> status;
+  final Value<String?> embeddingModel;
+  final Value<Uint8List?> embedding;
+  final Value<int> rowid;
+  const ChunksCompanion({
+    this.id = const Value.absent(),
+    this.sourceVersionId = const Value.absent(),
+    this.startOffset = const Value.absent(),
+    this.endOffset = const Value.absent(),
+    this.content = const Value.absent(),
+    this.sha256 = const Value.absent(),
+    this.status = const Value.absent(),
+    this.embeddingModel = const Value.absent(),
+    this.embedding = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ChunksCompanion.insert({
+    required String id,
+    required String sourceVersionId,
+    required int startOffset,
+    required int endOffset,
+    required String content,
+    required String sha256,
+    this.status = const Value.absent(),
+    this.embeddingModel = const Value.absent(),
+    this.embedding = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceVersionId = Value(sourceVersionId),
+       startOffset = Value(startOffset),
+       endOffset = Value(endOffset),
+       content = Value(content),
+       sha256 = Value(sha256);
+  static Insertable<ChunkData> custom({
+    Expression<String>? id,
+    Expression<String>? sourceVersionId,
+    Expression<int>? startOffset,
+    Expression<int>? endOffset,
+    Expression<String>? content,
+    Expression<String>? sha256,
+    Expression<String>? status,
+    Expression<String>? embeddingModel,
+    Expression<Uint8List>? embedding,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceVersionId != null) 'source_version_id': sourceVersionId,
+      if (startOffset != null) 'start_offset': startOffset,
+      if (endOffset != null) 'end_offset': endOffset,
+      if (content != null) 'content': content,
+      if (sha256 != null) 'sha256': sha256,
+      if (status != null) 'status': status,
+      if (embeddingModel != null) 'embedding_model': embeddingModel,
+      if (embedding != null) 'embedding': embedding,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ChunksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sourceVersionId,
+    Value<int>? startOffset,
+    Value<int>? endOffset,
+    Value<String>? content,
+    Value<String>? sha256,
+    Value<String>? status,
+    Value<String?>? embeddingModel,
+    Value<Uint8List?>? embedding,
+    Value<int>? rowid,
+  }) {
+    return ChunksCompanion(
+      id: id ?? this.id,
+      sourceVersionId: sourceVersionId ?? this.sourceVersionId,
+      startOffset: startOffset ?? this.startOffset,
+      endOffset: endOffset ?? this.endOffset,
+      content: content ?? this.content,
+      sha256: sha256 ?? this.sha256,
+      status: status ?? this.status,
+      embeddingModel: embeddingModel ?? this.embeddingModel,
+      embedding: embedding ?? this.embedding,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceVersionId.present) {
+      map['source_version_id'] = Variable<String>(sourceVersionId.value);
+    }
+    if (startOffset.present) {
+      map['start_offset'] = Variable<int>(startOffset.value);
+    }
+    if (endOffset.present) {
+      map['end_offset'] = Variable<int>(endOffset.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (sha256.present) {
+      map['sha256'] = Variable<String>(sha256.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (embeddingModel.present) {
+      map['embedding_model'] = Variable<String>(embeddingModel.value);
+    }
+    if (embedding.present) {
+      map['embedding'] = Variable<Uint8List>(embedding.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChunksCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceVersionId: $sourceVersionId, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('content: $content, ')
+          ..write('sha256: $sha256, ')
+          ..write('status: $status, ')
+          ..write('embeddingModel: $embeddingModel, ')
+          ..write('embedding: $embedding, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RevisionsTable extends Revisions
     with TableInfo<$RevisionsTable, RevisionData> {
   @override
@@ -4989,6 +5564,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   late final $SourcesTable sources = $SourcesTable(this);
   late final $SourceVersionsTable sourceVersions = $SourceVersionsTable(this);
   late final $AnnotationsTable annotations = $AnnotationsTable(this);
+  late final $ChunksTable chunks = $ChunksTable(this);
   late final $RevisionsTable revisions = $RevisionsTable(this);
   late final $OutboxEntriesTable outboxEntries = $OutboxEntriesTable(this);
   late final $DerivedInvalidationsTable derivedInvalidations =
@@ -5006,6 +5582,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
     sources,
     sourceVersions,
     annotations,
+    chunks,
     revisions,
     outboxEntries,
     derivedInvalidations,
@@ -5027,6 +5604,13 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('annotations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'source_versions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('chunks', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -6608,6 +7192,24 @@ final class $$SourceVersionsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$ChunksTable, List<ChunkData>> _chunksRefsTable(
+    _$TyLogDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.chunks,
+    aliasName: 'source_versions__id__chunks__source_version_id',
+  );
+
+  $$ChunksTableProcessedTableManager get chunksRefs {
+    final manager = $$ChunksTableTableManager($_db, $_db.chunks).filter(
+      (f) => f.sourceVersionId.id.sqlEquals($_itemColumn<String>('id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_chunksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$SourceVersionsTableFilterComposer
@@ -6683,6 +7285,31 @@ class $$SourceVersionsTableFilterComposer
           }) => $$AnnotationsTableFilterComposer(
             $db: $db,
             $table: $db.annotations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> chunksRefs(
+    Expression<bool> Function($$ChunksTableFilterComposer f) f,
+  ) {
+    final $$ChunksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.chunks,
+      getReferencedColumn: (t) => t.sourceVersionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChunksTableFilterComposer(
+            $db: $db,
+            $table: $db.chunks,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -6824,6 +7451,31 @@ class $$SourceVersionsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> chunksRefs<T extends Object>(
+    Expression<T> Function($$ChunksTableAnnotationComposer a) f,
+  ) {
+    final $$ChunksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.chunks,
+      getReferencedColumn: (t) => t.sourceVersionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChunksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.chunks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SourceVersionsTableTableManager
@@ -6839,7 +7491,11 @@ class $$SourceVersionsTableTableManager
           $$SourceVersionsTableUpdateCompanionBuilder,
           (SourceVersionData, $$SourceVersionsTableReferences),
           SourceVersionData,
-          PrefetchHooks Function({bool sourceId, bool annotationsRefs})
+          PrefetchHooks Function({
+            bool sourceId,
+            bool annotationsRefs,
+            bool chunksRefs,
+          })
         > {
   $$SourceVersionsTableTableManager(
     _$TyLogDatabase db,
@@ -6898,70 +7554,100 @@ class $$SourceVersionsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({sourceId = false, annotationsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (annotationsRefs) db.annotations],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (sourceId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.sourceId,
-                                referencedTable: $$SourceVersionsTableReferences
-                                    ._sourceIdTable(db),
-                                referencedColumn:
-                                    $$SourceVersionsTableReferences
-                                        ._sourceIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                sourceId = false,
+                annotationsRefs = false,
+                chunksRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (annotationsRefs) db.annotations,
+                    if (chunksRefs) db.chunks,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (sourceId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.sourceId,
+                                    referencedTable:
+                                        $$SourceVersionsTableReferences
+                                            ._sourceIdTable(db),
+                                    referencedColumn:
+                                        $$SourceVersionsTableReferences
+                                            ._sourceIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (annotationsRefs)
+                        await $_getPrefetchedData<
+                          SourceVersionData,
+                          $SourceVersionsTable,
+                          AnnotationData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SourceVersionsTableReferences
+                              ._annotationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SourceVersionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).annotationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sourceVersionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (chunksRefs)
+                        await $_getPrefetchedData<
+                          SourceVersionData,
+                          $SourceVersionsTable,
+                          ChunkData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SourceVersionsTableReferences
+                              ._chunksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SourceVersionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chunksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sourceVersionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (annotationsRefs)
-                    await $_getPrefetchedData<
-                      SourceVersionData,
-                      $SourceVersionsTable,
-                      AnnotationData
-                    >(
-                      currentTable: table,
-                      referencedTable: $$SourceVersionsTableReferences
-                          ._annotationsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$SourceVersionsTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).annotationsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.sourceVersionId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -6978,7 +7664,11 @@ typedef $$SourceVersionsTableProcessedTableManager =
       $$SourceVersionsTableUpdateCompanionBuilder,
       (SourceVersionData, $$SourceVersionsTableReferences),
       SourceVersionData,
-      PrefetchHooks Function({bool sourceId, bool annotationsRefs})
+      PrefetchHooks Function({
+        bool sourceId,
+        bool annotationsRefs,
+        bool chunksRefs,
+      })
     >;
 typedef $$AnnotationsTableCreateCompanionBuilder =
     AnnotationsCompanion Function({
@@ -7378,6 +8068,404 @@ typedef $$AnnotationsTableProcessedTableManager =
       $$AnnotationsTableUpdateCompanionBuilder,
       (AnnotationData, $$AnnotationsTableReferences),
       AnnotationData,
+      PrefetchHooks Function({bool sourceVersionId})
+    >;
+typedef $$ChunksTableCreateCompanionBuilder =
+    ChunksCompanion Function({
+      required String id,
+      required String sourceVersionId,
+      required int startOffset,
+      required int endOffset,
+      required String content,
+      required String sha256,
+      Value<String> status,
+      Value<String?> embeddingModel,
+      Value<Uint8List?> embedding,
+      Value<int> rowid,
+    });
+typedef $$ChunksTableUpdateCompanionBuilder =
+    ChunksCompanion Function({
+      Value<String> id,
+      Value<String> sourceVersionId,
+      Value<int> startOffset,
+      Value<int> endOffset,
+      Value<String> content,
+      Value<String> sha256,
+      Value<String> status,
+      Value<String?> embeddingModel,
+      Value<Uint8List?> embedding,
+      Value<int> rowid,
+    });
+
+final class $$ChunksTableReferences
+    extends BaseReferences<_$TyLogDatabase, $ChunksTable, ChunkData> {
+  $$ChunksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $SourceVersionsTable _sourceVersionIdTable(_$TyLogDatabase db) => db
+      .sourceVersions
+      .createAlias('chunks__source_version_id__source_versions__id');
+
+  $$SourceVersionsTableProcessedTableManager get sourceVersionId {
+    final $_column = $_itemColumn<String>('source_version_id')!;
+
+    final manager = $$SourceVersionsTableTableManager(
+      $_db,
+      $_db.sourceVersions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sourceVersionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ChunksTableFilterComposer
+    extends Composer<_$TyLogDatabase, $ChunksTable> {
+  $$ChunksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get embeddingModel => $composableBuilder(
+    column: $table.embeddingModel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get embedding => $composableBuilder(
+    column: $table.embedding,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$SourceVersionsTableFilterComposer get sourceVersionId {
+    final $$SourceVersionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableFilterComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChunksTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $ChunksTable> {
+  $$ChunksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get embeddingModel => $composableBuilder(
+    column: $table.embeddingModel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get embedding => $composableBuilder(
+    column: $table.embedding,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$SourceVersionsTableOrderingComposer get sourceVersionId {
+    final $$SourceVersionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChunksTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $ChunksTable> {
+  $$ChunksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endOffset =>
+      $composableBuilder(column: $table.endOffset, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get sha256 =>
+      $composableBuilder(column: $table.sha256, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get embeddingModel => $composableBuilder(
+    column: $table.embeddingModel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get embedding =>
+      $composableBuilder(column: $table.embedding, builder: (column) => column);
+
+  $$SourceVersionsTableAnnotationComposer get sourceVersionId {
+    final $$SourceVersionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChunksTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $ChunksTable,
+          ChunkData,
+          $$ChunksTableFilterComposer,
+          $$ChunksTableOrderingComposer,
+          $$ChunksTableAnnotationComposer,
+          $$ChunksTableCreateCompanionBuilder,
+          $$ChunksTableUpdateCompanionBuilder,
+          (ChunkData, $$ChunksTableReferences),
+          ChunkData,
+          PrefetchHooks Function({bool sourceVersionId})
+        > {
+  $$ChunksTableTableManager(_$TyLogDatabase db, $ChunksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChunksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChunksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChunksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sourceVersionId = const Value.absent(),
+                Value<int> startOffset = const Value.absent(),
+                Value<int> endOffset = const Value.absent(),
+                Value<String> content = const Value.absent(),
+                Value<String> sha256 = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> embeddingModel = const Value.absent(),
+                Value<Uint8List?> embedding = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ChunksCompanion(
+                id: id,
+                sourceVersionId: sourceVersionId,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                content: content,
+                sha256: sha256,
+                status: status,
+                embeddingModel: embeddingModel,
+                embedding: embedding,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sourceVersionId,
+                required int startOffset,
+                required int endOffset,
+                required String content,
+                required String sha256,
+                Value<String> status = const Value.absent(),
+                Value<String?> embeddingModel = const Value.absent(),
+                Value<Uint8List?> embedding = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ChunksCompanion.insert(
+                id: id,
+                sourceVersionId: sourceVersionId,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                content: content,
+                sha256: sha256,
+                status: status,
+                embeddingModel: embeddingModel,
+                embedding: embedding,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ChunksTable, ChunkData>(table),
+                  $$ChunksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sourceVersionId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sourceVersionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sourceVersionId,
+                                referencedTable: $$ChunksTableReferences
+                                    ._sourceVersionIdTable(db),
+                                referencedColumn: $$ChunksTableReferences
+                                    ._sourceVersionIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ChunksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $ChunksTable,
+      ChunkData,
+      $$ChunksTableFilterComposer,
+      $$ChunksTableOrderingComposer,
+      $$ChunksTableAnnotationComposer,
+      $$ChunksTableCreateCompanionBuilder,
+      $$ChunksTableUpdateCompanionBuilder,
+      (ChunkData, $$ChunksTableReferences),
+      ChunkData,
       PrefetchHooks Function({bool sourceVersionId})
     >;
 typedef $$RevisionsTableCreateCompanionBuilder =
@@ -9286,6 +10374,8 @@ class $TyLogDatabaseManager {
       $$SourceVersionsTableTableManager(_db, _db.sourceVersions);
   $$AnnotationsTableTableManager get annotations =>
       $$AnnotationsTableTableManager(_db, _db.annotations);
+  $$ChunksTableTableManager get chunks =>
+      $$ChunksTableTableManager(_db, _db.chunks);
   $$RevisionsTableTableManager get revisions =>
       $$RevisionsTableTableManager(_db, _db.revisions);
   $$OutboxEntriesTableTableManager get outboxEntries =>

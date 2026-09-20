@@ -7,6 +7,7 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../pdf/pdf_extraction.dart';
+import '../retrieval/chunking.dart';
 
 part 'tylog_database.g.dart';
 
@@ -128,6 +129,32 @@ class Annotations extends Table {
   List<String> get customConstraints => [
     'CHECK (page >= 0)',
     'CHECK (start_offset >= 0 AND end_offset >= start_offset)',
+  ];
+}
+
+@DataClassName('ChunkData')
+class Chunks extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceVersionId => text().references(
+    SourceVersions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get startOffset => integer()();
+  IntColumn get endOffset => integer()();
+  TextColumn get content => text()();
+  TextColumn get sha256 => text()();
+  TextColumn get status => text().withDefault(const Constant('pending'))();
+  TextColumn get embeddingModel => text().nullable()();
+  BlobColumn get embedding => blob().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (start_offset >= 0 AND end_offset >= start_offset)',
+    "CHECK (status IN ('pending', 'complete', 'failed'))",
   ];
 }
 
@@ -256,6 +283,7 @@ enum RevisionReceiveResult { applied, duplicate, conflict }
     Sources,
     SourceVersions,
     Annotations,
+    Chunks,
     Revisions,
     OutboxEntries,
     DerivedInvalidations,
@@ -269,7 +297,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -282,7 +310,7 @@ class TyLogDatabase extends _$TyLogDatabase {
       await _createSourceVersionIndexes(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 7 || from < 1 || from > 6) {
+      if (to != 8 || from < 1 || from > 7) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -309,6 +337,7 @@ class TyLogDatabase extends _$TyLogDatabase {
         await _createSourceVersionIndexes(m);
       }
       if (from < 7) await m.create(annotations);
+      if (from < 8) await m.create(chunks);
     },
   );
 
@@ -415,6 +444,45 @@ class TyLogDatabase extends _$TyLogDatabase {
             ..where((row) => row.sourceVersionId.equals(sourceVersionId))
             ..orderBy([(row) => OrderingTerm.asc(row.startOffset)]))
           .get();
+
+  Future<void> saveChunks(Iterable<TextChunk> values) async {
+    await batch((batch) {
+      batch.insertAllOnConflictUpdate(
+        chunks,
+        values.map(
+          (chunk) => ChunksCompanion.insert(
+            id: chunk.id,
+            sourceVersionId: chunk.sourceVersionId,
+            startOffset: chunk.start,
+            endOffset: chunk.end,
+            content: chunk.text,
+            sha256: chunk.sha256,
+          ),
+        ).toList(),
+      );
+    });
+  }
+
+  Future<List<ChunkData>> pendingChunks({int limit = 100}) =>
+      (select(chunks)
+            ..where((row) => row.status.equals('pending'))
+            ..orderBy([(row) => OrderingTerm.asc(row.id)])
+            ..limit(limit))
+          .get();
+
+  Future<void> completeChunk(
+    String id, {
+    required String model,
+    required List<int> embedding,
+  }) async {
+    await (update(chunks)..where((row) => row.id.equals(id))).write(
+      ChunksCompanion(
+        status: const Value('complete'),
+        embeddingModel: Value(model),
+        embedding: Value(Uint8List.fromList(embedding)),
+      ),
+    );
+  }
 
   Future<void> _createQueueIndexes(Migrator m) async {
     await m.database.customStatement(
