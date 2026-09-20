@@ -1195,7 +1195,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialView: initialView,
           index: ix,
           search: (query, tag, status) =>
-              workspace.searchNotes(query, tag: tag, status: status),
+              _searchNotes(ix, query, tag: tag, status: status),
           searchState: workspace,
           searchReady: () => workspace.searchReady,
           searchRevision: () => workspace.searchRevision,
@@ -1894,6 +1894,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onDeleteVault: (entry) => unawaited(_deleteVault(entry)),
       ),
     );
+  }
+
+  Future<List<PkmsSearchResult>> _searchNotes(
+    VaultIndex fallbackIndex,
+    String query, {
+    String? tag,
+    String? status,
+  }) async {
+    final activeEntry = workspace.entry;
+    if (activeEntry != null) {
+      try {
+        final db = await _databaseForVault(activeEntry);
+        if (db != null && await db.nodeProjectionComplete()) {
+          final ids = await db.searchNodeIds(query);
+          final byId = {for (final note in fallbackIndex.notes) note.id: note};
+          return [
+            for (var i = 0; i < ids.length; i++)
+              if (byId[ids[i]] case final NoteRef note)
+                if ((tag == null || note.tags.contains(tag)) &&
+                    (status == null || note.properties['status'] == status))
+                  PkmsSearchResult(
+                    id: note.id,
+                    path: note.path,
+                    title: note.title,
+                    kind: note.kind,
+                    tags: note.tags,
+                    score: ids.length - i,
+                  ),
+          ];
+        }
+      } catch (_) {
+        // The derived index is optional; preserve the existing search path.
+      }
+    }
+    return workspace.searchNotes(query, tag: tag, status: status);
   }
 
   void _showSettings() {

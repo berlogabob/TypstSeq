@@ -10,4 +10,6 @@ Evidence:
 - Full suite: `flutter test` — 688 passed, 2 skipped.
 - `flutter analyze lib/database/tylog_database.dart test/database/node_search_fts_test.dart` — clean.
 
-Remaining P13 work: route keyword search surfaces through this API, add changed-record rebuild accounting, and measure EN/PT/RU full-corpus latency.
+The Knowledge search entry point now prefers the FTS result IDs when the projection is complete, applies the existing tag/status filters, and falls back to the worker/in-memory search on unavailable or incomplete derived data.
+
+Remaining P13 work: add changed-record rebuild accounting and measure EN/PT/RU full-corpus latency.
