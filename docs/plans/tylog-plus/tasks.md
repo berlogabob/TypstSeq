@@ -132,3 +132,5 @@ The A24 debug integration runner also exercised `WorkspaceController.save()` 100
 Profile repetition completed through `flutter drive --profile`: 100 workspace saves measured p50 3 ms, p95 4 ms, max 23 ms, and 100 normal note opens measured p50 0 ms, p95 0 ms, max 1 ms. P12 startup/open/save timing gates now pass on A24; the five-minute frame-budget workload remains open.
 
 Profile worker attribution also passed on A24 (2,000-note synthetic workload, 12 seconds): worst gaps 26/18/25/16 ms across index, communities, projection, and search phases. This is partial frame evidence only; the five-minute real-editor workload remains open.
+
+The first real-editor frame probe is a blocker: a 36 KB note with edits every 250 ms caused 267 skipped Android frames and made the profile app unresponsive before five minutes. The probe was removed after capture; P12 remains open for editor rebuild/layout remediation and a repeatable five-minute run.

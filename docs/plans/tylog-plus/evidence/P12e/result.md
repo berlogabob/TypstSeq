@@ -82,6 +82,16 @@ editor_save_ms p50=3 p95=4 max=23; editor_open_ms p50=0 p95=0 max=1; samples=100
 The startup, open and save timing gates now pass on A24. Only the scripted
 five-minute frame-budget workload remains for P12e.
 
+### Frame-gate blocker found on A24
+
+An exploratory profile run mounted the real `TyLogRichEditor` with a 36 KB
+note and appended text every 250 ms. Android reported **267 skipped frames**
+and the profile app became unresponsive before the five-minute window ended.
+The run was stopped and its private log remains outside the repository. This
+is evidence that the frame gate is not yet satisfied for long active notes;
+the next performance task is to reduce editor rebuild/layout cost before
+repeating the five-minute acceptance workload.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
