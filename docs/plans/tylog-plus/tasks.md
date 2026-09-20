@@ -126,3 +126,5 @@ Follow-up checkpoint: P18 no-text vector PDF native acceptance passed on Mac and
 P12 follow-up: the bounded 30-startup/100-save workload passed on A24 in the debug integration runner (startup p95 6 ms, save p95 9 ms). This does not close P12e because the required profile-build and normal app-startup measurements remain separate gates.
 
 Additional P12 evidence: 30 cold starts of the installed production profile package on A24 measured `TotalTime` p50 417 ms, p95 450 ms, max 452 ms. Startup passes the 2,000 ms gate; normal editor save/open timing remains pending.
+
+The A24 debug integration runner also exercised `WorkspaceController.save()` 100 times with a 50 KB note: p50 11 ms, p95 15 ms, max 179 ms. The p95 gate passed; profile-build repetition remains pending.

@@ -45,3 +45,15 @@ TotalTime_ms p50=417 p95=450 max=452 samples=30
 This passes the 2,000 ms startup gate. The remaining device measurement is a
 profile-run normal editor save/open workload; the 100-save result above is the
 bounded database workload from the debug integration runner.
+
+### A24 workspace save path
+
+The real `WorkspaceController.save()` route was exercised on a temporary local
+vault with the durable database attached. Across 100 50 KB editor saves:
+
+```text
+editor_save_ms p50=11 p95=15 max=179 samples=100
+```
+
+The p95 save gate (150 ms) passed; one outlier reached 179 ms. This is still a
+debug integration runner, so the profile-build repetition remains required.
