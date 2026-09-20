@@ -196,6 +196,8 @@ class NodeSummaryPage {
   final bool complete;
 }
 
+typedef PendingRevisionUpload = ({RevisionData revision, NodeData? node});
+
 @DriftDatabase(
   tables: [
     DatabaseMetadata,
@@ -472,6 +474,39 @@ class TyLogDatabase extends _$TyLogDatabase {
             updatedAtMs: Value(item.updatedAtMs),
           ),
         );
+  }
+
+  Future<List<PendingRevisionUpload>> pendingRevisionUploads({
+    int limit = 100,
+  }) async {
+    if (limit < 1 || limit > 1000) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 1000');
+    }
+    final entries =
+        await (select(outboxEntries)
+              ..orderBy([(table) => OrderingTerm.asc(table.createdAtMs)])
+              ..limit(limit))
+            .get();
+    final uploads = <PendingRevisionUpload>[];
+    for (final entry in entries) {
+      final revision = await (select(
+        revisions,
+      )..where((table) => table.id.equals(entry.revisionId))).getSingleOrNull();
+      if (revision == null) continue;
+      final node =
+          await (select(nodes)
+                ..where((table) => table.id.equals(revision.entityId)))
+              .getSingleOrNull();
+      uploads.add((revision: revision, node: node));
+    }
+    return uploads;
+  }
+
+  Future<void> acknowledgeRevisionUpload(String revisionId) async {
+    final removed = await (delete(
+      outboxEntries,
+    )..where((table) => table.revisionId.equals(revisionId))).go();
+    if (removed == 0) return;
   }
 
   Future<void> createOrResumeImportJob(
