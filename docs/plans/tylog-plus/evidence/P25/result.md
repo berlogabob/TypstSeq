@@ -19,3 +19,9 @@ Fresh device check (2026-09-20): production registry readable; two vault entries
 Normal Android entry point rebuilt with `flutter build apk --profile --target-platform android-arm64` and installed using `adb install -r`. Install succeeded without uninstall or data clearing. A private before/after registry SHA-256 comparison matched. The main activity opened, indexing completed, and the production Library displayed existing notes. The synthetic test package was stopped. This is an installation/launch check, not the full release, sync, or integrity acceptance gate.
 
 Mac: native reader smoke passes. Normal Apple Silicon release built (74.8 MB) and launched with `open -n build/macos/Build/Products/Release/TyLog.app`. The standard universal build failed in Flutter's architecture validation despite `lipo` reporting both slices. A local `XCODE_XCCONFIG_FILE` containing `ARCHS = arm64` and `ONLY_ACTIVE_ARCH = YES` produced a working host release; universal release packaging remains unverified. App artifact is under `build/` and is not committed. No installed `/Applications` bundle was overwritten.
+
+### Reproducible Apple Silicon build
+
+`tool/build_macos_arm64.sh` now supplies the temporary architecture override and cleans it on exit; `FLUTTER_BIN=/Users/berloga/development/flutter/bin/flutter tool/build_macos_arm64.sh` passed (74.8 MB). README documents the command and macOS 12 minimum. No SDK files were modified.
+
+Root-cause check: on the untouched Flutter SDK universal framework, `/usr/bin/lipo <framework-binary> -verify_arch arm64 x86_64` exits 1 with `-verify_arch requires exactly one input file`; checking either architecture separately exits 0, and `-info` reports both. This local Xcode tool behavior explains Flutter's misleading missing-architectures error. Universal packaging remains open; the script deliberately produces only ARM64.

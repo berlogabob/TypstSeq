@@ -22,3 +22,9 @@ API verified against the installed package and [upstream selection documentation
 A24 native reader fixture passes, including rendered text selection, durable save, reopening and highlight navigation. Repeating after a force-stop verifies retained records; see P24 for exact commands.
 
 Mac native smoke also passes with PDFium (one test). Xcode 27 rejects the former macOS 10.15 deployment setting, so Runner and all CocoaPods targets now consistently require macOS 12.0. This is a compatibility-floor change, not a claim of testing on macOS 12 hardware.
+
+### No-text native fixture
+
+Added a valid vector-only PDF to the native integration test. On Mac, both tests pass: text highlight save/reopen/navigation and no-text viewer readiness/status/disabled save. The latter checks the no-extractable-text path; it does not establish scanned-image rendering quality, OCR, or large-corpus acceptance. Coordinator corrected the test's tooltip finder to inspect the actual IconButton and disposes the reader before database teardown.
+
+A24 native run also passed both tests (`flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d 000251565001005`). Targeted analyzer clean. Tests use separate fixture databases in the debug package; production vaults are unchanged.

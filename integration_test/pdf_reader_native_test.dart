@@ -126,6 +126,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(Drawer), findsNothing);
   });
+
+  testWidgets('PDF reader renders vector-only PDFs without selectable text', (
+    tester,
+  ) async {
+    final directory = await getApplicationSupportDirectory();
+    final file = File('${directory.path}/pdf-reader-native-vector.sqlite');
+    for (final suffix in ['', '-wal', '-shm']) {
+      final old = File('${file.path}$suffix');
+      if (await old.exists()) await old.delete();
+    }
+    final database = await openDatabaseWithFile(file);
+    addTearDown(() async {
+      await database.close();
+      for (final suffix in ['', '-wal', '-shm']) {
+        final old = File('${file.path}$suffix');
+        if (await old.exists()) await old.delete();
+      }
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PdfReaderScreen(
+          bytes: _vectorOnlyPdf(),
+          path: 'research/vector-only.pdf',
+          database: database,
+        ),
+      ),
+    );
+    await _pumpUntil(tester, () async {
+      final viewer = find.byType(PdfViewer);
+      if (viewer.evaluate().isEmpty) return false;
+      return tester.widget<PdfViewer>(viewer).controller?.isReady ?? false;
+    });
+    await _pumpUntil(
+      tester,
+      () async => find
+          .text('No selectable text. You can still read this PDF.')
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    expect(find.byType(PdfViewer), findsOneWidget);
+    final save = tester.widget<IconButton>(
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == 'Save highlight',
+      ),
+    );
+    expect(save.onPressed, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
 }
 
 Future<void> _pumpUntil(
@@ -147,6 +198,41 @@ Uint8List _helloPdf() {
         '/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
     '<< /Length ${'BT /F1 18 Tf 30 50 Td (Hello research) Tj ET\n'.length} >>\nstream\nBT /F1 18 Tf 30 50 Td (Hello research) Tj ET\nendstream',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  final output = StringBuffer('%PDF-1.4\n');
+  final offsets = <int>[];
+  for (var i = 0; i < objects.length; i++) {
+    offsets.add(output.length);
+    output
+      ..writeln('${i + 1} 0 obj')
+      ..writeln(objects[i])
+      ..writeln('endobj');
+  }
+  final xref = output.length;
+  output
+    ..writeln('xref')
+    ..writeln('0 ${objects.length + 1}')
+    ..writeln('0000000000 65535 f ');
+  for (final offset in offsets) {
+    output.writeln('${offset.toString().padLeft(10, '0')} 00000 n ');
+  }
+  output
+    ..writeln('trailer')
+    ..writeln('<< /Size ${objects.length + 1} /Root 1 0 R >>')
+    ..writeln('startxref')
+    ..writeln(xref)
+    ..write('%%EOF\n');
+  return Uint8List.fromList(output.toString().codeUnits);
+}
+
+Uint8List _vectorOnlyPdf() {
+  const content = '0 0 300 100 re f\n';
+  final objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 100] '
+        '/Contents 4 0 R >>',
+    '<< /Length ${content.length} >>\nstream\n$content\nendstream',
   ];
   final output = StringBuffer('%PDF-1.4\n');
   final offsets = <int>[];
