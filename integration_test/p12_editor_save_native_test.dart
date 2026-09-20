@@ -53,10 +53,21 @@ void main() {
     final p95 = _p95(saves);
     expect(p95, lessThanOrEqualTo(150));
     saves.sort();
+    final opens = <int>[];
+    for (var i = 0; i < 100; i++) {
+      final watch = Stopwatch()..start();
+      final snapshot = await controller.readNoteSnapshot(path);
+      expect(controller.adoptNoteRead(path, snapshot), isTrue);
+      opens.add(watch.elapsedMilliseconds);
+    }
+    final openP95 = _p95(opens);
+    expect(openP95, lessThanOrEqualTo(150));
+    opens.sort();
     // ignore: avoid_print
     print(
       'P12e android editor_save_ms p50=${saves[49]} p95=$p95 '
-      'max=${saves.last}; samples=100',
+      'max=${saves.last}; editor_open_ms p50=${opens[49]} '
+      'p95=$openP95 max=${opens.last}; samples=100/100',
     );
   });
 }

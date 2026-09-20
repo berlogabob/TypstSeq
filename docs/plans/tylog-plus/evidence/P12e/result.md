@@ -72,6 +72,16 @@ starts above (p95 450 ms), the startup and save timing gates are satisfied.
 The scripted five-minute frame-budget gate and normal note-open timing still
 need a dedicated profile workload.
 
+The same profile run exercised the normal workspace note-read/adoption path
+100 times for the 50 KB note:
+
+```text
+editor_save_ms p50=3 p95=4 max=23; editor_open_ms p50=0 p95=0 max=1; samples=100/100
+```
+
+The startup, open and save timing gates now pass on A24. Only the scripted
+five-minute frame-budget workload remains for P12e.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
