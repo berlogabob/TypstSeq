@@ -71,3 +71,12 @@ The profile save gate passed. Combined with the 30 production-package cold
 starts above (p95 450 ms), the startup and save timing gates are satisfied.
 The scripted five-minute frame-budget gate and normal note-open timing still
 need a dedicated profile workload.
+
+### A24 profile frame attribution probe
+
+`flutter drive --profile` ran the existing worker attribution workload (2,000
+synthetic notes) for 12 seconds. Worst observed timer gaps were 26 ms while
+the index was published, 18 ms while communities were built, 25 ms while the
+search projection completed, and 16 ms during search. The test passed and
+confirms the worker path is bounded, but this is not the required five-minute
+real-editor workload or a frame-budget acceptance result.

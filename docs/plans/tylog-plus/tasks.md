@@ -130,3 +130,5 @@ Additional P12 evidence: 30 cold starts of the installed production profile pack
 The A24 debug integration runner also exercised `WorkspaceController.save()` 100 times with a 50 KB note: p50 11 ms, p95 15 ms, max 179 ms. The p95 gate passed; profile-build repetition remains pending.
 
 Profile repetition completed through `flutter drive --profile`: 100 workspace saves measured p50 2 ms, p95 3 ms, max 16 ms. P12 startup/save timing gates now pass on A24; the five-minute frame-budget workload and normal note-open timing remain open.
+
+Profile worker attribution also passed on A24 (2,000-note synthetic workload, 12 seconds): worst gaps 26/18/25/16 ms across index, communities, projection, and search phases. This is partial frame evidence only; the five-minute real-editor workload remains open.
