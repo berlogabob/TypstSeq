@@ -479,7 +479,16 @@ class TyLogDatabase extends _$TyLogDatabase {
     required NodeData node,
     required RevisionData revision,
   }) async {
+    await _ensureNodeSearch();
     await into(nodes).insertOnConflictUpdate(node);
+    await customStatement('DELETE FROM node_search_fts WHERE node_id = ?', [
+      node.id,
+    ]);
+    await customStatement(
+      'INSERT INTO node_search_fts(node_id, title, content, attributes) '
+      'VALUES (?, ?, ?, ?)',
+      [node.id, node.title, node.content, node.attributesJson],
+    );
     await into(revisions).insert(revision);
     await into(outboxEntries).insert(
       OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
@@ -490,6 +499,53 @@ class TyLogDatabase extends _$TyLogDatabase {
         createdAtMs: revision.createdAtMs,
       ),
     );
+  }
+
+  Future<void> _ensureNodeSearch() => customStatement('''
+    CREATE VIRTUAL TABLE IF NOT EXISTS node_search_fts USING fts5(
+      node_id UNINDEXED,
+      title,
+      content,
+      attributes,
+      tokenize = 'unicode61 remove_diacritics 2'
+    )
+  ''');
+
+  Future<void> rebuildNodeSearch() async {
+    await transaction(() async {
+      await _ensureNodeSearch();
+      await customStatement('DELETE FROM node_search_fts');
+      await customStatement('''
+        INSERT INTO node_search_fts(node_id, title, content, attributes)
+        SELECT id, title, content, attributes_json FROM nodes
+      ''');
+    });
+  }
+
+  Future<List<String>> searchNodeIds(String query, {int limit = 50}) async {
+    if (limit < 1 || limit > 100) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 100');
+    }
+    final terms = query
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .map((term) => '"${term.replaceAll('"', '""')}"*')
+        .join(' AND ');
+    if (terms.isEmpty) return const [];
+    await _ensureNodeSearch();
+    final rows = await customSelect(
+      '''
+      SELECT node_id FROM node_search_fts
+      JOIN nodes ON nodes.id = node_search_fts.node_id
+      WHERE node_search_fts MATCH ?
+        AND json_extract(nodes.attributes_json, '\$.deletedAtMs') IS NULL
+      ORDER BY rank
+      LIMIT ?
+      ''',
+      variables: [Variable.withString(terms), Variable.withInt(limit)],
+    ).get();
+    return [for (final row in rows) row.read<String>('node_id')];
   }
 
   Future<void> commitImportedNode({

@@ -18,7 +18,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
 | P12 | Paged startup/list reads | P11 | RUNNING | Startup/open/save gates |
-| P13 | Incremental FTS and filters | P11 | TODO | EN/PT/RU, latency, changed records only |
+| P13 | Incremental FTS and filters | P11 | RUNNING | FTS5 foundation landed; UI routing, multilingual scale and latency remain |
 | P14 | Persistent jobs | P08 | TODO | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | TODO | Interrupted publish and retry |
 | P16 | Transactional receive/conflict handling | P15 | TODO | Defined merge/materialization contract + convergence tests |
