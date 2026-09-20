@@ -105,6 +105,7 @@ class GraphView extends StatefulWidget {
     this.isWholeVault = false,
     this.onSwitchToFocused,
     this.communities,
+    this.onExportSvg,
   });
 
   final NoteGraph graph;
@@ -112,6 +113,7 @@ class GraphView extends StatefulWidget {
   final ValueChanged<String> onOpenPath;
   final bool isWholeVault;
   final VoidCallback? onSwitchToFocused;
+  final Future<void> Function(NoteGraph graph)? onExportSvg;
 
   /// Community assignment (from [computeCommunities]) used to seed/pull nodes
   /// into per-cluster agglomerations and color them. Null ⇒ plain force layout.
@@ -363,6 +365,12 @@ class _GraphViewState extends State<GraphView>
                     _focusFilter = null;
                     _invalidateLayout();
                   }),
+                ),
+              if (widget.onExportSvg != null)
+                ActionChip(
+                  avatar: const Icon(Icons.ios_share, size: 18),
+                  label: const Text('Export SVG'),
+                  onPressed: () => widget.onExportSvg!(displayGraph),
                 ),
             ],
           ),

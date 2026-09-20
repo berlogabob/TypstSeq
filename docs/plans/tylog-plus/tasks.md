@@ -138,3 +138,5 @@ The first real-editor frame probe is a blocker: a 36 KB note with edits every 25
 The first remediation removed a full document reparse for plain-note keystrokes. A 30-second follow-up stayed responsive but still recorded 998 late frames out of 1,840 (worst gap 37 ms), so the 1% frame gate remains blocked and a virtualized/block-level editor is still required for large active notes.
 
 P22 follow-up: graph rendering now caps the UI layout at 200 nodes and 500 edges, retaining the current/high-degree nodes deterministically. Graph tests pass; graph UI interaction/export acceptance remains open.
+
+P22 export wiring: GraphView now offers `Export SVG`, sharing the bounded graph through the existing platform share path as `tylog-graph.svg`. Native share-sheet acceptance remains open.

@@ -27,6 +27,7 @@ import 'pkms_registry.dart';
 import 'platform_file_actions.dart';
 import 'pdf/pdf_reader_screen.dart';
 import 'report.dart';
+import 'retrieval/graph_svg.dart';
 import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
@@ -3232,6 +3233,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _shareGraphSvg(NoteGraph graph) async {
+    final positions = forceLayoutPositions(graph, const Size(1000, 1000));
+    final svg = graphToSvg(
+      nodes: [
+        for (final node in graph.nodes)
+          if (positions[node.path] case final point?)
+            SvgGraphNode(
+              id: node.path,
+              label: node.title,
+              x: point.dx,
+              y: point.dy,
+            ),
+      ],
+      edges: [
+        for (final edge in graph.edges)
+          SvgGraphEdge(from: edge.from, to: edge.to),
+      ],
+    );
+    final box = context.findRenderObject() as RenderBox?;
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            Uint8List.fromList(utf8.encode(svg)),
+            mimeType: 'image/svg+xml',
+            name: 'tylog-graph.svg',
+          ),
+        ],
+        fileNameOverrides: const ['tylog-graph.svg'],
+        subject: 'TyLog graph',
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      ),
+    );
+  }
+
   Future<String?> _chooseCitation() async {
     final v = vault;
     if (v == null) return null;
@@ -3736,6 +3774,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
+        onExportSvg: _shareGraphSvg,
         currentPath: _graphFocusPath ?? current,
         // Opening a concept/work hub expands it into a rooted local view rather
         // than opening a file; opening a note opens the file as usual.

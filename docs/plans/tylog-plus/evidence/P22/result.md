@@ -18,6 +18,12 @@ passes 18 tests including the cap ordering check. This bounds rendering cost;
 database neighborhood selection and graph export remain separate paths.
 - `flutter test test/retrieval_graph_svg_test.dart` — deterministic export and escaping pass.
 
+Graph UI now exposes an `Export SVG` action. It uses the bounded graph, a
+deterministic 1000×1000 layout, escaped labels, and the existing platform share
+sheet as `tylog-graph.svg`. The action is wired from `HomeScreen` into
+`GraphView`; graph tests still pass. Full native share-sheet acceptance remains
+device-gated.
+
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
 
 Full regression after schema and graph changes: `flutter test` — 707 passed, 2 skipped.
