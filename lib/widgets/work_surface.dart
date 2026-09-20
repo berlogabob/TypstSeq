@@ -253,6 +253,7 @@ class LibraryView extends StatelessWidget {
   const LibraryView({
     super.key,
     required this.index,
+    this.pagedNotes,
     required this.calendar,
     required this.dayMarks,
     this.indexing = false,
@@ -273,6 +274,7 @@ class LibraryView extends StatelessWidget {
   });
 
   final VaultIndex? index;
+  final List<NoteRef>? pagedNotes;
 
   /// Derived once per index by the controller, not per build.
   final List<CalendarItem> calendar;
@@ -313,6 +315,7 @@ class LibraryView extends StatelessWidget {
             children: [
               _UnifiedNotesView(
                 index: index,
+                pagedNotes: pagedNotes,
                 indexing: indexing,
                 onOpenPath: onOpenPath,
                 onCreateNote: onCreateNote,
@@ -320,6 +323,7 @@ class LibraryView extends StatelessWidget {
               ),
               _ArticlesShelf(
                 index: index,
+                pagedNotes: pagedNotes,
                 indexing: indexing,
                 progressByPath: progressByPath,
                 onReadPath: onReadPath,
@@ -351,7 +355,6 @@ class LibraryView extends StatelessWidget {
       ],
     ),
   );
-
 }
 
 /// The unified primary list: notes, projects, and entities together, sliced
@@ -362,6 +365,7 @@ class LibraryView extends StatelessWidget {
 class _UnifiedNotesView extends StatefulWidget {
   const _UnifiedNotesView({
     required this.index,
+    this.pagedNotes,
     required this.indexing,
     required this.onOpenPath,
     required this.onCreateNote,
@@ -369,6 +373,7 @@ class _UnifiedNotesView extends StatefulWidget {
   });
 
   final VaultIndex? index;
+  final List<NoteRef>? pagedNotes;
   final bool indexing;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<String> onCreateNote;
@@ -383,18 +388,16 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
 
   @override
   Widget build(BuildContext context) {
-    final all = (widget.index?.notes ?? const <NoteRef>[])
+    final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind != 'daily')
         .toList();
     final kinds = {for (final note in all) note.kind}..remove('note');
     final chips = kinds.toList()..sort();
     final selected = _kind;
-    final notes =
-        all.where((note) {
-            if (selected != null) return note.kind == selected;
-            return note.kind != 'article';
-          }).toList()
-          ..sort((a, b) => a.title.compareTo(b.title));
+    final notes = all.where((note) {
+      if (selected != null) return note.kind == selected;
+      return note.kind != 'article';
+    }).toList()..sort((a, b) => a.title.compareTo(b.title));
     return Column(
       children: [
         if (chips.isNotEmpty)
@@ -482,6 +485,7 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
 class _ArticlesShelf extends StatefulWidget {
   const _ArticlesShelf({
     required this.index,
+    this.pagedNotes,
     required this.indexing,
     required this.progressByPath,
     required this.onReadPath,
@@ -495,6 +499,7 @@ class _ArticlesShelf extends StatefulWidget {
   });
 
   final VaultIndex? index;
+  final List<NoteRef>? pagedNotes;
   final bool indexing;
   final Map<String, double> progressByPath;
   final Map<String, String> noteToCluster;
@@ -596,7 +601,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   @override
   Widget build(BuildContext context) {
-    final all = (widget.index?.notes ?? const <NoteRef>[])
+    final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == 'article')
         .toList();
     final q = _query.text.trim().toLowerCase();

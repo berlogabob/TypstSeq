@@ -296,6 +296,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Vault? get vault => workspace.vault;
   VaultIndex? get index => workspace.index;
   set index(VaultIndex? value) => workspace.index = value;
+
+  List<NoteRef>? _pagedLibraryNotes;
+  int _pagedLibraryRevision = -1;
+  bool _pagedLibraryLoading = false;
   String? get note => workspace.note;
   set note(String? value) => workspace.note = value;
   String get status => workspace.status;
@@ -416,7 +420,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (changed) richController.loadSource(workspace.source);
     }
     _maybeSnackNewSyncTrouble();
+    _refreshPagedLibraryNotes();
     setState(() {});
+  }
+
+  void _refreshPagedLibraryNotes() {
+    final revision = workspace.indexRevision;
+    if (_pagedLibraryLoading || revision == _pagedLibraryRevision) return;
+    _pagedLibraryRevision = revision;
+    _pagedLibraryNotes = null;
+    _pagedLibraryLoading = true;
+    unawaited(() async {
+      final notes = await _pagedPickerNotes();
+      if (mounted && revision == workspace.indexRevision && notes != null) {
+        setState(() => _pagedLibraryNotes = notes);
+      }
+      _pagedLibraryLoading = false;
+    }());
   }
 
   void _maybeSnackNewSyncTrouble() {
@@ -3626,6 +3646,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         index: index,
+        pagedNotes: _pagedLibraryNotes,
         calendar: workspace.calendar,
         dayMarks: workspace.calendarDayMarks,
         indexing: rebuilding || syncing,
