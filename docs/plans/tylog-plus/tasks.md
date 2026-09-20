@@ -25,7 +25,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
 | P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | In-app PDF reader and persisted selection implementation underway; native smoke pending |
 | P19 | Durable annotations/navigation | P18 | RUNNING | Versioned page/character annotation storage landed; reattachment UI next |
-| P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic versioned chunk contract landed; resumable embedding jobs next |
+| P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic chunks and bounded resumable job seam landed; pinned runtime/isolate/device gates remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Retrieval primitives tested; production pipeline, shared ID mapping, and Dart/device benchmarks remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | RUNNING | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
@@ -73,6 +73,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.5 sqlite-vec fallback | Codex Luna | CONDITIONAL | P05.3 or P05.4 fails | Run only if exact search misses a gate; same vectors/query interface |
 | P05.6 judged retrieval quality | Coordinator | WAITING | P05.1b-P05.4 | 90 judged queries; Recall@10 >=85% overall and >=80% per language/subgroup |
 | P05.7 reproduction/acceptance | Coordinator | READY | P05.0-P05.6 | Commands/hashes reproduced; redacted evidence linked; P05 marked DONE |
+| P20a embedding batch seam | Coordinator | DONE | P20 chunk contract | [Bounded callback runner retries pending chunks after failure](evidence/P20/result.md) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
 | P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |

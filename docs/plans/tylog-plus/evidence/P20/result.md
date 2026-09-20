@@ -10,5 +10,7 @@ Evidence:
 - `flutter analyze lib/retrieval/chunking.dart test/retrieval_chunking_test.dart` — clean.
 - `flutter test test/database/chunk_persistence_test.dart` — pending-to-complete embedding state and BLOB persistence pass.
 - `flutter test test/database/tylog_graph_schema_test.dart test/database/portable_snapshot_test.dart` — v2→v8 migration and snapshot format v8 pass.
+- `flutter test test/retrieval_embedding_jobs_test.dart test/database/chunk_persistence_test.dart` — bounded batches persist completed vectors, leave failed work pending, and resume after a fresh runner invocation.
+- `flutter analyze lib/retrieval/embedding_jobs.dart test/retrieval_embedding_jobs_test.dart` — clean.
 
-Remaining work: connect the pinned offline runtime from P05 and run bounded embedding batches in an isolate.
+The new `runEmbeddingBatch` seam uses the existing chunk state as its durable queue: it processes at most 1,000 rows, writes each vector before advancing, and leaves failures pending for retry. Remaining work: connect the pinned offline runtime from P05, move its callback behind an isolate, and run Android quality/latency gates.
