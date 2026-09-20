@@ -109,11 +109,8 @@ class SourceVersions extends Table {
 @DataClassName('AnnotationData')
 class Annotations extends Table {
   TextColumn get id => text()();
-  TextColumn get sourceVersionId => text().references(
-    SourceVersions,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+  TextColumn get sourceVersionId =>
+      text().references(SourceVersions, #id, onDelete: KeyAction.cascade)();
   IntColumn get page => integer()();
   IntColumn get startOffset => integer()();
   IntColumn get endOffset => integer()();
@@ -135,11 +132,8 @@ class Annotations extends Table {
 @DataClassName('ChunkData')
 class Chunks extends Table {
   TextColumn get id => text()();
-  TextColumn get sourceVersionId => text().references(
-    SourceVersions,
-    #id,
-    onDelete: KeyAction.cascade,
-  )();
+  TextColumn get sourceVersionId =>
+      text().references(SourceVersions, #id, onDelete: KeyAction.cascade)();
   IntColumn get startOffset => integer()();
   IntColumn get endOffset => integer()();
   TextColumn get content => text()();
@@ -269,6 +263,13 @@ class NodeSummaryPage {
   final List<NodeSummary> nodes;
   final String? nextCursor;
   final bool complete;
+}
+
+class GraphNodeDistance {
+  const GraphNodeDistance({required this.id, required this.depth});
+
+  final String id;
+  final int depth;
 }
 
 typedef PendingRevisionUpload = ({RevisionData revision, NodeData? node});
@@ -409,9 +410,10 @@ class TyLogDatabase extends _$TyLogDatabase {
   }
 
   Future<List<SourceVersionData>> sourceVersionsFor(String sourceId) async =>
-      (select(sourceVersions)..where((row) => row.sourceId.equals(sourceId))..orderBy([
-        (row) => OrderingTerm.desc(row.createdAtMs),
-      ])).get();
+      (select(sourceVersions)
+            ..where((row) => row.sourceId.equals(sourceId))
+            ..orderBy([(row) => OrderingTerm.desc(row.createdAtMs)]))
+          .get();
 
   Future<void> saveAnnotation({
     required String id,
@@ -445,20 +447,56 @@ class TyLogDatabase extends _$TyLogDatabase {
             ..orderBy([(row) => OrderingTerm.asc(row.startOffset)]))
           .get();
 
+  Future<List<GraphNodeDistance>> boundedNeighborhood(
+    String nodeId, {
+    int maxDepth = 3,
+  }) async {
+    if (maxDepth < 0) throw ArgumentError.value(maxDepth, 'maxDepth');
+    final rows = await customSelect(
+      '''
+      WITH RECURSIVE walk(id, depth, path) AS (
+        SELECT ?1, 0, '|' || ?1 || '|'
+        UNION ALL
+        SELECT CASE WHEN e.from_node_id = w.id THEN e.to_node_id ELSE e.from_node_id END,
+               w.depth + 1,
+               w.path || CASE WHEN e.from_node_id = w.id
+                 THEN e.to_node_id ELSE e.from_node_id END || '|'
+        FROM edges e
+        JOIN walk w ON e.from_node_id = w.id OR e.to_node_id = w.id
+        WHERE w.depth < ?2
+          AND instr(w.path, '|' || CASE WHEN e.from_node_id = w.id
+            THEN e.to_node_id ELSE e.from_node_id END || '|') = 0
+      )
+      SELECT id, MIN(depth) AS depth FROM walk GROUP BY id ORDER BY depth, id
+      ''',
+      variables: [Variable.withString(nodeId), Variable.withInt(maxDepth)],
+      readsFrom: {edges},
+    ).get();
+    return [
+      for (final row in rows)
+        GraphNodeDistance(
+          id: row.read<String>('id'),
+          depth: row.read<int>('depth'),
+        ),
+    ];
+  }
+
   Future<void> saveChunks(Iterable<TextChunk> values) async {
     await batch((batch) {
       batch.insertAllOnConflictUpdate(
         chunks,
-        values.map(
-          (chunk) => ChunksCompanion.insert(
-            id: chunk.id,
-            sourceVersionId: chunk.sourceVersionId,
-            startOffset: chunk.start,
-            endOffset: chunk.end,
-            content: chunk.text,
-            sha256: chunk.sha256,
-          ),
-        ).toList(),
+        values
+            .map(
+              (chunk) => ChunksCompanion.insert(
+                id: chunk.id,
+                sourceVersionId: chunk.sourceVersionId,
+                startOffset: chunk.start,
+                endOffset: chunk.end,
+                content: chunk.text,
+                sha256: chunk.sha256,
+              ),
+            )
+            .toList(),
       );
     });
   }

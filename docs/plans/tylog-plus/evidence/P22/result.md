@@ -1,0 +1,12 @@
+# P22 progress — bounded graph traversal
+
+Status: RUNNING
+
+Added a recursive SQLite neighborhood query with a depth cap, path-based cycle detection, and deterministic `(depth, id)` ordering. Cyclic evidence graphs therefore terminate predictably and return a bounded result suitable for a graph view.
+
+Evidence:
+
+- `flutter test test/database/bounded_neighborhood_test.dart` — cycle and depth ordering pass.
+- `flutter analyze lib/database/tylog_database.dart test/database/bounded_neighborhood_test.dart` — clean.
+
+Remaining work: route edge edits through the durable mutation API and add SVG graph export.

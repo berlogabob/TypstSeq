@@ -1,16 +1,16 @@
 # Graph Report - TypstSeq  (2026-09-20)
 
 ## Corpus Check
-- 430 files · ~396,389 words
+- 432 files · ~396,735 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 6944 nodes · 9493 edges · 327 communities (217 shown, 95 thin omitted)
+- 6951 nodes · 9501 edges · 323 communities (214 shown, 94 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 90 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `689916a6`
+- Built from commit: `5ee7470c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -56,21 +56,21 @@
 - package:tylog/nextcloud_sync.dart
 - src/search_index.dart
 - src/maintenance.dart
-- scanner_cache_test.dart
+- scan_repro.dart
 - typst_view.dart
 - .sse_decode
 - typst.dart
 - TyLogCorpusManifestTest
 - pdf_extraction.dart
 - package:tylog_core/storage.dart
-- TyLog Typst Package 0.1.0
+- TyLog Format v1
 - my_application.cc
 - roundtrip_audit_test.dart
 - portable_snapshot.dart
 - widget_test.dart
 - settings_sheet.dart
-- List
-- dart:typed_data
+- links_panel.dart
+- src/storage.dart
 - IntoDart
 - reproduction_test.dart
 - bibliography.dart
@@ -83,7 +83,7 @@
 - api/vault_import.dart
 - logseq_import.rs
 - property_select_chip.dart
-- package:flutter/services.dart
+- legacy_import_runner.dart
 - vault_service.dart
 - String
 - tylog_core.dart
@@ -94,13 +94,13 @@
 - editor_panel.dart
 - _HomeScreenState
 - nextcloud_sync_native_test.dart
-- package:tylog_core/models.dart
+- SafBridgeWriteTest
 - linked_references.dart
 - tylog_core (Flutter-independent core)
 - task_scheduler.dart
 - note_picker_sheet.dart
 - src/report.dart
-- package:flutter/material.dart
+- scanner_cache_test.dart
 - revision_publisher.dart
 - DedupingDocumentsProvider
 - src/index_donor.dart
@@ -116,7 +116,7 @@
 - Logseq/Obsidian Import Wizard
 - PreviewProvider
 - Graph Report - /tmp/tylog-audit-corpus  (2026-08-22)
-- empty_note_cleanup_test.dart
+- rebuild_twice_test.dart
 - MainFlutterWindow
 - transpile
 - AppDelegate
@@ -132,9 +132,9 @@
 - OG Graph View & Backlinks
 - TyLog UI Fix Plan — traceable, measurable
 - patch
-- TyLog Format v1
+- Minimal age-encrypted backup design
 - month_calendar.dart
-- package:tylog/app_mobile.dart
+- package:flutter_test/flutter_test.dart
 - TyLog+ scalable research workspace
 - Backlog flood, junk cleanup and two sync bugs — 2026-08-19 → 08-21
 - TestSourcePathValidation
@@ -147,7 +147,7 @@
 - Exception
 - portable_import.dart
 - contrast_test.dart
-- static const
+- index_donor_test.dart
 - note_persistence.dart
 - NextcloudSync
 - T20/result.md
@@ -159,12 +159,12 @@
 - OG PDF Annotation (desktop-only)
 - SRS/Flashcards: Defer (opportunity #7)
 - tylog Linux Binary Target
-- models.dart
+- List
 - voronoi_view_test.dart
 - Root Analyzer Configuration
 - RustLibWasmModule
 - @immutable
-- ValueError
+- Result
 - OG Plugin API + Marketplace
 - OG Whiteboards (tldraw fork)
 - integration_test.dart
@@ -173,7 +173,7 @@
 - Findings from the 0.3.0+93 device rollout — scope of work
 - @visibleForTesting
 - OG Outliner Editor (live-preview, KaTeX, tables)
-- dialogs.dart
+- package:flutter/material.dart
 - pkms_registry.dart
 - P09a/result.md
 - TypstFlutter.swift
@@ -221,7 +221,7 @@
 - Typeset Plaintext (Typst) as Non-Replicable Moat
 - lib/image_identity.dart
 - lib/values.dart
-- dart:async
+- dart:io
 - crate::api::markdown_import::MarkdownImportDiagnostic
 - P06/result.md
 - ChangeNotifier
@@ -237,7 +237,7 @@
 - T25/plan.md
 - T26/plan.md
 - T28/result.md
-- saved_searches.dart
+- static const
 - articles_shelf_test.dart
 - T19/result.md
 - DataClass
@@ -246,9 +246,9 @@
 - T27/result.md
 - P19/result.md
 - T17 result
-- portable_roundtrip_test.dart
-- tylog_scale_fixture.py
-- dart:convert
+- embedding.dart
+- .onMethodCall
+- legacy_import_plan.dart
 - P10/result.md
 - RustLibApiImplPlatform
 - crate::api::typst::TypstSeverity
@@ -256,7 +256,7 @@
 - TestRemoteManifest
 - TestLocalHashes
 - TestBackupVerification
-- vault_storage_test.dart
+- Map
 - Decodable
 - TestEdgeCases
 - ios/Runner/AppDelegate.swift
@@ -267,11 +267,11 @@
 - ValidateEmbeddingPackTest
 - README.md
 - p05-ort-spike
-- package:flutter/foundation.dart
+- scanner_base_files_test.dart
 - P09d3/result.md
 - EmbeddingReferenceTest
 - TyLog Knowledge Model
-- note_picker_sheet_test.dart
+- MainActivity
 - P05.0 — offline embedding contract and provenance
 - Current bounded tickets
 - VaultNoteResult
@@ -285,8 +285,8 @@
 - BaseWire
 - P02/result.md
 - rich_editor_test.dart
-- unified_notes_test.dart
-- package:flutter_test/flutter_test.dart
+- dart:typed_data
+- dart:convert
 - android-profile-harness.md
 - crate::api::vault_import::VaultNoteProperty
 - P09b/result.md
@@ -302,31 +302,27 @@
 - chunking.dart
 - pkms_native_test.dart
 - P08/result.md
-- return
+- conflict_choice.dart
 - P16/result.md
-- constants.dart
-- dart:ui
+- package:tylog_core/models.dart
+- Explicit Non-Goals (no WYSIWYG, collaboration, AI/RAG, plugins)
 - graph_layout_test.dart
 - P18/result.md
+- portable_roundtrip_test.dart
 - LocalVaultStorage
-- tylog_corpus_manifest.py
-- platform_file_actions.dart
+- return
 - P09d2a/result.md
-- dart:io
-- _FakeNotificationsPlatform
+- dedupe_test.dart
+- scanner.dart
 - dart:math
 - P12c/result.md
 - P12e/result.md
 - P20/result.md
-- _FailingStorage
-- loading.dart
-- TyLogScaleFixtureTest
-- validate_embedding_benchmark.py
-- sync_attribution_test.dart
-- donor_health_test.dart
+- _GraphViewState
+- package_contract_test.dart
+- P22/result.md
+- HttpException
 - P21/result.md
-- KnowledgeScreen
-- TriageMissingPagesScreen
 
 ## God Nodes (most connected - your core abstractions)
 1. `_` - 167 edges
@@ -347,10 +343,10 @@
   docs/tylog-ecosystem.md → .github/workflows/release.yml
 - `convert_db_export()` --shares_data_with--> `convert_logseq_note()`  [EXTRACTED]
   docs/superpowers/plans/2026-08-20-logseq-db-import.md → packages/tylog_import_core/src/vault_import.rs
+- `TyLog Note Model: Typst File Storage` --conceptually_related_to--> `TyLog Format v1`  [INFERRED]
+  docs/research-tylog-features.md → spec/tylog-format-v1.md
 - `tylog_core Lints Configuration` --semantically_similar_to--> `Root Analyzer Configuration`  [INFERRED] [semantically similar]
   packages/tylog_core/analysis_options.yaml → analysis_options.yaml
-- `Voronoi Treemap View` --shares_data_with--> `tylog_core (Flutter-independent core)`  [INFERRED]
-  USER_MANUAL.md → docs/tylog-ecosystem.md
 
 ## Import Cycles
 - None detected.
@@ -366,7 +362,7 @@
 - **Storage & Data-Ownership Spectrum Across Four PKMS** — docs_research_logseq_og_features_storage_format, docs_research_logseq_db_features_storage_lock_in, docs_research_tine_fork_file_compat, docs_research_tylog_features_note_model, docs_research_logseq_db_format_logseq_db_graph [INFERRED 0.85]
 - **Sync & Conflict-Handling Architecture Comparison** — docs_research_logseq_og_features_sync, docs_research_logseq_db_features_rtc_sync, docs_research_tine_fork_sync_conflict_ui, docs_research_tylog_features_sync, docs_research_logseq_db_format_client_ops_db_sqlite [INFERRED 0.85]
 
-## Communities (327 total, 95 thin omitted)
+## Communities (323 total, 94 thin omitted)
 
 ### Community 0 - "rich_editor.dart"
 Cohesion: 0.01
@@ -441,7 +437,7 @@ Nodes (65): Animation, AnimationController, ColorScheme, abs, _activate, _animat
 
 ### Community 17 - "vault_worker.dart"
 Cohesion: 0.03
-Nodes (70): @pragma, vaultServiceMain, _boot, _busy, cancel, cancelled, CancelWorkCommand, commands (+62 more)
+Nodes (66): _boot, _busy, cancel, cancelled, CancelWorkCommand, commands, communities, complete (+58 more)
 
 ### Community 18 - "vault_registry.dart"
 Cohesion: 0.03
@@ -449,17 +445,17 @@ Nodes (61): active, activeId, add, addTree, backupPath, candidates, cloud, compl
 
 ### Community 19 - "nextcloud_sync_test.dart"
 Cohesion: 0.03
-Nodes (67): HttpException, WebDavStatusException, String? interruptGetOnce,
+Nodes (65): String? interruptGetOnce,
   bool, String? remoteModifiedValue,
-  String, activeTransfers, archiveChanged, archiveGets, armContent (+59 more)
+  String, activeTransfers, archiveChanged, archiveGets, armContent, armPath, buffer (+57 more)
 
 ### Community 20 - "tylog.dart"
 Cohesion: 0.03
 Nodes (62): 0, apply, args, assets, aStem, bStem, _cliDeviceId, command (+54 more)
 
 ### Community 21 - "SafBridge"
-Cohesion: 0.07
-Nodes (25): android, Uri, SafBridgeWriteTest, Result, SilentMessenger, FlutterEngine, MainActivity, Cursor (+17 more)
+Cohesion: 0.21
+Nodes (5): T, Uri, SafBridge, ByteArray, MethodCallHandler
 
 ### Community 22 - "knowledge_screen.dart"
 Cohesion: 0.03
@@ -471,7 +467,7 @@ Nodes (25): AndroidTreeSelection, args, cancelBackgroundSoon, channel, createDir
 
 ### Community 24 - "package:test/test.dart"
 Cohesion: 0.04
-Nodes (46): package:test/test.dart, package:tylog_core/src/image_identity.dart, package:tylog_core/tylog_core.dart, _cli, main, index, main, _note (+38 more)
+Nodes (42): package:test/test.dart, package:tylog_core/src/image_identity.dart, package:tylog_core/tylog_core.dart, _cli, main, index, main, _note (+34 more)
 
 ### Community 25 - "work_surface.dart"
 Cohesion: 0.04
@@ -495,7 +491,7 @@ Nodes (38): double get, base, build, canRate, createState, dispose, factor, font
 
 ### Community 30 - "journal_feed.dart"
 Cohesion: 0.05
-Nodes (40): date_format.dart, build, calendar, createState, dayMarks, index, indexing, onOpenDay (+32 more)
+Nodes (42): date_format.dart, build, calendar, CalendarTab, _CalendarTabState, createState, dayMarks, index (+34 more)
 
 ### Community 31 - "sync_dashboard.dart"
 Cohesion: 0.04
@@ -510,8 +506,8 @@ Cohesion: 0.05
 Nodes (42): a, actual, appPath, at, b, build, current, digestUrl (+34 more)
 
 ### Community 34 - "setup.dart"
-Cohesion: 0.05
-Nodes (36): dart:isolate, main, package:archive/archive_io.dart, package:path/path.dart, androidArtifacts, _Artifact, _artifactsForPlatform, body (+28 more)
+Cohesion: 0.06
+Nodes (34): package:archive/archive_io.dart, package:path/path.dart, androidArtifacts, _Artifact, _artifactsForPlatform, body, bodyBytes, client (+26 more)
 
 ### Community 35 - "editor_autocomplete.dart"
 Cohesion: 0.06
@@ -526,8 +522,8 @@ Cohesion: 0.05
 Nodes (40): bibliography, contents, createIfMissing, currentVersions, decodeVaultIndexBytes, _deleteFilesShallowly, directories, encodeVaultIndexBytes (+32 more)
 
 ### Community 38 - "package:tylog/nextcloud_sync.dart"
-Cohesion: 0.10
-Nodes (16): ListTile, package:tylog/nextcloud_sync/conflict_choice.dart, package:tylog/nextcloud_sync.dart, package:tylog/widgets/loading.dart, package:tylog/widgets/sync_dashboard.dart, PlatformException, base, extended (+8 more)
+Cohesion: 0.08
+Nodes (19): checkpointEvery, main, paths, ListTile, package:tylog/nextcloud_sync/conflict_choice.dart, package:tylog/nextcloud_sync.dart, package:tylog/widgets/loading.dart, package:tylog/widgets/sync_dashboard.dart (+11 more)
 
 ### Community 39 - "src/search_index.dart"
 Cohesion: 0.06
@@ -537,9 +533,9 @@ Nodes (31): aliases, buildStorage, contentHash, _documents, empty, fileKind, fin
 Cohesion: 0.05
 Nodes (39): DonorReuse get, index_donor.dart, Object? get, buildIndex, complete, deleted, donorProblems, donorPublishError (+31 more)
 
-### Community 41 - "scanner_cache_test.dart"
-Cohesion: 0.03
-Nodes (62): _CountingStorage, _MemoryStorage, VaultStorage, _CountingStorage, createDirectory, delete, exists, hash (+54 more)
+### Community 41 - "scan_repro.dart"
+Cohesion: 0.08
+Nodes (24): _MemoryStorage, VaultStorage, _CountingStorage, createDirectory, current, delete, exists, hash (+16 more)
 
 ### Community 42 - "typst_view.dart"
 Cohesion: 0.07
@@ -554,8 +550,8 @@ Cohesion: 0.05
 Nodes (38): FrbException, addBaseFiles, addFonts, bytes, column, compile, CompiledDocument, diagnostics (+30 more)
 
 ### Community 45 - "TyLogCorpusManifestTest"
-Cohesion: 0.09
-Nodes (15): Symlinks should be rejected during walk., Files with control chars should be skipped., Helper to create test corpus with given files., Should reject missing root directory., Should reject output file inside root directory., Should reject existing output file., Should count extensions correctly., Should distribute files into correct size buckets. (+7 more)
+Cohesion: 0.07
+Nodes (21): Symlinks should be rejected during walk., Files with control chars should be skipped., Helper to create test corpus with given files., Should reject missing root directory., Should reject output file inside root directory., Should reject existing output file., Should count extensions correctly., Should distribute files into correct size buckets. (+13 more)
 
 ### Community 46 - "pdf_extraction.dart"
 Cohesion: 0.11
@@ -565,9 +561,9 @@ Nodes (17): digest, end, extracted, offset, page, pages, PdfExtraction, PdfExtra
 Cohesion: 0.06
 Nodes (32): flutter_typst_inspector.dart, main, package:tylog_core/scanner.dart, package:tylog_core/storage.dart, package:tylog/flutter_typst_inspector.dart, _FlakyInspector, inspect, main (+24 more)
 
-### Community 48 - "TyLog Typst Package 0.1.0"
-Cohesion: 0.09
-Nodes (27): Block-Level Refs: Deliberate Simplicity Moat (opportunity #6), Unified [[ ]] References (DB), OG Block References / Embeds/Transclusion, Extensibility Absent by Choice, TyLog Task Model (RRULE, reminders, time tracking), Vault Generation 5 Compatibility Contract, Deferred P2 Platform Work, TyLog Typst Package 0.1.0 (+19 more)
+### Community 48 - "TyLog Format v1"
+Cohesion: 0.10
+Nodes (25): TyLog Task Model (RRULE, reminders, time tracking), Wikilinks + Autocomplete, Vault Generation 5 Compatibility Contract, TyLog Typst Package 0.1.0, Vendored Package Facade (offline compile), Namespaced tylog Typst Interface, Bundled typst/tylog and typst/vault Assets, clocked Time-Tracking Property (+17 more)
 
 ### Community 49 - "my_application.cc"
 Cohesion: 0.09
@@ -582,28 +578,28 @@ Cohesion: 0.04
 Nodes (49): Archive, actual, archive, data, _decodeObject, _decodeRows, _edgeRow, edges (+41 more)
 
 ### Community 52 - "widget_test.dart"
-Cohesion: 0.05
-Nodes (43): Icon, KnowledgeView, LinearProgressIndicator, MaterialApp, package:tylog/main.dart, SingleChildScrollView, cancelAll, createDirectory (+35 more)
+Cohesion: 0.04
+Nodes (51): _FailingStorage, Icon, KnowledgeView, LinearProgressIndicator, MaterialApp, package:tylog/main.dart, package:tylog/markdown_article_import.dart, package:typst_flutter/typst_flutter.dart (+43 more)
 
 ### Community 53 - "settings_sheet.dart"
 Cohesion: 0.06
-Nodes (34): app_version.dart, conflictRemoteBytesToShow, ConflictShape, conflictShapeHint, conflictSideLabel, defaultResolution, isSubset, isSuperset (+26 more)
+Nodes (35): app_version.dart, NextcloudConfig, build, cloud, createState, icon, _mode, onChanged (+27 more)
 
-### Community 54 - "List"
+### Community 54 - "links_panel.dart"
+Cohesion: 0.12
+Nodes (15): backlinks, build, current, dayItems, _EmptyHint, fileRefs, index, LinksPanel (+7 more)
+
+### Community 55 - "src/storage.dart"
 Cohesion: 0.09
-Nodes (22): backlinks, build, current, dayItems, _EmptyHint, fileRefs, index, LinksPanel (+14 more)
-
-### Community 55 - "dart:typed_data"
-Cohesion: 0.06
-Nodes (29): dart:typed_data, package:tylog/retrieval/cosine_search.dart, package:typst_flutter/src/widgets/typst_view.dart, createDirectory, delete, exists, hash, isDirectory (+21 more)
+Nodes (21): createDirectory, delete, exists, hash, isDirectory, list, modified, path (+13 more)
 
 ### Community 56 - "IntoDart"
 Cohesion: 0.12
 Nodes (12): EmbeddingResult, IntoDart, IntoDartExceptPrimitive, crate::api::embedding::EmbeddingResult, crate::api::typst::PageInfo, crate::api::typst::RenderResult, crate::api::typst::TypstCompileError, FrbWrapper<CompiledDocument> (+4 more)
 
 ### Community 57 - "reproduction_test.dart"
-Cohesion: 0.06
-Nodes (33): armGate, calls, config, createDirectory, deadline, delete, _directories, _etags (+25 more)
+Cohesion: 0.05
+Nodes (36): armGate, calls, config, createDirectory, deadline, delete, _directories, _etags (+28 more)
 
 ### Community 58 - "bibliography.dart"
 Cohesion: 0.08
@@ -626,12 +622,12 @@ Cohesion: 0.09
 Nodes (21): CompiledDocument get, Image?, bytes, _cachedImage, _checkNotDisposed, _decodeImage, dispose, _disposed (+13 more)
 
 ### Community 63 - "lib/report.dart"
-Cohesion: 0.07
-Nodes (27): main, smokeValue, CountingLocalStorage, main, readBytes, reads, attempts, compiler (+19 more)
+Cohesion: 0.09
+Nodes (20): importPlatformFile, openPlatformFile, uri, writeBytes, attempts, compiler, compileSourcePdf, exportReportPdf (+12 more)
 
 ### Community 64 - "rich_editor_native_test.dart"
 Cohesion: 0.10
-Nodes (19): build, controller, createState, dispose, end, errors, _initialSource, main (+11 more)
+Nodes (21): build, controller, createState, dispose, end, errors, _initialSource, main (+13 more)
 
 ### Community 65 - "api/vault_import.dart"
 Cohesion: 0.09
@@ -645,13 +641,13 @@ Nodes (19): Box, assign_output_paths(), collect_typst_stems(), copy_assets(), ma
 Cohesion: 0.10
 Nodes (20): Color, articleStatusLabels, articleStatusOptions, articleStatusStage, backgroundColor, build, foregroundColor, indexOf (+12 more)
 
-### Community 68 - "package:flutter/services.dart"
-Cohesion: 0.25
-Nodes (6): appVersion, package:flutter/services.dart, package:tylog/controlled_editor.dart, random note with no, main, mention
+### Community 68 - "legacy_import_runner.dart"
+Cohesion: 0.07
+Nodes (25): LegacyImportManifest, _code, converter, database, LegacyImportMaterializer, LegacyImportRunner, LegacyNodeConverter, manifest (+17 more)
 
 ### Community 69 - "vault_service.dart"
-Cohesion: 0.11
-Nodes (16): backgroundRunBudget, cloud, deadline, entry, registry, _runOnce, storage, vault (+8 more)
+Cohesion: 0.13
+Nodes (14): @pragma, backgroundRunBudget, cloud, deadline, entry, registry, _runOnce, storage (+6 more)
 
 ### Community 70 - "String"
 Cohesion: 0.14
@@ -671,11 +667,11 @@ Nodes (3): DartAbi, crate::api::typst::VirtualFile, VirtualFile
 
 ### Community 74 - "tylog_database.dart"
 Cohesion: 0.01
-Nodes (239): BlobColumn get, class DatabaseMetadataData extends, class DerivedInvalidation extends, class SourceVersionData extends, ColumnFilters, ColumnOrderings, GeneratedColumn, GeneratedDatabase (+231 more)
+Nodes (242): BlobColumn get, class DatabaseMetadataData extends, class DerivedInvalidation extends, class SourceVersionData extends, ColumnFilters, ColumnOrderings, GeneratedColumn, GeneratedDatabase (+234 more)
 
 ### Community 75 - "backup_android_vault.py"
-Cohesion: 0.12
-Nodes (29): CompletedProcess, backup_app_settings(), backup_vault(), check_device(), compute_local_hashes(), get_adb_path(), get_remote_manifest(), get_repo_root() (+21 more)
+Cohesion: 0.05
+Nodes (59): CompletedProcess, TyLogScaleFixtureTest, backup_app_settings(), backup_vault(), check_device(), compute_local_hashes(), get_adb_path(), get_remote_manifest() (+51 more)
 
 ### Community 76 - "editor_panel.dart"
 Cohesion: 0.11
@@ -686,12 +682,12 @@ Cohesion: 0.25
 Nodes (8): TyLog Import/Export (Logseq+Obsidian, PDF), HomeScreen, _HomeScreenState, _DesktopUpdateFlow, _MarkdownImportFlow, _VaultImportFlow, _VaultLifecycle, WidgetsBindingObserver
 
 ### Community 78 - "nextcloud_sync_native_test.dart"
-Cohesion: 0.06
-Nodes (29): HttpServer, archiveGets, bytes, close, config, etag, files, filler (+21 more)
+Cohesion: 0.09
+Nodes (22): HttpServer, archiveGets, bytes, close, config, etag, files, filler (+14 more)
 
-### Community 79 - "package:tylog_core/models.dart"
-Cohesion: 0.14
-Nodes (10): package:tylog_core/models.dart, package:tylog/editor_autocomplete.dart, package:tylog/knowledge_screen.dart, main, _task, today, main, _note (+2 more)
+### Community 79 - "SafBridgeWriteTest"
+Cohesion: 0.22
+Nodes (6): Uri, SafBridgeWriteTest, SilentMessenger, BinaryMessenger, ByteBuffer, File
 
 ### Community 80 - "linked_references.dart"
 Cohesion: 0.10
@@ -706,16 +702,16 @@ Cohesion: 0.12
 Nodes (16): hash, initial, initialize, nextTaskReminder, plugin, problems, reconcile, requestPermission (+8 more)
 
 ### Community 83 - "note_picker_sheet.dart"
-Cohesion: 0.17
-Nodes (12): constants.dart, build, createLabel, createSentinel, createState, heading, _idSubtitle, NotePickerSheet (+4 more)
+Cohesion: 0.10
+Nodes (19): constants.dart, build, createLabel, createSentinel, createState, heading, _idSubtitle, NotePickerSheet (+11 more)
 
 ### Community 84 - "src/report.dart"
 Cohesion: 0.11
 Nodes (17): articleStatus, from, generateReportSource, includeZotero, kinds, output, project, ReportFilter (+9 more)
 
-### Community 85 - "package:flutter/material.dart"
-Cohesion: 0.08
-Nodes (23): app_mobile.dart, main, showSnack, build, onChanged, TaskCheckbox, taskCheckedGlyph, taskUncheckedGlyph (+15 more)
+### Community 85 - "scanner_cache_test.dart"
+Cohesion: 0.11
+Nodes (18): createDirectory, delete, exists, hash, hashes, inner, inspect, inspected (+10 more)
 
 ### Community 86 - "revision_publisher.dart"
 Cohesion: 0.18
@@ -738,8 +734,8 @@ Cohesion: 0.17
 Nodes (6): FrbWrapper, IntoIntoDart, CompiledDocument, crate::api::typst::TypstDiagnostic, TypstEngine, TypstDiagnostic
 
 ### Community 91 - "int get"
-Cohesion: 0.09
-Nodes (23): BigInt?, Float32List, frb_generated.dart, int get, package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart, dimension, embed, EmbeddingResult (+15 more)
+Cohesion: 0.15
+Nodes (12): BigInt?, int get, code, convertMarkdown, diagnostics, hashCode, line, MarkdownImportDiagnostic (+4 more)
 
 ### Community 92 - "compiler.dart"
 Cohesion: 0.13
@@ -766,8 +762,8 @@ Cohesion: 0.05
 Nodes (45): class, _FakeInspector, _baseFiles, _compiler, create, dispose, FlutterTypstInspector, inspect (+37 more)
 
 ### Community 98 - "Logseq/Obsidian Import Wizard"
-Cohesion: 0.16
-Nodes (15): Ship the Logseq DB Importer (opportunity #1), Logseq DB (2.0) Import — Planned, Wikilinks + Autocomplete, Logseq DB-Version Import Implementation Plan, CLI dedupe Command, tylog_import_core (Rust crate), VaultStorage, No Markdown Storage (Convert-on-Import) (+7 more)
+Cohesion: 0.21
+Nodes (12): Ship the Logseq DB Importer (opportunity #1), Logseq DB (2.0) Import — Planned, Logseq DB-Version Import Implementation Plan, CLI dedupe Command, tylog_import_core (Rust crate), VaultStorage, No Markdown Storage (Convert-on-Import), In-App Logseq/Obsidian Vault Import (+4 more)
 
 ### Community 99 - "PreviewProvider"
 Cohesion: 0.24
@@ -777,9 +773,9 @@ Nodes (8): Error, CompileError, PreviewProvider, Data, QLFilePreviewRequest, QLP
 Cohesion: 0.09
 Nodes (21): Ambiguous Edges - Review These, Communities (11 total, 2 thin omitted), Community 0 - "Donor Sharing and Schema Gating", Community 1 - "Execution Contexts and CLI", Community 2 - "Conflict Incident Scope", Community 3 - "Sync Cost Measurement", Community 4 - "Conflict Auto-Resolution Rules", Community 5 - "Resolve Path and ETag Guard" (+13 more)
 
-### Community 101 - "empty_note_cleanup_test.dart"
-Cohesion: 0.20
-Nodes (9): ArgumentError, failReadsFor, main, readText, storage, stray, _UnreadableStorage, vault (+1 more)
+### Community 101 - "rebuild_twice_test.dart"
+Cohesion: 0.07
+Nodes (28): ArgumentError, _CountingStorage, failReadsFor, main, readText, storage, stray, _UnreadableStorage (+20 more)
 
 ### Community 102 - "MainFlutterWindow"
 Cohesion: 0.29
@@ -787,15 +783,15 @@ Nodes (6): FlutterPluginRegistry, RegisterGeneratedPlugins(), MainFlutterWindow,
 
 ### Community 103 - "transpile"
 Cohesion: 0.06
-Nodes (42): CLI + MCP Server Extensibility, DB Graph Importer (file-graph -> DB migration), Journal Pages (DB, NL date input), Nodes: Unified Pages/Blocks Model, RTC Sync / client-ops-db.sqlite, DB Search: fts5 trigram search-db.sqlite, Task Class + Repeater Cookies (DB), Asset Entities (+34 more)
+Nodes (44): CLI + MCP Server Extensibility, DB Graph Importer (file-graph -> DB migration), Journal Pages (DB, NL date input), Nodes: Unified Pages/Blocks Model, RTC Sync / client-ops-db.sqlite, DB Search: fts5 trigram search-db.sqlite, Tag Properties / Class Inheritance, Task Class + Repeater Cookies (DB) (+36 more)
 
 ### Community 104 - "AppDelegate"
 Cohesion: 0.27
 Nodes (6): FlutterAppDelegate, AppDelegate, Bool, Notification, NSApplication, NSStatusItem
 
 ### Community 105 - "journal_feed_test.dart"
-Cohesion: 0.08
-Nodes (23): class _FakeNotificationsPlatform extends, package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart, package:plugin_platform_interface/plugin_platform_interface.dart, package:tylog/widgets/journal_feed.dart, base, cancelAll, deadline, delete (+15 more)
+Cohesion: 0.07
+Nodes (27): class _FakeNotificationsPlatform extends, FlutterLocalNotificationsPlatform, MockPlatformInterfaceMixin, package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart, package:plugin_platform_interface/plugin_platform_interface.dart, package:tylog/widgets/journal_feed.dart, base, cancelAll (+19 more)
 
 ### Community 106 - "typst_flutter.dart"
 Cohesion: 0.18
@@ -810,8 +806,8 @@ Cohesion: 0.04
 Nodes (45): Iterable, attachmentConflicts, attachments, bytes, _bytesEqual, _canonicalize, conflictId, conflicts (+37 more)
 
 ### Community 109 - "graph_label.dart"
-Cohesion: 0.14
-Nodes (13): budget, countLine, fontSize, GraphLabelSpec, kGraphCountAlpha, kGraphCountScale, maxLines, nameLine (+5 more)
+Cohesion: 0.11
+Nodes (16): dart:ui, budget, countLine, fontSize, GraphLabelSpec, kGraphCountAlpha, kGraphCountScale, maxLines (+8 more)
 
 ### Community 111 - "Findings"
 Cohesion: 0.14
@@ -837,17 +833,17 @@ Nodes (11): 1. Finding register, 2. Work packages, 3. Sequencing & dependencies,
 Cohesion: 0.21
 Nodes (7): patch, Successfully backup app settings., Integration tests for main function., Main should fail if destination is required but missing., Main should fail with invalid source path., Main should succeed with valid arguments., TestMainIntegration
 
-### Community 117 - "TyLog Format v1"
-Cohesion: 0.12
-Nodes (15): Decision, Do not build initially, Export flow, Interoperability and recovery checks, Key management, Metadata leakage, Minimal age-encrypted backup design, Restore flow (+7 more)
+### Community 117 - "Minimal age-encrypted backup design"
+Cohesion: 0.20
+Nodes (10): Decision, Do not build initially, Export flow, Interoperability and recovery checks, Key management, Metadata leakage, Minimal age-encrypted backup design, Restore flow (+2 more)
 
 ### Community 118 - "month_calendar.dart"
 Cohesion: 0.12
 Nodes (17): build, createState, _dayCell, dayMarks, _dot, initialMonth, initState, _iso (+9 more)
 
-### Community 119 - "package:tylog/app_mobile.dart"
-Cohesion: 0.14
-Nodes (10): package:tylog/app_mobile.dart, main, _article, body, main, marker, _article, main (+2 more)
+### Community 119 - "package:flutter_test/flutter_test.dart"
+Cohesion: 0.05
+Nodes (33): package:flutter_test/flutter_test.dart, package:tylog/app_mobile.dart, package:tylog/bibliography.dart, package:tylog/database/portable_merge.dart, package:tylog/desktop_updater.dart, package:tylog/retrieval/chunking.dart, main, _task (+25 more)
 
 ### Community 120 - "TyLog+ scalable research workspace"
 Cohesion: 0.22
@@ -893,9 +889,9 @@ Nodes (27): createdFiles, hasConflicts, importPortableSnapshot, incomingRows, in
 Cohesion: 0.12
 Nodes (15): package:tylog/widgets/constants.dart, b, _contrast, darker, darkScheme, g, kMinNonTextContrast, la (+7 more)
 
-### Community 132 - "static const"
-Cohesion: 0.25
-Nodes (7): acquire, heldByOther, path, release, staleAfter, VaultLock, static const
+### Community 132 - "index_donor_test.dart"
+Cohesion: 0.15
+Nodes (12): IndexDonorStore, age, delete, _donorJson, donors, _index, main, path (+4 more)
 
 ### Community 133 - "note_persistence.dart"
 Cohesion: 0.13
@@ -934,9 +930,9 @@ Nodes (4): SRS/Flashcards: Defer (opportunity #7), Flashcards Reimplemented, Not
 Cohesion: 0.50
 Nodes (4): APPLY_STANDARD_SETTINGS (CMake), tylog Linux Binary Target, flutter_assemble Target, Linux Runner Executable
 
-### Community 144 - "models.dart"
-Cohesion: 0.13
-Nodes (14): models.dart, count, _duplicates, isSafeVaultPath, listing, owners, PkmsValidationReport, presentPaths (+6 more)
+### Community 144 - "List"
+Cohesion: 0.09
+Nodes (21): List, models.dart, count, _duplicates, isSafeVaultPath, listing, owners, PkmsValidationReport (+13 more)
 
 ### Community 145 - "voronoi_view_test.dart"
 Cohesion: 0.25
@@ -954,9 +950,9 @@ Nodes (3): @anonymous, @JS, RustLibWasmModule
 Cohesion: 0.67
 Nodes (3): @immutable, ClusterAgg, LayoutRequest
 
-### Community 149 - "ValueError"
-Cohesion: 0.28
-Nodes (14): benchmark(), file_sha256(), generate(), main(), top_k(), embed_texts(), ensure_embedding_dimension(), exact_cosine_top_k() (+6 more)
+### Community 149 - "Result"
+Cohesion: 0.24
+Nodes (5): Result, BackgroundSync, Context, VaultSyncWorker, CoroutineWorker
 
 ### Community 150 - "OG Plugin API + Marketplace"
 Cohesion: 0.67
@@ -978,14 +974,13 @@ Nodes (8): 1. The shared index ("hard computing on the laptop") does not work �
 Cohesion: 0.67
 Nodes (3): @visibleForTesting, sharePdfForTesting, pollTick
 
-### Community 158 - "dialogs.dart"
-Cohesion: 0.20
-Nodes (9): barrierDismissible, cancelLabel, confirmed, confirmLabel, destructive, false, showConfirmDialog, required String message,
-  String (+1 more)
+### Community 158 - "package:flutter/material.dart"
+Cohesion: 0.09
+Nodes (19): app_mobile.dart, double?, main, barrierDismissible, cancelLabel, confirmed, confirmLabel, destructive (+11 more)
 
 ### Community 167 - "legacy_import_runner_test.dart"
-Cohesion: 0.05
-Nodes (43): package:tylog/import/legacy_import_plan.dart, package:tylog/import/legacy_import_runner.dart, createDirectory, delete, exists, files, hash, list (+35 more)
+Cohesion: 0.10
+Nodes (20): cleanup, createDirectory, createOrResumeImportJob, _database, db, delete, dir, exists (+12 more)
 
 ### Community 206 - "Audit of the 0.4.x batch — findings and outcomes"
 Cohesion: 0.25
@@ -1004,8 +999,8 @@ Cohesion: 0.50
 Nodes (3): Data, URL, VaultLookup
 
 ### Community 215 - "maintenance_cancellation_test.dart"
-Cohesion: 0.13
-Nodes (18): package:tylog_core/maintenance.dart, package:tylog_core/search_index.dart, package:tylog_core/values.dart, package:tylog_core/vault.dart, MaintenanceIndexed, MaintenanceProgress, MaintenanceSearchBuilt, MaintenanceSwept (+10 more)
+Cohesion: 0.10
+Nodes (24): package:tylog_core/maintenance.dart, package:tylog_core/search_index.dart, package:tylog_core/values.dart, package:tylog_core/vault.dart, MaintenanceIndexed, MaintenanceProgress, MaintenanceSearchBuilt, MaintenanceSwept (+16 more)
 
 ### Community 216 - "2026-09-06/plan.md"
 Cohesion: 0.05
@@ -1015,9 +1010,9 @@ Nodes (18): T00 connected-phone profile result, T04 result, T05 result, T07 resu
 Cohesion: 0.22
 Nodes (9): Typeset Plaintext (Typst) as Non-Replicable Moat, Typed Properties + Closed Values (UX), OG Note Model: key:: value Text Properties, Magic (/) Actions, PDF / Typesetting — TyLog's Unique Axis, Selection-Aware Magic Actions, Reproducible Typst Reports and PDF Export, Filtered Reports and Sibling PDF Export (+1 more)
 
-### Community 221 - "dart:async"
-Cohesion: 0.08
-Nodes (36): dart:async, main, frame, main, notes, frame, main, notes (+28 more)
+### Community 221 - "dart:io"
+Cohesion: 0.06
+Nodes (50): dart:async, dart:io, dart:isolate, main, smokeValue, main, CountingLocalStorage, main (+42 more)
 
 ### Community 224 - "ChangeNotifier"
 Cohesion: 0.67
@@ -1035,13 +1030,13 @@ Nodes (6): Completion accounting, Execution decisions, Outcomes to measure, Queu
 Cohesion: 0.33
 Nodes (5): Existing-feature reliability audit — 2026-09-06, Performance/interaction risks needing measurement, Recommended order, Verification, What is already protected
 
-### Community 237 - "saved_searches.dart"
-Cohesion: 0.12
-Nodes (16): _castString, fromJson, hashCode, load, name, operator, _path, query (+8 more)
+### Community 237 - "static const"
+Cohesion: 0.08
+Nodes (23): _castString, fromJson, hashCode, load, name, operator, _path, query (+15 more)
 
 ### Community 238 - "articles_shelf_test.dart"
-Cohesion: 0.17
-Nodes (10): package:tylog/widgets/property_select_chip.dart, package:tylog/widgets/task_checkbox.dart, main, plainNote, reading, shelf, summarized, unread (+2 more)
+Cohesion: 0.11
+Nodes (15): package:tylog/widgets/property_select_chip.dart, package:tylog/widgets/task_checkbox.dart, package:tylog/widgets/work_surface.dart, main, plainNote, reading, shelf, summarized (+7 more)
 
 ### Community 240 - "DataClass"
 Cohesion: 0.14
@@ -1051,17 +1046,17 @@ Nodes (27): Insertable, UpdateCompanion, AnnotationData, AnnotationsCompanion, C
 Cohesion: 0.33
 Nodes (5): Change, Counts, Limitations, T17 result, Verification
 
-### Community 246 - "portable_roundtrip_test.dart"
+### Community 246 - "embedding.dart"
 Cohesion: 0.17
-Nodes (11): package:tylog/database/portable_import.dart, _FailingStorage, first, main, root, second, _seed, source (+3 more)
+Nodes (11): Float32List, frb_generated.dart, package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart, dimension, embed, EmbeddingResult, finite, hashCode (+3 more)
 
-### Community 247 - "tylog_scale_fixture.py"
-Cohesion: 0.38
-Nodes (10): generate(), _id(), _language(), main(), _node_record(), _node_type(), Generate deterministic, synthetic TyLog+ scale fixtures., Write a synthetic fixture and return its manifest. (+2 more)
+### Community 247 - ".onMethodCall"
+Cohesion: 0.29
+Nodes (5): Cursor, Intent, OpenRequest, MethodCall, MethodChannel
 
-### Community 248 - "dart:convert"
-Cohesion: 0.05
-Nodes (41): dart:convert, int?, main, buildLegacyImportManifest, byPath, canonical, _classify, dialect (+33 more)
+### Community 248 - "legacy_import_plan.dart"
+Cohesion: 0.11
+Nodes (17): int?, buildLegacyImportManifest, byPath, canonical, _classify, dialect, entries, fingerprint (+9 more)
 
 ### Community 250 - "RustLibApiImplPlatform"
 Cohesion: 0.67
@@ -1079,9 +1074,9 @@ Nodes (5): Test local hash computation., Compute hashes for local files., Handle
 Cohesion: 0.25
 Nodes (5): Test backup verification logic., Verify succeeds when all manifests match., Verify fails when hashes differ., Verify fails when paths differ., TestBackupVerification
 
-### Community 256 - "vault_storage_test.dart"
-Cohesion: 0.24
-Nodes (9): _checkPermission, _CorruptingStorage, main, readBytes, _RevocableSafStorage, revoke, _revoked, _SimulatedSafStorage (+1 more)
+### Community 256 - "Map"
+Cohesion: 0.07
+Nodes (26): _bytes, _cached, load, text, TylogAssets, appVersion, Map, package:flutter/services.dart (+18 more)
 
 ### Community 257 - "Decodable"
 Cohesion: 0.83
@@ -1111,13 +1106,13 @@ Nodes (5): convert_markdown(), MarkdownImportDiagnostic, MarkdownTypstResult, Op
 Cohesion: 0.43
 Nodes (6): embed(), EmbeddingResult, pool_normalize(), Array2, Array3, Vec
 
-### Community 267 - "package:flutter/foundation.dart"
-Cohesion: 0.22
-Nodes (7): main, _modelPath, _tokenizerPath, package:flutter/foundation.dart, package:tylog/task_scheduler.dart, package:typst_flutter/src/rust/api/embedding.dart, main
+### Community 267 - "scanner_base_files_test.dart"
+Cohesion: 0.18
+Nodes (10): baseCalls, inspect, main, _note, perInspectFiles, _placeholderFormats, _PlainInspector, root (+2 more)
 
-### Community 271 - "note_picker_sheet_test.dart"
-Cohesion: 0.33
-Nodes (5): package:tylog/widgets/note_picker_sheet.dart, main, _note, notes, pump
+### Community 271 - "MainActivity"
+Cohesion: 0.32
+Nodes (4): android, FlutterEngine, MainActivity, FlutterActivity
 
 ### Community 272 - "P05.0 — offline embedding contract and provenance"
 Cohesion: 0.33
@@ -1148,20 +1143,20 @@ Cohesion: 0.67
 Nodes (3): BaseWire, RustLibWire, RustLibWire
 
 ### Community 284 - "rich_editor_test.dart"
-Cohesion: 0.14
-Nodes (13): EditableText, EditableTextState, package:flutter/rendering.dart, package:tylog/rich_editor.dart, RenderEditable, RenderParagraph, backspaceController, fullFatTaskAndNote (+5 more)
+Cohesion: 0.07
+Nodes (24): EditableText, EditableTextState, main, _modelPath, _tokenizerPath, package:flutter/foundation.dart, package:flutter/rendering.dart, package:tylog/controlled_editor.dart (+16 more)
 
-### Community 285 - "unified_notes_test.dart"
-Cohesion: 0.33
-Nodes (5): package:tylog/widgets/work_surface.dart, main, _note, notes, surface
+### Community 285 - "dart:typed_data"
+Cohesion: 0.25
+Nodes (6): dart:typed_data, package:tylog/retrieval/cosine_search.dart, package:typst_flutter/src/widgets/typst_view.dart, main, main, vector
 
-### Community 286 - "package:flutter_test/flutter_test.dart"
-Cohesion: 0.05
-Nodes (49): _, @DriftDatabase, FormatException, TyLogDatabase, package:archive/archive.dart, package:drift/drift.dart, package:drift/native.dart, package:flutter_test/flutter_test.dart (+41 more)
+### Community 286 - "dart:convert"
+Cohesion: 0.04
+Nodes (59): _, @DriftDatabase, dart:convert, FormatException, TyLogDatabase, package:archive/archive.dart, package:crypto/crypto.dart, package:drift/drift.dart (+51 more)
 
 ### Community 291 - "State"
-Cohesion: 0.11
-Nodes (27): _NativeMagicHarness, _NativeMagicHarnessState, TyLogApp, _TyLogAppState, GraphView, _GraphViewState, VoronoiView, _VoronoiViewState (+19 more)
+Cohesion: 0.12
+Nodes (24): TyLogApp, _TyLogAppState, KnowledgeScreen, _KnowledgeScreenState, TriageMissingPagesScreen, _TriageMissingPagesScreenState, _ThemeModeSelector, _ThemeModeSelectorState (+16 more)
 
 ### Community 296 - "cosine_search.dart"
 Cohesion: 0.22
@@ -1180,77 +1175,65 @@ Cohesion: 0.15
 Nodes (12): chunks, chunkText, end, id, overlap, sha256, sourceVersionId, start (+4 more)
 
 ### Community 300 - "pkms_native_test.dart"
+Cohesion: 0.09
+Nodes (19): json, main, normalized, _normalizedMetadata, _normalizedValue, _stableIndex, value, package:tylog_core/cli_typst_inspector.dart (+11 more)
+
+### Community 302 - "conflict_choice.dart"
+Cohesion: 0.14
+Nodes (12): conflictRemoteBytesToShow, ConflictShape, conflictShapeHint, conflictSideLabel, defaultResolution, isSubset, isSuperset, changed (+4 more)
+
+### Community 304 - "package:tylog_core/models.dart"
 Cohesion: 0.08
-Nodes (21): json, main, normalized, _normalizedMetadata, _normalizedValue, _stableIndex, value, package:tylog_core/cli_typst_inspector.dart (+13 more)
+Nodes (21): iconForKind, kLightHint, kLightOnSurfaceVariant, kLightSurface, kMinTapTarget, kRadiusLarge, kRadiusMedium, kRadiusSmall (+13 more)
 
-### Community 302 - "return"
-Cohesion: 0.33
-Nodes (5): changed, syncStatusAction, SyncStatusKind, syncStatusTitle, return
-
-### Community 304 - "constants.dart"
-Cohesion: 0.15
-Nodes (12): iconForKind, kLightHint, kLightOnSurfaceVariant, kLightSurface, kMinTapTarget, kRadiusLarge, kRadiusMedium, kRadiusSmall (+4 more)
-
-### Community 305 - "dart:ui"
-Cohesion: 0.50
-Nodes (3): dart:ui, package:tylog/widgets/graph_label.dart, main
+### Community 305 - "Explicit Non-Goals (no WYSIWYG, collaboration, AI/RAG, plugins)"
+Cohesion: 0.25
+Nodes (8): Block-Level Refs: Deliberate Simplicity Moat (opportunity #6), Unified [[ ]] References (DB), OG Block References / Embeds/Transclusion, Extensibility Absent by Choice, Deferred P2 Platform Work, Deliberate Scope Limits, No Automatic Pre-v5 Vault Migration, Explicit Non-Goals (no WYSIWYG, collaboration, AI/RAG, plugins)
 
 ### Community 306 - "graph_layout_test.dart"
 Cohesion: 0.17
 Nodes (10): CustomPaint, InteractiveViewer, package:tylog/graph.dart, RenderBox, _dist, dx, dy, main (+2 more)
 
-### Community 308 - "LocalVaultStorage"
-Cohesion: 0.04
-Nodes (45): Directory, package:tylog/vault_lock.dart, package:tylog/vault_service.dart, IndexDonorStore, LocalVaultStorage, age, delete, _donorJson (+37 more)
-
-### Community 309 - "tylog_corpus_manifest.py"
-Cohesion: 0.32
-Nodes (6): main(), manifest(), Reject control characters., Create privacy-safe aggregate corpus manifest., Create a privacy-safe aggregate corpus manifest., _validate_path_name()
-
-### Community 310 - "platform_file_actions.dart"
-Cohesion: 0.29
-Nodes (6): importPlatformFile, openPlatformFile, uri, writeBytes, package:url_launcher/url_launcher.dart, vault_storage.dart
-
-### Community 312 - "dart:io"
+### Community 308 - "portable_roundtrip_test.dart"
 Cohesion: 0.06
-Nodes (30): dart:io, main, package:sqlite3/sqlite3.dart, package:tylog_core/src/scanner.dart, _cli, file, files, main (+22 more)
+Nodes (27): Directory, package:tylog/database/portable_import.dart, package:tylog/database/portable_snapshot.dart, package:tylog/vault_lock.dart, package:tylog/vault_service.dart, main, root, storage (+19 more)
 
-### Community 313 - "_FakeNotificationsPlatform"
-Cohesion: 0.67
-Nodes (4): FlutterLocalNotificationsPlatform, MockPlatformInterfaceMixin, _FakeNotificationsPlatform, _FakeNotificationsPlatform
+### Community 309 - "LocalVaultStorage"
+Cohesion: 0.25
+Nodes (8): LocalVaultStorage, _RefusingDeleteStorage, _RefusingWriteStorage, _CheckpointCountingStorage, _HashCountingStorage, _ListCountingStorage, _MidSyncWriteStorage, _SecondGranularityStorage
+
+### Community 310 - "return"
+Cohesion: 0.29
+Nodes (6): calls, _fallbackTasksFor, _fieldFrom, main, note, return
+
+### Community 312 - "dedupe_test.dart"
+Cohesion: 0.22
+Nodes (8): _cli, file, files, main, _note, _snapshot, _write, writeAsString
+
+### Community 313 - "scanner.dart"
+Cohesion: 0.33
+Nodes (5): CliTypstInspector, executable, inspect, root, scanner.dart
 
 ### Community 314 - "dart:math"
 Cohesion: 0.33
 Nodes (5): dart:math, _index, main, _note, unitSquare
 
-### Community 318 - "_FailingStorage"
-Cohesion: 0.67
-Nodes (3): _FailingStorage, _DelayedStorage, _GatedScanStorage
+### Community 318 - "_GraphViewState"
+Cohesion: 0.40
+Nodes (5): GraphView, _GraphViewState, VoronoiView, _VoronoiViewState, SingleTickerProviderStateMixin
 
-### Community 319 - "loading.dart"
-Cohesion: 0.33
-Nodes (5): double?, build, LoadingIndicator, size, strokeWidth
-
-### Community 321 - "validate_embedding_benchmark.py"
-Cohesion: 0.47
-Nodes (5): main(), PackError, Path, Validate the private 90-query embedding benchmark pack., validate()
-
-### Community 322 - "sync_attribution_test.dart"
-Cohesion: 0.50
-Nodes (3): checkpointEvery, main, paths
-
-### Community 323 - "donor_health_test.dart"
-Cohesion: 0.50
-Nodes (3): main, _RefusingDonorStorage, writeText
+### Community 319 - "package_contract_test.dart"
+Cohesion: 0.40
+Nodes (4): package:tylog_core/src/scanner.dart, declaredParameters, main, packagePath
 
 ## Ambiguous Edges - Review These
 - `Android Release Job` → `On-device Profiling (Android profile build)`  [AMBIGUOUS]
   AGENTS.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **4778 isolated node(s):** `_GatedWebDavServer`, `timeout`, `deadline`, `calls`, `_files` (+4773 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 5225 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **95 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4783 isolated node(s):** `_GatedWebDavServer`, `timeout`, `deadline`, `calls`, `_files` (+4778 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 5231 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **94 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -1262,9 +1245,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `TyLog Import/Export (Logseq+Obsidian, PDF)` connect `_HomeScreenState` to `Logseq/Obsidian Import Wizard`, `tylog_import_core/src/lib.rs`?**
   _High betweenness centrality (0.065) - this node is a cross-community bridge._
 - **Why does `_VaultImportFlow` connect `_HomeScreenState` to `app_mobile.dart`?**
-  _High betweenness centrality (0.064) - this node is a cross-community bridge._
+  _High betweenness centrality (0.063) - this node is a cross-community bridge._
 - **What connects `_GatedWebDavServer`, `timeout`, `deadline` to the rest of the system?**
-  _4778 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _4783 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `rich_editor.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.007142857142857143 - nodes in this community are weakly interconnected._
 - **Should `app_mobile.dart` be split into smaller, more focused modules?**
