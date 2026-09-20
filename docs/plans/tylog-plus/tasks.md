@@ -26,7 +26,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | Versioned offset contract landed; native reader and source persistence next |
 | P19 | Durable annotations/navigation | P18 | RUNNING | Versioned page/character annotation storage landed; reattachment UI next |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic versioned chunk contract landed; resumable embedding jobs next |
-| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | TODO | Scale/quality/memory/airplane mode |
+| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Deterministic bounded cosine top-K landed; keyword fusion and cited navigation next |
 | P22 | Evidence relations/bounded graph | P07,P12 | TODO | Edge edits, cyclic traversal bounds, SVG |
 | P23 | Complete research workflow | P19,P21,P22 | TODO | Capture-to-cited-report on both devices |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | TODO | Restore/disk-full/process-kill/permissions/regressions |
