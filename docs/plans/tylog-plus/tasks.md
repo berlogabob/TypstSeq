@@ -134,3 +134,5 @@ Profile repetition completed through `flutter drive --profile`: 100 workspace sa
 Profile worker attribution also passed on A24 (2,000-note synthetic workload, 12 seconds): worst gaps 26/18/25/16 ms across index, communities, projection, and search phases. This is partial frame evidence only; the five-minute real-editor workload remains open.
 
 The first real-editor frame probe is a blocker: a 36 KB note with edits every 250 ms caused 267 skipped Android frames and made the profile app unresponsive before five minutes. The probe was removed after capture; P12 remains open for editor rebuild/layout remediation and a repeatable five-minute run.
+
+The first remediation removed a full document reparse for plain-note keystrokes. A 30-second follow-up stayed responsive but still recorded 998 late frames out of 1,840 (worst gap 37 ms), so the 1% frame gate remains blocked and a virtualized/block-level editor is still required for large active notes.

@@ -92,6 +92,13 @@ is evidence that the frame gate is not yet satisfied for long active notes;
 the next performance task is to reduce editor rebuild/layout cost before
 repeating the five-minute acceptance workload.
 
+After removing the full reparse for plain notes, a 30-second profile probe with
+the same 36 KB editor and 250 ms edits stayed responsive but still recorded
+998 late frames out of 1,840 (worst gap 37 ms). The change removes the hang and
+cuts the worst single stall, but the frame ratio remains far above the 1%
+acceptance gate. A virtualized or block-level editor is still required for
+large active notes.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000

@@ -290,7 +290,14 @@ class TyLogEditingController extends TextEditingController {
       }
       _lastValue = accepted;
       if (composing) return;
-      final source = document.toSource();
+      // Plain notes have no protected atoms to validate against. Re-parsing
+      // the entire document after every keystroke made long paragraphs scale
+      // quadratically and blocked Android frames. Structural edits still go
+      // through the model; protected documents retain the full round-trip
+      // guard that prevents corruption around chips.
+      final source = document.toSource(
+        validate: document.blocks.any((block) => block.isProtected),
+      );
       _addUndo(_compositionStart ?? before);
       _compositionStart = null;
       _redo.clear();
