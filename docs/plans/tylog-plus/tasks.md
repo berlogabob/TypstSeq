@@ -23,10 +23,10 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
-| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | Versioned offset contract landed; native reader and source persistence next |
+| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | Versioned extraction and source persistence landed; native reader next |
 | P19 | Durable annotations/navigation | P18 | RUNNING | Versioned page/character annotation storage landed; reattachment UI next |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic versioned chunk contract landed; resumable embedding jobs next |
-| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Deterministic bounded cosine top-K landed; keyword fusion and cited navigation next |
+| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Bounded cosine, FTS fusion, and stable source-offset navigation landed; reader wiring next |
 | P22 | Evidence relations/bounded graph | P07,P12 | DONE | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | DONE | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | DONE | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
