@@ -45,4 +45,41 @@ void main() {
       2,
     ]);
   });
+
+  test('retrieved chunk resolves to a stable source range', () async {
+    final database = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    await database
+        .into(database.sources)
+        .insert(
+          SourcesCompanion.insert(
+            id: 'source',
+            kind: 'pdf',
+            title: const Value('Paper'),
+            locator: const Value('assets/paper.pdf'),
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+    final extraction = versionPdfText(
+      sourceVersionId: 'version',
+      bytes: '%PDF-1.7'.codeUnits,
+      pageTexts: const ['text'],
+    );
+    await database.savePdfExtraction(
+      sourceId: 'source',
+      extraction: extraction,
+      createdAtMs: 2,
+    );
+    final chunk = chunkText(sourceVersionId: 'version', text: 'text').single;
+    await database.saveChunks([chunk]);
+    expect(await database.navigationForChunk(chunk.id), (
+      chunkId: chunk.id,
+      sourceId: 'source',
+      sourceVersionId: 'version',
+      startOffset: 0,
+      endOffset: 4,
+    ));
+    expect(await database.navigationForChunk('missing'), equals(null));
+  });
 }

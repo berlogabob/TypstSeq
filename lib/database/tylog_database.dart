@@ -447,6 +447,39 @@ class TyLogDatabase extends _$TyLogDatabase {
             ..orderBy([(row) => OrderingTerm.asc(row.startOffset)]))
           .get();
 
+  /// Resolves a retrieved chunk to a stable source and character range.
+  Future<
+    ({
+      String chunkId,
+      String sourceId,
+      String sourceVersionId,
+      int startOffset,
+      int endOffset,
+    })?
+  >
+  navigationForChunk(String chunkId) async {
+    final rows = await customSelect(
+      '''
+      SELECT c.id AS chunk_id, v.source_id, c.source_version_id,
+             c.start_offset, c.end_offset
+      FROM chunks c
+      JOIN source_versions v ON v.id = c.source_version_id
+      WHERE c.id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable.withString(chunkId)],
+    ).get();
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    return (
+      chunkId: row.read<String>('chunk_id'),
+      sourceId: row.read<String>('source_id'),
+      sourceVersionId: row.read<String>('source_version_id'),
+      startOffset: row.read<int>('start_offset'),
+      endOffset: row.read<int>('end_offset'),
+    );
+  }
+
   Future<List<GraphNodeDistance>> boundedNeighborhood(
     String nodeId, {
     int maxDepth = 3,
