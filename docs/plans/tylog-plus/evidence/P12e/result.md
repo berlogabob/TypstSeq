@@ -17,3 +17,17 @@ Observed on the development Mac:
 Full regression suite: `flutter test` — 686 passed, 2 skipped.
 
 Android release/profile samples remain device-gated. The required follow-up is `flutter build apk --profile`, install over the release app, then capture 30 startup and 100 open/save samples on the A24.
+
+### A24 database smoke (debug integration runner)
+
+The same 30-startup/100-save workload also ran on the connected A24 through
+`integration_test/p12_latency_native_test.dart`:
+
+```text
+startup_ms p50=2 p95=6 max=53; save_ms p50=6 p95=9 max=75; samples=30/100
+```
+
+Both thresholds passed. This is useful device evidence for the SQLite workload,
+but it is not the release/profile gate: `flutter test` installs a temporary
+debug test APK. P12e remains device-pending until the workload is exercised
+inside a profile build with the app's normal startup path.

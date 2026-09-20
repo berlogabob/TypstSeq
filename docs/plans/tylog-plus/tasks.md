@@ -122,3 +122,5 @@ Still required before full acceptance: P05 Android model parity/latency/memory +
 Current wave verification: 729 host tests passed, 2 skipped; targeted analyzer clean; PDF reader native fixture passed on Mac and A24; A24 post-commit force-stop/reopen passed. Normal Android profile build installed over production with registry fingerprint unchanged; normal ARM64 Mac release built and launched. Universal Mac release packaging remains open.
 
 Follow-up checkpoint: P18 no-text vector PDF native acceptance passed on Mac and A24 (2 tests each); P25 repeatable ARM64 release script built successfully. Universal build root cause reproduced directly in local Xcode `lipo`; full milestone gates remain as above. Luna owned the native test addition; coordinator corrected its finder, ran both platforms, and documented the build command.
+
+P12 follow-up: the bounded 30-startup/100-save workload passed on A24 in the debug integration runner (startup p95 6 ms, save p95 9 ms). This does not close P12e because the required profile-build and normal app-startup measurements remain separate gates.
