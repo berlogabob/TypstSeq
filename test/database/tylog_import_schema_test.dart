@@ -431,4 +431,43 @@ void main() {
     );
     expect(await db.select(db.importJobs).get(), isEmpty);
   });
+
+  test(
+    'resume reopens cancelled jobs and stale workers cannot commit',
+    () async {
+      const job = ImportJobData(
+        id: 'cancelled',
+        sourceKind: 'logseq',
+        sourceFingerprint: 'sha',
+        status: 'running',
+        totalCount: 1,
+        completedCount: 0,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        errorJson: '{}',
+      );
+      const item = ImportItemData(
+        jobId: 'cancelled',
+        sourcePath: 'pages/a.md',
+        sourceSha256: 'a',
+        state: 'pending',
+        targetNodeId: null,
+        targetPath: null,
+        errorJson: '{}',
+        updatedAtMs: 1,
+      );
+      await db.createOrResumeImportJob(job, [item]);
+      await db.cancelImportJob('cancelled', nowMs: 2);
+      await expectLater(
+        db.markImportItem(
+          item: item.copyWith(state: 'written'),
+          completedCount: 1,
+          status: 'completed',
+        ),
+        throwsStateError,
+      );
+      expect(await db.resumeImportJob('cancelled'), [item]);
+      expect((await db.select(db.importJobs).getSingle()).status, 'running');
+    },
+  );
 }

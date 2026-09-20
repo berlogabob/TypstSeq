@@ -19,8 +19,8 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
 | P12 | Paged startup/list reads | P11 | RUNNING | Startup/open/save gates |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
-| P14 | Persistent jobs | P08 | TODO | Resume/cancel/deduplicate/stale result tests |
-| P15 | Revision upload/attachments | P08 | TODO | Interrupted publish and retry |
+| P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
+| P15 | Revision upload/attachments | P08 | RUNNING | Durable outbox publication contract next |
 | P16 | Transactional receive/conflict handling | P15 | TODO | Defined merge/materialization contract + convergence tests |
 | P17 | Snapshot bootstrap/recovery | P16 | TODO | Scale restore; damaged snapshot rejected |
 | P18 | PDF reader/versioned extraction | P07,P14 | TODO | Selection/extraction; unsupported source accounting |

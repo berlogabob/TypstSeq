@@ -394,6 +394,13 @@ class TyLogDatabase extends _$TyLogDatabase {
     required String status,
   }) async {
     await transaction(() async {
+      final job = await (select(
+        importJobs,
+      )..where((table) => table.id.equals(item.jobId))).getSingleOrNull();
+      if (job == null) throw StateError('Import job does not exist');
+      if (job.status == 'cancelled') {
+        throw StateError('Import job is cancelled');
+      }
       await into(importItems).insertOnConflictUpdate(item);
       await (update(importJobs)..where((t) => t.id.equals(item.jobId))).write(
         ImportJobsCompanion(
@@ -403,6 +410,54 @@ class TyLogDatabase extends _$TyLogDatabase {
         ),
       );
     });
+  }
+
+  /// Reopens a resumable job and returns its next pending batch.
+  Future<List<ImportItemData>> resumeImportJob(
+    String jobId, {
+    int limit = 100,
+  }) async {
+    if (limit < 1 || limit > 1000) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 1000');
+    }
+    await transaction(() async {
+      final job = await (select(
+        importJobs,
+      )..where((table) => table.id.equals(jobId))).getSingleOrNull();
+      if (job == null) throw StateError('Import job does not exist');
+      if (job.status == 'completed') return;
+      await (update(
+        importJobs,
+      )..where((table) => table.id.equals(jobId))).write(
+        ImportJobsCompanion(
+          status: const Value('running'),
+          updatedAtMs: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+    });
+    return pendingImportItems(jobId, limit: limit);
+  }
+
+  Future<void> cancelImportJob(String jobId, {int? nowMs}) async {
+    final changed =
+        await (update(importJobs)..where(
+              (table) =>
+                  table.id.equals(jobId) & table.status.isNotIn(['completed']),
+            ))
+            .write(
+              ImportJobsCompanion(
+                status: const Value('cancelled'),
+                updatedAtMs: Value(
+                  nowMs ?? DateTime.now().millisecondsSinceEpoch,
+                ),
+              ),
+            );
+    if (changed == 0) {
+      final exists = await (select(
+        importJobs,
+      )..where((table) => table.id.equals(jobId))).getSingleOrNull();
+      if (exists == null) throw StateError('Import job does not exist');
+    }
   }
 
   Future<void> checkpointImportItem({required ImportItemData item}) async {
