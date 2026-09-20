@@ -105,6 +105,32 @@ class SourceVersions extends Table {
   ];
 }
 
+@DataClassName('AnnotationData')
+class Annotations extends Table {
+  TextColumn get id => text()();
+  TextColumn get sourceVersionId => text().references(
+    SourceVersions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get page => integer()();
+  IntColumn get startOffset => integer()();
+  IntColumn get endOffset => integer()();
+  TextColumn get quote => text()();
+  TextColumn get context => text()();
+  IntColumn get createdAtMs => integer()();
+  IntColumn get updatedAtMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (page >= 0)',
+    'CHECK (start_offset >= 0 AND end_offset >= start_offset)',
+  ];
+}
+
 @DataClassName('RevisionData')
 class Revisions extends Table {
   TextColumn get id => text()();
@@ -229,6 +255,7 @@ enum RevisionReceiveResult { applied, duplicate, conflict }
     Edges,
     Sources,
     SourceVersions,
+    Annotations,
     Revisions,
     OutboxEntries,
     DerivedInvalidations,
@@ -242,7 +269,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -255,7 +282,7 @@ class TyLogDatabase extends _$TyLogDatabase {
       await _createSourceVersionIndexes(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 6 || from < 1 || from > 5) {
+      if (to != 7 || from < 1 || from > 6) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -281,6 +308,7 @@ class TyLogDatabase extends _$TyLogDatabase {
         await m.create(sourceVersions);
         await _createSourceVersionIndexes(m);
       }
+      if (from < 7) await m.create(annotations);
     },
   );
 
@@ -355,6 +383,38 @@ class TyLogDatabase extends _$TyLogDatabase {
       (select(sourceVersions)..where((row) => row.sourceId.equals(sourceId))..orderBy([
         (row) => OrderingTerm.desc(row.createdAtMs),
       ])).get();
+
+  Future<void> saveAnnotation({
+    required String id,
+    required String sourceVersionId,
+    required int page,
+    required int startOffset,
+    required int endOffset,
+    required String quote,
+    required String context,
+    required int createdAtMs,
+    required int updatedAtMs,
+  }) async {
+    await into(annotations).insertOnConflictUpdate(
+      AnnotationsCompanion.insert(
+        id: id,
+        sourceVersionId: sourceVersionId,
+        page: page,
+        startOffset: startOffset,
+        endOffset: endOffset,
+        quote: quote,
+        context: context,
+        createdAtMs: createdAtMs,
+        updatedAtMs: updatedAtMs,
+      ),
+    );
+  }
+
+  Future<List<AnnotationData>> annotationsFor(String sourceVersionId) async =>
+      (select(annotations)
+            ..where((row) => row.sourceVersionId.equals(sourceVersionId))
+            ..orderBy([(row) => OrderingTerm.asc(row.startOffset)]))
+          .get();
 
   Future<void> _createQueueIndexes(Migrator m) async {
     await m.database.customStatement(

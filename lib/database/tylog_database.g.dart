@@ -2329,6 +2329,585 @@ class SourceVersionsCompanion extends UpdateCompanion<SourceVersionData> {
   }
 }
 
+class $AnnotationsTable extends Annotations
+    with TableInfo<$AnnotationsTable, AnnotationData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AnnotationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceVersionIdMeta = const VerificationMeta(
+    'sourceVersionId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceVersionId = GeneratedColumn<String>(
+    'source_version_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES source_versions (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _pageMeta = const VerificationMeta('page');
+  @override
+  late final GeneratedColumn<int> page = GeneratedColumn<int>(
+    'page',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startOffsetMeta = const VerificationMeta(
+    'startOffset',
+  );
+  @override
+  late final GeneratedColumn<int> startOffset = GeneratedColumn<int>(
+    'start_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endOffsetMeta = const VerificationMeta(
+    'endOffset',
+  );
+  @override
+  late final GeneratedColumn<int> endOffset = GeneratedColumn<int>(
+    'end_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quoteMeta = const VerificationMeta('quote');
+  @override
+  late final GeneratedColumn<String> quote = GeneratedColumn<String>(
+    'quote',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contextMeta = const VerificationMeta(
+    'context',
+  );
+  @override
+  late final GeneratedColumn<String> context = GeneratedColumn<String>(
+    'context',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMsMeta = const VerificationMeta(
+    'updatedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAtMs = GeneratedColumn<int>(
+    'updated_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceVersionId,
+    page,
+    startOffset,
+    endOffset,
+    quote,
+    context,
+    createdAtMs,
+    updatedAtMs,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'annotations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AnnotationData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source_version_id')) {
+      context.handle(
+        _sourceVersionIdMeta,
+        sourceVersionId.isAcceptableOrUnknown(
+          data['source_version_id']!,
+          _sourceVersionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceVersionIdMeta);
+    }
+    if (data.containsKey('page')) {
+      context.handle(
+        _pageMeta,
+        page.isAcceptableOrUnknown(data['page']!, _pageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pageMeta);
+    }
+    if (data.containsKey('start_offset')) {
+      context.handle(
+        _startOffsetMeta,
+        startOffset.isAcceptableOrUnknown(
+          data['start_offset']!,
+          _startOffsetMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startOffsetMeta);
+    }
+    if (data.containsKey('end_offset')) {
+      context.handle(
+        _endOffsetMeta,
+        endOffset.isAcceptableOrUnknown(data['end_offset']!, _endOffsetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endOffsetMeta);
+    }
+    if (data.containsKey('quote')) {
+      context.handle(
+        _quoteMeta,
+        quote.isAcceptableOrUnknown(data['quote']!, _quoteMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quoteMeta);
+    }
+    if (data.containsKey('context')) {
+      context.handle(
+        _contextMeta,
+        this.context.isAcceptableOrUnknown(data['context']!, _contextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contextMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    if (data.containsKey('updated_at_ms')) {
+      context.handle(
+        _updatedAtMsMeta,
+        updatedAtMs.isAcceptableOrUnknown(
+          data['updated_at_ms']!,
+          _updatedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AnnotationData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AnnotationData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceVersionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_version_id'],
+      )!,
+      page: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}page'],
+      )!,
+      startOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_offset'],
+      )!,
+      endOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_offset'],
+      )!,
+      quote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quote'],
+      )!,
+      context: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}context'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+      updatedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $AnnotationsTable createAlias(String alias) {
+    return $AnnotationsTable(attachedDatabase, alias);
+  }
+}
+
+class AnnotationData extends DataClass implements Insertable<AnnotationData> {
+  final String id;
+  final String sourceVersionId;
+  final int page;
+  final int startOffset;
+  final int endOffset;
+  final String quote;
+  final String context;
+  final int createdAtMs;
+  final int updatedAtMs;
+  const AnnotationData({
+    required this.id,
+    required this.sourceVersionId,
+    required this.page,
+    required this.startOffset,
+    required this.endOffset,
+    required this.quote,
+    required this.context,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source_version_id'] = Variable<String>(sourceVersionId);
+    map['page'] = Variable<int>(page);
+    map['start_offset'] = Variable<int>(startOffset);
+    map['end_offset'] = Variable<int>(endOffset);
+    map['quote'] = Variable<String>(quote);
+    map['context'] = Variable<String>(context);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    map['updated_at_ms'] = Variable<int>(updatedAtMs);
+    return map;
+  }
+
+  AnnotationsCompanion toCompanion(bool nullToAbsent) {
+    return AnnotationsCompanion(
+      id: Value(id),
+      sourceVersionId: Value(sourceVersionId),
+      page: Value(page),
+      startOffset: Value(startOffset),
+      endOffset: Value(endOffset),
+      quote: Value(quote),
+      context: Value(context),
+      createdAtMs: Value(createdAtMs),
+      updatedAtMs: Value(updatedAtMs),
+    );
+  }
+
+  factory AnnotationData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AnnotationData(
+      id: serializer.fromJson<String>(json['id']),
+      sourceVersionId: serializer.fromJson<String>(json['sourceVersionId']),
+      page: serializer.fromJson<int>(json['page']),
+      startOffset: serializer.fromJson<int>(json['startOffset']),
+      endOffset: serializer.fromJson<int>(json['endOffset']),
+      quote: serializer.fromJson<String>(json['quote']),
+      context: serializer.fromJson<String>(json['context']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      updatedAtMs: serializer.fromJson<int>(json['updatedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceVersionId': serializer.toJson<String>(sourceVersionId),
+      'page': serializer.toJson<int>(page),
+      'startOffset': serializer.toJson<int>(startOffset),
+      'endOffset': serializer.toJson<int>(endOffset),
+      'quote': serializer.toJson<String>(quote),
+      'context': serializer.toJson<String>(context),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'updatedAtMs': serializer.toJson<int>(updatedAtMs),
+    };
+  }
+
+  AnnotationData copyWith({
+    String? id,
+    String? sourceVersionId,
+    int? page,
+    int? startOffset,
+    int? endOffset,
+    String? quote,
+    String? context,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) => AnnotationData(
+    id: id ?? this.id,
+    sourceVersionId: sourceVersionId ?? this.sourceVersionId,
+    page: page ?? this.page,
+    startOffset: startOffset ?? this.startOffset,
+    endOffset: endOffset ?? this.endOffset,
+    quote: quote ?? this.quote,
+    context: context ?? this.context,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+  AnnotationData copyWithCompanion(AnnotationsCompanion data) {
+    return AnnotationData(
+      id: data.id.present ? data.id.value : this.id,
+      sourceVersionId: data.sourceVersionId.present
+          ? data.sourceVersionId.value
+          : this.sourceVersionId,
+      page: data.page.present ? data.page.value : this.page,
+      startOffset: data.startOffset.present
+          ? data.startOffset.value
+          : this.startOffset,
+      endOffset: data.endOffset.present ? data.endOffset.value : this.endOffset,
+      quote: data.quote.present ? data.quote.value : this.quote,
+      context: data.context.present ? data.context.value : this.context,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+      updatedAtMs: data.updatedAtMs.present
+          ? data.updatedAtMs.value
+          : this.updatedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnotationData(')
+          ..write('id: $id, ')
+          ..write('sourceVersionId: $sourceVersionId, ')
+          ..write('page: $page, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('quote: $quote, ')
+          ..write('context: $context, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('updatedAtMs: $updatedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sourceVersionId,
+    page,
+    startOffset,
+    endOffset,
+    quote,
+    context,
+    createdAtMs,
+    updatedAtMs,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AnnotationData &&
+          other.id == this.id &&
+          other.sourceVersionId == this.sourceVersionId &&
+          other.page == this.page &&
+          other.startOffset == this.startOffset &&
+          other.endOffset == this.endOffset &&
+          other.quote == this.quote &&
+          other.context == this.context &&
+          other.createdAtMs == this.createdAtMs &&
+          other.updatedAtMs == this.updatedAtMs);
+}
+
+class AnnotationsCompanion extends UpdateCompanion<AnnotationData> {
+  final Value<String> id;
+  final Value<String> sourceVersionId;
+  final Value<int> page;
+  final Value<int> startOffset;
+  final Value<int> endOffset;
+  final Value<String> quote;
+  final Value<String> context;
+  final Value<int> createdAtMs;
+  final Value<int> updatedAtMs;
+  final Value<int> rowid;
+  const AnnotationsCompanion({
+    this.id = const Value.absent(),
+    this.sourceVersionId = const Value.absent(),
+    this.page = const Value.absent(),
+    this.startOffset = const Value.absent(),
+    this.endOffset = const Value.absent(),
+    this.quote = const Value.absent(),
+    this.context = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.updatedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AnnotationsCompanion.insert({
+    required String id,
+    required String sourceVersionId,
+    required int page,
+    required int startOffset,
+    required int endOffset,
+    required String quote,
+    required String context,
+    required int createdAtMs,
+    required int updatedAtMs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceVersionId = Value(sourceVersionId),
+       page = Value(page),
+       startOffset = Value(startOffset),
+       endOffset = Value(endOffset),
+       quote = Value(quote),
+       context = Value(context),
+       createdAtMs = Value(createdAtMs),
+       updatedAtMs = Value(updatedAtMs);
+  static Insertable<AnnotationData> custom({
+    Expression<String>? id,
+    Expression<String>? sourceVersionId,
+    Expression<int>? page,
+    Expression<int>? startOffset,
+    Expression<int>? endOffset,
+    Expression<String>? quote,
+    Expression<String>? context,
+    Expression<int>? createdAtMs,
+    Expression<int>? updatedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceVersionId != null) 'source_version_id': sourceVersionId,
+      if (page != null) 'page': page,
+      if (startOffset != null) 'start_offset': startOffset,
+      if (endOffset != null) 'end_offset': endOffset,
+      if (quote != null) 'quote': quote,
+      if (context != null) 'context': context,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (updatedAtMs != null) 'updated_at_ms': updatedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AnnotationsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sourceVersionId,
+    Value<int>? page,
+    Value<int>? startOffset,
+    Value<int>? endOffset,
+    Value<String>? quote,
+    Value<String>? context,
+    Value<int>? createdAtMs,
+    Value<int>? updatedAtMs,
+    Value<int>? rowid,
+  }) {
+    return AnnotationsCompanion(
+      id: id ?? this.id,
+      sourceVersionId: sourceVersionId ?? this.sourceVersionId,
+      page: page ?? this.page,
+      startOffset: startOffset ?? this.startOffset,
+      endOffset: endOffset ?? this.endOffset,
+      quote: quote ?? this.quote,
+      context: context ?? this.context,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceVersionId.present) {
+      map['source_version_id'] = Variable<String>(sourceVersionId.value);
+    }
+    if (page.present) {
+      map['page'] = Variable<int>(page.value);
+    }
+    if (startOffset.present) {
+      map['start_offset'] = Variable<int>(startOffset.value);
+    }
+    if (endOffset.present) {
+      map['end_offset'] = Variable<int>(endOffset.value);
+    }
+    if (quote.present) {
+      map['quote'] = Variable<String>(quote.value);
+    }
+    if (context.present) {
+      map['context'] = Variable<String>(context.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (updatedAtMs.present) {
+      map['updated_at_ms'] = Variable<int>(updatedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnotationsCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceVersionId: $sourceVersionId, ')
+          ..write('page: $page, ')
+          ..write('startOffset: $startOffset, ')
+          ..write('endOffset: $endOffset, ')
+          ..write('quote: $quote, ')
+          ..write('context: $context, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('updatedAtMs: $updatedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RevisionsTable extends Revisions
     with TableInfo<$RevisionsTable, RevisionData> {
   @override
@@ -4409,6 +4988,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
   late final $EdgesTable edges = $EdgesTable(this);
   late final $SourcesTable sources = $SourcesTable(this);
   late final $SourceVersionsTable sourceVersions = $SourceVersionsTable(this);
+  late final $AnnotationsTable annotations = $AnnotationsTable(this);
   late final $RevisionsTable revisions = $RevisionsTable(this);
   late final $OutboxEntriesTable outboxEntries = $OutboxEntriesTable(this);
   late final $DerivedInvalidationsTable derivedInvalidations =
@@ -4425,6 +5005,7 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
     edges,
     sources,
     sourceVersions,
+    annotations,
     revisions,
     outboxEntries,
     derivedInvalidations,
@@ -4439,6 +5020,13 @@ abstract class _$TyLogDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('source_versions', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'source_versions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('annotations', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -6002,6 +6590,24 @@ final class $$SourceVersionsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$AnnotationsTable, List<AnnotationData>>
+  _annotationsRefsTable(_$TyLogDatabase db) => MultiTypedResultKey.fromTable(
+    db.annotations,
+    aliasName: 'source_versions__id__annotations__source_version_id',
+  );
+
+  $$AnnotationsTableProcessedTableManager get annotationsRefs {
+    final manager = $$AnnotationsTableTableManager($_db, $_db.annotations)
+        .filter(
+          (f) => f.sourceVersionId.id.sqlEquals($_itemColumn<String>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_annotationsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$SourceVersionsTableFilterComposer
@@ -6059,6 +6665,31 @@ class $$SourceVersionsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> annotationsRefs(
+    Expression<bool> Function($$AnnotationsTableFilterComposer f) f,
+  ) {
+    final $$AnnotationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.annotations,
+      getReferencedColumn: (t) => t.sourceVersionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AnnotationsTableFilterComposer(
+            $db: $db,
+            $table: $db.annotations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -6168,6 +6799,31 @@ class $$SourceVersionsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> annotationsRefs<T extends Object>(
+    Expression<T> Function($$AnnotationsTableAnnotationComposer a) f,
+  ) {
+    final $$AnnotationsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.annotations,
+      getReferencedColumn: (t) => t.sourceVersionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AnnotationsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.annotations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SourceVersionsTableTableManager
@@ -6183,7 +6839,7 @@ class $$SourceVersionsTableTableManager
           $$SourceVersionsTableUpdateCompanionBuilder,
           (SourceVersionData, $$SourceVersionsTableReferences),
           SourceVersionData,
-          PrefetchHooks Function({bool sourceId})
+          PrefetchHooks Function({bool sourceId, bool annotationsRefs})
         > {
   $$SourceVersionsTableTableManager(
     _$TyLogDatabase db,
@@ -6242,10 +6898,10 @@ class $$SourceVersionsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({sourceId = false}) {
+          prefetchHooksCallback: ({sourceId = false, annotationsRefs = false}) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [],
+              explicitlyWatchedTables: [if (annotationsRefs) db.annotations],
               addJoins:
                   <
                     T extends TableManagerState<
@@ -6280,7 +6936,29 @@ class $$SourceVersionsTableTableManager
                     return state;
                   },
               getPrefetchedDataCallback: (items) async {
-                return [];
+                return [
+                  if (annotationsRefs)
+                    await $_getPrefetchedData<
+                      SourceVersionData,
+                      $SourceVersionsTable,
+                      AnnotationData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$SourceVersionsTableReferences
+                          ._annotationsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$SourceVersionsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).annotationsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.sourceVersionId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
               },
             );
           },
@@ -6300,7 +6978,407 @@ typedef $$SourceVersionsTableProcessedTableManager =
       $$SourceVersionsTableUpdateCompanionBuilder,
       (SourceVersionData, $$SourceVersionsTableReferences),
       SourceVersionData,
-      PrefetchHooks Function({bool sourceId})
+      PrefetchHooks Function({bool sourceId, bool annotationsRefs})
+    >;
+typedef $$AnnotationsTableCreateCompanionBuilder =
+    AnnotationsCompanion Function({
+      required String id,
+      required String sourceVersionId,
+      required int page,
+      required int startOffset,
+      required int endOffset,
+      required String quote,
+      required String context,
+      required int createdAtMs,
+      required int updatedAtMs,
+      Value<int> rowid,
+    });
+typedef $$AnnotationsTableUpdateCompanionBuilder =
+    AnnotationsCompanion Function({
+      Value<String> id,
+      Value<String> sourceVersionId,
+      Value<int> page,
+      Value<int> startOffset,
+      Value<int> endOffset,
+      Value<String> quote,
+      Value<String> context,
+      Value<int> createdAtMs,
+      Value<int> updatedAtMs,
+      Value<int> rowid,
+    });
+
+final class $$AnnotationsTableReferences
+    extends BaseReferences<_$TyLogDatabase, $AnnotationsTable, AnnotationData> {
+  $$AnnotationsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $SourceVersionsTable _sourceVersionIdTable(_$TyLogDatabase db) => db
+      .sourceVersions
+      .createAlias('annotations__source_version_id__source_versions__id');
+
+  $$SourceVersionsTableProcessedTableManager get sourceVersionId {
+    final $_column = $_itemColumn<String>('source_version_id')!;
+
+    final manager = $$SourceVersionsTableTableManager(
+      $_db,
+      $_db.sourceVersions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sourceVersionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$AnnotationsTableFilterComposer
+    extends Composer<_$TyLogDatabase, $AnnotationsTable> {
+  $$AnnotationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get page => $composableBuilder(
+    column: $table.page,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get quote => $composableBuilder(
+    column: $table.quote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get context => $composableBuilder(
+    column: $table.context,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$SourceVersionsTableFilterComposer get sourceVersionId {
+    final $$SourceVersionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableFilterComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AnnotationsTableOrderingComposer
+    extends Composer<_$TyLogDatabase, $AnnotationsTable> {
+  $$AnnotationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get page => $composableBuilder(
+    column: $table.page,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endOffset => $composableBuilder(
+    column: $table.endOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quote => $composableBuilder(
+    column: $table.quote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get context => $composableBuilder(
+    column: $table.context,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$SourceVersionsTableOrderingComposer get sourceVersionId {
+    final $$SourceVersionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AnnotationsTableAnnotationComposer
+    extends Composer<_$TyLogDatabase, $AnnotationsTable> {
+  $$AnnotationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get page =>
+      $composableBuilder(column: $table.page, builder: (column) => column);
+
+  GeneratedColumn<int> get startOffset => $composableBuilder(
+    column: $table.startOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endOffset =>
+      $composableBuilder(column: $table.endOffset, builder: (column) => column);
+
+  GeneratedColumn<String> get quote =>
+      $composableBuilder(column: $table.quote, builder: (column) => column);
+
+  GeneratedColumn<String> get context =>
+      $composableBuilder(column: $table.context, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => column,
+  );
+
+  $$SourceVersionsTableAnnotationComposer get sourceVersionId {
+    final $$SourceVersionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceVersionId,
+      referencedTable: $db.sourceVersions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SourceVersionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sourceVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AnnotationsTableTableManager
+    extends
+        RootTableManager<
+          _$TyLogDatabase,
+          $AnnotationsTable,
+          AnnotationData,
+          $$AnnotationsTableFilterComposer,
+          $$AnnotationsTableOrderingComposer,
+          $$AnnotationsTableAnnotationComposer,
+          $$AnnotationsTableCreateCompanionBuilder,
+          $$AnnotationsTableUpdateCompanionBuilder,
+          (AnnotationData, $$AnnotationsTableReferences),
+          AnnotationData,
+          PrefetchHooks Function({bool sourceVersionId})
+        > {
+  $$AnnotationsTableTableManager(_$TyLogDatabase db, $AnnotationsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AnnotationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AnnotationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AnnotationsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sourceVersionId = const Value.absent(),
+                Value<int> page = const Value.absent(),
+                Value<int> startOffset = const Value.absent(),
+                Value<int> endOffset = const Value.absent(),
+                Value<String> quote = const Value.absent(),
+                Value<String> context = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> updatedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AnnotationsCompanion(
+                id: id,
+                sourceVersionId: sourceVersionId,
+                page: page,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                quote: quote,
+                context: context,
+                createdAtMs: createdAtMs,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sourceVersionId,
+                required int page,
+                required int startOffset,
+                required int endOffset,
+                required String quote,
+                required String context,
+                required int createdAtMs,
+                required int updatedAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => AnnotationsCompanion.insert(
+                id: id,
+                sourceVersionId: sourceVersionId,
+                page: page,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                quote: quote,
+                context: context,
+                createdAtMs: createdAtMs,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AnnotationsTable, AnnotationData>(table),
+                  $$AnnotationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sourceVersionId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sourceVersionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sourceVersionId,
+                                referencedTable: $$AnnotationsTableReferences
+                                    ._sourceVersionIdTable(db),
+                                referencedColumn: $$AnnotationsTableReferences
+                                    ._sourceVersionIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$AnnotationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TyLogDatabase,
+      $AnnotationsTable,
+      AnnotationData,
+      $$AnnotationsTableFilterComposer,
+      $$AnnotationsTableOrderingComposer,
+      $$AnnotationsTableAnnotationComposer,
+      $$AnnotationsTableCreateCompanionBuilder,
+      $$AnnotationsTableUpdateCompanionBuilder,
+      (AnnotationData, $$AnnotationsTableReferences),
+      AnnotationData,
+      PrefetchHooks Function({bool sourceVersionId})
     >;
 typedef $$RevisionsTableCreateCompanionBuilder =
     RevisionsCompanion Function({
@@ -8206,6 +9284,8 @@ class $TyLogDatabaseManager {
       $$SourcesTableTableManager(_db, _db.sources);
   $$SourceVersionsTableTableManager get sourceVersions =>
       $$SourceVersionsTableTableManager(_db, _db.sourceVersions);
+  $$AnnotationsTableTableManager get annotations =>
+      $$AnnotationsTableTableManager(_db, _db.annotations);
   $$RevisionsTableTableManager get revisions =>
       $$RevisionsTableTableManager(_db, _db.revisions);
   $$OutboxEntriesTableTableManager get outboxEntries =>

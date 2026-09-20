@@ -19,7 +19,7 @@ void main() {
   });
 
   test('creates v5 import tables', () async {
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
     expect(await db.select(db.importJobs).get(), isEmpty);
     expect(await db.select(db.importItems).get(), isEmpty);
   });
@@ -41,7 +41,7 @@ void main() {
     sqlite.execute('PRAGMA user_version = 4');
     sqlite.close();
     db = await openDatabaseWithFile(File('${dir.path}/db.sqlite'));
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
     expect(
       (await db.select(db.databaseMetadata).getSingle()).value,
       'preserved',
