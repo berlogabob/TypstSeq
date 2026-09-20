@@ -23,7 +23,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
-| P18 | PDF reader/versioned extraction | P07,P14 | TODO | Selection/extraction; unsupported source accounting |
+| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | Versioned offset contract landed; native reader and source persistence next |
 | P19 | Durable annotations/navigation | P18 | TODO | Source return, stable re-index, ambiguous replacement |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | TODO | Versioned resumable changed-source processing |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | TODO | Scale/quality/memory/airplane mode |
