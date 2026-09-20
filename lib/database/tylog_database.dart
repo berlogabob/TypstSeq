@@ -198,6 +198,8 @@ class NodeSummaryPage {
 
 typedef PendingRevisionUpload = ({RevisionData revision, NodeData? node});
 
+enum RevisionReceiveResult { applied, duplicate, conflict }
+
 @DriftDatabase(
   tables: [
     DatabaseMetadata,
@@ -509,6 +511,43 @@ class TyLogDatabase extends _$TyLogDatabase {
     if (removed == 0) return;
   }
 
+  Future<RevisionReceiveResult> receiveRevision({
+    required NodeData node,
+    required RevisionData revision,
+  }) async {
+    if (revision.entityKind != 'node' || revision.entityId != node.id) {
+      throw ArgumentError('Revision must describe the edited node');
+    }
+    return transaction(() async {
+      final duplicate = await (select(
+        revisions,
+      )..where((table) => table.id.equals(revision.id))).getSingleOrNull();
+      if (duplicate != null) return RevisionReceiveResult.duplicate;
+      final head =
+          await (select(revisions)
+                ..where(
+                  (table) =>
+                      table.entityKind.equals('node') &
+                      table.entityId.equals(node.id),
+                )
+                ..orderBy([
+                  (table) => OrderingTerm.desc(table.createdAtMs),
+                  (table) => OrderingTerm.desc(table.id),
+                ])
+                ..limit(1))
+              .getSingleOrNull();
+      if (head?.id != revision.parentRevisionId) {
+        return RevisionReceiveResult.conflict;
+      }
+      await _commitNodeRows(
+        node: node,
+        revision: revision,
+        queuePublication: false,
+      );
+      return RevisionReceiveResult.applied;
+    });
+  }
+
   Future<void> createOrResumeImportJob(
     ImportJobData job,
     List<ImportItemData> items,
@@ -568,14 +607,17 @@ class TyLogDatabase extends _$TyLogDatabase {
   Future<void> _commitNodeRows({
     required NodeData node,
     required RevisionData revision,
+    bool queuePublication = true,
   }) async {
     await _ensureNodeSearch();
     await into(nodes).insertOnConflictUpdate(node);
     await _upsertNodeSearch(node);
     await into(revisions).insert(revision);
-    await into(outboxEntries).insert(
-      OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
-    );
+    if (queuePublication) {
+      await into(outboxEntries).insert(
+        OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
+      );
+    }
     await into(derivedInvalidations).insert(
       DerivedInvalidation(
         revisionId: revision.id,

@@ -9,4 +9,6 @@ Evidence:
 - `flutter test test/database/revision_outbox_test.dart` — 1 passed.
 - `flutter analyze lib/database/tylog_database.dart test/database/revision_outbox_test.dart` — clean.
 
+Combined full suite after the P14–P16 storage changes: `flutter test` — 693 passed, 2 skipped.
+
 Remaining P15 work: connect this contract to the Nextcloud publisher and include attachment payload publication/retry.

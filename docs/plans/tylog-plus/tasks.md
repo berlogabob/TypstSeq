@@ -21,7 +21,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | RUNNING | Durable outbox publication contract next |
-| P16 | Transactional receive/conflict handling | P15 | TODO | Defined merge/materialization contract + convergence tests |
+| P16 | Transactional receive/conflict handling | P15 | RUNNING | Parent-checked receive contract landed; sync convergence wiring remains |
 | P17 | Snapshot bootstrap/recovery | P16 | TODO | Scale restore; damaged snapshot rejected |
 | P18 | PDF reader/versioned extraction | P07,P14 | TODO | Selection/extraction; unsupported source accounting |
 | P19 | Durable annotations/navigation | P18 | TODO | Source return, stable re-index, ambiguous replacement |
