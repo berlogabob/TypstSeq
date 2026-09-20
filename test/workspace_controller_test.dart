@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
+import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/vault.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/scanner.dart';
@@ -454,6 +456,36 @@ void main() {
       storage.gate.complete();
       await _waitUntil(() => controller.index != null);
       expect(controller.index?.notes, hasLength(1));
+    },
+  );
+
+  test(
+    'worker startup does not decode the cached index on the root isolate',
+    () async {
+      final storage = _IndexReadGatedStorage();
+      await storage.writeText(
+        TylogVaultPaths.settings,
+        '{"version":5}',
+      );
+      await storage.writeText(TylogVaultPaths.index, '{}');
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.openVault(
+        const VaultEntry(id: 'worker-cache', name: 'Worker cache', path: '/db'),
+        storage: storage,
+      );
+
+      expect(storage.indexReadStarted, isFalse);
+      expect(controller.vault, isNotNull);
+      expect(controller.note, isNotNull);
+      expect(controller.index, isNull);
+
+      storage.gate.complete();
+      await _waitUntil(() => controller.index != null);
     },
   );
 
@@ -2864,6 +2896,19 @@ class _GatedStorage extends _MemoryStorage {
   }) async {
     if (recursive) await gate.future;
     return super.list(path: path, recursive: recursive);
+  }
+}
+
+class _IndexReadGatedStorage extends _GatedStorage {
+  bool indexReadStarted = false;
+
+  @override
+  Future<Uint8List> readBytes(String path) async {
+    if (path == TylogVaultPaths.index) {
+      indexReadStarted = true;
+      await gate.future;
+    }
+    return super.readBytes(path);
   }
 }
 

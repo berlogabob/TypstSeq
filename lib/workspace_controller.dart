@@ -432,7 +432,11 @@ class WorkspaceController extends ChangeNotifier {
         if (!_owns(opened, generation)) return;
       }
       note = today;
-      final loaded = await opened.loadIndex();
+      // The worker owns the production index cache. Decoding the complete
+      // compressed index here duplicates its work and can stall the root
+      // isolate before the editor is usable; in-process callers still retain
+      // the warm-cache fast path.
+      final loaded = _useWorker ? null : await opened.loadIndex();
       if (_disposed || generation != _vaultGeneration) return;
       index = loaded;
       // Not via _retainIndex — a new vault must not inherit the previous one's
