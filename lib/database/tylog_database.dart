@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -430,13 +432,52 @@ class TyLogDatabase extends _$TyLogDatabase {
       );
     });
   }
+
+  Future<bool> claimVault(String stableVaultId) async {
+    if (stableVaultId.isEmpty) {
+      throw ArgumentError.value(stableVaultId, 'stableVaultId');
+    }
+    return transaction(() async {
+      await into(databaseMetadata).insert(
+        DatabaseMetadataCompanion.insert(
+          key: _vaultOwnerMetadataKey,
+          value: stableVaultId,
+          updatedAtMs: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+      final owner =
+          await (select(databaseMetadata)
+                ..where((table) => table.key.equals(_vaultOwnerMetadataKey)))
+              .getSingleOrNull();
+      return owner?.value == stableVaultId;
+    });
+  }
 }
+
+const _vaultOwnerMetadataKey = 'database_owner_vault_id';
 
 Future<TyLogDatabase> openDatabase() async {
   final dir = await getApplicationSupportDirectory();
   final file = File('${dir.path}/tylog.db');
   return openDatabaseWithFile(file);
 }
+
+Future<TyLogDatabase> openDatabaseForVault(String stableVaultId) async {
+  if (stableVaultId.isEmpty) {
+    throw ArgumentError.value(stableVaultId, 'stableVaultId');
+  }
+  final dir = await getApplicationSupportDirectory();
+  final legacy = await openDatabaseWithFile(File('${dir.path}/tylog.db'));
+  if (await legacy.claimVault(stableVaultId)) return legacy;
+  await legacy.close();
+  return openDatabaseWithFile(
+    File('${dir.path}/${_vaultDatabaseName(stableVaultId)}'),
+  );
+}
+
+String _vaultDatabaseName(String stableVaultId) =>
+    'tylog-${sha256.convert(utf8.encode(stableVaultId))}.db';
 
 Future<TyLogDatabase> openDatabaseWithFile(File file) async {
   final db = TyLogDatabase(

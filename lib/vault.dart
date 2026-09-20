@@ -35,6 +35,8 @@ class Vault {
   /// landing mid-scan must stay queued for the next one.
   void clearStaleNotes(Iterable<String> paths) => _staleNotes.removeAll(paths);
 
+  bool isStaleNote(String path) => _staleNotes.contains(path);
+
   /// Notes written since the last sync pass considered them.
   ///
   /// Deliberately a *second* set rather than a reader of [staleNotes]: the scan
@@ -67,6 +69,17 @@ class Vault {
 
   /// Whether this path was written since a sync pass last considered it.
   bool isPendingSyncWrite(String path) => _pendingSyncWrites.contains(path);
+
+  void restoreWriteMarkers(
+    String path, {
+    required bool stale,
+    required bool pendingSync,
+  }) {
+    stale ? _staleNotes.add(path) : _staleNotes.remove(path);
+    pendingSync
+        ? _pendingSyncWrites.add(path)
+        : _pendingSyncWrites.remove(path);
+  }
 
   /// Drops paths a completed sync pass covered.
   void clearPendingSyncWrites(Iterable<String> paths) =>
@@ -172,10 +185,10 @@ class Vault {
   /// overwritten. `.tylog/` is outside the sync allowlist, so snapshots stay on
   /// the device that made them.
   Future<String> snapshotNotes(Iterable<String> paths, {DateTime? now}) async {
-    final stamp = (now ?? DateTime.now())
-        .toUtc()
-        .toIso8601String()
-        .replaceAll(':', '-');
+    final stamp = (now ?? DateTime.now()).toUtc().toIso8601String().replaceAll(
+      ':',
+      '-',
+    );
     final directory = '.tylog/undo/$stamp';
     for (final path in paths) {
       final parent = path.lastIndexOf('/');
@@ -292,7 +305,11 @@ class Vault {
     return id;
   }
 
-  Future<String> nextTaskId(String text, {DateTime? now, Set<String> reserved = const {}}) async {
+  Future<String> nextTaskId(
+    String text, {
+    DateTime? now,
+    Set<String> reserved = const {},
+  }) async {
     final instant = now ?? DateTime.now();
     final stamp =
         '${instant.year.toString().padLeft(4, '0')}'
@@ -307,7 +324,10 @@ class Vault {
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
     final base = slug.isEmpty ? stamp : '$stamp-$slug';
-    final ids = {...?(await loadIndex())?.tasks.map((task) => task.id), ...reserved};
+    final ids = {
+      ...?(await loadIndex())?.tasks.map((task) => task.id),
+      ...reserved,
+    };
     var id = base;
     var suffix = 2;
     while (ids.contains(id)) {
@@ -337,6 +357,12 @@ class Vault {
       throw ArgumentError('A TyLog note cannot be empty');
     }
     await storage.writeText(path, withTylogImport(path, text));
+    _staleNotes.add(path);
+    _pendingSyncWrites.add(path);
+  }
+
+  Future<void> deleteNote(String path) async {
+    await storage.delete(path);
     _staleNotes.add(path);
     _pendingSyncWrites.add(path);
   }

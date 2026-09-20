@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:drift/native.dart';
+import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
@@ -1030,6 +1032,194 @@ void main() {
       isTrue,
       reason: 'still unsaved, so idle maintenance retries it',
     );
+  });
+
+  test('editor save commits the note and durable database queues', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+      now: () => DateTime.fromMillisecondsSinceEpoch(100),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
+    await controller.openVault(
+      const VaultEntry(id: 'database-save', name: 'Database', path: '/db'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+
+    controller.edit('${controller.source}\nSaved through SQLite\n');
+    expect(await controller.save(syncAfter: false), isTrue);
+
+    expect(await database.select(database.nodes).get(), hasLength(1));
+    expect(await database.select(database.revisions).get(), hasLength(1));
+    expect(await database.select(database.outboxEntries).get(), hasLength(1));
+    expect(
+      await database.select(database.derivedInvalidations).get(),
+      hasLength(1),
+    );
+  });
+
+  test(
+    'database save failure restores the file and keeps the editor dirty',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(id: 'database-failure', name: 'Database', path: '/db'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      final before = await storage.readBytes(path);
+      await database.customStatement('''
+        CREATE TRIGGER reject_note_insert
+        BEFORE INSERT ON nodes
+        BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+      ''');
+
+      controller.edit('${controller.source}\nMust roll back\n');
+      expect(await controller.save(syncAfter: false), isFalse);
+
+      expect(controller.dirty, isTrue);
+      expect(controller.status, contains('Save failed'));
+      expect(await storage.readBytes(path), before);
+      expect(controller.vault!.isStaleNote(path), isFalse);
+      expect(controller.vault!.isPendingSyncWrite(path), isFalse);
+    },
+  );
+
+  test('closed-note mutation uses the same durable persistence path', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
+    await controller.openVault(
+      const VaultEntry(id: 'database-mutation', name: 'Database', path: '/db'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    const path = 'notes/closed.typ';
+    await storage.writeText(
+      path,
+      '#show: tylog.note.with(id: "closed", title: "Closed")\nBody',
+    );
+
+    expect(
+      await controller.mutateNote(path, (source) => '$source\nChanged'),
+      isTrue,
+    );
+
+    expect((await database.select(database.nodes).getSingle()).id, 'closed');
+    expect(await database.select(database.revisions).get(), hasLength(1));
+  });
+
+  test('deleting a disposable note records a durable tombstone', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
+    await controller.openVault(
+      const VaultEntry(id: 'database-delete', name: 'Database', path: '/db'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    final path = controller.note!;
+    expect(await controller.save(syncAfter: false), isTrue);
+
+    controller.edit('');
+    expect(await controller.save(syncAfter: false), isTrue);
+
+    expect(await storage.exists(path), isFalse);
+    final node = await database.select(database.nodes).getSingle();
+    expect(node.content, isEmpty);
+    expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
+    expect(await database.select(database.revisions).get(), hasLength(2));
+  });
+
+  test(
+    'explicit note deletion removes the file and records a tombstone',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(id: 'database-delete', name: 'Database', path: '/db'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const path = 'articles/paper.typ';
+      await storage.writeText(
+        path,
+        '#show: tylog.note.with(id: "paper", title: "Paper")\nBody',
+      );
+      expect(await controller.mutateNote(path, (source) => source), isTrue);
+      await storage.delete(path);
+
+      expect(await controller.deleteNote(path), isTrue);
+
+      expect(await storage.exists(path), isFalse);
+      final node = await database.select(database.nodes).getSingle();
+      expect(node.content, isEmpty);
+      expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
+      expect(await database.select(database.revisions).get(), hasLength(2));
+    },
+  );
+
+  test('note reads retry when a closed-note mutation overlaps', () async {
+    final storage = _SnapshotReadStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'stable-read', name: 'Stable', path: '/stable'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    const path = 'notes/closed.typ';
+    await storage.writeText(path, 'before');
+    storage.arm(path);
+
+    final reading = controller.readNote(path);
+    await storage.reached.future;
+    expect(await controller.mutateNote(path, (_) => 'after'), isTrue);
+    storage.release();
+
+    expect(await reading, contains('after'));
   });
 
   test(
@@ -2326,6 +2516,34 @@ class _GatedOpenStorage extends _MemoryStorage {
       if (failAfterGate) throw const FileSystemException('old open failed');
     }
     return super.readText(path);
+  }
+}
+
+class _SnapshotReadStorage extends _MemoryStorage {
+  String? _path;
+  Completer<void> reached = Completer<void>();
+  Completer<void> _release = Completer<void>();
+
+  void arm(String path) {
+    _path = path;
+    reached = Completer<void>();
+    _release = Completer<void>();
+  }
+
+  void release() {
+    _path = null;
+    _release.complete();
+  }
+
+  @override
+  Future<String> readText(String path) async {
+    final result = await super.readText(path);
+    if (path == _path) {
+      _path = null;
+      reached.complete();
+      await _release.future;
+    }
+    return result;
   }
 }
 

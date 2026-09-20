@@ -2,7 +2,7 @@
 
 Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 
-**Main milestones: 7/26 DONE. Active wave: P05 + P09. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 7/26 DONE. Active wave: P05 + P09 + P11. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
 | P09 | Resumable legacy import | P07 | RUNNING | Interruption/retry, every source accounted for |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
-| P11 | Route existing edits/buttons through DB | P08,P10 | TODO | Existing controls and save-failure protection |
+| P11 | Route existing edits/buttons through DB | P08,P10 | RUNNING | [Edits and deletions durable](evidence/P11a/result.md); creation remains |
 | P12 | Paged startup/list reads | P11 | TODO | Startup/open/save gates |
 | P13 | Incremental FTS and filters | P11 | TODO | EN/PT/RU, latency, changed records only |
 | P14 | Persistent jobs | P08 | TODO | Resume/cancel/deduplicate/stale result tests |
@@ -76,6 +76,11 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
 | P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |
+| P11a1 note persistence adapter | Codex Luna | DONE | P08,P10 | [Stable node + parented revision + queues](evidence/P11a/result.md) |
+| P11a2 editor save integration | Coordinator | DONE | P11a1 | [DB failure keeps editor dirty and restores the prior file](evidence/P11a/result.md) |
+| P11b shared mutation integration | Coordinator | DONE | P11a2 | [Existing task/status/rating/repair buttons create durable revisions](evidence/P11a/result.md) |
+| P11c creation/import routing | Unassigned | TODO | P11b | Created files have matching initial nodes/revisions; no phantom success |
+| P11d deletion contract | Coordinator + Codex Luna | DONE | P11a2 | [Immutable tombstone revision; article delete routed](evidence/P11a/result.md) |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

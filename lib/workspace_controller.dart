@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 
 import 'package:tylog_core/graph.dart';
 
+import 'database/note_persistence.dart';
+import 'database/tylog_database.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
 import 'pkms_registry.dart';
@@ -29,6 +31,8 @@ class WorkspaceController extends ChangeNotifier {
     this.isComposing = _notComposing,
     this.inspector,
     Future<void> Function(Iterable<TaskRef>)? reconcileTasks,
+    this.database,
+    this.databaseForVault,
     DateTime Function()? now,
     bool? useForegroundService,
   }) : _reconcileTasks = reconcileTasks ?? taskScheduler.reconcile,
@@ -41,6 +45,8 @@ class WorkspaceController extends ChangeNotifier {
   final Future<void> Function(Iterable<TaskRef>) _reconcileTasks;
   final DateTime Function() _now;
   final bool _useForegroundService;
+  final Future<TyLogDatabase?>? database;
+  final Future<TyLogDatabase?> Function(VaultEntry entry)? databaseForVault;
 
   Vault? vault;
   VaultEntry? entry;
@@ -228,6 +234,7 @@ class WorkspaceController extends ChangeNotifier {
   Timer? _cloudAutosave;
   Timer? _cloudPoll;
   final Map<String, Future<bool>> _noteMutations = {};
+  final Map<String, int> _noteMutationVersions = {};
   bool _mutationRefreshQueued = false;
   Future<void>? _mutationRefreshFuture;
   DateTime? _lastForegroundNotice;
@@ -287,6 +294,7 @@ class WorkspaceController extends ChangeNotifier {
     _cancelTimers();
     _shutdownWorker();
     _noteMutations.clear();
+    _noteMutationVersions.clear();
     _mutationRefreshQueued = false;
     _mutationRefreshFuture = null;
     _rescanQueued = false;
@@ -339,6 +347,7 @@ class WorkspaceController extends ChangeNotifier {
     _cancelTimers();
     _shutdownWorker();
     _noteMutations.clear();
+    _noteMutationVersions.clear();
     _mutationRefreshQueued = false;
     _mutationRefreshFuture = null;
     if (_foregroundGeneration != null) {
@@ -528,7 +537,7 @@ class WorkspaceController extends ChangeNotifier {
     final value = source;
     final generation = _vaultGeneration;
     try {
-      await opened.saveNote(path, value);
+      await _persistNote(opened, path, value);
       if (!_owns(opened, generation)) return false;
       _lastSavedSource = value;
       _lastSavedPath = path;
@@ -568,14 +577,35 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final generation = _vaultGeneration;
     if (opened == null) return Future<bool>.value(false);
+    _noteMutationVersions[path] = (_noteMutationVersions[path] ?? 0) + 1;
+    return _queueNoteMutation(
+      path,
+      () => _mutateNote(opened, generation, path, transform),
+    );
+  }
+
+  Future<bool> deleteNote(String path) {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return Future<bool>.value(false);
+    _noteMutationVersions[path] = (_noteMutationVersions[path] ?? 0) + 1;
+    return _queueNoteMutation(path, () async {
+      if (!_owns(opened, generation) || note == path) return false;
+      await _persistNote(opened, path, null);
+      if (!_owns(opened, generation)) return false;
+      opened.markLocallyWritten(path);
+      _queueMutationRefresh();
+      return true;
+    });
+  }
+
+  Future<bool> _queueNoteMutation(String path, Future<bool> Function() mutate) {
     final previous = _noteMutations[path];
     final wait = previous == null
         ? Future<void>.value()
         : previous.then<void>((_) {}, onError: (_, _) {});
     late final Future<bool> operation;
-    operation = wait.then(
-      (_) => _mutateNote(opened, generation, path, transform),
-    );
+    operation = wait.then((_) => mutate());
     _noteMutations[path] = operation;
     unawaited(
       operation.then<void>(
@@ -594,6 +624,50 @@ class WorkspaceController extends ChangeNotifier {
     return operation;
   }
 
+  /// Reads a note without returning bytes made stale by an overlapping
+  /// metadata mutation.
+  Future<String> readNote(String path) async =>
+      (await readNoteSnapshot(path)).source;
+
+  Future<({String source, int mutationVersion})> readNoteSnapshot(
+    String path,
+  ) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) throw StateError('No vault is open');
+    while (true) {
+      final version = _noteMutationVersions[path] ?? 0;
+      final pending = _noteMutations[path];
+      if (pending != null) {
+        try {
+          await pending;
+        } catch (_) {
+          // The caller still needs the last bytes that reached storage.
+        }
+        if (!_owns(opened, generation)) throw StateError('Vault changed');
+        continue;
+      }
+      final value = await opened.storage.readText(path);
+      if (!_owns(opened, generation)) throw StateError('Vault changed');
+      if (version == (_noteMutationVersions[path] ?? 0) &&
+          _noteMutations[path] == null) {
+        return (source: value, mutationVersion: version);
+      }
+    }
+  }
+
+  bool adoptNoteRead(
+    String path,
+    ({String source, int mutationVersion}) snapshot,
+  ) {
+    if (snapshot.mutationVersion != (_noteMutationVersions[path] ?? 0) ||
+        _noteMutations[path] != null) {
+      return false;
+    }
+    replaceNote(path, snapshot.source);
+    return true;
+  }
+
   Future<bool> _mutateNote(
     Vault opened,
     int generation,
@@ -610,11 +684,96 @@ class WorkspaceController extends ChangeNotifier {
     }
     final current = await opened.storage.readText(path);
     if (!_owns(opened, generation)) return false;
-    await opened.saveNote(path, transform(current));
+    await _persistNote(opened, path, transform(current));
     if (!_owns(opened, generation)) return false;
     opened.markLocallyWritten(path);
     _queueMutationRefresh();
     return true;
+  }
+
+  final _noteWrites = <String, Future<void>>{};
+
+  Future<void> _persistNote(Vault opened, String path, String? value) {
+    final previous = _noteWrites[path];
+    final wait = previous == null
+        ? Future<void>.value()
+        : previous.then<void>((_) {}, onError: (_, _) {});
+    late final Future<void> operation;
+    operation = wait.then((_) => _writeNote(opened, path, value));
+    _noteWrites[path] = operation;
+    unawaited(
+      operation
+          .whenComplete(() {
+            if (identical(_noteWrites[path], operation)) {
+              _noteWrites.remove(path);
+            }
+          })
+          .onError((_, _) {}),
+    );
+    return operation;
+  }
+
+  Future<void> _writeNote(Vault opened, String path, String? value) async {
+    if (!identical(vault, opened)) throw StateError('Vault changed');
+    final activeEntry = entry;
+    final scoped = databaseForVault != null && activeEntry != null;
+    final db = scoped ? await databaseForVault!(activeEntry) : await database;
+    if (!identical(vault, opened) || (scoped && entry?.id != activeEntry.id)) {
+      throw StateError('Vault changed');
+    }
+    if (db == null) {
+      if (value == null) {
+        await opened.storage.delete(path);
+      } else {
+        await opened.saveNote(path, value);
+      }
+      return;
+    }
+    final existed = await opened.storage.exists(path);
+    final previous = existed ? await opened.storage.readBytes(path) : null;
+    final persistedSource = previous == null && value == null
+        ? await persistedNoteSourceForPath(db, path)
+        : null;
+    final wasStale = opened.isStaleNote(path);
+    final wasPendingSync = opened.isPendingSyncWrite(path);
+    try {
+      if (value == null) {
+        await opened.deleteNote(path);
+      } else {
+        await opened.saveNote(path, value);
+      }
+      if (!identical(vault, opened)) throw StateError('Vault changed');
+      final nowMs = _now().millisecondsSinceEpoch;
+      if (await opened.storage.exists(path)) {
+        await persistVaultNote(
+          db,
+          path: path,
+          source: await opened.storage.readText(path),
+          nowMs: nowMs,
+        );
+      } else if (previous != null || persistedSource != null) {
+        await persistDeletedVaultNote(
+          db,
+          path: path,
+          previousSource: previous == null
+              ? persistedSource!
+              : utf8.decode(previous),
+          nowMs: nowMs,
+        );
+      }
+    } catch (_) {
+      if (previous == null) {
+        await opened.storage.delete(path);
+      } else {
+        await opened.storage.writeBytes(path, previous);
+      }
+      opened.restoreWriteMarkers(
+        path,
+        stale: wasStale,
+        pendingSync: wasPendingSync,
+      );
+      rethrow;
+    }
   }
 
   Future<void> _queueMutationRefresh() {

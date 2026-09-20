@@ -172,7 +172,9 @@ extension _VaultImportFlow on _HomeScreenState {
         ? LegacyImportDialect.logseq
         : LegacyImportDialect.obsidian;
     final manifest = await buildLegacyImportManifest(source, importDialect);
-    final db = await database;
+    final activeEntry = _activeRegistryEntry;
+    if (activeEntry == null) return;
+    final db = await _databaseForVault(activeEntry);
     if (db == null) return;
     final jobId = legacyImportJobId(dialect, manifest.fingerprint);
     final now = DateTime.now().millisecondsSinceEpoch;

@@ -223,6 +223,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Future<TyLogDatabase?> database;
+  final Map<String, Future<TyLogDatabase?>> _vaultDatabases = {};
+  final List<TyLogDatabase> _additionalDatabases = [];
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   late final TyLogEditingController richController;
@@ -342,6 +344,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     workspace = WorkspaceController(
       taskScheduler: taskScheduler,
       isComposing: () => richController.isComposing,
+      databaseForVault: _databaseForVault,
     )..addListener(_workspaceChanged);
     WidgetsBinding.instance.addObserver(this);
     unawaited((widget.startup ?? _open)());
@@ -366,15 +369,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..dispose();
     richController.dispose();
     sourceController.dispose();
-    unawaited(
-      database.then((db) async {
-        if (db != null) {
-          await (widget.databaseCloser ?? (value) => value.close())(db);
-        }
-      }),
-    );
+    unawaited(_closeDatabases());
     super.dispose();
   }
+
+  Future<void> _closeDatabases() async {
+    await Future.wait(
+      _vaultDatabases.values.map((future) => future.catchError((_) => null)),
+    );
+    final primary = await database;
+    if (primary != null) {
+      await (widget.databaseCloser ?? (value) => value.close())(primary);
+    }
+    for (final scoped in _additionalDatabases) {
+      await scoped.close();
+    }
+  }
+
+  Future<TyLogDatabase?> _databaseForVault(
+    VaultEntry entry,
+  ) => _vaultDatabases.putIfAbsent(entry.id, () async {
+    final primary = await database;
+    if (primary == null || await primary.claimVault(entry.id)) return primary;
+    if (widget.databaseOpener != null) {
+      throw StateError('The test database is already bound to another vault');
+    }
+    final scoped = await openDatabaseForVault(entry.id);
+    await scoped.claimVault(entry.id);
+    _additionalDatabases.add(scoped);
+    return scoped;
+  });
 
   void _workspaceChanged() {
     if (!mounted) return;
@@ -787,10 +811,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return false;
     if (dirty && !await _save()) return false;
     if (!mounted || request != _openGeneration || vault != v) return false;
-    final source = await v.storage.readText(path);
+    late final ({String source, int mutationVersion}) snapshot;
+    try {
+      snapshot = await workspace.readNoteSnapshot(path);
+    } on StateError {
+      return false;
+    }
     if (!mounted || request != _openGeneration || vault != v) return false;
-    _loadSource(source);
-    workspace.replaceNote(path, source);
+    if (!workspace.adoptNoteRead(path, snapshot)) return false;
+    _loadSource(snapshot.source);
     setState(() {
       mode = 'normal';
     });
@@ -2183,7 +2212,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => mode = 'library');
     }
     try {
-      await v.storage.delete(ref.path);
+      if (!await workspace.deleteNote(ref.path)) {
+        throw StateError('The article changed while it was being deleted');
+      }
     } catch (error) {
       if (mounted) showSnack(context, 'Could not delete ${ref.title}: $error');
       return;
