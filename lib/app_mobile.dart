@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -729,7 +730,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       confirmLabel: 'Create',
     );
     if (!create || !mounted) return;
-    final file = await v.page(target);
+    final file = await workspace.createPage(target);
     // Open first — the refresh only serves future link resolution and can
     // block for minutes behind an in-flight full rebuild.
     await _openNote(file, heading: heading, generation: generation);
@@ -861,7 +862,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return false;
     if (dirty && !await _save()) return false;
-    final path = await v.todayNote();
+    final path = await workspace.ensureTodayNote();
     if (!await _openNote(path, generation: generation)) return false;
     _todayNotePath = path;
     _todayOpenedAt = DateTime.now();
@@ -873,7 +874,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return false;
     if (dirty && !await _save()) return false;
-    return _openNote(await v.dailyNote(day), generation: generation);
+    return _openNote(
+      await workspace.ensureTodayNote(day),
+      generation: generation,
+    );
   }
 
   /// The day the arrows have stepped to but not opened yet. The header reads
@@ -955,7 +959,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _openNote(existing, generation: generation);
       return;
     }
-    final file = await v.page(title);
+    final file = await workspace.createPage(title);
     await _openNote(file, generation: generation);
     if (mounted) showSnack(context, 'Created $file');
     // Without the refresh the new note stays unresolvable to every chip
@@ -977,7 +981,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted || generation != _openGeneration || vault != v) return;
       if (dirty && !await _save()) return;
       if (!mounted || generation != _openGeneration || vault != v) return;
-      final file = await v.page(title, kind: kind, template: template);
+      final file = await workspace.createPage(
+        title,
+        kind: kind,
+        template: template,
+      );
       if (!await _openNote(file, generation: generation)) return;
       unawaited(workspace.refreshIndex(always: true));
       if (mounted) showSnack(context, 'Created $file');
@@ -1265,7 +1273,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // would all collapse onto the same timestamp id.
     final ids = {for (final note in ix.notes) note.id};
     for (final entry in picked.entries) {
-      await v.page(entry.key, kind: entry.value, knownIds: ids);
+      await workspace.createPage(entry.key, kind: entry.value, knownIds: ids);
     }
     await workspace.refreshIndex(always: true);
     if (!mounted) return null;
@@ -2128,7 +2136,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null || title.trim().isEmpty) return;
     try {
-      final dayPath = await v.todayNote();
+      final dayPath = await workspace.ensureTodayNote();
       final safeTitle = escapeMarkup(title.trim());
       final stars = int.tryParse(rating ?? '');
       final line = rating == null
@@ -2157,7 +2165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _loadSource(updated);
         _queueAutosave();
       } else {
-        await v.saveNote(dayPath, updated);
+        await workspace.mutateNote(dayPath, (_) => updated);
       }
     } catch (_) {
       // Logging must never break the reading/rating flow.
@@ -2622,7 +2630,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       initialValue: _selectedText(),
     );
     if (title == null || title.isEmpty || vault == null) return null;
-    final file = await vault!.page(title, kind: kind ?? 'note');
+    final file = await workspace.createPage(title, kind: kind ?? 'note');
     await workspace.refreshIndex(always: true);
     return index?.notesByPath[file];
   }
@@ -2690,27 +2698,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (save != true || name.isEmpty || entityKind.isEmpty || v == null) {
       return null;
     }
-    final file = await v.page(name);
+    final file = await workspace.createPage(name);
     await workspace.refreshIndex(always: true);
     final created = index?.notesByPath[file];
     if (created == null) return null;
-    await v.saveNote(
-      file,
-      replaceNoteHeader(
-        await v.storage.readText(file),
-        NoteMetadataDraft(
-          id: created.id,
-          title: created.title,
-          kind: entityKind,
-          tags: created.tags,
-          aliases: _csvValues(aliases.text),
-          properties: {
-            ...created.properties,
-            if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
-          },
-        ),
+    final updated = replaceNoteHeader(
+      await v.storage.readText(file),
+      NoteMetadataDraft(
+        id: created.id,
+        title: created.title,
+        kind: entityKind,
+        tags: created.tags,
+        aliases: _csvValues(aliases.text),
+        properties: {
+          ...created.properties,
+          if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
+        },
       ),
     );
+    if (!await workspace.mutateNote(file, (_) => updated)) {
+      return null;
+    }
     await workspace.refreshIndex(always: true);
     return index?.notesByPath[file];
   }
@@ -3799,7 +3807,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               'notes/${title.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
           if (await v.storage.exists(direct)) return null;
           try {
-            final file = await v.page(title);
+            final file = await workspace.createPage(title);
             if (context.mounted) showSnack(context, 'Created $file');
             unawaited(workspace.refreshIndex(always: true));
             // The reference is inserted by title either way; returning the

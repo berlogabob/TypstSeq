@@ -1056,13 +1056,91 @@ void main() {
     expect(await controller.save(syncAfter: false), isTrue);
 
     expect(await database.select(database.nodes).get(), hasLength(1));
-    expect(await database.select(database.revisions).get(), hasLength(1));
-    expect(await database.select(database.outboxEntries).get(), hasLength(1));
+    expect(await database.select(database.revisions).get(), hasLength(2));
+    expect(await database.select(database.outboxEntries).get(), hasLength(2));
     expect(
       await database.select(database.derivedInvalidations).get(),
-      hasLength(1),
+      hasLength(2),
     );
   });
+
+  test('page and daily creation persist their initial durable rows', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+      now: () => DateTime(2026, 7, 2, 12),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
+    await controller.openVault(
+      const VaultEntry(id: 'database-create', name: 'Database', path: '/db'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+
+    const template = '_system/templates/project.typ';
+    await storage.writeText(
+      template,
+      '#show: tylog.note.with(id: "template", title: "Template", kind: "note")\n'
+      'Template body\n',
+    );
+    final page = await controller.createPage(
+      'Project',
+      kind: 'project',
+      template: template,
+      knownIds: <String>{},
+      now: DateTime(2026, 7, 2, 12),
+    );
+    final daily = await controller.ensureTodayNote(DateTime(2026, 7, 3));
+
+    expect(page, 'projects/Project.typ');
+    expect(daily, 'daily/2026/07/2026-07-03.typ');
+    final nodes = await database.select(database.nodes).get();
+    expect(nodes, hasLength(3));
+    final project = nodes.singleWhere((node) => node.type == 'project');
+    expect(project.title, 'Project');
+    expect(project.content, contains('Template body'));
+    final journal = nodes.singleWhere(
+      (node) => jsonDecode(node.attributesJson)['path'] == daily,
+    );
+    expect(journal.title, '2026-07-03');
+    expect(await database.select(database.revisions).get(), hasLength(3));
+  });
+
+  test(
+    'startup daily creation rolls back when durable persistence fails',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      await database.customStatement('''
+      CREATE TRIGGER reject_startup_note
+      BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    ''');
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+        now: () => DateTime(2026, 7, 4, 12),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+
+      await controller.openVault(
+        const VaultEntry(id: 'startup-failure', name: 'Database', path: '/db'),
+        storage: storage,
+      );
+
+      expect(controller.vault, isNull);
+      expect(await storage.exists('daily/2026/07/2026-07-04.typ'), isFalse);
+      expect(await database.select(database.nodes).get(), isEmpty);
+    },
+  );
 
   test(
     'database save failure restores the file and keeps the editor dirty',
@@ -1084,20 +1162,114 @@ void main() {
       await _waitUntil(() => controller.index != null);
       final path = controller.note!;
       final before = await storage.readBytes(path);
+      final pendingBefore = controller.vault!.isPendingSyncWrite(path);
       await database.customStatement('''
-        CREATE TRIGGER reject_note_insert
-        BEFORE INSERT ON nodes
+      CREATE TRIGGER reject_note_insert
+      BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    ''');
+      await database.customStatement('''
+        CREATE TRIGGER reject_note_outbox
+        BEFORE INSERT ON outbox_entries
         BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
       ''');
 
       controller.edit('${controller.source}\nMust roll back\n');
-      expect(await controller.save(syncAfter: false), isFalse);
+      final saved = await controller.save(syncAfter: false);
+      expect(saved, isFalse);
 
       expect(controller.dirty, isTrue);
       expect(controller.status, contains('Save failed'));
       expect(await storage.readBytes(path), before);
       expect(controller.vault!.isStaleNote(path), isFalse);
-      expect(controller.vault!.isPendingSyncWrite(path), isFalse);
+      expect(controller.vault!.isPendingSyncWrite(path), pendingBefore);
+    },
+  );
+
+  test('created-note database failure rolls back the file and row', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
+    await controller.openVault(
+      const VaultEntry(
+        id: 'database-create-failure',
+        name: 'Database',
+        path: '/db',
+      ),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    final initialNodes = await database.select(database.nodes).get();
+    final initialRevisions = await database.select(database.revisions).get();
+    await database.customStatement('''
+      CREATE TRIGGER reject_created_note
+      BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    ''');
+
+    await expectLater(
+      controller.createPage('No Phantom'),
+      throwsA(isA<Exception>()),
+    );
+    expect(await storage.exists('notes/No Phantom.typ'), isFalse);
+    expect(await database.select(database.nodes).get(), initialNodes);
+    expect(await database.select(database.revisions).get(), initialRevisions);
+
+    await storage.writeText(
+      'notes/Existing.typ',
+      '#show: tylog.note.with(id: "existing", title: "Existing")\n',
+    );
+    expect(await controller.createPage('Existing'), 'notes/Existing.typ');
+    expect(await storage.exists('notes/Existing.typ'), isTrue);
+  });
+
+  test(
+    'persistCreatedNote rolls back an externally materialized file',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(
+          id: 'database-import-failure',
+          name: 'Database',
+          path: '/db',
+        ),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final initialNodes = await database.select(database.nodes).get();
+      await database.customStatement('''
+      CREATE TRIGGER reject_imported_note
+      BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    ''');
+      const path = 'articles/Imported.typ';
+      await storage.writeText(
+        path,
+        '#show: tylog.note.with(id: "imported", title: "Imported")\n',
+      );
+
+      await expectLater(
+        controller.persistCreatedNote(path),
+        throwsA(isA<Exception>()),
+      );
+      expect(await storage.exists(path), isFalse);
+      expect(await database.select(database.nodes).get(), initialNodes);
     },
   );
 
@@ -1128,8 +1300,11 @@ void main() {
       isTrue,
     );
 
-    expect((await database.select(database.nodes).getSingle()).id, 'closed');
-    expect(await database.select(database.revisions).get(), hasLength(1));
+    final closed = await (database.select(
+      database.nodes,
+    )..where((node) => node.id.equals('closed'))).getSingle();
+    expect(closed.id, 'closed');
+    expect(await database.select(database.revisions).get(), hasLength(2));
   });
 
   test('deleting a disposable note records a durable tombstone', () async {
@@ -1155,10 +1330,12 @@ void main() {
     expect(await controller.save(syncAfter: false), isTrue);
 
     expect(await storage.exists(path), isFalse);
-    final node = await database.select(database.nodes).getSingle();
+    final node = (await database.select(database.nodes).get()).singleWhere(
+      (value) => jsonDecode(value.attributesJson)['path'] == path,
+    );
     expect(node.content, isEmpty);
     expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
-    expect(await database.select(database.revisions).get(), hasLength(2));
+    expect(await database.select(database.revisions).get(), hasLength(3));
   });
 
   test(
@@ -1190,10 +1367,12 @@ void main() {
       expect(await controller.deleteNote(path), isTrue);
 
       expect(await storage.exists(path), isFalse);
-      final node = await database.select(database.nodes).getSingle();
+      final node = await (database.select(
+        database.nodes,
+      )..where((table) => table.id.equals('paper'))).getSingle();
       expect(node.content, isEmpty);
       expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
-      expect(await database.select(database.revisions).get(), hasLength(2));
+      expect(await database.select(database.revisions).get(), hasLength(3));
     },
   );
 

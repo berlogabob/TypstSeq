@@ -142,6 +142,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
               draft.title,
             );
             await opened.saveNote(path, typstSource);
+            await workspace.persistCreatedNote(path);
             articles.add(_noteForImportedArticle(path, draft));
             wroteFiles = true;
             writtenPaths.add(path);

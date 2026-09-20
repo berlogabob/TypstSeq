@@ -129,6 +129,49 @@ legacyImportedCounts(Iterable<String> attributesJson) {
 String vaultImportReportTitle(bool complete) =>
     complete ? 'Vault import complete' : 'Vault import paused';
 
+Future<({String id, int createdAtMs, String? parentRevisionId})>
+legacyImportTargetIdentity({
+  required TyLogDatabase database,
+  required String path,
+  required String current,
+  required int now,
+}) async {
+  final mapped =
+      await (database.select(database.importItems)
+            ..where(
+              (item) =>
+                  item.targetPath.equals(path) & item.targetNodeId.isNotNull(),
+            )
+            ..orderBy([
+              (item) => OrderingTerm.desc(item.updatedAtMs),
+              (item) => OrderingTerm.desc(item.targetNodeId),
+            ])
+            ..limit(1))
+          .getSingleOrNull();
+  final id = mapped?.targetNodeId ?? scanNote(path, current).id;
+  final existing = await (database.select(
+    database.nodes,
+  )..where((node) => node.id.equals(id))).getSingleOrNull();
+  final latest =
+      await (database.select(database.revisions)
+            ..where(
+              (revision) =>
+                  revision.entityKind.equals('node') &
+                  revision.entityId.equals(id),
+            )
+            ..orderBy([
+              (revision) => OrderingTerm.desc(revision.createdAtMs),
+              (revision) => OrderingTerm.desc(revision.id),
+            ])
+            ..limit(1))
+          .getSingleOrNull();
+  return (
+    id: id,
+    createdAtMs: existing?.createdAtMs ?? now,
+    parentRevisionId: latest?.id,
+  );
+}
+
 class _VaultImportReport {
   int pages = 0;
   int journals = 0;
@@ -333,12 +376,26 @@ extension _VaultImportFlow on _HomeScreenState {
           dialect: dialect,
         );
         final content = materialized.content;
+        final appendExisting = isJournal && current != null;
+        var nodeId = legacyImportNodeId(jobId, entry.path, sourceHash);
+        String? parentRevisionId;
+        var createdAtMs = now;
+        if (appendExisting) {
+          final identity = await legacyImportTargetIdentity(
+            database: db,
+            path: path,
+            current: current,
+            now: now,
+          );
+          nodeId = identity.id;
+          createdAtMs = identity.createdAtMs;
+          parentRevisionId = identity.parentRevisionId;
+        }
         metadata[entry.path] = (
-          appendExisting: isJournal && current != null,
+          appendExisting: appendExisting,
           sourceName: name,
           sourceHash: sourceHash,
         );
-        final nodeId = legacyImportNodeId(jobId, entry.path, sourceHash);
         final revisionId = legacyImportRevisionId(
           jobId,
           entry.path,
@@ -351,6 +408,7 @@ extension _VaultImportFlow on _HomeScreenState {
             title: result.title,
             content: content,
             attributesJson: jsonEncode({
+              'path': path,
               'import_source_path': entry.path,
               'import_source_name': name,
               'import_sha256': sourceHash,
@@ -363,13 +421,14 @@ extension _VaultImportFlow on _HomeScreenState {
               'resolved_links': [result.title, ...result.aliases, ?result.date],
               'diagnostics': result.diagnostics,
             }),
-            createdAtMs: now,
+            createdAtMs: createdAtMs,
             updatedAtMs: now,
           ),
           revision: RevisionData(
             id: revisionId,
             entityKind: 'node',
             entityId: nodeId,
+            parentRevisionId: parentRevisionId,
             payloadJson: jsonEncode({
               'source': entry.path,
               'sha256': sourceHash,
@@ -381,13 +440,10 @@ extension _VaultImportFlow on _HomeScreenState {
       },
       materializer: (item, node, targetPath) async {
         final info = metadata[item.sourcePath];
-        if (info?.appendExisting ?? false) {
-          if (!await workspace.mutateNote(targetPath, (_) => node.content)) {
-            throw StateError('vault materialization failed');
-          }
-        } else {
-          await opened.saveNote(targetPath, node.content);
-        }
+        // The runner commits the imported node and revision after this
+        // callback. Materialize bytes only here so appending to an existing
+        // journal does not create a second normal edit revision first.
+        await opened.saveNote(targetPath, node.content);
         if (info != null) {
           imported
               .putIfAbsent(info.sourceName, () => <String>{})

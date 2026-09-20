@@ -1,8 +1,8 @@
-import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/app_mobile.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/import/legacy_import_plan.dart';
 import 'package:tylog/import/legacy_import_runner.dart';
@@ -46,6 +46,15 @@ class S extends VaultStorage {
   Future<void> delete(String p) async {}
   @override
   Future<String> hash(String p) async => '';
+}
+
+class WritableS extends S {
+  WritableS(super.files);
+
+  @override
+  Future<void> writeBytes(String p, List<int> b) async {
+    files[p] = List<int>.from(b);
+  }
 }
 
 void main() {
@@ -177,6 +186,119 @@ void main() {
       expect(await db.select(db.revisions).get(), hasLength(5));
       expect((await db.select(db.importJobs).getSingle()).completedCount, 5);
       expect((await db.select(db.importJobs).getSingle()).status, 'completed');
+    },
+  );
+
+  test(
+    'materializing an existing journal leaves the importer as revision owner',
+    () async {
+      final storage = WritableS({
+        'journals/day.md': utf8.encode('legacy journal'),
+        'daily/2026/01/2026-01-01.typ': utf8.encode('existing journal'),
+      });
+      final db = await _database(storage, addTearDown);
+      final manifest = await buildLegacyImportManifest(
+        storage,
+        LegacyImportDialect.logseq,
+      );
+      await _initialize(db, manifest);
+      const targetPath = 'daily/2026/01/2026-01-01.typ';
+      const content = 'existing journal\n\n== From Logseq\n\nImported';
+      await db.commitNodeEdit(
+        node: const NodeData(
+          id: 'existing-journal',
+          type: 'daily',
+          title: '2026-01-01',
+          content: 'existing journal',
+          attributesJson: '{"path":"daily/2026/01/2026-01-01.typ"}',
+          createdAtMs: 10,
+          updatedAtMs: 10,
+        ),
+        revision: const RevisionData(
+          id: 'existing-journal-revision',
+          entityKind: 'node',
+          entityId: 'existing-journal',
+          payloadJson: '{"source":"existing"}',
+          createdAtMs: 10,
+        ),
+      );
+      await db
+          .into(db.importJobs)
+          .insert(
+            ImportJobsCompanion.insert(
+              id: 'previous-job',
+              sourceKind: 'logseq',
+              sourceFingerprint: manifest.fingerprint,
+              status: 'completed',
+              totalCount: 1,
+              completedCount: const Value(1),
+              createdAtMs: 1,
+              updatedAtMs: 20,
+            ),
+          );
+      await db
+          .into(db.importItems)
+          .insert(
+            ImportItemsCompanion.insert(
+              jobId: 'previous-job',
+              sourcePath: 'journals/old-day.md',
+              state: 'written',
+              targetNodeId: const Value('existing-journal'),
+              targetPath: const Value(targetPath),
+              updatedAtMs: 20,
+            ),
+          );
+      final runner = LegacyImportRunner(
+        database: db,
+        storage: storage,
+        manifest: manifest,
+        converter: (entry, source, hash) async =>
+            entry.path == 'journals/day.md'
+            ? (() async {
+                final identity = await legacyImportTargetIdentity(
+                  database: db,
+                  path: targetPath,
+                  current: 'existing journal',
+                  now: 30,
+                );
+                return (
+                  node: NodeData(
+                    id: identity.id,
+                    type: 'daily',
+                    title: '2026-01-01',
+                    content: content,
+                    attributesJson: '{"import_appended":true}',
+                    createdAtMs: identity.createdAtMs,
+                    updatedAtMs: 30,
+                  ),
+                  revision: RevisionData(
+                    id: 'imported-journal-revision',
+                    entityKind: 'node',
+                    entityId: identity.id,
+                    parentRevisionId: identity.parentRevisionId,
+                    payloadJson: '{"source":"journals/day.md"}',
+                    createdAtMs: 30,
+                  ),
+                  targetPath: targetPath,
+                );
+              })()
+            : null,
+        materializer: (_, node, path) async {
+          await storage.writeText(path, node.content);
+        },
+      );
+
+      expect(await runner.runBatch('job'), isFalse);
+      expect(await storage.readText(targetPath), content);
+      expect(await db.select(db.nodes).get(), hasLength(1));
+      expect((await db.select(db.nodes).getSingle()).id, 'existing-journal');
+      final revisions = await db.select(db.revisions).get();
+      expect(revisions, hasLength(2));
+      final imported = revisions.singleWhere(
+        (revision) => revision.id == 'imported-journal-revision',
+      );
+      expect(imported.entityId, 'existing-journal');
+      expect(imported.parentRevisionId, 'existing-journal-revision');
     },
   );
 

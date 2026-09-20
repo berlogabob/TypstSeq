@@ -20,6 +20,7 @@ import 'vault_lock.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
 import 'vault_worker.dart';
+import 'widgets/date_format.dart';
 
 class WorkspaceSyncNotConfigured implements Exception {
   const WorkspaceSyncNotConfigured();
@@ -273,6 +274,10 @@ class WorkspaceController extends ChangeNotifier {
 
   bool get hasSyncConflicts => syncConflicts.isNotEmpty;
 
+  String _todayPath(DateTime day) =>
+      'daily/${day.year.toString().padLeft(4, '0')}/'
+      '${day.month.toString().padLeft(2, '0')}/${isoDay(day)}.typ';
+
   /// Exposed for tests only, to verify [startCloudPolling]/[stopCloudPolling]
   /// actually toggle the background poll timer.
   @visibleForTesting
@@ -367,7 +372,11 @@ class WorkspaceController extends ChangeNotifier {
             !vaultNeedsAndroidTreeMigration(next),
       );
       if (_disposed || generation != _vaultGeneration) return;
-      final today = await opened.todayNote();
+      final todayInstant = _now();
+      final todayPath = _todayPath(todayInstant);
+      final todayExisted = await opened.storage.exists(todayPath);
+      if (_disposed || generation != _vaultGeneration) return;
+      final today = await opened.todayNote(todayInstant);
       if (_disposed || generation != _vaultGeneration) return;
       final loadedFiles = <String, Uint8List>{};
       // Load user-vendored Typst packages (e.g. @preview/<name>:<ver> dropped
@@ -418,6 +427,10 @@ class WorkspaceController extends ChangeNotifier {
       // search-index rebuild (thousands of sequential reads on SAF vaults).
       vault = opened;
       entry = next;
+      if (!todayExisted) {
+        await _persistCreatedNote(opened, generation, today);
+        if (!_owns(opened, generation)) return;
+      }
       note = today;
       final loaded = await opened.loadIndex();
       if (_disposed || generation != _vaultGeneration) return;
@@ -565,6 +578,84 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Creates a page and records its initial source in the durable database.
+  /// Existing pages are returned untouched.
+  Future<String> createPage(
+    String title, {
+    String kind = 'note',
+    String? template,
+    Set<String>? knownIds,
+    DateTime? now,
+  }) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) throw StateError('No vault is open');
+    final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
+    if (safe.isEmpty) throw ArgumentError('Page title is empty');
+    final directory = switch (kind) {
+      'project' => 'projects',
+      'article' => 'articles',
+      _ => 'notes',
+    };
+    final path = '$directory/$safe.typ';
+    final existed = await opened.storage.exists(path);
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    final created = await opened.page(
+      title,
+      kind: kind,
+      template: template,
+      knownIds: knownIds,
+      now: now,
+    );
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    if (!existed) await _persistCreatedNote(opened, generation, created);
+    return created;
+  }
+
+  /// Creates today's journal file and persists it when it was absent.
+  Future<String> ensureTodayNote([DateTime? day]) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) throw StateError('No vault is open');
+    final instant = day ?? _now();
+    final path = _todayPath(instant);
+    final existed = await opened.storage.exists(path);
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    final created = await opened.todayNote(instant);
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    if (!existed) await _persistCreatedNote(opened, generation, created);
+    return created;
+  }
+
+  /// Persists a file materialized by an import whose path was previously
+  /// absent. A failed database write removes that newly-created file.
+  Future<void> persistCreatedNote(String path) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) throw StateError('No vault is open');
+    if (!await opened.storage.exists(path)) {
+      throw StateError('Created note is missing: $path');
+    }
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    await _persistCreatedNote(opened, generation, path);
+  }
+
+  Future<void> _persistCreatedNote(
+    Vault opened,
+    int generation,
+    String path,
+  ) async {
+    final source = utf8.decode(await opened.storage.readBytes(path));
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    try {
+      await _persistNote(opened, path, source);
+    } catch (_) {
+      if (_owns(opened, generation)) await opened.storage.delete(path);
+      rethrow;
+    }
+    if (!_owns(opened, generation)) throw StateError('Vault changed');
   }
 
   /// Applies one metadata/body transform without racing the editor or another

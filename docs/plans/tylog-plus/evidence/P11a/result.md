@@ -34,4 +34,4 @@ flutter test
 
 An independent Luna review found and verified fixes for cross-vault identity,
 revision ordering, deletion, rollback marker state, missing-file deletion, and
-read/mutation races. Creation/import routing remains P11c.
+read/mutation races. [P11c](../P11c/result.md) completes creation/import routing.
