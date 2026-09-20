@@ -17,7 +17,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P09 | Resumable legacy import | P07 | RUNNING | Interruption/retry, every source accounted for |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | RUNNING | Startup/open/save gates |
+| P12 | Paged startup/list reads | P11 | RUNNING | Startup/open/save gates; A24 cold-start p95 450 ms, normal save/open still pending |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
@@ -124,3 +124,5 @@ Current wave verification: 729 host tests passed, 2 skipped; targeted analyzer c
 Follow-up checkpoint: P18 no-text vector PDF native acceptance passed on Mac and A24 (2 tests each); P25 repeatable ARM64 release script built successfully. Universal build root cause reproduced directly in local Xcode `lipo`; full milestone gates remain as above. Luna owned the native test addition; coordinator corrected its finder, ran both platforms, and documented the build command.
 
 P12 follow-up: the bounded 30-startup/100-save workload passed on A24 in the debug integration runner (startup p95 6 ms, save p95 9 ms). This does not close P12e because the required profile-build and normal app-startup measurements remain separate gates.
+
+Additional P12 evidence: 30 cold starts of the installed production profile package on A24 measured `TotalTime` p50 417 ms, p95 450 ms, max 452 ms. Startup passes the 2,000 ms gate; normal editor save/open timing remains pending.

@@ -31,3 +31,17 @@ Both thresholds passed. This is useful device evidence for the SQLite workload,
 but it is not the release/profile gate: `flutter test` installs a temporary
 debug test APK. P12e remains device-pending until the workload is exercised
 inside a profile build with the app's normal startup path.
+
+### A24 production cold-start timing
+
+The installed production package (`org.tylog.tylog`, version `0.4.4`, profile
+APK installed over the existing app) was force-stopped and launched 30 times
+with Android activity timing. The vault was not cleared or modified.
+
+```text
+TotalTime_ms p50=417 p95=450 max=452 samples=30
+```
+
+This passes the 2,000 ms startup gate. The remaining device measurement is a
+profile-run normal editor save/open workload; the 100-save result above is the
+bounded database workload from the debug integration runner.
