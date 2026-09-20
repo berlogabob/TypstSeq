@@ -2,6 +2,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/retrieval/chunking.dart';
 
 void main() {
+  test('overlap at surrogate boundary still progresses', () {
+    final chunks = chunkText(
+      sourceVersionId: 'v',
+      text: 'a😀b',
+      targetLength: 2,
+      overlap: 1,
+    );
+    expect(chunks.map((chunk) => chunk.start), orderedEquals([0, 1, 3]));
+    expect(chunks.last.end, 4);
+  });
+
   test(
     'chunking is deterministic and preserves overlapping source offsets',
     () {
@@ -28,5 +39,16 @@ void main() {
       ),
       throwsArgumentError,
     );
+  });
+
+  test('hashes UTF-8 and never splits surrogate pairs', () {
+    final chunks = chunkText(
+      sourceVersionId: 'v',
+      text: 'a😀b',
+      targetLength: 3,
+      overlap: 0,
+    );
+    expect(chunks.map((chunk) => chunk.text), ['a😀', 'b']);
+    expect(chunks.every((chunk) => chunk.text.runes.isNotEmpty), isTrue);
   });
 }

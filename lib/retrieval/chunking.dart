@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
 
 class TextChunk {
@@ -30,9 +32,13 @@ List<TextChunk> chunkText({
   final chunks = <TextChunk>[];
   var start = 0;
   while (start < text.length) {
-    final end = (start + targetLength).clamp(0, text.length);
+    var end = (start + targetLength).clamp(0, text.length);
+    if (end < text.length && _splitsSurrogate(text, end)) {
+      end--;
+      if (end == start) end += 2;
+    }
     final value = text.substring(start, end);
-    final hash = sha256.convert(value.codeUnits).toString();
+    final hash = sha256.convert(utf8.encode(value)).toString();
     chunks.add(
       TextChunk(
         id: '$sourceVersionId:$start:$end',
@@ -44,7 +50,18 @@ List<TextChunk> chunkText({
       ),
     );
     if (end == text.length) break;
+    final previousStart = start;
     start = end - overlap;
+    if (start <= previousStart) start = previousStart + 1;
+    if (start > 0 && start < text.length && _splitsSurrogate(text, start)) {
+      start++;
+    }
   }
   return chunks;
 }
+
+bool _splitsSurrogate(String text, int offset) =>
+    text.codeUnitAt(offset - 1) >= 0xD800 &&
+    text.codeUnitAt(offset - 1) <= 0xDBFF &&
+    text.codeUnitAt(offset) >= 0xDC00 &&
+    text.codeUnitAt(offset) <= 0xDFFF;

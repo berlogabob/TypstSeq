@@ -116,6 +116,43 @@ void main() {
     expect(snapshot.entries.keys, contains('records/nodes.jsonl'));
   });
 
+  test('reads legacy v1 without annotations and requires them in v2', () async {
+    final bytes = await exportPortableSnapshot(
+      database: database,
+      storage: storage,
+    );
+    final original = ZipDecoder().decodeBytes(bytes);
+    final manifest =
+        jsonDecode(utf8.decode(original.find('manifest.json')!.readBytes()!))
+            as Map;
+    final entries = manifest['entries'] as List;
+    entries.removeWhere(
+      (entry) =>
+          entry['path'] == 'records/annotations.jsonl' ||
+          entry['path'] == 'records/source_versions.jsonl',
+    );
+    final archive = Archive();
+    for (final file in original) {
+      if (file.name == 'manifest.json' ||
+          file.name == 'records/annotations.jsonl' ||
+          file.name == 'records/source_versions.jsonl') {
+        continue;
+      }
+      archive.add(file);
+    }
+    archive.add(ArchiveFile.string('manifest.json', jsonEncode(manifest)));
+    expect(
+      () => parsePortableSnapshot(ZipEncoder().encodeBytes(archive)),
+      throwsA(isA<FormatException>()),
+    );
+    manifest['version'] = 1;
+    archive.add(ArchiveFile.string('manifest.json', jsonEncode(manifest)));
+    final legacy = parsePortableSnapshot(ZipEncoder().encodeBytes(archive));
+    expect(legacy.annotations, isEmpty);
+    expect(legacy.sourceVersions, isEmpty);
+    expect(legacy.nodes, hasLength(1));
+  });
+
   test('rejects a manifest with an unlisted archive entry', () async {
     final bytes = await exportPortableSnapshot(
       database: database,

@@ -46,3 +46,7 @@ The current codec assembles ZIP bytes in memory. P24 must measure real export
 memory before production migration; switch to the existing archive stream API
 only if that measurement exceeds the mobile memory gate. UI routing belongs to
 P11.
+
+## Annotation omission repaired (2026-09-20)
+
+Portable format v2 includes all source-version and annotation fields. Import preserves source → version → annotation ordering and uses the existing conflict planner/transaction. V1 snapshots with the supported database schema remain readable; v2 rejects missing record sets. Importing older database-schema archives still needs an explicit migration path. An annotated round trip preserves offsets, Unicode quotes, context, timestamps and IDs; repeat import is a no-op, and conflicting annotation edits preserve local content. Derived chunks/embeddings are rebuildable and intentionally excluded.

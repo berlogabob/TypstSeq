@@ -47,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.2
   share_plus: ^13.3.0
   drift: ^2.35.0
+  pdfrx: ^2.4.8
 dev_dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_test:

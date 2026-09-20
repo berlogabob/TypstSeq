@@ -2,7 +2,7 @@
 
 Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 
-**Main milestones: 16/26 DONE. Active wave: P05 + P09 + P12 + P18–P21. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
@@ -23,14 +23,14 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
-| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | Versioned extraction and source persistence landed; native reader next |
+| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | In-app PDF reader and persisted selection implementation underway; native smoke pending |
 | P19 | Durable annotations/navigation | P18 | RUNNING | Versioned page/character annotation storage landed; reattachment UI next |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic versioned chunk contract landed; resumable embedding jobs next |
-| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Bounded cosine, FTS fusion, and stable source-offset navigation landed; reader wiring next |
-| P22 | Evidence relations/bounded graph | P07,P12 | DONE | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
-| P23 | Complete research workflow | P19,P21,P22 | DONE | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
-| P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | DONE | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
-| P25 | Production migration/release acceptance | P03,P24 | BLOCKED | [Ready-to-run release acceptance; blocked by real Nextcloud/device access](evidence/P25/result.md) |
+| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | Retrieval primitives tested; production pipeline, shared ID mapping, and Dart/device benchmarks remain |
+| P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
+| P23 | Complete research workflow | P19,P21,P22 | RUNNING | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
+| P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | RUNNING | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
+| P25 | Production migration/release acceptance | P03,P24 | BLOCKED | [Ready-to-run release acceptance; blocked by real Nextcloud/release acceptance](evidence/P25/result.md) |
 | P26 | Daily-use acceptance/thesis freeze | P25 | TODO | Seven days; every required gate passes |
 
 ## Current bounded tickets
@@ -99,3 +99,24 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
 - P12: RUNNING; first remove repeated full-vault listings, then remove root-isolate cache decoding and route list surfaces through 50-row keyset pages.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
+
+## Acceptance correction — 2026-09-20
+
+Independent code review reopened P22–P24. Earlier DONE entries described helper/unit-test coverage, not their full plan acceptance. P22 still needs graph UI wiring; P23 still needs an integrated research workflow; P24 still needs actual process-kill/restart and full rehearsal. The P21 NumPy numbers benchmark a different implementation and cannot validate Dart retrieval. A24 is currently connected; device absence is no longer a blocker. No credentials or account setup were inferred from device availability.
+
+| Ticket | State | Measurable exit |
+|---|---|---|
+| P10d annotation export repair | DONE | Versions + annotations round-trip unchanged, repeat import no-op, conflict preserves local |
+| P18b native PDF reader | REVIEW | Attachment opens in-app; PDFium extraction persisted; image-only PDF readable |
+| P19b selection persistence | DONE | Select/save/reopen/navigate on native reader; duplicate quote requires review |
+| P21b candidate safety | DONE | Duplicate IDs counted once; retained cosine results O(k); same ID namespace documented |
+| P22b traversal budget | DONE | At most 200 nodes/500 examined edges; missing seed empty; fanout test passes |
+| P24b post-commit process death | DONE | A24 force-stop retains annotation/source version; native reopen/navigation passes |
+
+### This implementation wave
+
+Luna subagents implemented anchor safety, bounded candidate selection, graph traversal, and the reader storage seam. Coordinator reviewed/integrated, corrected surrogate-overlap progress, repaired export, added reader UI, and executed native tests. Provider token usage was not exposed; one later Luna review hit the account usage limit.
+
+Still required before full acceptance: P05 Android model parity/latency/memory + 90 judged queries; P09 private import rehearsal; P12 startup/open/save/frame measurements; P18 corpus/Mac reader checks; P19 manual reassignment and sync; P20 embedding runtime scheduling; P21 production hybrid pipeline and cited navigation; P22 graph UI/layout/export wiring; P23 end-to-end workflow; P24 integrated failure rehearsal; P25 real Nextcloud/release integrity; P26 seven days of use.
+
+Current wave verification: 729 host tests passed, 2 skipped; targeted analyzer clean; PDF reader native fixture passed on Mac and A24; A24 post-commit force-stop/reopen passed. Normal Android profile build installed over production with registry fingerprint unchanged; normal ARM64 Mac release built and launched. Universal Mac release packaging remains open.

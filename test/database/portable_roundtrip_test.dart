@@ -72,6 +72,83 @@ void main() {
     },
   );
 
+  test(
+    'annotations and source versions survive export, repeat import, and conflicts',
+    () async {
+      final sourceDb = await database('annotated-source');
+      addTearDown(sourceDb.close);
+      await _seed(sourceDb);
+      const version = SourceVersionData(
+        id: 'version-1',
+        sourceId: 'source-1',
+        sha256: 'hash',
+        status: 'extracted',
+        pagesJson: '[{"page":0,"text":"áβ text","start":0,"end":7}]',
+        createdAtMs: 4,
+      );
+      await sourceDb.into(sourceDb.sourceVersions).insert(version);
+      await sourceDb.saveAnnotation(
+        id: 'annotation-1',
+        sourceVersionId: version.id,
+        page: 0,
+        startOffset: 0,
+        endOffset: 2,
+        quote: 'áβ',
+        context: 'áβ text',
+        createdAtMs: 5,
+        updatedAtMs: 5,
+      );
+      final expected =
+          (await sourceDb.select(sourceDb.annotations).get()).single;
+      final archive = await exportPortableSnapshot(
+        database: sourceDb,
+        storage: LocalVaultStorage(
+          Directory('${root.path}/annotated-source-files'),
+        ),
+      );
+      final targetDb = await database('annotated-target');
+      addTearDown(targetDb.close);
+      final storage = LocalVaultStorage(
+        Directory('${root.path}/annotated-target-files'),
+      );
+      final first = await importPortableSnapshot(
+        database: targetDb,
+        storage: storage,
+        bytes: archive,
+      );
+      expect(first.insertedRows, 9);
+      expect(
+        (await targetDb.select(targetDb.sourceVersions).get()).single,
+        version,
+      );
+      expect(
+        (await targetDb.select(targetDb.annotations).get()).single,
+        expected,
+      );
+      final again = await importPortableSnapshot(
+        database: targetDb,
+        storage: storage,
+        bytes: archive,
+      );
+      expect(again.insertedRows, 0);
+      expect(again.unchangedRows, 9);
+      await (targetDb.update(targetDb.annotations)
+            ..where((row) => row.id.equals(expected.id)))
+          .write(const AnnotationsCompanion(context: Value('local context')));
+      final conflict = await importPortableSnapshot(
+        database: targetDb,
+        storage: storage,
+        bytes: archive,
+      );
+      expect(conflict.hasConflicts, isTrue);
+      expect(conflict.plan.conflicts.single.table, 'annotations');
+      expect(
+        (await targetDb.select(targetDb.annotations).get()).single.context,
+        'local context',
+      );
+    },
+  );
+
   test('divergent stable ID reports conflict and changes nothing', () async {
     final sourceDb = await database('source-conflict');
     await _seed(sourceDb);

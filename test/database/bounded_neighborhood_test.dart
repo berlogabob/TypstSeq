@@ -53,4 +53,65 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'caps high fanout deterministically and rejects missing seeds',
+    () async {
+      final db = TyLogDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      for (final id in [
+        'root',
+        ...List.generate(250, (i) => 'n${i.toString().padLeft(3, '0')}'),
+      ]) {
+        await db
+            .into(db.nodes)
+            .insert(
+              NodesCompanion.insert(
+                id: id,
+                type: 'note',
+                title: id,
+                content: id,
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              ),
+            );
+      }
+      for (var i = 0; i < 250; i++) {
+        await db
+            .into(db.edges)
+            .insert(
+              EdgesCompanion.insert(
+                id: 'e${i.toString().padLeft(3, '0')}',
+                fromNodeId: 'root',
+                toNodeId: 'n${i.toString().padLeft(3, '0')}',
+                type: 'links',
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              ),
+            );
+      }
+      final result = await db.boundedNeighborhood('root', maxDepth: 1);
+      expect(result, hasLength(200));
+      expect(result.first.id, 'root');
+      expect(result.last.id, 'n198');
+      expect(await db.boundedNeighborhood('missing'), isEmpty);
+    },
+  );
+
+  test('validates traversal bounds', () async {
+    final db = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    expect(
+      () => db.boundedNeighborhood('x', maxDepth: 11),
+      throwsArgumentError,
+    );
+    expect(
+      () => db.boundedNeighborhood('x', maxNodes: 201),
+      throwsArgumentError,
+    );
+    expect(
+      () => db.boundedNeighborhood('x', maxEdges: 501),
+      throwsArgumentError,
+    );
+  });
 }

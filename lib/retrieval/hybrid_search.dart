@@ -8,7 +8,8 @@ class HybridHit {
 }
 
 /// Merges keyword and vector rankings without comparing incompatible scores.
-/// Reciprocal-rank fusion keeps this query path backend-independent.
+/// Reciprocal-rank fusion keeps this query path backend-independent. Keyword
+/// and vector IDs must use the same entity ID namespace for agreement to work.
 List<HybridHit> fuseSearchHits({
   required Iterable<String> keywordIds,
   required Iterable<VectorHit> vectorHits,
@@ -18,12 +19,15 @@ List<HybridHit> fuseSearchHits({
   if (limit <= 0 || rankConstant < 1) return const [];
   final scores = <String, double>{};
   var rank = 0;
+  final seenKeywords = <String>{};
   for (final id in keywordIds) {
-    if (scores.containsKey(id)) continue;
+    if (!seenKeywords.add(id)) continue;
     scores[id] = (scores[id] ?? 0) + 1 / (rankConstant + ++rank);
   }
   rank = 0;
+  final seenVectors = <String>{};
   for (final hit in vectorHits) {
+    if (!seenVectors.add(hit.id)) continue;
     if (scores.containsKey(hit.id)) {
       scores[hit.id] = scores[hit.id]! + 1 / (rankConstant + ++rank);
     } else {

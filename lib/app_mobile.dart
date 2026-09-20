@@ -25,6 +25,7 @@ import 'nextcloud_sync.dart';
 import 'nextcloud_sync/conflict_choice.dart';
 import 'pkms_registry.dart';
 import 'platform_file_actions.dart';
+import 'pdf/pdf_reader_screen.dart';
 import 'report.dart';
 import 'rich_editor.dart';
 import 'scanner.dart';
@@ -2077,7 +2078,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null || !isSafeVaultPath(path)) return;
     try {
-      await openPlatformFile(v.storage, path, localRoot: _localVaultDirectory);
+      if (path.toLowerCase().endsWith('.pdf')) {
+        final entry = workspace.entry;
+        final bytes = await v.storage.readBytes(path);
+        final db = entry == null ? null : await _databaseForVault(entry);
+        if (!mounted || vault != v) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) =>
+                PdfReaderScreen(bytes: bytes, path: path, database: db),
+          ),
+        );
+      } else {
+        await openPlatformFile(
+          v.storage,
+          path,
+          localRoot: _localVaultDirectory,
+        );
+      }
     } catch (error) {
       if (mounted) showSnack(context, 'Could not open file: $error');
     }

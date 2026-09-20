@@ -12,3 +12,13 @@ Evidence:
 - `flutter analyze lib/database/tylog_database.dart lib/pdf/pdf_extraction.dart test/database/pdf_source_version_test.dart` — clean.
 
 Remaining P18 work: connect a native PDF reader and add selection/navigation integration. The contract is deliberately independent of that reader so changing PDF backends does not move existing anchors.
+
+## Native reader implementation (2026-09-20)
+
+PDF attachment opening now routes to an in-app PDFium reader (`pdfrx` 2.4.8, compatible with the pinned Dart SDK). It reads vault bytes through the existing storage adapter, persists source identity/version/page text and creates derived chunks. The extraction uses the same structured text as PDF selection. Repeated opens preserve the original projection; changed text under the same extractor version is rejected. Image-only PDFs remain viewable and are labelled as lacking selectable text.
+
+API verified against the installed package and [upstream selection documentation](https://github.com/espresso3389/pdfrx/blob/master/doc/Text-Selection.md). Native smoke covers a generated selectable-text PDF, not the private corpus or image-only/password-protected corpus. Full-document byte/text buffering and opening/extraction memory still require corpus-scale measurements.
+
+A24 native reader fixture passes, including rendered text selection, durable save, reopening and highlight navigation. Repeating after a force-stop verifies retained records; see P24 for exact commands.
+
+Mac native smoke also passes with PDFium (one test). Xcode 27 rejects the former macOS 10.15 deployment setting, so Runner and all CocoaPods targets now consistently require macOS 12.0. This is a compatibility-floor change, not a claim of testing on macOS 12 hardware.

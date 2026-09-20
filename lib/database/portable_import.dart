@@ -42,6 +42,10 @@ Future<PortableImportReport> importPortableSnapshot({
 
   final incomingRows = _snapshotRows(snapshot);
   final localRows = <PortableRow>[
+    for (final row in await database.select(database.sourceVersions).get())
+      PortableRow(table: 'source_versions', id: row.id, value: row.toJson()),
+    for (final row in await database.select(database.annotations).get())
+      PortableRow(table: 'annotations', id: row.id, value: row.toJson()),
     for (final row in await database.select(database.sources).get())
       PortableRow(table: 'sources', id: row.id, value: row.toJson()),
     for (final row in await database.select(database.nodes).get())
@@ -99,6 +103,10 @@ Future<PortableImportReport> importPortableSnapshot({
 }
 
 List<PortableRow> _snapshotRows(PortableSnapshot snapshot) => [
+  for (final row in snapshot.sourceVersions)
+    PortableRow(table: 'source_versions', id: row['id'] as String, value: row),
+  for (final row in snapshot.annotations)
+    PortableRow(table: 'annotations', id: row['id'] as String, value: row),
   for (final row in snapshot.sources)
     PortableRow(table: 'sources', id: row['id'] as String, value: row),
   for (final row in snapshot.nodes)
@@ -143,7 +151,13 @@ Future<void> _insertRows(
       .where((decision) => decision.kind == PortableMergeKind.insert)
       .map((decision) => decision.incoming!)
       .toList();
-  for (final table in const ['sources', 'nodes', 'edges']) {
+  for (final table in const [
+    'sources',
+    'source_versions',
+    'annotations',
+    'nodes',
+    'edges',
+  ]) {
     for (final row in inserts.where((row) => row.table == table)) {
       await _insertRow(database, row);
     }
@@ -177,6 +191,16 @@ Future<void> _insertRows(
 Future<void> _insertRow(TyLogDatabase database, PortableRow row) async {
   final value = (row.value! as Map).cast<String, dynamic>();
   switch (row.table) {
+    case 'source_versions':
+      await database
+          .into(database.sourceVersions)
+          .insert(SourceVersionData.fromJson(value));
+      return;
+    case 'annotations':
+      await database
+          .into(database.annotations)
+          .insert(AnnotationData.fromJson(value));
+      return;
     case 'sources':
       await database.into(database.sources).insert(SourceData.fromJson(value));
       return;

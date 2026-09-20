@@ -13,4 +13,10 @@ Evidence:
 - `flutter analyze lib/database/tylog_database.dart test/database/annotation_test.dart` — clean.
 - `flutter test test/pdf_annotation_reattach_test.dart` — moved, ambiguous, and missing anchor behavior is covered.
 
-Remaining work: connect reader selection and surface ambiguous anchors for review.
+Remaining work: manual reassignment of ambiguous anchors, annotation synchronization, and corpus-scale acceptance. Reader selection and review status are now wired.
+
+## Reader integration (2026-09-20)
+
+The reader saves selected page ranges with exact quote, surrounding context, version identity and global UTF-16 offsets. Multi-page saves are transactional; repeated saves are idempotent. The Highlights drawer navigates back to selected text. Prior-version quotes are resolved only when unique; repeated/overlapping or missing matches display Needs review and do not silently move. Annotation reattachment stops at the second match. Native select/save/reopen/navigation passed on A24 using an isolated debug package and synthetic PDF.
+
+Remaining: manual reassignment of ambiguous anchors, annotation synchronization, private corpus acceptance. Mac and A24 native selection smoke tests pass.

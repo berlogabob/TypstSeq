@@ -1,6 +1,6 @@
 # P24 — migration rehearsal and integrated failures
 
-Status: DONE (host)
+Status: RUNNING
 
 The failure-path suite exercises schema migration and rollback, atomic vault migration, permission loss, stalled storage calls, interrupted sync, resumable recovery, corrupt-state replacement, archive restore, and regression behavior. The complete Nextcloud sync suite also covers conditional-transfer races, remote wipe protection, conflict preservation, and the 1,602-file archive restore path.
 
@@ -10,3 +10,17 @@ Evidence:
 - `flutter test test/nextcloud_sync_test.dart` — 105 passed.
 
 The tests use deterministic failure injectors and local WebDAV fixtures; P25 still requires release builds, the real vault, and both physical devices.
+
+Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.
+
+## Native post-commit restart evidence (2026-09-20)
+
+A24, isolated `org.tylog.tylog.debug` test package, generated one-page PDF.
+
+1. `flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d <A24>` seeds a file-backed SQLite DB and verifies native selection/save/reopen/navigation.
+2. `adb shell am force-stop org.tylog.tylog.debug` terminates the test app.
+3. `flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d <A24> --dart-define=P24_REOPEN_ONLY=true` asserts saved quote/version exist before rendering, then repeats navigation.
+
+Both runs pass (one native test each). `--no-uninstall` is necessary because Flutter otherwise removes the test app/data on exit. Reopen waits for PDF controller readiness independently of persisted data. Production package/data were not used. This establishes post-commit restart recovery for annotations, not interruption midway through migration, disk-full behavior, or the complete P24 release gate.
+
+Final host regression: `flutter test --no-pub` — 729 passed, 2 skipped. Native integration testing had cached Vulkan test shaders; removing only generated `build/unit_test_assets/AssetManifest.bin` rebuilt them for the host SkSL backend. No application workaround was needed. Run host and device asset-building tests sequentially.

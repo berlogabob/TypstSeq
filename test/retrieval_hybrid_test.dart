@@ -17,4 +17,17 @@ void main() {
       isEmpty,
     );
   });
+
+  test('duplicate IDs contribute once per ranking', () {
+    final hits = fuseSearchHits(
+      keywordIds: const ['a', 'a', 'b'],
+      vectorHits: const [
+        VectorHit(id: 'a', score: 1),
+        VectorHit(id: 'a', score: 0.9),
+        VectorHit(id: 'b', score: 0.8),
+      ],
+    );
+    expect(hits.map((hit) => hit.id), ['a', 'b']);
+    expect(hits.first.score, closeTo(2 / 61, 0.000001));
+  });
 }

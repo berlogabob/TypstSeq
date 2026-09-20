@@ -483,35 +483,91 @@ class TyLogDatabase extends _$TyLogDatabase {
   Future<List<GraphNodeDistance>> boundedNeighborhood(
     String nodeId, {
     int maxDepth = 3,
+    int maxNodes = 200,
+    int maxEdges = 500,
   }) async {
-    if (maxDepth < 0) throw ArgumentError.value(maxDepth, 'maxDepth');
-    final rows = await customSelect(
-      '''
-      WITH RECURSIVE walk(id, depth, path) AS (
-        SELECT ?1, 0, '|' || ?1 || '|'
-        UNION ALL
-        SELECT CASE WHEN e.from_node_id = w.id THEN e.to_node_id ELSE e.from_node_id END,
-               w.depth + 1,
-               w.path || CASE WHEN e.from_node_id = w.id
-                 THEN e.to_node_id ELSE e.from_node_id END || '|'
-        FROM edges e
-        JOIN walk w ON e.from_node_id = w.id OR e.to_node_id = w.id
-        WHERE w.depth < ?2
-          AND instr(w.path, '|' || CASE WHEN e.from_node_id = w.id
-            THEN e.to_node_id ELSE e.from_node_id END || '|') = 0
-      )
-      SELECT id, MIN(depth) AS depth FROM walk GROUP BY id ORDER BY depth, id
-      ''',
-      variables: [Variable.withString(nodeId), Variable.withInt(maxDepth)],
-      readsFrom: {edges},
+    if (maxDepth < 0 || maxDepth > 10) {
+      throw ArgumentError.value(
+        maxDepth,
+        'maxDepth',
+        'must be between 0 and 10',
+      );
+    }
+    if (maxNodes < 1 || maxNodes > 200) {
+      throw ArgumentError.value(
+        maxNodes,
+        'maxNodes',
+        'must be between 1 and 200',
+      );
+    }
+    if (maxEdges < 0 || maxEdges > 500) {
+      throw ArgumentError.value(
+        maxEdges,
+        'maxEdges',
+        'must be between 0 and 500',
+      );
+    }
+
+    final seed = await customSelect(
+      'SELECT id FROM nodes WHERE id = ? LIMIT 1',
+      variables: [Variable.withString(nodeId)],
+      readsFrom: {nodes},
     ).get();
+    if (seed.isEmpty) return const [];
+
+    final distances = <String, int>{nodeId: 0};
+    var frontier = <String>[nodeId];
+    var examinedEdges = 0;
+    for (
+      var depth = 0;
+      depth < maxDepth &&
+          frontier.isNotEmpty &&
+          distances.length < maxNodes &&
+          examinedEdges < maxEdges;
+      depth++
+    ) {
+      final placeholders = List.filled(frontier.length, '?').join(', ');
+      final rows = await customSelect(
+        'SELECT DISTINCT id, from_node_id, to_node_id FROM edges '
+        'WHERE from_node_id IN ($placeholders) OR to_node_id IN ($placeholders) '
+        'ORDER BY id LIMIT ?',
+        variables: [
+          ...frontier.map(Variable.withString),
+          ...frontier.map(Variable.withString),
+          Variable.withInt(maxEdges - examinedEdges),
+        ],
+        readsFrom: {edges},
+      ).get();
+      examinedEdges += rows.length;
+
+      final next = <String>{};
+      for (final row in rows) {
+        final from = row.read<String>('from_node_id');
+        final to = row.read<String>('to_node_id');
+        if (frontier.contains(from)) {
+          next.add(to);
+        }
+        if (frontier.contains(to)) {
+          next.add(from);
+        }
+      }
+      final candidates = next.where((id) => !distances.containsKey(id)).toList()
+        ..sort();
+      final room = maxNodes - distances.length;
+      final accepted = candidates.take(room).toList(growable: false);
+      for (final id in accepted) {
+        distances[id] = depth + 1;
+      }
+      frontier = accepted;
+    }
+
     return [
-      for (final row in rows)
-        GraphNodeDistance(
-          id: row.read<String>('id'),
-          depth: row.read<int>('depth'),
-        ),
-    ];
+      for (final entry in distances.entries)
+        GraphNodeDistance(id: entry.key, depth: entry.value),
+    ]..sort((a, b) {
+      final depth = a.depth.compareTo(b.depth);
+      return depth == 0 ? a.id.compareTo(b.id) : depth;
+    });
   }
 
   Future<void> saveEdge(EdgeData edge) async {

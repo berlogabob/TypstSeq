@@ -8,10 +8,11 @@ import 'package:tylog_core/storage.dart';
 import 'tylog_database.dart';
 
 const _portableFormat = 'tylog-portable-snapshot';
-const _portableVersion = 1;
+const _portableVersion = 2;
 const _portableSchemaVersion = 8;
 const _manifestPath = 'manifest.json';
-const _recordNames = ['sources', 'nodes', 'edges', 'revisions'];
+const _legacyRecordNames = ['sources', 'nodes', 'edges', 'revisions'];
+const _recordNames = [..._legacyRecordNames, 'source_versions', 'annotations'];
 
 /// A validated, read-only portable snapshot.
 class PortableSnapshot {
@@ -23,9 +24,13 @@ class PortableSnapshot {
     required this.edges,
     required this.revisions,
     required this.vaultFiles,
+    this.sourceVersions = const [],
+    this.annotations = const [],
   });
 
   final int schemaVersion;
+  final List<Map<String, Object?>> sourceVersions;
+  final List<Map<String, Object?>> annotations;
   final Map<String, PortableSnapshotEntry> entries;
   final List<Map<String, Object?>> sources;
   final List<Map<String, Object?>> nodes;
@@ -37,6 +42,8 @@ class PortableSnapshot {
 
   List<Map<String, Object?>> records(String name) => switch (name) {
     'sources' => sources,
+    'source_versions' => sourceVersions,
+    'annotations' => annotations,
     'nodes' => nodes,
     'edges' => edges,
     'revisions' => revisions,
@@ -65,19 +72,34 @@ Future<Uint8List> exportPortableSnapshot({
 }) async {
   // ponytail: archives are assembled in memory; switch to archive streams when
   // measured export memory exceeds the mobile acceptance budget.
-  final data = <String, List<int>>{};
-  data['records/sources.jsonl'] = _encodeRows(
-    (await database.select(database.sources).get()).map(_sourceRow),
-  );
-  data['records/nodes.jsonl'] = _encodeRows(
-    (await database.select(database.nodes).get()).map(_nodeRow),
-  );
-  data['records/edges.jsonl'] = _encodeRows(
-    (await database.select(database.edges).get()).map(_edgeRow),
-  );
-  data['records/revisions.jsonl'] = _encodeRows(
-    (await database.select(database.revisions).get()).map(_revisionRow),
-  );
+  final data = await database.transaction(() async {
+    final rows = <String, List<int>>{};
+    rows['records/sources.jsonl'] = _encodeRows(
+      (await database.select(database.sources).get()).map(_sourceRow),
+    );
+    rows['records/nodes.jsonl'] = _encodeRows(
+      (await database.select(database.nodes).get()).map(_nodeRow),
+    );
+    rows['records/edges.jsonl'] = _encodeRows(
+      (await database.select(database.edges).get()).map(_edgeRow),
+    );
+    rows['records/revisions.jsonl'] = _encodeRows(
+      (await database.select(database.revisions).get()).map(_revisionRow),
+    );
+
+    rows['records/source_versions.jsonl'] = _encodeRows(
+      (await database.select(database.sourceVersions).get()).map(
+        (row) => row.toJson(),
+      ),
+    );
+    rows['records/annotations.jsonl'] = _encodeRows(
+      (await database.select(database.annotations).get()).map(
+        (row) => row.toJson(),
+      ),
+    );
+
+    return rows;
+  });
 
   final files =
       (await storage.list(recursive: true))
@@ -152,7 +174,7 @@ PortableSnapshot parsePortableSnapshot(List<int> bytes) {
   }
   final manifest = _decodeObject(manifestFile.readBytes() ?? const []);
   if (manifest['format'] != _portableFormat ||
-      manifest['version'] != _portableVersion ||
+      (manifest['version'] != 1 && manifest['version'] != _portableVersion) ||
       manifest['schemaVersion'] != _portableSchemaVersion) {
     throw const FormatException('Unsupported portable snapshot manifest');
   }
@@ -203,7 +225,10 @@ PortableSnapshot parsePortableSnapshot(List<int> bytes) {
     }
     if (entry.name != _manifestPath) actual[entry.name] = entry;
   }
-  if (!_recordNames.every(
+  final recordNames = manifest['version'] == 1
+      ? _legacyRecordNames
+      : _recordNames;
+  if (!recordNames.every(
     (name) => expected.containsKey('records/$name.jsonl'),
   )) {
     throw const FormatException('Portable snapshot is missing record sets');
@@ -227,8 +252,8 @@ PortableSnapshot parsePortableSnapshot(List<int> bytes) {
 
   final records = <String, List<Map<String, Object?>>>{};
   for (final name in _recordNames) {
-    final content = actual['records/$name.jsonl']!.readBytes()!;
-    records[name] = _decodeRows(content);
+    final content = actual['records/$name.jsonl']?.readBytes();
+    records[name] = content == null ? [] : _decodeRows(content);
   }
   final vaultFiles = <String, Uint8List>{};
   for (final entry in actual.entries.where(
@@ -244,6 +269,8 @@ PortableSnapshot parsePortableSnapshot(List<int> bytes) {
     nodes: List.unmodifiable(records['nodes']!),
     edges: List.unmodifiable(records['edges']!),
     revisions: List.unmodifiable(records['revisions']!),
+    sourceVersions: List.unmodifiable(records['source_versions']!),
+    annotations: List.unmodifiable(records['annotations']!),
     vaultFiles: Map.unmodifiable(vaultFiles),
   );
 }
@@ -327,7 +354,7 @@ void _validateEntryPath(String path) {
   if (path == _manifestPath) return;
   if (path.startsWith('records/')) {
     if (!RegExp(
-      r'^records/(sources|nodes|edges|revisions)\.jsonl$',
+      r'^records/(sources|nodes|edges|revisions|source_versions|annotations)\.jsonl$',
     ).hasMatch(path)) {
       throw FormatException('Unsupported record path $path');
     }
