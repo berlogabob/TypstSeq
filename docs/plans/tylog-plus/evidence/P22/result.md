@@ -13,3 +13,5 @@ Evidence:
 - `flutter test test/retrieval_graph_svg_test.dart` — deterministic export and escaping pass.
 
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
+
+Full regression after schema and graph changes: `flutter test` — 707 passed, 2 skipped.

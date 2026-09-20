@@ -2,7 +2,7 @@
 
 Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 
-**Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 14/26 DONE. Active wave: P05 + P09 + P12 + P18–P21. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
