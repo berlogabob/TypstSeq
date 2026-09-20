@@ -481,6 +481,26 @@ class TyLogDatabase extends _$TyLogDatabase {
     ];
   }
 
+  Future<void> saveEdge(EdgeData edge) async {
+    await into(edges).insertOnConflictUpdate(
+      EdgesCompanion.insert(
+        id: edge.id,
+        fromNodeId: edge.fromNodeId,
+        toNodeId: edge.toNodeId,
+        type: edge.type,
+        attributesJson: Value(edge.attributesJson),
+        validFromMs: Value(edge.validFromMs),
+        validToMs: Value(edge.validToMs),
+        createdAtMs: edge.createdAtMs,
+        updatedAtMs: edge.updatedAtMs,
+      ),
+    );
+  }
+
+  Future<void> deleteEdge(String edgeId) async {
+    await (delete(edges)..where((row) => row.id.equals(edgeId))).go();
+  }
+
   Future<void> saveChunks(Iterable<TextChunk> values) async {
     await batch((batch) {
       batch.insertAllOnConflictUpdate(

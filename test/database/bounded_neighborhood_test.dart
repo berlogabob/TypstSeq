@@ -46,6 +46,11 @@ void main() {
         'b:1',
         'c:1',
       ]);
+      await db.deleteEdge('ca');
+      expect((await db.select(db.edges).get()).map((edge) => edge.id), [
+        'ab',
+        'bc',
+      ]);
     },
   );
 }
