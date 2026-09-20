@@ -30,7 +30,7 @@ share target/file handoff remains device-gated.
 
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
 
-Full regression after schema and graph changes: `flutter test` — 707 passed, 2 skipped.
+Full regression after schema, graph, and editor changes: `flutter test` — 731 passed, 2 skipped.
 
 Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.
 # P22 progress — bounded graph traversal

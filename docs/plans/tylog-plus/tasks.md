@@ -119,7 +119,7 @@ Luna subagents implemented anchor safety, bounded candidate selection, graph tra
 
 Still required before full acceptance: P05 Android model parity/latency/memory + 90 judged queries; P09 private import rehearsal; P12 startup/open/save/frame measurements; P18 corpus/Mac reader checks; P19 manual reassignment and sync; P20 embedding runtime scheduling; P21 production hybrid pipeline and cited navigation; P22 graph UI/layout/export wiring; P23 end-to-end workflow; P24 integrated failure rehearsal; P25 real Nextcloud/release integrity; P26 seven days of use.
 
-Current wave verification: 729 host tests passed, 2 skipped; targeted analyzer clean; PDF reader native fixture passed on Mac and A24; A24 post-commit force-stop/reopen passed. Normal Android profile build installed over production with registry fingerprint unchanged; normal ARM64 Mac release built and launched. Universal Mac release packaging remains open.
+Current wave verification: 731 host tests passed, 2 skipped; targeted analyzer clean; PDF reader native fixture passed on Mac and A24; A24 post-commit force-stop/reopen passed. Normal Android profile build installed over production with registry fingerprint unchanged; normal ARM64 Mac release built and launched. Universal Mac release packaging remains open.
 
 Follow-up checkpoint: P18 no-text vector PDF native acceptance passed on Mac and A24 (2 tests each); P25 repeatable ARM64 release script built successfully. Universal build root cause reproduced directly in local Xcode `lipo`; full milestone gates remain as above. Luna owned the native test addition; coordinator corrected its finder, ran both platforms, and documented the build command.
 
