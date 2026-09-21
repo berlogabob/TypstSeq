@@ -50,6 +50,9 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       }
       _source = widget.source;
       _controllers = _makeControllers(_source);
+      _undo.clear();
+      _redo.clear();
+      _revision.value++;
     }
   }
 
@@ -60,6 +63,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     final next = _readSource();
     if (next == _source) return;
     _undo.add(_source);
+    if (_undo.length > 100) _undo.removeAt(0);
     _redo.clear();
     _source = next;
     _pendingEmit = next;
