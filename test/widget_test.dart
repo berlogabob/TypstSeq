@@ -16,6 +16,7 @@ import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/report.dart';
+import 'package:tylog/retrieval/cosine_search.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/saved_searches.dart';
 import 'package:tylog/search_index.dart';
@@ -1630,6 +1631,45 @@ void main() {
     expect(opened, 'articles/paper.typ');
   });
 
+  testWidgets('KnowledgeScreen applies optional hybrid result ordering', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _knowledgeScreen(
+            search: (_, _, _) async => const [
+              PkmsSearchResult(
+                id: 'a',
+                path: 'notes/a.typ',
+                title: 'A',
+                kind: 'note',
+                tags: [],
+                score: 1,
+              ),
+              PkmsSearchResult(
+                id: 'b',
+                path: 'notes/b.typ',
+                title: 'B',
+                kind: 'note',
+                tags: [],
+                score: 1,
+              ),
+            ],
+            vectorSearch: (_) async => const [VectorHit(id: 'b', score: 0.9)],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final titles = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((text) => text.data)
+        .whereType<String>()
+        .toList();
+    expect(titles.indexOf('B'), lessThan(titles.indexOf('A')));
+  });
+
   testWidgets('KnowledgeScreen drops delayed results from an older query', (
     tester,
   ) async {
@@ -1954,6 +1994,7 @@ KnowledgeScreen _knowledgeScreen({
   Listenable? searchState,
   bool Function()? searchReady,
   int Function()? searchRevision,
+  Future<List<VectorHit>> Function(String query)? vectorSearch,
   Future<List<PkmsSearchResult>> Function(
     String query,
     String? tag,
@@ -1971,6 +2012,7 @@ KnowledgeScreen _knowledgeScreen({
   searchState: searchState,
   searchReady: searchReady,
   searchRevision: searchRevision,
+  vectorSearch: vectorSearch,
 );
 
 class _SearchStateProbe extends ChangeNotifier {

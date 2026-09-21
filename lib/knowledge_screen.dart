@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'saved_searches.dart';
+import 'retrieval/cosine_search.dart';
+import 'retrieval/hybrid_search.dart';
 import 'scanner.dart';
 import 'search_index.dart';
 import 'widgets/constants.dart';
@@ -23,6 +25,7 @@ class KnowledgeScreen extends StatefulWidget {
     this.searchState,
     this.searchReady,
     this.searchRevision,
+    this.vectorSearch,
     this.onFixProblems,
     this.savedSearches = const <SavedSearch>[],
     this.onSaveSearch,
@@ -41,6 +44,10 @@ class KnowledgeScreen extends StatefulWidget {
     String? status,
   )
   search;
+
+  /// Optional vector candidates used to reorder the keyword result metadata.
+  /// When omitted, the existing FTS order is unchanged.
+  final Future<List<VectorHit>> Function(String query)? vectorSearch;
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
@@ -210,7 +217,15 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final generation = ++_searchGeneration;
     if (!_isSearchReady) return;
     Future<void> run() async {
-      final results = await widget.search(query, selectedTag, selectedStatus);
+      var results = await widget.search(query, selectedTag, selectedStatus);
+      final vectorSearch = widget.vectorSearch;
+      if (vectorSearch != null) {
+        results = mergeHybridSearchResults(
+          keywordResults: results,
+          vectorHits: await vectorSearch(query),
+          limit: results.length,
+        );
+      }
       // A newer query was issued while this one was in flight; its own reply owns
       // the results now.
       if (!mounted || generation != _searchGeneration) return;
