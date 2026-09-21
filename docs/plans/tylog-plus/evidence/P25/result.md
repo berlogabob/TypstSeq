@@ -25,3 +25,12 @@ Mac: native reader smoke passes. Normal Apple Silicon release built (74.8 MB) an
 `tool/build_macos_arm64.sh` now supplies the temporary architecture override and cleans it on exit; `FLUTTER_BIN=/Users/berloga/development/flutter/bin/flutter tool/build_macos_arm64.sh` passed (74.8 MB). README documents the command and macOS 12 minimum. No SDK files were modified.
 
 Root-cause check: on the untouched Flutter SDK universal framework, `/usr/bin/lipo <framework-binary> -verify_arch arm64 x86_64` exits 1 with `-verify_arch requires exactly one input file`; checking either architecture separately exits 0, and `-info` reports both. This local Xcode tool behavior explains Flutter's misleading missing-architectures error. Universal packaging remains open; the script deliberately produces only ARM64.
+
+## ARM64 release rerun (2026-09-21)
+
+`FLUTTER_BIN=/Users/berloga/development/flutter/bin/flutter
+tool/build_macos_arm64.sh` completed successfully. The release bundle measured
+**72 MB** and the app executable SHA-256 was
+`8f904b03ece287de1550c920f01b77c8718d0cdb9214cdeb767cf5bbb276a2f7`. This
+validates repeatable Apple Silicon packaging only; universal packaging,
+signing, real-vault integrity, and Nextcloud acceptance remain open.
