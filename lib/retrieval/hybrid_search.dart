@@ -1,4 +1,5 @@
 import 'cosine_search.dart';
+import 'package:tylog_core/search_index.dart';
 
 class HybridHit {
   const HybridHit({required this.id, required this.score});
@@ -43,4 +44,28 @@ List<HybridHit> fuseSearchHits({
     return score == 0 ? a.id.compareTo(b.id) : score;
   });
   return hits.take(limit).toList(growable: false);
+}
+
+/// Applies the fused ID order to metadata already loaded by the keyword path.
+///
+/// Vector-only IDs are skipped until the chunk/node identity mapping is
+/// finalized; this keeps the UI from rendering incomplete result rows.
+List<PkmsSearchResult> mergeHybridSearchResults({
+  required Iterable<PkmsSearchResult> keywordResults,
+  required Iterable<VectorHit> vectorHits,
+  int limit = 10,
+}) {
+  final results = [for (final result in keywordResults) result];
+  final byId = <String, PkmsSearchResult>{
+    for (final result in results) result.id: result,
+  };
+  final fused = fuseSearchHits(
+    keywordIds: results.map((result) => result.id),
+    vectorHits: vectorHits,
+    limit: limit,
+  );
+  return fused
+      .map((hit) => byId[hit.id])
+      .whereType<PkmsSearchResult>()
+      .toList(growable: false);
 }

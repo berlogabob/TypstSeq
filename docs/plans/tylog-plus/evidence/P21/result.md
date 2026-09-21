@@ -20,6 +20,11 @@ remain open.
 
 `searchStoredChunksHybrid` now composes that vector path with reciprocal-rank fusion in one async seam. Focused vector and hybrid tests pass. The seam deliberately accepts keyword IDs from the caller until node/chunk identity mapping is finalized.
 
+`mergeHybridSearchResults` now applies the fused ID order to the existing
+`PkmsSearchResult` metadata, preserves durable paths/titles, bounds output, and
+skips vector-only IDs until chunk/node identity mapping is finalized. The
+focused hybrid suite covers metadata preservation and missing-ID handling.
+
 Evidence:
 
 - `flutter test test/retrieval_cosine_test.dart` — ranking and tie-break checks pass.
@@ -28,7 +33,8 @@ Evidence:
 - `flutter test test/database/chunk_persistence_test.dart` — retrieved chunks resolve to stable source ranges.
 - Reference only (not Dart/app acceptance): the P05.3 NumPy exact-cosine benchmark measured 10,000 vectors at 1.266 ms warm p95 / 53.6 MB RSS and 250,000 vectors at 18.115 ms warm p95 / 427.7 MB RSS. Fusion is bounded to the returned keyword/vector candidate lists, so it does not add a corpus-sized pass.
 
-Remaining work: supply the query embedding runtime, fuse with FTS in the UI, connect cited navigation, and measure corpus latency/memory gates.
+Remaining work: supply the query embedding runtime, call this merger from the
+FTS UI, connect cited navigation, and measure corpus latency/memory gates.
 
 Production audit: cosine/fusion/navigation primitives had no app callers at this checkpoint. FTS node IDs and vector chunk IDs must be mapped to the same entity before fusion. The Python benchmark does not measure the Dart implementation, query embedding, or end-to-end retrieval.
 
