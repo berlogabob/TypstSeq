@@ -334,8 +334,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ponytail: deliberately narrow gate; rich/protected notes keep full parity.
   bool get _usePlainLongEditor {
     final document = richController.document;
-    return richController.text.length >= 32 * 1024 &&
-        document.blocks.length >= 200 &&
+    return (richController.text.length >= 32 * 1024 ||
+            document.blocks.length >= 200) &&
         document.prefix.trim().isEmpty &&
         document.blocks.every(
           (block) =>
