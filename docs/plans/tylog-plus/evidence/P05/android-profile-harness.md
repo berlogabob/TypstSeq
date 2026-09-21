@@ -47,3 +47,15 @@ verified model/tokenizer files in an app-readable directory, run
 `integration_test/p05_embedding_profile_test.dart` with the two Dart defines,
 and record the 384-dimensional vector agreement against the Mac spike. No
 vault access is required for that run.
+
+## Rebuilt profile artifact (2026-09-21)
+
+`flutter build apk --profile` completed in 89.7 seconds and produced a 223.0 MB
+APK at `build/app/outputs/flutter-apk/app-profile.apk`.
+
+```text
+APK: 4a3024e01e4f6146a80d7cbd33a3e55887edae3a70d27236475fd8c81f12057a
+```
+
+The artifact is ready for the pending A024 install/model-vector check; no
+device was connected during this build.
