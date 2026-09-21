@@ -271,3 +271,11 @@ jitter. It reports total-span worst case, counts dropped-frame equivalents at a
 16.667 ms budget, requires at least 1,000 samples, and fails when dropped
 equivalents exceed 1% of samples. The host analyzer is clean; A24 execution is
 still required to produce the acceptance result.
+
+### P12h host editor parity (2026-09-21)
+
+The virtual editor now coalesces rapid edits into one undo snapshot and defers
+old controller disposal until the next frame, preventing a focused `TextField`
+from referencing a disposed controller during Undo. The virtual-editor suite
+and full widget suite pass (2 and 53 tests respectively). Only the A24
+five-minute frame-budget result remains for P12h.

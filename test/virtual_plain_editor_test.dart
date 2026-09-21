@@ -29,6 +29,28 @@ void main() {
     await tester.tap(find.byTooltip('Undo'));
     await tester.pump();
     expect(changed, source);
+  });
 
+  testWidgets('coalesces rapid edits into one undo snapshot', (tester) async {
+    var changed = 'one';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: VirtualPlainEditor(
+              source: 'one',
+              onChanged: (value) => changed = value,
+            ),
+          ),
+        ),
+      ),
+    );
+    final field = find.byType(TextField).first;
+    await tester.enterText(field, 'two');
+    await tester.enterText(field, 'three');
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pump();
+    expect(changed, 'one');
   });
 }

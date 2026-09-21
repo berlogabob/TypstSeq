@@ -24,7 +24,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   final _scrollController = ScrollController();
   final _revision = ValueNotifier<int>(0);
   Timer? _emitTimer;
-  String? _pendingEmit;
+  bool _emitPending = false;
   final _undo = <String>[];
   final _redo = <String>[];
   late List<TextEditingController> _controllers;
@@ -41,15 +41,22 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     for (final line in source.split('\n')) TextEditingController(text: line),
   ];
 
+  void _replaceControllers(String source) {
+    final old = _controllers;
+    _controllers = _makeControllers(source);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in old) {
+        controller.dispose();
+      }
+    });
+  }
+
   @override
   void didUpdateWidget(VirtualPlainEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.source != _source) {
-      for (final controller in _controllers) {
-        controller.dispose();
-      }
       _source = widget.source;
-      _controllers = _makeControllers(_source);
+      _replaceControllers(_source);
       _undo.clear();
       _redo.clear();
       _revision.value++;
@@ -60,45 +67,43 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       _controllers.map((controller) => controller.text).join('\n');
 
   void _changed() {
-    final next = _readSource();
-    if (next == _source) return;
-    _undo.add(_source);
-    if (_undo.length > 100) _undo.removeAt(0);
+    if (!_emitPending) {
+      _undo.add(_source);
+      if (_undo.length > 100) _undo.removeAt(0);
+    }
     _redo.clear();
-    _source = next;
-    _pendingEmit = next;
+    _emitPending = true;
     _emitTimer?.cancel();
     _emitTimer = Timer(const Duration(milliseconds: 100), () {
-      final pending = _pendingEmit;
-      _pendingEmit = null;
-      if (pending != null) widget.onChanged(pending);
+      _emitPending = false;
+      _source = _readSource();
+      widget.onChanged(_source);
     });
     _revision.value++;
   }
 
   void _restore(String source) {
-    for (final controller in _controllers) {
-      controller.dispose();
-    }
     _source = source;
-    _controllers = _makeControllers(source);
+    _replaceControllers(source);
     _emitTimer?.cancel();
-    _pendingEmit = null;
+    _emitPending = false;
     widget.onChanged(source);
     _revision.value++;
   }
 
   void _undoEdit() {
     if (_undo.isEmpty) return;
+    final current = _readSource();
     final previous = _undo.removeLast();
-    _redo.add(_source);
+    _redo.add(current);
     _restore(previous);
   }
 
   void _redoEdit() {
     if (_redo.isEmpty) return;
+    final current = _readSource();
     final next = _redo.removeLast();
-    _undo.add(_source);
+    _undo.add(current);
     _restore(next);
   }
 
@@ -106,8 +111,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   void dispose() {
     _scrollController.dispose();
     _emitTimer?.cancel();
-    final pending = _pendingEmit;
-    if (pending != null) widget.onChanged(pending);
+    if (_emitPending) widget.onChanged(_readSource());
     _revision.dispose();
     for (final controller in _controllers) {
       controller.dispose();
