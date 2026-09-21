@@ -47,3 +47,9 @@ Executable SHA-256: 9f678622bcccb281aa550b32e1121a553c60e34e960316d101b1bd3f20f5
 
 P25c closes universal packaging. Real Nextcloud configuration, migration, and
 device release acceptance remain the P25 blockers.
+
+## Universal launch smoke (2026-09-21)
+
+`open -n build/macos/Build/Products/Release/TyLog.app` launched the universal
+bundle successfully; the expected `TyLog` process was observed after three
+seconds and then stopped cleanly. This closes the host launch smoke only.
