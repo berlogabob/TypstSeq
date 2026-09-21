@@ -1,6 +1,10 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-21. Coordinator owns this file.
+
+Pre-A24 host checkpoint: [evidence/pre-a24-readiness.md](evidence/pre-a24-readiness.md).
+Host regression is green (748 passed, 2 skipped); device, private-corpus, and
+real-Nextcloud gates remain explicitly open.
 
 **Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
