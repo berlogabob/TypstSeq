@@ -47,4 +47,8 @@ share-target verification remain device-gated.
 Full regression after schema, graph, editor, reader, retrieval, and report changes: `flutter test --no-pub` — 736 passed, 2 skipped.
 
 Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.
+
+Sequential host rerun: bounded traversal, SQLite query plans, graph interaction,
+and deterministic SVG export passed 24 tests. Native share-target verification
+remains device-gated.
 # P22 progress — bounded graph traversal

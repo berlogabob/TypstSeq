@@ -24,3 +24,10 @@ batch completes. Native callback isolation and Android quality/latency/memory
 acceptance remain device-gated.
 
 The pinned ORT bridge is now adapted by `nativePassageEmbedder`, which validates the native 384-dimensional finite result and stores its Float32 bytes through the same batch runner. The package exports this API publicly; host validation covers asset-path checks. Android model smoke and sustained profile measurements remain device-gated.
+
+## Host regression rerun (2026-09-21)
+
+The combined chunking, resumable embedding-job, native-adapter validation,
+chunk persistence, schema migration, and portable snapshot suite passed 26
+tests. This confirms the durable host queue and both passage/query validation
+paths; native callback isolation and Android quality/latency/memory remain open.

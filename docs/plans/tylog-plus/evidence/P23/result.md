@@ -21,6 +21,9 @@ P24 remains the production rehearsal gate for process interruption, disk pressur
 
 Acceptance correction (2026-09-20): the host write path is now covered, but this does not close the full milestone. Retrieval-to-report UI wiring, cited navigation, and native end-to-end checks remain; see the execution ledger.
 
+Sequential workflow rerun passed 10 report/retrieval tests plus the populated
+search-to-note widget test. Native retrieval/report integration remains open.
+
 `notesForSearchResults` now bridges ranked retrieval rows to current vault notes
 in caller order, de-duplicates stable IDs, and skips stale rows. This provides
 a safe host seam for feeding retrieved notes into the existing report writer;

@@ -32,3 +32,7 @@ the full local-WebDAV sync failure suite passed **105 tests**. This rerun covers
 schema rollback, permission loss, stalled storage, interrupted import/sync,
 resumable recovery, conflict preservation, and the 1,602-file archive restore.
 Physical-device interruption and production-release rehearsal remain open.
+
+Sequential host rerun passed 130 migration, rollback, storage, import, and
+local WebDAV failure/sync tests with 1 expected skip. Physical process-death
+and real Nextcloud release rehearsal remain open.

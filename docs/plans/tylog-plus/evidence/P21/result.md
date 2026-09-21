@@ -43,6 +43,10 @@ FTS UI, connect cited navigation, and measure corpus latency/memory gates.
 
 Production audit: cosine/fusion/navigation primitives had no app callers at this checkpoint. FTS node IDs and vector chunk IDs must be mapped to the same entity before fusion. The Python benchmark does not measure the Dart implementation, query embedding, or end-to-end retrieval.
 
+Sequential host rerun: cosine, hybrid, vector, chunk-navigation, and native
+adapter suites passed 13 tests. Android model execution and UI/native citation
+acceptance remain device-gated.
+
 ## Dart primitive measurements (2026-09-20)
 
 Command: `dart run tool/benchmark_dart_retrieval.dart 10000` and `250000`. macOS ARM64, Dart 3.12.2 JIT; seed 0; 384 Float32 dimensions; top 20; 1 first and 30 warm samples.
