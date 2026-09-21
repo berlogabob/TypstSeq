@@ -25,6 +25,11 @@ remain open.
 skips vector-only IDs until chunk/node identity mapping is finalized. The
 focused hybrid suite covers metadata preservation and missing-ID handling.
 
+`searchStoredChunksHybridWithNavigation` now composes the bounded hybrid query
+with one batch navigation lookup and returns source/version offsets in fused
+rank order. Missing chunk rows are skipped without changing the remaining
+order; the vector retrieval suite covers the cited result contract.
+
 Evidence:
 
 - `flutter test test/retrieval_cosine_test.dart` — ranking and tie-break checks pass.

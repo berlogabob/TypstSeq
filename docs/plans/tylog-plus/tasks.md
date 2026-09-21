@@ -81,6 +81,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P21e batch cited navigation | Coordinator | DONE | P21d | [Top-K chunk hits resolve to source/version offsets in caller order](evidence/P21/result.md) |
 | P21f query embedding adapter | Coordinator | DONE | P20b | [Native embedding seam supports validated query and passage kinds](evidence/P21/result.md) |
 | P21g typed hybrid result ordering | Coordinator | DONE | P21d,P23c | [Fused IDs map to bounded existing result metadata](evidence/P21/result.md) |
+| P21h hybrid cited navigation | Coordinator | DONE | P21e,P21g | [Fused hits resolve stable source offsets in rank order](evidence/P21/result.md) |
 | P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |
 | P23c search-to-note navigation | Coordinator | DONE | P21d | [Retrieved result opens its durable note path](evidence/P23/result.md) |
 | P23d retrieval-to-report mapping | Coordinator | DONE | P23b,P23c | [Retrieved IDs resolve to ordered current notes for report input](evidence/P23/result.md) |

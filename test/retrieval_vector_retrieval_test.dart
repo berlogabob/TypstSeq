@@ -51,5 +51,15 @@ void main() {
       limit: 2,
     );
     expect(fused.map((hit) => hit.id), ['b', 'a']);
+    final cited = await searchStoredChunksHybridWithNavigation(
+      database: database,
+      model: 'model-v1',
+      query: const [1],
+      keywordIds: const ['b', 'missing'],
+      limit: 2,
+    );
+    expect(cited.map((hit) => hit.hit.id), ['b', 'a']);
+    expect(cited.first.startOffset, 1);
+    expect(cited.first.endOffset, 2);
   });
 }
