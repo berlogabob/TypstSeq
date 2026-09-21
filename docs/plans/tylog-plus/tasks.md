@@ -95,6 +95,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12g virtualized block editor | Coordinator | TODO | P12f | `ListView.builder` creates editors for visible blocks only; typing, Enter, Backspace, selection, undo/redo, and save preserve current source bytes |
 | P12h editor parity + frame gate | Coordinator | TODO | P12g | Host editor suite passes; A24 five-minute workload reaches <=1% dropped-frame equivalents and no feature-regression checks fail |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
+| P12j frame-timing gate | Coordinator | TODO | P12e | Collect >=1,000 real `FrameTiming` samples or a DevTools timeline; replace timer-jitter proxy before judging P12h |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

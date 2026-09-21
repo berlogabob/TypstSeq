@@ -156,6 +156,15 @@ reported p50 **2.76 ms**, p95 **9.54 ms**, and max **13.14 ms** per append.
 The model/source-update path stays below the 50 ms per-edit ceiling; the A24
 frame loss is therefore dominated by Flutter rendering/layout work.
 
+### A24 FrameTiming trace (2026-09-21)
+
+The 30-second profile trace (`integration_test/p12_editor_render_trace_native_test.dart`)
+completed 119 edits without errors. Flutter delivered one `FrameTiming` sample:
+build **4.31 ms**, raster **3.95 ms**. Because the profile driver exposed only
+one timing sample, the existing timer-jitter dropped-frame counter cannot be
+used as a definitive Flutter frame gate. P12h must switch to a reliable
+FrameTiming/DevTools capture before accepting or rejecting an editor rewrite.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
