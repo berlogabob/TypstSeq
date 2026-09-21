@@ -3867,7 +3867,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }(),
       'normal' when _usePlainLongEditor => Editor(
         controller: richController,
-        onChanged: _queueAutosave,
+        // TyLogEditingController already forwards changes through
+        // [_acceptRichSource]; calling the editor callback too would save
+        // every keystroke twice.
+        onChanged: () {},
       ),
       'normal' => TyLogRichEditor(
         controller: richController,
