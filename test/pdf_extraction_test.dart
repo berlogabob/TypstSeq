@@ -37,4 +37,19 @@ void main() {
     expect(result.status, PdfExtractionStatus.invalid);
     expect(result.pages, isEmpty);
   });
+
+  test('large page corpus keeps stable cumulative offsets', () {
+    final result = versionPdfText(
+      sourceVersionId: 'large',
+      bytes: '%PDF-1.7'.codeUnits,
+      pageTexts: List.generate(1000, (i) => 'page-$i'),
+    );
+    expect(result.status, PdfExtractionStatus.extracted);
+    expect(result.pages, hasLength(1000));
+    for (var i = 1; i < result.pages.length; i++) {
+      expect(result.pages[i].start, greaterThan(result.pages[i - 1].end));
+      expect(result.pages[i].end - result.pages[i].start, 'page-$i'.length);
+    }
+    expect(result.text, startsWith('page-0\npage-1\npage-2'));
+  });
 }

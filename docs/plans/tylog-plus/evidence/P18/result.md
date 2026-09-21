@@ -34,4 +34,12 @@ passed both native tests. The run covered durable text selection/reopen/navigati
 and the vector-only no-selectable-text state. Corpus-scale memory, scanned-image
 quality/OCR, password-protected PDFs, and Android acceptance remain open.
 
+## Large extraction contract (2026-09-21)
+
+The host extraction suite now exercises a deterministic 1,000-page corpus and
+verifies every page retains a strictly increasing character range with the
+expected page length. Four extraction tests pass. This closes large-corpus
+offset correctness; native memory limits and private corpus quality remain
+open.
+
 A24 native run also passed both tests (`flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d 000251565001005`). Targeted analyzer clean. Tests use separate fixture databases in the debug package; production vaults are unchanged.
