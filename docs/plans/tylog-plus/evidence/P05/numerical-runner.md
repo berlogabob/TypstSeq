@@ -8,3 +8,11 @@ Accepted 2026-09-15.
 - Private inputs, IDs, paths, and vectors remain outside logs and Git.
 
 Validation: 6 focused unit tests pass. Repeated offline Mac runs over four synthetic EN/PT/RU records produced the same output SHA-256; the accepted pinned environment completed inference in 13.6 ms after model load. This is a compatibility smoke test, not the P05.3 scale benchmark.
+
+## Host verification rerun (2026-09-21)
+
+The standalone `tylog_core` package resolves its development dependencies
+cleanly: `dart analyze` reports no issues and `dart test` passes 210 tests. The
+offline Python harnesses also pass: 6 embedding-reference tests, 4 exact-cosine
+benchmark tests, and 5 private-pack validator tests. Android model execution
+and the private 90-query quality pack remain device/data gated.
