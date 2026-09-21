@@ -242,3 +242,14 @@ fields, edits the first row, and restores the source through undo. The full
 widget suite passes (53 tests). A24 typing, Enter/Backspace, selection, and
 five-minute frame acceptance remain open before this prototype can replace the
 current gate.
+
+### P12g A24 interaction and frame capture (2026-09-21)
+
+The visible-block editor was exercised on the same 46 KB / 220-block SAF
+fixture. Android UI inspection showed one visible `EditText` plus enabled Undo
+after typing; Enter and Backspace completed without an input or save error. A
+30-character human-paced VM-timeline run produced 120 paired frames with p50
+**2.72 ms**, p95 **37.83 ms**, max **57.76 ms**, and **32** frames over
+16.7 ms. The debounce improved the p95 versus the first prototype capture, but
+the frame gate still fails; source assembly and autosave remain the next
+optimization target.
