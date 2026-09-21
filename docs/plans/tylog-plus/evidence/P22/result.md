@@ -28,6 +28,11 @@ The widget-level export test now verifies the visible `Export SVG` action calls
 the share seam with the bounded graph (19 graph tests pass). Only the native
 share target/file handoff remains device-gated.
 
+P22d closes the host UI portion: the graph surface applies the 200-node/500-edge
+ceiling before layout, supports node open/fit actions, and exposes the bounded
+`Export SVG` action. The remaining P22 acceptance item is native share-target
+and file-handoff verification.
+
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
 
 ## Host query-plan gate (2026-09-21)
