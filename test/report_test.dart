@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/report.dart';
+import 'package:tylog/search_index.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
@@ -76,6 +77,44 @@ void main() {
     );
     // No citations in these notes: no bibliography section.
     expect(source, isNot(contains('#bibliography')));
+  });
+
+  test('retrieved results resolve to current notes in ranking order', () {
+    final notes = notesForSearchResults(index, const [
+      PkmsSearchResult(
+        id: 'paper',
+        path: 'articles/paper.typ',
+        title: 'Paper',
+        kind: 'article',
+        tags: [],
+        score: 1,
+      ),
+      PkmsSearchResult(
+        id: 'missing',
+        path: 'notes/missing.typ',
+        title: 'Missing',
+        kind: 'note',
+        tags: [],
+        score: 1,
+      ),
+      PkmsSearchResult(
+        id: 'paper',
+        path: 'articles/paper.typ',
+        title: 'Paper',
+        kind: 'article',
+        tags: [],
+        score: 1,
+      ),
+      PkmsSearchResult(
+        id: '2026-07-01',
+        path: 'daily/2026/07/2026-07-01.typ',
+        title: '2026-07-01',
+        kind: 'daily',
+        tags: [],
+        score: 1,
+      ),
+    ]);
+    expect(notes.map((note) => note.id), ['paper', '2026-07-01']);
   });
 
   test('report with cited notes appends the vault bibliography', () {

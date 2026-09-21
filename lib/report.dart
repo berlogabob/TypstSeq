@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:typst_flutter/typst_flutter.dart';
 
+import 'models.dart';
+import 'search_index.dart';
 import 'vault_storage.dart';
 
 export 'package:tylog_core/report.dart'
@@ -11,6 +13,23 @@ export 'package:tylog_core/report.dart'
         generateReportSource,
         selectReportNotes,
         writeReportStorage;
+
+/// Resolves retrieved result rows to current vault notes in caller order.
+/// Missing or duplicate rows are ignored so stale retrieval data cannot enter
+/// a report twice.
+List<NoteRef> notesForSearchResults(
+  VaultIndex index,
+  Iterable<PkmsSearchResult> results,
+) {
+  final byId = <String, NoteRef>{for (final note in index.notes) note.id: note};
+  final resolved = <NoteRef>[];
+  final seen = <String>{};
+  for (final result in results) {
+    final note = byId[result.id] ?? index.notesByPath[result.path];
+    if (note != null && seen.add(note.id)) resolved.add(note);
+  }
+  return resolved;
+}
 
 class ReportPreparationException implements Exception {
   const ReportPreparationException(

@@ -83,6 +83,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P21g typed hybrid result ordering | Coordinator | DONE | P21d,P23c | [Fused IDs map to bounded existing result metadata](evidence/P21/result.md) |
 | P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |
 | P23c search-to-note navigation | Coordinator | DONE | P21d | [Retrieved result opens its durable note path](evidence/P23/result.md) |
+| P23d retrieval-to-report mapping | Coordinator | DONE | P23b,P23c | [Retrieved IDs resolve to ordered current notes for report input](evidence/P23/result.md) |
 | P18c Mac native reader smoke | Coordinator | DONE | P18b | [Selectable and vector-only PDFs pass on macOS](evidence/P18/result.md) |
 | P18d large extraction contract | Coordinator | DONE | P18c | [1,000-page host corpus preserves cumulative offsets](evidence/P18/result.md) |
 | P24c host failure rehearsal rerun | Coordinator | DONE | P24b | [Migration, rollback, import, and sync failure suites pass](evidence/P24/result.md) |

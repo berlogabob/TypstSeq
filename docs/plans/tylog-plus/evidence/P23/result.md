@@ -20,3 +20,8 @@ ranking, citation offsets, and native workflow acceptance remain open.
 P24 remains the production rehearsal gate for process interruption, disk pressure, permissions, migration, and real-device timing.
 
 Acceptance correction (2026-09-20): the host write path is now covered, but this does not close the full milestone. Retrieval-to-report UI wiring, cited navigation, and native end-to-end checks remain; see the execution ledger.
+
+`notesForSearchResults` now bridges ranked retrieval rows to current vault notes
+in caller order, de-duplicates stable IDs, and skips stale rows. This provides
+a safe host seam for feeding retrieved notes into the existing report writer;
+vector ranking, citation offsets, and native workflow checks remain open.
