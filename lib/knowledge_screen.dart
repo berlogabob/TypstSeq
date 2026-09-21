@@ -101,7 +101,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   final Set<String> _expandedCodes = {};
   // Local copy so a fix can redraw the list without popping the screen.
   late List<PkmsProblem> _problemList = widget.problems;
-  late List<SavedSearch> _savedSearches = List.of(widget.savedSearches);
+  late final List<SavedSearch> _savedSearches = List.of(widget.savedSearches);
   bool _presetBusy = false;
   bool _fixing = false;
   bool _isSearchReady = true;
@@ -326,7 +326,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                                 setState(() => _savedSearches.remove(preset));
                               }
                             } catch (error) {
-                              if (mounted) {
+                              if (context.mounted) {
                                 showSnack(
                                   context,
                                   'Could not delete search: $error',
@@ -413,7 +413,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                                 });
                               }
                             } catch (error) {
-                              if (mounted) {
+                              if (context.mounted) {
                                 showSnack(
                                   context,
                                   'Could not save search: $error',

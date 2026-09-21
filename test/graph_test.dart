@@ -409,7 +409,7 @@ void main() {
   test('graphCanvasSize grows with node count, never below the viewport', () {
     NoteGraph g(int n) => NoteGraph(
       nodes: [for (var i = 0; i < n; i++) GraphNode(path: '$i', title: '$i')],
-      edges: const [],
+      edges: [],
     );
     final small = graphCanvasSize(g(10), null, const Size.square(300)).width;
     final big = graphCanvasSize(g(400), null, const Size.square(300)).width;
@@ -561,7 +561,7 @@ void main() {
   ) async {
     const graph = NoteGraph(
       nodes: [GraphNode(path: 'a.typ', title: 'Alpha')],
-      edges: const [],
+      edges: [],
     );
     NoteGraph? exported;
     await tester.pumpWidget(
