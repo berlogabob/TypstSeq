@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// Plain-note editor that keeps only visible rows in the render tree.
@@ -21,6 +23,8 @@ class VirtualPlainEditor extends StatefulWidget {
 class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   final _scrollController = ScrollController();
   final _revision = ValueNotifier<int>(0);
+  Timer? _emitTimer;
+  String? _pendingEmit;
   final _undo = <String>[];
   final _redo = <String>[];
   late List<TextEditingController> _controllers;
@@ -58,7 +62,13 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _undo.add(_source);
     _redo.clear();
     _source = next;
-    widget.onChanged(next);
+    _pendingEmit = next;
+    _emitTimer?.cancel();
+    _emitTimer = Timer(const Duration(milliseconds: 100), () {
+      final pending = _pendingEmit;
+      _pendingEmit = null;
+      if (pending != null) widget.onChanged(pending);
+    });
     _revision.value++;
   }
 
@@ -68,6 +78,8 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     }
     _source = source;
     _controllers = _makeControllers(source);
+    _emitTimer?.cancel();
+    _pendingEmit = null;
     widget.onChanged(source);
     _revision.value++;
   }
@@ -89,6 +101,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _emitTimer?.cancel();
     _revision.dispose();
     for (final controller in _controllers) {
       controller.dispose();
