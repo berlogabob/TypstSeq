@@ -8,7 +8,8 @@ Evidence:
 
 - `flutter test test/report_test.dart` — filtering, deterministic report source, citation bibliography, and Zotero output pass.
 - `flutter test test/report_test.dart test/portable_roundtrip_test.dart` — report and portable workflow checks pass.
+- `flutter test test/report_test.dart` — an integration case now filters the shared index and writes the resulting deterministic Typst report through the real `VaultStorage` adapter.
 
 P24 remains the production rehearsal gate for process interruption, disk pressure, permissions, migration, and real-device timing.
 
-Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.
+Acceptance correction (2026-09-20): the host write path is now covered, but this does not close the full milestone. Retrieval-to-report UI wiring, cited navigation, and native end-to-end checks remain; see the execution ledger.

@@ -28,7 +28,7 @@ Contract: [plan.md](plan.md). Updated 2026-09-20. Coordinator owns this file.
 | P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic chunks, resumable jobs, and native ORT adapter landed; isolate/device/quality gates remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | SQLite-backed vector bridge and bounded hybrid seam land; query embedding, ID mapping, UI/citations, and Dart/device gates remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
-| P23 | Complete research workflow | P19,P21,P22 | RUNNING | [Filtered capture-to-cited-report pipeline with bibliography output](evidence/P23/result.md) |
+| P23 | Complete research workflow | P19,P21,P22 | RUNNING | Host filter-to-vault report path now integrated; retrieval/UI/native workflow acceptance remains |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | RUNNING | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
 | P25 | Production migration/release acceptance | P03,P24 | BLOCKED | [Ready-to-run release acceptance; blocked by real Nextcloud/release acceptance](evidence/P25/result.md) |
 | P26 | Daily-use acceptance/thesis freeze | P25 | TODO | Seven days; every required gate passes |
@@ -77,6 +77,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P20b native ORT adapter | Coordinator | DONE | P05.4b,P20a | [Pinned Android embed API feeds Float32-compatible batch vectors](evidence/P20/result.md) |
 | P21c stored-vector bridge | Coordinator | DONE | P20a,P21b | [Bounded SQLite candidate loading and model-safe top-K search](evidence/P21/result.md) |
 | P21d bounded hybrid seam | Coordinator | DONE | P21c | [Stored vectors and keyword IDs share one async fusion entry point](evidence/P21/result.md) |
+| P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
 | P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |

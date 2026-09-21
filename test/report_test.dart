@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/report.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   const index = VaultIndex(
@@ -107,4 +110,23 @@ void main() {
       ),
     );
   });
+
+  test(
+    'research workflow writes the filtered cited report to the vault',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog-report-');
+      addTearDown(() => root.delete(recursive: true));
+      final path = await writeReportStorage(
+        LocalVaultStorage(root),
+        'Cited research',
+        index,
+        const ReportFilter(project: 'phd'),
+      );
+      expect(path, 'outputs/Cited research.typ');
+      final source = await File('${root.path}/$path').readAsString();
+      expect(source, contains('#export.report("Cited research", ['));
+      expect(source, contains('/articles/paper.typ'));
+      expect(source, contains('/daily/2026/07/2026-07-01.typ'));
+    },
+  );
 }
