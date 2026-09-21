@@ -91,6 +91,9 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
 | P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | A24 five-minute rerun completed at ~8.5% dropped-frame equivalents after span fast-path experiment; full-document RenderEditable layout remains the blocker |
+| P12f editor mode gate | Coordinator | TODO | P12e | Route only long plain paragraph notes (>=200 blocks or >=32 KB) to the virtualized editor; keep rich/protected notes on the existing editor |
+| P12g virtualized block editor | Coordinator | TODO | P12f | `ListView.builder` creates editors for visible blocks only; typing, Enter, Backspace, selection, undo/redo, and save preserve current source bytes |
+| P12h editor parity + frame gate | Coordinator | TODO | P12g | Host editor suite passes; A24 five-minute workload reaches <=1% dropped-frame equivalents and no feature-regression checks fail |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -102,7 +105,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P09: RUNNING; host work through P09d4 is complete, while P09d5 requires the private A024 vault.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
-- P12: RUNNING; first remove repeated full-vault listings, then remove root-isolate cache decoding and route list surfaces through 50-row keyset pages.
+- P12: RUNNING; database/list latency gates pass, while P12e is blocked by full-document `RenderEditable` layout. Continue with P12f mode gating, P12g visible-block editing, then P12h parity and the A24 <=1% frame gate.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
 
 ## Acceptance correction — 2026-09-20
