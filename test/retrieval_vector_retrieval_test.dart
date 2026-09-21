@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/tylog_database.dart';
@@ -61,5 +63,16 @@ void main() {
     expect(cited.map((hit) => hit.hit.id), ['b', 'a']);
     expect(cited.first.startOffset, 1);
     expect(cited.first.endOffset, 2);
+
+    final queryBytes = Float32List.fromList(const [1]).buffer.asUint8List();
+    final embedded = await searchStoredChunksHybridWithQueryEmbedder(
+      database: database,
+      model: 'model-v1',
+      queryEmbedder: (_) async => queryBytes.toList(growable: false),
+      query: 'meaning',
+      keywordIds: const ['b'],
+      limit: 2,
+    );
+    expect(embedded.map((hit) => hit.id), ['b', 'a']);
   });
 }

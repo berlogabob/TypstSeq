@@ -47,6 +47,13 @@ Sequential host rerun: cosine, hybrid, vector, chunk-navigation, and native
 adapter suites passed 13 tests. Android model execution and UI/native citation
 acceptance remain device-gated.
 
+The query seam now has a production-shaped helper,
+`searchStoredChunksHybridWithQueryEmbedder`: it invokes the query embedder,
+validates Float32 bytes, searches only the selected model's stored vectors, and
+fuses the result with bounded FTS IDs. A focused test covers the byte-to-vector
+conversion and ranked output. Real model assets and device measurements remain
+required before enabling this path by default.
+
 ## Dart primitive measurements (2026-09-20)
 
 Command: `dart run tool/benchmark_dart_retrieval.dart 10000` and `250000`. macOS ARM64, Dart 3.12.2 JIT; seed 0; 384 Float32 dimensions; top 20; 1 first and 30 warm samples.

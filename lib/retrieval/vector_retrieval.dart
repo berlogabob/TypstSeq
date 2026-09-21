@@ -1,6 +1,20 @@
+import 'dart:typed_data';
+
 import '../database/tylog_database.dart';
 import 'cosine_search.dart';
+import 'embedding_jobs.dart';
 import 'hybrid_search.dart';
+
+List<double> _decodeQueryEmbedding(List<int> bytes) {
+  if (bytes.isEmpty || bytes.length % 4 != 0) {
+    throw StateError('query embedder returned invalid Float32 bytes');
+  }
+  final values = Uint8List.fromList(bytes).buffer.asFloat32List();
+  if (values.isEmpty || values.any((value) => !value.isFinite)) {
+    throw StateError('query embedder returned invalid Float32 values');
+  }
+  return values.toList(growable: false);
+}
 
 Future<List<VectorHit>> searchStoredChunks({
   required TyLogDatabase database,
@@ -35,6 +49,28 @@ Future<List<HybridHit>> searchStoredChunksHybrid({
     keywordIds: keywordIds,
     vectorHits: vectors,
     limit: limit,
+  );
+}
+
+/// Runs the production-shaped query path: embed the query, search vectors, and
+/// fuse them with the caller's bounded FTS IDs.
+Future<List<HybridHit>> searchStoredChunksHybridWithQueryEmbedder({
+  required TyLogDatabase database,
+  required String model,
+  required ChunkEmbedder queryEmbedder,
+  required String query,
+  required Iterable<String> keywordIds,
+  int limit = 10,
+  int candidateLimit = 10000,
+}) async {
+  final queryVector = _decodeQueryEmbedding(await queryEmbedder(query));
+  return searchStoredChunksHybrid(
+    database: database,
+    model: model,
+    query: queryVector,
+    keywordIds: keywordIds,
+    limit: limit,
+    candidateLimit: candidateLimit,
   );
 }
 
