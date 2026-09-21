@@ -130,6 +130,15 @@ scrolling, then rerun on the same A24 profile workload. It completed with
 reverted. A block-level or virtualized editor remains required; P12e stays
 FRAME BLOCKED.
 
+### A24 span fast-path experiment (2026-09-21)
+
+The editor was temporarily changed to emit one `TextSpan` for plain paragraph
+notes, avoiding per-block span construction. The same profile workload still
+completed at **17,223 frame ticks, 1,199 edits, and 1,468 dropped-frame
+equivalents (~8.5%)**, with a 32 ms worst gap. The change was reverted because
+the result was worse; the dominant cost is full-document `RenderEditable`
+layout, so P12e remains FRAME BLOCKED.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
