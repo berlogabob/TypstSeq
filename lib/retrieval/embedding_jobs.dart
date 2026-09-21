@@ -29,6 +29,8 @@ Future<EmbeddingBatchResult> runEmbeddingBatch({
   var completed = 0;
   var failed = 0;
   for (final chunk in pending) {
+    // Keep the UI/event queue responsive when an embedder completes inline.
+    await Future<void>.delayed(Duration.zero);
     try {
       final embedding = await embed(chunk.content);
       if (embedding.isEmpty) {

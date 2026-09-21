@@ -15,4 +15,12 @@ Evidence:
 
 The new `runEmbeddingBatch` seam uses the existing chunk state as its durable queue: it processes at most 1,000 rows, writes each vector before advancing, and leaves failures pending for retry. Remaining work: move the native callback behind an isolate and run Android quality/latency gates.
 
+## Cooperative scheduling (2026-09-21)
+
+The bounded runner yields once between chunks, so an embedder that completes
+inline cannot monopolize the event queue. A regression test schedules a timer
+alongside an eight-chunk inline batch and verifies the timer runs before the
+batch completes. Native callback isolation and Android quality/latency/memory
+acceptance remain device-gated.
+
 The pinned ORT bridge is now adapted by `nativePassageEmbedder`, which validates the native 384-dimensional finite result and stores its Float32 bytes through the same batch runner. The package exports this API publicly; host validation covers asset-path checks. Android model smoke and sustained profile measurements remain device-gated.

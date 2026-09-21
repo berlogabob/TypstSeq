@@ -75,6 +75,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.7 reproduction/acceptance | Coordinator | READY | P05.0-P05.6 | Commands/hashes reproduced; redacted evidence linked; P05 marked DONE |
 | P20a embedding batch seam | Coordinator | DONE | P20 chunk contract | [Bounded callback runner retries pending chunks after failure](evidence/P20/result.md) |
 | P20b native ORT adapter | Coordinator | DONE | P05.4b,P20a | [Pinned Android embed API feeds Float32-compatible batch vectors](evidence/P20/result.md) |
+| P20c cooperative embedding scheduling | Coordinator | DONE | P20a | [Batch runner yields between inline callbacks; fairness regression passes](evidence/P20/result.md) |
 | P21c stored-vector bridge | Coordinator | DONE | P20a,P21b | [Bounded SQLite candidate loading and model-safe top-K search](evidence/P21/result.md) |
 | P21d bounded hybrid seam | Coordinator | DONE | P21c | [Stored vectors and keyword IDs share one async fusion entry point](evidence/P21/result.md) |
 | P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |

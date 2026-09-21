@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,5 +71,54 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('embedding batches yield between inline callbacks', () async {
+    final database = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    await database
+        .into(database.sources)
+        .insert(
+          SourcesCompanion.insert(
+            id: 'source',
+            kind: 'pdf',
+            title: const Value('Paper'),
+            locator: const Value('paper.pdf'),
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+    await database.savePdfExtraction(
+      sourceId: 'source',
+      extraction: versionPdfText(
+        sourceVersionId: 'version',
+        bytes: '%PDF-1.7'.codeUnits,
+        pageTexts: const ['one two three'],
+      ),
+      createdAtMs: 2,
+    );
+    await database.saveChunks(
+      List<TextChunk>.generate(
+        8,
+        (i) => TextChunk(
+          id: 'chunk-$i',
+          sourceVersionId: 'version',
+          start: i,
+          end: i + 1,
+          text: 'word',
+          sha256: 'hash-$i',
+        ),
+      ),
+    );
+    var turns = 0;
+    Timer.run(() => turns++);
+    final result = await runEmbeddingBatch(
+      database: database,
+      model: 'fake-v1',
+      embed: (_) async => [1],
+      limit: 8,
+    );
+    expect(result.completed, 8);
+    expect(turns, 1);
   });
 }
