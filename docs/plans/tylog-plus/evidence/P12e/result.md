@@ -139,6 +139,16 @@ equivalents (~8.5%)**, with a 32 ms worst gap. The change was reverted because
 the result was worse; the dominant cost is full-document `RenderEditable`
 layout, so P12e remains FRAME BLOCKED.
 
+### Virtualized-editor prototype (2026-09-21)
+
+A prototype `ListView.builder` editor for long plain notes was exercised on the
+A24 profile workload, together with an incremental last-block append path. It
+completed at **17,214 frame ticks, 1,199 edits, and 1,467 dropped-frame
+equivalents (~8.5%)**, with a 48 ms worst gap. The prototype was reverted: it
+did not improve the gate and did not yet preserve full editor parity. The next
+attempt must isolate and reduce the model/source-update cost before another UI
+replacement.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
