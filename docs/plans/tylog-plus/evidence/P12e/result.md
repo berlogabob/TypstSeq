@@ -99,6 +99,16 @@ cuts the worst single stall, but the frame ratio remains far above the 1%
 acceptance gate. A virtualized or block-level editor is still required for
 large active notes.
 
+### Lazy undo snapshot remediation (2026-09-21)
+
+`TyLogEditingController` no longer copies the full document before every
+keystroke. Plain edits take the undo snapshot immediately before the first
+model mutation, while protected edits and recovery paths retain the same
+snapshot semantics. `flutter test --no-pub test/rich_editor_test.dart
+test/controlled_editor_test.dart` — 101 tests passed; targeted analyzer clean.
+This removes avoidable per-keystroke work, but the A24 five-minute frame run is
+still required before the 1% gate can close.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000

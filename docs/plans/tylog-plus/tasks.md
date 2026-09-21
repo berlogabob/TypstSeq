@@ -90,7 +90,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
-| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | A24 startup/open/save pass; five-minute rich-editor frame gate blocked by 267 skipped frames |
+| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Lazy undo snapshot remediation landed; A24 startup/open/save pass; five-minute rich-editor frame gate still requires device rerun |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -142,7 +142,7 @@ Profile worker attribution also passed on A24 (2,000-note synthetic workload, 12
 
 The first real-editor frame probe is a blocker: a 36 KB note with edits every 250 ms caused 267 skipped Android frames and made the profile app unresponsive before five minutes. The probe was removed after capture; P12 remains open for editor rebuild/layout remediation and a repeatable five-minute run.
 
-The first remediation removed a full document reparse for plain-note keystrokes. A 30-second follow-up stayed responsive but still recorded 998 late frames out of 1,840 (worst gap 37 ms), so the 1% frame gate remains blocked and a virtualized/block-level editor is still required for large active notes.
+The first remediation removed a full document reparse for plain-note keystrokes. A 30-second follow-up stayed responsive but still recorded 998 late frames out of 1,840 (worst gap 37 ms), so the 1% frame gate remains blocked. The 2026-09-21 follow-up also removed the unconditional full-document undo copy on every keystroke; a repeatable A24 run is required to quantify the gain before deciding whether virtualized/block-level editing is still necessary.
 
 P22 follow-up: graph rendering now caps the UI layout at 200 nodes and 500 edges, retaining the current/high-degree nodes deterministically. Graph tests pass; graph UI interaction/export acceptance remains open.
 

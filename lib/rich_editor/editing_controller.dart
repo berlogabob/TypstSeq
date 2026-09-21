@@ -92,12 +92,17 @@ class TyLogEditingController extends TextEditingController {
       _lastValue = next;
       return;
     }
-    final before = _Snapshot(document.copy(), _lastValue);
+    // Keep the undo snapshot lazy; copying the whole document on every
+    // keystroke made plain-text editing scale with note size.
+    _Snapshot? before;
+    _Snapshot snapshotBefore() =>
+        before ??= _Snapshot(document.copy(), _lastValue);
     final composing = _isComposing(next);
-    if (composing) _compositionStart ??= before;
+    if (composing) _compositionStart ??= snapshotBefore();
     try {
       final change = _replacement(_lastValue.text, next.text);
       if (change.replacement == '\n' && change.start == change.oldEnd) {
+        snapshotBefore();
         final previousCaret = _lastValue.selection.extentOffset;
         final enterOffset =
             previousCaret >= 0 &&
@@ -114,7 +119,7 @@ class TyLogEditingController extends TextEditingController {
         _lastValue = value;
         _updating = false;
         final source = document.toSource();
-        _addUndo(_compositionStart ?? before);
+        _addUndo(_compositionStart ?? before!);
         _compositionStart = null;
         _redo.clear();
         onSourceChanged(source);
@@ -129,6 +134,7 @@ class TyLogEditingController extends TextEditingController {
             document.blocks[hit.index].style == TyLogBlockStyle.taskLine &&
             change.start - hit.start >= 0 &&
             change.oldEnd - hit.start <= 2) {
+          snapshotBefore();
           final offset = document.setBlockStyle(
             hit.start + 2,
             TyLogBlockStyle.paragraph,
@@ -141,7 +147,7 @@ class TyLogEditingController extends TextEditingController {
           _lastValue = value;
           _updating = false;
           final source = document.toSource();
-          _addUndo(_compositionStart ?? before);
+          _addUndo(_compositionStart ?? before!);
           _compositionStart = null;
           _redo.clear();
           onSourceChanged(source);
@@ -189,6 +195,7 @@ class TyLogEditingController extends TextEditingController {
             _updating = false;
             return;
           }
+          snapshotBefore();
           final offset = document.mergeBackward(i);
           _updating = true;
           value = TextEditingValue(
@@ -198,7 +205,7 @@ class TyLogEditingController extends TextEditingController {
           _lastValue = value;
           _updating = false;
           final source = document.toSource();
-          _addUndo(_compositionStart ?? before);
+          _addUndo(_compositionStart ?? before!);
           _compositionStart = null;
           _redo.clear();
           onSourceChanged(source);
@@ -213,6 +220,7 @@ class TyLogEditingController extends TextEditingController {
           // Typing at the chip's edge: open a paragraph next to the protected
           // node and put the typed text there (before the chip at its leading
           // edge, after it at its trailing edge).
+          snapshotBefore();
           final leading = change.start == hit.start;
           final opened = document.insertNewline(change.start);
           final start = leading ? change.start : opened;
@@ -232,13 +240,14 @@ class TyLogEditingController extends TextEditingController {
           _lastValue = value;
           _updating = false;
           final source = document.toSource();
-          _addUndo(_compositionStart ?? before);
+          _addUndo(_compositionStart ?? before!);
           _compositionStart = null;
           _redo.clear();
           onSourceChanged(source);
           return;
         }
       }
+      snapshotBefore();
       document.replace(
         change.start,
         change.oldEnd,
@@ -298,7 +307,7 @@ class TyLogEditingController extends TextEditingController {
       final source = document.toSource(
         validate: document.blocks.any((block) => block.isProtected),
       );
-      _addUndo(_compositionStart ?? before);
+      _addUndo(_compositionStart ?? before!);
       _compositionStart = null;
       _redo.clear();
       onSourceChanged(source);
@@ -313,7 +322,10 @@ class TyLogEditingController extends TextEditingController {
       if (error.message == _validateFailMessage) {
         final raw = document.toSource(validate: false);
         final reparsed = TyLogDocument.parse(raw);
-        if (_sameProtectedSources(reparsed, before.document)) {
+        if (_sameProtectedSources(
+          reparsed,
+          (before ?? snapshotBefore()).document,
+        )) {
           document.blocks = reparsed.blocks;
           document.prefix = reparsed.prefix;
           _updating = true;
@@ -328,7 +340,7 @@ class TyLogEditingController extends TextEditingController {
           );
           _lastValue = value;
           _updating = false;
-          _addUndo(_compositionStart ?? before);
+          _addUndo(_compositionStart ?? before!);
           _compositionStart = null;
           _redo.clear();
           onSourceChanged(raw);
@@ -336,12 +348,12 @@ class TyLogEditingController extends TextEditingController {
         }
       }
       if (!resynced) {
-        _restore(_compositionStart ?? before, emit: false);
+        _restore(_compositionStart ?? before ?? snapshotBefore(), emit: false);
         _compositionStart = null;
         onError(error);
       }
     } catch (error) {
-      _restore(_compositionStart ?? before, emit: false);
+      _restore(_compositionStart ?? before ?? snapshotBefore(), emit: false);
       _compositionStart = null;
       onError(error);
     }
