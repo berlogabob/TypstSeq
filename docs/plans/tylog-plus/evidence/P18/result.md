@@ -27,4 +27,11 @@ Mac native smoke also passes with PDFium (one test). Xcode 27 rejects the former
 
 Added a valid vector-only PDF to the native integration test. On Mac, both tests pass: text highlight save/reopen/navigation and no-text viewer readiness/status/disabled save. The latter checks the no-extractable-text path; it does not establish scanned-image rendering quality, OCR, or large-corpus acceptance. Coordinator corrected the test's tooltip finder to inspect the actual IconButton and disposes the reader before database teardown.
 
+## Mac smoke rerun (2026-09-21)
+
+`flutter test --no-pub integration_test/pdf_reader_native_test.dart -d macos`
+passed both native tests. The run covered durable text selection/reopen/navigation
+and the vector-only no-selectable-text state. Corpus-scale memory, scanned-image
+quality/OCR, password-protected PDFs, and Android acceptance remain open.
+
 A24 native run also passed both tests (`flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d 000251565001005`). Targeted analyzer clean. Tests use separate fixture databases in the debug package; production vaults are unchanged.
