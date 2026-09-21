@@ -284,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
   Timer? _previewDebounceTimer;
+  Timer? _plainEditorDebounce;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
   // Path/date of the daily note last opened via _openToday(), so a resume
@@ -388,6 +389,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     _openGeneration++;
     _previewDebounceTimer?.cancel();
+    _plainEditorDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     workspace
       ..removeListener(_workspaceChanged)
@@ -3870,7 +3872,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         source: sourceController.text,
         onChanged: (source) {
           sourceController.text = source;
-          _queueAutosave();
+          _plainEditorDebounce?.cancel();
+          _plainEditorDebounce = Timer(
+            const Duration(milliseconds: 120),
+            _queueAutosave,
+          );
         },
       ),
       'normal' => TyLogRichEditor(
