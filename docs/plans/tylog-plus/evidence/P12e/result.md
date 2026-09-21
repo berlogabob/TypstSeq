@@ -262,3 +262,12 @@ human-paced inserts: p50 **2.81 ms**, p95 **30.52 ms**, max **46.42 ms**, and
 **35** frames over 16.7 ms. This improves p95 over the prior 32.52 ms capture,
 but the frame budget still fails; remaining stalls need deeper allocation and
 raster profiling before P12h can close.
+
+### P12j reliable frame gate harness (2026-09-21)
+
+The five-minute integration workload now collects Flutter `FrameTiming` samples
+through `SchedulerBinding.addTimingsCallback` instead of wall-clock timer
+jitter. It reports total-span worst case, counts dropped-frame equivalents at a
+16.667 ms budget, requires at least 1,000 samples, and fails when dropped
+equivalents exceed 1% of samples. The host analyzer is clean; A24 execution is
+still required to produce the acceptance result.

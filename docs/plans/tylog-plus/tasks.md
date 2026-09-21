@@ -96,7 +96,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
 | P12h editor parity + frame gate | Coordinator | TODO | P12g | Host editor suite passes; A24 five-minute workload reaches <=1% dropped-frame equivalents and no feature-regression checks fail |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | IN PROGRESS | P12e | Interactive VM timeline is valid but short: 68 paired frames at human pacing; repeat for >=1,000 frames, then gate P12h on p95 <=16.7 ms and <=1% over-budget frames |
+| P12j frame-timing gate | Coordinator | HOST HARNESS READY / DEVICE PENDING | P12e | `p12_editor_frame_native_test.dart` now uses Flutter `FrameTiming`; A24 run must collect >=1,000 frames and stay at <=1% dropped-frame equivalents |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

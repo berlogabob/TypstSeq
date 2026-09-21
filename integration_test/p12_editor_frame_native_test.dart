@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:tylog/rich_editor.dart';
@@ -25,19 +26,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    const frame = Duration(milliseconds: 16);
-    final lateFrames = <int>[];
-    var ticks = 0;
-    var lastTick = Stopwatch()..start();
-    final frameTimer = Timer.periodic(frame, (_) {
-      final elapsed = lastTick.elapsed;
-      lastTick = Stopwatch()..start();
-      ticks++;
-      final late = elapsed - frame;
-      if (late > Duration.zero) {
-        lateFrames.add(late.inMicroseconds ~/ frame.inMicroseconds);
-      }
-    });
+    final timings = <FrameTiming>[];
+    void onTimings(List<FrameTiming> values) => timings.addAll(values);
+    SchedulerBinding.instance.addTimingsCallback(onTimings);
     var edits = 0;
     final editTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       final text = '${controller.text}\nframe-$edits';
@@ -49,18 +40,28 @@ void main() {
     });
     await Future<void>.delayed(const Duration(minutes: 5));
     editTimer.cancel();
-    frameTimer.cancel();
-    final dropped = lateFrames.fold<int>(0, (sum, value) => sum + value);
-    final worst = lateFrames.isEmpty
-        ? 0
-        : lateFrames.reduce((a, b) => a > b ? a : b);
+    SchedulerBinding.instance.removeTimingsCallback(onTimings);
+    const budgetUs = 16667;
+    final dropped = timings.fold<int>(0, (sum, timing) {
+      final spanUs = timing.totalSpan.inMicroseconds;
+      return sum + (spanUs <= budgetUs ? 0 : (spanUs / budgetUs).ceil() - 1);
+    });
+    final overBudget = timings.where(
+      (timing) => timing.totalSpan.inMicroseconds > budgetUs,
+    );
+    final worst = timings.isEmpty
+        ? Duration.zero
+        : timings
+              .map((timing) => timing.totalSpan)
+              .reduce((a, b) => a > b ? a : b);
     // ignore: avoid_print
     print(
-      'P12e editor frames ticks=$ticks edits=$edits dropped=$dropped '
-      'late_samples=${lateFrames.length} worst_gap_ms=${worst * 16}',
+      'P12e editor frames=${timings.length} edits=$edits dropped=$dropped '
+      'over_budget=${overBudget.length} worst_ms=${worst.inMicroseconds / 1000}',
     );
     expect(edits, greaterThanOrEqualTo(1100));
-    expect(ticks, greaterThan(1000));
+    expect(timings.length, greaterThanOrEqualTo(1000));
+    expect(dropped, lessThanOrEqualTo(timings.length * 0.01));
   });
 }
 
