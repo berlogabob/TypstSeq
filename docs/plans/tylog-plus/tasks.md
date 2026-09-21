@@ -90,7 +90,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
-| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Lazy undo snapshot remediation landed; A24 startup/open/save pass; five-minute rich-editor frame gate still requires device rerun |
+| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | A24 five-minute rerun completed at ~7.8% dropped-frame equivalents; full-document editor layout remains the blocker |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

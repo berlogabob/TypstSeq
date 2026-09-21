@@ -109,6 +109,18 @@ test/controlled_editor_test.dart` — 101 tests passed; targeted analyzer clean.
 This removes avoidable per-keystroke work, but the A24 five-minute frame run is
 still required before the 1% gate can close.
 
+### A24 rerun after lazy snapshots (2026-09-21)
+
+Command: `flutter drive --profile --driver=test_driver/integration_test.dart
+--target=integration_test/p12_editor_frame_native_test.dart
+-d 000251565001005`.
+
+The five-minute workload completed and stayed responsive: 17,343 frame ticks,
+1,199 edits, 1,357 dropped-frame equivalents (~7.8%), and a 32 ms worst gap.
+The 1% gate therefore remains blocked. The controller optimization removed
+avoidable model-copy work but did not solve the full-document `TextField`
+layout cost; the next remediation must reduce or virtualize that layout.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
