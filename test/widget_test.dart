@@ -1602,6 +1602,34 @@ void main() {
     expect(find.text('Indexing search…'), findsNothing);
   });
 
+  testWidgets('KnowledgeScreen opens a retrieved note', (tester) async {
+    String? opened;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _knowledgeScreen(
+            search: (_, _, _) async => const [
+              PkmsSearchResult(
+                id: 'paper',
+                path: 'articles/paper.typ',
+                title: 'Paper',
+                kind: 'article',
+                tags: ['research'],
+                score: 1,
+              ),
+            ],
+            onOpenNote: (path) => opened = path,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Paper'), findsOneWidget);
+    await tester.tap(find.text('Paper'));
+    await tester.pumpAndSettle();
+    expect(opened, 'articles/paper.typ');
+  });
+
   testWidgets('KnowledgeScreen drops delayed results from an older query', (
     tester,
   ) async {
