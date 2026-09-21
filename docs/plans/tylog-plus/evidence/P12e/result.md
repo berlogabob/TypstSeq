@@ -149,6 +149,13 @@ did not improve the gate and did not yet preserve full editor parity. The next
 attempt must isolate and reduce the model/source-update cost before another UI
 replacement.
 
+### Host model update benchmark (2026-09-21)
+
+The 1,200-append host benchmark (`test/p12_editor_model_benchmark_test.dart`)
+reported p50 **2.76 ms**, p95 **9.54 ms**, and max **13.14 ms** per append.
+The model/source-update path stays below the 50 ms per-edit ceiling; the A24
+frame loss is therefore dominated by Flutter rendering/layout work.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
