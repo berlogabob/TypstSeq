@@ -182,6 +182,15 @@ still reported zero rendered frames during input, so this Impeller/Vulkan
 session is not measurable through gfxinfo. The remaining measurement path is a
 Flutter VM timeline from a normal profile launch.
 
+### Normal profile VM timeline (2026-09-21)
+
+`flutter run --profile -d 000251565001005 --machine` exposed the VM service at
+port 62232. A five-second timeline sample from the foreground profile app
+contained 25 real frames: full-frame p50 **0.49 ms**, p95 **3.37 ms**, max
+**10.02 ms**; layout p95 **0.365 ms**, max **8.58 ms**; paint p95 **0.598 ms**.
+This is a valid baseline, but edits were not injected into the focused field,
+so P12j still needs an interactive edit capture with at least 1,000 frames.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
