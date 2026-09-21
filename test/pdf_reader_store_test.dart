@@ -120,4 +120,41 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test(
+    'reassigns an existing highlight without changing its identity',
+    () async {
+      final database = TyLogDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final extraction = await persistPdfReaderExtraction(
+        database: database,
+        path: 'assets/paper.pdf',
+        bytes: const [37, 80, 68, 70, 45, 49],
+        pageTexts: const ['Alpha beta'],
+      );
+      await savePdfReaderSelection(
+        database: database,
+        extraction: extraction,
+        page: 0,
+        localStart: 0,
+        localEnd: 5,
+      );
+      final id = '${extraction.sourceVersionId}:0:0:5';
+      await reassignPdfReaderSelection(
+        database: database,
+        annotationId: id,
+        extraction: extraction,
+        page: 0,
+        localStart: 6,
+        localEnd: 10,
+      );
+      final saved = (await database.annotationsFor(
+        extraction.sourceVersionId,
+      )).single;
+      expect(saved.id, id);
+      expect(saved.quote, 'beta');
+      expect(saved.startOffset, 6);
+      expect(saved.endOffset, 10);
+    },
+  );
 }

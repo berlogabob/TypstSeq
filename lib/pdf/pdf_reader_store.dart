@@ -115,25 +115,7 @@ Future<void> savePdfReaderSelection({
   required int localStart,
   required int localEnd,
 }) async {
-  if (extraction.status != PdfExtractionStatus.extracted ||
-      page < 0 ||
-      page >= extraction.pages.length) {
-    throw ArgumentError('selection page is not extracted');
-  }
-  final selectedPage = extraction.pages[page];
-  if (selectedPage.text.isEmpty ||
-      localStart < 0 ||
-      localEnd <= localStart ||
-      localEnd > selectedPage.text.length) {
-    throw ArgumentError('selection range is outside the page text');
-  }
-  final quote = selectedPage.text.substring(localStart, localEnd);
-  final context = selectedPage.text.substring(
-    localStart - 40 < 0 ? 0 : localStart - 40,
-    localEnd + 40 > selectedPage.text.length
-        ? selectedPage.text.length
-        : localEnd + 40,
-  );
+  final values = _selectionValues(extraction, page, localStart, localEnd);
   await database.transaction(() async {
     final id = '${extraction.sourceVersionId}:$page:$localStart:$localEnd';
     final existing =
@@ -147,12 +129,70 @@ Future<void> savePdfReaderSelection({
       id: id,
       sourceVersionId: extraction.sourceVersionId,
       page: page,
-      startOffset: selectedPage.start + localStart,
-      endOffset: selectedPage.start + localEnd,
-      quote: quote,
-      context: context,
+      startOffset: values.startOffset,
+      endOffset: values.endOffset,
+      quote: values.quote,
+      context: values.context,
       createdAtMs: now,
       updatedAtMs: now,
     );
   });
+}
+
+Future<void> reassignPdfReaderSelection({
+  required TyLogDatabase database,
+  required String annotationId,
+  required PdfExtraction extraction,
+  required int page,
+  required int localStart,
+  required int localEnd,
+}) async {
+  final values = _selectionValues(extraction, page, localStart, localEnd);
+  final changed =
+      await (database.update(
+        database.annotations,
+      )..where((row) => row.id.equals(annotationId))).write(
+        AnnotationsCompanion(
+          sourceVersionId: Value(extraction.sourceVersionId),
+          page: Value(page),
+          startOffset: Value(values.startOffset),
+          endOffset: Value(values.endOffset),
+          quote: Value(values.quote),
+          context: Value(values.context),
+          updatedAtMs: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+  if (changed == 0) throw StateError('annotation does not exist');
+}
+
+({String quote, String context, int startOffset, int endOffset})
+_selectionValues(
+  PdfExtraction extraction,
+  int page,
+  int localStart,
+  int localEnd,
+) {
+  if (extraction.status != PdfExtractionStatus.extracted ||
+      page < 0 ||
+      page >= extraction.pages.length) {
+    throw ArgumentError('selection page is not extracted');
+  }
+  final selectedPage = extraction.pages[page];
+  if (selectedPage.text.isEmpty ||
+      localStart < 0 ||
+      localEnd <= localStart ||
+      localEnd > selectedPage.text.length) {
+    throw ArgumentError('selection range is outside the page text');
+  }
+  return (
+    quote: selectedPage.text.substring(localStart, localEnd),
+    context: selectedPage.text.substring(
+      localStart - 40 < 0 ? 0 : localStart - 40,
+      localEnd + 40 > selectedPage.text.length
+          ? selectedPage.text.length
+          : localEnd + 40,
+    ),
+    startOffset: selectedPage.start + localStart,
+    endOffset: selectedPage.start + localEnd,
+  );
 }
