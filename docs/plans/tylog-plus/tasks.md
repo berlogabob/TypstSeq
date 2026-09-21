@@ -81,6 +81,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |
 | P23c search-to-note navigation | Coordinator | DONE | P21d | [Retrieved result opens its durable note path](evidence/P23/result.md) |
 | P18c Mac native reader smoke | Coordinator | DONE | P18b | [Selectable and vector-only PDFs pass on macOS](evidence/P18/result.md) |
+| P24c host failure rehearsal rerun | Coordinator | DONE | P24b | [Migration, rollback, import, and sync failure suites pass](evidence/P24/result.md) |
 | P22c graph query-plan gate | Coordinator | DONE | P22b | [Both bounded edge endpoints retain indexed query plans](evidence/P22/result.md) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |

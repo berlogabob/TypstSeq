@@ -24,3 +24,11 @@ A24, isolated `org.tylog.tylog.debug` test package, generated one-page PDF.
 Both runs pass (one native test each). `--no-uninstall` is necessary because Flutter otherwise removes the test app/data on exit. Reopen waits for PDF controller readiness independently of persisted data. Production package/data were not used. This establishes post-commit restart recovery for annotations, not interruption midway through migration, disk-full behavior, or the complete P24 release gate.
 
 Final host regression: `flutter test --no-pub` — 729 passed, 2 skipped. Native integration testing had cached Vulkan test shaders; removing only generated `build/unit_test_assets/AssetManifest.bin` rebuilt them for the host SkSL backend. No application workaround was needed. Run host and device asset-building tests sequentially.
+
+## Host failure-rehearsal rerun (2026-09-21)
+
+The focused migration/import failure suite passed **25 tests with 1 skipped**;
+the full local-WebDAV sync failure suite passed **105 tests**. This rerun covers
+schema rollback, permission loss, stalled storage, interrupted import/sync,
+resumable recovery, conflict preservation, and the 1,602-file archive restore.
+Physical-device interruption and production-release rehearsal remain open.
