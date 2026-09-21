@@ -43,3 +43,13 @@ real Nextcloud account.
 - The judged 90-query pack and private corpus are not present in the repo; do
   not fabricate retrieval-quality results.
 
+
+## Current release artifacts (2026-09-21)
+
+- macOS release: 153.5 MB universal Mach-O (arm64 + x86_64), executable SHA-256
+  `ec34bffdb6141bd6604620802e2feb52c267f80aeabb3ac6937040540a2b7399`.
+- Android profile APK: 253.0 MB, SHA-256
+  `5dfa8ee99a6d9403083d1f0cb5fb49b12ad6b52ffd6f76a9e5426bf870b00d49`.
+
+Both builds compile the current retrieval bridge. APK installation and runtime
+profiling remain pending until the A24 is available.
