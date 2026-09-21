@@ -199,3 +199,17 @@ the index was published, 18 ms while communities were built, 25 ms while the
 search projection completed, and 16 ms during search. The test passed and
 confirms the worker path is bounded, but this is not the required five-minute
 real-editor workload or a frame-budget acceptance result.
+
+### Interactive normal-app edit capture (2026-09-21)
+
+The normal profile app was launched with `flutter run --profile --machine`,
+the existing long indexed note was opened in edit mode, and the field was
+focused through the real Android input connection. A VM timeline capture during
+120 rapid character inserts produced 259 paired `Frame` events with p50
+**2.37 ms**, p95 **37.71 ms**, max **46.38 ms**, and **120/259** frames over
+the 16.7 ms budget. A second human-paced run (30 inserts at 100 ms intervals)
+produced 68 paired frames with p50 **1.44 ms**, p95 **39.88 ms**, max
+**43.39 ms**, and **31/68** frames over budget. This is the first valid
+interactive evidence that long-note typing still causes frame stalls; P12e and
+P12j remain blocked until the capture is repeated for at least 1,000 frames and
+the long-note path is reduced or gated.

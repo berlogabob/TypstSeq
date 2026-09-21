@@ -90,12 +90,12 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
-| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | A24 five-minute rerun completed at ~8.5% dropped-frame equivalents after span fast-path experiment; full-document RenderEditable layout remains the blocker |
+| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Normal profile VM timeline now confirms interactive long-note stalls: human-paced typing p95 39.88 ms, 31/68 frames over 16.7 ms; full-document editor path remains the blocker |
 | P12f editor mode gate | Coordinator | TODO | P12e | Route only long plain paragraph notes (>=200 blocks or >=32 KB) to the virtualized editor; keep rich/protected notes on the existing editor |
 | P12g virtualized block editor | Coordinator | TODO | P12f | `ListView.builder` creates editors for visible blocks only; typing, Enter, Backspace, selection, undo/redo, and save preserve current source bytes |
 | P12h editor parity + frame gate | Coordinator | TODO | P12g | Host editor suite passes; A24 five-minute workload reaches <=1% dropped-frame equivalents and no feature-regression checks fail |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | TODO | P12e | Collect >=1,000 real `FrameTiming` samples or a DevTools timeline; replace timer-jitter proxy before judging P12h |
+| P12j frame-timing gate | Coordinator | IN PROGRESS | P12e | Interactive VM timeline is valid but short: 68 paired frames at human pacing; repeat for >=1,000 frames, then gate P12h on p95 <=16.7 ms and <=1% over-budget frames |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
