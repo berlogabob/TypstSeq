@@ -213,3 +213,12 @@ produced 68 paired frames with p50 **1.44 ms**, p95 **39.88 ms**, max
 interactive evidence that long-note typing still causes frame stalls; P12e and
 P12j remain blocked until the capture is repeated for at least 1,000 frames and
 the long-note path is reduced or gated.
+
+### Plain-editor qualification attempt (2026-09-21)
+
+The pushed profile build was installed on A24. A plain note was grown from
+10.5 KB using Android input, but `adb shell input text` truncated large
+payloads and chunked injection stalled the rich editor before the 32 KB gate
+could be reached (14.5 KB was accepted after the bounded attempt). No frame
+acceptance claim is made from this run; a deterministic fixture or direct vault
+file seed is required to exercise the new plain-editor branch on-device.
