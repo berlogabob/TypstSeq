@@ -24,3 +24,10 @@ Remaining work: synchronize annotation revisions and run corpus-scale acceptance
 The reader saves selected page ranges with exact quote, surrounding context, version identity and global UTF-16 offsets. Multi-page saves are transactional; repeated saves are idempotent. The Highlights drawer navigates back to selected text. Prior-version quotes are resolved only when unique; repeated/overlapping or missing matches display Needs review and do not silently move. Annotation reattachment stops at the second match. Native select/save/reopen/navigation passed on A24 using an isolated debug package and synthetic PDF.
 
 Remaining: manual reassignment of ambiguous anchors, annotation synchronization, private corpus acceptance. Mac and A24 native selection smoke tests pass.
+
+## Host acceptance rerun (2026-09-21)
+
+The combined extraction, annotation, reassignment, source-version, and chunk
+navigation suite passed 21 tests. The macOS native reader run passed both text
+highlight and vector-only PDF tests. Annotation synchronization, private corpus
+quality, and Android validation remain open.

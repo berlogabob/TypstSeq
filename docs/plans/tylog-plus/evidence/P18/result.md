@@ -42,4 +42,8 @@ expected page length. Four extraction tests pass. This closes large-corpus
 offset correctness; native memory limits and private corpus quality remain
 open.
 
+The same host acceptance rerun also passed the PDF storage and chunk persistence
+checks, confirming source-version identity and stable ranges alongside the
+1,000-page extraction contract.
+
 A24 native run also passed both tests (`flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d 000251565001005`). Targeted analyzer clean. Tests use separate fixture databases in the debug package; production vaults are unchanged.
