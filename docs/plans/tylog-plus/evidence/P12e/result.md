@@ -173,6 +173,15 @@ driver workload is therefore not producing a usable graphics counter stream;
 the timer-jitter and post-run gfxinfo results cannot establish a real frame
 rate. P12j remains open and requires an interactive app-session capture.
 
+### Clean profile app-session check (2026-09-21)
+
+The profile APK was reinstalled after the integration runner exited and
+`org.tylog.tylog/.MainActivity` was launched directly. A screenshot confirmed
+the real editor was foreground with the long note. Android `dumpsys gfxinfo`
+still reported zero rendered frames during input, so this Impeller/Vulkan
+session is not measurable through gfxinfo. The remaining measurement path is a
+Flutter VM timeline from a normal profile launch.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
