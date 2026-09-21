@@ -8,6 +8,8 @@ Deterministic quote reattachment now resolves unique anchors across a re-indexed
 
 The storage seam now supports manual reassignment: `reassignPdfReaderSelection` validates a new page range and updates the existing annotation identity, quote, context, and offsets atomically. Focused reader-store and reattachment tests pass.
 
+The reader now exposes that seam: a Needs review dialog offers Select replacement, the PDF shows a replacement-mode banner, and Save highlight updates the selected annotation instead of creating a duplicate. Reader-screen analysis is clean; the native full interaction remains device-gated.
+
 Evidence:
 
 - `flutter test test/database/annotation_test.dart` — annotation persistence and offset ordering pass.
@@ -15,7 +17,7 @@ Evidence:
 - `flutter analyze lib/database/tylog_database.dart test/database/annotation_test.dart` — clean.
 - `flutter test test/pdf_annotation_reattach_test.dart` — moved, ambiguous, and missing anchor behavior is covered.
 
-Remaining work: expose reassignment from the review UI, synchronize annotation revisions, and run corpus-scale acceptance. Reader selection and review status are wired.
+Remaining work: synchronize annotation revisions and run corpus-scale acceptance. Native full interaction remains device-gated.
 
 ## Reader integration (2026-09-20)
 

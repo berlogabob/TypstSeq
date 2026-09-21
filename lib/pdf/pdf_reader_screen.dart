@@ -32,6 +32,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   bool _preparing = false;
   bool _saving = false;
   bool _hasSelection = false;
+  AnnotationData? _reassigningAnnotation;
   String? _status;
 
   @override
@@ -104,22 +105,43 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       if (!selection.isCopyAllowed) return;
       final ranges = await selection.getSelectedTextRanges();
       if (ranges.isEmpty) return;
-      await widget.database!.transaction(() async {
-        for (final range in ranges) {
-          await savePdfReaderSelection(
-            database: widget.database!,
-            extraction: extraction,
-            page: range.pageNumber - 1,
-            localStart: range.start,
-            localEnd: range.end,
-          );
+      final reassigning = _reassigningAnnotation;
+      if (reassigning != null) {
+        if (ranges.length != 1) {
+          throw StateError('Select one replacement range');
         }
-      });
+        final range = ranges.single;
+        await reassignPdfReaderSelection(
+          database: widget.database!,
+          annotationId: reassigning.id,
+          extraction: extraction,
+          page: range.pageNumber - 1,
+          localStart: range.start,
+          localEnd: range.end,
+        );
+        if (mounted) setState(() => _reassigningAnnotation = null);
+      } else {
+        await widget.database!.transaction(() async {
+          for (final range in ranges) {
+            await savePdfReaderSelection(
+              database: widget.database!,
+              extraction: extraction,
+              page: range.pageNumber - 1,
+              localStart: range.start,
+              localEnd: range.end,
+            );
+          }
+        });
+      }
       await _refreshAnnotations();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Highlight saved')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reassigning == null ? 'Highlight saved' : 'Highlight reassigned',
+            ),
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -192,6 +214,15 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
           '$message\n\n“${annotation.quote}”\n\n${annotation.context}',
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              if (mounted) {
+                setState(() => _reassigningAnnotation = annotation);
+              }
+            },
+            child: const Text('Select replacement'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
@@ -275,6 +306,18 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       children: [
         if (_status != null)
           Padding(padding: const EdgeInsets.all(8), child: Text(_status!)),
+        if (_reassigningAnnotation != null)
+          MaterialBanner(
+            content: const Text(
+              'Select replacement text, then save highlight.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => setState(() => _reassigningAnnotation = null),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
         Expanded(
           child: PdfViewer.data(
             widget.bytes,
