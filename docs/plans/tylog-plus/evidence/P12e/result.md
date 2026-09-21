@@ -253,3 +253,12 @@ after typing; Enter and Backspace completed without an input or save error. A
 16.7 ms. The debounce improved the p95 versus the first prototype capture, but
 the frame gate still fails; source assembly and autosave remain the next
 optimization target.
+
+### P12g toolbar-isolation capture (2026-09-21)
+
+After splitting normalized sources on every newline and moving Undo/Redo state
+to a notifier, the same A24 fixture produced 121 paired frames during 30
+human-paced inserts: p50 **2.81 ms**, p95 **30.52 ms**, max **46.42 ms**, and
+**35** frames over 16.7 ms. This improves p95 over the prior 32.52 ms capture,
+but the frame budget still fails; remaining stalls need deeper allocation and
+raster profiling before P12h can close.
