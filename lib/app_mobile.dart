@@ -58,6 +58,7 @@ import 'widgets/sync_dashboard.dart';
 import 'widgets/sync_status.dart';
 import 'widgets/vaults_sheet.dart';
 import 'widgets/work_surface.dart';
+import 'widgets/virtual_plain_editor.dart';
 import 'workspace_controller.dart';
 
 export 'widgets/app_version.dart';
@@ -3865,12 +3866,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         );
       }(),
-      'normal' when _usePlainLongEditor => Editor(
-        controller: richController,
-        // TyLogEditingController already forwards changes through
-        // [_acceptRichSource]; calling the editor callback too would save
-        // every keystroke twice.
-        onChanged: () {},
+      'normal' when _usePlainLongEditor => VirtualPlainEditor(
+        source: sourceController.text,
+        onChanged: (source) {
+          sourceController.text = source;
+          _queueAutosave();
+        },
       ),
       'normal' => TyLogRichEditor(
         controller: richController,

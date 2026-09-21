@@ -232,3 +232,13 @@ VM-timeline frames with p50 **3.32 ms**, p95 **39.01 ms**, max **59.88 ms**,
 and **33/114** frames over 16.7 ms. The gate is functionally verified but does
 not meet P12h's frame target; full-document `RenderEditable` layout remains the
 dominant cost and P12g's visible-block editor is required.
+
+### P12g visible-block prototype (2026-09-21)
+
+`VirtualPlainEditor` now uses one controller per paragraph with
+`ListView.builder`, so only viewport rows create `TextField` render objects.
+The host widget test verifies a 220-paragraph note builds fewer than 220
+fields, edits the first row, and restores the source through undo. The full
+widget suite passes (53 tests). A24 typing, Enter/Backspace, selection, and
+five-minute frame acceptance remain open before this prototype can replace the
+current gate.
