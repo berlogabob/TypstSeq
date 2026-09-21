@@ -30,6 +30,15 @@ share target/file handoff remains device-gated.
 
 Edge upsert/delete APIs now enforce the existing foreign-key constraints and are covered by the neighborhood test.
 
+## Host query-plan gate (2026-09-21)
+
+The bounded-neighborhood test runs SQLite `EXPLAIN QUERY PLAN` for the
+two-endpoint edge lookup used by traversal. Both `from_node_id` and
+`to_node_id` resolve through their dedicated indexes
+(`idx_edges_from_node_type` and `idx_edges_to_node_type`) in the in-memory
+Drift database. The host SQL plan check passes; native graph interaction and
+share-target verification remain device-gated.
+
 Full regression after schema, graph, editor, reader, retrieval, and report changes: `flutter test --no-pub` — 736 passed, 2 skipped.
 
 Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.

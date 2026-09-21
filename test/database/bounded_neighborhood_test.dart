@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/tylog_database.dart';
 
@@ -113,5 +114,25 @@ void main() {
       () => db.boundedNeighborhood('x', maxEdges: 501),
       throwsArgumentError,
     );
+  });
+
+  test('graph edge lookup keeps both endpoint indexes available', () async {
+    final db = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final plan = await db
+        .customSelect(
+          'EXPLAIN QUERY PLAN SELECT DISTINCT id FROM edges '
+          'WHERE from_node_id IN (?) OR to_node_id IN (?) '
+          'ORDER BY id LIMIT ?',
+          variables: [
+            Variable.withString('root'),
+            Variable.withString('root'),
+            Variable.withInt(200),
+          ],
+        )
+        .get();
+    final details = plan.map((row) => row.read<String>('detail')).join('\n');
+    expect(details, contains('idx_edges_from_node_type'));
+    expect(details, contains('idx_edges_to_node_type'));
   });
 }
