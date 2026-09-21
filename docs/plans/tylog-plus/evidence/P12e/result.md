@@ -222,3 +222,13 @@ payloads and chunked injection stalled the rich editor before the 32 KB gate
 could be reached (14.5 KB was accepted after the bounded attempt). No frame
 acceptance claim is made from this run; a deterministic fixture or direct vault
 file seed is required to exercise the new plain-editor branch on-device.
+
+### Plain-editor SAF fixture capture (2026-09-21)
+
+A disposable 46 KB / 220-block plain note was seeded into the authorized A24
+`TyLog` SAF folder and loaded by the normal profile app. The size/blocks gate
+selected the stock editor path. Thirty human-paced inserts produced 114 paired
+VM-timeline frames with p50 **3.32 ms**, p95 **39.01 ms**, max **59.88 ms**,
+and **33/114** frames over 16.7 ms. The gate is functionally verified but does
+not meet P12h's frame target; full-document `RenderEditable` layout remains the
+dominant cost and P12g's visible-block editor is required.
