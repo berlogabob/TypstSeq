@@ -89,6 +89,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P18d large extraction contract | Coordinator | DONE | P18c | [1,000-page host corpus preserves cumulative offsets](evidence/P18/result.md) |
 | P24c host failure rehearsal rerun | Coordinator | DONE | P24b | [Migration, rollback, import, and sync failure suites pass](evidence/P24/result.md) |
 | P25b reproducible ARM64 release | Coordinator | DONE | P24c | [ARM64 macOS release script builds a 72 MB artifact with checksum](evidence/P25/result.md) |
+| P25c universal macOS release | Coordinator | DONE | P25b | [Standard release build contains arm64 and x86_64 slices](evidence/P25/result.md) |
 | P22c graph query-plan gate | Coordinator | DONE | P22b | [Both bounded edge endpoints retain indexed query plans](evidence/P22/result.md) |
 | P22d bounded graph UI/export wiring | Coordinator | DONE | P22b | [Host graph layout and visible SVG action are covered](evidence/P22/result.md) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
