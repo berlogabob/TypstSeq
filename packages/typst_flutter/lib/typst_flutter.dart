@@ -21,9 +21,9 @@ export 'src/exceptions.dart';
 export 'src/markdown_import.dart';
 export 'src/rust/api/markdown_import.dart'
     show MarkdownImportDiagnostic, MarkdownTypstResult;
-export 'src/rust/api/vault_import.dart'
-    show VaultNoteProperty, VaultNoteResult;
+export 'src/rust/api/vault_import.dart' show VaultNoteProperty, VaultNoteResult;
 export 'src/vault_import.dart';
 export 'src/rust/api/typst.dart' show TypstDiagnostic;
+export 'src/rust/api/embedding.dart' show EmbeddingResult, embed;
 export 'src/widgets/typst_document_viewer.dart';
 export 'src/widgets/typst_view.dart';
