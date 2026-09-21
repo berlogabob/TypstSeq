@@ -78,6 +78,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P20c cooperative embedding scheduling | Coordinator | DONE | P20a | [Batch runner yields between inline callbacks; fairness regression passes](evidence/P20/result.md) |
 | P21c stored-vector bridge | Coordinator | DONE | P20a,P21b | [Bounded SQLite candidate loading and model-safe top-K search](evidence/P21/result.md) |
 | P21d bounded hybrid seam | Coordinator | DONE | P21c | [Stored vectors and keyword IDs share one async fusion entry point](evidence/P21/result.md) |
+| P21e batch cited navigation | Coordinator | DONE | P21d | [Top-K chunk hits resolve to source/version offsets in caller order](evidence/P21/result.md) |
 | P23b report write integration | Coordinator | DONE | P23 helper coverage | [Filtered notes produce deterministic Typst in the vault](evidence/P23/result.md) |
 | P23c search-to-note navigation | Coordinator | DONE | P21d | [Retrieved result opens its durable note path](evidence/P23/result.md) |
 | P18c Mac native reader smoke | Coordinator | DONE | P18b | [Selectable and vector-only PDFs pass on macOS](evidence/P18/result.md) |

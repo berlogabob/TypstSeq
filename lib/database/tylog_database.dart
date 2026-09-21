@@ -480,6 +480,53 @@ class TyLogDatabase extends _$TyLogDatabase {
     );
   }
 
+  /// Resolves a bounded set of retrieved chunks in one query, preserving the
+  /// caller's hit order for cited navigation.
+  Future<
+    List<
+      ({
+        String chunkId,
+        String sourceId,
+        String sourceVersionId,
+        int startOffset,
+        int endOffset,
+      })
+    >
+  >
+  navigationForChunks(Iterable<String> chunkIds) async {
+    final ids = chunkIds.toList(growable: false);
+    if (ids.isEmpty) return const [];
+    if (ids.length > 100) {
+      throw ArgumentError.value(
+        ids.length,
+        'chunkIds',
+        'must contain at most 100 ids',
+      );
+    }
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    final rows = await customSelect(
+      '''
+      SELECT c.id AS chunk_id, v.source_id, c.source_version_id,
+             c.start_offset, c.end_offset
+      FROM chunks c
+      JOIN source_versions v ON v.id = c.source_version_id
+      WHERE c.id IN ($placeholders)
+      ''',
+      variables: [for (final id in ids) Variable.withString(id)],
+    ).get();
+    final byId = {
+      for (final row in rows)
+        row.read<String>('chunk_id'): (
+          chunkId: row.read<String>('chunk_id'),
+          sourceId: row.read<String>('source_id'),
+          sourceVersionId: row.read<String>('source_version_id'),
+          startOffset: row.read<int>('start_offset'),
+          endOffset: row.read<int>('end_offset'),
+        ),
+    };
+    return [for (final id in ids) ?byId[id]];
+  }
+
   Future<List<GraphNodeDistance>> boundedNeighborhood(
     String nodeId, {
     int maxDepth = 3,

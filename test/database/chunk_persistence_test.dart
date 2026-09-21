@@ -82,4 +82,43 @@ void main() {
     ));
     expect(await database.navigationForChunk('missing'), equals(null));
   });
+
+  test('retrieved chunk batch resolves in caller order', () async {
+    final database = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    await database
+        .into(database.sources)
+        .insert(
+          SourcesCompanion.insert(
+            id: 'source',
+            kind: 'pdf',
+            title: const Value('Paper'),
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+    await database.savePdfExtraction(
+      sourceId: 'source',
+      extraction: versionPdfText(
+        sourceVersionId: 'version',
+        bytes: '%PDF-1.7'.codeUnits,
+        pageTexts: const ['one two'],
+      ),
+      createdAtMs: 2,
+    );
+    final chunks = chunkText(
+      sourceVersionId: 'version',
+      text: 'one two',
+      targetLength: 3,
+      overlap: 0,
+    );
+    await database.saveChunks(chunks);
+    final hits = await database.navigationForChunks([
+      chunks.last.id,
+      'missing',
+      chunks.first.id,
+    ]);
+    expect(hits.map((hit) => hit.chunkId), [chunks.last.id, chunks.first.id]);
+    expect(hits.map((hit) => hit.sourceId), ['source', 'source']);
+  });
 }

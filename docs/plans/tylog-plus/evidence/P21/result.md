@@ -7,6 +7,11 @@ Retrieved chunk IDs now resolve to their source, immutable source-version ID, an
 
 The production bridge is now present: `embeddedChunkCandidates` loads a bounded, model-filtered set of completed vectors from SQLite, and `searchStoredChunks` feeds those rows into the existing cosine primitive. This keeps the query path bounded and excludes vectors produced by another model. `flutter test test/retrieval_vector_retrieval_test.dart` and targeted analysis pass.
 
+`TyLogDatabase.navigationForChunks` now resolves up to 100 retrieved chunk IDs
+in one SQLite query and returns only existing hits in the caller's ranking
+order. The chunk persistence suite covers source/version identity and stable
+character offsets for a top-K style result list.
+
 `searchStoredChunksHybrid` now composes that vector path with reciprocal-rank fusion in one async seam. Focused vector and hybrid tests pass. The seam deliberately accepts keyword IDs from the caller until node/chunk identity mapping is finalized.
 
 Evidence:
