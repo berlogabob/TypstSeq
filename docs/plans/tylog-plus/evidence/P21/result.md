@@ -7,6 +7,8 @@ Retrieved chunk IDs now resolve to their source, immutable source-version ID, an
 
 The production bridge is now present: `embeddedChunkCandidates` loads a bounded, model-filtered set of completed vectors from SQLite, and `searchStoredChunks` feeds those rows into the existing cosine primitive. This keeps the query path bounded and excludes vectors produced by another model. `flutter test test/retrieval_vector_retrieval_test.dart` and targeted analysis pass.
 
+`searchStoredChunksHybrid` now composes that vector path with reciprocal-rank fusion in one async seam. Focused vector and hybrid tests pass. The seam deliberately accepts keyword IDs from the caller until node/chunk identity mapping is finalized.
+
 Evidence:
 
 - `flutter test test/retrieval_cosine_test.dart` — ranking and tie-break checks pass.

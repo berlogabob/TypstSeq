@@ -43,5 +43,13 @@ void main() {
       (await database.embeddedChunkCandidates(model: 'other')).single.id,
       'wrong-model',
     );
+    final fused = await searchStoredChunksHybrid(
+      database: database,
+      model: 'model-v1',
+      query: const [1],
+      keywordIds: const ['b', 'missing'],
+      limit: 2,
+    );
+    expect(fused.map((hit) => hit.id), ['b', 'a']);
   });
 }
