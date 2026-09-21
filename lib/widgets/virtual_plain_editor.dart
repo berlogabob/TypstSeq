@@ -20,6 +20,7 @@ class VirtualPlainEditor extends StatefulWidget {
 
 class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   final _scrollController = ScrollController();
+  final _revision = ValueNotifier<int>(0);
   final _undo = <String>[];
   final _redo = <String>[];
   late List<TextEditingController> _controllers;
@@ -33,8 +34,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   }
 
   List<TextEditingController> _makeControllers(String source) => [
-    for (final block in source.split('\n\n'))
-      TextEditingController(text: block),
+    for (final line in source.split('\n')) TextEditingController(text: line),
   ];
 
   @override
@@ -50,7 +50,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   }
 
   String _readSource() =>
-      _controllers.map((controller) => controller.text).join('\n\n');
+      _controllers.map((controller) => controller.text).join('\n');
 
   void _changed() {
     final next = _readSource();
@@ -59,7 +59,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _redo.clear();
     _source = next;
     widget.onChanged(next);
-    setState(() {});
+    _revision.value++;
   }
 
   void _restore(String source) {
@@ -69,7 +69,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _source = source;
     _controllers = _makeControllers(source);
     widget.onChanged(source);
-    setState(() {});
+    _revision.value++;
   }
 
   void _undoEdit() {
@@ -89,6 +89,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _revision.dispose();
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -100,19 +101,22 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     children: [
       SizedBox(
         height: 48,
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Undo',
-              onPressed: _undo.isEmpty ? null : _undoEdit,
-              icon: const Icon(Icons.undo),
-            ),
-            IconButton(
-              tooltip: 'Redo',
-              onPressed: _redo.isEmpty ? null : _redoEdit,
-              icon: const Icon(Icons.redo),
-            ),
-          ],
+        child: ListenableBuilder(
+          listenable: _revision,
+          builder: (context, _) => Row(
+            children: [
+              IconButton(
+                tooltip: 'Undo',
+                onPressed: _undo.isEmpty ? null : _undoEdit,
+                icon: const Icon(Icons.undo),
+              ),
+              IconButton(
+                tooltip: 'Redo',
+                onPressed: _redo.isEmpty ? null : _redoEdit,
+                icon: const Icon(Icons.redo),
+              ),
+            ],
+          ),
         ),
       ),
       Expanded(
