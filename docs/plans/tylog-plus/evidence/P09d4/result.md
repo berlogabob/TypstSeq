@@ -24,3 +24,18 @@ accounted for 18.1% of the rehearsal wall time. This probe duplicates those
 queries rather than instrumenting production, so it is a conservative signal,
 not an isolated profile. No production optimization is justified by this
 single host rehearsal.
+
+## Host rerun (2026-09-21)
+
+The same command passed again with 10,000 notes and 10 interruptions:
+
+```text
+P09D4 notes=10000 interruptions=10 total_ms=16606
+validation_ms=1768 validation_pct=10.6
+aggregate=c0f2e8832e81045e7e8777dc60c95f5a1aa85fc37ad82ccf8a388af39273eee5
+1 test passed
+```
+
+The aggregate is unchanged, confirming deterministic terminal accounting. The
+wall time varies with host load; the validation share decreased to 10.6% on
+this run. Private A024 rehearsal remains the only P09 execution gap.
