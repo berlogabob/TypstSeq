@@ -36,3 +36,8 @@ Physical-device interruption and production-release rehearsal remain open.
 Sequential host rerun passed 130 migration, rollback, storage, import, and
 local WebDAV failure/sync tests with 1 expected skip. Physical process-death
 and real Nextcloud release rehearsal remain open.
+
+P24d adds the controller-level restart-boundary matrix: 19 tests passed for
+cold-index donor ordering, vault switching during sync, retry/backoff, polling
+gates, conflict recovery, and post-sync reindex routing. These model restart
+boundaries in-process; actual process kill remains device-gated.

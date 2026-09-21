@@ -24,6 +24,12 @@ Acceptance correction (2026-09-20): the host write path is now covered, but this
 Sequential workflow rerun passed 10 report/retrieval tests plus the populated
 search-to-note widget test. Native retrieval/report integration remains open.
 
+`KnowledgeScreen` now accepts an optional vector-candidate callback and applies
+the existing bounded hybrid merger to its keyword metadata. The default path is
+unchanged when no vector provider is configured; a widget test verifies the
+hybrid ordering hook. A report-from-search button is intentionally deferred
+until that action is part of the product surface.
+
 `notesForSearchResults` now bridges ranked retrieval rows to current vault notes
 in caller order, de-duplicates stable IDs, and skips stale rows. This provides
 a safe host seam for feeding retrieved notes into the existing report writer;
