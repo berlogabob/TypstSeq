@@ -25,3 +25,7 @@ Acceptance correction (2026-09-20): the host write path is now covered, but this
 in caller order, de-duplicates stable IDs, and skips stale rows. This provides
 a safe host seam for feeding retrieved notes into the existing report writer;
 vector ranking, citation offsets, and native workflow checks remain open.
+
+Host regression checkpoint after this bridge: `flutter test --no-pub` passed
+747 tests with 2 expected skips. The run includes the retrieval, report, graph,
+editor, storage, and local WebDAV suites; native/device gates remain separate.
