@@ -631,6 +631,32 @@ class TyLogDatabase extends _$TyLogDatabase {
     );
   }
 
+  Future<List<({String id, List<int> embedding})>> embeddedChunkCandidates({
+    required String model,
+    int limit = 10000,
+  }) async {
+    if (model.isEmpty) throw ArgumentError.value(model, 'model');
+    if (limit < 1 || limit > 100000) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 100000');
+    }
+    final rows =
+        await (select(chunks)
+              ..where(
+                (row) =>
+                    row.status.equals('complete') &
+                    row.embeddingModel.equals(model) &
+                    row.embedding.isNotNull(),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.id)])
+              ..limit(limit))
+            .get();
+    return [
+      for (final row in rows)
+        if (row.embedding case final embedding?)
+          (id: row.id, embedding: embedding),
+    ];
+  }
+
   Future<void> _createQueueIndexes(Migrator m) async {
     await m.database.customStatement(
       'CREATE INDEX IF NOT EXISTS idx_outbox_created_at_ms ON outbox_entries(created_at_ms)',
