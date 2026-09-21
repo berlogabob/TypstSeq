@@ -165,6 +165,14 @@ one timing sample, the existing timer-jitter dropped-frame counter cannot be
 used as a definitive Flutter frame gate. P12h must switch to a reliable
 FrameTiming/DevTools capture before accepting or rejecting an editor rewrite.
 
+### A24 gfxinfo cross-check (2026-09-21)
+
+Android `dumpsys gfxinfo org.tylog.tylog` sampled during the live 30-second
+driver run reported only one rendered frame (1 janky, 1550 ms). The Flutter
+driver workload is therefore not producing a usable graphics counter stream;
+the timer-jitter and post-run gfxinfo results cannot establish a real frame
+rate. P12j remains open and requires an interactive app-session capture.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
