@@ -12,4 +12,19 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('native query embedder shares asset and kind validation', () {
+    expect(
+      () => nativeQueryEmbedder(modelPath: '', tokenizerPath: 'tokenizer'),
+      throwsArgumentError,
+    );
+    expect(
+      () => nativeEmbedder(
+        modelPath: 'model',
+        tokenizerPath: 'tokenizer',
+        kind: 'other',
+      ),
+      throwsArgumentError,
+    );
+  });
 }

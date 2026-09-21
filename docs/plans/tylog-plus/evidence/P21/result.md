@@ -12,6 +12,12 @@ in one SQLite query and returns only existing hits in the caller's ranking
 order. The chunk persistence suite covers source/version identity and stable
 character offsets for a top-K style result list.
 
+The native embedding adapter now exposes both `nativePassageEmbedder` and
+`nativeQueryEmbedder` over one validated `nativeEmbedder` seam. The adapter
+rejects missing model assets and unsupported kinds before invoking Rust; focused
+validation tests pass. Device model execution and quality/latency measurement
+remain open.
+
 `searchStoredChunksHybrid` now composes that vector path with reciprocal-rank fusion in one async seam. Focused vector and hybrid tests pass. The seam deliberately accepts keyword IDs from the caller until node/chunk identity mapping is finalized.
 
 Evidence:
