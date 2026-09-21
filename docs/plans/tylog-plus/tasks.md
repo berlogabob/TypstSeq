@@ -91,7 +91,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
 | P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Normal profile VM timeline now confirms interactive long-note stalls: human-paced typing p95 39.88 ms, 31/68 frames over 16.7 ms; full-document editor path remains the blocker |
-| P12f editor mode gate | Coordinator | TODO | P12e | Route only long plain paragraph notes (>=200 blocks or >=32 KB) to the virtualized editor; keep rich/protected notes on the existing editor |
+| P12f editor mode gate | Coordinator | IN PROGRESS | P12e | Long plain notes (>=200 blocks and >=32 KB, no protected/inline atoms) now use the stock TextField path; A24 typing capture still required before acceptance |
 | P12g virtualized block editor | Coordinator | TODO | P12f | `ListView.builder` creates editors for visible blocks only; typing, Enter, Backspace, selection, undo/redo, and save preserve current source bytes |
 | P12h editor parity + frame gate | Coordinator | TODO | P12g | Host editor suite passes; A24 five-minute workload reaches <=1% dropped-frame equivalents and no feature-regression checks fail |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |

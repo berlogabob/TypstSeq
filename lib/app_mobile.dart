@@ -329,6 +329,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get rebuilding => workspace.rebuilding;
   double? get rebuildProgress => workspace.rebuildProgress;
 
+  // Long unformatted notes do not need rich inline spans. Keeping them in the
+  // stock TextField avoids rebuilding the rich document span tree on every key.
+  // ponytail: deliberately narrow gate; rich/protected notes keep full parity.
+  bool get _usePlainLongEditor {
+    final document = richController.document;
+    return richController.text.length >= 32 * 1024 &&
+        document.blocks.length >= 200 &&
+        document.prefix.trim().isEmpty &&
+        document.blocks.every(
+          (block) =>
+              block.style == TyLogBlockStyle.paragraph &&
+              block.parts.length == 1 &&
+              !block.parts.single.isAtom,
+        );
+  }
+
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
   void _rebuild(VoidCallback fn) => setState(fn);
@@ -3849,6 +3865,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         );
       }(),
+      'normal' when _usePlainLongEditor => Editor(
+        controller: richController,
+        onChanged: _queueAutosave,
+      ),
       'normal' => TyLogRichEditor(
         controller: richController,
         onInsert: _showMagicMenu,
