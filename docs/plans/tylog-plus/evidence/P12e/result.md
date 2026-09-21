@@ -121,6 +121,15 @@ The 1% gate therefore remains blocked. The controller optimization removed
 avoidable model-copy work but did not solve the full-document `TextField`
 layout cost; the next remediation must reduce or virtualize that layout.
 
+### Finite viewport experiment (2026-09-21)
+
+The editor was temporarily changed to a finite 40-line viewport with internal
+scrolling, then rerun on the same A24 profile workload. It completed with
+17,300 frame ticks, 1,199 edits, and **1,390 dropped-frame equivalents
+(~8.0%)**, with a 32 ms worst gap. This did not improve the gate and was
+reverted. A block-level or virtualized editor remains required; P12e stays
+FRAME BLOCKED.
+
 ### A24 profile frame attribution probe
 
 `flutter drive --profile` ran the existing worker attribution workload (2,000
