@@ -29,5 +29,6 @@ void main() {
     await tester.tap(find.byTooltip('Undo'));
     await tester.pump();
     expect(changed, source);
+
   });
 }

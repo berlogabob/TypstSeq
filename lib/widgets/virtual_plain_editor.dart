@@ -102,6 +102,8 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   void dispose() {
     _scrollController.dispose();
     _emitTimer?.cancel();
+    final pending = _pendingEmit;
+    if (pending != null) widget.onChanged(pending);
     _revision.dispose();
     for (final controller in _controllers) {
       controller.dispose();
