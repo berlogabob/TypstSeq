@@ -1,6 +1,6 @@
 # P23 — complete research workflow
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE BLOCKED
 
 The existing workflow selects notes by project, kind, tags, date, and article status, then emits deterministic Typst report source. Notes with citations append the vault bibliography, and Zotero-enabled reports include both bibliography sources. The same vault files and report writer are used on desktop and mobile storage adapters.
 
@@ -23,6 +23,15 @@ Acceptance correction (2026-09-20): the host write path is now covered, but this
 
 Sequential workflow rerun passed 10 report/retrieval tests plus the populated
 search-to-note widget test. Native retrieval/report integration remains open.
+
+## Host acceptance rerun (2026-09-22)
+
+`flutter test --no-pub test/report_test.dart test/knowledge_screen_test.dart
+test/retrieval_hybrid_test.dart test/retrieval_vector_retrieval_test.dart`
+passed all 16 tests. The host path now covers deterministic filtering,
+retrieval-to-note mapping, hybrid ordering, and writing the filtered report
+through `VaultStorage`. Device acceptance remains blocked by the private vault
+and embedding-quality prerequisites.
 
 `KnowledgeScreen` now accepts an optional vector-candidate callback and applies
 the existing bounded hybrid merger to its keyword metadata. The default path is

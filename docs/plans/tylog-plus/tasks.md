@@ -32,7 +32,7 @@ real-Nextcloud gates remain explicitly open.
 | P20 | Chunking/offline embeddings | P05,P14,P18 | RUNNING | Deterministic chunks, resumable jobs, and native ORT adapter landed; isolate/device/quality gates remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | RUNNING | SQLite-backed vector bridge and bounded hybrid seam land; query embedding, ID mapping, UI/citations, and Dart/device gates remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
-| P23 | Complete research workflow | P19,P21,P22 | RUNNING | Host filter-to-vault report path now integrated; retrieval/UI/native workflow acceptance remains |
+| P23 | Complete research workflow | P19,P21,P22 | HOST ACCEPTED / DEVICE BLOCKED | Filtered retrieval-to-vault report path passes host tests; vector quality and native end-to-end acceptance remain |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | RUNNING | [Host rehearsal covers restore, interruption, permissions, migration, and regression paths](evidence/P24/result.md) |
 | P25 | Production migration/release acceptance | P03,P24 | BLOCKED | [Ready-to-run release acceptance; blocked by real Nextcloud/release acceptance](evidence/P25/result.md) |
 | P26 | Daily-use acceptance/thesis freeze | P25 | TODO | Seven days; every required gate passes |
