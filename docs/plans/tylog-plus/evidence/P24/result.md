@@ -1,6 +1,6 @@
 # P24 — migration rehearsal and integrated failures
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE BLOCKED
 
 The failure-path suite exercises schema migration and rollback, atomic vault migration, permission loss, stalled storage calls, interrupted sync, resumable recovery, corrupt-state replacement, archive restore, and regression behavior. The complete Nextcloud sync suite also covers conditional-transfer races, remote wipe protection, conflict preservation, and the 1,602-file archive restore path.
 
@@ -41,6 +41,14 @@ Physical-device interruption and production-release rehearsal remain open.
 Sequential host rerun passed 130 migration, rollback, storage, import, and
 local WebDAV failure/sync tests with 1 expected skip. Physical process-death
 and real Nextcloud release rehearsal remain open.
+
+## Host acceptance rerun (2026-09-22)
+
+The combined failure matrix passed **190 tests with 1 expected skip** across
+database migration, graph schema rollback, vault storage failures, 10k import,
+Nextcloud/WebDAV interruption, recovery, conflict, and controller restart
+boundaries. The remaining gate is a production-package process-death and real
+Nextcloud rehearsal.
 
 P24d adds the controller-level restart-boundary matrix: 19 tests passed for
 cold-index donor ordering, vault switching during sync, retry/backoff, polling
