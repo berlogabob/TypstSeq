@@ -1,6 +1,6 @@
 # P21 progress — vector retrieval primitive
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE BLOCKED
 
 Added bounded cosine top-K over stored Float32-compatible BLOBs and deterministic reciprocal-rank fusion with the existing FTS5 keyword IDs. Scores are normalized, malformed dimensions are skipped, and equal scores sort by stable IDs. Fusion avoids comparing incompatible keyword/vector score scales and keeps the query interface independent of a future sqlite-vec backend.
 Retrieved chunk IDs now resolve to their source, immutable source-version ID, and stable character offsets for cited navigation.
@@ -53,6 +53,13 @@ validates Float32 bytes, searches only the selected model's stored vectors, and
 fuses the result with bounded FTS IDs. A focused test covers the byte-to-vector
 conversion and ranked output. Real model assets and device measurements remain
 required before enabling this path by default.
+
+## Host acceptance rerun (2026-09-22)
+
+The combined cosine, hybrid, navigation, vector retrieval, chunk persistence,
+and native-adapter suites passed; targeted analysis is clean. Bounded query
+seams are accepted on host. Real query-model assets, FTS UI citation wiring,
+and Android quality measurements remain open.
 
 ## Dart primitive measurements (2026-09-20)
 

@@ -1,6 +1,6 @@
 # P20 progress — deterministic chunking
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE BLOCKED
 
 Added deterministic text chunking keyed by source-version ID. Each chunk carries source character offsets, configurable overlap, and a SHA-256 content hash; unchanged source versions therefore produce stable chunk IDs and changed ranges can be re-embedded independently. SQLite schema v8 persists chunks with pending/complete/failed state, model identity, and optional Float32-compatible BLOB embeddings.
 
@@ -31,3 +31,10 @@ The combined chunking, resumable embedding-job, native-adapter validation,
 chunk persistence, schema migration, and portable snapshot suite passed 26
 tests. This confirms the durable host queue and both passage/query validation
 paths; native callback isolation and Android quality/latency/memory remain open.
+
+## Host acceptance rerun (2026-09-22)
+
+The focused chunking, persistence, embedding-job, adapter, cosine, hybrid, and
+vector suites passed **19 tests**; targeted analysis is clean. Host scheduling
+and durable state are accepted. Private model execution and Android
+quality/latency/memory remain device-gated.
