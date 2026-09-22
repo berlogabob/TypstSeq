@@ -56,7 +56,7 @@ remains device-gated.
 
 `flutter drive --profile --target=integration_test/graph_share_native_test.dart`
 passed on A24 (`000251565001005`). The Android chooser opened for a
-`tylog-graph.svg` `image/svg+xml` payload and returned after dismissal, proving
-the app reaches the native share intent. Selecting and validating a target app
-remains a manual platform check.
+`tylog-graph.svg` `image/svg+xml` payload. Selecting the installed Nextcloud
+target completed the flow and returned to the test app with `Test finished.`
+This closes the native target/file-handoff check for the available target.
 # P22 progress — bounded graph traversal
