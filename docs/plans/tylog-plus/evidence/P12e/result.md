@@ -279,3 +279,11 @@ old controller disposal until the next frame, preventing a focused `TextField`
 from referencing a disposed controller during Undo. The virtual-editor suite
 and full widget suite pass (2 and 53 tests respectively). Only the A24
 five-minute frame-budget result remains for P12h.
+
+### P12j A24 profile frame gate (2026-09-22)
+
+The harness now drives a live 50 ms pump stream; a plain five-minute delay
+produced too few timing samples on Android. The corrected profile run produced
+`frames=1874 edits=1200 dropped=5426 over_budget=1199 worst_ms=126.32`.
+The <=1% dropped-frame gate therefore fails. Startup/save/open timing passes,
+but the full rich editor remains the active P12 blocker.

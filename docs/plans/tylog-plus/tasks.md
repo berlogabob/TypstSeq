@@ -97,6 +97,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P24d controller restart-boundary matrix | Coordinator | DONE | P24c | [Sync retry, cold-index, vault-switch, and recovery controller tests pass](evidence/P24/result.md) |
 | P25b reproducible ARM64 release | Coordinator | DONE | P24c | [ARM64 macOS release script builds a 72 MB artifact with checksum](evidence/P25/result.md) |
 | P25c universal macOS release | Coordinator | DONE | P25b | [Standard release build contains arm64 and x86_64 slices](evidence/P25/result.md) |
+| P25e Android native report packaging | Coordinator | DONE | P25c | [Profile APK packages libc++_shared.so; Android report/export suite passes](evidence/P25/result.md) |
 | P25d universal launch smoke | Coordinator | DONE | P25c | [Universal bundle launches successfully on macOS](evidence/P25/result.md) |
 | P22c graph query-plan gate | Coordinator | DONE | P22b | [Both bounded edge endpoints retain indexed query plans](evidence/P22/result.md) |
 | P22d bounded graph UI/export wiring | Coordinator | DONE | P22b | [Host graph layout and visible SVG action are covered](evidence/P22/result.md) |
@@ -117,7 +118,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
 | P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FRAME PENDING | P12g | Virtual editor parity tests pass; A24 five-minute workload reaches <=1% dropped-frame equivalents |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | HOST HARNESS READY / DEVICE PENDING | P12e | `p12_editor_frame_native_test.dart` now uses Flutter `FrameTiming`; A24 run must collect >=1,000 frames and stay at <=1% dropped-frame equivalents |
+| P12j frame-timing gate | Coordinator | DEVICE FAILED | P12e | A24 produced 1,874 frames, 5,426 dropped-frame equivalents, 1,199 over-budget frames, worst 126.32 ms; editor remediation remains required |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

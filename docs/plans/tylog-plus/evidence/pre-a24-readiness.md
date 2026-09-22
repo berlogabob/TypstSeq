@@ -36,8 +36,10 @@ real Nextcloud account.
 
 ## Explicit blockers
 
-- A24 is currently unavailable, so Android timing, model, native-share, and
-  process-death gates cannot be honestly marked complete.
+- The A24 is now connected. Android timing has been measured (the editor frame
+  gate fails); model execution still lacks the private model/tokenizer files,
+  and the installed profile has no active Android vault registry for the real
+  vault rehearsal.
 - No real Nextcloud endpoint/credentials are configured, so P03/P25 remain
   blocked.
 - The judged 90-query pack and private corpus are not present in the repo; do

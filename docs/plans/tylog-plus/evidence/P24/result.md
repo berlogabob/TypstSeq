@@ -11,6 +11,11 @@ Evidence:
 
 The tests use deterministic failure injectors and local WebDAV fixtures; P25 still requires release builds, the real vault, and both physical devices.
 
+On 2026-09-22 the Android profile seed → `adb shell am force-stop` → reopen
+sequence passed for the PDF annotation database. The accepted rerun kept the
+seed process alive before force-stop so its file-backed SQLite state was
+available to the reopened process.
+
 Acceptance correction (2026-09-20): existing unit evidence does not close the full milestone. See the execution ledger for remaining integration and native checks.
 
 ## Native post-commit restart evidence (2026-09-20)

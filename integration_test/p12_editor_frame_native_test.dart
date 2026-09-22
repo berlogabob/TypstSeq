@@ -36,9 +36,20 @@ void main() {
         text: text,
         selection: TextSelection.collapsed(offset: text.length),
       );
+      // Controller mutations from a timer do not always request a platform
+      // frame in the profile driver. Schedule one explicitly so FrameTiming
+      // measures the rendered workload rather than the timer alone.
+      SchedulerBinding.instance.scheduleFrame();
       edits++;
     });
-    await Future<void>.delayed(const Duration(minutes: 5));
+    final deadline = DateTime.now().add(const Duration(minutes: 5));
+    while (DateTime.now().isBefore(deadline)) {
+      // Keep the integration binding attached to a live frame stream. A plain
+      // Future.delayed lets Android stop scheduling frames while the app is
+      // idle, which makes the timing sample count meaningless.
+      await tester.pump(const Duration(milliseconds: 50));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     editTimer.cancel();
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
     const budgetUs = 16667;

@@ -21,6 +21,11 @@ API verified against the installed package and [upstream selection documentation
 
 A24 native reader fixture passes, including rendered text selection, durable save, reopening and highlight navigation. Repeating after a force-stop verifies retained records; see P24 for exact commands.
 
+Android profile rerun on 2026-09-22 passed both native cases: text highlight
+save/reopen/navigation and vector-only PDF rendering. The process-death seed,
+force-stop, and reopen sequence also passed after keeping the seed process
+alive between runs.
+
 Mac native smoke also passes with PDFium (one test). Xcode 27 rejects the former macOS 10.15 deployment setting, so Runner and all CocoaPods targets now consistently require macOS 12.0. This is a compatibility-floor change, not a claim of testing on macOS 12 hardware.
 
 ### No-text native fixture

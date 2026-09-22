@@ -53,3 +53,11 @@ device release acceptance remain the P25 blockers.
 `open -n build/macos/Build/Products/Release/TyLog.app` launched the universal
 bundle successfully; the expected `TyLog` process was observed after three
 seconds and then stopped cleanly. This closes the host launch smoke only.
+
+## Android native report packaging (2026-09-22)
+
+The A24 profile report/export suite initially failed because the prebuilt
+`libtypst_flutter.so` depended on `libc++_shared.so`, which was absent from the
+APK. The plugin build now stages the ABI-matched NDK library into the arm64
+package. The rebuilt profile APK contains `lib/arm64-v8a/libc++_shared.so`, and
+all six Android report/export tests pass.

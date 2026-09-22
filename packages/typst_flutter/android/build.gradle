@@ -53,6 +53,7 @@ def localJniLibsDir = new File(project.projectDir, 'src/main/jniLibs/arm64-v8a')
 def hasLocalBinaries = localJniLibsDir.exists()
 def hasPrebuiltBinaries = prebuiltDir.exists()
 def usePrebuilt = hasLocalBinaries || hasPrebuiltBinaries
+def stagedJniLibsDir = new File(buildDir, 'generated/typstJniLibs')
 
 android {
     if (project.android.hasProperty('namespace')) {
@@ -74,11 +75,33 @@ android {
     if (!hasLocalBinaries && hasPrebuiltBinaries) {
         sourceSets {
             main {
-                jniLibs.srcDirs += [prebuiltDir.absolutePath]
+                jniLibs.srcDirs += [prebuiltDir.absolutePath, stagedJniLibsDir.absolutePath]
             }
         }
     }
 }
+
+// The prebuilt Rust library links against libc++_shared.so. Cargokit normally
+// packages this transitive NDK dependency, but a raw prebuilt JNI directory
+// does not. Stage the ABI-matched copy so profile/release APKs can load FFI.
+tasks.register('stageTypstCxxShared') {
+    outputs.file(new File(stagedJniLibsDir, 'arm64-v8a/libc++_shared.so'))
+    doLast {
+        def candidates = fileTree(android.ndkDirectory) {
+            include '**/aarch64-linux-android/libc++_shared.so'
+        }.files
+        if (candidates.empty) {
+            throw new GradleException('Android NDK libc++_shared.so was not found')
+        }
+        def destination = new File(stagedJniLibsDir, 'arm64-v8a/libc++_shared.so')
+        destination.parentFile.mkdirs()
+        copy {
+            from candidates.first()
+            into destination.parentFile
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn('stageTypstCxxShared') }
 
 if (!usePrebuilt) {
     logger.lifecycle('''
