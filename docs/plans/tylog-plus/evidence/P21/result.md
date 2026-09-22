@@ -2,6 +2,19 @@
 
 Status: HOST ACCEPTED / DEVICE BLOCKED
 
+## Citation UI seam (2026-09-22)
+
+The earlier hybrid merger uses note IDs from keyword search and chunk IDs from
+vector search, so vector-only chunks cannot become note rows. A separate
+PDF-only citation lookup now resolves chunk IDs to a validated source locator,
+immutable version, and UTF-16 range. The optional cited-result list opens the
+PDF reader at that range only when the current extraction still matches the
+cited version. Generic chunk navigation remains available for other source
+kinds. Focused database, widget, and offset tests pass; see
+[citation-navigation.md](citation-navigation.md). The cited-result provider is
+not configured in production until query embeddings and real model quality are
+accepted. Android timing and native navigation acceptance remain open.
+
 Added bounded cosine top-K over stored Float32-compatible BLOBs and deterministic reciprocal-rank fusion with the existing FTS5 keyword IDs. Scores are normalized, malformed dimensions are skipped, and equal scores sort by stable IDs. Fusion avoids comparing incompatible keyword/vector score scales and keeps the query interface independent of a future sqlite-vec backend.
 Retrieved chunk IDs now resolve to their source, immutable source-version ID, and stable character offsets for cited navigation.
 

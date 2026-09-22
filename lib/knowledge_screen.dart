@@ -26,6 +26,8 @@ class KnowledgeScreen extends StatefulWidget {
     this.searchReady,
     this.searchRevision,
     this.vectorSearch,
+    this.citedSearch,
+    this.onOpenCitation,
     this.onFixProblems,
     this.savedSearches = const <SavedSearch>[],
     this.onSaveSearch,
@@ -48,6 +50,10 @@ class KnowledgeScreen extends StatefulWidget {
   /// Optional vector candidates used to reorder the keyword result metadata.
   /// When omitted, the existing FTS order is unchanged.
   final Future<List<VectorHit>> Function(String query)? vectorSearch;
+
+  /// Optional retrieved chunks with a validated source locator and range.
+  final Future<List<ChunkCitation>> Function(String query)? citedSearch;
+  final ValueChanged<ChunkCitation>? onOpenCitation;
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
@@ -96,6 +102,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   /// Results now arrive asynchronously, so they need somewhere to live.
   List<PkmsSearchResult> _results = const [];
+  List<ChunkCitation> _citations = const [];
   Timer? _searchDebounce;
 
   /// Guards against a slow reply overwriting a newer one. The query has *two*
@@ -190,6 +197,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         setState(() {
           _isSearchReady = false;
           _results = const [];
+          _citations = const [];
         });
       }
       _searchDebounce?.cancel();
@@ -201,6 +209,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         _isSearchReady = true;
         _observedSearchRevision = revision;
         _results = const [];
+        _citations = const [];
       });
       _runSearch(immediate: true);
     }
@@ -226,10 +235,19 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           limit: results.length,
         );
       }
+      var citations = const <ChunkCitation>[];
+      try {
+        citations = await widget.citedSearch?.call(query) ?? const [];
+      } catch (_) {
+        // Citations are optional; keep ordinary FTS results usable.
+      }
       // A newer query was issued while this one was in flight; its own reply owns
       // the results now.
       if (!mounted || generation != _searchGeneration) return;
-      setState(() => _results = results);
+      setState(() {
+        _results = results;
+        _citations = citations;
+      });
     }
 
     if (immediate) {
@@ -284,9 +302,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               .take(8)
               .toList();
     final results = _results;
+    final citations = _citations;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: 1 + (results.isEmpty ? 1 : results.length),
+      itemCount: 1 + citations.length +
+          (results.isEmpty && citations.isEmpty ? 1 : results.length),
       itemBuilder: (context, i) {
         if (i == 0) {
           return Column(
@@ -480,7 +500,24 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             ],
           );
         }
-        if (results.isEmpty) {
+        if (i <= citations.length && i > 0) {
+          final citation = citations[i - 1];
+          return ListTile(
+            key: ValueKey('citation-${citation.chunkId}'),
+            leading: const Icon(Icons.menu_book_outlined),
+            title: Text(citation.sourceTitle ?? citation.sourceLocator),
+            subtitle: Text(
+              '${citation.sourceLocator} · characters ${citation.startOffset}–${citation.endOffset}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: citation.sourceKind == 'pdf' && widget.onOpenCitation != null
+                ? () => widget.onOpenCitation!(citation)
+                : null,
+          );
+        }
+        final resultIndex = i - 1 - citations.length;
+        if (results.isEmpty || resultIndex >= results.length) {
           return ListTile(
             leading: Icon(
               _isSearchReady ? Icons.search_off : Icons.hourglass_top,
@@ -488,7 +525,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             title: Text(_isSearchReady ? 'No matches' : 'Indexing search…'),
           );
         }
-        final result = results[i - 1];
+        final result = results[resultIndex];
         return ListTile(
           leading: Icon(switch (result.kind) {
             'task' => Icons.task_alt,

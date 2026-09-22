@@ -3,14 +3,15 @@
 Contract: [plan.md](plan.md). Updated 2026-09-21. Coordinator owns this file.
 
 Pre-A24 host checkpoint: [evidence/pre-a24-readiness.md](evidence/pre-a24-readiness.md).
-Host regression is green (748 passed, 2 skipped); device, private-corpus, and
+Host regression is green (754 passed, 2 skipped); device, judged-quality, and
 real-Nextcloud gates remain explicitly open.
 
 **Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
-**Current snapshot (2026-09-22):** host acceptance is closed for P05, P09,
-P18–P25 where their rows say HOST ACCEPTED. Remaining blockers are P03 A24
-initial sync completion and bidirectional checks, P05 private model assets, P09 production
+**Current snapshot (2026-09-22):** bounded host primitives are accepted for P05,
+P09, and P18–P25; P21's optional PDF citation seam is host-tested but awaits
+the real model provider. Remaining blockers are P03 A24
+initial sync completion and bidirectional checks, P05 A24 model staging and 90 judged queries, P09 production
 registry/SAF rehearsal, P12 editor frame performance, P18/P19 corpus checks,
 P19 real account sync, P20/P21/P23 device model gates, P25 release rehearsal,
 and P26 seven-day use. Historical notes below retain the measurements and
@@ -22,7 +23,7 @@ earlier states that led to these decisions.
 | P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
 | P03 | Real Mac–phone sync and existing controls | P02 | BOTH ACCOUNTS CONNECTED / FIRST DEVICE SYNC INTERRUPTED | [A24 safe merge reached archive download; completion and bidirectional checks remain](evidence/P03/result.md) |
 | P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
-| P05 | Offline embedding/vector feasibility | P04 | HOST ACCEPTED / DEVICE BLOCKED | ORT bridge and numerical gates pass; private model/tokenizer, Android quality, and judged queries remain |
+| P05 | Offline embedding/vector feasibility | P04 | MAC MODEL VERIFIED / JUDGED PACK + DEVICE OPEN | [Pinned private Mac model verified; 90 judged queries and A24 quality remain](evidence/P05/mac-quality-readiness.md) |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
@@ -38,7 +39,7 @@ earlier states that led to these decisions.
 | P18 | PDF reader/versioned extraction | P07,P14 | HOST ACCEPTED / DEVICE VERIFIED / CORPUS OPEN | Stable extraction, native reader, 1,000-page offsets, and A24/Mac smoke pass; private corpus/memory checks remain |
 | P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC READY | Durable anchors, reassignment, A24/Mac reader flows, and annotation revision envelopes pass; real Nextcloud sync and corpus acceptance remain |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
-| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST ACCEPTED / DEVICE BLOCKED | Bounded vector/hybrid/navigation seams pass host tests; real query model, UI citations, and device quality remain |
+| P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST CITATION SEAM ACCEPTED / PROVIDER + DEVICE OPEN | [PDF chunk hit renders and opens at versioned offset](evidence/P21/citation-navigation.md); real model/device quality remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | HOST ACCEPTED / DEVICE VERIFIED | [Bounded traversal, graph UI/export, and A24 SVG share handoff to Nextcloud pass](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | HOST ACCEPTED / DEVICE BLOCKED | Filtered retrieval-to-vault report path passes host tests; vector quality and native end-to-end acceptance remain |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | HOST ACCEPTED / DEVICE VERIFIED / EXTERNAL BLOCKED | Host failure matrix and A24 profile process-death/reopen pass; real Nextcloud and production-release rehearsal remain |

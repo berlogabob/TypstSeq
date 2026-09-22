@@ -69,3 +69,15 @@ The current macOS release executable is a verified universal Mach-O with
 `a86ab072dd89ac08f615113ac6c1afb453e26523e1e89dd99440da085fdc4e61`.
 Host packaging and launch evidence are complete; real Nextcloud credentials,
 real-vault integrity, and two-device release rehearsal remain external gates.
+
+## Integrated host artifacts (2026-09-22)
+
+After the P21 cited-navigation host seam, `flutter build apk --profile` and
+`flutter build macos --release` both passed. The Android profile APK is still
+`org.tylog.tylog` 0.4.4+99; its SHA-256 is
+`fd9ca41574dfd51bf9732eb0e11879064e04a22894d4e0ba64eb69caf88367d0`.
+The macOS release executable contains arm64 and x86_64 slices, has SHA-256
+`7e3392e9eed23f82ef2cc5db0fd0b736249414926583959c7dc8fad18f16d714`,
+and `codesign --verify --deep --strict` passed. These integrated artifacts are
+ready for device and release rehearsal; neither was used for that acceptance
+in this checkpoint.

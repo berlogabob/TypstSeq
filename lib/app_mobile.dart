@@ -28,6 +28,7 @@ import 'platform_file_actions.dart';
 import 'pdf/pdf_reader_screen.dart';
 import 'report.dart';
 import 'retrieval/graph_svg.dart';
+import 'retrieval/hybrid_search.dart';
 import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
@@ -1241,6 +1242,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
           problems: _knowledgeProblems(),
           onOpenNote: _openPath,
+          onOpenCitation: _openCitation,
           onFixProblems: _fixProblems,
         ),
       ),
@@ -2119,6 +2121,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (error) {
       if (mounted) showSnack(context, 'Could not open file: $error');
+    }
+  }
+
+  Future<void> _openCitation(ChunkCitation citation) async {
+    final v = vault;
+    if (v == null ||
+        citation.sourceKind != 'pdf' ||
+        !isSafeVaultPath(citation.sourceLocator) ||
+        !citation.sourceLocator.toLowerCase().endsWith('.pdf')) {
+      return;
+    }
+    try {
+      final bytes = await v.storage.readBytes(citation.sourceLocator);
+      final entry = workspace.entry;
+      final db = entry == null ? null : await _databaseForVault(entry);
+      if (!mounted || vault != v || db == null) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => PdfReaderScreen(
+            bytes: bytes,
+            path: citation.sourceLocator,
+            database: db,
+            initialSourceVersionId: citation.sourceVersionId,
+            initialStartOffset: citation.startOffset,
+            initialEndOffset: citation.endOffset,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not open citation: $error');
     }
   }
 

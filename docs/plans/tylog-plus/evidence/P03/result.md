@@ -54,9 +54,9 @@ the sync and dashboard suites pass 117 tests. This prevents that race from
 creating new duplicate cards, but does not establish whether it caused the
 two existing A24 records. Those remain untouched pending device inspection.
 
-The next A24 profile APK was built from commit `8b1c9cd` without the phone:
+The A24 profile APK was rebuilt after the later host integration without the phone:
 `build/app/outputs/flutter-apk/app-profile.apk` (package `org.tylog.tylog`,
 version 0.4.4+99, SHA256
-`6fb242fbabeae2bf058ff91efc5f4ddaa310f9d9685fc2a4588218999431686e`). Install
+`fd9ca41574dfd51bf9732eb0e11879064e04a22894d4e0ba64eb69caf88367d0`). Install
 it with `adb install -r` after reconnecting; this build has not yet been run
 on the device.

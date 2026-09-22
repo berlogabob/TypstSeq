@@ -36,6 +36,24 @@ class PdfExtraction {
   String get text => pages.map((page) => page.text).join('\n');
 }
 
+({int page, int start, int end})? pdfPageRangeForOffset(
+  PdfExtraction extraction,
+  int startOffset,
+  int endOffset,
+) {
+  if (startOffset < 0 || endOffset <= startOffset) return null;
+  for (final page in extraction.pages) {
+    if (startOffset >= page.start && startOffset < page.end) {
+      return (
+        page: page.page,
+        start: startOffset - page.start,
+        end: (endOffset < page.end ? endOffset : page.end) - page.start,
+      );
+    }
+  }
+  return null;
+}
+
 /// Builds a stable, page-addressable extraction record from platform PDF text.
 /// The platform reader supplies one nullable string per page; null/empty pages
 /// remain accounted for instead of being silently treated as extracted text.

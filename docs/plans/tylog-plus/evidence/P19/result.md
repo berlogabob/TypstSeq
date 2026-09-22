@@ -46,3 +46,16 @@ quality, and Android validation remain open.
 The host annotation, reattachment, reader-store, and stable-offset suite passed
 21 tests with clean analysis. Mac and A24 native selection/save/reopen flows are
 verified; annotation synchronization and private-corpus quality remain open.
+
+## Redacted Mac corpus pass (2026-09-22)
+
+During the native PDFium corpus run, four text-bearing PDFs each supplied one
+sample selection to an isolated temporary database. Save created one durable
+annotation per PDF; changed-range reassignment moved all four while preserving
+their annotation identities. Quote reattachment returned exact for two samples
+and ambiguous for two. The fifth PDF had no selectable text and therefore no
+anchor candidate. Temporary databases were deleted after the run; the vault
+and production database were not modified. The check uses the storage API, not
+the changed-range UI interaction. Annotation sync through a real account
+remains open. The repeatable invocation and redacted corpus counts are recorded
+in P18 evidence.

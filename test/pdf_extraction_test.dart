@@ -52,4 +52,39 @@ void main() {
     }
     expect(result.text, startsWith('page-0\npage-1\npage-2'));
   });
+
+  test(
+    'citation offsets map to their page and clip across page boundaries',
+    () {
+      final extraction = versionPdfText(
+        sourceVersionId: 'v',
+        bytes: '%PDF-1.7'.codeUnits,
+        pageTexts: const ['Alpha', 'Beta'],
+      );
+      expect(pdfPageRangeForOffset(extraction, 6, 10), (
+        page: 1,
+        start: 0,
+        end: 4,
+      ));
+      expect(pdfPageRangeForOffset(extraction, 3, 8), (
+        page: 0,
+        start: 3,
+        end: 5,
+      ));
+      expect(pdfPageRangeForOffset(extraction, 5, 6), isNull);
+    },
+  );
+
+  test('citation offsets preserve Dart UTF-16 positions', () {
+    final extraction = versionPdfText(
+      sourceVersionId: 'v',
+      bytes: '%PDF-1.7'.codeUnits,
+      pageTexts: const ['A😀B'],
+    );
+    expect(pdfPageRangeForOffset(extraction, 1, 3), (
+      page: 0,
+      start: 1,
+      end: 3,
+    ));
+  });
 }

@@ -8,6 +8,30 @@ class HybridHit {
   final double score;
 }
 
+class ChunkCitation {
+  const ChunkCitation({
+    required this.chunkId,
+    required this.sourceId,
+    required this.sourceKind,
+    required this.sourceLocator,
+    required this.sourceVersionId,
+    required this.startOffset,
+    required this.endOffset,
+    required this.content,
+    this.sourceTitle,
+  });
+
+  final String chunkId;
+  final String sourceId;
+  final String sourceKind;
+  final String sourceLocator;
+  final String? sourceTitle;
+  final String sourceVersionId;
+  final int startOffset;
+  final int endOffset;
+  final String content;
+}
+
 /// Merges keyword and vector rankings without comparing incompatible scores.
 /// Reciprocal-rank fusion keeps this query path backend-independent. Keyword
 /// and vector IDs must use the same entity ID namespace for agreement to work.

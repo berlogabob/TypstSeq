@@ -121,3 +121,24 @@ searchStoredChunksHybridWithNavigation({
         ),
   ];
 }
+
+Future<List<ChunkCitation>> resolveChunkCitations({
+  required TyLogDatabase database,
+  required Iterable<VectorHit> hits,
+}) async {
+  final rows = await database.pdfCitationsForChunks(hits.map((hit) => hit.id));
+  return [
+    for (final row in rows)
+      ChunkCitation(
+        chunkId: row.chunkId,
+        sourceId: row.sourceId,
+        sourceKind: row.sourceKind,
+        sourceLocator: row.sourceLocator,
+        sourceTitle: row.sourceTitle,
+        sourceVersionId: row.sourceVersionId,
+        startOffset: row.startOffset,
+        endOffset: row.endOffset,
+        content: row.content,
+      ),
+  ];
+}

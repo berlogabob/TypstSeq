@@ -59,3 +59,23 @@ The combined extraction, source-version, reader-store, annotation, reattach,
 and chunk-navigation suite passed **21 tests** with clean analysis. Native
 reader smoke is verified on Mac and A24; private corpus, scanned-image/OCR,
 password-protected PDF, and memory-scale checks remain open.
+
+## Redacted Mac corpus pass (2026-09-22)
+
+Repeatable command (set the environment variable to the private corpus root;
+the actual value is deliberately not recorded):
+
+```sh
+TYLOG_PRIVATE_PDF_ROOT="$PRIVATE_PDF_ROOT" tool/run_private_pdf_acceptance.sh
+```
+
+The native PDFium reader opened all five PDFs: 59 pages total, 41 with
+selectable text, and 48,693 extracted characters. Four PDFs produced selectable
+text; one produced the expected no-selectable-text state. No PDF paths, titles,
+text, or hashes were recorded. The 100 ms process-RSS sampler measured a
+532,880 KiB peak on the recorded rerun (other repeats measured 525,904 and
+523,520 KiB) while the reader opened the corpus sequentially. This is the
+whole macOS test app process peak, not an isolated PDFium allocation measurement
+or a memory-limit pass/fail threshold. Automated extraction coverage does not
+assess semantic accuracy, scanned-image rendering quality, OCR, or
+password-protected files.

@@ -15,10 +15,16 @@ class PdfReaderScreen extends StatefulWidget {
     required this.bytes,
     required this.path,
     required this.database,
+    this.initialSourceVersionId,
+    this.initialStartOffset,
+    this.initialEndOffset,
   });
   final Uint8List bytes;
   final String path;
   final TyLogDatabase? database;
+  final String? initialSourceVersionId;
+  final int? initialStartOffset;
+  final int? initialEndOffset;
 
   @override
   State<PdfReaderScreen> createState() => _PdfReaderScreenState();
@@ -71,6 +77,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
               : null;
         });
       }
+      await _openInitialCitation(extraction);
     } catch (_) {
       if (mounted) {
         setState(
@@ -80,6 +87,42 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       }
     } finally {
       _preparing = false;
+    }
+  }
+
+  Future<void> _openInitialCitation(PdfExtraction extraction) async {
+    final versionId = widget.initialSourceVersionId;
+    final start = widget.initialStartOffset;
+    final end = widget.initialEndOffset;
+    if (versionId == null || start == null || end == null) return;
+    if (versionId != extraction.sourceVersionId) {
+      if (mounted) setState(() => _status = 'This citation is out of date.');
+      return;
+    }
+    final range = pdfPageRangeForOffset(extraction, start, end);
+    if (range == null || range.end <= range.start) {
+      if (mounted) setState(() => _status = 'This citation cannot be opened.');
+      return;
+    }
+    final document = _document;
+    if (document == null ||
+        range.page < 0 ||
+        range.page >= document.pages.length) {
+      return;
+    }
+    try {
+      final pageText = await document.pages[range.page].loadStructuredText();
+      if (!mounted || range.end > pageText.fullText.length) return;
+      await _controller.goToPage(pageNumber: range.page + 1);
+      if (!mounted) return;
+      await _controller.textSelectionDelegate.setTextSelectionPointRange(
+        PdfTextSelectionRange.fromPoints(
+          PdfTextSelectionPoint(pageText, range.start),
+          PdfTextSelectionPoint(pageText, range.end - 1),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _status = 'This citation cannot be opened.');
     }
   }
 

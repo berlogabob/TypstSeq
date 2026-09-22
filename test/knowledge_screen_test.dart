@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/knowledge_screen.dart';
+import 'package:tylog/retrieval/hybrid_search.dart';
 import 'package:tylog_core/models.dart';
 
 PkmsProblem _broken(String subject, String target) => PkmsProblem(
@@ -67,5 +69,41 @@ void main() {
     // One word, or a lowercase second word, is not a name.
     expect(defaultKindForTarget('Дубай'), 'note');
     expect(defaultKindForTarget('quick capture'), 'note');
+  });
+
+  testWidgets('cited PDF result opens with its exact source range', (
+    tester,
+  ) async {
+    ChunkCitation? opened;
+    const citation = ChunkCitation(
+      chunkId: 'version:4:9',
+      sourceId: 'source',
+      sourceKind: 'pdf',
+      sourceLocator: 'papers/example.pdf',
+      sourceTitle: 'Example paper',
+      sourceVersionId: 'version',
+      startOffset: 4,
+      endOffset: 9,
+      content: 'proof',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeScreen(
+            index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+            search: (_, _, _) async => const [],
+            citedSearch: (_) async => const [citation],
+            problems: const [],
+            onOpenNote: (_) {},
+            onOpenCitation: (value) => opened = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Example paper'), findsOneWidget);
+    expect(find.text('No matches'), findsNothing);
+    await tester.tap(find.text('Example paper'));
+    expect(opened, same(citation));
   });
 }
