@@ -1,6 +1,6 @@
 # P19 progress — durable annotations
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE VERIFIED / SYNC OPEN
 
 Schema v7 adds `annotations`, keyed to a durable PDF source version and storing page, character start/end, quote, and surrounding context. Reads are ordered by source offset, so navigation does not depend on the current page rendering order. Deleting a source version cascades its annotations rather than leaving dangling anchors.
 
@@ -31,3 +31,9 @@ The combined extraction, annotation, reassignment, source-version, and chunk
 navigation suite passed 21 tests. The macOS native reader run passed both text
 highlight and vector-only PDF tests. Annotation synchronization, private corpus
 quality, and Android validation remain open.
+
+## Acceptance rerun (2026-09-22)
+
+The host annotation, reattachment, reader-store, and stable-offset suite passed
+21 tests with clean analysis. Mac and A24 native selection/save/reopen flows are
+verified; annotation synchronization and private-corpus quality remain open.

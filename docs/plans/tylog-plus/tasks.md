@@ -27,8 +27,8 @@ real-Nextcloud gates remain explicitly open.
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
-| P18 | PDF reader/versioned extraction | P07,P14 | RUNNING | In-app PDF reader and persisted selection implementation underway; native smoke pending |
-| P19 | Durable annotations/navigation | P18 | RUNNING | Versioned storage and reader reassignment action landed; sync and corpus acceptance remain |
+| P18 | PDF reader/versioned extraction | P07,P14 | HOST ACCEPTED / DEVICE VERIFIED / CORPUS OPEN | Stable extraction, native reader, 1,000-page offsets, and A24/Mac smoke pass; private corpus/memory checks remain |
+| P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC OPEN | Durable anchors, reassignment, and A24/Mac reader flows pass; annotation sync and corpus acceptance remain |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST ACCEPTED / DEVICE BLOCKED | Bounded vector/hybrid/navigation seams pass host tests; real query model, UI citations, and device quality remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |

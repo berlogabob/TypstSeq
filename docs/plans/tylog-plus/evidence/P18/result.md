@@ -1,6 +1,6 @@
 # P18 progress — PDF extraction contract
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE VERIFIED / CORPUS OPEN
 
 Added a parser-neutral extraction boundary in `lib/pdf/pdf_extraction.dart`. A platform PDF reader supplies one nullable text value per page; TyLog records the source-version ID, PDF SHA-256, page number, combined character offsets, and an explicit status. Invalid bytes and image-only PDFs are accounted for instead of being silently indexed as empty text. SQLite schema v6 persists those records in `source_versions` with a source/time index.
 
@@ -52,3 +52,10 @@ checks, confirming source-version identity and stable ranges alongside the
 1,000-page extraction contract.
 
 A24 native run also passed both tests (`flutter test --no-pub --no-uninstall integration_test/pdf_reader_native_test.dart -d 000251565001005`). Targeted analyzer clean. Tests use separate fixture databases in the debug package; production vaults are unchanged.
+
+## Acceptance rerun (2026-09-22)
+
+The combined extraction, source-version, reader-store, annotation, reattach,
+and chunk-navigation suite passed **21 tests** with clean analysis. Native
+reader smoke is verified on Mac and A24; private corpus, scanned-image/OCR,
+password-protected PDF, and memory-scale checks remain open.
