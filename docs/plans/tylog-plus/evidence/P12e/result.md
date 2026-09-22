@@ -305,3 +305,11 @@ produced too few timing samples on Android. The corrected profile run produced
 `frames=7963 edits=1200 dropped=5573 over_budget=1200 worst_ms=109.18`.
 The <=1% dropped-frame gate therefore fails. Startup/save/open timing passes,
 but the full rich editor remains the active P12 blocker.
+
+### Repaint-boundary probe (2026-09-22)
+
+Wrapping each visible line in a `RepaintBoundary` was measured on the same A24
+profile workload. It produced `frames=969 edits=120 dropped=37
+worst_ms=21.44 build_ms=12.05 raster_ms=10.28`, worse than the prior
+production baseline of 21 dropped equivalents. The change was reverted; the
+remaining bottleneck is shared editable-row layout/render work.
