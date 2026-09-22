@@ -37,6 +37,26 @@ extension _SyncConflicts on NextcloudSync {
     _RemoteFile? remoteFile,
     File? capturedRemote,
     String? observedRemoteEtag,
+  }) => _serializeConflictWrite(
+    () => _storeConflictUnlocked(
+      vault,
+      path,
+      localExists: localExists,
+      remoteExists: remoteExists,
+      remoteFile: remoteFile,
+      capturedRemote: capturedRemote,
+      observedRemoteEtag: observedRemoteEtag,
+    ),
+  );
+
+  Future<void> _storeConflictUnlocked(
+    Vault vault,
+    String path, {
+    required bool localExists,
+    required bool remoteExists,
+    _RemoteFile? remoteFile,
+    File? capturedRemote,
+    String? observedRemoteEtag,
   }) async {
     await _discardConflictsForPath(vault, path);
     final id = sha256

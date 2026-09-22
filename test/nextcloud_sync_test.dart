@@ -2744,6 +2744,41 @@ void main() {
     },
   );
 
+  test('concurrent conflict writes keep one record per path', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'tylog_concurrent_conflict_',
+    );
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    await Future.wait([
+      createSyncConflict(
+        vault,
+        'notes/dupe.typ',
+        localBytes: utf8.encode('local A'),
+        remoteBytes: utf8.encode('remote A'),
+      ),
+      createSyncConflict(
+        vault,
+        'notes/dupe.typ',
+        localBytes: utf8.encode('local B'),
+        remoteBytes: utf8.encode('remote B'),
+      ),
+    ]);
+
+    final conflicts = await loadSyncConflicts(vault);
+    expect(conflicts, hasLength(1));
+    expect(
+      await vault.storage.readText(conflicts.single.localSnapshot!),
+      'local B',
+    );
+    expect(
+      await vault.storage.readText(conflicts.single.remoteSnapshot!),
+      'remote B',
+    );
+  });
+
   test(
     'loadSyncConflicts self-heals a record whose snapshots are identical',
     () async {

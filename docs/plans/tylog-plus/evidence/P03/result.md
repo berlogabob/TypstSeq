@@ -24,6 +24,9 @@ neither was resolved during this check.
 - Verify a small test edit moves Mac → A24 and A24 → Mac through the existing
   sync controls.
 - Verify a same-note concurrent edit is preserved as a conflict on both sides.
+- Inspect the two already displayed A24 records for the same note by record ID,
+  timestamp, and snapshot hashes before resolving either; the verified P01
+  backup predates them and contains no conflict records.
 - Verify an attachment's checksum survives the round trip and a cold app
   restart.
 
@@ -42,3 +45,11 @@ total size), without changing transfer or fallback decisions. A delayed ZIP
 fixture verifies a progress update before completion; all 106 sync tests pass.
 The updated profile build and real A24 display still need verification after
 the phone is reconnected.
+
+Host follow-up found a reproducible same-path race: two concurrent conflict
+writers could both remove the previous record before writing distinct new
+records. The shared writer is now serialized within the app isolate. A focused
+race test failed with two records before the fix and passes with one after it;
+the sync and dashboard suites pass 117 tests. This prevents that race from
+creating new duplicate cards, but does not establish whether it caused the
+two existing A24 records. Those remain untouched pending device inspection.

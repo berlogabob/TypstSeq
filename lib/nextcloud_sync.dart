@@ -1541,7 +1541,37 @@ Future<void> _discardConflictsForPath(Vault vault, String path) async {
   }
 }
 
+// ponytail: conflict records are rare, so one in-isolate queue is enough;
+// use per-vault locks only if concurrent conflict throughput matters.
+Future<void> _conflictWriteTail = Future.value();
+
+Future<T> _serializeConflictWrite<T>(Future<T> Function() write) async {
+  final previous = _conflictWriteTail;
+  final done = Completer<void>();
+  _conflictWriteTail = done.future;
+  await previous;
+  try {
+    return await write();
+  } finally {
+    done.complete();
+  }
+}
+
 Future<void> createSyncConflict(
+  Vault vault,
+  String path, {
+  required List<int> localBytes,
+  required List<int>? remoteBytes,
+}) => _serializeConflictWrite(
+  () => _createSyncConflictUnlocked(
+    vault,
+    path,
+    localBytes: localBytes,
+    remoteBytes: remoteBytes,
+  ),
+);
+
+Future<void> _createSyncConflictUnlocked(
   Vault vault,
   String path, {
   required List<int> localBytes,
