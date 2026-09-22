@@ -6,6 +6,17 @@ Audited release **0.4.4+99**, commit **bacbf11**. Scope: existing features, navi
 
 No Android device was connected. This is a code and automated-behavior audit, not a completed device interaction or frame-time audit. It cannot establish that every button works on every platform or enumerate every possible bug.
 
+## Remediation verification (2026-09-22)
+
+`flutter test --no-pub docs/audits/2026-09-06/reproduction_test.dart` now
+passes all five probes. The worker dispose command completes, rejected saves
+retain the edited buffer during navigation, saved-search additions remain
+durable, cold startup publishes one index, and two rejected poll attempts
+produce **zero additional index publications**. The original continuous
+processing/indexing loop finding is therefore fixed in the current checkout;
+device release timing and real-account behavior remain separate acceptance
+gates.
+
 ## Verification
 
 | Check | Result |
