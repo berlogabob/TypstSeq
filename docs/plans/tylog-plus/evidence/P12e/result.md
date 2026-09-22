@@ -284,6 +284,6 @@ five-minute frame-budget result remains for P12h.
 
 The harness now drives a live 50 ms pump stream; a plain five-minute delay
 produced too few timing samples on Android. The corrected profile run produced
-`frames=1874 edits=1200 dropped=5426 over_budget=1199 worst_ms=126.32`.
+`frames=7963 edits=1200 dropped=5573 over_budget=1200 worst_ms=109.18`.
 The <=1% dropped-frame gate therefore fails. Startup/save/open timing passes,
 but the full rich editor remains the active P12 blocker.

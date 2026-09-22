@@ -118,7 +118,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
 | P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FRAME PENDING | P12g | Virtual editor parity tests pass; A24 five-minute workload reaches <=1% dropped-frame equivalents |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | DEVICE FAILED | P12e | A24 produced 1,874 frames, 5,426 dropped-frame equivalents, 1,199 over-budget frames, worst 126.32 ms; editor remediation remains required |
+| P12j frame-timing gate | Coordinator | DEVICE FAILED | P12e | A24 produced 7,963 frames, 5,573 dropped-frame equivalents, 1,200 over-budget frames, worst 109.18 ms; editor remediation remains required |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 

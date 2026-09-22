@@ -44,11 +44,11 @@ void main() {
     });
     final deadline = DateTime.now().add(const Duration(minutes: 5));
     while (DateTime.now().isBefore(deadline)) {
-      // Keep the integration binding attached to a live frame stream. A plain
-      // Future.delayed lets Android stop scheduling frames while the app is
-      // idle, which makes the timing sample count meaningless.
-      await tester.pump(const Duration(milliseconds: 50));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // Keep the integration binding attached to a live 60 Hz frame stream.
+      // A plain Future.delayed lets Android stop scheduling frames while the
+      // app is idle, which makes the timing sample count meaningless.
+      await tester.pump(const Duration(milliseconds: 16));
+      await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     editTimer.cancel();
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
