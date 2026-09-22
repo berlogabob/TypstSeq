@@ -53,3 +53,10 @@ race test failed with two records before the fix and passes with one after it;
 the sync and dashboard suites pass 117 tests. This prevents that race from
 creating new duplicate cards, but does not establish whether it caused the
 two existing A24 records. Those remain untouched pending device inspection.
+
+The next A24 profile APK was built from commit `8b1c9cd` without the phone:
+`build/app/outputs/flutter-apk/app-profile.apk` (package `org.tylog.tylog`,
+version 0.4.4+99, SHA256
+`6fb242fbabeae2bf058ff91efc5f4ddaa310f9d9685fc2a4588218999431686e`). Install
+it with `adb install -r` after reconnecting; this build has not yet been run
+on the device.
