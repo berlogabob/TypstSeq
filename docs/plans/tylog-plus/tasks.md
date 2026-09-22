@@ -8,6 +8,13 @@ real-Nextcloud gates remain explicitly open.
 
 **Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
+**Current snapshot (2026-09-22):** host acceptance is closed for P05, P09,
+P18–P25 where their rows say HOST ACCEPTED. Remaining blockers are P03 real
+Nextcloud credentials, P05 private model assets, P09 production registry/SAF
+rehearsal, P12 editor frame performance, P19 annotation sync, P22 target-app
+share verification, and P26 seven-day use. Historical notes below retain the
+measurements and earlier states that led to these decisions.
+
 | ID | Task | Dependencies | State | Acceptance |
 |---|---|---|---|---|
 | P01 | Back up and inventory real phone vault/configuration | — | DONE | [11,826 files verified](evidence/P01/result.md) |
