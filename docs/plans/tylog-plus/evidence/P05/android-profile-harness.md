@@ -59,3 +59,11 @@ APK: 4a3024e01e4f6146a80d7cbd33a3e55887edae3a70d27236475fd8c81f12057a
 
 The artifact is ready for the pending A024 install/model-vector check; no
 device was connected during this build.
+
+## Current device gate (2026-09-22)
+
+The A24 profile package is installed, but no private model or tokenizer files
+are present in the app-readable storage, so the native vector-agreement,
+latency, memory, and sustained-resume checks cannot run. The APK intentionally
+contains no model bytes. P05 remains device-blocked until those private assets
+are supplied.

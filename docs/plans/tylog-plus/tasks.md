@@ -14,7 +14,7 @@ real-Nextcloud gates remain explicitly open.
 | P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
 | P03 | Real Mac–phone sync and existing controls | P02 | BLOCKED | No Nextcloud configuration on either device; credentials/user setup required |
 | P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
-| P05 | Offline embedding/vector feasibility | P04 | RUNNING | Runtime/model, quality, latency, memory, sustained run |
+| P05 | Offline embedding/vector feasibility | P04 | HOST ACCEPTED / DEVICE BLOCKED | ORT bridge and numerical gates pass; private model/tokenizer, Android quality, and judged queries remain |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
