@@ -40,7 +40,7 @@ measurements and earlier states that led to these decisions.
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST ACCEPTED / DEVICE BLOCKED | Bounded vector/hybrid/navigation seams pass host tests; real query model, UI citations, and device quality remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | HOST ACCEPTED / DEVICE VERIFIED | [Bounded traversal, graph UI/export, and A24 SVG share handoff to Nextcloud pass](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | HOST ACCEPTED / DEVICE BLOCKED | Filtered retrieval-to-vault report path passes host tests; vector quality and native end-to-end acceptance remain |
-| P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | HOST ACCEPTED / DEVICE BLOCKED | Host failure matrix and A24 annotation restart pass; full production process-death/release rehearsal remains |
+| P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | HOST ACCEPTED / DEVICE VERIFIED / EXTERNAL BLOCKED | Host failure matrix and A24 profile process-death/reopen pass; real Nextcloud and production-release rehearsal remain |
 | P25 | Production migration/release acceptance | P03,P24 | HOST ACCEPTED / EXTERNAL BLOCKED | [Universal macOS and Android profile artifacts verified; real Nextcloud/vault rehearsal remains](evidence/P25/result.md) |
 | P26 | Daily-use acceptance/thesis freeze | P25 | TODO | Seven days; every required gate passes |
 

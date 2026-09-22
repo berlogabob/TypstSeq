@@ -1,6 +1,6 @@
 # P24 — migration rehearsal and integrated failures
 
-Status: HOST ACCEPTED / DEVICE BLOCKED
+Status: HOST ACCEPTED / DEVICE VERIFIED / EXTERNAL BLOCKED
 
 The failure-path suite exercises schema migration and rollback, atomic vault migration, permission loss, stalled storage calls, interrupted sync, resumable recovery, corrupt-state replacement, archive restore, and regression behavior. The complete Nextcloud sync suite also covers conditional-transfer races, remote wipe protection, conflict preservation, and the 1,602-file archive restore path.
 
@@ -36,7 +36,7 @@ The focused migration/import failure suite passed **25 tests with 1 skipped**;
 the full local-WebDAV sync failure suite passed **105 tests**. This rerun covers
 schema rollback, permission loss, stalled storage, interrupted import/sync,
 resumable recovery, conflict preservation, and the 1,602-file archive restore.
-Physical-device interruption and production-release rehearsal remain open.
+Real Nextcloud credentials and production-release rehearsal remain open.
 
 Sequential host rerun passed 130 migration, rollback, storage, import, and
 local WebDAV failure/sync tests with 1 expected skip. Physical process-death
@@ -52,5 +52,6 @@ Nextcloud rehearsal.
 
 P24d adds the controller-level restart-boundary matrix: 19 tests passed for
 cold-index donor ordering, vault switching during sync, retry/backoff, polling
-gates, conflict recovery, and post-sync reindex routing. These model restart
-boundaries in-process; actual process kill remains device-gated.
+gates, conflict recovery, and post-sync reindex routing. The A24 profile
+force-stop/reopen run above supplies the physical process boundary; the
+remaining release rehearsal depends on the real sync account and vault.
