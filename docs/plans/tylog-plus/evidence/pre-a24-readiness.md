@@ -55,3 +55,10 @@ real Nextcloud account.
 
 Both builds compile the current retrieval bridge. APK installation and runtime
 profiling remain pending until the A24 is available.
+
+## A24 release launch smoke (2026-09-22)
+
+The current profile APK installed over the release package (`org.tylog.tylog`),
+launched through Android's normal activity entry point, and remained alive after
+8 seconds with no Flutter fatal-error output. This is a launch check only; the
+real-vault and editor frame gates remain separate.
