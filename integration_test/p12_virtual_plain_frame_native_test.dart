@@ -28,7 +28,9 @@ void main() {
     SchedulerBinding.instance.addTimingsCallback(onTimings);
     final field = tester.widget<TextField>(find.byType(TextField).first).controller!;
     var edits = 0;
-    final editTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+    final editTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) {
       field.value = field.value.copyWith(
         text: '${field.text} frame-$edits',
         selection: TextSelection.collapsed(
@@ -37,7 +39,9 @@ void main() {
       );
       edits++;
       SchedulerBinding.instance.scheduleFrame();
-    });
+      },
+    );
+    if (const bool.fromEnvironment('P12_NO_EDITS')) editTimer.cancel();
     final deadline = DateTime.now().add(const Duration(seconds: 30));
     while (DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -54,10 +58,20 @@ void main() {
     final worst = timings.isEmpty
         ? Duration.zero
         : timings.map((t) => t.totalSpan).reduce((a, b) => a > b ? a : b);
+    final worstBuild = timings.isEmpty
+        ? Duration.zero
+        : timings.map((t) => t.buildDuration).reduce((a, b) => a > b ? a : b);
+    final worstRaster = timings.isEmpty
+        ? Duration.zero
+        : timings
+              .map((t) => t.rasterDuration)
+              .reduce((a, b) => a > b ? a : b);
     // ignore: avoid_print
     print(
       'P12 actual-long frames=${timings.length} edits=$edits '
-      'dropped=$dropped worst_ms=${worst.inMicroseconds / 1000}',
+      'dropped=$dropped worst_ms=${worst.inMicroseconds / 1000} '
+      'build_ms=${worstBuild.inMicroseconds / 1000} '
+      'raster_ms=${worstRaster.inMicroseconds / 1000}',
     );
     expect(edits, greaterThanOrEqualTo(100));
     expect(timings, isNotEmpty);

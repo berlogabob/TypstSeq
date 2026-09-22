@@ -1,7 +1,7 @@
 # Graph Report - TypstSeq  (2026-09-22)
 
 ## Corpus Check
-- 463 files · ~414,312 words
+- 463 files · ~414,431 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `83cbac6c`
+- Built from commit: `42ca1d01`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

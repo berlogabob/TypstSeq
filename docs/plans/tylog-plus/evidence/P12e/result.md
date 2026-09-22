@@ -294,6 +294,12 @@ A24 profile workload (900 single-line paragraphs, 120 edits): `frames=1007`,
 so the production long-note route also fails the 1% gate. A `cacheExtent: 0`
 probe was worse and was reverted.
 
+Phase attribution on the same harness recorded a no-edit baseline of 989 frames,
+zero dropped equivalents, and 12.90 ms worst frame. With edits, the run reached
+1,006 frames, 21 dropped equivalents, 26.33 ms worst frame, 11.93 ms worst Dart
+build, and 10.53 ms worst raster. A toolbar rebuild debounce probe worsened the
+run and was reverted; the remaining cost is in the editable row/render path.
+
 The harness now drives a live 16 ms pump stream; a plain five-minute delay
 produced too few timing samples on Android. The corrected profile run produced
 `frames=7963 edits=1200 dropped=5573 over_budget=1200 worst_ms=109.18`.
