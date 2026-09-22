@@ -18,7 +18,7 @@ real-Nextcloud gates remain explicitly open.
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
-| P09 | Resumable legacy import | P07 | RUNNING | Interruption/retry, every source accounted for |
+| P09 | Resumable legacy import | P07 | HOST ACCEPTED / DEVICE BLOCKED | Synthetic 10k interruption/retry passes; private A024 registry/SAF rehearsal is blocked |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
 | P12 | Paged startup/list reads | P11 | RUNNING | A24 startup/open/save pass; five-minute frame gate remains |

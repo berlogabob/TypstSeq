@@ -62,3 +62,12 @@ The current profile APK installed over the release package (`org.tylog.tylog`),
 launched through Android's normal activity entry point, and remained alive after
 8 seconds with no Flutter fatal-error output. This is a launch check only; the
 real-vault and editor frame gates remain separate.
+
+## P09 device attempt (2026-09-22)
+
+The profile real-vault harness was run on A24 (`000251565001005`) with the
+release-signed package. It failed immediately at `VaultRegistry.active` with
+`Bad state: No element`: the installed profile sandbox has no active registry
+entry. The test therefore did not scan an empty vault or produce misleading
+timings; P09d5 remains blocked until the production vault registry/SAF grant is
+restored in that package.
