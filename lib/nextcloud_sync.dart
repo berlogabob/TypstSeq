@@ -400,7 +400,11 @@ class NextcloudSync {
     final stageWatch = Stopwatch()..start();
     var stageStartedAt = 0;
     void progress(String next, [String? path]) {
-      final bucket = stage.startsWith('sync-file') ? 'sync-file' : stage;
+      final bucket = stage.startsWith('sync-file')
+          ? 'sync-file'
+          : stage.startsWith('download-archive')
+          ? 'download-archive'
+          : stage;
       stageMillis[bucket] =
           (stageMillis[bucket] ?? 0) + (stageWatch.elapsedMilliseconds - stageStartedAt);
       stageStartedAt = stageWatch.elapsedMilliseconds;

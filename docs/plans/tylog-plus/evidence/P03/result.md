@@ -34,3 +34,11 @@ attachment, or conflict resolution was performed.
 Host regression after the interruption: `flutter test test/nextcloud_sync_test.dart`
 passed 105 tests, including interrupted-bootstrap resume and unsupported-ZIP
 fallback. This verifies the code paths, not the pending real-device result.
+
+The archive download previously reported only its stage, leaving the A24
+screen unchanged while bytes streamed. A host change now reports transfer
+percentage about twice per second (downloaded MiB if the server omits the
+total size), without changing transfer or fallback decisions. A delayed ZIP
+fixture verifies a progress update before completion; all 106 sync tests pass.
+The updated profile build and real A24 display still need verification after
+the phone is reconnected.

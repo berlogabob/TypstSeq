@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -3301,6 +3302,42 @@ void main() {
     },
   );
 
+  test('archive restore reports downloaded bytes', () async {
+    final random = Random(1);
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/cloud.typ': _remoteText('cloud note'),
+      'assets/blob.bin': _remoteBytes(
+        List<int>.generate(1024 * 1024, (_) => random.nextInt(256)),
+      ),
+    };
+    final server = await _mutableWebDavServer(
+      remote,
+      serveArchive: true,
+      archiveChunkDelay: const Duration(milliseconds: 550),
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_archive_progress_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+    final stages = <String>[];
+
+    await NextcloudSync(
+      _config(server),
+      onProgress: (stage, _) => stages.add(stage),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(
+      stages,
+      contains(matches(RegExp(r'^download-archive [1-9][0-9]?%$'))),
+    );
+    expect(stages, contains('download-archive 100%'));
+    expect(await vault.storage.readText('notes/cloud.typ'), 'cloud note');
+  });
+
   test(
     '1602-file restore uses two PROPFINDs and one ZIP GET',
     () async {
@@ -3840,6 +3877,7 @@ Future<HttpServer> _mutableWebDavServer(
   // repair actually clears the poisoned state server-side.
   bool lowercaseChecksums = false,
   bool serveArchive = false,
+  Duration archiveChunkDelay = Duration.zero,
   bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
   bool interruptMkcolOnce = false,
@@ -3962,7 +4000,19 @@ Future<HttpServer> _mutableWebDavServer(
           'zip',
         );
         request.response.contentLength = bytes.length;
-        request.response.add(bytes);
+        if (archiveChunkDelay > Duration.zero) {
+          final first = bytes.length ~/ 3;
+          final second = bytes.length * 2 ~/ 3;
+          request.response.add(bytes.sublist(0, first));
+          await request.response.flush();
+          await Future<void>.delayed(archiveChunkDelay);
+          request.response.add(bytes.sublist(first, second));
+          await request.response.flush();
+          await Future<void>.delayed(archiveChunkDelay);
+          request.response.add(bytes.sublist(second));
+        } else {
+          request.response.add(bytes);
+        }
         if (changeSnapshotAfterArchive && !archiveChanged && files.isNotEmpty) {
           archiveChanged = true;
           final first = files.entries.first;

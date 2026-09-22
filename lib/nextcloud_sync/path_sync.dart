@@ -64,9 +64,28 @@ extension _PathSync on NextcloudSync {
         await response.drain<void>();
         throw WebDavStatusException('GET archive $status', status);
       }
+      final total = response.contentLength;
+      var received = 0;
+      final reportWatch = Stopwatch()..start();
+      var lastReport = 0;
+      void report() => progress(
+        total > 0
+            ? 'download-archive ${(received * 100 / total).floor()}%'
+            : 'download-archive ${(received / (1024 * 1024)).toStringAsFixed(1)} MiB',
+        null,
+      );
       await response
+          .map((chunk) {
+            received += chunk.length;
+            if (reportWatch.elapsedMilliseconds - lastReport >= 500) {
+              lastReport = reportWatch.elapsedMilliseconds;
+              report();
+            }
+            return chunk;
+          })
           .pipe(temporary.openWrite())
           .timeout(const Duration(minutes: 5));
+      report();
       if (response.headers.contentLength >= 0 &&
           await temporary.length() != response.headers.contentLength) {
         throw const HttpException('GET archive truncated body');
