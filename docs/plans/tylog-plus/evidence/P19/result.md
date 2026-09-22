@@ -23,6 +23,7 @@ Evidence:
 - `flutter analyze lib/database/tylog_database.dart test/database/annotation_test.dart` — clean.
 - `flutter test test/pdf_annotation_reattach_test.dart` — moved, ambiguous, and missing anchor behavior is covered.
 - `flutter test test/database/revision_publisher_test.dart test/database/revision_receive_test.dart test/database/revision_outbox_test.dart` — revision upload, decode, retry, duplicate, and conflict gates pass.
+- `flutter test test/database/annotation_revision_sync_test.dart` — a PDF annotation publishes, decodes, applies on a second database, deduplicates, and rejects a divergent parent.
 - `flutter analyze lib/database/revision_publisher.dart lib/database/tylog_database.dart lib/pdf/pdf_reader_store.dart lib/workspace_controller.dart` — clean.
 
 Remaining work: run annotation revisions through a real Nextcloud account and run corpus-scale acceptance.
