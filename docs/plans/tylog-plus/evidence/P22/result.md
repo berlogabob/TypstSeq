@@ -51,4 +51,12 @@ Acceptance correction (2026-09-20): existing unit evidence does not close the fu
 Sequential host rerun: bounded traversal, SQLite query plans, graph interaction,
 and deterministic SVG export passed 24 tests. Native share-target verification
 remains device-gated.
+
+## A24 native handoff (2026-09-22)
+
+`flutter drive --profile --target=integration_test/graph_share_native_test.dart`
+passed on A24 (`000251565001005`). The Android chooser opened for a
+`tylog-graph.svg` `image/svg+xml` payload and returned after dismissal, proving
+the app reaches the native share intent. Selecting and validating a target app
+remains a manual platform check.
 # P22 progress — bounded graph traversal

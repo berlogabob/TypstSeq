@@ -101,6 +101,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P25d universal launch smoke | Coordinator | DONE | P25c | [Universal bundle launches successfully on macOS](evidence/P25/result.md) |
 | P22c graph query-plan gate | Coordinator | DONE | P22b | [Both bounded edge endpoints retain indexed query plans](evidence/P22/result.md) |
 | P22d bounded graph UI/export wiring | Coordinator | DONE | P22b | [Host graph layout and visible SVG action are covered](evidence/P22/result.md) |
+| P22e Android SVG share handoff | Coordinator | DEVICE VERIFIED / TARGET REVIEW | P22d | [A24 chooser opens for `tylog-graph.svg`; selecting a target remains manual](evidence/P22/result.md) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
 | P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |
