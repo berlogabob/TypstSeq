@@ -1496,6 +1496,13 @@ class WorkspaceController extends ChangeNotifier {
                 revision: envelope.revision,
               );
             }
+            final annotation = envelope.annotation;
+            if (annotation != null) {
+              await revisionDatabase.receiveAnnotationRevision(
+                annotation: annotation,
+                revision: envelope.revision,
+              );
+            }
           } catch (_) {
             // A malformed or partial envelope is retried on the next sync.
           }

@@ -5,7 +5,11 @@ import 'tylog_database.dart';
 typedef RevisionFileUpload =
     Future<void> Function(String path, List<int> bytes);
 
-typedef RevisionEnvelope = ({RevisionData revision, NodeData? node});
+typedef RevisionEnvelope = ({
+  RevisionData revision,
+  NodeData? node,
+  AnnotationData? annotation,
+});
 
 /// Publishes durable revision envelopes through the vault's existing file
 /// sync path. A failed upload leaves its outbox row pending for the next pass.
@@ -21,11 +25,17 @@ class RevisionPublisher {
       (json['revision'] as Map).cast<String, Object?>(),
     );
     final nodeJson = json['node'];
+    final annotationJson = json['annotation'];
     return (
       revision: revision,
       node: nodeJson == null
           ? null
           : NodeData.fromJson((nodeJson as Map).cast<String, Object?>()),
+      annotation: annotationJson == null
+          ? null
+          : AnnotationData.fromJson(
+              (annotationJson as Map).cast<String, Object?>(),
+            ),
     );
   }
 
@@ -41,6 +51,8 @@ class RevisionPublisher {
         jsonEncode({
           'revision': item.revision.toJson(),
           if (item.node case final node?) 'node': node.toJson(),
+          if (item.annotation case final annotation?)
+            'annotation': annotation.toJson(),
         }),
       );
       await write(path, bytes);

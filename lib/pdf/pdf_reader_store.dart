@@ -116,16 +116,17 @@ Future<void> savePdfReaderSelection({
   required int localEnd,
 }) async {
   final values = _selectionValues(extraction, page, localStart, localEnd);
-  await database.transaction(() async {
-    final id = '${extraction.sourceVersionId}:$page:$localStart:$localEnd';
-    final existing =
-        await (database.select(database.annotations)
-              ..where((row) => row.id.equals(id))
-              ..limit(1))
-            .getSingleOrNull();
-    if (existing != null) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await database.saveAnnotation(
+  final id = '${extraction.sourceVersionId}:$page:$localStart:$localEnd';
+  final existing =
+      await (database.select(database.annotations)
+            ..where((row) => row.id.equals(id))
+            ..limit(1))
+          .getSingleOrNull();
+  if (existing != null) return;
+  final now = DateTime.now().millisecondsSinceEpoch;
+  await _commitAnnotation(
+    database,
+    AnnotationData(
       id: id,
       sourceVersionId: extraction.sourceVersionId,
       page: page,
@@ -135,8 +136,8 @@ Future<void> savePdfReaderSelection({
       context: values.context,
       createdAtMs: now,
       updatedAtMs: now,
-    );
-  });
+    ),
+  );
 }
 
 Future<void> reassignPdfReaderSelection({
@@ -148,21 +149,55 @@ Future<void> reassignPdfReaderSelection({
   required int localEnd,
 }) async {
   final values = _selectionValues(extraction, page, localStart, localEnd);
-  final changed =
-      await (database.update(
-        database.annotations,
-      )..where((row) => row.id.equals(annotationId))).write(
-        AnnotationsCompanion(
-          sourceVersionId: Value(extraction.sourceVersionId),
-          page: Value(page),
-          startOffset: Value(values.startOffset),
-          endOffset: Value(values.endOffset),
-          quote: Value(values.quote),
-          context: Value(values.context),
-          updatedAtMs: Value(DateTime.now().millisecondsSinceEpoch),
-        ),
-      );
-  if (changed == 0) throw StateError('annotation does not exist');
+  final existing = await (database.select(
+    database.annotations,
+  )..where((row) => row.id.equals(annotationId))).getSingleOrNull();
+  if (existing == null) throw StateError('annotation does not exist');
+  await _commitAnnotation(
+    database,
+    existing.copyWith(
+      sourceVersionId: extraction.sourceVersionId,
+      page: page,
+      startOffset: values.startOffset,
+      endOffset: values.endOffset,
+      quote: values.quote,
+      context: values.context,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+  );
+}
+
+Future<void> _commitAnnotation(
+  TyLogDatabase database,
+  AnnotationData annotation,
+) async {
+  final parent =
+      await (database.select(database.revisions)
+            ..where(
+              (row) =>
+                  row.entityKind.equals('annotation') &
+                  row.entityId.equals(annotation.id),
+            )
+            ..orderBy([
+              (row) => OrderingTerm.desc(row.createdAtMs),
+              (row) => OrderingTerm.desc(row.id),
+            ])
+            ..limit(1))
+          .getSingleOrNull();
+  final payload = jsonEncode(annotation.toJson());
+  final seed = '${annotation.id}|${parent?.id ?? ''}|$payload';
+  final revision = RevisionData(
+    id: 'annotation-${sha256.convert(utf8.encode(seed))}',
+    entityKind: 'annotation',
+    entityId: annotation.id,
+    parentRevisionId: parent?.id,
+    payloadJson: payload,
+    createdAtMs: annotation.updatedAtMs,
+  );
+  await database.commitAnnotationEdit(
+    annotation: annotation,
+    revision: revision,
+  );
 }
 
 ({String quote, String context, int startOffset, int endOffset})

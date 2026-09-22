@@ -272,7 +272,11 @@ class GraphNodeDistance {
   final int depth;
 }
 
-typedef PendingRevisionUpload = ({RevisionData revision, NodeData? node});
+typedef PendingRevisionUpload = ({
+  RevisionData revision,
+  NodeData? node,
+  AnnotationData? annotation,
+});
 
 enum RevisionReceiveResult { applied, duplicate, conflict }
 
@@ -912,7 +916,12 @@ class TyLogDatabase extends _$TyLogDatabase {
           await (select(nodes)
                 ..where((table) => table.id.equals(revision.entityId)))
               .getSingleOrNull();
-      uploads.add((revision: revision, node: node));
+      final annotation = revision.entityKind == 'annotation'
+          ? await (select(annotations)
+                  ..where((table) => table.id.equals(revision.entityId)))
+                .getSingleOrNull()
+          : null;
+      uploads.add((revision: revision, node: node, annotation: annotation));
     }
     return uploads;
   }
@@ -957,6 +966,41 @@ class TyLogDatabase extends _$TyLogDatabase {
         revision: revision,
         queuePublication: false,
       );
+      return RevisionReceiveResult.applied;
+    });
+  }
+
+  Future<RevisionReceiveResult> receiveAnnotationRevision({
+    required AnnotationData annotation,
+    required RevisionData revision,
+  }) async {
+    if (revision.entityKind != 'annotation' ||
+        revision.entityId != annotation.id) {
+      throw ArgumentError('Revision must describe the edited annotation');
+    }
+    return transaction(() async {
+      final duplicate = await (select(
+        revisions,
+      )..where((table) => table.id.equals(revision.id))).getSingleOrNull();
+      if (duplicate != null) return RevisionReceiveResult.duplicate;
+      final head =
+          await (select(revisions)
+                ..where(
+                  (table) =>
+                      table.entityKind.equals('annotation') &
+                      table.entityId.equals(annotation.id),
+                )
+                ..orderBy([
+                  (table) => OrderingTerm.desc(table.createdAtMs),
+                  (table) => OrderingTerm.desc(table.id),
+                ])
+                ..limit(1))
+              .getSingleOrNull();
+      if (head?.id != revision.parentRevisionId) {
+        return RevisionReceiveResult.conflict;
+      }
+      await into(annotations).insertOnConflictUpdate(annotation);
+      await into(revisions).insert(revision);
       return RevisionReceiveResult.applied;
     });
   }
@@ -1014,6 +1058,23 @@ class TyLogDatabase extends _$TyLogDatabase {
     }
     await transaction(() async {
       await _commitNodeRows(node: node, revision: revision);
+    });
+  }
+
+  Future<void> commitAnnotationEdit({
+    required AnnotationData annotation,
+    required RevisionData revision,
+  }) async {
+    if (revision.entityKind != 'annotation' ||
+        revision.entityId != annotation.id) {
+      throw ArgumentError('Revision must describe the edited annotation');
+    }
+    await transaction(() async {
+      await into(annotations).insertOnConflictUpdate(annotation);
+      await into(revisions).insert(revision);
+      await into(outboxEntries).insert(
+        OutboxEntry(revisionId: revision.id, createdAtMs: revision.createdAtMs),
+      );
     });
   }
 

@@ -35,7 +35,7 @@ measurements and earlier states that led to these decisions.
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
 | P18 | PDF reader/versioned extraction | P07,P14 | HOST ACCEPTED / DEVICE VERIFIED / CORPUS OPEN | Stable extraction, native reader, 1,000-page offsets, and A24/Mac smoke pass; private corpus/memory checks remain |
-| P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC OPEN | Durable anchors, reassignment, and A24/Mac reader flows pass; annotation sync and corpus acceptance remain |
+| P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC READY | Durable anchors, reassignment, A24/Mac reader flows, and annotation revision envelopes pass; real Nextcloud sync and corpus acceptance remain |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST ACCEPTED / DEVICE BLOCKED | Bounded vector/hybrid/navigation seams pass host tests; real query model, UI citations, and device quality remain |
 | P22 | Evidence relations/bounded graph | P07,P12 | HOST ACCEPTED / DEVICE VERIFIED | [Bounded traversal, graph UI/export, and A24 SVG share handoff to Nextcloud pass](evidence/P22/result.md) |
@@ -152,6 +152,7 @@ Independent code review reopened P22–P24. Earlier DONE entries described helpe
 | P19b selection persistence | DONE | Select/save/reopen/navigate on native reader; duplicate quote requires review |
 | P19c manual reassignment seam | DONE | Existing annotation identity and offsets update transactionally; visible review action remains |
 | P19d reader reassignment action | DONE | Needs-review dialog activates replacement mode; selection and Save highlight update the existing annotation |
+| P19e annotation revision envelopes | DONE | Annotation edits publish durable outbox revisions; receive path enforces parent checks and applies remote annotations |
 | P21b candidate safety | DONE | Duplicate IDs counted once; retained cosine results O(k); same ID namespace documented |
 | P22b traversal budget | DONE | At most 200 nodes/500 examined edges; missing seed empty; fanout test passes |
 | P24b post-commit process death | DONE | A24 force-stop retains annotation/source version; native reopen/navigation passes |
