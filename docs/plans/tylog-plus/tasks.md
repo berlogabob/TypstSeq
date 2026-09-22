@@ -117,7 +117,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Normal profile VM timeline now confirms interactive long-note stalls: human-paced typing p95 39.88 ms, 31/68 frames over 16.7 ms; full-document editor path remains the blocker |
 | P12f editor mode gate | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12e | 46 KB / 220-block SAF fixture selects the stock TextField path, but p95 39.01 ms and 33/114 over-budget frames show full-document RenderEditable still fails the gate |
 | P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
-| P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FRAME PENDING | P12g | Virtual editor parity tests pass; A24 five-minute workload reaches <=1% dropped-frame equivalents |
+| P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FAILED | P12g | Rich path: 7,963 frames / 5,573 dropped equivalents; actual long-note path: 1,007 / 38 (3.8%); editor remediation remains required |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
 | P12j frame-timing gate | Coordinator | DEVICE FAILED | P12e | A24 produced 7,963 frames, 5,573 dropped-frame equivalents, 1,200 over-budget frames, worst 109.18 ms; editor remediation remains required |
 

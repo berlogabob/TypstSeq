@@ -282,7 +282,19 @@ five-minute frame-budget result remains for P12h.
 
 ### P12j A24 profile frame gate (2026-09-22)
 
-The harness now drives a live 50 ms pump stream; a plain five-minute delay
+The harness uses a live 16 ms pump stream; the corrected profile run produced
+`frames=7963 edits=1200 dropped=5573 over_budget=1200 worst_ms=109.18`.
+The full rich editor remains the active P12 blocker.
+
+### Actual long-note route (2026-09-22)
+
+The selected `VirtualPlainEditor` path was measured separately with a 30-second
+A24 profile workload (900 single-line paragraphs, 120 edits): `frames=1007`,
+`dropped=38`, and `worst_ms=20.54`. That is 3.8% dropped-frame equivalents,
+so the production long-note route also fails the 1% gate. A `cacheExtent: 0`
+probe was worse and was reverted.
+
+The harness now drives a live 16 ms pump stream; a plain five-minute delay
 produced too few timing samples on Android. The corrected profile run produced
 `frames=7963 edits=1200 dropped=5573 over_budget=1200 worst_ms=109.18`.
 The <=1% dropped-frame gate therefore fails. Startup/save/open timing passes,
