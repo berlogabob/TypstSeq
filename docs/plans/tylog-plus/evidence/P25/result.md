@@ -1,6 +1,6 @@
 # P25 — production migration and release acceptance
 
-Status: BLOCKED (external prerequisites)
+Status: HOST ACCEPTED / EXTERNAL BLOCKED
 
 Host prerequisites remain incomplete: P24 has been reopened because injected exceptions did not prove actual process-death recovery. Execution is blocked because P03 has no configured Nextcloud account on the Mac and phone, and the native release/real-vault acceptance checks are still outstanding. The A24 was detected via adb on 2026-09-20.
 
@@ -61,3 +61,11 @@ The A24 profile report/export suite initially failed because the prebuilt
 APK. The plugin build now stages the ABI-matched NDK library into the arm64
 package. The rebuilt profile APK contains `lib/arm64-v8a/libc++_shared.so`, and
 all six Android report/export tests pass.
+
+## Host release gate rerun (2026-09-22)
+
+The current macOS release executable is a verified universal Mach-O with
+`x86_64` and `arm64` slices. The current Android profile artifact has SHA-256
+`a86ab072dd89ac08f615113ac6c1afb453e26523e1e89dd99440da085fdc4e61`.
+Host packaging and launch evidence are complete; real Nextcloud credentials,
+real-vault integrity, and two-device release rehearsal remain external gates.

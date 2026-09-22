@@ -22,9 +22,8 @@ flutter run -d macos
 macOS builds require macOS 12 or newer. For an Apple Silicon release, run
 `./tool/build_macos_arm64.sh` and open
 `build/macos/Build/Products/Release/TyLog.app`. Set `FLUTTER_BIN` if Flutter is
-not on your PATH. This explicitly builds ARM64 only: the current Xcode 27
-`lipo -verify_arch arm64 x86_64` command fails even for Flutter's universal
-framework; Intel/universal release packaging remains unverified.
+not on your PATH. The standard `flutter build macos --release` also produces a
+verified universal `x86_64` + `arm64` bundle under Xcode 27.
 
 For an iPad development run, sign `ios/Runner.xcworkspace` with an Apple development team, then run `flutter run -d <device-id>`. The explicit native setup also prepares the checked local plugin for CocoaPods and Swift Package Manager; no build step downloads the compiler.
 
