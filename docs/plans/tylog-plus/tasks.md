@@ -10,7 +10,7 @@ real-Nextcloud gates remain explicitly open.
 
 **Current snapshot (2026-09-22):** host acceptance is closed for P05, P09,
 P18–P25 where their rows say HOST ACCEPTED. Remaining blockers are P03 A24
-account setup and bidirectional sync, P05 private model assets, P09 production
+initial sync completion and bidirectional checks, P05 private model assets, P09 production
 registry/SAF rehearsal, P12 editor frame performance, P18/P19 corpus checks,
 P19 real account sync, P20/P21/P23 device model gates, P25 release rehearsal,
 and P26 seven-day use. Historical notes below retain the measurements and
@@ -20,7 +20,7 @@ earlier states that led to these decisions.
 |---|---|---|---|---|
 | P01 | Back up and inventory real phone vault/configuration | — | DONE | [11,826 files verified](evidence/P01/result.md) |
 | P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
-| P03 | Real Mac–phone sync and existing controls | P02 | MAC CONNECTION VERIFIED / DEVICE SYNC OPEN | [Mac saved account reaches Nextcloud DAV; A24 bidirectional data/control checks remain](evidence/P03/result.md) |
+| P03 | Real Mac–phone sync and existing controls | P02 | BOTH ACCOUNTS CONNECTED / FIRST DEVICE SYNC INTERRUPTED | [A24 safe merge reached archive download; completion and bidirectional checks remain](evidence/P03/result.md) |
 | P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
 | P05 | Offline embedding/vector feasibility | P04 | HOST ACCEPTED / DEVICE BLOCKED | ORT bridge and numerical gates pass; private model/tokenizer, Android quality, and judged queries remain |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
