@@ -31,7 +31,7 @@ real-Nextcloud gates remain explicitly open.
 | P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC OPEN | Durable anchors, reassignment, and A24/Mac reader flows pass; annotation sync and corpus acceptance remain |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST ACCEPTED / DEVICE BLOCKED | Bounded vector/hybrid/navigation seams pass host tests; real query model, UI citations, and device quality remain |
-| P22 | Evidence relations/bounded graph | P07,P12 | RUNNING | [Cycle-safe traversal, durable edge edits, and deterministic SVG export](evidence/P22/result.md) |
+| P22 | Evidence relations/bounded graph | P07,P12 | HOST ACCEPTED / DEVICE VERIFIED / TARGET REVIEW | [Bounded traversal, graph UI/export, and A24 SVG share handoff pass; target-app verification remains](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | HOST ACCEPTED / DEVICE BLOCKED | Filtered retrieval-to-vault report path passes host tests; vector quality and native end-to-end acceptance remain |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | HOST ACCEPTED / DEVICE BLOCKED | Host failure matrix and A24 annotation restart pass; full production process-death/release rehearsal remains |
 | P25 | Production migration/release acceptance | P03,P24 | HOST ACCEPTED / EXTERNAL BLOCKED | [Universal macOS and Android profile artifacts verified; real Nextcloud/vault rehearsal remains](evidence/P25/result.md) |

@@ -1,6 +1,6 @@
 # P22 progress — bounded graph traversal
 
-Status: RUNNING
+Status: HOST ACCEPTED / DEVICE VERIFIED / TARGET REVIEW
 
 Replaced recursive path enumeration with deterministic breadth-first traversal. It accepts at most 200 nodes, examines at most 500 edge rows across queries, and caps depth at 10. Missing seeds return no nodes. High-fanout and cycle tests verify these bounds. Graph UI and export wiring remain outstanding; SQL execution latency at a high-degree hub still needs measurement.
 
