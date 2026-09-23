@@ -81,3 +81,13 @@ The macOS release executable contains arm64 and x86_64 slices, has SHA-256
 and `codesign --verify --deep --strict` passed. These integrated artifacts are
 ready for device and release rehearsal; neither was used for that acceptance
 in this checkpoint.
+
+## A24 profile reinstall after integration-test cleanup (2026-09-23)
+
+The normal profile APK was rebuilt and installed. Package `org.tylog.tylog`
+reports version `0.4.4+99`; the installed APK SHA-256 is
+`73ce0a774c8e41d32c4b6379b21a78c5f113be932ba5777be363191e72535e7c`.
+The existing `/sdcard/TyLog` folder was reselected through SAF and the app
+opened it. This is a recovery/launch smoke only; cloud credentials and the
+production sync/release rehearsal remain open. See P03 for the app-private
+state reset caused by the profile integration runner.

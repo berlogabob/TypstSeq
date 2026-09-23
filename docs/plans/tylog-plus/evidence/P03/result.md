@@ -60,3 +60,19 @@ version 0.4.4+99, SHA256
 `fd9ca41574dfd51bf9732eb0e11879064e04a22894d4e0ba64eb69caf88367d0`). Install
 it with `adb install -r` after reconnecting; this build has not yet been run
 on the device.
+
+## A24 recovery after profile test attempt (2026-09-23)
+
+The P05 profile integration runner removed `org.tylog.tylog` on exit. The
+verified P01 external vault backup remained available, and `/sdcard/TyLog`
+was still present. The normal profile APK was reinstalled, and its Android
+folder picker was used to reselect that existing TyLog folder. The app opened
+the vault and surfaced the two existing sync-conflict notifications; neither
+was resolved and no sync/import was started.
+
+The app-private sandbox was recreated. The P01 settings archive contains the
+vault registry and marker, but not the local SQLite database or a saved
+Nextcloud configuration. Any database-only annotations or unsynced state may
+need recovery from another source. P03 remains open; configure the cloud
+account again in the app before resuming sync acceptance. No credentials are
+recorded here.

@@ -67,3 +67,19 @@ are present in the app-readable storage, so the native vector-agreement,
 latency, memory, and sustained-resume checks cannot run. The APK intentionally
 contains no model bytes. P05 remains device-blocked until those private assets
 are supplied.
+
+## A24 follow-up (2026-09-23)
+
+The six pinned model files were downloaded outside the repository and all six
+SHA-256 values matched `contract.md`. The native embedding smoke passed once in
+the isolated `.debug` package using app-private model/tokenizer paths. It
+verified a finite, normalized 384-dimensional vector; it did not measure
+profile latency, PSS, sustained resume, or compare the Android vector against
+the Mac golden output.
+
+The first `flutter drive --profile` attempt used shell-owned external-storage
+files and failed at tokenizer loading. The profile integration runner then
+removed the production package. The normal profile app was reinstalled and the
+existing `/sdcard/TyLog` folder was reselected through SAF. No sync, import, or
+conflict-resolution action was run. Do not profile against the production
+package ID again; use an isolated profile package first.

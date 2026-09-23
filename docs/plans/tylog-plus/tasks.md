@@ -8,11 +8,11 @@ real-Nextcloud gates remain explicitly open.
 
 **Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
-**Current snapshot (2026-09-22):** bounded host primitives are accepted for P05,
+**Current snapshot (2026-09-23):** bounded host primitives are accepted for P05,
 P09, and P18–P25; P21's optional PDF citation seam is host-tested but awaits
-the real model provider. Remaining blockers are P03 A24
-initial sync completion and bidirectional checks, P05 A24 model staging and 90 judged queries, P09 production
-registry/SAF rehearsal, P12 editor frame performance, P18/P19 corpus checks,
+the real model provider. Remaining blockers are P03 cloud re-entry plus initial
+sync and bidirectional checks, P05 A24 profile performance and 90 judged queries, P09 private
+import rehearsal, P12 editor frame performance, P18/P19 corpus checks,
 P19 real account sync, P20/P21/P23 device model gates, P25 release rehearsal,
 and P26 seven-day use. Historical notes below retain the measurements and
 earlier states that led to these decisions.
@@ -21,16 +21,16 @@ earlier states that led to these decisions.
 |---|---|---|---|---|
 | P01 | Back up and inventory real phone vault/configuration | — | DONE | [11,826 files verified](evidence/P01/result.md) |
 | P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
-| P03 | Real Mac–phone sync and existing controls | P02 | BOTH ACCOUNTS CONNECTED / FIRST DEVICE SYNC INTERRUPTED | [A24 safe merge reached archive download; completion and bidirectional checks remain](evidence/P03/result.md) |
+| P03 | Real Mac–phone sync and existing controls | P02 | A24 VAULT RESELECTED / CLOUD CONFIG RE-ENTRY REQUIRED | [No sync resumed; recovery after profile test attempt recorded](evidence/P03/result.md) |
 | P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
-| P05 | Offline embedding/vector feasibility | P04 | MAC MODEL VERIFIED / JUDGED PACK + DEVICE OPEN | [Pinned private Mac model verified; 90 judged queries and A24 quality remain](evidence/P05/mac-quality-readiness.md) |
+| P05 | Offline embedding/vector feasibility | P04 | MAC VERIFIED / ANDROID DEBUG SMOKE PASS / PROFILE + JUDGED PACK OPEN | [A24 debug inference passed; profile performance and 90 judged queries remain](evidence/P05/android-profile-harness.md) |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
-| P09 | Resumable legacy import | P07 | HOST ACCEPTED / DEVICE BLOCKED | Synthetic 10k interruption/retry passes; private A024 registry/SAF rehearsal is blocked |
+| P09 | Resumable legacy import | P07 | HOST ACCEPTED / A24 REGISTRY+SAF RECOVERED / IMPORT OPEN | Synthetic 10k interruption/retry passes; private A024 manifest/import rehearsal remains |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | RUNNING | A24 startup/open/save pass; five-minute frame gate remains |
+| P12 | Paged startup/list reads | P11 | A24 FRAME GATE FAILED / ROOT-CAUSE WORK OPEN | Startup/open/save pass; long-note and rich-editor frame gates exceed the <=1% drop limit |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
