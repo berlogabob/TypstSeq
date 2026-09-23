@@ -24,7 +24,7 @@ void main() {
     expect(find.byType(TextField).evaluate().length, lessThan(220));
     await tester.enterText(find.byType(TextField).first, 'edited');
     await tester.pumpAndSettle();
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 320));
     expect(changed, startsWith('edited'));
     await tester.tap(find.byTooltip('Undo'));
     await tester.pump();

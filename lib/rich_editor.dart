@@ -23,3 +23,15 @@ export 'editor_autocomplete.dart'
 part 'rich_editor/document_model.dart';
 part 'rich_editor/editing_controller.dart';
 part 'rich_editor/editor_widgets.dart';
+
+bool shouldUseVirtualPlainEditor(TyLogEditingController controller) {
+  final document = controller.document;
+  return (controller.text.length >= 32 * 1024 ||
+          document.blocks.length >= 200) &&
+      document.blocks.every(
+        (block) =>
+            block.style == TyLogBlockStyle.paragraph &&
+            block.parts.length == 1 &&
+            !block.parts.single.isAtom,
+      );
+}

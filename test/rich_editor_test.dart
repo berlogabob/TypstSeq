@@ -42,6 +42,43 @@ void main() {
     },
   );
 
+  test('editing a long plain body preserves its Typst header', () {
+    const header = '#show: tylog.note.with(id: "long", title: "Long")\n';
+    final body = List<String>.generate(
+      220,
+      (i) => 'Plain paragraph $i. ${'x' * 200}',
+    ).join('\n');
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: '$header$body',
+      onSourceChanged: saved.add,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    expect(shouldUseVirtualPlainEditor(controller), isTrue);
+    expect(controller.document.prefix, header);
+    expect(controller.text, body);
+    expect(
+      controller.document.blocks.every(
+        (block) =>
+            block.style == TyLogBlockStyle.paragraph &&
+            block.parts.length == 1 &&
+            !block.parts.single.isAtom,
+      ),
+      isTrue,
+    );
+    final edited = '${controller.text}x';
+    controller.value = TextEditingValue(
+      text: edited,
+      selection: TextSelection.collapsed(offset: edited.length),
+    );
+
+    expect(saved.single, startsWith(header));
+    expect(TyLogDocument.parse(saved.single).visibleText, edited);
+  });
+
   test('editing one rich block preserves protected source byte-for-byte', () {
     final document = TyLogDocument.parse(_source);
     final end = document.visibleText.indexOf('?') + 1;
@@ -96,6 +133,7 @@ void main() {
       expect(controller.text, expected);
       expect(controller.document.visibleText, expected);
       expect(controller.document.visibleText, controller.text);
+      expect(shouldUseVirtualPlainEditor(controller), isFalse);
     },
   );
 

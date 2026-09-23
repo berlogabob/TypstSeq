@@ -14,7 +14,7 @@ the real model provider. P09 A24 import rehearsal now has terminal manifest
 accounting and readable target evidence, with missing assets/unresolved links
 recorded as content-quality gaps. Remaining blockers are P03 cloud re-entry plus
 initial sync and bidirectional checks, P05 A24 profile performance and 90 judged
-queries, P12 editor frame performance, P18/P19 corpus checks, P19 real account
+queries, P12 final editor frame gates, P18/P19 corpus checks, P19 real account
 sync, P20/P21/P23 device model gates, P25 release rehearsal, and P26 seven-day use. Historical notes below retain the measurements and
 earlier states that led to these decisions.
 
@@ -31,7 +31,7 @@ earlier states that led to these decisions.
 | P09 | Resumable legacy import | P07 | DONE WITH CONTENT GAPS | [A24 import: 3,483/3,483 terminal; SQLite integrity clean](evidence/P09d5/result.md); 16 assets missing and 1,243 wikilinks unresolved |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | A24 FRAME GATE FAILED / TRACE REQUIRED | Startup/open/save and idle frames pass; long-note editing fails at 2.5% dropped equivalents, rich editing at 59.9%; capture profile trace before a block-editor change |
+| P12 | Paged startup/list reads | P11 | EDITOR FIX IMPLEMENTED / FINAL A24 GATE PENDING | Long plain notes now route through the virtual editor with Typst-header preservation; 20-second smoke passed at 738 frames / 80 edits / 2 dropped equivalents. Full five-minute foreground run and rich-note gate remain open; [latest evidence](evidence/P12e/result.md) |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
@@ -124,12 +124,12 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
-| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / FRAME BLOCKED | P12a-P12d | Normal profile VM timeline now confirms interactive long-note stalls: human-paced typing p95 39.88 ms, 31/68 frames over 16.7 ms; full-document editor path remains the blocker |
+| P12e latency acceptance | Coordinator | DEVICE TIMING PASS / ROUTE FIXED / FINAL FRAME GATE PENDING | P12a-P12d | Long plain notes now use the virtual editor; wrapped-source smoke round-trips. Five-minute A24 run must remain foreground and meet <1% dropped equivalents |
 | P12f editor mode gate | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12e | 46 KB / 220-block SAF fixture selects the stock TextField path, but p95 39.01 ms and 33/114 over-budget frames show full-document RenderEditable still fails the gate |
 | P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
-| P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FAILED | P12g | Rich path: 7,963 frames / 5,573 dropped equivalents; actual long-note path: 1,007 / 38 (3.8%); editor remediation remains required |
+| P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / POST-ROUTE DEVICE RECHECK PENDING | P12g | Plain long-note route is now selected with generated Typst headers preserved; rich-formatted long-note profile acceptance remains open |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | DEVICE FAILED | P12e | A24 produced 7,963 frames, 5,573 dropped-frame equivalents, 1,200 over-budget frames, worst 109.18 ms; editor remediation remains required |
+| P12j frame-timing gate | Coordinator | SHORT SMOKE PASS / FIVE-MINUTE GATE PENDING | P12e | 20-second A24 profile smoke: 738 frames, 80 controller edits, 2 dropped equivalents (0.27%), worst 16.88 ms; long run was interrupted when Android switched to Wi-Fi QR settings |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -141,7 +141,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P09: DONE WITH CONTENT GAPS; P09d5 verified 3,483/3,483 manifest items terminal and restored production vault; 16 missing assets and 1,243 unresolved wikilinks remain documented.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
-- P12: RUNNING; database/list latency gates pass, while P12e is blocked by full-document `RenderEditable` layout. Continue with P12f mode gating, P12g visible-block editing, then P12h parity and the A24 <=1% frame gate.
+- P12: RUNNING; list/startup/open/save gates pass. Long plain notes route to the virtual editor and preserve generated headers. Complete the five-minute A24 frame gate with the profile app foreground, then capture a separate rich-formatted long-note trace/gate before closing P12.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
 
 ## Acceptance correction — 2026-09-20

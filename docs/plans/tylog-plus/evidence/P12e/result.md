@@ -332,3 +332,30 @@ Next: capture a DevTools profile trace and use its build/layout/raster
 attribution to scope a block-level editor prototype; rerun both profile gates
 before accepting a change. Production package and vault were not targeted by
 these profile runs.
+
+### Long plain-note route and controller-backed smoke (2026-09-23)
+
+The app previously kept long notes with generated Typst `#show` headers in the
+rich editor because its mode gate required an empty source prefix. Long plain
+notes now select `VirtualPlainEditor` based on the parsed visible document,
+while changes flow through `TyLogEditingController` so the generated header is
+retained in serialized source. Protected/rich blocks remain on the rich path.
+The virtual editor now waits 300 ms after the last edit before syncing its
+whole visible source to the model; this coalesces continuous typing, and pending
+text still flushes on pause or dispose.
+
+Host analysis and the focused editor tests pass. An A24 profile smoke using the
+`.profiletest` package ID drove 80 controller edits over 20 seconds through the
+mounted row callback and confirmed source/header round-trip:
+`frames=738 edits=80 dropped=2 worst_ms=16.876 build_ms=8.384
+raster_ms=8.794` (0.27% dropped-frame equivalents). This is a smoke result, not
+the five-minute acceptance gate.
+
+The subsequent five-minute run was interrupted when A24 moved to Android's
+Wi-Fi QR configurator and left the test app in the background. No result from
+that run is valid. P12 remains open until an uninterrupted foreground A24 run
+produces at least 1,000 timing samples and 1,100 edits with at most 1% dropped
+equivalents. Rich-formatted long-note editing also remains unverified after the
+route change; the earlier direct rich-editor capture failed badly and must be
+retested separately before P12 closes. All runs used synthetic content and the
+`.profiletest` package; the production app and vault were not targeted.

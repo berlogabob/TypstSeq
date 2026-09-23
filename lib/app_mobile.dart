@@ -285,7 +285,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
   Timer? _previewDebounceTimer;
-  Timer? _plainEditorDebounce;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
   // Path/date of the daily note last opened via _openToday(), so a resume
@@ -332,21 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get rebuilding => workspace.rebuilding;
   double? get rebuildProgress => workspace.rebuildProgress;
 
-  // Long unformatted notes do not need rich inline spans. Keeping them in the
-  // stock TextField avoids rebuilding the rich document span tree on every key.
-  // ponytail: deliberately narrow gate; rich/protected notes keep full parity.
-  bool get _usePlainLongEditor {
-    final document = richController.document;
-    return (richController.text.length >= 32 * 1024 ||
-            document.blocks.length >= 200) &&
-        document.prefix.trim().isEmpty &&
-        document.blocks.every(
-          (block) =>
-              block.style == TyLogBlockStyle.paragraph &&
-              block.parts.length == 1 &&
-              !block.parts.single.isAtom,
-        );
-  }
+  bool get _usePlainLongEditor => shouldUseVirtualPlainEditor(richController);
 
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
@@ -390,7 +375,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     _openGeneration++;
     _previewDebounceTimer?.cancel();
-    _plainEditorDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     workspace
       ..removeListener(_workspaceChanged)
@@ -3901,13 +3885,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }(),
       'normal' when _usePlainLongEditor => VirtualPlainEditor(
-        source: sourceController.text,
-        onChanged: (source) {
-          sourceController.text = source;
-          _plainEditorDebounce?.cancel();
-          _plainEditorDebounce = Timer(
-            const Duration(milliseconds: 120),
-            _queueAutosave,
+        source: richController.text,
+        onChanged: (visibleText) {
+          richController.value = TextEditingValue(
+            text: visibleText,
+            selection: TextSelection.collapsed(offset: visibleText.length),
           );
         },
       ),

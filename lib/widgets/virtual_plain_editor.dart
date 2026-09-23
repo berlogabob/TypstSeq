@@ -74,7 +74,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _redo.clear();
     _emitPending = true;
     _emitTimer?.cancel();
-    _emitTimer = Timer(const Duration(milliseconds: 100), () {
+    _emitTimer = Timer(const Duration(milliseconds: 300), () {
       _emitPending = false;
       _source = _readSource();
       widget.onChanged(_source);
