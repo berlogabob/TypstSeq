@@ -31,7 +31,7 @@ earlier states that led to these decisions.
 | P09 | Resumable legacy import | P07 | DONE WITH CONTENT GAPS | [A24 import: 3,483/3,483 terminal; SQLite integrity clean](evidence/P09d5/result.md); 16 assets missing and 1,243 wikilinks unresolved |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | EDITOR ROUTE FIXED / FRAME GATE FAILS | Long plain notes route through the virtual editor with Typst-header preservation. Corrected five-minute A24 profile gate: 1,105 frames / 1,103 edits / 236 dropped equivalents (21.4% at 60 FPS); active-row rendering must improve before P12 closes; [latest evidence](evidence/P12e/result.md) |
+| P12 | Paged startup/list reads | P11 | METRICS CORRECTED / BUILD FRAME GATES FAIL | Startup/open/save pass. Stage-budget measurement now uses the observed display refresh rate; the historical 21.4% total-span figure was not a dropped-frame rate. Corrected five-minute plain run: 83/1,098 stage violations (7.56%) at 90 Hz; formatted smoke: 56/56 at 120 Hz. UI/build remediation and editing acceptance remain; [latest evidence](evidence/P12e/result.md#stage-budget-measurement-correction-2026-09-23) |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
@@ -124,13 +124,13 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12b non-blocking startup cache | Coordinator | DONE | P12a | [Editor readiness no longer decodes the full cache on the root isolate](evidence/P12b/result.md) |
 | P12c 50-row keyset query | Coordinator | DONE | P09,P11 | Completeness marker plus indexed node-summary pages; no offset pagination |
 | P12d paged list surfaces | Coordinator | DONE | P12c | Picker, Library, and Articles use bounded SQLite pages with live-index fallback |
-| P12e latency acceptance | Coordinator | STARTUP/SAVE PASS / EDIT FRAME GATE FAIL | P12a-P12d | Long plain notes use the virtual editor and preserve Typst headers; corrected A24 profile gate is 21.4% dropped equivalents at the 16.67 ms target; optimize active-row rendering and rerun |
-| P12f editor mode gate | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12e | 46 KB / 220-block SAF fixture selects the stock TextField path, but p95 39.01 ms and 33/114 over-budget frames show full-document RenderEditable still fails the gate |
-| P12g virtualized block editor | Coordinator | DEVICE VERIFIED / FRAME BLOCKED | P12f | `VirtualPlainEditor` renders one visible `EditText`, and A24 typing/Enter/Backspace/undo work; p95 37.83 ms with 32/120 over-budget frames still fails the gate |
-| P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FRAME GATE FAIL | P12g | Plain long-note route is selected and host header-preservation tests pass; A24 long-note frame gate fails at 21.4%; rich-formatted acceptance also remains open |
+| P12e latency acceptance | Coordinator | STARTUP/SAVE PASS / EDITOR ACCEPTANCE OPEN | P12a-P12d | Re-evaluate stage-budget timing separately from frame latency; retain startup/open/save evidence |
+| P12f editor mode gate | Coordinator | ROUTE VERIFIED / TIMING RECHECK | P12e | 46 KB / 220-block SAF fixture selects stock TextField; historical p95 39.01 ms is total latency, not a stage-budget verdict |
+| P12g virtualized block editor | Coordinator | INTERACTION SMOKE / TIMING RECHECK | P12f | Visible rows and basic typing/Enter/Backspace/undo smoke recorded; historical total-span counts do not establish missed frames or full cross-row editing parity |
+| P12h editor parity + frame gate | Coordinator | BASIC HOST CHECKS PASS / FULL PARITY OPEN | P12g | Header preservation/basic undo pass; cross-paragraph selection, boundary deletion, IME, paste, redo, real keyboard input and formatted-note acceptance remain |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
-| P12j frame-timing gate | Coordinator | HARNESS CORRECTED / FIVE-MINUTE GATE FAIL | P12e | A24 profile gate uses a mounted row callback, one frame per edit, and the plan's 16.67 ms target; five-minute result: 1,105 frames, 1,103 edits, 236 dropped equivalents (21.4%) |
-| P12k bounded active-paragraph renderer | Coordinator | SIZE SWEEP COMPLETE / RENDERER OPEN | P12j | A24 20-second sweeps show p95 rising from 16.80 ms at 256 chars to 23.18 ms at 2,048. Prototype a bounded editing window with global UTF-16 offsets; preserve selection, IME, Enter/Backspace, paste, undo/redo, and exact Typst serialization. Accept only after the five-minute A24 run has p95 <=16.67 ms and <1% dropped equivalents plus editing regressions pass |
+| P12j frame-timing gate | Coordinator | METRIC REGRESSION PASS / DEVICE GATES FAIL | P12e | Shared tested metric counts a frame once when build OR raster exceeds the observed refresh budget; total latency is reported separately. 97 focused tests pass. Plain five-minute run: 7.56% over budget; formatted 20 s diagnostic: 100%. Preserve <1% gate; reject empty/invalid samples and refresh-rate changes |
+| P12k active-paragraph remediation | Coordinator | PROFILE BEFORE IMPLEMENTATION | P12j | Corrected runs locate violations in UI/build: plain p95 11.477 ms at 90 Hz, formatted p95 100.775 ms at 120 Hz. Profile layout/rebuild stacks before choosing implementation; bounded windows only if needed, with P12h behavior preserved |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -142,7 +142,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P09: DONE WITH CONTENT GAPS; P09d5 verified 3,483/3,483 manifest items terminal and restored production vault; 16 missing assets and 1,243 unresolved wikilinks remain documented.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
-- P12: RUNNING; list/startup/open/save gates pass. Long plain notes route to the virtual editor and host tests preserve generated headers. The corrected five-minute A24 gate fails at 21.4%; next is P12k, a bounded active-paragraph rendering prototype, then rerun P12j and capture a separate rich-formatted long-note gate.
+- P12: RUNNING; list/startup/open/save pass. Metric correction and regressions complete. Plain five-minute stage gate fails at 7.56%; formatted smoke fails at 100%. Next: trace and reduce UI/build cost, then rerun both full gates and complete P12h editing/production-input acceptance. Source/header/formatting checks stay mandatory.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
 
 ## Acceptance correction — 2026-09-20

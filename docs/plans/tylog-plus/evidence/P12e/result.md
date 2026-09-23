@@ -1,6 +1,11 @@
 # P12e result — latency acceptance
 
-Status: HOST COMPLETE / DEVICE PENDING
+Status: STARTUP/OPEN/SAVE PASS / EDITOR ACCEPTANCE OPEN
+
+Current interpretation: the historical `totalSpan`-based "dropped equivalents"
+are frame-latency estimates, not measured dropped frames. They do not establish
+the stage-budget gate. See the [measurement correction](#stage-budget-measurement-correction-2026-09-23)
+below; earlier measurements are preserved as history.
 
 Host acceptance uses the plan gates from `docs/plans/tylog-plus/plan.md` and runs 30 database startups plus 100 durable saves of 50 KB notes:
 
@@ -414,3 +419,85 @@ break selections and gestures across segment boundaries. Keep one logical
 selection and document source while bounding the rendered editing window; the
 prototype still needs to prove IME and cross-boundary behavior before replacing
 the current editor.
+
+### Stage-budget measurement correction (2026-09-23)
+
+The plan requires **<1% of frames exceeding the device refresh budget**. The
+previous harness instead counted `ceil(totalSpan / 16.667 ms) - 1` as dropped
+frames, regardless of the active refresh rate. Flutter documents that build
+and raster stages can each fit the budget while total latency exceeds it:
+[SchedulerBinding.addTimingsCallback](https://api.flutter.dev/flutter/scheduler/SchedulerBinding/addTimingsCallback.html).
+Thus the historical 21.4% figure and the size-sweep percentages cannot establish
+the plan's stage-budget failure. Total-span measurements remain useful latency
+evidence; they are not discarded or silently relabeled as passing.
+
+Both P12 frame harnesses now share a regression-tested calculation: count a
+sample once if **build OR raster duration** exceeds `1000 / refreshRate` ms.
+Report individual stage counts, p95/max stage durations, and p95/max total
+latency separately. Use the test view's display rate, fail a run if sampled rates
+change, reject empty/invalid data, exclude delayed warmup timing batches, and
+require strictly <1% over-budget samples. The rich diagnostic now pumps one response per edit, removing artificial
+idle-frame dilution. Its fixture includes an actual `#strong[Formatted]` span
+and asserts the virtual-plain route is ineligible; text, formatting and the
+Typst header must survive all edits. It mounts the renderer directly and uses
+controller updates, so it does not prove production keyboard/IME behavior.
+
+The regression first failed with total-span classification (two false failures
+for frames whose stages fit the budget), then passed with stage classification.
+Focused metrics/editor suite: **97 tests passed**. Targeted Dart analyzer: clean.
+No production editor code was changed for this correction.
+
+The connected device identifies as **Nothing A024** (the "A24" label in this
+tracker). A 20-second profile smoke observed **90 Hz / 11.111 ms**, 74 edits and
+76 timing samples: **0 stage-budget violations**, versus 48 samples over the
+latency budget. Build p95/max: 7.595/10.359 ms; raster p95/max: 6.161/7.257 ms;
+total-span p95/max: 15.827/17.162 ms. This smoke preceded warmup-batch filtering
+and is diagnostic only. The filtered five-minute result below supersedes this short smoke.
+
+Commands (synthetic fixtures in isolated `.profiletest`, production data untouched):
+
+```bash
+flutter test --no-pub test/editor_frame_metrics_test.dart test/virtual_plain_editor_test.dart test/rich_editor_test.dart
+flutter drive --no-pub --no-dds --profile -PtylogProfileSuffix=.profiletest --device-id 000251565001005 --driver=test_driver/integration_test.dart --target=integration_test/p12_virtual_plain_frame_native_test.dart
+```
+
+P12 remains open until the corrected device gate, production-input/formatted-note
+coverage and cross-row editing regressions pass. A bounded-window rewrite is
+conditional on stage profiling; the previous instruction requiring total-span
+p95 <=16.67 ms as a renderer acceptance gate was not the main plan's UI contract.
+Total latency continues to be reported explicitly, so this correction cannot
+hide input lag.
+
+#### Corrected device results
+
+| Workload | Duration | Refresh / budget | Edits / samples | Over-budget frames | Build p95 / max | Raster p95 / max | Total-span p95 / max |
+|---|---:|---|---|---|---|---|---|
+| Virtual plain, 900 rows, initial active paragraph 68 chars | 300 s | 90 Hz / 11.111 ms | 1,098 / 1,098 | **83 (7.559%)**, all build | 11.477 / 14.962 ms | 6.049 / 9.775 ms | 18.646 / 22.984 ms |
+| Formatted long note, rich renderer | 20 s | 120.000008 Hz / 8.333 ms | 56 / 56 | **56 (100%)**; build 56, raster 2 | 100.775 / 102.786 ms | 7.168 / 10.099 ms | 109.312 / 111.034 ms |
+
+Both fail. The plain run also misses the existing 1,100-edit requirement by two;
+the rich smoke misses the 60-edit minimum (three edits/second). Neither sample
+minimum nor the <1% stage-budget threshold was relaxed. The plain run records
+945 total-span budget exceedances; these are separate latency observations,
+not 945 dropped frames. Each workload observed a stable Flutter display rate;
+these runs use different device-selected rates and are not a controlled
+plain-versus-rich speed comparison.
+
+The formatted run passed text/formatting/header round-trip assertions before
+failing the throughput assertion. The initial plain full run stopped at its
+edit-count assertion before source checks; the earlier plain smoke passed those
+checks. Source assertions now run before performance expectations in both
+harnesses so a failing frame gate cannot hide correctness results.
+
+The rich smoke command is the same driver command above with
+`--target=integration_test/p12_editor_frame_native_test.dart`
+`--dart-define=P12_DURATION_SECONDS=20`. Its 100% violation rate already supplies
+a failing diagnostic; spending another five minutes on it would not establish
+acceptance. The default remains 300 seconds for the eventual full gate.
+
+Next: profile the UI/build phase separately for the growing virtual row and
+formatted document; apply a fix at the expensive layout/rebuild operation and
+repeat the matching diagnostic. The formatted renderer is the larger observed
+stall. Do not infer that a GPU/backend migration or merely relaxing the budget
+would solve it. Full P12 closure still requires P12h editing and production-input
+coverage plus passing five-minute runs.

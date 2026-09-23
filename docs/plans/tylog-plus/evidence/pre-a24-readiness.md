@@ -27,8 +27,9 @@ real Nextcloud account.
    terminal manifest, duration, and validation overhead.
 3. Install the private embedding model/tokenizer and run vector agreement,
    250k cold/warm search, PSS, and forced-stop resume gates.
-4. Run the P12 five-minute real-editor workload: at least 1,000 frames and at
-   most 1% dropped-frame equivalents.
+4. Run the P12 five-minute real-editor workload: at least 1,000 frames and
+   <1% of frames with build or raster duration over the observed display budget.
+   Record total latency separately; see the 2026-09-23 correction in P12e/result.md.
 5. Run native PDF annotation/reassignment, graph SVG share-target, and actual
    process-death reopen checks.
 6. Configure the real Nextcloud account on Mac and phone, then run two-device

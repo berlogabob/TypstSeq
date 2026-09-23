@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:ui' show FramePhase;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -6,17 +6,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:tylog/rich_editor.dart';
 
+import 'support/editor_frame_metrics.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('P12e rich editor five-minute frame workload', (tester) async {
+  testWidgets('P12 formatted long-note five-minute stage-budget diagnostic', (
+    tester,
+  ) async {
+    var savedSource = _source;
     final controller = TyLogEditingController(
       source: _source,
-      onSourceChanged: (_) {},
+      onSourceChanged: (value) => savedSource = value,
       onError: (error) => fail('editor error: $error'),
       onProtectedTap: (_) {},
     );
     addTearDown(controller.dispose);
+    expect(shouldUseVirtualPlainEditor(controller), isFalse);
+    final initialText = controller.text;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -27,56 +34,74 @@ void main() {
     await tester.pumpAndSettle();
 
     final timings = <FrameTiming>[];
-    void onTimings(List<FrameTiming> values) => timings.addAll(values);
+    final captureStartUs =
+        SchedulerBinding.instance.currentSystemFrameTimeStamp.inMicroseconds;
+    void onTimings(List<FrameTiming> values) => timings.addAll(
+      values.where(
+        (t) =>
+            t.timestampInMicroseconds(FramePhase.vsyncStart) > captureStartUs,
+      ),
+    );
+    final display = View.of(tester.element(find.byType(TyLogRichEditor)));
+    final refreshRates = <double>{display.display.refreshRate};
     SchedulerBinding.instance.addTimingsCallback(onTimings);
+    addTearDown(
+      () => SchedulerBinding.instance.removeTimingsCallback(onTimings),
+    );
     var edits = 0;
-    final editTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+    const durationSeconds = int.fromEnvironment(
+      'P12_DURATION_SECONDS',
+      defaultValue: 300,
+    );
+    final fullGate = durationSeconds >= 300;
+    final deadline = DateTime.now().add(
+      const Duration(seconds: durationSeconds),
+    );
+    while (DateTime.now().isBefore(deadline)) {
+      refreshRates.add(display.display.refreshRate);
       final text = '${controller.text}\nframe-$edits';
       controller.value = TextEditingValue(
         text: text,
         selection: TextSelection.collapsed(offset: text.length),
       );
-      // Controller mutations from a timer do not always request a platform
-      // frame in the profile driver. Schedule one explicitly so FrameTiming
-      // measures the rendered workload rather than the timer alone.
-      SchedulerBinding.instance.scheduleFrame();
       edits++;
-    });
-    final deadline = DateTime.now().add(const Duration(minutes: 5));
-    while (DateTime.now().isBefore(deadline)) {
-      // Keep the integration binding attached to a live 60 Hz frame stream.
-      // A plain Future.delayed lets Android stop scheduling frames while the
-      // app is idle, which makes the timing sample count meaningless.
-      await tester.pump(const Duration(milliseconds: 16));
+      // One rendered response per edit; do not dilute the sample with idle pumps.
+      await tester.pump(const Duration(milliseconds: 250));
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
-    editTimer.cancel();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
-    const budgetUs = 16667;
-    final dropped = timings.fold<int>(0, (sum, timing) {
-      final spanUs = timing.totalSpan.inMicroseconds;
-      return sum + (spanUs <= budgetUs ? 0 : (spanUs / budgetUs).ceil() - 1);
-    });
-    final overBudget = timings.where(
-      (timing) => timing.totalSpan.inMicroseconds > budgetUs,
+    refreshRates.add(display.display.refreshRate);
+    expect(
+      refreshRates,
+      hasLength(1),
+      reason: 'Refresh rate changed during capture',
     );
-    final worst = timings.isEmpty
-        ? Duration.zero
-        : timings
-              .map((timing) => timing.totalSpan)
-              .reduce((a, b) => a > b ? a : b);
+    final metrics = editorFrameMetrics(
+      timings,
+      refreshRate: refreshRates.single,
+    );
     // ignore: avoid_print
     print(
-      'P12e editor frames=${timings.length} edits=$edits dropped=$dropped '
-      'over_budget=${overBudget.length} worst_ms=${worst.inMicroseconds / 1000}',
+      'P12 formatted-rich edits=$edits '
+      '${metrics.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
     );
-    expect(edits, greaterThanOrEqualTo(1100));
-    expect(timings.length, greaterThanOrEqualTo(1000));
-    expect(dropped, lessThanOrEqualTo(timings.length * 0.01));
+    final addedText = List.generate(edits, (i) => '\nframe-$i').join();
+    expect(controller.text == '$initialText$addedText', isTrue);
+    expect(TyLogDocument.parse(savedSource).visibleText, controller.text);
+    expect(savedSource, contains('#strong[Formatted]'));
+    expect(savedSource, startsWith(_header));
+    expect(edits, greaterThanOrEqualTo(fullGate ? 1100 : durationSeconds * 3));
+    expect(
+      timings.length,
+      greaterThanOrEqualTo(fullGate ? 1000 : durationSeconds * 3),
+    );
+    expect(metrics['over_budget_pct'], lessThan(1));
   });
 }
 
+const _header = '#show: tylog.note.with(id: "p12-frame", title: "P12 frame")\n';
 final _source =
-    '''#show: tylog.note.with(id: "p12-frame", title: "P12 frame")
-${List<String>.filled(900, 'A long active paragraph keeps the editor layout realistic for the frame budget workload.').join('\n')}
+    '''$_header#strong[Formatted] long-note fixture.
+${List<String>.filled(899, 'A long active paragraph keeps the editor layout realistic for the frame budget workload.').join('\n')}
 ''';
