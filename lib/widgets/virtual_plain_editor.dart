@@ -67,6 +67,8 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       _controllers.map((controller) => controller.text).join('\n');
 
   void _changed() {
+    final undoWasEmpty = _undo.isEmpty;
+    final redoWasNotEmpty = _redo.isNotEmpty;
     if (!_emitPending) {
       _undo.add(_source);
       if (_undo.length > 100) _undo.removeAt(0);
@@ -79,7 +81,9 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       _source = _readSource();
       widget.onChanged(_source);
     });
-    _revision.value++;
+    if (undoWasEmpty != _undo.isEmpty || redoWasNotEmpty != _redo.isNotEmpty) {
+      _revision.value++;
+    }
   }
 
   void _restore(String source) {

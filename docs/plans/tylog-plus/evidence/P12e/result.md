@@ -359,3 +359,23 @@ equivalents. Rich-formatted long-note editing also remains unverified after the
 route change; the earlier direct rich-editor capture failed badly and must be
 retested separately before P12 closes. All runs used synthetic content and the
 `.profiletest` package; the production app and vault were not targeted.
+
+### Corrected A24 active-row gate (2026-09-23)
+
+The old short-run frame harness explicitly pumped a frame every 250 ms. An idle
+control produced nearly the same dropped-frame count as the edit run, so those
+results are harness-generated and are not acceptance evidence. A `benchmarkLive`
+experiment also forced redraws at every VSync and was discarded. The gate now
+drives the mounted virtual-editor row callback and records one rendered frame
+per 4 Hz edit, using the plan's 60 FPS / 16.667 ms target regardless of the
+phone's variable 90/120 Hz display mode.
+
+The corrected five-minute A24 profile run on the 900-row plain-note route
+recorded `frames=1105 edits=1103 dropped=236`, with p95 total span **18.42 ms**,
+worst **22.33 ms**, max build **13.62 ms**, and max raster **9.77 ms**. This
+fails the <=1% gate at **21.4%**. Capping each row to six visible lines was
+tested, but the five-minute result worsened to 332 dropped equivalents in 1,098
+frames; that edit was reverted. The remaining measurable issue is the growing
+active paragraph's render/layout cost during typing. Keep P12 open until that
+path is optimized and passes the same five-minute gate; rich-formatted long-note
+editing still needs its own acceptance run.

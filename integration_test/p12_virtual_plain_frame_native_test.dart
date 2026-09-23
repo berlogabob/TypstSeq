@@ -43,6 +43,8 @@ void main() {
     await tester.drag(list, const Offset(0, -100000));
     await tester.pumpAndSettle();
     final lastField = find.byType(TextField).last;
+    await tester.ensureVisible(lastField);
+    await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(lastField).controller!.text,
       _body.split('\n').last,
@@ -53,41 +55,35 @@ void main() {
     await tester.pump();
     SchedulerBinding.instance.addTimingsCallback(onTimings);
     var edits = 0;
-    const noEdits = bool.fromEnvironment('P12_NO_EDITS');
     const durationSeconds = int.fromEnvironment(
       'P12_DURATION_SECONDS',
       defaultValue: 300,
     );
     final fullGate = durationSeconds >= 300;
+    const budgetUs = 16667; // P12 targets a sustained 60 FPS on Android.
     final startedAt = DateTime.now();
     final deadline = startedAt.add(Duration(seconds: durationSeconds));
     while (DateTime.now().isBefore(deadline)) {
-      if (!noEdits) {
-        // Drive the mounted row controller and its production callback.
-        // Platform text-input injection is ignored for this many-row fixture
-        // by some Android keyboards, producing a false idle-frame pass.
-        final character = edits % 5 == 4 ? ' ' : 'x';
-        final text = '${field.text}$character';
-        field.value = TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-        );
-        tester.widget<TextField>(lastField).onChanged!(text);
-        edits++;
-      }
-      final target = noEdits
-          ? DateTime.now().add(const Duration(milliseconds: 17))
-          : startedAt.add(Duration(milliseconds: edits * 250));
-      while (DateTime.now().isBefore(target)) {
-        await tester.pump(const Duration(milliseconds: 16));
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
+      // Drive the mounted row controller and its production callback.
+      // Platform text-input injection is ignored for this many-row fixture
+      // by some Android keyboards, producing a false idle-frame pass.
+      final character = edits % 5 == 4 ? ' ' : 'x';
+      final text = '${field.text}$character';
+      field.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+      tester.widget<TextField>(lastField).onChanged!(text);
+      edits++;
+      await tester.pump(const Duration(milliseconds: 250));
+      await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    await tester.pump();
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
+    await tester.pump();
 
-    const budgetUs = 16667;
+    final refreshRate =
+        WidgetsBinding.instance.platformDispatcher.displays.first.refreshRate;
     final dropped = timings.fold<int>(0, (sum, timing) {
       final spanUs = timing.totalSpan.inMicroseconds;
       return sum + (spanUs <= budgetUs ? 0 : (spanUs / budgetUs).ceil() - 1);
@@ -101,20 +97,24 @@ void main() {
     final worstRaster = timings.isEmpty
         ? Duration.zero
         : timings.map((t) => t.rasterDuration).reduce((a, b) => a > b ? a : b);
+    final spans = timings.map((t) => t.totalSpan.inMicroseconds).toList()
+      ..sort();
+    final spanP95 = spans.isEmpty
+        ? 0
+        : spans[(spans.length * 0.95).floor().clamp(0, spans.length - 1)];
     // ignore: avoid_print
     print(
-      'P12 actual-long frames=${timings.length} edits=$edits '
+      'P12 actual-long refresh_hz=$refreshRate budget_ms=${budgetUs / 1000} '
+      'frames=${timings.length} edits=$edits '
       'dropped=$dropped worst_ms=${worst.inMicroseconds / 1000} '
+      'span_p95_ms=${spanP95 / 1000} '
       'build_ms=${worstBuild.inMicroseconds / 1000} '
       'raster_ms=${worstRaster.inMicroseconds / 1000}',
     );
-    expect(
-      edits,
-      noEdits ? 0 : greaterThanOrEqualTo(fullGate ? 1100 : durationSeconds * 3),
-    );
+    expect(edits, greaterThanOrEqualTo(fullGate ? 1100 : durationSeconds * 3));
     expect(
       timings.length,
-      greaterThanOrEqualTo(fullGate ? 1000 : durationSeconds * 30),
+      greaterThanOrEqualTo(fullGate ? 1000 : durationSeconds * 3),
     );
     expect(dropped, lessThanOrEqualTo(timings.length * 0.01));
     final addedText = List<String>.generate(

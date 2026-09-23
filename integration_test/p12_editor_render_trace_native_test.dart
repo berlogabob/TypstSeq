@@ -26,6 +26,9 @@ void main() {
     final field = tester
         .widget<TextField>(find.byType(TextField).first)
         .controller!;
+    final onChanged = tester
+        .widget<TextField>(find.byType(TextField).first)
+        .onChanged!;
     await tester.tap(find.byType(TextField).first);
     field.selection = TextSelection.collapsed(offset: field.text.length);
     await tester.pump();
@@ -38,12 +41,11 @@ void main() {
       final editTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
         final character = edits % 5 == 4 ? ' ' : 'x';
         final text = '${field.text}$character';
-        tester.testTextInput.updateEditingValue(
-          TextEditingValue(
-            text: text,
-            selection: TextSelection.collapsed(offset: text.length),
-          ),
+        field.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
         );
+        onChanged(text);
         SchedulerBinding.instance.scheduleFrame();
         edits++;
       });
