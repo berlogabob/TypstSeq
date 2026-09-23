@@ -74,10 +74,13 @@ android {
         // that would wipe the vault registry — enables on-device profiling.
         // `profile` is created by the Flutter Gradle plugin (no static accessor),
         // so resolve it by name rather than with a `profile { }` block.
-        if (keystorePropertiesFile.exists()) {
-            getByName("profile") {
+        getByName("profile") {
+            if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            (project.findProperty("tylogProfileSuffix") as? String)
+                ?.takeIf { it.startsWith(".") && it.length > 1 }
+                ?.let { applicationIdSuffix = it }
         }
     }
 }

@@ -27,10 +27,10 @@ earlier states that led to these decisions.
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
-| P09 | Resumable legacy import | P07 | HOST ACCEPTED / A24 REGISTRY+SAF RECOVERED / IMPORT OPEN | Synthetic 10k interruption/retry passes; private A024 manifest/import rehearsal remains |
+| P09 | Resumable legacy import | P07 | HOST ACCEPTED / A24 TARGET PREPARED / IMPORT OPEN | Synthetic 10k interruption/retry passes; isolated target exists and production-source checksum is unchanged; private manifest/import rehearsal remains |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
-| P12 | Paged startup/list reads | P11 | A24 FRAME GATE FAILED / ROOT-CAUSE WORK OPEN | Startup/open/save pass; long-note and rich-editor frame gates exceed the <=1% drop limit |
+| P12 | Paged startup/list reads | P11 | A24 FRAME GATE FAILED / TRACE REQUIRED | Startup/open/save and idle frames pass; long-note editing fails at 2.5% dropped equivalents, rich editing at 59.9%; capture profile trace before a block-editor change |
 | P13 | Incremental FTS and filters | P11 | DONE | FTS5, changed-record refresh, UI fallback routing, multilingual latency gate |
 | P14 | Persistent jobs | P08 | DONE | Resume/cancel/deduplicate/stale result tests |
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
@@ -72,7 +72,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P09d2b durable UI adapter | Codex Luna | DONE | P09d2a | [Deterministic adapter, rerun accounting, and interruption-safe UI](evidence/P09d2b/result.md) |
 | P09d3 assets + cancellation | Codex Luna | DONE | P09d2b | [Assets recover from committed nodes; cancellation leaves pending work resumable](evidence/P09d3/result.md) |
 | P09d4 synthetic rehearsal | Coordinator + Codex Luna | DONE | P09d3 | [10k restart rehearsal and validation overhead measurement](evidence/P09d4/result.md) |
-| P09d5 private A024 rehearsal | Coordinator | READY | P09d4 | Aggregate manifest=terminal counts; vault remains readable; no private logs committed |
+| P09d5 private A024 rehearsal | Coordinator | TARGET PREPARED / IMPORT NOT RUN | P09d4 | Select verified production source into separate P09_sandbox target, complete aggregate manifest/import counts, prove source hash unchanged, then return app to production vault |
 | P05.0 model/runtime contract | Codex Luna | DONE | P04 | [Pinned and independently verified](evidence/P05/contract.md) |
 | P05.1a private-pack validator | Codex Luna | DONE | P05.0 | 5 tests enforce counts, labels, offsets, cross-language balance, and private output |
 | P05.1b judged 90-query pack | Coordinator | WAITING | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU; whole-file hash recorded |

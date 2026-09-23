@@ -313,3 +313,22 @@ profile workload. It produced `frames=969 edits=120 dropped=37
 worst_ms=21.44 build_ms=12.05 raster_ms=10.28`, worse than the prior
 production baseline of 21 dropped equivalents. The change was reverted; the
 remaining bottleneck is shared editable-row layout/render work.
+
+### Isolated A24 profile rerun (2026-09-23)
+
+Profile integration builds used the opt-in `.profiletest` application ID so
+they could run beside the installed production app without replacing it. The
+actual long-note test's no-edit control now correctly expects zero edits; it
+passed with `frames=964 edits=0 dropped=0 worst_ms=14.83`. This fixes a false
+test failure in the control path, not the editor.
+
+The 30-second `VirtualPlainEditor` edit run failed the 1% gate:
+`frames=1029 edits=120 dropped=26 worst_ms=20.46 build_ms=12.25
+raster_ms=9.14` (2.5%). The five-minute rich-editor profile run also failed:
+`frames=8101 edits=1200 dropped=4849 over_budget=1199 worst_ms=175.95`
+(59.9% dropped-frame equivalents). Idle work is not the cause; active editable
+layout/render remains the blocker. No speculative editor code change was made.
+Next: capture a DevTools profile trace and use its build/layout/raster
+attribution to scope a block-level editor prototype; rerun both profile gates
+before accepting a change. Production package and vault were not targeted by
+these profile runs.

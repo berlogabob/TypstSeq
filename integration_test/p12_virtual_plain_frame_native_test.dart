@@ -26,11 +26,11 @@ void main() {
     final timings = <FrameTiming>[];
     void onTimings(List<FrameTiming> values) => timings.addAll(values);
     SchedulerBinding.instance.addTimingsCallback(onTimings);
-    final field = tester.widget<TextField>(find.byType(TextField).first).controller!;
+    final field = tester
+        .widget<TextField>(find.byType(TextField).first)
+        .controller!;
     var edits = 0;
-    final editTimer = Timer.periodic(
-      const Duration(milliseconds: 250),
-      (_) {
+    final editTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       field.value = field.value.copyWith(
         text: '${field.text} frame-$edits',
         selection: TextSelection.collapsed(
@@ -39,9 +39,9 @@ void main() {
       );
       edits++;
       SchedulerBinding.instance.scheduleFrame();
-      },
-    );
-    if (const bool.fromEnvironment('P12_NO_EDITS')) editTimer.cancel();
+    });
+    const noEdits = bool.fromEnvironment('P12_NO_EDITS');
+    if (noEdits) editTimer.cancel();
     final deadline = DateTime.now().add(const Duration(seconds: 30));
     while (DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -63,9 +63,7 @@ void main() {
         : timings.map((t) => t.buildDuration).reduce((a, b) => a > b ? a : b);
     final worstRaster = timings.isEmpty
         ? Duration.zero
-        : timings
-              .map((t) => t.rasterDuration)
-              .reduce((a, b) => a > b ? a : b);
+        : timings.map((t) => t.rasterDuration).reduce((a, b) => a > b ? a : b);
     // ignore: avoid_print
     print(
       'P12 actual-long frames=${timings.length} edits=$edits '
@@ -73,7 +71,7 @@ void main() {
       'build_ms=${worstBuild.inMicroseconds / 1000} '
       'raster_ms=${worstRaster.inMicroseconds / 1000}',
     );
-    expect(edits, greaterThanOrEqualTo(100));
+    expect(edits, noEdits ? 0 : greaterThanOrEqualTo(100));
     expect(timings, isNotEmpty);
     expect(dropped, lessThanOrEqualTo(timings.length * 0.01));
   });
