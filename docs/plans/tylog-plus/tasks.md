@@ -1,20 +1,21 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-21. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-23. Coordinator owns this file.
 
 Pre-A24 host checkpoint: [evidence/pre-a24-readiness.md](evidence/pre-a24-readiness.md).
 Host regression is green (754 passed, 2 skipped); device, judged-quality, and
 real-Nextcloud gates remain explicitly open.
 
-**Main milestones: 13/26 DONE. Active wave: P05 + P09 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
+**Main milestones: 14/26 DONE. Active wave: P05 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
 **Current snapshot (2026-09-23):** bounded host primitives are accepted for P05,
 P09, and P18–P25; P21's optional PDF citation seam is host-tested but awaits
-the real model provider. Remaining blockers are P03 cloud re-entry plus initial
-sync and bidirectional checks, P05 A24 profile performance and 90 judged queries, P09 private
-import rehearsal, P12 editor frame performance, P18/P19 corpus checks,
-P19 real account sync, P20/P21/P23 device model gates, P25 release rehearsal,
-and P26 seven-day use. Historical notes below retain the measurements and
+the real model provider. P09 A24 import rehearsal now has terminal manifest
+accounting and readable target evidence, with missing assets/unresolved links
+recorded as content-quality gaps. Remaining blockers are P03 cloud re-entry plus
+initial sync and bidirectional checks, P05 A24 profile performance and 90 judged
+queries, P12 editor frame performance, P18/P19 corpus checks, P19 real account
+sync, P20/P21/P23 device model gates, P25 release rehearsal, and P26 seven-day use. Historical notes below retain the measurements and
 earlier states that led to these decisions.
 
 | ID | Task | Dependencies | State | Acceptance |
@@ -27,7 +28,7 @@ earlier states that led to these decisions.
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
-| P09 | Resumable legacy import | P07 | HOST ACCEPTED / A24 TARGET PREPARED / IMPORT OPEN | Synthetic 10k interruption/retry passes; isolated target exists and production-source checksum is unchanged; private manifest/import rehearsal remains |
+| P09 | Resumable legacy import | P07 | DONE WITH CONTENT GAPS | [A24 import: 3,483/3,483 terminal; SQLite integrity clean](evidence/P09d5/result.md); 16 assets missing and 1,243 wikilinks unresolved |
 | P10 | Portable export/conflict-aware re-import | P09 | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md) |
 | P11 | Route existing edits/buttons through DB | P08,P10 | DONE | [Edits/deletes](evidence/P11a/result.md) and [creation/import](evidence/P11c/result.md) durable |
 | P12 | Paged startup/list reads | P11 | A24 FRAME GATE FAILED / TRACE REQUIRED | Startup/open/save and idle frames pass; long-note editing fails at 2.5% dropped equivalents, rich editing at 59.9%; capture profile trace before a block-editor change |
@@ -72,7 +73,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P09d2b durable UI adapter | Codex Luna | DONE | P09d2a | [Deterministic adapter, rerun accounting, and interruption-safe UI](evidence/P09d2b/result.md) |
 | P09d3 assets + cancellation | Codex Luna | DONE | P09d2b | [Assets recover from committed nodes; cancellation leaves pending work resumable](evidence/P09d3/result.md) |
 | P09d4 synthetic rehearsal | Coordinator + Codex Luna | DONE | P09d3 | [10k restart rehearsal and validation overhead measurement](evidence/P09d4/result.md) |
-| P09d5 private A024 rehearsal | Coordinator | TARGET PREPARED / IMPORT NOT RUN | P09d4 | Select verified production source into separate P09_sandbox target, complete aggregate manifest/import counts, prove source hash unchanged, then return app to production vault |
+| P09d5 private A024 rehearsal | Coordinator | DONE WITH CONTENT GAPS | P09d4 | [3,483/3,483 terminal; integrity and FK checks pass](evidence/P09d5/result.md); source file count/bytes unchanged; conversion gaps recorded |
 | P05.0 model/runtime contract | Codex Luna | DONE | P04 | [Pinned and independently verified](evidence/P05/contract.md) |
 | P05.1a private-pack validator | Codex Luna | DONE | P05.0 | 5 tests enforce counts, labels, offsets, cross-language balance, and private output |
 | P05.1b judged 90-query pack | Coordinator | WAITING | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU; whole-file hash recorded |
@@ -137,7 +138,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P01b: DONE; actual A024 backup and independent verification recorded in [evidence](evidence/P01/result.md).
 - P04b: DONE; the existing scanner plus `/usr/bin/time` supplies the timing/memory runner, and the privacy-safe aggregate manifest covers production and fixtures.
 - P08: DONE; content, immutable revision, outbox and derived invalidation commit atomically.
-- P09: RUNNING; host work through P09d4 is complete, while P09d5 requires the private A024 vault.
+- P09: DONE WITH CONTENT GAPS; P09d5 verified 3,483/3,483 manifest items terminal and restored production vault; 16 missing assets and 1,243 unresolved wikilinks remain documented.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
 - P12: RUNNING; database/list latency gates pass, while P12e is blocked by full-document `RenderEditable` layout. Continue with P12f mode gating, P12g visible-block editing, then P12h parity and the A24 <=1% frame gate.
@@ -163,7 +164,7 @@ Independent code review reopened P22–P24. Earlier DONE entries described helpe
 
 Luna subagents implemented anchor safety, bounded candidate selection, graph traversal, and the reader storage seam. Coordinator reviewed/integrated, corrected surrogate-overlap progress, repaired export, added reader UI, and executed native tests. Provider token usage was not exposed; one later Luna review hit the account usage limit.
 
-Still required before full acceptance: P05 Android model parity/latency/memory + 90 judged queries; P09 private import rehearsal; P12 startup/open/save/frame measurements; P18 corpus/Mac reader checks; P19 manual reassignment and sync; P20 embedding runtime scheduling; P21 production hybrid pipeline and cited navigation; P22 graph UI/layout/export wiring; P23 end-to-end workflow; P24 integrated failure rehearsal; P25 real Nextcloud/release integrity; P26 seven days of use.
+Still required before full acceptance: P05 Android model parity/latency/memory + 90 judged queries; P12 editor frame gate; P18 corpus/Mac reader checks; P19 real account sync; P20 native-model quality/device gates; P21 production hybrid pipeline/provider and quality gates; P23 native end-to-end acceptance; P24 real Nextcloud/release rehearsal; P25 production migration/release acceptance; P26 seven days of use. P09 private import rehearsal is complete with conversion-quality gaps documented.
 
 Current wave verification: 736 host tests passed, 2 skipped; targeted analyzer clean; PDF reader native fixture passed on Mac and A24; A24 post-commit force-stop/reopen passed. Normal Android profile build installed over production with registry fingerprint unchanged; normal ARM64 Mac release built and launched. Universal Mac release packaging remains open.
 
