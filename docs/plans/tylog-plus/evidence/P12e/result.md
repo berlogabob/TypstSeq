@@ -392,3 +392,25 @@ synthetic separators into serialized content. Compare 256-, 512-, 1,024-, and
 passes only when the existing five-minute 900-row profile gate reaches p95
 <=16.67 ms and <1% dropped equivalents, source/header round-trip remains exact,
 and editing-boundary tests pass. Then run the separate rich-formatted-note gate.
+
+### Active paragraph size sweep (2026-09-23)
+
+The frame harness now accepts `P12_ACTIVE_PARAGRAPH_CHARS` so the active row can
+be varied without changing the 900-row document. Four 20-second A24 profile
+smokes, each with about 74 edits, show the active-row cost rising with text size
+(all use the plan's 16.667 ms budget; these short runs are diagnostic only):
+
+| Initial active paragraph | Frames / edits | Dropped equivalents | p95 span |
+| ---: | ---: | ---: | ---: |
+| 256 chars | 77 / 75 | 5 (6.5%) | 16.80 ms |
+| 512 chars | 76 / 74 | 10 (13.2%) | 18.26 ms |
+| 1,024 chars | 75 / 73 | 34 (45.3%) | 20.26 ms |
+| 2,048 chars | 75 / 73 | 57 (76.0%) | 23.18 ms |
+
+The 68-character baseline smoke was 76 frames / 74 edits, 4 dropped equivalents
+(5.3%), p95 17.12 ms. This points to text length in the active `RenderEditable`
+as a primary cost. A simple multi-`TextField` split is unsafe because it would
+break selections and gestures across segment boundaries. Keep one logical
+selection and document source while bounding the rendered editing window; the
+prototype still needs to prove IME and cross-boundary behavior before replacing
+the current editor.

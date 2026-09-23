@@ -105,6 +105,7 @@ void main() {
     // ignore: avoid_print
     print(
       'P12 actual-long refresh_hz=$refreshRate budget_ms=${budgetUs / 1000} '
+      'active_chars=$_activeParagraphChars '
       'frames=${timings.length} edits=$edits '
       'dropped=$dropped worst_ms=${worst.inMicroseconds / 1000} '
       'span_p95_ms=${spanP95 / 1000} '
@@ -137,8 +138,18 @@ void main() {
 }
 
 const _header = '#show: tylog.note.with(id: "p12", title: "P12")\n';
-final _body = List<String>.generate(
-  900,
-  (i) => 'A long active paragraph keeps the editor layout realistic line $i.',
-).join('\n');
+const _activeParagraphChars = int.fromEnvironment(
+  'P12_ACTIVE_PARAGRAPH_CHARS',
+  defaultValue: 68,
+);
+final _body = [
+  ...List<String>.generate(
+    899,
+    (i) => 'A long active paragraph keeps the editor layout realistic line $i.',
+  ),
+  (List<String>.filled(
+    (_activeParagraphChars + 4) ~/ 5,
+    'word ',
+  ).join()).substring(0, _activeParagraphChars),
+].join('\n');
 final _source = '$_header$_body';
