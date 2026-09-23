@@ -130,6 +130,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12h editor parity + frame gate | Coordinator | HOST PARITY PASS / DEVICE FRAME GATE FAIL | P12g | Plain long-note route is selected and host header-preservation tests pass; A24 long-note frame gate fails at 21.4%; rich-formatted acceptance also remains open |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
 | P12j frame-timing gate | Coordinator | HARNESS CORRECTED / FIVE-MINUTE GATE FAIL | P12e | A24 profile gate uses a mounted row callback, one frame per edit, and the plan's 16.67 ms target; five-minute result: 1,105 frames, 1,103 edits, 236 dropped equivalents (21.4%) |
+| P12k bounded active-paragraph renderer | Coordinator | READY / NOT STARTED | P12j | Prototype a viewport over long paragraphs using global UTF-16 source offsets; preserve selection, IME composition, Enter/Backspace, paste, undo/redo, and exact Typst serialization. Accept only after the five-minute A24 run has p95 frame span <=16.67 ms and <1% dropped equivalents, plus host and device editing regressions pass |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -141,7 +142,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P09: DONE WITH CONTENT GAPS; P09d5 verified 3,483/3,483 manifest items terminal and restored production vault; 16 missing assets and 1,243 unresolved wikilinks remain documented.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
-- P12: RUNNING; list/startup/open/save gates pass. Long plain notes route to the virtual editor and host tests preserve generated headers. The corrected five-minute A24 gate fails at 21.4%; reduce active-row layout/render cost, pass the gate, then capture a separate rich-formatted long-note trace/gate.
+- P12: RUNNING; list/startup/open/save gates pass. Long plain notes route to the virtual editor and host tests preserve generated headers. The corrected five-minute A24 gate fails at 21.4%; next is P12k, a bounded active-paragraph rendering prototype, then rerun P12j and capture a separate rich-formatted long-note gate.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
 
 ## Acceptance correction — 2026-09-20

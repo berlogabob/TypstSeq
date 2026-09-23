@@ -379,3 +379,16 @@ frames; that edit was reverted. The remaining measurable issue is the growing
 active paragraph's render/layout cost during typing. Keep P12 open until that
 path is optimized and passes the same five-minute gate; rich-formatted long-note
 editing still needs its own acceptance run.
+
+### P12k implementation target
+
+Keep the document and Typst source unchanged. Replace the growing paragraph's
+single unbounded render object with a bounded active editing window over the
+same text, mapped by UTF-16 offsets. Nearby windows should be available for
+selection and caret movement; crossing a window edge must preserve typing,
+Backspace/Delete, Enter, paste, IME composition, and undo/redo. Do not insert
+synthetic separators into serialized content. Compare 256-, 512-, 1,024-, and
+2,048-character active paragraphs on A24 to find the layout-cost knee. P12k
+passes only when the existing five-minute 900-row profile gate reaches p95
+<=16.67 ms and <1% dropped equivalents, source/header round-trip remains exact,
+and editing-boundary tests pass. Then run the separate rich-formatted-note gate.
