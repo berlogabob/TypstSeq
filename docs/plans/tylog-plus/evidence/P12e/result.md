@@ -501,3 +501,35 @@ repeat the matching diagnostic. The formatted renderer is the larger observed
 stall. Do not infer that a GPU/backend migration or merely relaxing the budget
 would solve it. Full P12 closure still requires P12h editing and production-input
 coverage plus passing five-minute runs.
+
+#### Formatted-renderer layout attribution (2026-09-23)
+
+An opt-in `P12_TRACE=true` run of the same formatted fixture enables Flutter's
+widget-build and render-layout timeline events. The driver now writes response
+data even when the performance assertion fails, preserving the evidence in
+`build/integration_response_data.json` instead of losing the failing trace.
+Use `--dart-define=P12_DURATION_SECONDS=10 --dart-define=P12_TRACE=true` with
+the formatted-note driver command. Instrumented timings are diagnostic only;
+normal acceptance runs leave tracing disabled.
+
+The trace contained 29 edit-response frames at a stable 90 Hz. All 29 violated
+the build budget (build p95 98.972 ms; raster p95 6.770 ms). Aggregating paired
+begin/end timeline events identifies **29 `RenderEditable` layouts, 2,157.03 ms
+total, 74.38 ms mean, 81.83 ms maximum**. Almost all of that time is inside
+`RenderEditable` itself (2,149.37 ms exclusive of nested timeline events).
+By comparison, `_Editable` widget updates total 74.84 ms across the run and
+paint totals 230.12 ms. This narrows the main problem to text layout rather than
+rebuilding the toolbar or GPU raster work. Source/formatting/header checks pass;
+the throughput and frame gates still fail.
+
+A temporary host probe ruled out redundant adjacent-style runs as a useful fix:
+the 900-line formatted fixture already produces no more than three text spans,
+with source, composition offsets and protected widgets preserved. No span-merging
+implementation was added, and the throwaway probe was removed. Production
+editor behavior remains unchanged by this profiling checkpoint.
+
+Next implementation: bound the amount of formatted text laid out for an edit,
+while preserving the controller's complete source and global selection/IME
+semantics. Cross-row gestures, boundary deletion, composition, paste and undo
+must be tested before enabling a replacement. P12 remains open; a profiling
+checkpoint is not a performance fix.

@@ -130,7 +130,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12h editor parity + frame gate | Coordinator | BASIC HOST CHECKS PASS / FULL PARITY OPEN | P12g | Header preservation/basic undo pass; cross-paragraph selection, boundary deletion, IME, paste, redo, real keyboard input and formatted-note acceptance remain |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
 | P12j frame-timing gate | Coordinator | METRIC REGRESSION PASS / DEVICE GATES FAIL | P12e | Shared tested metric counts a frame once when build OR raster exceeds the observed refresh budget; total latency is reported separately. 97 focused tests pass. Plain five-minute run: 7.56% over budget; formatted 20 s diagnostic: 100%. Preserve <1% gate; reject empty/invalid samples and refresh-rate changes |
-| P12k active-paragraph remediation | Coordinator | PROFILE BEFORE IMPLEMENTATION | P12j | Corrected runs locate violations in UI/build: plain p95 11.477 ms at 90 Hz, formatted p95 100.775 ms at 120 Hz. Profile layout/rebuild stacks before choosing implementation; bounded windows only if needed, with P12h behavior preserved |
+| P12k active-paragraph remediation | Coordinator | FORMATTED LAYOUT ATTRIBUTED / FIX OPEN | P12j | Trace: RenderEditable layout averages 74.38 ms/edit, max 81.83 ms (29 edits). Redundant span fragmentation ruled out. Bound formatted layout while preserving global selection/IME/source; implement and verify P12h behavior before enabling |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
 
@@ -142,7 +142,7 @@ Dispatch rule: at most two implementation subagents plus one reviewer. Each suba
 - P09: DONE WITH CONTENT GAPS; P09d5 verified 3,483/3,483 manifest items terminal and restored production vault; 16 missing assets and 1,243 unresolved wikilinks remain documented.
 - P10: DONE; UI routing for portable export/import belongs to P11.
 - P11: DONE; every current edit, creation, import, mutation, and delete route uses durable storage.
-- P12: RUNNING; list/startup/open/save pass. Metric correction and regressions complete. Plain five-minute stage gate fails at 7.56%; formatted smoke fails at 100%. Next: trace and reduce UI/build cost, then rerun both full gates and complete P12h editing/production-input acceptance. Source/header/formatting checks stay mandatory.
+- P12: RUNNING; list/startup/open/save pass. Metric correction and regressions complete. Plain five-minute stage gate fails at 7.56%; formatted smoke fails at 100%. Trace confirms formatted RenderEditable layout dominates (74.38 ms/edit mean). Next: implement bounded formatted layout with P12h editing/production-input parity, then rerun both full gates. Source/header/formatting checks stay mandatory.
 - Break later milestones into owned execution tickets before dispatch. Do not infer implementation details missing from the contract, especially P16 conflict materialization.
 
 ## Acceptance correction — 2026-09-20

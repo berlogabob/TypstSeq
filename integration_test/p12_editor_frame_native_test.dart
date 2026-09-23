@@ -1,6 +1,7 @@
 import 'dart:ui' show FramePhase;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -9,7 +10,7 @@ import 'package:tylog/rich_editor.dart';
 import 'support/editor_frame_metrics.dart';
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('P12 formatted long-note five-minute stage-budget diagnostic', (
     tester,
@@ -54,20 +55,38 @@ void main() {
       defaultValue: 300,
     );
     final fullGate = durationSeconds >= 300;
-    final deadline = DateTime.now().add(
-      const Duration(seconds: durationSeconds),
-    );
-    while (DateTime.now().isBefore(deadline)) {
-      refreshRates.add(display.display.refreshRate);
-      final text = '${controller.text}\nframe-$edits';
-      controller.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
+    Future<void> editWorkload() async {
+      final deadline = DateTime.now().add(
+        const Duration(seconds: durationSeconds),
       );
-      edits++;
-      // One rendered response per edit; do not dilute the sample with idle pumps.
-      await tester.pump(const Duration(milliseconds: 250));
-      await Future<void>.delayed(const Duration(milliseconds: 1));
+      while (DateTime.now().isBefore(deadline)) {
+        refreshRates.add(display.display.refreshRate);
+        final text = '${controller.text}\nframe-$edits';
+        controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        edits++;
+        // One rendered response per edit; do not dilute the sample with idle pumps.
+        await tester.pump(const Duration(milliseconds: 250));
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    if (const bool.fromEnvironment('P12_TRACE')) {
+      debugProfileLayoutsEnabled = true;
+      debugProfileBuildsEnabled = true;
+      try {
+        await binding.traceAction(
+          editWorkload,
+          reportKey: 'p12_formatted_trace',
+        );
+      } finally {
+        debugProfileLayoutsEnabled = false;
+        debugProfileBuildsEnabled = false;
+      }
+    } else {
+      await editWorkload();
     }
     await Future<void>.delayed(const Duration(milliseconds: 350));
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
