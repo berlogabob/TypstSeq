@@ -1,6 +1,6 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-23. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-24. Coordinator owns this file.
 
 Pre-A24 host checkpoint: [evidence/pre-a24-readiness.md](evidence/pre-a24-readiness.md).
 Host regression is green (754 passed, 2 skipped); device, judged-quality, and
@@ -41,7 +41,7 @@ earlier states that led to these decisions.
 | P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / SYNC READY | Durable anchors, reassignment, A24/Mac reader flows, and annotation revision envelopes pass; real Nextcloud sync and corpus acceptance remain |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST CITATION SEAM ACCEPTED / PROVIDER + DEVICE OPEN | [PDF chunk hit renders and opens at versioned offset](evidence/P21/citation-navigation.md); real model/device quality remain |
-| P22 | Evidence relations/bounded graph | P07,P12 | HOST ACCEPTED / DEVICE VERIFIED | [Bounded traversal, graph UI/export, and A24 SVG share handoff to Nextcloud pass](evidence/P22/result.md) |
+| P22 | Evidence relations/bounded graph | P07,P12 | MAC LATENCY PASS / ANDROID LATENCY OPEN | [SQL scale probe, Mac GraphView interaction and Android SVG handoff pass; real-vault integration and Android latency remain](evidence/P22/result.md) |
 | P23 | Complete research workflow | P19,P21,P22 | HOST ACCEPTED / DEVICE BLOCKED | Filtered retrieval-to-vault report path passes host tests; vector quality and native end-to-end acceptance remain |
 | P24 | Migration rehearsal/integrated failures | P10,P12,P17,P23 | HOST ACCEPTED / DEVICE VERIFIED / EXTERNAL BLOCKED | Host failure matrix and A24 profile process-death/reopen pass; real Nextcloud and production-release rehearsal remain |
 | P25 | Production migration/release acceptance | P03,P24 | HOST ACCEPTED / EXTERNAL BLOCKED | [Universal macOS and Android profile artifacts verified; real Nextcloud/vault rehearsal remains](evidence/P25/result.md) |
@@ -111,7 +111,9 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P25d universal launch smoke | Coordinator | DONE | P25c | [Universal bundle launches successfully on macOS](evidence/P25/result.md) |
 | P22c graph query-plan gate | Coordinator | DONE | P22b | [Both bounded edge endpoints retain indexed query plans](evidence/P22/result.md) |
 | P22d bounded graph UI/export wiring | Coordinator | DONE | P22b | [Host graph layout and visible SVG action are covered](evidence/P22/result.md) |
-| P22e Android SVG share handoff | Coordinator | DEVICE VERIFIED / TARGET REVIEW | P22d | [A24 chooser opens for `tylog-graph.svg`; selecting a target remains manual](evidence/P22/result.md) |
+| P22e Android SVG share handoff | Coordinator | DONE | P22d | [A24 chooser delivered `tylog-graph.svg` to the selected Nextcloud target on 2026-09-22](evidence/P22/result.md#a24-native-handoff-2026-09-22) |
+| P22f synthetic SQL scale probe | Codex Luna | DONE | P22c | [100k nodes / 1M hub edges, 40 measured calls: p95 70.295 ms; opt-in benchmark, not UI acceptance](evidence/P22/result.md#synthetic-high-degree-traversal-timing-2026-09-23) |
+| P22g Mac GraphView interaction | Codex Luna + local Ornith | DONE | P22d | [100 native profile mounts p95 150.603 ms, 100 selections p95 111.667 ms; both below 500 ms; raw samples retained](evidence/P22/result.md#contract-sized-rerun-2026-09-24) |
 | P10a portable snapshot codec | Codex Luna | DONE | P09 host work | [Deterministic validated ZIP preserves graph rows and portable vault files](evidence/P10/result.md) |
 | P10b conflict-aware merge planner | Codex Luna | DONE | P10a row contract | [Stable IDs classify insert/unchanged/conflict without overwrite](evidence/P10/result.md) |
 | P10c transactional round trip | Coordinator | DONE | P10a,P10b | [Fresh restore, idempotent re-import, conflict retention, rollback on failure](evidence/P10/result.md) |
@@ -130,9 +132,15 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P12h editor parity + frame gate | Coordinator | BASIC HOST CHECKS PASS / FULL PARITY OPEN | P12g | Header preservation/basic undo pass; cross-paragraph selection, boundary deletion, IME, paste, redo, real keyboard input and formatted-note acceptance remain |
 | P12i model update benchmark | Coordinator | DONE | P12e | 1,200 long-note appends: p50 2.76 ms, p95 9.54 ms, max 13.14 ms; model path is below the 50 ms per-edit ceiling |
 | P12j frame-timing gate | Coordinator | METRIC REGRESSION PASS / DEVICE GATES FAIL | P12e | Shared tested metric counts a frame once when build OR raster exceeds the observed refresh budget; total latency is reported separately. 97 focused tests pass. Plain five-minute run: 7.56% over budget; formatted 20 s diagnostic: 100%. Preserve <1% gate; reject empty/invalid samples and refresh-rate changes |
-| P12k active-paragraph remediation | Coordinator | FORMATTED LAYOUT ATTRIBUTED / FIX OPEN | P12j | Trace: RenderEditable layout averages 74.38 ms/edit, max 81.83 ms (29 edits). Redundant span fragmentation ruled out. Bound formatted layout while preserving global selection/IME/source; implement and verify P12h behavior before enabling |
+| P12k active-paragraph remediation | Coordinator | MIXED CANDIDATE TIMINGS / FIX OPEN | P12j | RenderEditable layout averages 74.38 ms/edit. Super Editor fails; Quill first fails (97.22%) then passes a fresh-project 20 s probe (0/75). Reconcile variance, preserve global selection/IME/source and verify P12h before enabling |
 
 Dispatch rule: at most two implementation subagents plus one reviewer. Each subagent owns disjoint files, runs its focused check, and does not commit. The coordinator reviews, integrates, runs the broader checks, updates this ledger, then commits and pushes the accepted checkpoint.
+
+Model routing (2026-09-24): user requested local Ollama `ornith-1.5:9b` for coding
+and other suitable tasks. The local API returned that model for the P22
+100-sample/raw-timing amendment (1,375 prompt tokens, 1,993 generated tokens,
+61.13 s). Coordinator reviewed the diff; native checks remain the acceptance
+authority. Unload local inference before collecting performance measurements.
 
 ## Next tickets
 
@@ -158,7 +166,7 @@ Independent code review reopened P22–P24. Earlier DONE entries described helpe
 | P19d reader reassignment action | DONE | Needs-review dialog activates replacement mode; selection and Save highlight update the existing annotation |
 | P19e annotation revision envelopes | DONE | Annotation edits publish durable outbox revisions; receive path enforces parent checks and applies remote annotations |
 | P21b candidate safety | DONE | Duplicate IDs counted once; retained cosine results O(k); same ID namespace documented |
-| P22b traversal budget | DONE | At most 200 nodes/500 examined edges; missing seed empty; fanout test passes |
+| P22b traversal budget | DONE | At most 200 nodes/500 returned edges; missing seed empty; fanout test passes. SQLite scan/sort work may exceed the returned-row cap |
 | P24b post-commit process death | DONE | A24 force-stop retains annotation/source version; native reopen/navigation passes |
 
 ### This implementation wave

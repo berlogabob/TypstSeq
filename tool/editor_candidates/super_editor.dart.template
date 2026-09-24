@@ -1,0 +1,118 @@
+import 'package:flutter/material.dart';
+import 'package:super_editor/super_editor.dart';
+
+const fixtureRows = 900;
+final fixture = [
+  'Formatted long-note fixture.',
+  ...List.filled(
+    fixtureRows - 1,
+    'A long active paragraph keeps the editor layout realistic for the frame budget workload.',
+  ),
+];
+
+class ProbeSession {
+  ProbeSession({bool singleParagraph = false}) {
+    initialText = fixture.join('\n');
+    final rows = singleParagraph ? [fixture.join('\n')] : fixture;
+    document = MutableDocument(
+      nodes: [
+        for (var i = 0; i < rows.length; i++)
+          ParagraphNode(id: 'row-$i', text: AttributedText(rows[i])),
+      ],
+    );
+    (document.first as TextNode).text.addAttribution(
+      boldAttribution,
+      const SpanRange(0, 8),
+    );
+    editor = createDefaultDocumentEditor(
+      document: document,
+      composer: composer,
+      isHistoryEnabled: true,
+    );
+  }
+  late final String initialText;
+  late final MutableDocument document;
+  final composer = MutableDocumentComposer();
+  late final Editor editor;
+  final scroll = ScrollController();
+  final focus = FocusNode();
+  String get text => [
+    for (var i = 0; i < document.nodeCount; i++)
+      (document.getNodeAt(i)! as TextNode).text.toPlainText(),
+  ].join('\n');
+  DocumentPosition get end {
+    final node = document.last as TextNode;
+    return DocumentPosition(
+      nodeId: node.id,
+      nodePosition: TextNodePosition(offset: node.text.length),
+    );
+  }
+
+  void selectEnd() => editor.execute([
+    ChangeSelectionRequest(
+      DocumentSelection.collapsed(position: end),
+      SelectionChangeType.placeCaret,
+      SelectionReason.userInteraction,
+    ),
+  ]);
+  void append(String text) => editor.execute([
+    InsertTextRequest(
+      documentPosition: end,
+      textToInsert: text,
+      attributions: {},
+    ),
+  ]);
+  void dispose() {
+    editor.dispose();
+    composer.dispose();
+    document.dispose();
+    scroll.dispose();
+    focus.dispose();
+  }
+}
+
+class ProbeApp extends StatelessWidget {
+  const ProbeApp(this.session, {super.key});
+  final ProbeSession session;
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    home: Scaffold(
+      body: SuperEditor(
+        editor: session.editor,
+        focusNode: session.focus,
+        scrollController: session.scroll,
+        stylesheet: defaultStylesheet.copyWith(
+          addRulesAfter: [
+            StyleRule(
+              BlockSelector.all,
+              (_, _) => {
+                Styles.padding: const CascadingPadding.symmetric(
+                  horizontal: 18,
+                ),
+                Styles.textStyle: const TextStyle(
+                  fontSize: 16,
+                  height: 1.55,
+                  color: Colors.black,
+                ),
+              },
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: Row(
+        children: [
+          TextButton(onPressed: session.editor.undo, child: const Text('Undo')),
+          TextButton(onPressed: session.editor.redo, child: const Text('Redo')),
+        ],
+      ),
+    ),
+  );
+}
+
+void main() => runApp(
+  ProbeApp(
+    ProbeSession(
+      singleParagraph: const bool.fromEnvironment('P12_SINGLE_PARAGRAPH'),
+    ),
+  ),
+);

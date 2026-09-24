@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+
+final fixture = [
+  'Formatted long-note fixture.',
+  ...List.filled(
+    899,
+    'A long active paragraph keeps the editor layout realistic for the frame budget workload.',
+  ),
+];
+
+class ProbeSession {
+  ProbeSession({bool singleParagraph = false}) {
+    // Quill uses hard newlines as paragraph boundaries. The separate single-line
+    // stress case therefore uses spaces, explicitly keeping one layout region.
+    initialText = fixture.join(singleParagraph ? ' ' : '\n');
+    editor = QuillController(
+      document: Document.fromJson([
+        {
+          'insert': initialText.substring(0, 9),
+          'attributes': {'bold': true},
+        },
+        {'insert': '${initialText.substring(9)}\n'},
+      ]),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+  late final String initialText;
+  late final QuillController editor;
+  final scroll = ScrollController();
+  final focus = FocusNode();
+  String get text {
+    final text = editor.document.toPlainText();
+    return text.substring(0, text.length - 1);
+  }
+
+  void selectEnd() => editor.updateSelection(
+    TextSelection.collapsed(offset: editor.document.length - 1),
+    ChangeSource.local,
+  );
+  void append(String text) {
+    final end = editor.document.length - 1;
+    editor.replaceText(
+      end,
+      0,
+      text,
+      TextSelection.collapsed(offset: end + text.length),
+    );
+  }
+
+  void dispose() {
+    editor.dispose();
+    scroll.dispose();
+    focus.dispose();
+  }
+}
+
+class ProbeApp extends StatelessWidget {
+  const ProbeApp(this.session, {super.key});
+  final ProbeSession session;
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    localizationsDelegates: const [FlutterQuillLocalizations.delegate],
+    home: Scaffold(
+      body: QuillEditor(
+        controller: session.editor,
+        focusNode: session.focus,
+        scrollController: session.scroll,
+        config: const QuillEditorConfig(
+          expands: true,
+          padding: EdgeInsets.symmetric(horizontal: 18),
+          customStyles: DefaultStyles(
+            paragraph: DefaultTextBlockStyle(
+              TextStyle(fontSize: 16, height: 1.55, color: Colors.black),
+              HorizontalSpacing.zero,
+              VerticalSpacing.zero,
+              VerticalSpacing.zero,
+              null,
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: Row(
+        children: [
+          TextButton(onPressed: session.editor.undo, child: const Text('Undo')),
+          TextButton(onPressed: session.editor.redo, child: const Text('Redo')),
+        ],
+      ),
+    ),
+  );
+}
+
+void main() => runApp(
+  ProbeApp(
+    ProbeSession(
+      singleParagraph: const bool.fromEnvironment('P12_SINGLE_PARAGRAPH'),
+    ),
+  ),
+);

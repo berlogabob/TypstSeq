@@ -533,3 +533,52 @@ while preserving the controller's complete source and global selection/IME
 semantics. Cross-row gestures, boundary deletion, composition, paste and undo
 must be tested before enabling a replacement. P12 remains open; a profiling
 checkpoint is not a performance fix.
+
+#### Isolated editor replacement evaluation (2026-09-23)
+
+Neither evaluated replacement has established full acceptance. The initial profile
+probes use the same shared stage-budget metric and a formatted 900-row fixture,
+with synthetic appends every 250 ms for 20 seconds. On Apple M4 Pro/macOS at a
+stable approximately 120 Hz (8.333 ms stage budget):
+
+| Editor/layout | Edits / frames | Over budget | Build p95 / max | Raster p95 / max |
+| --- | ---: | ---: | ---: | ---: |
+| Super Editor 0.3.0-dev.52, 900 paragraph nodes | 69 / 69 | 68 (98.55%) | 16.786 / 18.490 ms | 1.733 / 2.143 ms |
+| Super Editor, one node containing all hard newlines | 70 / 70 | 70 (100%) | 36.198 / 36.715 ms | 1.059 / 1.132 ms |
+| Flutter Quill 11.5.1, 900 paragraphs | 72 / 72 | 70 (97.22%) | 17.181 / 17.500 ms | 1.378 / 3.446 ms |
+
+Plain-text integrity and diagnostic throughput assertions pass; all three frame
+assertions fail. These are Mac diagnostics, not comparable controlled timings
+against the prior Android baseline and not five-minute acceptance runs. Global
+selection, IME, protected Typst atoms and source serialization were not ported.
+No replacement is enabled and no candidate dependency was added to TyLog.
+
+Source inspection explains why a package swap does not bound layout:
+Quill's `RenderEditableContainerBox.performLayout` visits every child;
+Super Editor's `SingleColumnDocumentLayout` places all components in a `Column`
+inside a `SliverToBoxAdapter`. Neither evaluated configuration provides lazy
+paragraph layout while preserving document-wide editing semantics.
+
+Reproduce with `tool/editor_candidates/run.sh super_editor macos --no-dds`
+or `tool/editor_candidates/run.sh flutter_quill macos --no-dds`. Add
+`--dart-define=P12_SINGLE_PARAGRAPH=true` for the Super Editor one-node case.
+The runner retains the generated project and failing driver JSON in a temporary
+directory; it never changes the production package or vault. Its README records
+the fixture difference for Quill's unmeasured single-paragraph variant.
+
+Runner verification produced mixed results: Super Editor again failed (69/69
+over budget; build p95 15.689 ms). Quill's fresh-project rerun passed the short
+diagnostic (75 edits/frames, 0 over budget; build p95/max 5.001/5.257 ms,
+raster p95/max 0.622/1.734 ms, 120 Hz). The fixture, editor source, metric helper,
+Quill version and relevant transitive versions match the initial failing run;
+the new project omits template-only icon/lint dependencies and lowers the
+declared minimum Dart SDK from 3.13.4 to 3.12.2. The cause of this
+timing difference is not established. Do not discard either result or infer
+that the failure is fixed. Both runner commands execute end to end and preserve
+driver results on success and failure.
+
+P12 remains open. Before choosing a replacement, reconcile Quill's mixed
+results under controlled viewport, focus and host load, then prove source and
+editing parity. A layout change must retain document-wide selection/composition;
+independent paragraph fields alone cannot establish that. A short synthetic
+Mac pass does not close the full production or five-minute device gates.

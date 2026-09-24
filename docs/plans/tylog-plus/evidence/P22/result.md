@@ -1,8 +1,15 @@
 # P22 progress — bounded graph traversal
 
-Status: HOST ACCEPTED / DEVICE VERIFIED / TARGET REVIEW
+Status: MAC DIAGNOSTICS PASS / ANDROID LATENCY AND REAL-VAULT ROUTE OPEN
 
-Replaced recursive path enumeration with deterministic breadth-first traversal. It accepts at most 200 nodes, examines at most 500 edge rows across queries, and caps depth at 10. Missing seeds return no nodes. High-fanout and cycle tests verify these bounds. Graph UI and export wiring remain outstanding; SQL execution latency at a high-degree hub still needs measurement.
+Replaced recursive path enumeration with deterministic breadth-first traversal.
+It accepts at most 200 nodes, consumes at most 500 returned edge rows across
+queries, and caps depth at 10. Missing seeds return no nodes. This bounds the
+Dart traversal, not SQLite's internal scans: the ordered endpoint lookup uses
+temporary sorting/deduplication and may inspect all matching hub edges.
+Graph UI/export and native Android share handoff are implemented and checked.
+Synthetic SQL scale and Mac GraphView measurements are below; Android latency
+and the complete real-vault route remain open.
 
 Added deterministic SVG export with stable node/edge ordering and XML label escaping.
 
@@ -59,4 +66,57 @@ passed on A24 (`000251565001005`). The Android chooser opened for a
 `tylog-graph.svg` `image/svg+xml` payload. Selecting the installed Nextcloud
 target completed the flow and returned to the test app with `Test finished.`
 This closes the native target/file-handoff check for the available target.
-# P22 progress — bounded graph traversal
+
+## Synthetic high-degree traversal timing (2026-09-23)
+
+`flutter test --no-pub --dart-define=TYLOG_RUN_SCALE_BENCHMARKS=true
+test/database/bounded_neighborhood_benchmark_test.dart --reporter expanded`
+passed on macOS 26.6.2, Apple M4 Pro arm64, Flutter 3.47.5. The benchmark is
+opt-in and skipped in the default test run.
+The focused benchmark builds an in-memory SQLite database with 100,000 synthetic
+nodes and 1,000,000 edges incident to one hub, then times 40 calls to the actual
+`boundedNeighborhood` method after five warmups. Returned node count and seed
+are checked on every run. The helper's configured limits are 200 nodes and 500
+examined edges. The opt-in rerun measured host method latency at p50 68.951 ms,
+p95 70.295 ms, max 70.665 ms.
+
+This measures SQLite plus traversal helper latency on synthetic host data. It
+does not measure Flutter layout, rendering, device latency, or the plan's full
+interactive graph-view p95 gate; those acceptance checks remain open.
+
+## macOS profile GraphView interaction timing (2026-09-23)
+
+`flutter drive --no-pub --no-dds --profile
+--driver=test_driver/integration_test.dart
+--target=integration_test/p22_graph_latency_native_test.dart -d macos` passed.
+The integration test creates a synthetic note graph, applies the same
+`boundGraphForLayout` ceiling as the app, then uses the production
+`GraphView` for 30 cold mounts and 30 node selections. On the Apple M4 Pro
+arm64/macOS 26.6.2 profile build, the 200-node/500-edge graph mount-to-ready
+latency was p50 149.497 ms, p95 152.286 ms, max 158.819 ms. Node-selection
+latency was p50 105.252 ms, p95 111.655 ms, max 111.787 ms. Both measured p95s
+are below the 500 ms target.
+
+The app builds these visible graphs from its legacy `VaultIndex` via
+`buildLocalNoteGraph`/`buildNoteGraph`, then bounds the result in
+`_memoizedGraph`; this path does not call `TyLogDatabase.boundedNeighborhood`.
+This acceptance covers macOS profile GraphView interaction only. Android
+interaction latency and the full real-vault graph route remain unmeasured.
+
+### Contract-sized rerun (2026-09-24)
+
+The plan requires at least 100 frequent-operation samples. The test now records
+100 mounts and 100 selections plus raw driver data. The same profile command
+passed: mount p50/p95/max **144.835/150.603/158.356 ms**; selection
+**105.536/111.667/111.838 ms**. Raw values are retained in
+[mac-graph-100-samples.json](mac-graph-100-samples.json). These conservative
+wall-clock measurements include `pumpAndSettle`'s polling delay; selection
+means the graph's visible node selection, not opening a note. Ollama inference
+was unloaded before measurement. The app foreground request reported failure,
+although the native test completed; this is not manual foreground UX evidence.
+
+Local `ornith-1.5:9b` drafted the minimal sample-count/raw-report change. The
+coordinator reviewed it and ran analysis (clean) and the native check. The
+focused graph/traversal/export/frame-metric regression passed 28 tests, with
+the million-edge benchmark skipped by default. Full milestone acceptance still
+requires Android timing and the real-vault route.

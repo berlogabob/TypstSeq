@@ -1,0 +1,67 @@
+import 'dart:ui' show FramePhase;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:tylog_editor_probe/main.dart';
+
+import 'editor_frame_metrics.dart';
+
+void main() {
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('candidate editor layout diagnostic', (tester) async {
+    const single = bool.fromEnvironment('P12_SINGLE_PARAGRAPH');
+    final session = ProbeSession(singleParagraph: single);
+    addTearDown(session.dispose);
+    await tester.pumpWidget(ProbeApp(session));
+    await tester.pumpAndSettle();
+    session.focus.requestFocus();
+    session.selectEnd();
+    await tester.pumpAndSettle();
+    session.scroll.jumpTo(session.scroll.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(session.text, session.initialText);
+    final timings = <FrameTiming>[];
+    final start =
+        SchedulerBinding.instance.currentSystemFrameTimeStamp.inMicroseconds;
+    void collect(List<FrameTiming> values) => timings.addAll(
+      values.where(
+        (t) => t.timestampInMicroseconds(FramePhase.vsyncStart) > start,
+      ),
+    );
+    final view = View.of(tester.element(find.byType(Scaffold)));
+    final rates = <double>{view.display.refreshRate};
+    SchedulerBinding.instance.addTimingsCallback(collect);
+    addTearDown(() => SchedulerBinding.instance.removeTimingsCallback(collect));
+    const seconds = int.fromEnvironment(
+      'P12_DURATION_SECONDS',
+      defaultValue: 20,
+    );
+    final deadline = DateTime.now().add(const Duration(seconds: seconds));
+    var edits = 0;
+    while (DateTime.now().isBefore(deadline)) {
+      rates.add(view.display.refreshRate);
+      session.append(edits % 5 == 4 ? ' ' : 'x');
+      edits++;
+      await tester.pump(const Duration(milliseconds: 250));
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    SchedulerBinding.instance.removeTimingsCallback(collect);
+    expect(rates, hasLength(1));
+    final report = editorFrameMetrics(timings, refreshRate: rates.single);
+    binding.reportData = {
+      'single_paragraph': single,
+      'edits': edits,
+      'metrics': report,
+    };
+    // ignore: avoid_print
+    print('P12 candidate single=$single edits=$edits $report');
+    final added = List.generate(edits, (i) => i % 5 == 4 ? ' ' : 'x').join();
+    expect(session.text, '${session.initialText}$added');
+    expect(edits, greaterThanOrEqualTo(seconds * 3));
+    expect(timings.length, greaterThanOrEqualTo(seconds * 3));
+    expect(report['over_budget_pct'], lessThan(1));
+  });
+}
