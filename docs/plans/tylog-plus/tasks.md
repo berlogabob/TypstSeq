@@ -1,6 +1,6 @@
 # Execution ledger
 
-Contract: [plan.md](plan.md). Updated 2026-09-24. Coordinator owns this file.
+Contract: [plan.md](plan.md). Updated 2026-09-25. Coordinator owns this file.
 
 Pre-A24 host checkpoint: [evidence/pre-a24-readiness.md](evidence/pre-a24-readiness.md).
 Host regression is green (754 passed, 2 skipped); device, judged-quality, and
@@ -77,6 +77,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.0 model/runtime contract | Codex Luna | DONE | P04 | [Pinned and independently verified](evidence/P05/contract.md) |
 | P05.1a private-pack validator | Codex Luna | DONE | P05.0 | 5 tests enforce counts, labels, offsets, cross-language balance, and private output |
 | P05.1b judged 90-query pack | Coordinator | WAITING | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU; whole-file hash recorded |
+| P05.6a judged retrieval scorer | Coordinator | DONE | P05.0,P05.1a | [Exact cosine Recall@10 runner validates input vectors and emits aggregate-only results](evidence/P05/quality-runner.md) |
 | P05.2 numerical runner | Codex Luna | DONE | P05.0 | [6 tests + repeatable offline Mac smoke](evidence/P05/numerical-runner.md) |
 | P05.3 Mac exact-cosine benchmark | Codex Luna | DONE | P05.2 | [10k/250k latency and RSS pass](evidence/P05/mac-exact-search.md) |
 | P05.4a1 isolated Rust ORT spike | Codex Luna | DONE | P05.2 | [Pinned build/test + offline Mac 384d smoke](evidence/P05/rust-ort-spike.md) |

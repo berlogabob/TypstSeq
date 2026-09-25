@@ -1,4 +1,4 @@
-# P05 Mac quality readiness — 2026-09-22
+# P05 Mac quality readiness — 2026-09-25
 
 Status: SYNTHETIC MAC SMOKE PASSES; JUDGED-QUERY QUALITY BLOCKED ON PACK.
 
@@ -17,11 +17,14 @@ norm error 5.96e-8). Inference after model load took 9.436 ms and 8.883 ms.
 This confirms local model compatibility only; it is not semantic quality or a
 scale benchmark.
 
-No valid 90-query judgment pack was found in the checked local/repository
-locations, so Recall@10 was not measured. The remaining Mac quality input is a
-private JSONL pack accepted by `tool/validate_embedding_benchmark.py` (90 unique
-queries; 30 each EN/PT/RU; at least 10 cross-language queries per language).
-Once available, record only aggregate Recall@10 overall, by language, and
+The verified phone backup is available locally, but no valid 90-query judgment
+pack was found in the repository, the checked evaluation files, or the backup
+metadata. The small evaluation reports found are not judged passage labels, so
+Recall@10 remains unmeasured. The remaining Mac quality input is a private JSONL
+pack accepted by `tool/validate_embedding_benchmark.py` (90 unique queries; 30
+each EN/PT/RU; at least 10 cross-language queries per language). A scorer is
+now available in [quality-runner.md](quality-runner.md). Once the pack is
+available, record only aggregate Recall@10 overall, by language, and
 cross-language subgroup, the pack digest, and runtime metadata. Do not copy
 query text, note text, IDs, or private paths into repository evidence.
 
