@@ -96,3 +96,17 @@ allocation measurement or a memory acceptance threshold. Source PDFs were read
 only; all database writes were under the temporary test directory. Scanned-image
 quality/OCR, password-protected files, and Android private-corpus PSS remain
 open.
+
+## Redacted private no-text page render check (2026-09-25)
+
+The private corpus's one no-text PDF is encrypted and contains embedded images.
+The native harness now waits for PDFium viewer readiness and explicitly renders
+the first page at 256 × 256 pixels. The render returned image data with
+non-background pixels, confirming the no-text page remains readable in the
+app's PDFium path. The full rerun passed (5/5 opened, 0 failures); process peak
+RSS was 526,960 KiB. Output remains aggregate-only, and all database writes were
+in temporary test storage.
+
+This file opened using the viewer's default empty-password attempt, so this does
+not verify a PDF that requires a non-empty password. It also does not assess
+OCR or establish a memory pass/fail threshold; those gates remain open.

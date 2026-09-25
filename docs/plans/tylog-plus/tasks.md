@@ -14,7 +14,7 @@ the real model provider. P09 A24 import rehearsal now has terminal manifest
 accounting and readable target evidence, with missing assets/unresolved links
 recorded as content-quality gaps. Remaining blockers are P03 cloud re-entry plus
 initial sync and bidirectional checks, P05 A24 profile performance and 90 judged
-queries, P12 final editor frame gates, P18/P19 corpus checks, P19 real account
+queries, P12 final editor frame gates, P18 password/memory gates, P19 real account
 sync, P20/P21/P23 device model gates, P25 release rehearsal, and P26 seven-day use. Historical notes below retain the measurements and
 earlier states that led to these decisions.
 
@@ -37,7 +37,7 @@ earlier states that led to these decisions.
 | P15 | Revision upload/attachments | P08 | DONE | Revision envelopes and binary assets use the durable Nextcloud file-sync retry path |
 | P16 | Transactional receive/conflict handling | P15 | DONE | Revision envelopes are decoded and parent-checked during sync |
 | P17 | Snapshot bootstrap/recovery | P16 | DONE | [Archive bootstrap, resumable recovery, and damaged-state rejection](evidence/P17/result.md) |
-| P18 | PDF reader/versioned extraction | P07,P14 | MAC CORPUS PASS / MEMORY & IMAGE-ONLY QUALITY OPEN | Five-PDF private Mac corpus opened; selectable-text annotation flow passed; memory threshold and broader image-only quality remain open |
+| P18 | PDF reader/versioned extraction | P07,P14 | MAC CORPUS & IMAGE RENDER PASS / PASSWORD + MEMORY OPEN | Five-PDF private Mac corpus opened; no-text encrypted image page rasterized; password-required PDFs and memory threshold remain open |
 | P19 | Durable annotations/navigation | P18 | HOST ACCEPTED / DEVICE VERIFIED / MAC CORPUS PASS / SYNC OPEN | Durable anchors, reassignment, Mac corpus annotation flows, and revision envelopes pass; real Nextcloud sync remains |
 | P20 | Chunking/offline embeddings | P05,P14,P18 | HOST ACCEPTED / DEVICE BLOCKED | Chunking, resumable jobs, native adapter validation, and cooperative scheduling pass; native model quality/latency/memory remain |
 | P21 | Hybrid retrieval/cited navigation | P13,P19,P20 | HOST CITATION SEAM ACCEPTED / PROVIDER + DEVICE OPEN | [PDF chunk hit renders and opens at versioned offset](evidence/P21/citation-navigation.md); real model/device quality remain |
@@ -105,6 +105,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P18c Mac native reader smoke | Coordinator | DONE | P18b | [Selectable and vector-only PDFs pass on macOS](evidence/P18/result.md) |
 | P18d large extraction contract | Coordinator | DONE | P18c | [1,000-page host corpus preserves cumulative offsets](evidence/P18/result.md) |
 | P18e private corpus annotation flow | Coordinator | DONE | P18c,P19d | [Five-PDF Mac corpus opens; four selectable-text PDFs save/reassign annotations](evidence/P18/result.md#redacted-p18-p19-corpus-rerun-2026-09-25) |
+| P18f private no-text page rendering | Coordinator | DONE | P18e | [The corpus's no-text encrypted PDF renders non-background page pixels in PDFium](evidence/P18/result.md#redacted-private-no-text-page-render-check-2026-09-25) |
 | P24c host failure rehearsal rerun | Coordinator | DONE | P24b | [Migration, rollback, import, and sync failure suites pass](evidence/P24/result.md) |
 | P24d controller restart-boundary matrix | Coordinator | DONE | P24c | [Sync retry, cold-index, vault-switch, and recovery controller tests pass](evidence/P24/result.md) |
 | P25b reproducible ARM64 release | Coordinator | DONE | P24c | [ARM64 macOS release script builds a 72 MB artifact with checksum](evidence/P25/result.md) |

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:pdfrx/pdfrx.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/pdf/annotation_reattach.dart';
 import 'package:tylog/pdf/pdf_extraction.dart';
@@ -33,6 +34,7 @@ void main() {
         .toList();
     var opened = 0, failed = 0, pages = 0, textPages = 0, chars = 0;
     var exact = 0, ambiguous = 0, missing = 0, saved = 0, moved = 0;
+    var noTextRasterized = 0;
     final scratch = await Directory.systemTemp.createTemp('tylog-pdf-check-');
     try {
       for (var i = 0; i < files.length; i++) {
@@ -50,6 +52,12 @@ void main() {
               ),
             ),
           );
+          await _pumpUntil(tester, () async {
+            final viewer = find.byType(PdfViewer);
+            if (viewer.evaluate().isEmpty) return false;
+            return tester.widget<PdfViewer>(viewer).controller?.isReady ??
+                false;
+          });
           SourceVersionData? version;
           for (var attempt = 0; attempt < 240 && version == null; attempt++) {
             await tester.pump(const Duration(milliseconds: 250));
@@ -89,6 +97,26 @@ void main() {
             if (sourceStatus != PdfExtractionStatus.extracted ||
                 pageIndex < 0) {
               missing++;
+              final viewer = tester.widget<PdfViewer>(find.byType(PdfViewer));
+              final image = await viewer.controller!.document.pages.first
+                  .render(fullWidth: 256, fullHeight: 256);
+              expect(image, isNotNull);
+              try {
+                final pixels = image!.pixels;
+                var hasInk = false;
+                for (var i = 0; i < pixels.length; i += 4) {
+                  if (pixels[i] < 250 ||
+                      pixels[i + 1] < 250 ||
+                      pixels[i + 2] < 250) {
+                    hasInk = true;
+                    break;
+                  }
+                }
+                expect(hasInk, isTrue);
+                noTextRasterized++;
+              } finally {
+                image!.dispose();
+              }
             } else {
               final page = extracted[pageIndex];
               const length = 12;
@@ -155,7 +183,8 @@ void main() {
       print(
         'PRIVATE_PDF_SUMMARY files=${files.length} opened=$opened failed=$failed '
         'pages=$pages text_pages=$textPages chars=$chars anchor_exact=$exact '
-        'anchor_ambiguous=$ambiguous anchor_missing=$missing saved=$saved moved=$moved',
+        'anchor_ambiguous=$ambiguous anchor_missing=$missing saved=$saved '
+        'moved=$moved no_text_rasterized=$noTextRasterized',
       );
       expect(files, isNotEmpty);
       expect(failed, 0);
@@ -163,4 +192,15 @@ void main() {
       await scratch.delete(recursive: true);
     }
   });
+}
+
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  Future<bool> Function() condition,
+) async {
+  for (var attempt = 0; attempt < 240; attempt++) {
+    if (await condition()) return;
+    await tester.pump(const Duration(milliseconds: 250));
+  }
+  fail('Timed out waiting for PDF viewer readiness.');
 }
