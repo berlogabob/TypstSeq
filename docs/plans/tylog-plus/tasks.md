@@ -8,7 +8,7 @@ real-Nextcloud gates remain explicitly open.
 
 **Main milestones: 14/26 DONE. Active wave: P05 + P12 + P18–P24. Production handoff: real vault restored; sync pending.** Audit checkpoint `b74f5d2` was pushed before implementation began.
 
-**Current snapshot (2026-09-23):** bounded host primitives are accepted for P05,
+**Current snapshot (2026-09-25):** bounded host primitives are accepted for P05,
 P09, and P18–P25; P21's optional PDF citation seam is host-tested but awaits
 the real model provider. P09 A24 import rehearsal now has terminal manifest
 accounting and readable target evidence, with missing assets/unresolved links
@@ -165,7 +165,7 @@ Independent code review reopened P22–P24. Earlier DONE entries described helpe
 | Ticket | State | Measurable exit |
 |---|---|---|
 | P10d annotation export repair | DONE | Versions + annotations round-trip unchanged, repeat import no-op, conflict preserves local |
-| P18b native PDF reader | REVIEW | Attachment opens in-app; PDFium extraction persisted; image-only PDF readable |
+| P18b native PDF reader | DONE | Attachment opens in-app; PDFium extraction persists; private no-text image page rasterizes; Mac/A24 smoke passes |
 | P19b selection persistence | DONE | Select/save/reopen/navigate on native reader; duplicate quote requires review |
 | P19c manual reassignment seam | DONE | Existing annotation identity and offsets update transactionally; visible review action remains |
 | P19d reader reassignment action | DONE | Needs-review dialog activates replacement mode; selection and Save highlight update the existing annotation |
