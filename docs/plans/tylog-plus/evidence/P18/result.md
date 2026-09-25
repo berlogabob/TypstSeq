@@ -79,3 +79,20 @@ whole macOS test app process peak, not an isolated PDFium allocation measurement
 or a memory-limit pass/fail threshold. Automated extraction coverage does not
 assess semantic accuracy, scanned-image rendering quality, OCR, or
 password-protected files.
+
+## Redacted P18/P19 corpus rerun (2026-09-25)
+
+The private corpus harness passed again on macOS: 5/5 PDFs opened, 59 pages and
+41 text-bearing pages were extracted, and the vector-only/no-text PDF remained
+openable. All four selectable-text PDFs saved and reassigned an annotation in
+temporary databases. Reattachment was exact for two sampled anchors and
+ambiguous for two; the ambiguous case remains a review outcome, as required by
+the anchor contract. The no-text PDF accounts for the single `anchor_missing`
+count; it was not treated as a failed open.
+
+The 100 ms process sampler recorded 522,880 KiB peak RSS for the whole test app.
+This confirms the repeatable Mac corpus interaction path, not a PDFium-only
+allocation measurement or a memory acceptance threshold. Source PDFs were read
+only; all database writes were under the temporary test directory. Scanned-image
+quality/OCR, password-protected files, and Android private-corpus PSS remain
+open.
