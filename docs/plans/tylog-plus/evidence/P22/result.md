@@ -120,3 +120,42 @@ coordinator reviewed it and ran analysis (clean) and the native check. The
 focused graph/traversal/export/frame-metric regression passed 28 tests, with
 the million-edge benchmark skipped by default. Full milestone acceptance still
 requires Android timing and the real-vault route.
+
+## Read-only real-vault graph rehearsal (2026-09-25)
+
+The opt-in native test scans the verified backup through a storage adapter that
+rejects every write/delete, mounts `HomeScreen` with an in-memory database,
+switches through the actual Graph view menu, and opens a selected note. The
+backup aggregate was 6,298 notes. Navigation succeeded with zero vault mutation
+attempts. The 6.40-second scan is reported separately from UI timing.
+
+The verified-backup aggregate manifest matches its earlier local manifest after
+the run: total bytes, file count, and aggregate corpus digest are unchanged.
+
+Across 100 profile samples per graph mode, p95 was **926 ms** for Concept map
+and **689 ms** for All files, above the 500 ms target. A separate five-sample
+diagnostic measured direct graph construction/bounding/layout at 105/1/6 ms for
+Concept map and 44/9/5 ms for All files. The UI samples switch modes between
+operations; these stage timings do not account for the full HomeScreen rebuild.
+
+Flutter reported `Failed to foreground app; open returned 1` during native
+runs. The 100-sample timing is retained as a failure signal, not accepted as a
+valid interactive performance result. A later caffeinated 100-sample attempt
+stalled before producing measurements and was stopped. Raw paths, source text,
+titles and per-file hashes are excluded from the committed report. The verified
+backup remains unchanged; the read-only adapter recorded zero write/delete
+attempts.
+
+Reproduce with `TYLOG_PRIVATE_GRAPH_ROOT` set to the private backup root:
+
+```sh
+FLUTTER_TEST=true TYLOG_PRIVATE_GRAPH_ROOT="$TYLOG_PRIVATE_GRAPH_ROOT" \
+  flutter drive --no-pub --no-dds --profile \
+  --driver=test_driver/integration_test.dart \
+  --target=integration_test/p22_private_graph_native_test.dart -d macos
+```
+
+Use `--dart-define=P22_SAMPLES=5 --dart-define=P22_DIAGNOSE=true` for a short
+stage diagnostic; it does not close a 100-sample gate. P22 stays open pending
+valid foreground measurements, a graph performance fix if confirmed, and
+Android timing.
