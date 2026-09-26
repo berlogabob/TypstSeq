@@ -15,7 +15,7 @@
              non-exported provider is unreachable across that boundary. -->
         <provider
             android:name="org.tylog.tylog.DedupingDocumentsProvider"
-            android:authorities="org.tylog.tylog.test.documents"
+            android:authorities="${applicationId}.test.documents"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">

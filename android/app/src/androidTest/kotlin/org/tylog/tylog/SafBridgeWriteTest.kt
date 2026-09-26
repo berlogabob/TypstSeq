@@ -106,7 +106,9 @@ class SafBridgeWriteTest {
         // previous case resolve to documents that no longer exist.
         SafBridge.clearUriCache()
         tree = DocumentsContract.buildTreeDocumentUri(
-            DedupingDocumentsProvider.AUTHORITY,
+            DedupingDocumentsProvider.authority(
+                InstrumentationRegistry.getTargetContext().packageName,
+            ),
             DedupingDocumentsProvider.ROOT_ID,
         )
     }

@@ -58,7 +58,9 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = (project.findProperty("tylogDebugSuffix") as? String)
+                ?.takeIf { it.startsWith(".") && it.length > 1 }
+                ?: ".debug"
         }
         release {
             if (keystorePropertiesFile.exists()) {

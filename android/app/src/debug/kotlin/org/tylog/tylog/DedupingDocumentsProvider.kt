@@ -26,7 +26,7 @@ import java.io.FileNotFoundException
  */
 class DedupingDocumentsProvider : DocumentsProvider() {
     companion object {
-        const val AUTHORITY = "org.tylog.tylog.test.documents"
+        fun authority(packageName: String) = "$packageName.test.documents"
         const val ROOT_ID = "root"
 
         /** Set by the test; every document id is a path relative to this. */

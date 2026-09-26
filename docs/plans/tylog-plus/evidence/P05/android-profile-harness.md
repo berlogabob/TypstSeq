@@ -127,3 +127,22 @@ a nonzero buffer offset were read from offset zero. The search now preserves
 the view offset and avoids copying existing `Uint8List` vectors; a regression
 test covers the offset case. P05.4c is closed. P05.4d sustained-resume testing
 and the 90-query judged quality pack remain open.
+
+## Android forced-stop resume (2026-09-26)
+
+The A24 integration test used a dedicated `.profiletest` package and a
+dedicated SQLite file under app support. The first instrumentation run stored
+one bounded batch of 16 completed chunks, then exited. The package was force-
+stopped with `am force-stop`; a fresh instrumentation run reopened the same
+database and completed the remaining chunks.
+
+```text
+P05_RESUME_CHECKPOINT complete=16
+P05_RESUME_RESULT count=128 sha256=a0c0b34b2819896451a6ab8d8a6a5944d067831b4ccfc6ca1e58fada7f51f0cc match=true
+```
+
+The hash matched an uninterrupted deterministic baseline over the same 128
+chunk IDs and vectors. This validates durable batching and process-stop resume;
+the embedder was deterministic synthetic code, so this does not add model
+quality or long-running native inference evidence. P05.4d is closed; the 90
+query judged retrieval pack remains the P05 acceptance gap.
