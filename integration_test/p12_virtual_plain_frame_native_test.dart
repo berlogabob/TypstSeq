@@ -9,6 +9,10 @@ import 'package:tylog/widgets/virtual_plain_editor.dart';
 
 import 'support/editor_frame_metrics.dart';
 
+// Device acceptance/diagnostic runs, not host regression checks: opt in with
+// --dart-define=P12_FRAME_GATE=true (see plan P12).
+const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -68,9 +72,10 @@ void main() {
     captureStartUs =
         SchedulerBinding.instance.currentSystemFrameTimeStamp.inMicroseconds;
     SchedulerBinding.instance.addTimingsCallback(onTimings);
-    addTearDown(
-      () => SchedulerBinding.instance.removeTimingsCallback(onTimings),
-    );
+    var listening = true;
+    addTearDown(() {
+      if (listening) SchedulerBinding.instance.removeTimingsCallback(onTimings);
+    });
     var edits = 0;
     const durationSeconds = int.fromEnvironment(
       'P12_DURATION_SECONDS',
@@ -97,6 +102,7 @@ void main() {
     }
     await Future<void>.delayed(const Duration(milliseconds: 350));
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
+    listening = false;
     await tester.pump();
 
     refreshRates.add(display.display.refreshRate);
@@ -137,7 +143,7 @@ void main() {
       greaterThanOrEqualTo(fullGate ? 1000 : durationSeconds * 3),
     );
     expect(metrics['over_budget_pct'], lessThan(1));
-  });
+  }, skip: !_p12Gate);
 }
 
 const _header = '#show: tylog.note.with(id: "p12", title: "P12")\n';

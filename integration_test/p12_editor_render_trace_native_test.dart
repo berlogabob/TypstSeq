@@ -6,6 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:tylog/widgets/virtual_plain_editor.dart';
 
+// Device acceptance/diagnostic runs, not host regression checks: opt in with
+// --dart-define=P12_FRAME_GATE=true (see plan P12).
+const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -73,7 +77,7 @@ void main() {
     );
     expect(edits, greaterThanOrEqualTo(100));
     expect(timings.length, greaterThanOrEqualTo(100));
-  });
+  }, skip: !_p12Gate);
 }
 
 final _source = [
