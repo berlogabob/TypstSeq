@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog/controlled_editor.dart';
+import 'package:tylog/graph.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/main.dart';
 import 'package:tylog/models.dart';
@@ -114,6 +115,57 @@ void main() {
     expect(find.byTooltip('Quick actions'), findsNothing);
     // Launch lands in the journal editor with today's file open.
     expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
+  });
+
+  testWidgets('graph mode switches reuse cached graphs for the same revision', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    final controller = home.workspace;
+    final index = VaultIndex(
+      notesByPath: {
+        'notes/a.typ': const NoteRef(
+          id: 'a',
+          path: 'notes/a.typ',
+          title: 'A',
+          outgoingLinks: [],
+        ),
+        'notes/b.typ': const NoteRef(
+          id: 'b',
+          path: 'notes/b.typ',
+          title: 'B',
+          outgoingLinks: [],
+          tags: ['shared'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    controller
+      ..vault = Vault.withStorage(_FailingStorage())
+      ..index = index
+      ..note = 'notes/a.typ'
+      ..indexRevision = 1;
+    home.mode = 'graph';
+    controller.notifyListeners();
+    await tester.pump();
+
+    final menu = tester.widget<PopupMenuButton<String>>(
+      find.ancestor(
+        of: find.byTooltip('Graph view'),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    final first = tester.widget<GraphView>(find.byType(GraphView)).graph;
+    menu.onSelected!('allFiles');
+    await tester.pump();
+    menu.onSelected!('conceptMap');
+    await tester.pump();
+
+    expect(
+      identical(first, tester.widget<GraphView>(find.byType(GraphView)).graph),
+      isTrue,
+    );
   });
 
   testWidgets('settings menu shows real app data', (tester) async {
