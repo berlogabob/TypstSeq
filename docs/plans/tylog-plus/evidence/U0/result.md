@@ -1,6 +1,6 @@
 # U0 result — existing controls and UI audit
 
-Status: HOST PARTIAL / NATIVE CONTROL SWEEP OPEN
+Status: HOST PASS / NATIVE CONTROL SWEEP OPEN
 
 ## make verify (2026-09-26, macOS 26.6.2, M4 Pro)
 
@@ -18,8 +18,12 @@ Status: HOST PARTIAL / NATIVE CONTROL SWEEP OPEN
   from a clean tree (arm64 signed APK installed on A24, cold start 509 ms);
   inside make verify it failed once because integration runs left the
   test-flavour `GeneratedPluginRegistrant.java`.
-- The uninterrupted rerun stalled at `graph_share_native_test` because the Mac
-  display was locked (app cannot be foregrounded). Rerun with the screen awake.
+- An uninterrupted rerun stalled at `graph_share_native_test` while the Mac
+  display was locked (app cannot be foregrounded).
+- **2026-09-27 00:05, main at b6bbf11: `make verify` exit 0 in one run** —
+  analyze clean, 762 unit tests pass, 28 integration files (17 pass, 11 skip
+  by design: P05 profile, P12 frame, private-corpus, VFS benchmark), signed
+  release APK and macOS release app built. Run with the display awake.
 
 ## Controls
 
