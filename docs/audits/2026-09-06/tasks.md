@@ -1,3 +1,5 @@
+> **ARCHIVE — completed 2026-09-09.** These task cards are historical; use the [current TyLog+ plan](../../plans/tylog-plus/plan.typ) for active work.
+
 # Bounded subagent task cards
 
 The coordinator supplies one card plus [delegation instructions](delegation.md). Status/dependencies/model are authoritative in [the tracker](plan.md). Paths below are repository-relative. They are entry points and an initial write scope; trace their callers before editing. Supporting files may be requested with a concrete reason. Existing tests/fixtures take precedence over new harnesses.

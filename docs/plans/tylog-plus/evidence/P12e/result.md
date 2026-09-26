@@ -7,7 +7,7 @@ are frame-latency estimates, not measured dropped frames. They do not establish
 the stage-budget gate. See the [measurement correction](#stage-budget-measurement-correction-2026-09-23)
 below; earlier measurements are preserved as history.
 
-Host acceptance uses the plan gates from `docs/plans/tylog-plus/plan.md` and runs 30 database startups plus 100 durable saves of 50 KB notes:
+Host acceptance uses the plan gates from `docs/plans/tylog-plus/plan.typ` and runs 30 database startups plus 100 durable saves of 50 KB notes:
 
 ```bash
 flutter test test/database/p12_latency_acceptance_test.dart

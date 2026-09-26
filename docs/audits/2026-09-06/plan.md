@@ -1,9 +1,12 @@
-# Reliability remediation tracker
+# Archived reliability remediation tracker
+
+> **ARCHIVE — completed 2026-09-09.** This records the closed 31-task reliability audit and is not an active work plan. Use the [current TyLog+ plan](../../plans/tylog-plus/plan.typ) for all remaining project work. Historical task cards and evidence below are retained for provenance.
+
 
 Created 2026-09-06 from [the audit](audit.md), baseline `bacbf11` / `0.4.4+99`.
 **Audit complete: 31/31 tasks done.** All 13 original audit findings have implementation evidence. Connected-phone validation also found and fixed the Android worker-shutdown blocker tracked as T30; device-network limitations are explicit in T00/T28 evidence.
 
-Use this file for status; [task cards](tasks.md) for scope and acceptance; [delegation instructions](delegation.md) for execution. Load only the assigned card when delegating.
+Historical reference only: [task cards](tasks.md) and [delegation instructions](delegation.md) explain how the completed audit was executed. Do not dispatch or track new work from this archive.
 
 ## Outcomes to measure
 

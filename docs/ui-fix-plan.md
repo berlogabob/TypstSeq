@@ -1,4 +1,6 @@
-# TyLog UI Fix Plan — traceable, measurable
+# Archived TyLog UI Fix Plan — traceable, measurable
+
+> **ARCHIVE — implementation work packages completed 2026-08-18; verification was still pending in the status record.** U0 in the [current TyLog+ plan](plans/tylog-plus/plan.typ) owns the remaining `make verify` and real-control acceptance. Keep this document as the historical finding list, not a live checklist.
 
 **Source:** `tylog-ui-design-critique.md` (repo audit, 2026-08-18).
 **Traceability model:** every audit finding has an ID (F-xx). Every work item (WP-xx) lists the findings it closes, the exact files it touches, a measurable acceptance criterion, and the command or test that proves it. A finding is *closed* only when its verification passes in `make verify`.

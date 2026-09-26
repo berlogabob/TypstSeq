@@ -1,3 +1,5 @@
+> **ARCHIVE — completed 2026-09-09.** This dispatch protocol is retained for audit history only. Use the [current TyLog+ plan](../../plans/tylog-plus/plan.typ) for active work.
+
 # Executing one remediation task
 
 This is a dispatch protocol for [plan.md](plan.md), not permission to start all implementation merely by reading it. The current user request created the plan. Start implementation when the user asks to execute it or a selected batch.

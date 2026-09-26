@@ -1,4 +1,6 @@
-# UI Fix Plan — execution status (2026-08-18)
+# Archived UI Fix Plan — execution status (2026-08-18)
+
+> **ARCHIVE — the listed code work is historical and its verification is not complete.** The remaining analyzer/test/device checks are consolidated in U0 of the [current TyLog+ plan](plans/tylog-plus/plan.typ).
 
 Executed by 8 parallel subagents (two waves) on disjoint files, then verified centrally.
 **All 15 work packages complete.**
