@@ -126,7 +126,7 @@ void main() {
       print('P22_PRIVATE mode=$mode samples=$_sampleCount p95_us=$p95');
       expect(p95, lessThanOrEqualTo(500000));
     }
-  });
+  }, skip: (Platform.environment['TYLOG_PRIVATE_GRAPH_ROOT'] ?? '').isEmpty);
 }
 
 class _ReadOnlyStorage extends VaultStorage {

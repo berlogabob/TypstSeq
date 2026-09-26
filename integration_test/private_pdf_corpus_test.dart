@@ -191,7 +191,7 @@ void main() {
     } finally {
       await scratch.delete(recursive: true);
     }
-  });
+  }, skip: (Platform.environment['TYLOG_PRIVATE_PDF_ROOT'] ?? '').isEmpty);
 }
 
 Future<void> _pumpUntil(
