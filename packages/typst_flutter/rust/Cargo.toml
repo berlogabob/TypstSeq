@@ -23,7 +23,8 @@ flutter_rust_bridge = "=2.12.0"
 time = "0.3.47"
 tylog_import_core = { path = "../../tylog_import_core" }
 
-[target.'cfg(target_os = "android")'.dependencies]
+# ponytail: ort ships Android prebuilts for arm64 only; other ABIs get the embed() stub.
+[target.'cfg(all(target_os = "android", target_arch = "aarch64"))'.dependencies]
 ndarray = "0.17.2"
 ort = { version = "2.0.0-rc.13", features = ["ndarray", "download-binaries"] }
 tokenizers = "0.23.2"

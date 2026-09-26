@@ -6,7 +6,7 @@ pub struct EmbeddingResult {
     pub finite: bool,
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
 fn pool_normalize(
     hidden: &ndarray::Array3<f32>,
     mask: &ndarray::Array2<i64>,
@@ -40,7 +40,7 @@ fn pool_normalize(
     Ok(out)
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
 pub fn embed(
     model_path: String,
     tokenizer_path: String,
@@ -114,7 +114,7 @@ pub fn embed(
     })
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(all(target_os = "android", target_arch = "aarch64")))]
 pub fn embed(
     _model_path: String,
     _tokenizer_path: String,
