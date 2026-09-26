@@ -1,6 +1,6 @@
 # P05.6a — judged retrieval quality scorer
 
-Status: HOST TOOL READY; PRIVATE JUDGMENTS AND ANDROID GATES OPEN.
+Status: HOST TOOL READY; PRIVATE DRAFT PACK AWAITS HUMAN JUDGMENT.
 
 `tool/benchmark_embedding_quality.py` scores a validated private 90-query pack
 against the `.npz` output of `tool/embedding_reference.py`. It uses exact
@@ -27,5 +27,7 @@ Run after producing an accepted private pack and embedding artifact:
 python3 tool/benchmark_embedding_quality.py "$PRIVATE_PACK" "$EMBEDDING_NPZ"
 ```
 
-The private judged pack remains unavailable. No semantic Recall@10 result is
-claimed; Android profile parity, latency, and memory gates also remain open.
+The private machine-generated draft passes structural validation, but its
+relevance labels are not human-confirmed, so no semantic Recall@10 result is
+claimed. Android profile parity, exact-search/PSS, and durable-resume gates
+passed; those device results are recorded separately.

@@ -13,7 +13,7 @@ P09, and P18–P25; P21's optional PDF citation seam is host-tested but awaits
 the real model provider. P09 A24 import rehearsal now has terminal manifest
 accounting and readable target evidence, with missing assets/unresolved links
 recorded as content-quality gaps. Remaining blockers are P03 cloud re-entry plus
-initial sync and bidirectional checks, P05's 90 judged queries, P12 final editor
+initial sync and bidirectional checks, P05 draft relevance review and scoring, P12 final editor
 frame gates, P18 password/memory gates, P19 real account
 sync, P20/P21/P23 device model gates, P25 release rehearsal, and P26 seven-day use. Historical notes below retain the measurements and
 earlier states that led to these decisions.
@@ -24,7 +24,7 @@ earlier states that led to these decisions.
 | P02 | Restore production selection and normal release without uninstall | P01 | DONE | [Release and real vault persist](evidence/P02/result.md) |
 | P03 | Real Mac–phone sync and existing controls | P02 | A24 VAULT RESELECTED / CLOUD CONFIG RE-ENTRY REQUIRED | [No sync resumed; recovery after profile test attempt recorded](evidence/P03/result.md) |
 | P04 | Corpus fixtures and benchmark runner | P01 | DONE | [Real/10k/100k manifests and baseline](evidence/P04b/result.md) |
-| P05 | Offline embedding/vector feasibility | P04 | MAC VERIFIED / ANDROID DEVICE GATES PASS / JUDGED PACK OPEN | [A24 profile parity, exact search/PSS, and forced-stop resume pass; 90 judged queries remain](evidence/P05/android-profile-harness.md) |
+| P05 | Offline embedding/vector feasibility | P04 | MAC VERIFIED / ANDROID DEVICE GATES PASS / HUMAN REVIEW + SCORE OPEN | [A24 device gates pass; private 90-query draft passes structural checks and awaits human relevance review](evidence/P05/mac-quality-readiness.md) |
 | P06 | Database bootstrap/migration tests | P04 | DONE | [Background SQLite, WAL/FK, creation and upgrade tests](evidence/P06/result.md) |
 | P07 | Nodes/edges/sources/revisions | P06 | DONE | [Atomic writes, references, dates, identity and migrations](evidence/P07/result.md) |
 | P08 | Transactional edit/outbox/jobs | P07 | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md) |
@@ -76,7 +76,7 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P09d5 private A024 rehearsal | Coordinator | DONE WITH CONTENT GAPS | P09d4 | [3,483/3,483 terminal; integrity and FK checks pass](evidence/P09d5/result.md); source file count/bytes unchanged; conversion gaps recorded |
 | P05.0 model/runtime contract | Codex Luna | DONE | P04 | [Pinned and independently verified](evidence/P05/contract.md) |
 | P05.1a private-pack validator | Codex Luna | DONE | P05.0 | 5 tests enforce counts, labels, offsets, cross-language balance, and private output |
-| P05.1b judged 90-query pack | Coordinator | WAITING | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU; whole-file hash recorded |
+| P05.1b judged 90-query pack | Coordinator | DRAFT READY / HUMAN REVIEW REQUIRED | P05.1a | Private validator confirms 30 EN + 30 PT + 30 RU and 10 cross-language examples per group; human relevance labels and final hash remain |
 | P05.6a judged retrieval scorer | Coordinator | DONE | P05.0,P05.1a | [Exact cosine Recall@10 runner validates input vectors and emits aggregate-only results](evidence/P05/quality-runner.md) |
 | P05.2 numerical runner | Codex Luna | DONE | P05.0 | [6 tests + repeatable offline Mac smoke](evidence/P05/numerical-runner.md) |
 | P05.3 Mac exact-cosine benchmark | Codex Luna | DONE | P05.2 | [10k/250k latency and RSS pass](evidence/P05/mac-exact-search.md) |
@@ -86,8 +86,8 @@ Own `tool/tylog_scale_fixture.py` and `test/tool/test_tylog_scale_fixture.py`. S
 | P05.4c A024 exact search/PSS | Coordinator + Codex Luna | DONE | P05.4b | [A24 profile: cold 825 ms, warm p95 811 ms, max sampled PSS 550.8 MiB](evidence/P05/android-profile-harness.md#android-profile-exact-search-and-pss-2026-09-26) |
 | P05.4d sustained resume | Coordinator + Codex Luna | DONE | P05.4c | [A24 force-stop/relaunch resumes 128 chunks; final hash matches uninterrupted run](evidence/P05/android-profile-harness.md#android-forced-stop-resume-2026-09-26) |
 | P05.5 sqlite-vec fallback | Codex Luna | CONDITIONAL | P05.3 or P05.4 fails | Run only if exact search misses a gate; same vectors/query interface |
-| P05.6 judged retrieval quality | Coordinator | WAITING | P05.1b-P05.4 | 90 judged queries; Recall@10 >=85% overall and >=80% per language/subgroup |
-| P05.7 reproduction/acceptance | Coordinator | READY | P05.0-P05.6 | Commands/hashes reproduced; redacted evidence linked; P05 marked DONE |
+| P05.6 judged retrieval quality | Coordinator | WAITING FOR P05.1b HUMAN REVIEW | P05.1b-P05.4 | 90 judged queries; Recall@10 >=85% overall and >=80% per language/subgroup |
+| P05.7 reproduction/acceptance | Coordinator | WAITING | P05.0-P05.6 | Commands/hashes reproduced; redacted evidence linked; P05 marked DONE |
 | P20a embedding batch seam | Coordinator | DONE | P20 chunk contract | [Bounded callback runner retries pending chunks after failure](evidence/P20/result.md) |
 | P20b native ORT adapter | Coordinator | DONE | P05.4b,P20a | [Pinned Android embed API feeds Float32-compatible batch vectors](evidence/P20/result.md) |
 | P20c cooperative embedding scheduling | Coordinator | DONE | P20a | [Batch runner yields between inline callbacks; fairness regression passes](evidence/P20/result.md) |
