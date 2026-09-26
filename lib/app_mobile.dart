@@ -246,8 +246,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Concept/note path the local graph is rooted at when expanded from the map.
   String? _graphFocusPath;
 
-  NoteGraph? _graphCache;
-  ({int revision, String mode, String? focus, String? current})? _graphKey;
+  final _graphCache =
+      <
+        ({int revision, String mode, String? focus, String? current}),
+        NoteGraph
+      >{};
+  int _graphCacheRevision = -1;
 
   /// The graph for the current pane, built at most once per set of inputs.
   ///
@@ -261,8 +265,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       focus: _graphFocusPath,
       current: current,
     );
-    final cached = _graphCache;
-    if (cached != null && _graphKey == key) return cached;
+    if (_graphCacheRevision != workspace.indexRevision) {
+      _graphCache.clear();
+      _graphCacheRevision = workspace.indexRevision;
+    }
+    final cached = _graphCache[key];
+    if (cached != null) return cached;
+    // ponytail: wipe-when-full cap; local-graph keys grow per opened note.
+    if (_graphCache.length >= 8) _graphCache.clear();
     final idx = index!;
     final built = switch (_graphMode) {
       'conceptMap' => buildConceptMap(idx),
@@ -275,8 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _ => buildLocalNoteGraph(idx, _graphFocusPath ?? current),
     };
     final bounded = boundGraphForLayout(built, currentPath: current);
-    _graphCache = bounded;
-    _graphKey = key;
+    _graphCache[key] = bounded;
     return bounded;
   }
 

@@ -2042,9 +2042,7 @@ void main() {
       await tester.pumpAndSettle();
       controller.selection = const TextSelection.collapsed(offset: 0);
 
-      await tester.longPress(
-        find.byTooltip('Heading 1 (long-press for more levels)'),
-      );
+      await tester.tap(find.byTooltip('More heading levels'));
       await tester.pumpAndSettle();
 
       expect(find.text('Heading 2'), findsOneWidget);

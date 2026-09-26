@@ -159,3 +159,19 @@ Use `--dart-define=P22_SAMPLES=5 --dart-define=P22_DIAGNOSE=true` for a short
 stage diagnostic; it does not close a 100-sample gate. P22 stays open pending
 valid foreground measurements, a graph performance fix if confirmed, and
 Android timing.
+
+## Mode-switch cost analysis (2026-09-26)
+
+The route’s graph memoization had one cache entry. Alternating Concept map and
+All files therefore discarded the previous mode’s bounded graph and rebuilt it
+on every switch; the rehearsal also incremented `indexRevision`, defeating the
+cache even when the vault was unchanged. The cache is now keyed by revision,
+graph mode, focus, and current note, while retaining the existing 200-node and
+500-edge bounds and graph semantics. The host widget regression test verifies
+that returning to a mode in the same revision reuses its graph.
+
+The private harness keeps the read-only storage adapter and zero-write
+assertion, discards samples unless lifecycle, mode, selected node, graph
+bounds, and settled-frame checks all pass, and reports valid count, p50, p95,
+and max from frame timings through the first settled frame. Device numbers are
+pending a permitted profile run.
