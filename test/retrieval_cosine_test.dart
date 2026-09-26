@@ -21,6 +21,16 @@ void main() {
     expect(hits.first.score, closeTo(1, 0.0001));
   });
 
+  test('reads a vector from its byte-view offset', () {
+    final storage = Float32List.fromList([0, 1, 0, 0, 1, 0]);
+    final view = Uint8List.view(storage.buffer, 16, 8);
+    final hits = topCosineHits(
+      query: const [1, 0],
+      candidates: [(id: 'wrong-prefix', embedding: view)],
+    );
+    expect(hits.single.score, closeTo(1, 0.0001));
+  });
+
   test('bounded results match full ranking on a randomized corpus', () {
     final random = math.Random(42);
     final candidates = [

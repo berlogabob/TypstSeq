@@ -83,3 +83,47 @@ removed the production package. The normal profile app was reinstalled and the
 existing `/sdcard/TyLog` folder was reselected through SAF. No sync, import, or
 conflict-resolution action was run. Do not profile against the production
 package ID again; use an isolated profile package first.
+
+## Android profile vector parity (2026-09-26)
+
+The A24 profile run used the isolated `org.tylog.tylog.profiletest` package so
+the production package and vault were not targeted. The pinned private model
+and tokenizer passed hash verification before being staged in app-private
+storage. The native Android result for the synthetic smoke input was compared
+with the pinned Mac ORT 1.30.0 reference vector.
+
+```text
+P05_PROFILE_VECTOR_PARITY=PASS
+dimension=384 finite=true normalized=true
+cosine=1.000000 max_abs_difference=0.000092
+acceptance: cosine >= 0.999; max_abs_difference <= 0.02
+```
+
+`flutter analyze integration_test/p05_embedding_profile_test.dart` passed.
+This closes native profile vector parity only. Android exact-search timing/PSS,
+sustained resume, and the 90-query judged quality pack remain open. Private
+model paths, vectors, and query text are not recorded here.
+
+## Android profile exact search and PSS (2026-09-26)
+
+The isolated `.profiletest` package ran the actual Dart `topCosineHits` path on
+250,000 deterministic synthetic 384-dimensional Float32 vectors. The run used
+31 scans (one cold, 30 warm); result IDs were stable across all runs.
+
+```text
+P05_ANDROID_EXACT_SEARCH vectors=250000 dimension=384 runs=31 deterministic=true
+cold=825.453 ms warm_p50=784.710 ms warm_p95=811.284 ms
+max sampled TOTAL PSS=564000 kB (550.8 MiB; 24 samples)
+acceptance: cold <=6000 ms; warm p95 <=3000 ms; PSS <=750 MB — PASS
+```
+
+The same updated Dart benchmark passed on macOS: cold 735.518 ms, warm p95
+679.299 ms, peak RSS 566,018,048 bytes. The device harness runs the search
+synthetically on the UI isolate, so its long frame is expected and is not a
+UI frame acceptance run. It verifies search throughput and memory only.
+
+This run exposed a correctness issue in `topCosineHits`: typed byte views with
+a nonzero buffer offset were read from offset zero. The search now preserves
+the view offset and avoids copying existing `Uint8List` vectors; a regression
+test covers the offset case. P05.4c is closed. P05.4d sustained-resume testing
+and the 90-query judged quality pack remain open.

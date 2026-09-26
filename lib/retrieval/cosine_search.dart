@@ -31,9 +31,14 @@ List<VectorHit> topCosineHits({
   // ponytail: O(n*k) bounded list; use a heap only if profiling shows this is hot.
   final hits = <VectorHit>[];
   for (final candidate in candidates) {
-    final bytes = Uint8List.fromList(candidate.embedding);
+    final bytes = candidate.embedding is Uint8List
+        ? candidate.embedding as Uint8List
+        : Uint8List.fromList(candidate.embedding);
     if (bytes.length % 4 != 0) continue;
-    final vector = bytes.buffer.asFloat32List();
+    final vector = bytes.buffer.asFloat32List(
+      bytes.offsetInBytes,
+      bytes.lengthInBytes ~/ 4,
+    );
     if (vector.length != query.length) continue;
     var vectorScale = 0.0;
     var valid = true;
