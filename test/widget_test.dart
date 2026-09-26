@@ -1868,6 +1868,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(ActionChip, 'Save'), findsOneWidget);
   });
+
+  testWidgets('saved search deletes from its chip without long-press', (
+    tester,
+  ) async {
+    final deleted = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeScreen(
+            index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+            search: (_, _, _) async => const [],
+            problems: const [],
+            onOpenNote: (_) {},
+            savedSearches: const [SavedSearch(name: 'First', query: 'one')],
+            onSaveSearch: (_) async {},
+            onDeleteSearch: (preset) async => deleted.add(preset.name),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Delete saved search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.pumpAndSettle();
+    expect(deleted, ['First']);
+    expect(find.text('First'), findsNothing);
+  });
 }
 
 class _FailingStorage extends VaultStorage {

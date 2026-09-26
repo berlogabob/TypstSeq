@@ -259,6 +259,41 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     });
   }
 
+  Future<void> _confirmDeletePreset(SavedSearch preset) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete saved search?'),
+        content: Text('Delete "${preset.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted && !_presetBusy) {
+      setState(() => _presetBusy = true);
+      try {
+        await widget.onDeleteSearch?.call(preset);
+        if (mounted) {
+          setState(() => _savedSearches.remove(preset));
+        }
+      } catch (error) {
+        if (mounted) {
+          showSnack(context, 'Could not delete search: $error');
+        }
+      } finally {
+        if (mounted) setState(() => _presetBusy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -305,7 +340,9 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final citations = _citations;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: 1 + citations.length +
+      itemCount:
+          1 +
+          citations.length +
           (results.isEmpty && citations.isEmpty ? 1 : results.length),
       itemBuilder: (context, i) {
         if (i == 0) {
@@ -334,46 +371,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   children: [
                     for (final preset in _savedSearches)
                       GestureDetector(
-                        onLongPress: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Delete saved search?'),
-                              content: Text('Delete "${preset.name}"?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true && mounted && !_presetBusy) {
-                            setState(() => _presetBusy = true);
-                            try {
-                              await widget.onDeleteSearch?.call(preset);
-                              if (mounted) {
-                                setState(() => _savedSearches.remove(preset));
-                              }
-                            } catch (error) {
-                              if (context.mounted) {
-                                showSnack(
-                                  context,
-                                  'Could not delete search: $error',
-                                );
-                              }
-                            } finally {
-                              if (mounted) setState(() => _presetBusy = false);
-                            }
-                          }
-                        },
-                        child: ChoiceChip(
+                        onLongPress: () => _confirmDeletePreset(preset),
+                        child: InputChip(
                           label: Text(preset.name),
+                          onDeleted: widget.onDeleteSearch == null
+                              ? null
+                              : () => _confirmDeletePreset(preset),
+                          deleteButtonTooltipMessage: 'Delete saved search',
                           selected: _activePreset == preset.name,
                           onSelected: (_) {
                             if (_activePreset == preset.name) {

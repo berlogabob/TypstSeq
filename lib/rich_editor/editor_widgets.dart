@@ -650,13 +650,18 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                     ),
                     IconButton(
                       key: _headingButtonKey,
-                      tooltip: 'Heading 1 (long-press for more levels)',
+                      tooltip: 'Heading 1',
                       onPressed: widget.controller.setHeading,
                       onLongPress: () => _showHeadingMenu(context),
                       icon: Text(
                         'H1',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
+                    ),
+                    IconButton(
+                      tooltip: 'More heading levels',
+                      onPressed: () => _showHeadingMenu(context),
+                      icon: const Icon(Icons.arrow_drop_down),
                     ),
                     // ponytail: two loops, not one — the highlight button sits
                     // mid-row and carries a key + onLongPress. Order here is
