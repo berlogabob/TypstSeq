@@ -1756,6 +1756,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _dialogField(
                       url,
                       label: 'Server URL',
+                      plain: true,
                       hint: 'https://cloud.example.com',
                       keyboardType: TextInputType.url,
                       textInputAction: TextInputAction.next,
@@ -1765,6 +1766,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _dialogField(
                       user,
                       label: 'Login',
+                      plain: true,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.username],
                       onChanged: (_) => setDialogState(() {}),
@@ -1780,6 +1782,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _dialogField(
                       folder,
                       label: 'Remote folder',
+                      plain: true,
                       helper: 'Created inside your Nextcloud files.',
                       textInputAction: TextInputAction.done,
                       onChanged: (_) => setDialogState(() {}),
@@ -4561,10 +4564,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<String>? autofillHints,
     ValueChanged<String>? onChanged,
     ValueChanged<String>? onSubmitted,
+    // URLs, logins and paths: Gboard's autocorrect otherwise splits
+    // "soundingdoubts" and adds spaces after dots, even with a URL keyboard.
+    bool plain = false,
   }) => TextField(
     controller: controller,
     autofocus: autofocus,
     obscureText: obscureText,
+    autocorrect: !plain,
+    enableSuggestions: !plain,
     keyboardType: keyboardType,
     textInputAction: textInputAction,
     autofillHints: autofillHints,
