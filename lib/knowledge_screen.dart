@@ -26,6 +26,7 @@ class KnowledgeScreen extends StatefulWidget {
     this.searchReady,
     this.searchRevision,
     this.vectorSearch,
+    this.resolveMissing,
     this.citedSearch,
     this.onOpenCitation,
     this.onFixProblems,
@@ -50,6 +51,7 @@ class KnowledgeScreen extends StatefulWidget {
   /// Optional vector candidates used to reorder the keyword result metadata.
   /// When omitted, the existing FTS order is unchanged.
   final Future<List<VectorHit>> Function(String query)? vectorSearch;
+  final PkmsSearchResult? Function(String id)? resolveMissing;
 
   /// Optional retrieved chunks with a validated source locator and range.
   final Future<List<ChunkCitation>> Function(String query)? citedSearch;
@@ -232,7 +234,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         results = mergeHybridSearchResults(
           keywordResults: results,
           vectorHits: await vectorSearch(query),
-          limit: results.length,
+          resolveMissing: widget.resolveMissing,
+          limit: results.length < 20 ? 20 : results.length,
         );
       }
       var citations = const <ChunkCitation>[];

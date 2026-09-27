@@ -20,10 +20,15 @@ class NoteChunkSyncResult {
   final int chunks;
 }
 
+/// Upserts [notes] (changed or new notes; unchanged ones are no-ops) and
+/// removes note sources whose path is not in [allPaths] (default: the keys of
+/// [notes], i.e. a full sync).
 Future<NoteChunkSyncResult> syncNoteChunks(
   TyLogDatabase db,
-  Map<String, ({String title, String text})> notes,
-) async {
+  Map<String, ({String title, String text})> notes, {
+  Set<String>? allPaths,
+}) async {
+  final keep = allPaths ?? notes.keys.toSet();
   var added = 0;
   var unchanged = 0;
   var removed = 0;
@@ -108,7 +113,7 @@ Future<NoteChunkSyncResult> syncNoteChunks(
       db.sources,
     )..where((row) => row.kind.equals('note'))).get();
     for (final source in existingNotes) {
-      if (!notes.containsKey(source.locator)) {
+      if (!keep.contains(source.locator)) {
         await _deleteVersions(db, (row) => row.sourceId.equals(source.id));
         await (db.delete(
           db.sources,

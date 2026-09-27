@@ -29,6 +29,7 @@ import 'pdf/pdf_reader_screen.dart';
 import 'report.dart';
 import 'retrieval/graph_svg.dart';
 import 'retrieval/hybrid_search.dart';
+import 'retrieval/semantic_search_controller.dart';
 import 'rich_editor.dart';
 import 'scanner.dart';
 import 'search_index.dart';
@@ -294,6 +295,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
   Timer? _previewDebounceTimer;
+  Timer? _semanticRefreshTimer;
+  SemanticSearchController? _semantic;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
   // Path/date of the daily note last opened via _openToday(), so a resume
@@ -384,6 +387,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     _openGeneration++;
     _previewDebounceTimer?.cancel();
+    _semanticRefreshTimer?.cancel();
+    _semantic?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     workspace
       ..removeListener(_workspaceChanged)
@@ -423,6 +428,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _workspaceChanged() {
     if (!mounted) return;
+    if (workspace.entry == null) {
+      _semantic?.dispose();
+      _semantic = null;
+    }
     if (sourceController.text != workspace.source) {
       // A save/sync round-trip can hand back a cosmetically different but
       // semantically identical source — e.g. trailing blank lines left by an
@@ -437,7 +446,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _maybeSnackNewSyncTrouble();
     _refreshPagedLibraryNotes();
+    _queueSemanticRefresh();
     setState(() {});
+  }
+
+  void _queueSemanticRefresh() {
+    _semanticRefreshTimer?.cancel();
+    _semanticRefreshTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_ensureSemanticController(refresh: true));
+    });
+  }
+
+  Future<void> _ensureSemanticController({bool refresh = false}) async {
+    final entry = workspace.entry;
+    if (entry == null) return;
+    final db = await _databaseForVault(entry);
+    if (!mounted || workspace.entry != entry || db == null) return;
+    var controller = _semantic;
+    if (controller == null || !identical(controller.db, db)) {
+      controller?.dispose();
+      final support = await getApplicationSupportDirectory();
+      if (!mounted || workspace.entry != entry) return;
+      controller = SemanticSearchController(
+        db: db,
+        modelRoot: Directory(
+          '${support.path}/models/multilingual-e5-small-ccc66d3',
+        ),
+      );
+      _semantic = controller;
+      await controller.init();
+    }
+    if (refresh && controller.searchable) {
+      unawaited(controller.refreshNotes());
+    }
   }
 
   void _refreshPagedLibraryNotes() {
@@ -1196,6 +1237,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
+    await _ensureSemanticController();
+    if (!mounted) return;
     final searchStore = SavedSearchStore(v.storage);
     var savedSearches = await searchStore.load();
     if (!mounted) return;
@@ -1215,6 +1258,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           searchState: workspace,
           searchReady: () => workspace.searchReady,
           searchRevision: () => workspace.searchRevision,
+          // Checked per query: the controller may finish installing or
+          // indexing while the search screen is open.
+          vectorSearch: _semantic?.searchNotes,
+          citedSearch: _semantic?.citations,
+          resolveMissing: (id) {
+            final note = ix.notesByPath[id];
+            if (note == null) return null;
+            return PkmsSearchResult(
+              id: note.path,
+              path: note.path,
+              title: note.title,
+              kind: note.kind,
+              tags: note.tags,
+              score: 0,
+            );
+          },
           savedSearches: savedSearches,
           onSaveSearch: (search) async {
             final next = [
@@ -1848,6 +1907,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
+      _semantic?.pause();
       // Android may kill the app inside the 400 ms autosave debounce; flush
       // pending edits now so backgrounding never loses keystrokes.
       if (dirty) unawaited(_save(syncAfter: false));
@@ -1862,6 +1922,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (state == AppLifecycleState.resumed) {
+      if (_semantic != null) unawaited(_semantic!.refreshNotes());
       // The UI owns the vault again; a still-pending catch-up run would only
       // contend for the lock.
       if (Platform.isAndroid) {
@@ -2119,6 +2180,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _openCitation(ChunkCitation citation) async {
     final v = vault;
+    if (citation.sourceKind == 'note') {
+      await _openPath(citation.sourceLocator);
+      return;
+    }
     if (v == null ||
         citation.sourceKind != 'pdf' ||
         !isSafeVaultPath(citation.sourceLocator) ||
@@ -3597,6 +3662,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _ShellAction.problems: (Icons.warning_amber, 'Problems'),
       _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
       _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
+      _ShellAction.semantic: (Icons.manage_search, 'Semantic search'),
       _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
     };
     final action = await showModalBottomSheet<_ShellAction>(
@@ -3636,6 +3702,81 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _runShellAction(action, linksPanel);
   }
 
+  Future<void> _showSemanticSearch() async {
+    await _ensureSemanticController();
+    final controller = _semantic;
+    if (!mounted || controller == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final state = controller.state;
+          final installed = state is SemanticReady || state is SemanticIndexing;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Semantic search',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(switch (state) {
+                    SemanticNotInstalled() => 'Not installed',
+                    SemanticDownloading(:final progress) =>
+                      'Downloading ${(progress * 100).round()}%',
+                    SemanticIndexing(:final done, :final pending) =>
+                      'Indexing: $done done, $pending pending',
+                    SemanticReady() => 'Ready',
+                    SemanticError(:final message) => 'Error: $message',
+                  }),
+                  const SizedBox(height: 12),
+                  if (state case SemanticDownloading(:final progress)) ...[
+                    LinearProgressIndicator(value: progress),
+                    TextButton(
+                      onPressed: controller.cancel,
+                      child: const Text('Cancel'),
+                    ),
+                  ] else if (!installed)
+                    FilledButton(
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Download semantic model?'),
+                            content: const Text(
+                              'It downloads once from Hugging Face and works offline afterwards.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Download'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) unawaited(controller.download());
+                      },
+                      child: const Text('Download model (252 MB)'),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _runShellAction(_ShellAction action, Widget linksPanel) async {
     switch (action) {
       case _ShellAction.vaults:
@@ -3665,6 +3806,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _rebuildIndex(force: true);
       case _ShellAction.relink:
         await _relinkVault();
+      case _ShellAction.semantic:
+        await _showSemanticSearch();
       case _ShellAction.typstHelp:
         await _showTypstHelp();
       case _ShellAction.settings:
@@ -4446,6 +4589,7 @@ enum _ShellAction {
   problems,
   rebuild,
   relink,
+  semantic,
   typstHelp,
   settings,
 }

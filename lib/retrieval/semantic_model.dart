@@ -62,6 +62,7 @@ class SemanticModelStore {
   }
 
   Future<void> download({
+    /// Called with bytes received across all files and the manifest total.
     void Function(int received, int total)? onProgress,
     bool Function()? cancelled,
     HttpClient Function()? client,
@@ -70,6 +71,8 @@ class SemanticModelStore {
     await _delete(File('${root.path}/$_marker'));
     final http = (client ?? HttpClient.new)();
     try {
+      final totalBytes = manifest.fold<int>(0, (sum, item) => sum + item.bytes);
+      var doneBytes = 0;
       for (final item in manifest) {
         if (cancelled?.call() ?? false) throw _Cancelled();
         final part = File('${root.path}/${item.name}.part');
@@ -90,7 +93,7 @@ class SemanticModelStore {
             sink.add(bytes);
             converter.add(bytes);
             received += bytes.length;
-            onProgress?.call(received, response.contentLength);
+            onProgress?.call(doneBytes + received, totalBytes);
           }
           converter.close();
         } finally {
@@ -101,6 +104,7 @@ class SemanticModelStore {
         }
         await _delete(target);
         await part.rename(target.path);
+        doneBytes += item.bytes;
       }
       await File('${root.path}/$_marker').writeAsString('verified\n');
     } catch (_) {
