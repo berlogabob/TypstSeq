@@ -62,4 +62,21 @@ void main() {
     expect(merged.map((result) => result.id), ['b', 'a']);
     expect(merged.first.path, 'b.typ');
   });
+
+  test('typed merger resolves vector-only IDs when requested', () {
+    final merged = mergeHybridSearchResults(
+      keywordResults: const [],
+      vectorHits: const [VectorHit(id: 'notes/a.typ', score: 1)],
+      resolveMissing: (id) => PkmsSearchResult(
+        id: id,
+        path: id,
+        title: 'A',
+        kind: 'note',
+        tags: const [],
+        score: 0,
+      ),
+      limit: 1,
+    );
+    expect(merged.single.path, 'notes/a.typ');
+  });
 }

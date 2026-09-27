@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/retrieval/hybrid_search.dart';
+import 'package:tylog/retrieval/cosine_search.dart';
 import 'package:tylog_core/models.dart';
+import 'package:tylog_core/search_index.dart';
 
 PkmsProblem _broken(String subject, String target) => PkmsProblem(
   code: 'broken-link',
@@ -31,11 +33,14 @@ void main() {
     test('a target that is already a tag is folded out, not offered', () {
       // The index stores tags folded, so a raw comparison would miss both of
       // these — `Tutorial` is the single most referenced target in the vault.
-      final targets = unresolvedLinkTargets([
-        _broken('notes/a.typ', 'Tutorial'),
-        _broken('notes/b.typ', 'quick capture'),
-        _broken('notes/c.typ', 'Дубай'),
-      ], const {'tutorial', 'quick-capture'});
+      final targets = unresolvedLinkTargets(
+        [
+          _broken('notes/a.typ', 'Tutorial'),
+          _broken('notes/b.typ', 'quick capture'),
+          _broken('notes/c.typ', 'Дубай'),
+        ],
+        const {'tutorial', 'quick-capture'},
+      );
 
       expect(targets.map((t) => t.target), ['Дубай']);
     });
@@ -105,5 +110,33 @@ void main() {
     expect(find.text('No matches'), findsNothing);
     await tester.tap(find.text('Example paper'));
     expect(opened, same(citation));
+  });
+
+  testWidgets('shows a vector-only note resolved by path', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeScreen(
+            index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+            search: (_, _, _) async => const [],
+            vectorSearch: (_) async => const [
+              VectorHit(id: 'notes/vector.typ', score: 1),
+            ],
+            resolveMissing: (id) => PkmsSearchResult(
+              id: id,
+              path: id,
+              title: 'Vector note',
+              kind: 'note',
+              tags: const [],
+              score: 0,
+            ),
+            problems: const [],
+            onOpenNote: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Vector note'), findsOneWidget);
   });
 }

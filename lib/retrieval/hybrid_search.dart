@@ -77,6 +77,7 @@ List<HybridHit> fuseSearchHits({
 List<PkmsSearchResult> mergeHybridSearchResults({
   required Iterable<PkmsSearchResult> keywordResults,
   required Iterable<VectorHit> vectorHits,
+  PkmsSearchResult? Function(String id)? resolveMissing,
   int limit = 10,
 }) {
   final results = [for (final result in keywordResults) result];
@@ -89,7 +90,7 @@ List<PkmsSearchResult> mergeHybridSearchResults({
     limit: limit,
   );
   return fused
-      .map((hit) => byId[hit.id])
+      .map((hit) => byId[hit.id] ?? resolveMissing?.call(hit.id))
       .whereType<PkmsSearchResult>()
       .toList(growable: false);
 }
