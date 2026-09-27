@@ -328,55 +328,53 @@ void main() {
     },
   );
 
-  test(
-    'checkpoint cadence is time-bound, not per-file',
-    () async {
-      // A checkpoint re-encodes every cursor, so a per-N-files trigger scales
-      // with vault size squared: on a real 2061-path vault the old `% 10` gate
-      // fired 206 times at 38 ms each on a P30 — 2.75 s of blocked isolate and
-      // ~110 MB written. With a wall-clock interval the count is bounded by run
-      // duration instead, so a bigger vault costs no extra checkpoints.
-      //
-      // This run transfers 30 files against a local server in well under one
-      // interval, so a correct implementation checkpoints mid-loop zero times;
-      // the per-file version would have managed three.
-      NextcloudSync.checkpointInterval = const Duration(minutes: 5);
-      final remote = <String, _MutableRemoteFile>{
-        '_system/tylog.typ': _remoteText('helper'),
-        for (var index = 0; index < 30; index++)
-          'notes/${index.toString().padLeft(2, '0')}.typ': _remoteText(
-            'remote $index',
-          ),
-      };
-      final server = await _mutableWebDavServer(remote);
-      final dir = await Directory.systemTemp.createTemp('tylog_cadence_');
-      final storage = _CheckpointCountingStorage(dir);
-      final vault = Vault.withStorage(storage);
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      await vault.ensureCreated();
+  test('checkpoint cadence is time-bound, not per-file', () async {
+    // A checkpoint re-encodes every cursor, so a per-N-files trigger scales
+    // with vault size squared: on a real 2061-path vault the old `% 10` gate
+    // fired 206 times at 38 ms each on a P30 — 2.75 s of blocked isolate and
+    // ~110 MB written. With a wall-clock interval the count is bounded by run
+    // duration instead, so a bigger vault costs no extra checkpoints.
+    //
+    // This run transfers 30 files against a local server in well under one
+    // interval, so a correct implementation checkpoints mid-loop zero times;
+    // the per-file version would have managed three.
+    NextcloudSync.checkpointInterval = const Duration(minutes: 5);
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var index = 0; index < 30; index++)
+        'notes/${index.toString().padLeft(2, '0')}.typ': _remoteText(
+          'remote $index',
+        ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_cadence_');
+    final storage = _CheckpointCountingStorage(dir);
+    final vault = Vault.withStorage(storage);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
 
-      await NextcloudSync(
-        _config(server),
-      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+    await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
 
-      // The bootstrap marker plus the single post-loop save. Anything more means
-      // the per-file gate is back.
-      expect(
-        storage.checkpointWrites,
-        lessThanOrEqualTo(2),
-        reason: 'checkpointing more than twice for 30 files means the cadence '
-            'is scaling with file count again',
-      );
-      // Durability is unaffected: the run still persists every cursor at the end.
-      final saved =
-          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
-              as Map<String, Object?>;
-      expect((saved['cursors'] as Map).length, greaterThanOrEqualTo(30));
-    },
-  );
+    // The bootstrap marker plus the single post-loop save. Anything more means
+    // the per-file gate is back.
+    expect(
+      storage.checkpointWrites,
+      lessThanOrEqualTo(2),
+      reason:
+          'checkpointing more than twice for 30 files means the cadence '
+          'is scaling with file count again',
+    );
+    // Durability is unaffected: the run still persists every cursor at the end.
+    final saved =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map<String, Object?>;
+    expect((saved['cursors'] as Map).length, greaterThanOrEqualTo(30));
+  });
 
   test(
     'interrupted initial sync checkpoints and resumes completed files',
@@ -438,47 +436,44 @@ void main() {
     },
   );
 
-  test(
-    'steady-state second sync writes sync_state.json zero times',
-    () async {
-      // Empty remote: the first sync uploads the vault's own starter
-      // content (including the real `_system/tylog.typ`, not a stand-in),
-      // so nothing conflicts and the second sync is genuinely steady-state.
-      final remote = <String, _MutableRemoteFile>{};
-      final server = await _mutableWebDavServer(remote);
-      final dir = await Directory.systemTemp.createTemp('tylog_dirty_gate_');
-      final storage = _CheckpointCountingStorage(dir);
-      final vault = Vault.withStorage(storage);
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      await vault.ensureCreated();
-      for (var index = 0; index < 20; index++) {
-        await vault.storage.writeText(
-          'notes/${index.toString().padLeft(2, '0')}.typ',
-          'note $index',
-        );
-      }
+  test('steady-state second sync writes sync_state.json zero times', () async {
+    // Empty remote: the first sync uploads the vault's own starter
+    // content (including the real `_system/tylog.typ`, not a stand-in),
+    // so nothing conflicts and the second sync is genuinely steady-state.
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_dirty_gate_');
+    final storage = _CheckpointCountingStorage(dir);
+    final vault = Vault.withStorage(storage);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+    for (var index = 0; index < 20; index++) {
+      await vault.storage.writeText(
+        'notes/${index.toString().padLeft(2, '0')}.typ',
+        'note $index',
+      );
+    }
 
-      // The root etag persisted by a full run is captured before that run's
-      // own uploads, so the run right after bootstrap is still a full run
-      // (self-correcting: it settles on an accurate etag since nothing else
-      // changes during it). The run after *that* is the one that can shortcut.
-      await NextcloudSync(_config(server)).sync(vault);
-      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
-      storage.checkpointWrites = 0;
+    // The root etag persisted by a full run is captured before that run's
+    // own uploads, so the run right after bootstrap is still a full run
+    // (self-correcting: it settles on an accurate etag since nothing else
+    // changes during it). The run after *that* is the one that can shortcut.
+    await NextcloudSync(_config(server)).sync(vault);
+    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+    storage.checkpointWrites = 0;
 
-      final result = await NextcloudSync(
-        _config(server),
-      ).sync(vault, trigger: 'poll');
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'poll');
 
-      expect(result.uploaded, 0);
-      expect(result.downloaded, 0);
-      expect(result.conflicts, 0);
-      expect(storage.checkpointWrites, 0);
-    },
-  );
+    expect(result.uploaded, 0);
+    expect(result.downloaded, 0);
+    expect(result.conflicts, 0);
+    expect(storage.checkpointWrites, 0);
+  });
 
   test(
     'no-change shortcut probes the root etag instead of listing the tree',
@@ -518,7 +513,10 @@ void main() {
       expect(result.skipped, 0);
       expect(result.conflicts, 0);
       final events = await _traceEvents(vault);
-      expect(events.map((event) => event['event']), contains('no-change-shortcut'));
+      expect(
+        events.map((event) => event['event']),
+        contains('no-change-shortcut'),
+      );
 
       // Every terminal event carries a per-stage profile. Without it a pass
       // that takes 22s reports only that it took 22s — the device numbers this
@@ -608,10 +606,47 @@ void main() {
       expect(metrics.depthZeroPropfinds, 1);
       expect(metrics.depthInfinityPropfinds, 1);
       expect(result.uploaded, 1);
-      expect(
-        utf8.decode(remote['notes/a.typ']!.bytes),
-        'edited locally',
-      );
+      expect(utf8.decode(remote['notes/a.typ']!.bytes), 'edited locally');
+    },
+  );
+
+  test(
+    'a download never overwrites a local file changed outside the app',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/a.typ': _remoteText('note a'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(remote, metrics: metrics);
+      final dir = await Directory.systemTemp.createTemp('tylog_outside_write_');
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+
+      // A peer wrote the file directly (e.g. another app), keeping the file's
+      // size and last-modified time so a cached local scan sees it unchanged.
+      final file = File('${dir.path}/notes/a.typ');
+      final stamp = await file.lastModified();
+      await file.writeAsString('note b');
+      await file.setLastModified(stamp);
+
+      // The remote now also changed to a third version.
+      remote['notes/a.typ'] = _remoteText('note c');
+      metrics
+        ..depthZeroPropfinds = 0
+        ..depthInfinityPropfinds = 0;
+
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'poll');
+
+      expect(result.conflicts, 1);
+      expect(result.downloaded, 0);
+      expect(await vault.storage.readText('notes/a.typ'), 'note b');
     },
   );
 
@@ -637,73 +672,79 @@ void main() {
     expect(await vault.storage.readText('notes/cloud.typ'), 'cloud note');
   });
 
-  test('a transient mid-transfer abort is retried within the same run', () async {
-    final remote = <String, _MutableRemoteFile>{
-      '_system/tylog.typ': _remoteText('helper'),
-      for (var index = 0; index < 5; index++)
-        'notes/$index.typ': _remoteText('remote $index'),
-    };
-    final gets = <String, int>{};
-    final server = await _mutableWebDavServer(
-      remote,
-      interruptGetOnce: 'notes/3.typ',
-      getCounts: gets,
-    );
-    final dir = await Directory.systemTemp.createTemp('tylog_transient_');
-    final vault = Vault(dir);
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    await vault.ensureCreated();
+  test(
+    'a transient mid-transfer abort is retried within the same run',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+        for (var index = 0; index < 5; index++)
+          'notes/$index.typ': _remoteText('remote $index'),
+      };
+      final gets = <String, int>{};
+      final server = await _mutableWebDavServer(
+        remote,
+        interruptGetOnce: 'notes/3.typ',
+        getCounts: gets,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_transient_');
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
 
-    final result = await NextcloudSync(
-      _config(server),
-    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
 
-    expect(result.downloaded, remote.length);
-    expect(gets['notes/3.typ'], 2);
-    expect(await vault.storage.readText('notes/3.typ'), 'remote 3');
-  });
+      expect(result.downloaded, remote.length);
+      expect(gets['notes/3.typ'], 2);
+      expect(await vault.storage.readText('notes/3.typ'), 'remote 3');
+    },
+  );
 
-  test('resumed bootstrap with many cursor-less files uses the ZIP archive', () async {
-    final remote = <String, _MutableRemoteFile>{
-      '_system/tylog.typ': _remoteText('helper'),
-    };
-    final metrics = _WebDavMetrics();
-    final server = await _mutableWebDavServer(
-      remote,
-      serveArchive: true,
-      metrics: metrics,
-    );
-    final dir = await Directory.systemTemp.createTemp('tylog_resume_zip_');
-    final vault = Vault(dir);
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    await vault.ensureCreated();
-    await NextcloudSync(
-      _config(server),
-    ).sync(vault, initialMode: InitialSyncMode.safeMerge);
-    final getsAfterBootstrap = metrics.individualGets;
+  test(
+    'resumed bootstrap with many cursor-less files uses the ZIP archive',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+      };
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(
+        remote,
+        serveArchive: true,
+        metrics: metrics,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_resume_zip_');
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.safeMerge);
+      final getsAfterBootstrap = metrics.individualGets;
 
-    // The bulk of the vault arrives later (interrupted bootstrap on another
-    // run, or another device uploaded) — a plain startup sync should fetch it
-    // as one archive instead of a per-file GET crawl.
-    for (var index = 0; index < 40; index++) {
-      remote['articles/$index.typ'] = _remoteText('article $index\n' * 50);
-    }
-    final result = await NextcloudSync(_config(server)).sync(vault);
+      // The bulk of the vault arrives later (interrupted bootstrap on another
+      // run, or another device uploaded) — a plain startup sync should fetch it
+      // as one archive instead of a per-file GET crawl.
+      for (var index = 0; index < 40; index++) {
+        remote['articles/$index.typ'] = _remoteText('article $index\n' * 50);
+      }
+      final result = await NextcloudSync(_config(server)).sync(vault);
 
-    expect(result.downloaded, 40);
-    expect(metrics.archiveGets, 1);
-    expect(metrics.individualGets, getsAfterBootstrap);
-    expect(
-      await vault.storage.readText('articles/39.typ'),
-      'article 39\n' * 50,
-    );
-  });
+      expect(result.downloaded, 40);
+      expect(metrics.archiveGets, 1);
+      expect(metrics.individualGets, getsAfterBootstrap);
+      expect(
+        await vault.storage.readText('articles/39.typ'),
+        'article 39\n' * 50,
+      );
+    },
+  );
 
   test('legacy state upgrades and a different remote resets cursors', () async {
     final server = await _webDavServer(remoteContent: 'remote note');
@@ -734,40 +775,43 @@ void main() {
     expect(result.conflicts, 1);
   });
 
-  test('a legacy state file is bound to this server on the first pass', () async {
-    // A file written before `schema`/`remoteKey` existed is accepted, not
-    // discarded - that migration is deliberate. But it is unbound: nothing in
-    // it says which server its cursors describe. The pass now rewrites it, so
-    // the ambiguity lasts one pass rather than until something else changes.
-    final server = await _webDavServer(remoteContent: 'remote note');
-    final dir = await Directory.systemTemp.createTemp('tylog_legacy_bind_');
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    final note = File('${dir.path}/daily/2026/07/note.typ');
-    await note.parent.create(recursive: true);
-    await note.writeAsString('local note');
-    await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
-    final seeded =
-        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
-            as Map<String, Object?>;
-    expect(seeded['remoteKey'], isNull, reason: 'the legacy shape');
+  test(
+    'a legacy state file is bound to this server on the first pass',
+    () async {
+      // A file written before `schema`/`remoteKey` existed is accepted, not
+      // discarded - that migration is deliberate. But it is unbound: nothing in
+      // it says which server its cursors describe. The pass now rewrites it, so
+      // the ambiguity lasts one pass rather than until something else changes.
+      final server = await _webDavServer(remoteContent: 'remote note');
+      final dir = await Directory.systemTemp.createTemp('tylog_legacy_bind_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final note = File('${dir.path}/daily/2026/07/note.typ');
+      await note.parent.create(recursive: true);
+      await note.writeAsString('local note');
+      await _seedCursor(vault, 'daily/2026/07/note.typ', note, '"remote-1"');
+      final seeded =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map<String, Object?>;
+      expect(seeded['remoteKey'], isNull, reason: 'the legacy shape');
 
-    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
 
-    final bound =
-        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
-            as Map<String, Object?>;
-    expect(bound['schema'], 2);
-    expect(
-      bound['remoteKey'],
-      isA<String>(),
-      reason: 'the cursors now say which server they describe',
-    );
-  });
+      final bound =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map<String, Object?>;
+      expect(bound['schema'], 2);
+      expect(
+        bound['remoteKey'],
+        isA<String>(),
+        reason: 'the cursors now say which server they describe',
+      );
+    },
+  );
 
   test('sync excludes operational state and keeps durable v5 roots', () {
     expect(isSyncInternalPath('_index/index.json'), isTrue);
@@ -956,13 +1000,22 @@ void main() {
     expect(isForkedVaultLockPath('.tylog/vault (1).lock'), isTrue);
     expect(isForkedVaultLockPath('.tylog/vault (12).lock'), isTrue);
 
-    expect(isForkedVaultLockPath('.tylog/vault.lock'), isFalse,
-        reason: 'the real lock must never be swept');
-    expect(isForkedVaultLockPath('notes/Report (1).typ'), isFalse,
-        reason: 'ordinary user content');
+    expect(
+      isForkedVaultLockPath('.tylog/vault.lock'),
+      isFalse,
+      reason: 'the real lock must never be swept',
+    );
+    expect(
+      isForkedVaultLockPath('notes/Report (1).typ'),
+      isFalse,
+      reason: 'ordinary user content',
+    );
     expect(isForkedVaultLockPath('assets/photo (2).jpg'), isFalse);
-    expect(isForkedVaultLockPath('notes/vault (1).lock'), isFalse,
-        reason: 'only inside .tylog/');
+    expect(
+      isForkedVaultLockPath('notes/vault (1).lock'),
+      isFalse,
+      reason: 'only inside .tylog/',
+    );
     expect(isForkedVaultLockPath('.tylog/vault ().lock'), isFalse);
   });
 
@@ -1364,7 +1417,8 @@ void main() {
     expect(
       dropped['sync-file'] ?? 0,
       lessThanOrEqualTo(2),
-      reason: 'the per-file loop is dropping frames — it used not to, so '
+      reason:
+          'the per-file loop is dropping frames — it used not to, so '
           'blocking work has been added to it',
     );
   });
@@ -1425,47 +1479,52 @@ void main() {
   // The cursor proved the phone had synced those exact bytes (etag recorded,
   // local unchanged), yet "local exists, remote missing" always re-uploaded —
   // and the PUT into the deleted parent collection 404-failed the whole run.
-  test('a remote deletion of an unchanged file is honored, not resurrected',
-      () async {
-    final remote = <String, _MutableRemoteFile>{
-      'notes/junk.typ': _MutableRemoteFile(
-        bytes: utf8.encode('= Junk note'),
-        etag: '"junk-v1"',
-        modified: DateTime.now().toUtc(),
-      ),
-    };
-    final server = await _mutableWebDavServer(remote);
-    final dir = await Directory.systemTemp.createTemp('tylog_remotedel_');
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
+  test(
+    'a remote deletion of an unchanged file is honored, not resurrected',
+    () async {
+      final remote = <String, _MutableRemoteFile>{
+        'notes/junk.typ': _MutableRemoteFile(
+          bytes: utf8.encode('= Junk note'),
+          etag: '"junk-v1"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_remotedel_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
 
-    final first = await NextcloudSync(_config(server)).sync(vault);
-    expect(first.downloaded, greaterThan(0));
-    expect(File('${dir.path}/notes/junk.typ').existsSync(), isTrue);
+      final first = await NextcloudSync(_config(server)).sync(vault);
+      expect(first.downloaded, greaterThan(0));
+      expect(File('${dir.path}/notes/junk.typ').existsSync(), isTrue);
 
-    // Another device deletes the note on the server.
-    remote.remove('notes/junk.typ');
+      // Another device deletes the note on the server.
+      remote.remove('notes/junk.typ');
 
-    final second = await NextcloudSync(_config(server)).sync(vault);
-    expect(
-      File('${dir.path}/notes/junk.typ').existsSync(),
-      isFalse,
-      reason: 'the remote deletion must propagate, not resurrect',
-    );
-    expect(second.deletedLocal, 1);
-    expect(remote.containsKey('notes/junk.typ'), isFalse,
-        reason: 'nothing may re-upload the deleted note');
+      final second = await NextcloudSync(_config(server)).sync(vault);
+      expect(
+        File('${dir.path}/notes/junk.typ').existsSync(),
+        isFalse,
+        reason: 'the remote deletion must propagate, not resurrect',
+      );
+      expect(second.deletedLocal, 1);
+      expect(
+        remote.containsKey('notes/junk.typ'),
+        isFalse,
+        reason: 'nothing may re-upload the deleted note',
+      );
 
-    // Steady state afterwards: the cursor is gone, nothing oscillates.
-    final third = await NextcloudSync(_config(server)).sync(vault);
-    expect(third.deletedLocal, 0);
-    expect(third.uploaded, 0);
-    expect(remote.containsKey('notes/junk.typ'), isFalse);
-  });
+      // Steady state afterwards: the cursor is gone, nothing oscillates.
+      final third = await NextcloudSync(_config(server)).sync(vault);
+      expect(third.deletedLocal, 0);
+      expect(third.uploaded, 0);
+      expect(remote.containsKey('notes/junk.typ'), isFalse);
+    },
+  );
 
   test('a mass remote wipe is restored, never mirrored locally', () async {
     final remote = <String, _MutableRemoteFile>{};
@@ -1496,8 +1555,11 @@ void main() {
     final recovery = await NextcloudSync(_config(server)).sync(vault);
     expect(recovery.deletedLocal, 0);
     for (var i = 0; i < 4; i++) {
-      expect(File('${dir.path}/notes/note$i.typ').existsSync(), isTrue,
-          reason: 'a mass remote wipe must restore, not mirror');
+      expect(
+        File('${dir.path}/notes/note$i.typ').existsSync(),
+        isTrue,
+        reason: 'a mass remote wipe must restore, not mirror',
+      );
     }
     expect(remote.keys.where((p) => p.startsWith('notes/')).length, 4);
   });
@@ -1864,34 +1926,42 @@ void main() {
   // deleted on the Mac resurrected from the phone. With a cursor proving the
   // server had this exact content, absence is a deletion and propagates;
   // without one (a file never synced), restore still wins.
-  test('remote absence deletes a cursor-tracked file but restores an untracked one',
-      () async {
-    final remote = <String, _MutableRemoteFile>{};
-    final server = await _mutableWebDavServer(remote);
-    final dir = await Directory.systemTemp.createTemp('tylog_delete_local_');
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    await vault.storage.writeText('notes/delete.typ', 'delete me');
-    await NextcloudSync(_config(server)).sync(vault);
-    // Settling run so the persisted root etag reflects the uploads above.
-    await NextcloudSync(_config(server)).sync(vault);
+  test(
+    'remote absence deletes a cursor-tracked file but restores an untracked one',
+    () async {
+      final remote = <String, _MutableRemoteFile>{};
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_delete_local_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/delete.typ', 'delete me');
+      await NextcloudSync(_config(server)).sync(vault);
+      // Settling run so the persisted root etag reflects the uploads above.
+      await NextcloudSync(_config(server)).sync(vault);
 
-    remote.remove('notes/delete.typ');
-    // A file the server never saw: no cursor, so absence means "new local".
-    await vault.storage.writeText('notes/fresh.typ', 'never synced');
-    final result = await NextcloudSync(_config(server)).sync(vault);
+      remote.remove('notes/delete.typ');
+      // A file the server never saw: no cursor, so absence means "new local".
+      await vault.storage.writeText('notes/fresh.typ', 'never synced');
+      final result = await NextcloudSync(_config(server)).sync(vault);
 
-    expect(result.deletedLocal, 1);
-    expect(await vault.storage.exists('notes/delete.typ'), isFalse,
-        reason: 'cursor-tracked + unchanged + remote gone = remote deletion');
-    expect(remote.containsKey('notes/delete.typ'), isFalse);
-    expect(utf8.decode(remote['notes/fresh.typ']!.bytes), 'never synced',
-        reason: 'an untracked local file is still uploaded, not deleted');
-  });
+      expect(result.deletedLocal, 1);
+      expect(
+        await vault.storage.exists('notes/delete.typ'),
+        isFalse,
+        reason: 'cursor-tracked + unchanged + remote gone = remote deletion',
+      );
+      expect(remote.containsKey('notes/delete.typ'), isFalse);
+      expect(
+        utf8.decode(remote['notes/fresh.typ']!.bytes),
+        'never synced',
+        reason: 'an untracked local file is still uploaded, not deleted',
+      );
+    },
+  );
 
   test('remote edit cannot replace a note edited during sync', () async {
     final remote = <String, _MutableRemoteFile>{};
@@ -2077,10 +2147,7 @@ void main() {
     ).sync(vault, trigger: 'poll');
 
     expect(result.conflicts, 0, reason: 'a cache file is never a conflict');
-    expect(
-      (await loadSyncConflicts(vault)).map((c) => c.path),
-      isEmpty,
-    );
+    expect((await loadSyncConflicts(vault)).map((c) => c.path), isEmpty);
     expect(await vault.storage.readText(donor), contains('republished'));
   });
 
@@ -2179,7 +2246,9 @@ void main() {
     const base = '#import "/_system/tylog.typ" as tylog\n\n= 2026-08-19\n';
     const extended = '$base\n== Reading\n- something\n';
 
-    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})>
+    Future<
+      ({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})
+    >
     setup({required String local, required String remoteText}) async {
       final remote = <String, _MutableRemoteFile>{
         'notes/day.typ': _MutableRemoteFile(
@@ -2269,63 +2338,66 @@ void main() {
     });
   });
 
-  test('a remote converging on the frozen snapshot never drops the choice', () async {
-    // The record freezes the local snapshot at creation time; the live file
-    // moves on. When a peer re-uploads that frozen copy, the refresh made the
-    // two snapshots match and loadSyncConflicts' self-heal deleted the record
-    // mid-resolve - so the user's explicit choice was dropped, no cursor was
-    // written, and the UI said "Conflict resolved".
-    final remote = <String, _MutableRemoteFile>{
-      'notes/live.typ': _remoteText('remote note'),
-    };
-    final server = await _mutableWebDavServer(remote);
-    final dir = await Directory.systemTemp.createTemp('tylog_converge_');
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    await vault.storage.writeText('notes/live.typ', 'local A');
-    await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
-    final conflict = (await loadSyncConflicts(vault)).single;
+  test(
+    'a remote converging on the frozen snapshot never drops the choice',
+    () async {
+      // The record freezes the local snapshot at creation time; the live file
+      // moves on. When a peer re-uploads that frozen copy, the refresh made the
+      // two snapshots match and loadSyncConflicts' self-heal deleted the record
+      // mid-resolve - so the user's explicit choice was dropped, no cursor was
+      // written, and the UI said "Conflict resolved".
+      final remote = <String, _MutableRemoteFile>{
+        'notes/live.typ': _remoteText('remote note'),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_converge_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/live.typ', 'local A');
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      final conflict = (await loadSyncConflicts(vault)).single;
 
-    // The user edits on after the record was written...
-    await vault.storage.writeText('notes/live.typ', 'local C');
-    // ...and a peer uploads exactly the frozen local snapshot.
-    remote['notes/live.typ'] = _MutableRemoteFile(
-      bytes: utf8.encode('local A'),
-      etag: '"peer-uploaded"',
-      modified: DateTime.now().toUtc(),
-    );
+      // The user edits on after the record was written...
+      await vault.storage.writeText('notes/live.typ', 'local C');
+      // ...and a peer uploads exactly the frozen local snapshot.
+      remote['notes/live.typ'] = _MutableRemoteFile(
+        bytes: utf8.encode('local A'),
+        etag: '"peer-uploaded"',
+        modified: DateTime.now().toUtc(),
+      );
 
-    await expectLater(
-      () => NextcloudSync(
-        _config(server),
-      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          NextcloudSync.remoteMovedDuringResolve,
+      await expectLater(
+        () => NextcloudSync(
+          _config(server),
+        ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            NextcloudSync.remoteMovedDuringResolve,
+          ),
         ),
-      ),
-      reason: 'the remote became something the user never saw',
-    );
+        reason: 'the remote became something the user never saw',
+      );
 
-    // What matters is that nothing was silently discarded: the record survives
-    // so the choice can be made again against what is actually there now, and
-    // neither side was written behind the user's back.
-    final survived = (await loadSyncConflicts(vault)).single;
-    expect(survived.id, conflict.id);
-    expect(
-      utf8.decode(await vault.storage.readBytes(survived.remoteSnapshot!)),
-      'local A',
-      reason: 'reopening must show what is on the server now',
-    );
-    expect(await vault.storage.readText('notes/live.typ'), 'local C');
-    expect(utf8.decode(remote['notes/live.typ']!.bytes), 'local A');
-  });
+      // What matters is that nothing was silently discarded: the record survives
+      // so the choice can be made again against what is actually there now, and
+      // neither side was written behind the user's back.
+      final survived = (await loadSyncConflicts(vault)).single;
+      expect(survived.id, conflict.id);
+      expect(
+        utf8.decode(await vault.storage.readBytes(survived.remoteSnapshot!)),
+        'local A',
+        reason: 'reopening must show what is on the server now',
+      );
+      expect(await vault.storage.readText('notes/live.typ'), 'local C');
+      expect(utf8.decode(remote['notes/live.typ']!.bytes), 'local A');
+    },
+  );
 
   test('an upload race over identical bytes is not a conflict', () async {
     // The remote moving between our read and our PUT is the case *most* likely
@@ -2445,49 +2517,59 @@ void main() {
     );
   });
 
-  test('a pending conflict does not stop the rest of the vault syncing', () async {
-    // The engine-level guarantee the background service now relies on. Its own
-    // blanket gate used to return before sync() was ever called, so one
-    // pending record stopped everything on the unattended path - and the
-    // repairs that would clear that record live inside sync(), behind the gate
-    // that was stopping it.
-    final remote = <String, _MutableRemoteFile>{
-      'notes/stuck.typ': _remoteText('remote stuck'),
-      'notes/fine.typ': _remoteText('remote fine'),
-    };
-    final server = await _mutableWebDavServer(remote);
-    final dir = await Directory.systemTemp.createTemp('tylog_pending_ok_');
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    await vault.storage.writeText('notes/stuck.typ', 'local stuck');
-    await createSyncConflict(
-      vault,
-      'notes/stuck.typ',
-      localBytes: utf8.encode('local stuck'),
-      remoteBytes: utf8.encode('remote stuck'),
-    );
+  test(
+    'a pending conflict does not stop the rest of the vault syncing',
+    () async {
+      // The engine-level guarantee the background service now relies on. Its own
+      // blanket gate used to return before sync() was ever called, so one
+      // pending record stopped everything on the unattended path - and the
+      // repairs that would clear that record live inside sync(), behind the gate
+      // that was stopping it.
+      final remote = <String, _MutableRemoteFile>{
+        'notes/stuck.typ': _remoteText('remote stuck'),
+        'notes/fine.typ': _remoteText('remote fine'),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_pending_ok_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/stuck.typ', 'local stuck');
+      await createSyncConflict(
+        vault,
+        'notes/stuck.typ',
+        localBytes: utf8.encode('local stuck'),
+        remoteBytes: utf8.encode('remote stuck'),
+      );
 
-    final result = await NextcloudSync(
-      _config(server),
-    ).sync(vault, trigger: 'background');
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, trigger: 'background');
 
-    // The unrelated file arrived...
-    expect(await vault.storage.readText('notes/fine.typ'), 'remote fine');
-    // ...and the conflicted path was left exactly as it was, for review.
-    expect(await vault.storage.readText('notes/stuck.typ'), 'local stuck');
-    expect(await loadSyncConflicts(vault), hasLength(1));
-    expect(result.skipped, greaterThan(0));
-  });
+      // The unrelated file arrived...
+      expect(await vault.storage.readText('notes/fine.typ'), 'remote fine');
+      // ...and the conflicted path was left exactly as it was, for review.
+      expect(await vault.storage.readText('notes/stuck.typ'), 'local stuck');
+      expect(await loadSyncConflicts(vault), hasLength(1));
+      expect(result.skipped, greaterThan(0));
+    },
+  );
 
   group('a moved remote is re-decided, not refused', () {
     // The record's etag is frozen at write time, so on a vault with a live
     // producer it goes stale constantly. Throwing on every mismatch made the
     // common case an error the user could do nothing about.
-    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote, SyncConflict conflict})>
+    Future<
+      ({
+        Vault vault,
+        HttpServer server,
+        Map<String, _MutableRemoteFile> remote,
+        SyncConflict conflict,
+      })
+    >
     setup({required String remoteAfter}) async {
       final remote = <String, _MutableRemoteFile>{
         'notes/live.typ': _remoteText('remote note'),
@@ -2524,42 +2606,45 @@ void main() {
       // anything the user was shown.
       final s = await setup(remoteAfter: 'remote note');
 
-      await NextcloudSync(_config(s.server)).resolveConflict(
-        s.vault,
-        s.conflict,
-        SyncConflictResolution.keepLocal,
-      );
+      await NextcloudSync(
+        _config(s.server),
+      ).resolveConflict(s.vault, s.conflict, SyncConflictResolution.keepLocal);
 
       expect(await loadSyncConflicts(s.vault), isEmpty);
       expect(utf8.decode(s.remote['notes/live.typ']!.bytes), 'local note');
     });
 
-    test('genuinely different bytes say so instead of failing vaguely', () async {
-      final s = await setup(remoteAfter: 'remote note, rewritten');
+    test(
+      'genuinely different bytes say so instead of failing vaguely',
+      () async {
+        final s = await setup(remoteAfter: 'remote note, rewritten');
 
-      await expectLater(
-        () => NextcloudSync(_config(s.server)).resolveConflict(
-          s.vault,
-          s.conflict,
-          SyncConflictResolution.keepLocal,
-        ),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            NextcloudSync.remoteMovedDuringResolve,
+        await expectLater(
+          () => NextcloudSync(_config(s.server)).resolveConflict(
+            s.vault,
+            s.conflict,
+            SyncConflictResolution.keepLocal,
           ),
-        ),
-      );
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              NextcloudSync.remoteMovedDuringResolve,
+            ),
+          ),
+        );
 
-      // The record survives, refreshed, so reopening shows the new version.
-      final refreshed = (await loadSyncConflicts(s.vault)).single;
-      expect(
-        utf8.decode(await s.vault.storage.readBytes(refreshed.remoteSnapshot!)),
-        'remote note, rewritten',
-        reason: 'the snapshot must hold what is actually on the server now',
-      );
-    });
+        // The record survives, refreshed, so reopening shows the new version.
+        final refreshed = (await loadSyncConflicts(s.vault)).single;
+        expect(
+          utf8.decode(
+            await s.vault.storage.readBytes(refreshed.remoteSnapshot!),
+          ),
+          'remote note, rewritten',
+          reason: 'the snapshot must hold what is actually on the server now',
+        );
+      },
+    );
   });
 
   test(
@@ -2664,85 +2749,71 @@ void main() {
     },
   );
 
-  test(
-    'resolveConflict probes one file instead of listing the tree',
-    () async {
-      final remote = <String, _MutableRemoteFile>{
-        'notes/live.typ': _MutableRemoteFile(
-          bytes: utf8.encode('remote note'),
-          etag: '"remote"',
-          modified: DateTime.now().toUtc(),
-        ),
-        for (var index = 0; index < 20; index++)
-          'notes/other$index.typ': _remoteText('other $index'),
-      };
-      final metrics = _WebDavMetrics();
-      final server = await _mutableWebDavServer(remote, metrics: metrics);
-      final dir = await Directory.systemTemp.createTemp(
-        'tylog_resolve_probe_',
-      );
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      final vault = Vault(dir);
-      await vault.ensureCreated();
-      await vault.storage.writeText('notes/live.typ', 'local text');
-      await createSyncConflict(
-        vault,
-        'notes/live.typ',
-        localBytes: utf8.encode('local text'),
-        remoteBytes: utf8.encode('remote note'),
-      );
-      final conflict = (await loadSyncConflicts(vault)).single;
-      metrics
-        ..depthZeroPropfinds = 0
-        ..depthInfinityPropfinds = 0;
+  test('resolveConflict probes one file instead of listing the tree', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'notes/live.typ': _MutableRemoteFile(
+        bytes: utf8.encode('remote note'),
+        etag: '"remote"',
+        modified: DateTime.now().toUtc(),
+      ),
+      for (var index = 0; index < 20; index++)
+        'notes/other$index.typ': _remoteText('other $index'),
+    };
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(remote, metrics: metrics);
+    final dir = await Directory.systemTemp.createTemp('tylog_resolve_probe_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/live.typ', 'local text');
+    await createSyncConflict(
+      vault,
+      'notes/live.typ',
+      localBytes: utf8.encode('local text'),
+      remoteBytes: utf8.encode('remote note'),
+    );
+    final conflict = (await loadSyncConflicts(vault)).single;
+    metrics
+      ..depthZeroPropfinds = 0
+      ..depthInfinityPropfinds = 0;
 
-      await NextcloudSync(
-        _config(server),
-      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+    await NextcloudSync(
+      _config(server),
+    ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
 
-      expect(metrics.depthInfinityPropfinds, 0);
-      expect(metrics.depthZeroPropfinds, 1);
-    },
-  );
+    expect(metrics.depthInfinityPropfinds, 0);
+    expect(metrics.depthZeroPropfinds, 1);
+  });
 
-  test(
-    'createSyncConflict replaces an existing unresolved record for the '
-    'same path instead of stacking',
-    () async {
-      final dir = await Directory.systemTemp.createTemp('tylog_dedupe_');
-      addTearDown(() => dir.delete(recursive: true));
-      final vault = Vault(dir);
-      await vault.ensureCreated();
+  test('createSyncConflict replaces an existing unresolved record for the '
+      'same path instead of stacking', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_dedupe_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
 
-      await createSyncConflict(
-        vault,
-        'notes/dupe.typ',
-        localBytes: utf8.encode('local v1'),
-        remoteBytes: utf8.encode('remote v1'),
-      );
-      await createSyncConflict(
-        vault,
-        'notes/dupe.typ',
-        localBytes: utf8.encode('local v2'),
-        remoteBytes: utf8.encode('remote v2'),
-      );
+    await createSyncConflict(
+      vault,
+      'notes/dupe.typ',
+      localBytes: utf8.encode('local v1'),
+      remoteBytes: utf8.encode('remote v1'),
+    );
+    await createSyncConflict(
+      vault,
+      'notes/dupe.typ',
+      localBytes: utf8.encode('local v2'),
+      remoteBytes: utf8.encode('remote v2'),
+    );
 
-      final conflicts = await loadSyncConflicts(vault);
-      expect(conflicts, hasLength(1));
-      final conflict = conflicts.single;
-      expect(
-        await vault.storage.readText(conflict.localSnapshot!),
-        'local v2',
-      );
-      expect(
-        await vault.storage.readText(conflict.remoteSnapshot!),
-        'remote v2',
-      );
-    },
-  );
+    final conflicts = await loadSyncConflicts(vault);
+    expect(conflicts, hasLength(1));
+    final conflict = conflicts.single;
+    expect(await vault.storage.readText(conflict.localSnapshot!), 'local v2');
+    expect(await vault.storage.readText(conflict.remoteSnapshot!), 'remote v2');
+  });
 
   test('concurrent conflict writes keep one record per path', () async {
     final dir = await Directory.systemTemp.createTemp(
@@ -2840,73 +2911,67 @@ void main() {
     },
   );
 
-  test(
-    'unresolved conflict record refreshes its etag when the remote changes '
-    'again, unblocking resolution',
-    () async {
-      final remote = <String, _MutableRemoteFile>{
-        'notes/deadlock.typ': _MutableRemoteFile(
-          bytes: utf8.encode('remote v1'),
-          etag: '"remote-1"',
-          modified: DateTime.now().toUtc(),
-        ),
-      };
-      final server = await _mutableWebDavServer(remote);
-      final dir = await Directory.systemTemp.createTemp('tylog_deadlock_');
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      final vault = Vault(dir);
-      await vault.ensureCreated();
-      await vault.storage.writeText('notes/deadlock.typ', 'local v1');
+  test('unresolved conflict record refreshes its etag when the remote changes '
+      'again, unblocking resolution', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'notes/deadlock.typ': _MutableRemoteFile(
+        bytes: utf8.encode('remote v1'),
+        etag: '"remote-1"',
+        modified: DateTime.now().toUtc(),
+      ),
+    };
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_deadlock_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/deadlock.typ', 'local v1');
 
-      // First sync: divergent content records a conflict with remoteEtag
-      // "remote-1".
-      await NextcloudSync(_config(server)).sync(vault);
-      var conflict = (await loadSyncConflicts(
-        vault,
-      )).singleWhere((item) => item.path == 'notes/deadlock.typ');
-      expect(conflict.remoteEtag, 'remote-1');
+    // First sync: divergent content records a conflict with remoteEtag
+    // "remote-1".
+    await NextcloudSync(_config(server)).sync(vault);
+    var conflict = (await loadSyncConflicts(
+      vault,
+    )).singleWhere((item) => item.path == 'notes/deadlock.typ');
+    expect(conflict.remoteEtag, 'remote-1');
 
-      // Another device edits the remote file again while the conflict sits
-      // unresolved; without a refresh, resolveConflict's guard would throw
-      // forever since the stored etag can never match again.
-      remote['notes/deadlock.typ'] = _MutableRemoteFile(
-        bytes: utf8.encode('remote v2'),
-        etag: '"remote-2"',
-        modified: DateTime.now().toUtc().add(const Duration(minutes: 1)),
-      );
+    // Another device edits the remote file again while the conflict sits
+    // unresolved; without a refresh, resolveConflict's guard would throw
+    // forever since the stored etag can never match again.
+    remote['notes/deadlock.typ'] = _MutableRemoteFile(
+      bytes: utf8.encode('remote v2'),
+      etag: '"remote-2"',
+      modified: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+    );
 
-      // Without an intervening sync, the guard still throws (unchanged).
-      await expectLater(
-        NextcloudSync(
-          _config(server),
-        ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
-        throwsA(isA<StateError>()),
-      );
-
-      // Running sync again must refresh the record in place (same path
-      // skipped as unresolved, but its etag/snapshot catch up).
-      await NextcloudSync(_config(server)).sync(vault);
-      conflict = (await loadSyncConflicts(
-        vault,
-      )).singleWhere((item) => item.path == 'notes/deadlock.typ');
-      expect(conflict.remoteEtag, 'remote-2');
-      expect(
-        await vault.storage.readText(conflict.remoteSnapshot!),
-        'remote v2',
-      );
-
-      await NextcloudSync(
+    // Without an intervening sync, the guard still throws (unchanged).
+    await expectLater(
+      NextcloudSync(
         _config(server),
-      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal),
+      throwsA(isA<StateError>()),
+    );
 
-      expect(await vault.storage.readText('notes/deadlock.typ'), 'local v1');
-      expect(utf8.decode(remote['notes/deadlock.typ']!.bytes), 'local v1');
-      expect(await loadSyncConflicts(vault), isEmpty);
-    },
-  );
+    // Running sync again must refresh the record in place (same path
+    // skipped as unresolved, but its etag/snapshot catch up).
+    await NextcloudSync(_config(server)).sync(vault);
+    conflict = (await loadSyncConflicts(
+      vault,
+    )).singleWhere((item) => item.path == 'notes/deadlock.typ');
+    expect(conflict.remoteEtag, 'remote-2');
+    expect(await vault.storage.readText(conflict.remoteSnapshot!), 'remote v2');
+
+    await NextcloudSync(
+      _config(server),
+    ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+
+    expect(await vault.storage.readText('notes/deadlock.typ'), 'local v1');
+    expect(utf8.decode(remote['notes/deadlock.typ']!.bytes), 'local v1');
+    expect(await loadSyncConflicts(vault), isEmpty);
+  });
 
   test(
     'local rename uses one conditional MOVE without retransferring',
@@ -3217,50 +3282,42 @@ void main() {
     },
   );
 
-  test(
-    'a genuinely changed file with a lowercase server checksum still '
-    'conflicts normally',
-    () async {
-      final remote = <String, _MutableRemoteFile>{
-        'daily/2026/07/note.typ': _MutableRemoteFile(
-          bytes: utf8.encode('remote version'),
-          etag: '"remote-1"',
-          modified: DateTime.utc(2026, 7, 1),
-        ),
-      };
-      final uploads = <Map<String, Object?>>[];
-      final server = await _mutableWebDavServer(
-        remote,
-        lowercaseChecksums: true,
-        uploads: uploads,
-      );
-      final dir = await Directory.systemTemp.createTemp(
-        'tylog_checksum_guard_',
-      );
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      final vault = Vault(dir);
-      await vault.ensureCreated();
-      await vault.storage.writeText(
-        'daily/2026/07/note.typ',
-        'local version',
-      );
+  test('a genuinely changed file with a lowercase server checksum still '
+      'conflicts normally', () async {
+    final remote = <String, _MutableRemoteFile>{
+      'daily/2026/07/note.typ': _MutableRemoteFile(
+        bytes: utf8.encode('remote version'),
+        etag: '"remote-1"',
+        modified: DateTime.utc(2026, 7, 1),
+      ),
+    };
+    final uploads = <Map<String, Object?>>[];
+    final server = await _mutableWebDavServer(
+      remote,
+      lowercaseChecksums: true,
+      uploads: uploads,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_checksum_guard_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await vault.storage.writeText('daily/2026/07/note.typ', 'local version');
 
-      final result = await NextcloudSync(_config(server)).sync(vault);
+    final result = await NextcloudSync(_config(server)).sync(vault);
 
-      expect(result.conflicts, greaterThanOrEqualTo(1));
-      expect(
-        uploads.where((upload) => upload['path'] == 'daily/2026/07/note.typ'),
-        isEmpty,
-      );
-      expect(
-        utf8.decode(remote['daily/2026/07/note.typ']!.bytes),
-        'remote version',
-      );
-    },
-  );
+    expect(result.conflicts, greaterThanOrEqualTo(1));
+    expect(
+      uploads.where((upload) => upload['path'] == 'daily/2026/07/note.typ'),
+      isEmpty,
+    );
+    expect(
+      utf8.decode(remote['daily/2026/07/note.typ']!.bytes),
+      'remote version',
+    );
+  });
 
   test(
     'a shortcut that falls through reuses its listing and defers the MKCOL',
@@ -3270,7 +3327,9 @@ void main() {
       };
       final metrics = _WebDavMetrics();
       final server = await _mutableWebDavServer(remote, metrics: metrics);
-      final dir = await Directory.systemTemp.createTemp('tylog_shortcut_reuse_');
+      final dir = await Directory.systemTemp.createTemp(
+        'tylog_shortcut_reuse_',
+      );
       final storage = _ListCountingStorage(dir);
       final vault = Vault.withStorage(storage);
       addTearDown(() async {
@@ -3351,7 +3410,9 @@ void main() {
       serveArchive: true,
       archiveChunkDelay: const Duration(milliseconds: 550),
     );
-    final dir = await Directory.systemTemp.createTemp('tylog_archive_progress_');
+    final dir = await Directory.systemTemp.createTemp(
+      'tylog_archive_progress_',
+    );
     final vault = Vault(dir);
     addTearDown(() async {
       await server.close(force: true);
@@ -3373,41 +3434,37 @@ void main() {
     expect(await vault.storage.readText('notes/cloud.typ'), 'cloud note');
   });
 
-  test(
-    '1602-file restore uses two PROPFINDs and one ZIP GET',
-    () async {
-      final remote = <String, _MutableRemoteFile>{
-        '_system/tylog.typ': _remoteText('helper'),
-        for (var i = 0; i < 1602; i++)
-          'articles/$i.typ': _remoteText('article $i'),
-      };
-      final metrics = _WebDavMetrics();
-      final server = await _mutableWebDavServer(
-        remote,
-        includeChecksums: true,
-        serveArchive: true,
-        metrics: metrics,
-      );
-      final dir = await Directory.systemTemp.createTemp('tylog_archive_');
-      final vault = Vault(dir);
-      addTearDown(() async {
-        await server.close(force: true);
-        await dir.delete(recursive: true);
-      });
-      await vault.ensureCreated();
+  test('1602-file restore uses two PROPFINDs and one ZIP GET', () async {
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      for (var i = 0; i < 1602; i++)
+        'articles/$i.typ': _remoteText('article $i'),
+    };
+    final metrics = _WebDavMetrics();
+    final server = await _mutableWebDavServer(
+      remote,
+      includeChecksums: true,
+      serveArchive: true,
+      metrics: metrics,
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_archive_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
 
-      final result = await NextcloudSync(
-        _config(server),
-      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
 
-      expect(result.downloaded, remote.length);
-      expect(metrics.propfinds, 2);
-      expect(metrics.archiveGets, 1);
-      expect(metrics.individualGets, 0);
-      expect(await vault.storage.readText('articles/1601.typ'), 'article 1601');
-    },
-    timeout: const Timeout(Duration(minutes: 2)),
-  );
+    expect(result.downloaded, remote.length);
+    expect(metrics.propfinds, 2);
+    expect(metrics.archiveGets, 1);
+    expect(metrics.individualGets, 0);
+    expect(await vault.storage.readText('articles/1601.typ'), 'article 1601');
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('unsupported ZIP restore falls back to individual transfers', () async {
     final remote = <String, _MutableRemoteFile>{
@@ -3495,7 +3552,9 @@ void main() {
   });
 
   group('pollIsUnchanged', () {
-    Future<({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})>
+    Future<
+      ({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})
+    >
     synced() async {
       final remote = <String, _MutableRemoteFile>{
         'notes/a.typ': _remoteText('note a'),
@@ -3519,10 +3578,9 @@ void main() {
       final s = await synced();
 
       expect(
-        await NextcloudSync(_config(s.server)).pollIsUnchanged(
-          s.vault,
-          dirty: false,
-        ),
+        await NextcloudSync(
+          _config(s.server),
+        ).pollIsUnchanged(s.vault, dirty: false),
         isTrue,
       );
     });
@@ -3532,10 +3590,9 @@ void main() {
       s.remote['notes/b.typ'] = _remoteText('note b');
 
       expect(
-        await NextcloudSync(_config(s.server)).pollIsUnchanged(
-          s.vault,
-          dirty: false,
-        ),
+        await NextcloudSync(
+          _config(s.server),
+        ).pollIsUnchanged(s.vault, dirty: false),
         isFalse,
       );
     });
@@ -3544,10 +3601,9 @@ void main() {
       final s = await synced();
 
       expect(
-        await NextcloudSync(_config(s.server)).pollIsUnchanged(
-          s.vault,
-          dirty: true,
-        ),
+        await NextcloudSync(
+          _config(s.server),
+        ).pollIsUnchanged(s.vault, dirty: true),
         isFalse,
       );
     });
@@ -3562,10 +3618,9 @@ void main() {
       );
 
       expect(
-        await NextcloudSync(_config(s.server)).pollIsUnchanged(
-          s.vault,
-          dirty: false,
-        ),
+        await NextcloudSync(
+          _config(s.server),
+        ).pollIsUnchanged(s.vault, dirty: false),
         isFalse,
       );
     });
@@ -3590,10 +3645,9 @@ void main() {
       await s.vault.storage.writeText('notes/a.typ', 'edited locally');
 
       expect(
-        await NextcloudSync(_config(s.server)).pollIsUnchanged(
-          s.vault,
-          dirty: false,
-        ),
+        await NextcloudSync(
+          _config(s.server),
+        ).pollIsUnchanged(s.vault, dirty: false),
         isTrue,
       );
 
@@ -3657,9 +3711,10 @@ class _SecondGranularityStorage extends LocalVaultStorage {
   Future<List<VaultStorageEntry>> list({
     String path = '',
     bool recursive = false,
-  }) async => (await super.list(path: path, recursive: recursive))
-      .map(_truncate)
-      .toList();
+  }) async => (await super.list(
+    path: path,
+    recursive: recursive,
+  )).map(_truncate).toList();
 }
 
 class _HashCountingStorage extends LocalVaultStorage {
@@ -3898,6 +3953,7 @@ String _collectionEtag(Map<String, _MutableRemoteFile> files) {
 
 Future<HttpServer> _mutableWebDavServer(
   Map<String, _MutableRemoteFile> files, {
+
   /// Fires just before a PUT is evaluated, so a test can move the remote
   /// between the client's read and its write — the ETag race itself.
   void Function(String path)? onBeforePut,
@@ -3940,9 +3996,7 @@ Future<HttpServer> _mutableWebDavServer(
       );
       if (interruptMkcolOnce && !mkcolInterrupted) {
         mkcolInterrupted = true;
-        final socket = await request.response.detachSocket(
-          writeHeaders: false,
-        );
+        final socket = await request.response.detachSocket(writeHeaders: false);
         socket.destroy();
         return;
       }

@@ -169,7 +169,8 @@ extension _PathSync on NextcloudSync {
       final current = after[entry.key]!;
       if (entry.value.length != current.length) return false;
       if (entry.value.etag != null && current.etag != null) {
-        if (NextcloudSync._normEtag(entry.value.etag) != NextcloudSync._normEtag(current.etag)) {
+        if (NextcloudSync._normEtag(entry.value.etag) !=
+            NextcloudSync._normEtag(current.etag)) {
           return false;
         }
       } else if (entry.value.modified != current.modified) {
@@ -282,7 +283,8 @@ extension _PathSync on NextcloudSync {
         ? remoteExists
         : !remoteExists ||
               (previous.remoteEtag != null && remoteFile.etag != null
-                  ? NextcloudSync._normEtag(remoteFile.etag) != NextcloudSync._normEtag(previous.remoteEtag)
+                  ? NextcloudSync._normEtag(remoteFile.etag) !=
+                        NextcloudSync._normEtag(previous.remoteEtag)
                   : _isChanged(remoteTime, previous.remoteMillis));
     var action = SyncAction.skip;
     DateTime? uploadedRemoteTime;
@@ -569,33 +571,64 @@ extension _PathSync on NextcloudSync {
       // Android folder is authoritative, so a missing remote is restored.
     } else if (remoteExists &&
         (!localExists || (remoteChanged && !localChanged))) {
-      action = SyncAction.download;
-      final download = await _downloadStorage(
-        path,
-        vault.storage,
-        protectNonEmpty: true,
-        archive: archive,
-        remoteFile: remoteFile,
-      );
-      observedRemoteEtag = download.etag;
-      downloadedHash = download.localSha256;
-      if (download.protected) {
-        action = SyncAction.upload;
-        await snapshotForUpload();
-        uploadedRemoteEtag = await _uploadStorage(
+      // A cached local listing can miss writes made by other apps (same size
+      // and mtime seen), so before downloading verify the real file hasn't
+      // changed locally. See the accompanying test 'a download never
+      // overwrites a local file changed outside the app'.
+      if (localExists &&
+          previous?.localSha256 != null &&
+          await vault.storage.hash(path) != previous!.localSha256) {
+        final spurious = await _spuriousConflictReason(
+          vault,
+          path,
+          await vault.storage.readBytes(path),
+          remoteFile,
+        );
+        if (spurious != null) {
+          skipped++;
+          repaired++;
+          reason = spurious;
+        } else {
+          action = SyncAction.conflict;
+          await _storeConflict(
+            vault,
+            path,
+            localExists: true,
+            remoteExists: true,
+            remoteFile: remoteFile,
+          );
+          conflicts++;
+          reason = 'local-changed-outside-app';
+        }
+      } else {
+        action = SyncAction.download;
+        final download = await _downloadStorage(
           path,
           vault.storage,
-          localHash: localHash!,
-          remote: remoteFile,
-          bytes: localBytes,
+          protectNonEmpty: true,
+          archive: archive,
+          remoteFile: remoteFile,
         );
-        uploadedRemoteTime = DateTime.now().toUtc();
-        uploaded++;
-        repaired++;
-        reason = 'remote-empty-repaired';
-      } else {
-        downloaded++;
-        reason = localExists ? 'remote-newer' : 'local-missing';
+        observedRemoteEtag = download.etag;
+        downloadedHash = download.localSha256;
+        if (download.protected) {
+          action = SyncAction.upload;
+          await snapshotForUpload();
+          uploadedRemoteEtag = await _uploadStorage(
+            path,
+            vault.storage,
+            localHash: localHash!,
+            remote: remoteFile,
+            bytes: localBytes,
+          );
+          uploadedRemoteTime = DateTime.now().toUtc();
+          uploaded++;
+          repaired++;
+          reason = 'remote-empty-repaired';
+        } else {
+          downloaded++;
+          reason = localExists ? 'remote-newer' : 'local-missing';
+        }
       }
     } else if (allowLocalDeletes &&
         localExists &&
@@ -778,7 +811,8 @@ extension _PathSync on NextcloudSync {
           oldRemote != null &&
           entry.value.remoteEtag != null &&
           oldRemote.etag != null &&
-          NextcloudSync._normEtag(entry.value.remoteEtag) == NextcloudSync._normEtag(oldRemote.etag);
+          NextcloudSync._normEtag(entry.value.remoteEtag) ==
+              NextcloudSync._normEtag(oldRemote.etag);
     }).toList();
     final localOnly = local.entries
         .where(
