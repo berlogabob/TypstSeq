@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
 
@@ -177,7 +178,99 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });
+
+  testWidgets('PDF reader opens a password-protected PDF after retries', (
+    tester,
+  ) async {
+    final directory = await Directory.systemTemp.createTemp('tylog-password-');
+    final database = await openDatabaseWithFile(
+      File('${directory.path}/reader.sqlite'),
+    );
+    addTearDown(() async {
+      await database.close();
+      await directory.delete(recursive: true);
+    });
+    final bytes = _passwordPdf;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PdfReaderScreen(
+          bytes: bytes,
+          path: 'research/password-protected.pdf',
+          database: database,
+        ),
+      ),
+    );
+    await _pumpUntil(
+      tester,
+      () async =>
+          find.byKey(const Key('pdf-password-field')).evaluate().isNotEmpty,
+    );
+    _typePassword(tester, 'wrong');
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wrong password, try again'), findsOneWidget);
+    _typePassword(tester, 'tylog');
+    await tester.tap(find.text('Open'));
+    await _pumpUntil(tester, () async {
+      final viewer = find.byType(PdfViewer);
+      return viewer.evaluate().isNotEmpty &&
+          (tester.widget<PdfViewer>(viewer).controller?.isReady ?? false);
+    });
+    final text = await tester
+        .widget<PdfViewer>(find.byType(PdfViewer))
+        .controller!
+        .document
+        .pages
+        .first
+        .loadStructuredText();
+    expect(text.fullText, contains('Password research'));
+  });
+
+  testWidgets('cancelling a password prompt does not write a source version', (
+    tester,
+  ) async {
+    final directory = await Directory.systemTemp.createTemp(
+      'tylog-password-cancel-',
+    );
+    final database = await openDatabaseWithFile(
+      File('${directory.path}/reader.sqlite'),
+    );
+    addTearDown(() async {
+      await database.close();
+      await directory.delete(recursive: true);
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PdfReaderScreen(
+          bytes: _passwordPdf,
+          path: 'research/password-protected-cancel.pdf',
+          database: database,
+        ),
+      ),
+    );
+    await _pumpUntil(
+      tester,
+      () async =>
+          find.byKey(const Key('pdf-password-field')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.text('Cancel'));
+    await _pumpUntil(
+      tester,
+      () async =>
+          find.byKey(const Key('pdf-password-required')).evaluate().isNotEmpty,
+    );
+    expect(await database.select(database.sourceVersions).get(), isEmpty);
+  });
 }
+
+// Android keyboards ignore tester.enterText in this harness (see the P12
+// frame test), so write the dialog field's controller, which Open reads.
+void _typePassword(WidgetTester tester, String password) =>
+    tester
+            .widget<TextField>(find.byKey(const Key('pdf-password-field')))
+            .controller!
+            .text =
+        password;
 
 Future<void> _pumpUntil(
   WidgetTester tester,
@@ -259,3 +352,8 @@ Uint8List _vectorOnlyPdf() {
     ..write('%%EOF\n');
   return Uint8List.fromList(output.toString().codeUnits);
 }
+
+// RC4-128 PDF, user password 'tylog'; regenerate with tool/generate_password_pdf.py.
+final _passwordPdf = base64Decode(
+  'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMTAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0OCA+PgpzdHJlYW0K8seEpZzQGAGFh4mkYRiavY1OzpFucv/tXorPa07ufi/qHdXL627I5RSLv1yL7EyRCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCjYgMCBvYmoKPDwgL0ZpbHRlciAvU3RhbmRhcmQgL1YgMiAvTGVuZ3RoIDEyOCAvUiAzIC9PIDwwNjMzYTllY2UyNTkxZjk3NzkxOTE2ZWJlYTI1YmM4OGM5M2NlZTJiYmZlNjYyMTExMDBiYjc5Y2Y2Yzc2NDU3PiAvVSA8ZjJhMDAyYWU2YzE3MzVjMGM2ZjljYzM5YjJjYWZjZmMwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD4gL1AgLTQgPj4KZW5kb2JqCnhyZWYKMCA3CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzM5IDAwMDAwIG4gCjAwMDAwMDA0MDkgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA3IC9Sb290IDEgMCBSIC9FbmNyeXB0IDYgMCBSIC9JRCBbPDAxNzVmYWU0ZWEwOTZjOTkzZjUwNGU2ZmE0MGI4ZTgyPjwwMTc1ZmFlNGVhMDk2Yzk5M2Y1MDRlNmZhNDBiOGU4Mj5dID4+CnN0YXJ0eHJlZgo2MTYKJSVFT0YK',
+);
