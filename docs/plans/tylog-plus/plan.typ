@@ -23,7 +23,7 @@
 
 #callout(
   [
-    *Current state — 16 of 26 milestones complete.* Ten milestones remain open or partial: P03, P05, P12, P19–P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+    *Current state — 17 of 26 milestones complete.* Nine milestones remain open or partial: P03, P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
   ],
   title: "Status at a glance",
   tone: "info",
@@ -113,7 +113,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
   [P17], [Snapshot bootstrap and recovery], [DONE], [#link("evidence/P17/result.md")[Archive bootstrap, resume, and damaged-state rejection.]],
   [P18], [PDF reader and versioned extraction], [DONE], [#link("evidence/P18/result.md")[5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB.]],
   [P19], [Durable annotations and navigation], [OPEN], [#link("evidence/P19/result.md")[Reader and anchor flows pass on Mac/A24; real account annotation sync remains.]],
-  [P20], [Chunking and offline embeddings], [OPEN], [#link("evidence/P20/result.md")[Mac and A24 parity pass (cosine 1.000000); lean tokenizer; A24 250k + model: first 952 ms, warm p95 230 ms, peak PSS 736 MB. In-app indexer resume on device remains.]],
+  [P20], [Chunking and offline embeddings], [DONE], [#link("evidence/P20/result.md")[Mac+A24 query/passage parity 1.000000; A24 250k + model: first 952 ms, warm p95 230 ms, PSS 736 MB.]],
   [P21], [Hybrid retrieval and cited navigation], [OPEN], [#link("evidence/P21/result.md")[Semantic search wired in-app (download, incremental chunks, indexer, int8 search + exact rerank, note citations). On-device download-index-search-navigate run remains.]],
   [P22], [Evidence relations and bounded graph], [DONE], [#link("evidence/P22/result.md")[Real vault read-only, 100/100 valid per mode: A24 p95 46 ms, Mac p95 18 ms; note opens; manifests identical.]],
   [P23], [Complete research workflow], [OPEN], [#link("evidence/P23/result.md")[Host filtered retrieval-to-report path passes; native end-to-end workflow remains.]],

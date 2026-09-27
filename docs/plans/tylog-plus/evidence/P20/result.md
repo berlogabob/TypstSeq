@@ -117,3 +117,20 @@ the same path, loading the copy from SQLite in 2,000-row keyset pages of
 (id, vector) only and rebuilding at most once a minute while indexing.
 Decision (user, 2026-09-27): compact copy + exact rerank instead of
 sqlite-vec; chunking stays 800/120 (~97k chunks for the real vault).
+
+## Passage parity on both platforms (2026-09-27) — P20 DONE
+
+The P05 profile test now also embeds a fixed passage ("passage: " prefix) and
+compares it with a golden vector from the pinned ORT 1.30.0 reference runner.
+
+| Platform | Query cosine / max abs | Passage cosine / max abs |
+|---|---|---|
+| macOS profile | 1.000000 / 0.000058 | 1.000000 / 0.000076 |
+| A24 profile | 1.000000 / 0.000092 | 1.000000 / 0.000077 |
+
+All P20 close criteria now hold: passage and query parity (≥0.999, ≤0.02) on
+both platforms; deterministic resume (A24 durable resume accepted in P05 plus
+the host indexer tests for single flight, cancellation and a permanently
+failing chunk); semantic query + top 20 on the A24 at 952 ms first and 230 ms
+warm p95 (≤6 s / ≤3 s); and peak PSS 718,752 KiB (736 MB ≤750 MB) with the
+model resident and 250k vectors searched.
