@@ -203,3 +203,21 @@ after. Raw samples: [a24-private-graph-100-samples.json](a24-private-graph-100-s
 
 A24 passes the 500 ms p95 gate. The macOS 100-sample run is still required
 and needs an idle, unlocked Mac (the app must stay foreground).
+
+## macOS real-vault graph gate (2026-09-27) — P22 DONE
+
+Same bounded harness, macOS profile build (M4 Pro), verified backup vault
+(6,298 notes) read through the write-rejecting adapter, app kept in front:
+
+| Mode | Valid samples | p50 | p95 | max |
+|---|---:|---:|---:|---:|
+| Concept map | 100/100 | 16.9 ms | **17.7 ms** | 20.0 ms |
+| All files | 100/100 | 15.4 ms | **15.9 ms** | 87.7 ms |
+
+Node selection opened the intended note with its text read back, zero vault
+write/delete attempts, and the backup's 11,826-file SHA-256 manifest is
+byte-identical before and after. Raw samples:
+[mac-private-graph-100-samples.json](mac-private-graph-100-samples.json).
+With the A24 result above, every platform/mode has 100 valid samples under the
+500 ms p95 gate; SVG export stays covered by the host export tests and the
+native share run in `make verify` after the graph-cache change. P22 closes.

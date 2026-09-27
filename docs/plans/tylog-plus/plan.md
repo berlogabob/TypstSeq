@@ -3,7 +3,7 @@
 > **Markdown reading copy — updated 2026-09-26.** The canonical plan is [`plan.typ`](plan.typ); update it first and keep this copy aligned. [`plan.pdf`](plan.pdf) is the reader version. This is one plan with multiple formats, not a second tracker.
 
 **Owner:** Project coordinator · **Scope:** P01–P26  
-**Current state:** 15 of 26 milestones complete. Eleven remain open or partial: P03, P05, P12, and P19–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+**Current state:** 16 of 26 milestones complete. Ten remain open or partial: P03, P05, P12, P19–P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
 
 ## How to use this plan
 
@@ -71,7 +71,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P19 | Durable annotations and navigation | OPEN | [Reader and anchor flows pass on Mac/A24; real account annotation sync remains](evidence/P19/result.md). |
 | P20 | Chunking and offline embeddings | OPEN | [Mac and A24 parity pass (cosine 1.000000); lean tokenizer; A24 250k + model: first 952 ms, warm p95 230 ms, peak PSS 736 MB. In-app indexer resume on device remains](evidence/P20/result.md). |
 | P21 | Hybrid retrieval and cited navigation | OPEN | [Semantic search wired in-app (download, incremental chunks, indexer, int8 search + exact rerank, note citations). On-device download-index-search-navigate run remains](evidence/P21/result.md). |
-| P22 | Evidence relations and bounded graph | OPEN | [A24 real vault passes (p95 46 ms both modes, 100/100 valid). macOS 100-sample run remains (needs idle, unlocked Mac)](evidence/P22/result.md). |
+| P22 | Evidence relations and bounded graph | DONE | [Real vault read-only, 100/100 valid per mode: A24 p95 46 ms, Mac p95 18 ms; note opens; manifests identical](evidence/P22/result.md). |
 | P23 | Complete research workflow | OPEN | [Host filtered retrieval-to-report path passes; native end-to-end workflow remains](evidence/P23/result.md). |
 | P24 | Migration rehearsal and integrated failures | OPEN | [Host failure matrix and isolated A24 process-death test pass; real-account/release rehearsal remains](evidence/P24/result.md). |
 | P25 | Production migration and release acceptance | OPEN | [macOS universal release and Android profile artifacts build; real vault/account release gate remains](evidence/P25/result.md). |
