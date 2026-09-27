@@ -611,3 +611,27 @@ laying out the growing paragraph itself (~10 ms for ~1k chars on this device).
 Both plain and formatted gates therefore need the bounded-layout (P12k)
 change; no cheaper widget-level fix remains. The device refresh setting was
 restored (`min_refresh_rate=0.0`) after the pinned runs.
+
+### Plain-editor frame attribution on A24 (2026-09-27)
+
+`P12_TRACE=true` now also works for `p12_virtual_plain_frame_native_test`
+(build/layout profiling inside `binding.traceAction`). 10 s traced run, 1,024-char
+active row, 31 edit frames (means include profiling overhead):
+
+| Phase | Mean per edit frame |
+|---|---:|
+| BUILD | 1.1 ms |
+| LAYOUT (of which `RenderEditable` 3.8 ms) | 4.4 ms |
+| SEMANTICS | 2.6 ms |
+| PAINT + COMPOSITING | 1.6 ms |
+| Raster (`GPURasterizer::Draw`, raster thread) | 4.2 ms |
+
+Semantics is enabled by the engine on this phone (`platformDispatcher.semanticsEnabled=true`).
+The user-installed RustDesk input service is an accessibility service; with it
+temporarily disabled (user-approved, restored immediately after) a 20 s smoke
+still built semantics (2.6 ms/frame) and measured build p95 11.6 ms at 90 Hz
+(10.8% over budget), so another system service also turns semantics on. This is
+the device's real operating condition. Conclusion: the active-row cost is the
+paragraph's own layout plus semantics; a bounded window removes whole-document
+layout (formatted editor, ~75 ms) but cannot remove per-paragraph cost. P12k
+proceeds (user decision 2026-09-27) with the gate re-measured afterwards.

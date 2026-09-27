@@ -1,6 +1,7 @@
 import 'dart:ui' show FramePhase;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show debugProfileLayoutsEnabled;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -14,7 +15,7 @@ import 'support/editor_frame_metrics.dart';
 const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('P12 production long-note editor five-minute frame gate', (
     tester,
@@ -84,21 +85,36 @@ void main() {
     final fullGate = durationSeconds >= 300;
     final startedAt = DateTime.now();
     final deadline = startedAt.add(Duration(seconds: durationSeconds));
-    while (DateTime.now().isBefore(deadline)) {
-      refreshRates.add(display.display.refreshRate);
-      // Drive the mounted row controller and its production callback.
-      // Platform text-input injection is ignored for this many-row fixture
-      // by some Android keyboards, producing a false idle-frame pass.
-      final character = edits % 5 == 4 ? ' ' : 'x';
-      final text = '${field.text}$character';
-      field.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
-      tester.widget<TextField>(lastField).onChanged!(text);
-      edits++;
-      await tester.pump(const Duration(milliseconds: 250));
-      await Future<void>.delayed(const Duration(milliseconds: 1));
+    Future<void> editWorkload() async {
+      while (DateTime.now().isBefore(deadline)) {
+        refreshRates.add(display.display.refreshRate);
+        // Drive the mounted row controller and its production callback.
+        // Platform text-input injection is ignored for this many-row fixture
+        // by some Android keyboards, producing a false idle-frame pass.
+        final character = edits % 5 == 4 ? ' ' : 'x';
+        final text = '${field.text}$character';
+        field.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        tester.widget<TextField>(lastField).onChanged!(text);
+        edits++;
+        await tester.pump(const Duration(milliseconds: 250));
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    if (const bool.fromEnvironment('P12_TRACE')) {
+      debugProfileLayoutsEnabled = true;
+      debugProfileBuildsEnabled = true;
+      try {
+        await binding.traceAction(editWorkload, reportKey: 'p12_plain_trace');
+      } finally {
+        debugProfileLayoutsEnabled = false;
+        debugProfileBuildsEnabled = false;
+      }
+    } else {
+      await editWorkload();
     }
     await Future<void>.delayed(const Duration(milliseconds: 350));
     SchedulerBinding.instance.removeTimingsCallback(onTimings);
