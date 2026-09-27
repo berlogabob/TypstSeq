@@ -827,16 +827,50 @@ class TyLogEditingController extends TextEditingController {
     tappable: tappable,
   );
 
+  /// Spans for blocks [first]..[last] only, without the gap after [last]:
+  /// exactly `text.substring(blockRanges[first].start, blockRanges[last].end)`
+  /// (the bounded editing window, P12k).
+  TextSpan windowTextSpan(
+    BuildContext context,
+    TextStyle? style, {
+    required int first,
+    required int last,
+    required bool withComposing,
+  }) => _textSpan(
+    context,
+    style,
+    withComposing: withComposing,
+    firstBlock: first,
+    lastBlock: last,
+  );
+
+  /// One block rendered exactly as in the editor (same chips and widths, so
+  /// offsets match), including the gap after it, for the static regions
+  /// around the editing window.
+  TextSpan blockReadSpan(BuildContext context, int index, {TextStyle? style}) =>
+      _textSpan(
+        context,
+        style,
+        withComposing: false,
+        firstBlock: index,
+        lastBlock: index,
+        trailingGap: true,
+      );
+
   TextSpan _textSpan(
     BuildContext context,
     TextStyle? style, {
     required bool withComposing,
     bool interactive = true,
     bool tappable = false,
+    int firstBlock = 0,
+    int? lastBlock,
+    bool trailingGap = false,
   }) {
     final children = <InlineSpan>[];
-    var global = 0;
-    for (var i = 0; i < document.blocks.length; i++) {
+    final last = lastBlock ?? document.blocks.length - 1;
+    var global = firstBlock == 0 ? 0 : document.blockRanges[firstBlock].start;
+    for (var i = firstBlock; i <= last; i++) {
       final block = document.blocks[i];
       if (block.isProtected) {
         children.add(
@@ -982,7 +1016,9 @@ class TyLogEditingController extends TextEditingController {
       // Must be the same gap document.visibleText used: the span's plain text
       // has to stay byte-identical to value.text or the TextField's caret and
       // selection geometry desync from the model.
-      final gap = document.gapAfter(i);
+      final gap = i < last || trailingGap || lastBlock == null
+          ? document.gapAfter(i)
+          : '';
       if (gap.isNotEmpty) {
         children.add(TextSpan(text: gap, style: style));
         global += gap.length;

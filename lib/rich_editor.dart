@@ -23,6 +23,7 @@ export 'editor_autocomplete.dart'
 part 'rich_editor/document_model.dart';
 part 'rich_editor/editing_controller.dart';
 part 'rich_editor/editor_widgets.dart';
+part 'rich_editor/window_controller.dart';
 
 bool shouldUseVirtualPlainEditor(TyLogEditingController controller) {
   final document = controller.document;

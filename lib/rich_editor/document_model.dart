@@ -318,6 +318,11 @@ class TyLogDocument {
     return RegExp(r'\n[ \t]*\n').hasMatch(separator) ? '\n\n' : '\n';
   }
 
+  /// Visible-text offsets of each block, excluding the gap after it.
+  List<({int start, int end})> get blockRanges => [
+    for (final range in _ranges) (start: range.start, end: range.end),
+  ];
+
   List<_BlockRange> get _ranges {
     final result = <_BlockRange>[];
     var cursor = 0;
