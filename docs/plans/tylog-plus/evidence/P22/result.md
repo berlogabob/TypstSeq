@@ -175,3 +175,31 @@ assertion, discards samples unless lifecycle, mode, selected node, graph
 bounds, and settled-frame checks all pass, and reports valid count, p50, p95,
 and max from frame timings through the first settled frame. Device numbers are
 pending a permitted profile run.
+
+## A24 real-vault graph gate (2026-09-27)
+
+Harness fix: Codex's first version awaited `binding.endOfFrame`, which never
+completes when the window cannot produce frames, so Mac runs hung. Sampling
+now fails fast unless lifecycle is `resumed`, times each switch by wall clock
+from the menu selection to the first settled frame showing the mode (graph
+visible, no spinner, no scheduled frame, selected node, 200/500 bounds), and
+caps each frame wait at 5 s (timeouts are invalid samples).
+
+Android: `P22_HANDSHAKE=true` makes the `.profiletest` app create its external
+dir; the host pushes a read-only copy of the verified backup vault. A24 profile
+build, 6,298 notes, index scan 21.2 s (reported separately):
+
+| Mode | Valid samples | p50 | p95 | max |
+|---|---:|---:|---:|---:|
+| Concept map | 100/100 | 30.5 ms | **45.7 ms** | 48.1 ms |
+| All files | 100/100 | 34.6 ms | **46.3 ms** | 166.3 ms |
+
+The All files maximum is the first, uncached switch; later switches in the
+same index revision reuse the per-mode graph cache (6cfe660). Graph bounds
+200 nodes / 458 edges; selecting a node and tapping Open navigated to that note
+with its text read back; zero vault write/delete attempts. The Mac source
+backup's full SHA-256 manifest (11,826 files) is byte-identical before and
+after. Raw samples: [a24-private-graph-100-samples.json](a24-private-graph-100-samples.json).
+
+A24 passes the 500 ms p95 gate. The macOS 100-sample run is still required
+and needs an idle, unlocked Mac (the app must stay foreground).
