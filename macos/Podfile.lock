@@ -56,7 +56,7 @@ SPEC CHECKSUMS:
   flutter_local_notifications: 1fc7ffb10a83d6a2eeeeddb152d43f1944b0aad0
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_timezone: d272288c69082ad571630e0d17140b3d6b93dc0c
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
   pdfium_flutter: e5a6e881af0b182d5b0465ebad23a8a20caa28d4
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   typst_flutter: a85b5f6014f54a1f7eedda15caf33dbf9a719cdd

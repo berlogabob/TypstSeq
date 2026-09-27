@@ -15,6 +15,10 @@ analyzer:
     - packages/tylog_core/test/**
     - packages/typst_flutter/.native-build*/**
     - packages/typst_flutter/rust/target/**
+    - android/**
+    - ios/**
+    - macos/**
+    - linux/**
 
 linter:
   # The lint rules applied to this project can be customized in the
