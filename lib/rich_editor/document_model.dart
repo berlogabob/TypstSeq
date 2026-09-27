@@ -298,11 +298,10 @@ class TyLogDocument {
     blocks: blocks.map((block) => block.copy()).toList(),
   );
 
-  String get visibleText =>
-      [
-        for (var i = 0; i < blocks.length; i++)
-          '${blocks[i].visibleText}${gapAfter(i)}',
-      ].join();
+  String get visibleText => [
+    for (var i = 0; i < blocks.length; i++)
+      '${blocks[i].visibleText}${gapAfter(i)}',
+  ].join();
 
   /// What separates block [i] from the next one *on screen*.
   ///
@@ -732,9 +731,9 @@ class TyLogDocument {
           line[1].code == 32) {
         line.removeRange(0, 2);
       } else if (from == TyLogBlockStyle.numberedList) {
-        final match = RegExp(r'^\d+\.\s').matchAsPrefix(
-          String.fromCharCodes(line.map((unit) => unit.code)),
-        );
+        final match = RegExp(
+          r'^\d+\.\s',
+        ).matchAsPrefix(String.fromCharCodes(line.map((unit) => unit.code)));
         if (match != null) line.removeRange(0, match.end);
       } else if (from == TyLogBlockStyle.taskLine &&
           line.length >= 2 &&
@@ -826,10 +825,7 @@ class TyLogDocument {
     final count = replacements.length;
     final isTask = replacements.last.style == TyLogBlockStyle.taskLine;
     if (blocks.isEmpty) {
-      blocks = [
-        ...replacements,
-        _newParagraph('', count, separator: ''),
-      ];
+      blocks = [...replacements, _newParagraph('', count, separator: '')];
       return isTask ? _ranges[count - 1].end : 3;
     }
     replace(selection.start, selection.end, '');

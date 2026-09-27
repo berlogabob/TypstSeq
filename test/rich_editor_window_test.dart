@@ -45,8 +45,8 @@ void main() {
     addTearDown(main.dispose);
     final window = TyLogWindowController(main);
     addTearDown(window.dispose);
-    expect(window.last, main.document.blocks.length - 1);
-    expect(window.last - window.first, lessThanOrEqualTo(8));
+    expect(window.end, main.text.length);
+    expect('\n'.allMatches(window.text).length, lessThanOrEqualTo(20));
     expect(window.text, main.text.substring(window.start, window.end));
     expect(window.text.length, lessThan(main.text.length ~/ 4));
   });
@@ -101,8 +101,8 @@ void main() {
     main.selection = TextSelection.collapsed(
       offset: main.document.blockRanges[2].start,
     );
-    expect(window.first, 0);
-    expect(window.last, lessThan(10));
+    expect(window.start, 0);
+    expect(window.end, lessThan(main.text.length ~/ 2));
     expect(window.windowRevision.value, greaterThan(revisions));
     expect(window.selection.baseOffset, main.selection.baseOffset);
   });
@@ -113,7 +113,7 @@ void main() {
     final window = TyLogWindowController(main);
     addTearDown(window.dispose);
     main.selection = TextSelection.collapsed(offset: main.text.length);
-    final (first, last) = (window.first, window.last);
+    final (start, end) = (window.start, window.end);
     final value = window.value;
     final at = value.selection.baseOffset;
     window.value = TextEditingValue(
@@ -128,7 +128,8 @@ void main() {
     main.value = main.value.copyWith(
       selection: const TextSelection.collapsed(offset: 0),
     );
-    expect((window.first, window.last), (first, last));
+    expect(window.start, start);
+    expect(window.end, greaterThanOrEqualTo(end));
   });
 
   test('a selection spanning the document expands the window', () {
@@ -140,8 +141,8 @@ void main() {
       baseOffset: 0,
       extentOffset: main.text.length,
     );
-    expect(window.first, 0);
-    expect(window.last, main.document.blocks.length - 1);
+    expect(window.start, 0);
+    expect(window.end, main.text.length);
     expect(window.text, main.text);
   });
 
@@ -157,5 +158,43 @@ void main() {
     main.undo();
     expect(main.text, before);
     expect(window.text, main.text.substring(window.start, window.end));
+  });
+
+  test('one long paragraph is windowed by lines, not whole', () {
+    final lines = List<String>.generate(900, (i) => 'Line $i of one paragraph');
+    final main = _main('$_header#strong[Formatted] start\n${lines.join('\n')}');
+    addTearDown(main.dispose);
+    expect(main.document.blocks.length, lessThanOrEqualTo(2));
+    main.selection = TextSelection.collapsed(offset: main.text.length);
+    final window = TyLogWindowController(main);
+    addTearDown(window.dispose);
+    expect(window.text.length, lessThan(main.text.length ~/ 20));
+    final direct = _main(
+      '$_header#strong[Formatted] start\n${lines.join('\n')}',
+    );
+    addTearDown(direct.dispose);
+    direct.selection = TextSelection.collapsed(offset: direct.text.length);
+    for (final insert in ['\nframe-1', ' more', '\n\nnew block']) {
+      _type(window, insert);
+      _type(direct, insert);
+    }
+    expect(main.document.toSource(), direct.document.toSource());
+  });
+
+  test('appending at the end keeps the window bounded', () {
+    final main = _main(_doc(20));
+    addTearDown(main.dispose);
+    main.selection = TextSelection.collapsed(offset: main.text.length);
+    final window = TyLogWindowController(main);
+    addTearDown(window.dispose);
+    for (var i = 0; i < 200; i++) {
+      final text = '${main.text}\nframe-$i';
+      main.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+    expect('\n'.allMatches(window.text).length, lessThanOrEqualTo(20));
+    expect(window.end, main.text.length);
   });
 }

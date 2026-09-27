@@ -109,10 +109,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   int _mentionQueryToken = 0;
   final GlobalKey _headingButtonKey = GlobalKey();
   final GlobalKey _highlightButtonKey = GlobalKey();
+  TyLogWindowController? _window;
 
   @override
   void initState() {
     super.initState();
+    if (debugEnableEditorWindow) {
+      _window = TyLogWindowController(widget.controller);
+    }
     focusNode = FocusNode(onKeyEvent: _handleKey);
     focusNode.addListener(_focusChanged);
     if (kEnableInlineAutocomplete) {
@@ -462,7 +466,18 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   @override
+  void didUpdateWidget(TyLogRichEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_window != null &&
+        !identical(oldWidget.controller, widget.controller)) {
+      _window!.dispose();
+      _window = TyLogWindowController(widget.controller);
+    }
+  }
+
+  @override
   void dispose() {
+    _window?.dispose();
     _debounce?.cancel();
     _removeOverlay();
     if (kEnableInlineAutocomplete) {
@@ -471,6 +486,193 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     focusNode.removeListener(_focusChanged);
     focusNode.dispose();
     super.dispose();
+  }
+
+  void _selectAll(EditableTextState state) {
+    final window = _window;
+    if (window == null) {
+      state.selectAll(SelectionChangedCause.toolbar);
+      return;
+    }
+    // The field holds only a window: select the whole document instead.
+    widget.controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: widget.controller.text.length,
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    TextStyle? textStyle, {
+    required bool expands,
+  }) {
+    return TextField(
+      key: const Key('rich-journal-editor'),
+      controller: controller,
+      focusNode: focusNode,
+      expands: expands,
+      minLines: null,
+      maxLines: null,
+      textAlignVertical: TextAlignVertical.top,
+      style: textStyle,
+      // Without this, TextField forces every line box to the strut
+      // height and tall WidgetSpans (inline images) paint over the
+      // neighbouring lines; non-forced strut keeps it as a minimum.
+      strutStyle: textStyle == null
+          ? null
+          : StrutStyle.fromTextStyle(textStyle, forceStrutHeight: false),
+      decoration: expands
+          ? const InputDecoration(
+              hintText: 'Start writing…',
+              contentPadding: EdgeInsets.all(18),
+            )
+          : InputDecoration.collapsed(
+              hintText: widget.controller.text.isEmpty
+                  ? 'Start writing…'
+                  : null,
+            ),
+      onTap: () => widget.controller.handleEditorTap(),
+      onTapOutside: (_) => focusNode.unfocus(),
+      contextMenuBuilder: (context, state) => TextFieldTapRegion(
+        child: AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: state.contextMenuAnchors,
+          buttonItems: [
+            if (!widget.controller.selection.isCollapsed)
+              ContextMenuButtonItem(
+                type: ContextMenuButtonType.copy,
+                onPressed: () {
+                  state.hideToolbar();
+                  widget.controller.copySelection();
+                },
+              ),
+            if (!widget.controller.selection.isCollapsed)
+              ContextMenuButtonItem(
+                type: ContextMenuButtonType.cut,
+                onPressed: () {
+                  state.hideToolbar();
+                  widget.controller.cutSelection();
+                },
+              ),
+            ContextMenuButtonItem(
+              type: ContextMenuButtonType.paste,
+              onPressed: () {
+                state.hideToolbar();
+                widget.controller.paste();
+              },
+            ),
+            ContextMenuButtonItem(
+              type: ContextMenuButtonType.selectAll,
+              onPressed: () {
+                _selectAll(state);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Static text above and below a bounded editing window (P12k): 20-line
+  /// chunks laid out once; only the window's lines are re-laid out per edit.
+  Widget _windowedField(TextStyle? textStyle) {
+    final window = _window!;
+    final strut = textStyle == null
+        ? null
+        : StrutStyle.fromTextStyle(textStyle, forceStrutHeight: false);
+    Widget chunk(BuildContext context, int start, int end) => _StaticChunk(
+      span: widget.controller.rangeSpan(
+        context,
+        textStyle,
+        start: start,
+        end: end,
+        withComposing: false,
+      ),
+      strutStyle: strut,
+      onTapOffset: (offset) {
+        window.placeCaret((start + offset).clamp(start, end));
+        focusNode.requestFocus();
+      },
+    );
+    return Actions(
+      actions: {
+        // The field holds only a window: select-all means the document.
+        SelectAllTextIntent: CallbackAction<SelectAllTextIntent>(
+          onInvoke: (_) {
+            widget.controller.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: widget.controller.text.length,
+            );
+            return null;
+          },
+        ),
+      },
+      child: ValueListenableBuilder<int>(
+        valueListenable: window.windowRevision,
+        builder: (context, _, _) {
+          final text = widget.controller.text;
+          // Line starts of the chunks before the window, and of the chunks
+          // after it relative to window.end (stable while typing inside).
+          final before = _chunkStarts(text, 0, window.start);
+          final afterBase = window.end;
+          final after = afterBase < text.length
+              ? _chunkStarts(
+                  text,
+                  afterBase + 1,
+                  text.length,
+                ).map((offset) => offset - afterBase).toList()
+              : const <int>[];
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                sliver: SliverList.builder(
+                  itemCount: before.length,
+                  itemBuilder: (context, i) => chunk(
+                    context,
+                    before[i],
+                    // Drop the line break that ends each chunk: the next
+                    // widget starts on its own line anyway.
+                    (i + 1 < before.length ? before[i + 1] : window.start) - 1,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                sliver: SliverToBoxAdapter(
+                  child: _field(window, textStyle, expands: false),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                sliver: SliverList.builder(
+                  itemCount: after.length,
+                  itemBuilder: (context, i) {
+                    final base = window.end;
+                    final length = widget.controller.text.length;
+                    return chunk(
+                      context,
+                      base + after[i],
+                      i + 1 < after.length ? base + after[i + 1] - 1 : length,
+                    );
+                  },
+                ),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    window.placeCaret(widget.controller.text.length);
+                    focusNode.requestFocus();
+                  },
+                  child: const SizedBox(height: 18),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   RelativeRect _menuPositionBelow(BuildContext context, GlobalKey key) {
@@ -547,207 +749,149 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       context,
     ).textTheme.bodyLarge?.copyWith(height: 1.55);
     return Column(
-    children: [
-      Expanded(
-        child: CompositedTransformTarget(
-          link: _layerLink,
-          child: TextField(
-            key: const Key('rich-journal-editor'),
-            controller: widget.controller,
-            focusNode: focusNode,
-            expands: true,
-            minLines: null,
-            maxLines: null,
-            textAlignVertical: TextAlignVertical.top,
-            style: textStyle,
-            // Without this, TextField forces every line box to the strut
-            // height and tall WidgetSpans (inline images) paint over the
-            // neighbouring lines; non-forced strut keeps it as a minimum.
-            strutStyle: textStyle == null
-                ? null
-                : StrutStyle.fromTextStyle(
-                    textStyle,
-                    forceStrutHeight: false,
-                  ),
-            decoration: const InputDecoration(
-              hintText: 'Start writing…',
-              contentPadding: EdgeInsets.all(18),
-            ),
-            onTap: () => widget.controller.handleEditorTap(),
-            onTapOutside: (_) => focusNode.unfocus(),
-            contextMenuBuilder: (context, state) => TextFieldTapRegion(
-              child: AdaptiveTextSelectionToolbar.buttonItems(
-                anchors: state.contextMenuAnchors,
-                buttonItems: [
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.copy,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.copySelection();
-                      },
-                    ),
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.cut,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.cutSelection();
-                      },
-                    ),
-                  ContextMenuButtonItem(
-                    type: ContextMenuButtonType.paste,
-                    onPressed: () {
-                      state.hideToolbar();
-                      widget.controller.paste();
-                    },
-                  ),
-                  ContextMenuButtonItem(
-                    type: ContextMenuButtonType.selectAll,
-                    onPressed: () {
-                      state.selectAll(SelectionChangedCause.toolbar);
-                    },
-                  ),
-                ],
-              ),
-            ),
+      children: [
+        Expanded(
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: _window == null
+                ? _field(widget.controller, textStyle, expands: true)
+                : _windowedField(textStyle),
           ),
         ),
-      ),
-      // AnimatedSize slides the dock open/closed instead of snapping the
-      // text field by 48px on every focus change. In flow on purpose:
-      // overlaying would cover the last line of text.
-      AnimatedSize(
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-        alignment: Alignment.topCenter,
-        child: !focusNode.hasFocus
-            ? const SizedBox(width: double.infinity, height: 0)
-            : TextFieldTapRegion(
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 48,
-              child: ListenableBuilder(
-                listenable: widget.controller,
-                builder: (context, _) => ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    IconButton(
-                      tooltip: 'Undo',
-                      onPressed: widget.controller.canUndo
-                          ? widget.controller.undo
-                          : null,
-                      icon: const Icon(Icons.undo),
-                    ),
-                    IconButton(
-                      tooltip: 'Redo',
-                      onPressed: widget.controller.canRedo
-                          ? widget.controller.redo
-                          : null,
-                      icon: const Icon(Icons.redo),
-                    ),
-                    IconButton(
-                      key: _headingButtonKey,
-                      tooltip: 'Heading 1',
-                      onPressed: widget.controller.setHeading,
-                      onLongPress: () => _showHeadingMenu(context),
-                      icon: Text(
-                        'H1',
-                        style: Theme.of(context).textTheme.titleMedium,
+        // AnimatedSize slides the dock open/closed instead of snapping the
+        // text field by 48px on every focus change. In flow on purpose:
+        // overlaying would cover the last line of text.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: !focusNode.hasFocus
+              ? const SizedBox(width: double.infinity, height: 0)
+              : TextFieldTapRegion(
+                  child: SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      height: 48,
+                      child: ListenableBuilder(
+                        listenable: widget.controller,
+                        builder: (context, _) => ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            IconButton(
+                              tooltip: 'Undo',
+                              onPressed: widget.controller.canUndo
+                                  ? widget.controller.undo
+                                  : null,
+                              icon: const Icon(Icons.undo),
+                            ),
+                            IconButton(
+                              tooltip: 'Redo',
+                              onPressed: widget.controller.canRedo
+                                  ? widget.controller.redo
+                                  : null,
+                              icon: const Icon(Icons.redo),
+                            ),
+                            IconButton(
+                              key: _headingButtonKey,
+                              tooltip: 'Heading 1',
+                              onPressed: widget.controller.setHeading,
+                              onLongPress: () => _showHeadingMenu(context),
+                              icon: Text(
+                                'H1',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'More heading levels',
+                              onPressed: () => _showHeadingMenu(context),
+                              icon: const Icon(Icons.arrow_drop_down),
+                            ),
+                            // ponytail: two loops, not one — the highlight button sits
+                            // mid-row and carries a key + onLongPress. Order here is
+                            // the on-screen order; do not merge the loops.
+                            for (final (tip, press, icon)
+                                in <(String, VoidCallback, IconData)>[
+                                  (
+                                    'Bold',
+                                    widget.controller.toggleBold,
+                                    Icons.format_bold,
+                                  ),
+                                  (
+                                    'Italic',
+                                    widget.controller.toggleItalic,
+                                    Icons.format_italic,
+                                  ),
+                                  (
+                                    'Strikethrough',
+                                    widget.controller.toggleStrike,
+                                    Icons.format_strikethrough,
+                                  ),
+                                  (
+                                    'Underline',
+                                    widget.controller.toggleUnderline,
+                                    Icons.format_underline,
+                                  ),
+                                  (
+                                    'Monospace',
+                                    widget.controller.toggleMono,
+                                    Icons.code,
+                                  ),
+                                ])
+                              IconButton(
+                                tooltip: tip,
+                                onPressed: press,
+                                icon: Icon(icon),
+                              ),
+                            IconButton(
+                              key: _highlightButtonKey,
+                              tooltip: 'Highlight (long-press for colors)',
+                              onPressed: widget.controller.toggleHighlight,
+                              onLongPress: () => _showHighlightMenu(context),
+                              icon: const Icon(Icons.border_color),
+                            ),
+                            for (final (tip, press, icon)
+                                in <(String, VoidCallback, IconData)>[
+                                  (
+                                    'Bulleted list',
+                                    widget.controller.setBulletList,
+                                    Icons.format_list_bulleted,
+                                  ),
+                                  (
+                                    'Numbered list',
+                                    widget.controller.setNumberedList,
+                                    Icons.format_list_numbered,
+                                  ),
+                                  (
+                                    'Clear formatting',
+                                    widget.controller.clearFormatting,
+                                    Icons.format_clear,
+                                  ),
+                                ])
+                              IconButton(
+                                tooltip: tip,
+                                onPressed: press,
+                                icon: Icon(icon),
+                              ),
+                            IconButton(
+                              tooltip: 'Insert',
+                              onPressed: () async {
+                                try {
+                                  await widget.onInsert();
+                                } finally {
+                                  if (mounted) focusNode.requestFocus();
+                                }
+                              },
+                              icon: const Icon(Icons.add_circle_outline),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'More heading levels',
-                      onPressed: () => _showHeadingMenu(context),
-                      icon: const Icon(Icons.arrow_drop_down),
-                    ),
-                    // ponytail: two loops, not one — the highlight button sits
-                    // mid-row and carries a key + onLongPress. Order here is
-                    // the on-screen order; do not merge the loops.
-                    for (final (tip, press, icon)
-                        in <(String, VoidCallback, IconData)>[
-                          (
-                            'Bold',
-                            widget.controller.toggleBold,
-                            Icons.format_bold,
-                          ),
-                          (
-                            'Italic',
-                            widget.controller.toggleItalic,
-                            Icons.format_italic,
-                          ),
-                          (
-                            'Strikethrough',
-                            widget.controller.toggleStrike,
-                            Icons.format_strikethrough,
-                          ),
-                          (
-                            'Underline',
-                            widget.controller.toggleUnderline,
-                            Icons.format_underline,
-                          ),
-                          (
-                            'Monospace',
-                            widget.controller.toggleMono,
-                            Icons.code,
-                          ),
-                        ])
-                      IconButton(
-                        tooltip: tip,
-                        onPressed: press,
-                        icon: Icon(icon),
-                      ),
-                    IconButton(
-                      key: _highlightButtonKey,
-                      tooltip: 'Highlight (long-press for colors)',
-                      onPressed: widget.controller.toggleHighlight,
-                      onLongPress: () => _showHighlightMenu(context),
-                      icon: const Icon(Icons.border_color),
-                    ),
-                    for (final (tip, press, icon)
-                        in <(String, VoidCallback, IconData)>[
-                          (
-                            'Bulleted list',
-                            widget.controller.setBulletList,
-                            Icons.format_list_bulleted,
-                          ),
-                          (
-                            'Numbered list',
-                            widget.controller.setNumberedList,
-                            Icons.format_list_numbered,
-                          ),
-                          (
-                            'Clear formatting',
-                            widget.controller.clearFormatting,
-                            Icons.format_clear,
-                          ),
-                        ])
-                      IconButton(
-                        tooltip: tip,
-                        onPressed: press,
-                        icon: Icon(icon),
-                      ),
-                    IconButton(
-                      tooltip: 'Insert',
-                      onPressed: () async {
-                        try {
-                          await widget.onInsert();
-                        } finally {
-                          if (mounted) focusNode.requestFocus();
-                        }
-                      },
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
         ),
-      ),
-    ],
+      ],
     );
   }
 }
@@ -797,9 +941,10 @@ class _InlineImage extends StatelessWidget {
             // A 4000x3000 photo otherwise decodes to a ~48 MB RGBA bitmap and
             // sits in the image cache at that size; the box above never shows
             // more than the screen's width.
-            cacheWidth: (MediaQuery.sizeOf(context).width *
-                    MediaQuery.devicePixelRatioOf(context))
-                .round(),
+            cacheWidth:
+                (MediaQuery.sizeOf(context).width *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round(),
             errorBuilder: (context, _, _) => fallback,
           ),
         ),
@@ -842,9 +987,7 @@ class _ProtectedChip extends StatelessWidget {
     // height 1.0 so the chip doesn't stretch the line box it sits in — the
     // surrounding run is 1.55.
     final inline = textStyle?.copyWith(height: 1.0);
-    final radius = BorderRadius.circular(
-      block ? kRadiusMedium : kRadiusSmall,
-    );
+    final radius = BorderRadius.circular(block ? kRadiusMedium : kRadiusSmall);
     return Semantics(
       button: onTap != null,
       label: '$label, protected Typst',
@@ -1319,10 +1462,7 @@ IconData _atomIcon(String source, {String? resolvedKind}) {
   return Icons.link;
 }
 
-String? _refNoteKind(
-  String source,
-  String? Function(String id)? resolveKind,
-) {
+String? _refNoteKind(String source, String? Function(String id)? resolveKind) {
   if (!source.startsWith('#tylog.ref-note(')) return null;
   final id = RegExp(
     r'^#tylog\.ref-note\("((?:\\.|[^"])*)"',
@@ -1600,11 +1740,8 @@ String _serializeBlock(TyLogBlock block) {
     // One mapper for both list styles: the *glyph* decides the marker, not the
     // block's style, so a `+` item inside a mostly-`-` block survives instead
     // of being rewritten as a bullet.
-    TyLogBlockStyle.bulletList ||
-    TyLogBlockStyle.numberedList => content
-        .split('\n')
-        .map(_serializeListLine)
-        .join('\n'),
+    TyLogBlockStyle.bulletList || TyLogBlockStyle.numberedList =>
+      content.split('\n').map(_serializeListLine).join('\n'),
     TyLogBlockStyle.paragraph => _escapeParagraphMarkers(content),
     TyLogBlockStyle.protected => block.originalSource,
     TyLogBlockStyle.taskLine => replaceTaskText(
@@ -1652,9 +1789,8 @@ const _validateFailMessage = 'Rich editor could not validate Typst output.';
 /// trailing newlines are dropped. Single (intra-paragraph) and double
 /// (block-separator) newlines are preserved, so this treats block-structure
 /// whitespace as benign while still catching any real content change.
-String _canonicalNewlines(String s) => s
-    .replaceAll(RegExp(r'\n{3,}'), '\n\n')
-    .replaceFirst(RegExp(r'\n+$'), '');
+String _canonicalNewlines(String s) =>
+    s.replaceAll(RegExp(r'\n{3,}'), '\n\n').replaceFirst(RegExp(r'\n+$'), '');
 
 bool _sameProtectedSources(TyLogDocument a, TyLogDocument b) {
   final aSources = [
@@ -1694,6 +1830,37 @@ _Replacement _replacement(String oldText, String newText) {
     newEnd--;
   }
   return _Replacement(start, oldEnd, newText.substring(start, newEnd));
+}
+
+/// [root]'s flat children cut to text offsets [from, to); a WidgetSpan
+/// (chip) counts as one character, as in `visibleText`.
+TextSpan _sliceSpan(TextSpan root, int from, int to) {
+  final out = <InlineSpan>[];
+  var pos = 0;
+  for (final child in root.children ?? const <InlineSpan>[]) {
+    if (pos >= to) break;
+    if (child is TextSpan) {
+      final text = child.text ?? '';
+      final a = math.max(from, pos);
+      final b = math.min(to, pos + text.length);
+      if (a < b) {
+        out.add(
+          a == pos && b == pos + text.length
+              ? child
+              : TextSpan(
+                  text: text.substring(a - pos, b - pos),
+                  style: child.style,
+                  recognizer: child.recognizer,
+                ),
+        );
+      }
+      pos += text.length;
+    } else {
+      if (pos >= from) out.add(child);
+      pos += 1;
+    }
+  }
+  return TextSpan(style: root.style, children: out);
 }
 
 void _addTextSpans(
@@ -1761,5 +1928,67 @@ TextStyle _styleFor(
     backgroundColor: inline.highlight != null
         ? _highlightColor(inline.highlight!, Theme.of(context).brightness)
         : style.backgroundColor,
+  );
+}
+
+/// Line starts every [linesPerChunk] lines in [from, to): the static text
+/// around the editing window is split so each chunk is laid out once.
+List<int> _chunkStarts(
+  String text,
+  int from,
+  int to, {
+  int linesPerChunk = 20,
+}) {
+  if (from >= to) return const [];
+  final starts = [from];
+  var lines = 0;
+  for (var i = from; i < to - 1; i++) {
+    if (text.codeUnitAt(i) == 0x0A && ++lines == linesPerChunk) {
+      starts.add(i + 1);
+      lines = 0;
+    }
+  }
+  return starts;
+}
+
+/// Static text outside the editing window; a tap places the caret at the
+/// tapped character.
+class _StaticChunk extends StatefulWidget {
+  const _StaticChunk({
+    required this.span,
+    required this.strutStyle,
+    required this.onTapOffset,
+  });
+
+  final TextSpan span;
+  final StrutStyle? strutStyle;
+  final ValueChanged<int> onTapOffset;
+
+  @override
+  State<_StaticChunk> createState() => _StaticChunkState();
+}
+
+class _StaticChunkState extends State<_StaticChunk> {
+  final _key = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTapUp: (details) {
+      final paragraph = _key.currentContext?.findRenderObject();
+      if (paragraph is! RenderParagraph) return;
+      widget.onTapOffset(
+        paragraph
+            .getPositionForOffset(
+              paragraph.globalToLocal(details.globalPosition),
+            )
+            .offset,
+      );
+    },
+    child: RichText(
+      key: _key,
+      text: widget.span,
+      strutStyle: widget.strutStyle,
+    ),
   );
 }

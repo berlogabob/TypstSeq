@@ -15,6 +15,8 @@ const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  // P12k: run the same workload through the bounded editing window.
+  debugEnableEditorWindow = const bool.fromEnvironment('P12_WINDOW');
 
   testWidgets('P12 formatted long-note five-minute stage-budget diagnostic', (
     tester,
@@ -116,7 +118,9 @@ void main() {
     expect(TyLogDocument.parse(savedSource).visibleText, controller.text);
     expect(savedSource, contains('#strong[Formatted]'));
     expect(savedSource, startsWith(_header));
-    expect(edits, greaterThanOrEqualTo(fullGate ? 1100 : durationSeconds * 3));
+    // Plan P12: the formatted workload needs >= 60 edits in 300 s (1,100 is
+    // the plain workload's minimum).
+    expect(edits, greaterThanOrEqualTo(fullGate ? 60 : durationSeconds * 3));
     expect(
       timings.length,
       greaterThanOrEqualTo(fullGate ? 1000 : durationSeconds * 3),

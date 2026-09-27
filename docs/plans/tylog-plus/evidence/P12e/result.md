@@ -661,3 +661,35 @@ without changing `TyLogEditingController`, the document model or source bytes.
   moves the window there and places the caret via its paragraph hit test.
 - Guarded by `kEnableEditorWindow`; enabled only after the existing rich-editor
   host suite passes against it, then the A24 formatted gate is rerun.
+
+## P12k line window: formatted A24 gate PASS (2026-09-27)
+
+The first, block-aligned window did not help: the 900-row formatted fixture is
+one Typst paragraph (single newlines), so the window was the whole note
+(`RenderEditable` still ~70 ms). The window is now `[start, end)` of whole
+lines around the selection (margin 6 lines, capped at 2·6+8 line breaks, and
+recentered when appends grow it), spans for any range are sliced from the
+existing block spans, and static text outside is laid out once in 20-line
+chunks. Recentering never happens during an IME composition.
+
+Host: 8 window unit tests (including byte-identical source against direct
+edits for typing, paragraph split, paste with markup, backspace merge, and
+appends into one 900-line paragraph) plus the full rich-editor suite run
+windowed (`test/rich_editor_windowed_parity_test.dart`, 91/91) and normally
+(91/91).
+
+A24 profile, isolated `.profiletest`, `P12_WINDOW=true`, 300 s:
+
+| Run | Refresh / budget | Edits / frames | Over budget | Build p95 / max | Raster p95 / max |
+|---|---|---|---|---|---|
+| Formatted, no window (20 s diagnostic) | 120 Hz / 8.333 ms | 56 / 56 | 100% | 103.7 ms | 8.7 ms |
+| Formatted, block window (20 s) | 120 Hz / 8.333 ms | 56 / 56 | 100% | 100.4 ms | 8.5 ms |
+| Formatted, line window, uncapped (300 s) | 120 Hz / 8.333 ms | 1,026 / 1,026 | 92.8% | 24.3 ms | 3.9 ms |
+| Formatted, line window, capped (300 s) | 120 Hz / 8.333 ms | 1,048 / 1,048 | 0.29% | 6.0 / 8.8 ms | 6.6 / 8.2 ms |
+| **Formatted, line window, capped (300 s, final)** | **120 Hz / 8.333 ms** | **1,049 / 1,049** | **0 (0.0%)** | **4.75 / 8.20 ms** | **4.42 / 7.95 ms** |
+
+The harness's formatted edit minimum was aligned with the plan (≥60 edits in
+300 s; it had copied the plain workload's 1,100). Source/format/header
+assertions pass. Still open for P12: enable the window in production after a
+real-keyboard/IME check (macOS native editor test and A24 hands-on), and the
+plain 900-row gate (currently `VirtualPlainEditor`, 26.2% over at 120 Hz).

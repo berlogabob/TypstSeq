@@ -827,35 +827,38 @@ class TyLogEditingController extends TextEditingController {
     tappable: tappable,
   );
 
-  /// Spans for blocks [first]..[last] only, without the gap after [last]:
-  /// exactly `text.substring(blockRanges[first].start, blockRanges[last].end)`
-  /// (the bounded editing window, P12k).
-  TextSpan windowTextSpan(
+  /// Spans for visible-text range [start, end): the blocks overlapping it,
+  /// sliced to the range with the same span code (P12k editing window and
+  /// the static chunks around it).
+  TextSpan rangeSpan(
     BuildContext context,
     TextStyle? style, {
-    required int first,
-    required int last,
+    required int start,
+    required int end,
     required bool withComposing,
-  }) => _textSpan(
-    context,
-    style,
-    withComposing: withComposing,
-    firstBlock: first,
-    lastBlock: last,
-  );
+  }) {
+    final ranges = document.blockRanges;
+    if (ranges.isEmpty || start >= end) return TextSpan(style: style);
+    int blockAt(int offset) {
+      for (var i = 0; i < ranges.length - 1; i++) {
+        if (offset < ranges[i + 1].start) return i;
+      }
+      return ranges.length - 1;
+    }
 
-  /// One block rendered exactly as in the editor (same chips and widths, so
-  /// offsets match), including the gap after it, for the static regions
-  /// around the editing window.
-  TextSpan blockReadSpan(BuildContext context, int index, {TextStyle? style}) =>
-      _textSpan(
-        context,
-        style,
-        withComposing: false,
-        firstBlock: index,
-        lastBlock: index,
-        trailingGap: true,
-      );
+    final first = blockAt(start);
+    final last = blockAt(end - 1);
+    final full = _textSpan(
+      context,
+      style,
+      withComposing: withComposing,
+      firstBlock: first,
+      lastBlock: last,
+      trailingGap: true,
+    );
+    final base = ranges[first].start;
+    return _sliceSpan(full, start - base, end - base);
+  }
 
   TextSpan _textSpan(
     BuildContext context,
@@ -868,7 +871,11 @@ class TyLogEditingController extends TextEditingController {
     bool trailingGap = false,
   }) {
     final children = <InlineSpan>[];
-    final last = lastBlock ?? document.blocks.length - 1;
+    // An empty document has no blocks: the window then renders nothing.
+    final last = math.min(
+      lastBlock ?? document.blocks.length - 1,
+      document.blocks.length - 1,
+    );
     var global = firstBlock == 0 ? 0 : document.blockRanges[firstBlock].start;
     for (var i = firstBlock; i <= last; i++) {
       final block = document.blocks[i];
