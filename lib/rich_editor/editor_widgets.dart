@@ -110,13 +110,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   final GlobalKey _headingButtonKey = GlobalKey();
   final GlobalKey _highlightButtonKey = GlobalKey();
   TyLogWindowController? _window;
+  final ScrollController _windowScroll = ScrollController();
+  final GlobalKey _windowFieldKey = GlobalKey();
+  int _renderedWindowStart = 0;
 
   @override
   void initState() {
     super.initState();
-    if (debugEnableEditorWindow) {
-      _window = TyLogWindowController(widget.controller);
-    }
+    if (debugEnableEditorWindow) _attachWindow();
     focusNode = FocusNode(onKeyEvent: _handleKey);
     focusNode.addListener(_focusChanged);
     if (kEnableInlineAutocomplete) {
@@ -471,12 +472,76 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (_window != null &&
         !identical(oldWidget.controller, widget.controller)) {
       _window!.dispose();
-      _window = TyLogWindowController(widget.controller);
+      _attachWindow();
+    }
+  }
+
+  void _attachWindow() {
+    final window = TyLogWindowController(widget.controller);
+    _window = window;
+    _renderedWindowStart = window.start;
+    window.windowRevision.addListener(_windowMoved);
+  }
+
+  RenderEditable? _windowEditable() {
+    RenderEditable? found;
+    void visit(Element element) {
+      if (found != null) return;
+      final render = element.renderObject;
+      if (render is RenderEditable) {
+        found = render;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    final context = _windowFieldKey.currentContext;
+    if (context is Element) visit(context);
+    return found;
+  }
+
+  /// Keeps the text under the viewport still when lines move between the
+  /// window and the static text above it (the window is the scroll centre).
+  void _windowMoved() {
+    final window = _window!;
+    final oldStart = _renderedWindowStart;
+    final newStart = window.start;
+    _renderedWindowStart = newStart;
+    if (!_windowScroll.hasClients || oldStart == newStart) return;
+    final offset = _windowScroll.offset;
+    if (newStart > oldStart) {
+      // Lines [oldStart, newStart) left the top of the old window: measure
+      // them there before the field shows the new text.
+      final editable = _windowEditable();
+      final moved = newStart - oldStart;
+      if (editable == null || moved > editable.plainText.length) return;
+      final height = editable
+          .getLocalRectForCaret(TextPosition(offset: moved))
+          .top;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_windowScroll.hasClients) _windowScroll.jumpTo(offset - height);
+      });
+    } else {
+      // Lines [newStart, oldStart) joined the top of the window.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final editable = _windowEditable();
+        final moved = oldStart - newStart;
+        if (editable == null ||
+            !_windowScroll.hasClients ||
+            moved > editable.plainText.length) {
+          return;
+        }
+        final height = editable
+            .getLocalRectForCaret(TextPosition(offset: moved))
+            .top;
+        _windowScroll.jumpTo(offset + height);
+      });
     }
   }
 
   @override
   void dispose() {
+    _windowScroll.dispose();
     _window?.dispose();
     _debounce?.cancel();
     _removeOverlay();
@@ -621,25 +686,39 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                   text.length,
                 ).map((offset) => offset - afterBase).toList()
               : const <int>[];
+          // The window is the scroll centre: it is always built (so the
+          // field exists for the IME) and static text above it grows upwards.
           return CustomScrollView(
+            controller: _windowScroll,
+            center: const ValueKey('editing-window'),
             slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
                 sliver: SliverList.builder(
                   itemCount: before.length,
-                  itemBuilder: (context, i) => chunk(
-                    context,
-                    before[i],
-                    // Drop the line break that ends each chunk: the next
-                    // widget starts on its own line anyway.
-                    (i + 1 < before.length ? before[i + 1] : window.start) - 1,
-                  ),
+                  // Built from the window upwards: item 0 is the last chunk.
+                  itemBuilder: (context, i) {
+                    final at = before.length - 1 - i;
+                    return chunk(
+                      context,
+                      before[at],
+                      // Drop the line break that ends each chunk: the next
+                      // widget starts on its own line anyway.
+                      (at + 1 < before.length ? before[at + 1] : window.start) -
+                          1,
+                    );
+                  },
                 ),
               ),
               SliverPadding(
+                key: const ValueKey('editing-window'),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 sliver: SliverToBoxAdapter(
-                  child: _field(window, textStyle, expands: false),
+                  child: KeyedSubtree(
+                    key: _windowFieldKey,
+                    child: _field(window, textStyle, expands: false),
+                  ),
                 ),
               ),
               SliverPadding(

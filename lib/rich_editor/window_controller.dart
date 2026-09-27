@@ -104,8 +104,9 @@ class TyLogWindowController extends TextEditingController {
   void _recenter({bool force = false}) {
     final text = main.text;
     final selection = main.selection;
-    final lo = selection.isValid ? selection.start : text.length;
-    final hi = selection.isValid ? selection.end : text.length;
+    // No caret yet (a note just opened): show its top, as the plain field did.
+    final lo = selection.isValid ? selection.start : 0;
+    final hi = selection.isValid ? selection.end : 0;
     // Keep one full line of slack on each side before recentering, so arrow
     // keys and Backspace/Enter at the window edge have room to act.
     final needStart = _linesBack(text, lo, 1);

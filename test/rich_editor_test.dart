@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1643,7 +1644,10 @@ void main() {
       ),
     );
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
-    await tester.pump();
+    // Let the caret reveal settle and the double-tap window pass: the glyph
+    // tap below must be a new tap on a resting field.
+    await tester.pumpAndSettle();
+    await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
 
     final editableState = tester.state<EditableTextState>(
       find.byType(EditableText),

@@ -45,7 +45,8 @@ void main() {
     addTearDown(main.dispose);
     final window = TyLogWindowController(main);
     addTearDown(window.dispose);
-    expect(window.end, main.text.length);
+    // No caret yet: the window opens at the top, like the plain field.
+    expect(window.start, 0);
     expect('\n'.allMatches(window.text).length, lessThanOrEqualTo(20));
     expect(window.text, main.text.substring(window.start, window.end));
     expect(window.text.length, lessThan(main.text.length ~/ 4));
@@ -98,13 +99,14 @@ void main() {
     final window = TyLogWindowController(main);
     addTearDown(window.dispose);
     final revisions = window.windowRevision.value;
-    main.selection = TextSelection.collapsed(
-      offset: main.document.blockRanges[2].start,
-    );
-    expect(window.start, 0);
-    expect(window.end, lessThan(main.text.length ~/ 2));
+    main.selection = TextSelection.collapsed(offset: main.text.length);
+    expect(window.end, main.text.length);
+    expect(window.start, greaterThan(main.text.length ~/ 2));
     expect(window.windowRevision.value, greaterThan(revisions));
-    expect(window.selection.baseOffset, main.selection.baseOffset);
+    expect(
+      window.start + window.selection.baseOffset,
+      main.selection.baseOffset,
+    );
   });
 
   test('an active composition never recenters the window', () {

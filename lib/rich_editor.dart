@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/rendering.dart' show RenderEditable, RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/values.dart';

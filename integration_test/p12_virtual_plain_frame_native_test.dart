@@ -14,6 +14,10 @@ import 'support/editor_frame_metrics.dart';
 // --dart-define=P12_FRAME_GATE=true (see plan P12).
 const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
 
+/// P12k: run the same plain workload through the windowed rich editor
+/// instead of `VirtualPlainEditor`.
+const _window = bool.fromEnvironment('P12_WINDOW');
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -29,18 +33,24 @@ void main() {
     );
     addTearDown(controller.dispose);
     expect(shouldUseVirtualPlainEditor(controller), isTrue);
+    debugEnableEditorWindow = _window;
+    addTearDown(() => debugEnableEditorWindow = false);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: VirtualPlainEditor(
-            source: controller.text,
-            onChanged: (visibleText) {
-              controller.value = TextEditingValue(
-                text: visibleText,
-                selection: TextSelection.collapsed(offset: visibleText.length),
-              );
-            },
-          ),
+          body: _window
+              ? TyLogRichEditor(controller: controller, onInsert: () async {})
+              : VirtualPlainEditor(
+                  source: controller.text,
+                  onChanged: (visibleText) {
+                    controller.value = TextEditingValue(
+                      text: visibleText,
+                      selection: TextSelection.collapsed(
+                        offset: visibleText.length,
+                      ),
+                    );
+                  },
+                ),
         ),
       ),
     );
@@ -54,19 +64,34 @@ void main() {
             t.timestampInMicroseconds(FramePhase.vsyncStart) > captureStartUs,
       ),
     );
-    final list = find.byType(Scrollable).first;
-    await tester.drag(list, const Offset(0, -100000));
-    await tester.pumpAndSettle();
-    final lastField = find.byType(TextField).last;
-    await tester.ensureVisible(lastField);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(lastField).controller!.text,
-      _body.split('\n').last,
-    );
-    final field = tester.widget<TextField>(lastField).controller!;
-    await tester.tap(lastField);
-    field.selection = TextSelection.collapsed(offset: field.text.length);
+    late final Finder lastField;
+    late final TextEditingController field;
+    if (_window) {
+      // Caret at the end of the last paragraph; the window follows it.
+      controller.selection = TextSelection.collapsed(
+        offset: controller.text.length,
+      );
+      await tester.pumpAndSettle();
+      lastField = find.byKey(const Key('rich-journal-editor'));
+      await tester.ensureVisible(lastField);
+      await tester.pumpAndSettle();
+      field = tester.widget<TextField>(lastField).controller!;
+      expect(field.text.endsWith(_body.split('\n').last), isTrue);
+    } else {
+      final list = find.byType(Scrollable).first;
+      await tester.drag(list, const Offset(0, -100000));
+      await tester.pumpAndSettle();
+      lastField = find.byType(TextField).last;
+      await tester.ensureVisible(lastField);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(lastField).controller!.text,
+        _body.split('\n').last,
+      );
+      field = tester.widget<TextField>(lastField).controller!;
+      await tester.tap(lastField);
+      field.selection = TextSelection.collapsed(offset: field.text.length);
+    }
     await tester.pump();
     final display = View.of(tester.element(lastField));
     final refreshRates = <double>{display.display.refreshRate};
@@ -97,7 +122,9 @@ void main() {
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
         );
-        tester.widget<TextField>(lastField).onChanged!(text);
+        // The windowed field forwards edits itself (value setter); the
+        // row editor needs its production onChanged callback.
+        if (!_window) tester.widget<TextField>(lastField).onChanged!(text);
         edits++;
         await tester.pump(const Duration(milliseconds: 250));
         await Future<void>.delayed(const Duration(milliseconds: 1));
