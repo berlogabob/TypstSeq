@@ -40,6 +40,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   bool _hasSelection = false;
   AnnotationData? _reassigningAnnotation;
   String? _status;
+  var _viewerGeneration = 0;
+  var _passwordAttempts = 0;
+  var _passwordRequired = false;
 
   @override
   void initState() {
@@ -88,6 +91,59 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     } finally {
       _preparing = false;
     }
+  }
+
+  Future<String?> _passwordProvider() async {
+    _passwordAttempts++;
+    final controller = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          _passwordAttempts > 1
+              ? 'Wrong password, try again'
+              : 'Password required',
+        ),
+        content: TextField(
+          key: const Key('pdf-password-field'),
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (password == null && mounted) {
+      setState(() => _passwordRequired = true);
+    }
+    return password;
+  }
+
+  void _handleDocumentLoadFinished(PdfDocumentRef ref, bool succeeded) {
+    if (mounted &&
+        !succeeded &&
+        ref.resolveListenable().error is PdfPasswordException) {
+      setState(() => _passwordRequired = true);
+    }
+  }
+
+  void _tryPasswordAgain() {
+    setState(() {
+      _passwordAttempts = 0;
+      _passwordRequired = false;
+      _viewerGeneration++;
+    });
   }
 
   Future<void> _openInitialCitation(PdfExtraction extraction) async {
@@ -362,25 +418,45 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
             ],
           ),
         Expanded(
-          child: PdfViewer.data(
-            widget.bytes,
-            sourceName: widget.path,
-            useProgressiveLoading: false,
-            controller: _controller,
-            params: PdfViewerParams(
-              onViewerReady: (doc, _) => _prepare(doc),
-              textSelectionParams: PdfTextSelectionParams(
-                onTextSelectionChange: (selection) {
-                  if (mounted) {
-                    setState(
-                      () => _hasSelection =
-                          selection.hasSelectedText && selection.isCopyAllowed,
-                    );
-                  }
-                },
-              ),
-            ),
-          ),
+          child: _passwordRequired
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'This PDF is password-protected.',
+                        key: Key('pdf-password-required'),
+                      ),
+                      TextButton(
+                        onPressed: _tryPasswordAgain,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                )
+              : PdfViewer.data(
+                  widget.bytes,
+                  key: ValueKey(_viewerGeneration),
+                  sourceName: '${widget.path}#$_viewerGeneration',
+                  passwordProvider: _passwordProvider,
+                  useProgressiveLoading: false,
+                  controller: _controller,
+                  params: PdfViewerParams(
+                    onViewerReady: (doc, _) => _prepare(doc),
+                    onDocumentLoadFinished: _handleDocumentLoadFinished,
+                    textSelectionParams: PdfTextSelectionParams(
+                      onTextSelectionChange: (selection) {
+                        if (mounted) {
+                          setState(
+                            () => _hasSelection =
+                                selection.hasSelectedText &&
+                                selection.isCopyAllowed,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
         ),
       ],
     ),
