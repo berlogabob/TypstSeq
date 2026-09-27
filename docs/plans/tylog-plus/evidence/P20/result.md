@@ -92,3 +92,28 @@ semantic query plus top 20 is about 0.83 s warm and 1.5 s first on the A24,
 inside the 3 s / 6 s gates. Still open for P20: one run measuring PSS with the
 model loaded and a 250k-vector search in the same process (each alone is 456
 and 551 MB), and resume/cancel of the in-app indexer on device.
+
+## Combined 250k search + model memory gate (2026-09-27) — PASS
+
+`integration_test/p05_exact_search_profile_test.dart` now runs the app's
+search shape on the A24 profile build (`P05_HANDSHAKE=true
+P05_COMPACT=true`): the pinned model is pushed and loaded, every run embeds a
+real query, an int8 in-memory scan copy of 250,000 synthetic 384-d vectors
+ranks 200 candidates, and those are reranked with exact Float32 vectors.
+
+| Shape | First query | Warm p50 / p95 | Peak TOTAL PSS |
+|---|---:|---:|---:|
+| Float32 in memory + model (before) | 1,927 ms | 1,216 / 1,238 ms | ~965 MiB (spike 1,355) |
+| fp16 scan copy + model | 927 ms | 224 / 228 ms | ~818 MB |
+| **int8 scan copy + model** | **952 ms** | **224 / 230 ms** | **718,752 KiB (736 MB)** |
+
+Gates: first ≤6 s, warm p95 ≤3 s, PSS ≤750 MB — pass, with a thin (~2%)
+memory margin; the breakdown at the fp16 point was native heap 418 MB (ONNX
+model), Dart heap ~240 MB, graphics 71 MB (test harness). Host proof that the
+compact copy does not change results: over 20 random queries on 5,000
+vectors, the int8 top 200 reranked in Float32 equals the exact top 20
+(`test/vector_index_test.dart`). The app's `SemanticSearchController` uses
+the same path, loading the copy from SQLite in 2,000-row keyset pages of
+(id, vector) only and rebuilding at most once a minute while indexing.
+Decision (user, 2026-09-27): compact copy + exact rerank instead of
+sqlite-vec; chunking stays 800/120 (~97k chunks for the real vault).

@@ -745,6 +745,59 @@ class TyLogDatabase extends _$TyLogDatabase {
     );
   }
 
+  Expression<bool> _embeddedWith(String model) =>
+      chunks.status.equals('complete') &
+      chunks.embeddingModel.equals(model) &
+      chunks.embedding.isNotNull();
+
+  Future<int> embeddedChunkCount({required String model}) {
+    final count = chunks.id.count();
+    return (selectOnly(chunks)
+          ..addColumns([count])
+          ..where(_embeddedWith(model)))
+        .map((row) => row.read(count)!)
+        .getSingle();
+  }
+
+  /// Keyset page of (id, Float32 bytes) without chunk text, for building the
+  /// in-memory search index with bounded transient memory.
+  Future<List<({String id, Uint8List embedding})>> embeddedChunkPage({
+    required String model,
+    String? afterId,
+    int limit = 2000,
+  }) async {
+    final query = selectOnly(chunks)
+      ..addColumns([chunks.id, chunks.embedding])
+      ..where(
+        afterId == null
+            ? _embeddedWith(model)
+            : _embeddedWith(model) & chunks.id.isBiggerThanValue(afterId),
+      )
+      ..orderBy([OrderingTerm.asc(chunks.id)])
+      ..limit(limit);
+    return [
+      for (final row in await query.get())
+        (id: row.read(chunks.id)!, embedding: row.read(chunks.embedding)!),
+    ];
+  }
+
+  /// Exact Float32 vectors for a bounded set of chunk ids (rerank step).
+  Future<List<({String id, List<int> embedding})>> embeddingsForChunks(
+    Iterable<String> ids, {
+    required String model,
+  }) async {
+    final wanted = ids.toList();
+    if (wanted.isEmpty) return const [];
+    final rows = await (selectOnly(chunks)
+          ..addColumns([chunks.id, chunks.embedding])
+          ..where(_embeddedWith(model) & chunks.id.isIn(wanted)))
+        .get();
+    return [
+      for (final row in rows)
+        (id: row.read(chunks.id)!, embedding: row.read(chunks.embedding)!),
+    ];
+  }
+
   Future<List<({String id, List<int> embedding})>> embeddedChunkCandidates({
     required String model,
     int limit = 10000,

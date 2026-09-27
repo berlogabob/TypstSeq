@@ -12,7 +12,7 @@ import 'native_embedding.dart';
 import 'note_chunk_sync.dart';
 import 'semantic_indexer.dart';
 import 'semantic_model.dart';
-import 'vector_retrieval.dart';
+import 'vector_index.dart';
 
 typedef SemanticEmbedderFactory =
     ChunkEmbedder Function(String model, String tokenizer);
@@ -75,6 +75,11 @@ class SemanticSearchController extends ChangeNotifier {
   /// full sync of this session.
   Map<String, int>? _synced;
   ({String query, Future<List<VectorHit>> hits})? _lastQuery;
+
+  /// fp16 scan copy of the embedded chunks; rebuilt when [_indexDirty].
+  CompactVectorIndex? _index;
+  bool _indexDirty = true;
+  DateTime _indexBuiltAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<void> init() async {
     _store = _providedStore ?? SemanticModelStore(modelRoot);
@@ -163,6 +168,7 @@ class SemanticSearchController extends ChangeNotifier {
       await syncNoteChunks(db, notes, allPaths: stamps.keys.toSet());
       _synced = stamps;
       _lastQuery = null;
+      _indexDirty = true;
       final embed =
           _passageFactory?.call(files.model, files.tokenizer) ??
           nativePassageEmbedder(
@@ -172,6 +178,7 @@ class SemanticSearchController extends ChangeNotifier {
       final indexer = SemanticIndexer(db: db, embed: embed);
       void listen() {
         _lastQuery = null; // new vectors: a repeated query must rescan
+        _indexDirty = true;
         _set(
           SemanticIndexing(
             indexer.progress.value.done,
@@ -268,15 +275,49 @@ class SemanticSearchController extends ChangeNotifier {
       throw StateError('invalid query embedding');
     }
     final vector = Uint8List.fromList(bytes).buffer.asFloat32List().toList();
-    return searchStoredChunks(
-      database: db,
-      model: kSemanticModelId,
+    final index = await _currentIndex(vector.length);
+    // fp16 ranks candidates; the exact Float32 rerank decides the scores.
+    final candidates = index.top(vector, 200);
+    return topCosineHits(
       query: vector,
+      candidates: await db.embeddingsForChunks(
+        candidates.map((hit) => hit.id),
+        model: kSemanticModelId,
+      ),
       limit: limit,
-      // ponytail: exact search over up to the DB's 100k-candidate cap (the
-      // default was 10k). Past 100k chunks, stream candidates in pages.
-      candidateLimit: 100000,
     );
+  }
+
+  Future<CompactVectorIndex> _currentIndex(int dimension) async {
+    final existing = _index;
+    // ponytail: rebuild the whole index when dirty, at most once a minute
+    // while indexing adds vectors; append-only updates if rebuilds get hot.
+    final throttled =
+        state is SemanticIndexing &&
+        DateTime.now().difference(_indexBuiltAt) < const Duration(minutes: 1);
+    if (existing != null &&
+        existing.dimension == dimension &&
+        (!_indexDirty || throttled)) {
+      return existing;
+    }
+    final count = await db.embeddedChunkCount(model: kSemanticModelId);
+    final builder = CompactVectorIndexBuilder(count + 1024, dimension);
+    String? after;
+    while (!builder.isFull) {
+      final page = await db.embeddedChunkPage(
+        model: kSemanticModelId,
+        afterId: after,
+      );
+      if (page.isEmpty) break;
+      for (final row in page) {
+        if (builder.isFull) break;
+        builder.addBytes(row.id, row.embedding);
+      }
+      after = page.last.id;
+    }
+    _indexDirty = false;
+    _indexBuiltAt = DateTime.now();
+    return _index = builder.build();
   }
 
   Future<List<ChunkCitation>> citations(String query) async {
