@@ -38,3 +38,31 @@ The focused chunking, persistence, embedding-job, adapter, cosine, hybrid, and
 vector suites passed **19 tests**; targeted analysis is clean. Host scheduling
 and durable state are accepted. Private model execution and Android
 quality/latency/memory remain device-gated.
+
+## macOS native embedding and vector parity (2026-09-27)
+
+`embed()` was compiled for arm64 Android only, so the Mac had no on-device
+model. `ort` is now enabled for Apple-silicon macOS too (Cargo target cfg +
+`src/api/embedding.rs`); the universal library's x86_64 slice and x86 Android
+keep the `embedding_unsupported_platform` stub, since ort ships no prebuilts
+there. The macOS pod previously used `-force_load`, which pulled the
+statically linked ONNX Runtime's duplicate protobuf objects (756 duplicate
+symbols); it now links the archive normally, keeps the 22 FFI/Quick Look entry
+points with `-Wl,-u` (computed by `nm` at `pod install`), and links `-lc++`.
+
+The pinned model files (revision `ccc66d3`) were re-downloaded outside Git and
+all six SHA-256 values matched `evidence/P05/contract.md`. The frozen golden
+query vector was regenerated with the pinned ORT 1.30.0 reference runner.
+
+```text
+macOS profile (M4 Pro): P05_VECTOR_PARITY cosine=1.000000 max_abs=0.000058
+A24 profile (2026-09-26): cosine=1.000000 max_abs_difference=0.000092
+acceptance: cosine >= 0.999; max_abs_difference <= 0.02 — PASS on both
+```
+
+Typst compilation through the bridge still passes on macOS
+(`markdown_import_native_test`), and the release app links and exports all 22
+entry points. Remaining P20: query-embedding + top-20 latency and PSS measured
+in the app path at 250k chunks on both platforms (exact search alone already
+passes: A24 warm p95 811 ms / PSS 551 MB; Mac warm p95 18 ms), which needs the
+P21 in-app wiring.

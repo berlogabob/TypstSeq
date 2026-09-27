@@ -16,9 +16,10 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('P05 offline embedding native profile smoke', (_) async {
-    if (defaultTargetPlatform != TargetPlatform.android) return;
-    if (_modelPath.isEmpty || _tokenizerPath.isEmpty || _goldenPath.isEmpty) {
-      fail('P05 model, tokenizer, and golden vector paths are required');
+    // Native ORT is built for arm64 Android and Apple-silicon macOS only.
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.macOS) {
+      return;
     }
 
     try {
@@ -62,5 +63,5 @@ void main() {
     );
     expect(cosine, greaterThanOrEqualTo(0.999));
     expect(maxAbsDifference, lessThanOrEqualTo(0.02));
-  });
+  }, skip: _modelPath.isEmpty || _tokenizerPath.isEmpty || _goldenPath.isEmpty);
 }

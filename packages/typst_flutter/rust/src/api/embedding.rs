@@ -6,7 +6,7 @@ pub struct EmbeddingResult {
     pub finite: bool,
 }
 
-#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
 fn pool_normalize(
     hidden: &ndarray::Array3<f32>,
     mask: &ndarray::Array2<i64>,
@@ -40,7 +40,7 @@ fn pool_normalize(
     Ok(out)
 }
 
-#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
 pub fn embed(
     model_path: String,
     tokenizer_path: String,
@@ -114,12 +114,12 @@ pub fn embed(
     })
 }
 
-#[cfg(not(all(target_os = "android", target_arch = "aarch64")))]
+#[cfg(not(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64"))))]
 pub fn embed(
     _model_path: String,
     _tokenizer_path: String,
     _kind: String,
     _text: String,
 ) -> Result<EmbeddingResult, String> {
-    Err("embedding_requires_android".into())
+    Err("embedding_unsupported_platform".into())
 }

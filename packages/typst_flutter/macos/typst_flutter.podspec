@@ -35,9 +35,16 @@ Pod::Spec.new do |s|
 
   if File.exist?(prebuilt_lib)
     # ── Pre-built path ──────────────────────────────────────────────────────
+    # Link the archive normally and keep only the entry points Dart (FFI) and
+    # the Quick Look extension look up. -force_load pulled every member, and
+    # the statically linked ONNX Runtime ships duplicate protobuf objects.
+    keep = `nm -gjU "#{prebuilt_lib}" 2>/dev/null`.lines.map(&:strip)
+      .grep(/\A_(frb|store_dart|typst_ql)/).uniq
+      .map { |sym| "-Wl,-u,#{sym}" }.join(' ')
     s.pod_target_xcconfig = {
       'DEFINES_MODULE' => 'YES',
-      'OTHER_LDFLAGS'  => "-force_load \"#{prebuilt_lib}\"",
+      # -lc++: the arm64 slice statically links ONNX Runtime (C++).
+      'OTHER_LDFLAGS'  => "\"#{prebuilt_lib}\" #{keep} -lc++",
     }
   else
     # ── No Cargokit fallback on macOS CMake path ────────────────────────────
