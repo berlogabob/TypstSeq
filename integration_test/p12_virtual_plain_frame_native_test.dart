@@ -132,7 +132,13 @@ void main() {
         edits++;
         editUs += editWatch.elapsedMicroseconds;
         final pumpWatch = Stopwatch()..start();
-        await tester.pump(const Duration(milliseconds: 250));
+        // Fixed 4 Hz schedule (edit n at start + n x 250 ms): a relative
+        // 250 ms pump plus the frame wait capped the run near 1,090 edits
+        // whatever the editor cost.
+        final wait = startedAt
+            .add(Duration(milliseconds: 250 * edits))
+            .difference(DateTime.now());
+        await tester.pump(wait.isNegative ? Duration.zero : wait);
         pumpUs += pumpWatch.elapsedMicroseconds;
         final delayWatch = Stopwatch()..start();
         await Future<void>.delayed(const Duration(milliseconds: 1));

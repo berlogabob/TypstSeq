@@ -11,10 +11,10 @@ bool debugWindowScrollCompensation = true;
 
 /// Long lines are split into display units of about this many characters;
 /// the window shows complete units, so a long line need not be laid out whole.
-const int kWindowUnitChars = 160;
+const int kWindowUnitChars = 100;
 
 /// Upper bound on the editing window's text length.
-const int kWindowMaxChars = 600;
+const int kWindowMaxChars = 400;
 
 /// Bounded editing window over a [TyLogEditingController] (P12k).
 ///
