@@ -66,3 +66,29 @@ entry points. Remaining P20: query-embedding + top-20 latency and PSS measured
 in the app path at 250k chunks on both platforms (exact search alone already
 passes: A24 warm p95 811 ms / PSS 551 MB; Mac warm p95 18 ms), which needs the
 P21 in-app wiring.
+
+## Cached session, lean tokenizer and A24 memory (2026-09-27)
+
+`embed()` used to parse the tokenizer and build an ONNX session on every call.
+It now caches both behind one lock (one embedding at a time, as the plan
+requires). A24 profile PSS with the model loaded was still ~900 MiB. Ruled out
+by measurement: arena/memory-pattern off, graph optimizations off, weight
+prepacking off, fp32 `model.onnx`, zero-copy `.ort` (O4 and fp32), and int8
+`model_qint8_avx512_vnni.onnx` (parity 0.997298 on ARM, below 0.999). The
+cause was `tokenizers`' Unigram trie: 384 MiB steady for the 250k XLM-R vocab.
+`src/lean_tokenizer.rs` runs the same Viterbi over a flat map inside
+`tokenizers`' own normalizer, Metaspace, added-token and template pipeline;
+token IDs and masks are identical to `tokenizers::Tokenizer` on 12,632
+encodings (all 6,305 notes of the verified backup plus 71 edge cases, 60 of
+them generated with local ornith-1.5:9b), with 512-token truncation.
+
+| Platform | Parity cosine / max abs | First query | Warm query p50 / p95 | Peak PSS |
+|---|---|---:|---:|---:|
+| A24 profile | 1.000000 / 0.000092 | 708 ms | 9.8 / 11.1 ms | **456 MiB** |
+| macOS profile (M4 Pro) | 1.000000 / 0.000058 | 272 ms | 2.3 / 2.4 ms | — |
+
+With exact search over 250,000 vectors (A24 warm p95 811 ms, cold 825 ms), a
+semantic query plus top 20 is about 0.83 s warm and 1.5 s first on the A24,
+inside the 3 s / 6 s gates. Still open for P20: one run measuring PSS with the
+model loaded and a 250k-vector search in the same process (each alone is 456
+and 551 MB), and resume/cancel of the in-app indexer on device.

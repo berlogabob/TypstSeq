@@ -84,3 +84,21 @@ Command: `dart run tool/benchmark_dart_retrieval.dart 10000` and `250000`. macOS
 | 250,000 | 708.616 | 655.726 | 665.748 | 562,888,704 |
 
 These numbers measure the actual Dart cosine primitive with a synthetic in-memory Float32 corpus, including per-candidate conversion. They exclude DB retrieval, query embedding, UI, model memory, and Android. Full semantic-search acceptance remains open. Retained hit state is now O(k), with deterministic tie order; duplicate RRF IDs are ignored within each ranking.
+
+## In-app semantic search wiring (2026-09-27)
+
+Semantic search is now reachable in the app. Maintenance > Semantic search
+offers a confirmed, one-time download of the pinned `model_O4.onnx` +
+`tokenizer.json` (revision `ccc66d3`, size and SHA-256 checked, atomic
+`verified` marker; never automatic). `SemanticSearchController` resyncs note
+chunks incrementally (only notes whose `updated_at_ms` changed are read;
+deleted notes drop their chunks explicitly), runs the single-flight indexer
+(pauses in background, stops if a batch completes nothing), and serves
+`vectorSearch` + `citedSearch` to the existing search screen. Chunk hits map
+to note paths (best chunk per note); vector-only notes render through
+`resolveMissing`; results and citations share one query embedding; note
+citations open the note. Search works while indexing. Host: 21 semantic tests
+plus the full suite (774 passed). Release APK installed on the A24 in place.
+Remaining P21: on-device download → index → search → tap navigation on the
+real vault (Mac and A24), offline first use, stale-row and back-navigation
+checks, and P05 quality through this path.
