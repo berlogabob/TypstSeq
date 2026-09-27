@@ -4,6 +4,11 @@ part of '../rich_editor.dart';
 /// parity suite passes against it; tests flip it to run that suite windowed.
 bool debugEnableEditorWindow = false;
 
+/// P12k A/B switch: when false, the editor does not compensate the scroll
+/// offset when lines move between the editing window and the static text
+/// above it.
+bool debugWindowScrollCompensation = true;
+
 /// Bounded editing window over a [TyLogEditingController] (P12k).
 ///
 /// The `TextField` edits only the lines around the selection; the main

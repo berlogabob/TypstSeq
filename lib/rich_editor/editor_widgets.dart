@@ -507,6 +507,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final oldStart = _renderedWindowStart;
     final newStart = window.start;
     _renderedWindowStart = newStart;
+    if (!debugWindowScrollCompensation) return;
     if (!_windowScroll.hasClients || oldStart == newStart) return;
     final offset = _windowScroll.offset;
     if (newStart > oldStart) {

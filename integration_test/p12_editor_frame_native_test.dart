@@ -17,6 +17,7 @@ void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   // P12k: run the same workload through the bounded editing window.
   debugEnableEditorWindow = const bool.fromEnvironment('P12_WINDOW');
+  debugWindowScrollCompensation = !const bool.fromEnvironment('P12_NO_COMP');
 
   testWidgets('P12 formatted long-note five-minute stage-budget diagnostic', (
     tester,

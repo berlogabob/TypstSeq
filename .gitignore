@@ -102,3 +102,4 @@ android/app/*.jks
 .claude/
 .codex/
 /2026-*.txt
+.pi-runs/
