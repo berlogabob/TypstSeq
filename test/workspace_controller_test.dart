@@ -463,10 +463,7 @@ void main() {
     'worker startup does not decode the cached index on the root isolate',
     () async {
       final storage = _IndexReadGatedStorage();
-      await storage.writeText(
-        TylogVaultPaths.settings,
-        '{"version":5}',
-      );
+      await storage.writeText(TylogVaultPaths.settings, '{"version":5}');
       await storage.writeText(TylogVaultPaths.index, '{}');
       final controller = WorkspaceController(
         taskScheduler: TaskScheduler(),
@@ -1643,6 +1640,7 @@ void main() {
       username: 'alice',
       password: 'secret',
     );
+    controller.resolveLockWait = Duration.zero;
 
     expect(await VaultLock.acquire(storage, 'service'), isTrue);
 
@@ -1686,6 +1684,7 @@ void main() {
       username: 'alice',
       password: 'secret',
     );
+    controller.resolveLockWait = Duration.zero;
 
     // A sync in flight, holding the lock as the UI does.
     expect(await VaultLock.acquire(storage, 'ui'), isTrue);
@@ -1707,6 +1706,55 @@ void main() {
       isTrue,
       reason: "the running sync's lock must survive the resolve",
     );
+  });
+
+  test('a resolve waits for a running sync to release the lock', () async {
+    // A resolve holding while a sync runs would overwrite one side of a
+    // disagreement the other process is still reconciling. The resolve must
+    // wait for the running sync to release the vault lock before going.
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local vault', path: '/not-used'),
+      storage: storage,
+    );
+    await _waitUntil(() => controller.index != null);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'http://127.0.0.1:1/remote.php/dav/files/alice/V',
+      username: 'alice',
+      password: 'secret',
+    );
+    controller.resolveLockWait = const Duration(seconds: 5);
+
+    // The service takes the lock and plans to release it shortly (as it would
+    // mid-sync from another engine).
+    expect(await VaultLock.acquire(storage, 'service'), isTrue);
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      VaultLock.release(storage, 'service');
+    });
+
+    final resolved = await controller.resolveConflict(
+      SyncConflict(
+        id: 'c',
+        path: 'notes/a.typ',
+        recordPath: '.tylog/conflicts/c.json',
+        createdAt: DateTime.utc(2026),
+        localExists: true,
+        remoteExists: true,
+      ),
+      SyncConflictResolution.keepLocal,
+    );
+
+    // It had to wait ~300ms for the lock to free up, so it did not bail with
+    // the immediate-refusal error. The server is unreachable, so any other
+    // error is fine.
+    expect(resolved, isFalse);
+    expect(controller.syncError ?? '', isNot(contains('sync is running')));
   });
 
   test('a resolve announces itself before the reindex it triggers', () async {

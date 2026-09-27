@@ -201,6 +201,10 @@ class WorkspaceController extends ChangeNotifier {
   List<SyncConflict> syncConflicts = const [];
   DateTime? lastSyncAt;
   String? syncError;
+
+  /// How long a conflict resolve waits for a running sync to release the
+  /// vault lock before giving up (background syncs run back to back).
+  Duration resolveLockWait = const Duration(minutes: 2);
   bool syncing = false;
   String? syncStage;
   bool? storageHealthy;
@@ -1753,8 +1757,19 @@ class WorkspaceController extends ChangeNotifier {
     // re-entrant by owner and [VaultLock.release] deletes the file, so a
     // resolve tapped during a running auto-sync would take the same lock, then
     // hand the service the vault the moment it finished — mid-sync, in the same
-    // process. Under its own name it is simply refused instead.
-    if (!await VaultLock.acquire(opened.storage, 'ui-resolve')) {
+    // process. Under its own name it waits for the lock instead, bounded by
+    // [resolveLockWait] (background syncs run back to back).
+    final deadline = DateTime.now().add(resolveLockWait);
+    var acquired = await VaultLock.acquire(opened.storage, 'ui-resolve');
+    if (!acquired && resolveLockWait > Duration.zero) {
+      status = 'Waiting for the running sync…';
+      notifyListeners();
+    }
+    while (!acquired && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      acquired = await VaultLock.acquire(opened.storage, 'ui-resolve');
+    }
+    if (!acquired) {
       syncError = 'A sync is running. Try again in a moment.';
       status = 'Needs attention';
       notifyListeners();
