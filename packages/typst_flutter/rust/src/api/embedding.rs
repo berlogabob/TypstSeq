@@ -41,6 +41,20 @@ fn pool_normalize(
 }
 
 #[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+struct Loaded {
+    model_path: String,
+    tokenizer_path: String,
+    tokenizer: crate::lean_tokenizer::LeanTokenizer,
+    session: ort::session::Session,
+}
+
+// ponytail: one cached model behind a global lock — loading costs seconds, so
+// load once per (model, tokenizer) and serialize inference (the plan allows one
+// embedding at a time). Per-path cache if several models ever coexist.
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+static LOADED: std::sync::Mutex<Option<Loaded>> = std::sync::Mutex::new(None);
+
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
 pub fn embed(
     model_path: String,
     tokenizer_path: String,
@@ -49,19 +63,33 @@ pub fn embed(
 ) -> Result<EmbeddingResult, String> {
     use ndarray::{Array2, Array3};
     use ort::{session::Session, value::Tensor};
-    use tokenizers::{tokenizer::TruncationParams, Tokenizer};
 
     if kind != "query" && kind != "passage" {
         return Err("invalid_kind".into());
     }
-    let mut tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|_| "tokenizer_load")?;
-    tokenizer
-        .with_truncation(Some(TruncationParams {
-            max_length: 512,
-            ..Default::default()
-        }))
-        .map_err(|_| "tokenizer_config")?;
-    let encoding = tokenizer
+    let mut guard = LOADED.lock().map_err(|_| "model_lock")?;
+    let stale = match guard.as_ref() {
+        Some(l) => l.model_path != model_path || l.tokenizer_path != tokenizer_path,
+        None => true,
+    };
+    if stale {
+        *guard = None;
+        // Lean vocabulary map: the stock Unigram trie held ~384 MiB.
+        let tokenizer = crate::lean_tokenizer::load(&tokenizer_path, 512)?;
+        let session = Session::builder()
+            .map_err(|_| "session_builder")?
+            .commit_from_file(&model_path)
+            .map_err(|_| "model_load")?;
+        *guard = Some(Loaded {
+            model_path: model_path.clone(),
+            tokenizer_path: tokenizer_path.clone(),
+            tokenizer,
+            session,
+        });
+    }
+    let loaded = guard.as_mut().ok_or("model_lock")?;
+    let encoding = loaded
+        .tokenizer
         .encode(format!("{kind}: {text}"), true)
         .map_err(|_| "tokenize")?;
     let ids: Vec<i64> = encoding.get_ids().iter().map(|id| *id as i64).collect();
@@ -76,11 +104,8 @@ pub fn embed(
     let ids = Array2::from_shape_vec((1, ids.len()), ids).map_err(|_| "input_shape")?;
     let mask = Array2::from_shape_vec((1, mask.len()), mask).map_err(|_| "input_shape")?;
     let types = Array2::<i64>::zeros(ids.raw_dim());
-    let mut session = Session::builder()
-        .map_err(|_| "session_builder")?
-        .commit_from_file(model_path)
-        .map_err(|_| "model_load")?;
-    let outputs = session
+    let outputs = loaded
+        .session
         .run(ort::inputs![
             Tensor::<i64>::from_array((ids.shape().to_vec(), ids.as_slice().unwrap().to_vec()))
                 .map_err(|_| "input_tensor")?,

@@ -29,6 +29,7 @@ tylog_import_core = { path = "../../tylog_import_core" }
 ndarray = "0.17.2"
 ort = { version = "2.0.0-rc.13", features = ["ndarray", "download-binaries"] }
 tokenizers = "0.23.2"
+serde = { version = "1", features = ["derive"] }
 
 [profile.release]
 opt-level = "z"      # optimise for binary size
