@@ -131,3 +131,24 @@ state, zero `source_versions` rows). With the reader change stashed, both new
 cases fail. The test writes the dialog field's controller because Android
 keyboards ignore `tester.enterText` in this harness. macOS rerun pending
 (display was locked). Android private-corpus PSS remains open.
+
+## A24 private corpus and PSS (2026-09-27) — P18 DONE
+
+`integration_test/private_pdf_corpus_test.dart` on the A24 profile build,
+isolated `.profiletest` package. Android has no host environment and adb
+cannot create app-owned external dirs, so `--dart-define=TYLOG_PDF_HANDSHAKE=5`
+makes the app create its own external files dir and wait while the host pushes
+the five corpus PDFs (read-only copies from the verified backup). Total PSS was
+sampled from `dumpsys meminfo` every ~250 ms. Two runs:
+
+```text
+PRIVATE_PDF_SUMMARY files=5 opened=5 failed=0 pages=59 text_pages=41 chars=48693 anchor_exact=2 anchor_ambiguous=2 anchor_missing=1 saved=4 moved=4 no_text_rasterized=1
+peak TOTAL PSS: 301,637 KB (run 1), 319,065 KB (run 2)
+```
+
+Counts match the macOS corpus pass exactly (extraction contract), the no-text
+PDF renders and is marked unsearchable, the password flow is explicit (see
+above), there were no crashes, and peak PSS stays under the 750 MB
+heavy-operation ceiling. Reproduce: `$S/p18_android.sh` pattern — start the
+driver with the handshake define, push `*.pdf` then `.done` into the printed
+`P18_READY` dir. OCR stays deferred by plan.

@@ -23,7 +23,7 @@
 
 #callout(
   [
-    *Current state — 14 of 26 milestones complete.* Twelve milestones remain open or partial: P03, P05, P12, and P18–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+    *Current state — 15 of 26 milestones complete.* Eleven milestones remain open or partial: P03, P05, P12, and P19–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
   ],
   title: "Status at a glance",
   tone: "info",
@@ -111,7 +111,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
   [P15], [Revision upload and attachments], [DONE], [#link("evidence/P15/result.md")[Durable Nextcloud retry path for revisions and binary assets.]],
   [P16], [Transactional receive and conflict handling], [DONE], [#link("evidence/P16/result.md")[Revision envelopes decoded and parent-checked.]],
   [P17], [Snapshot bootstrap and recovery], [DONE], [#link("evidence/P17/result.md")[Archive bootstrap, resume, and damaged-state rejection.]],
-  [P18], [PDF reader and versioned extraction], [OPEN], [#link("evidence/P18/result.md")[Mac private corpus and no-text rendering pass; Android PSS and password-protected behavior remain.]],
+  [P18], [PDF reader and versioned extraction], [DONE], [#link("evidence/P18/result.md")[5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB.]],
   [P19], [Durable annotations and navigation], [OPEN], [#link("evidence/P19/result.md")[Reader and anchor flows pass on Mac/A24; real account annotation sync remains.]],
   [P20], [Chunking and offline embeddings], [OPEN], [#link("evidence/P20/result.md")[Host scheduling and native adapter exist; on-device model, latency, quality, and memory gates remain.]],
   [P21], [Hybrid retrieval and cited navigation], [OPEN], [#link("evidence/P21/result.md")[Host citation/fusion seams pass; full model-to-result-to-source flow needs device acceptance.]],

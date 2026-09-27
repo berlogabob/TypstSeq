@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/pdf/annotation_reattach.dart';
@@ -11,11 +12,37 @@ import 'package:tylog/pdf/pdf_extraction.dart';
 import 'package:tylog/pdf/pdf_reader_screen.dart';
 import 'package:tylog/pdf/pdf_reader_store.dart';
 
+// Host runs pass the root in the environment. On Android there is no host
+// env and adb cannot create app-owned dirs, so TYLOG_PDF_HANDSHAKE=N makes the
+// app create its own external dir, print P18_READY, and wait for N PDFs that
+// the host pushes (see evidence/P18).
+final _privatePdfRoot = Platform.environment['TYLOG_PRIVATE_PDF_ROOT'];
+const _handshakeCount = int.fromEnvironment('TYLOG_PDF_HANDSHAKE');
+
+Future<String?> _resolveRoot() async {
+  if (_handshakeCount == 0) return _privatePdfRoot;
+  final dir = Directory('${(await getExternalStorageDirectory())!.path}/p18');
+  await dir.create(recursive: true);
+  // ignore: avoid_print
+  print('P18_READY ${dir.path}');
+  for (var i = 0; i < 600; i++) {
+    final pdfs = dir.listSync().whereType<File>().where(
+      (f) => f.path.toLowerCase().endsWith('.pdf'),
+    );
+    if (pdfs.length >= _handshakeCount &&
+        File('${dir.path}/.done').existsSync()) {
+      return dir.path;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+  throw StateError('Handshake timed out waiting for pushed PDFs.');
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('opt-in redacted private PDF corpus check', (tester) async {
-    final rootPath = Platform.environment['TYLOG_PRIVATE_PDF_ROOT'];
+    final rootPath = await _resolveRoot();
     if (rootPath == null || rootPath.isEmpty) {
       throw StateError(
         'Set TYLOG_PRIVATE_PDF_ROOT to the private corpus root.',
@@ -191,7 +218,7 @@ void main() {
     } finally {
       await scratch.delete(recursive: true);
     }
-  }, skip: (Platform.environment['TYLOG_PRIVATE_PDF_ROOT'] ?? '').isEmpty);
+  }, skip: (_privatePdfRoot ?? '').isEmpty && _handshakeCount == 0);
 }
 
 Future<void> _pumpUntil(
