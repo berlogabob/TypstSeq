@@ -592,6 +592,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               hintText: 'Start writing…',
               contentPadding: EdgeInsets.all(18),
             )
+          // The windowed field has no decorator: InputDecorator asks for a
+          // dry baseline, a second full text layout on every keystroke
+          // (P12). Its hint is painted by _windowedField instead.
+          : controller is TyLogWindowController
+          ? null
           : InputDecoration.collapsed(
               hintText: widget.controller.text.isEmpty
                   ? 'Start writing…'
@@ -676,14 +681,23 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         valueListenable: window.windowRevision,
         builder: (context, _, _) {
           final text = widget.controller.text;
+          // Window edges are unit breaks: a line end, or a space inside a
+          // long line. A chunk drops its final line break only; the next
+          // widget starts on its own line anyway.
+          int chunkEnd(int end) =>
+              end > 0 && text.codeUnitAt(end - 1) == 0x0A ? end - 1 : end;
           // Line starts of the chunks before the window, and of the chunks
           // after it relative to window.end (stable while typing inside).
           final before = _chunkStarts(text, 0, window.start);
           final afterBase = window.end;
-          final after = afterBase < text.length
+          final afterFrom =
+              afterBase < text.length && text.codeUnitAt(afterBase) == 0x0A
+              ? afterBase + 1
+              : afterBase;
+          final after = afterFrom < text.length
               ? _chunkStarts(
                   text,
-                  afterBase + 1,
+                  afterFrom,
                   text.length,
                 ).map((offset) => offset - afterBase).toList()
               : const <int>[];
@@ -713,12 +727,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       child: chunk(
                         context,
                         before[at],
-                        // Drop the line break that ends each chunk: the next
-                        // widget starts on its own line anyway.
-                        (at + 1 < before.length
-                                ? before[at + 1]
-                                : window.start) -
-                            1,
+                        chunkEnd(
+                          at + 1 < before.length
+                              ? before[at + 1]
+                              : window.start,
+                        ),
                       ),
                     );
                   },
@@ -730,7 +743,24 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 sliver: SliverToBoxAdapter(
                   child: KeyedSubtree(
                     key: _windowFieldKey,
-                    child: _field(window, textStyle, expands: false),
+                    child: Stack(
+                      children: [
+                        _field(window, textStyle, expands: false),
+                        ListenableBuilder(
+                          listenable: window,
+                          builder: (context, _) => window.main.text.isEmpty
+                              ? IgnorePointer(
+                                  child: Text(
+                                    'Start writing…',
+                                    style: textStyle?.copyWith(
+                                      color: Theme.of(context).hintColor,
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -753,7 +783,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       child: chunk(
                         context,
                         base + after[i],
-                        i + 1 < after.length ? base + after[i + 1] - 1 : length,
+                        i + 1 < after.length
+                            ? chunkEnd(base + after[i + 1])
+                            : length,
                       ),
                     );
                   },

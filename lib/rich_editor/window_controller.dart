@@ -9,17 +9,26 @@ bool debugEnableEditorWindow = false;
 /// above it.
 bool debugWindowScrollCompensation = true;
 
+/// Long lines are split into display units of about this many characters;
+/// the window shows complete units, so a long line need not be laid out whole.
+const int kWindowUnitChars = 160;
+
+/// Upper bound on the editing window's text length.
+const int kWindowMaxChars = 600;
+
 /// Bounded editing window over a [TyLogEditingController] (P12k).
 ///
-/// The `TextField` edits only the lines around the selection; the main
+/// The `TextField` edits only the units around the selection; the main
 /// controller keeps the whole document and every editing rule. The window is
-/// `[start, end)` of the visible text, where `start` is a line start and
-/// `end` a line end, so it works inside one long paragraph as well as across
-/// blocks. A user edit is spliced into the main controller's global value,
-/// so formatting, Enter/Backspace, paste, composition and undo/redo run on
-/// global offsets exactly as before. Text outside the window never changes
-/// through the field, which keeps both boundaries valid:
-/// `end = main.text.length - _tail`.
+/// `[start, end)` of the visible text (exclusive end: a line end or `\n`). It
+/// spans whole display units rather than whole lines: each line is either its
+/// own unit or is cut into ~[kWindowUnitChars]-character units at spaces, so a
+/// single long line is laid out in bounded pieces. It therefore works inside
+/// one long paragraph as well as across blocks. A user edit is spliced into the
+/// main controller's global value, so formatting, Enter/Backspace, paste,
+/// composition and undo/redo run on global offsets exactly as before.
+/// Text outside the window never changes through the field, so `_before` and
+/// `_after` fingerprints ([_fingerprint]) stay valid: `end = main.text.length - _tail`.
 class TyLogWindowController extends TextEditingController {
   TyLogWindowController(this.main, {this.margin = 6}) {
     _recenter(force: true);
@@ -34,6 +43,10 @@ class TyLogWindowController extends TextEditingController {
 
   int _start = 0;
   int _tail = 0;
+  // Up to 32 characters on each side of the window, to detect edits made
+  // outside it (loadSource, undo) now that boundaries can sit mid-line.
+  String _before = '';
+  String _after = '';
   bool _pushing = false;
 
   /// Global offset of the window's first character (a line start).
@@ -97,13 +110,11 @@ class TyLogWindowController extends TextEditingController {
   }
 
   bool _boundariesValid() {
-    final text = main.text;
-    final windowEnd = end;
-    return _start >= 0 &&
-        windowEnd >= _start &&
-        windowEnd <= text.length &&
-        (_start == 0 || text.codeUnitAt(_start - 1) == 0x0A) &&
-        (windowEnd == text.length || text.codeUnitAt(windowEnd) == 0x0A);
+    final t = main.text;
+    final e = end;
+    if (_start < 0 || e < _start || e > t.length) return false;
+    return t.substring((_start - 32).clamp(0, _start), _start) == _before &&
+        t.substring(e, (e + 32).clamp(e, t.length)) == _after;
   }
 
   void _recenter({bool force = false}) {
@@ -112,21 +123,43 @@ class TyLogWindowController extends TextEditingController {
     // No caret yet (a note just opened): show its top, as the plain field did.
     final lo = selection.isValid ? selection.start : 0;
     final hi = selection.isValid ? selection.end : 0;
-    // Keep one full line of slack on each side before recentering, so arrow
+    // Keep whole units of slack on each side before recentering, so arrow
     // keys and Backspace/Enter at the window edge have room to act.
-    final needStart = _linesBack(text, lo, 1);
-    final needEnd = _linesForward(text, hi, 1);
+    final needStart = _prevUnitStart(text, unitStart(text, lo));
+    final needEnd = _nextUnitEnd(text, unitEnd(text, hi));
     final inside =
         !force &&
         needStart >= _start &&
         needEnd <= end &&
-        // Appends at an edge grow the window line by line; cap it so the
+        // Appends at an edge grow the window unit by unit; cap it so the
         // per-edit layout stays bounded.
+        end - _start <= kWindowMaxChars &&
         _lineBreaks(text, _start, end) <= 2 * margin + 8;
     if (inside || (!force && main.value.composing.isValid)) return;
-    _start = _linesBack(text, lo, margin);
-    _tail = text.length - _linesForward(text, hi, margin);
+    var s = unitStart(text, lo);
+    var e = unitEnd(text, hi);
+    // One unit of slack on each side always (else the next edit recenters
+    // again), then more units while the window stays under half the cap, so
+    // typing has room to grow it before the next recenter.
+    // ponytail: a single unit has no size bound (a long line without
+    // spaces); split such lines at a hard offset if that shows up.
+    for (var i = 0; i < margin; i++) {
+      final ps = _prevUnitStart(text, s);
+      if (ps < s && (i == 0 || e - ps <= kWindowMaxChars ~/ 2)) s = ps;
+      final ne = _nextUnitEnd(text, e);
+      if (ne > e && (i == 0 || ne - s <= kWindowMaxChars ~/ 2)) e = ne;
+    }
+    _start = s;
+    _tail = text.length - e;
+    _fingerprint();
     windowRevision.value++;
+  }
+
+  void _fingerprint() {
+    final t = main.text;
+    final e = end;
+    _before = t.substring((_start - 32).clamp(0, _start), _start);
+    _after = t.substring(e, (e + 32).clamp(e, t.length));
   }
 
   static int _lineBreaks(String text, int from, int to) {
@@ -137,28 +170,68 @@ class TyLogWindowController extends TextEditingController {
     return count;
   }
 
-  /// Start of the line [lines] lines above the one containing [offset].
-  static int _linesBack(String text, int offset, int lines) {
-    var at = offset.clamp(0, text.length);
-    for (var n = 0; n <= lines; n++) {
-      final previous = at == 0 ? -1 : text.lastIndexOf('\n', at - 1);
-      if (previous < 0) return 0;
-      if (n == lines) return previous + 1;
-      at = previous;
+  /// Soft breaks inside the line [ls, le): for k = 1, 2, … the position just
+  /// after the first space at or after ls + k*kWindowUnitChars, if that space
+  /// is before le - 1. Ascending, strictly increasing (skip duplicates).
+  static List<int> softBreaks(String text, int ls, int le) {
+    final out = <int>[];
+    final start = ls.clamp(0, text.length);
+    final end = le.clamp(0, text.length);
+    for (var k = 1; ; k++) {
+      final p = start + k * kWindowUnitChars;
+      if (p >= end) break;
+      final sp = text.indexOf(' ', p);
+      if (sp < 0 || sp >= end - 1) break;
+      final breakAt = sp + 1;
+      if (out.isEmpty || breakAt > out.last) out.add(breakAt);
     }
-    return 0;
+    return out;
   }
 
-  /// End of the line [lines] lines below the one containing [offset].
-  static int _linesForward(String text, int offset, int lines) {
-    var at = offset.clamp(0, text.length);
-    for (var n = 0; n <= lines; n++) {
-      final next = text.indexOf('\n', at);
-      if (next < 0) return text.length;
-      if (n == lines) return next;
-      at = next + 1;
+  static int _lineStart(String text, int offset) =>
+      offset <= 0 ? 0 : text.lastIndexOf('\n', offset - 1) + 1;
+
+  static int _lineEnd(String text, int offset) {
+    final i = text.indexOf('\n', offset);
+    return i < 0 ? text.length : i;
+  }
+
+  /// Start of the unit containing [offset]: the largest soft break <= offset in
+  /// its line, else the line start. The offset clamps to [0, text.length]; the
+  /// line is found from [offset] itself, so the `\n` at [offset] belongs to the
+  /// previous line (its last unit start is its line start).
+  static int unitStart(String text, int offset) {
+    final off = offset.clamp(0, text.length);
+    var at = _lineStart(text, off);
+    for (final b in softBreaks(text, at, _lineEnd(text, off))) {
+      if (b > off) break;
+      at = b;
     }
-    return text.length;
+    return at;
+  }
+
+  /// Exclusive end of the unit containing [offset]: the smallest soft break >
+  /// offset in its line, else the line end (index of `\n` or text.length).
+  static int unitEnd(String text, int offset) {
+    final off = offset.clamp(0, text.length);
+    final lineEnd = _lineEnd(text, off);
+    for (final b in softBreaks(text, _lineStart(text, off), lineEnd)) {
+      if (b > off) return b;
+    }
+    return lineEnd;
+  }
+
+  /// Start of the unit before the one starting at [s] (s itself when s == 0).
+  static int _prevUnitStart(String text, int s) =>
+      s == 0 ? 0 : unitStart(text, s - 1);
+
+  /// End of the unit after the one ending at [e]: e == length -> length;
+  /// text[e] == '\n' -> unitEnd(e + 1); else unitEnd(e).
+  static int _nextUnitEnd(String text, int e) {
+    final end = e.clamp(0, text.length);
+    if (end == text.length) return text.length;
+    if (text[end] == '\n') return unitEnd(text, end + 1);
+    return unitEnd(text, end);
   }
 
   void _pushWindowValue() {

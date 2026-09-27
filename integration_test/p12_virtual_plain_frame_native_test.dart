@@ -1,7 +1,9 @@
 import 'dart:ui' show FramePhase;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show debugProfileLayoutsEnabled;
+import 'package:flutter/foundation.dart' show FlutterTimeline;
+import 'package:flutter/rendering.dart'
+    show debugProfileLayoutsEnabled, debugProfilePaintsEnabled;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -19,7 +21,7 @@ const _p12Gate = bool.fromEnvironment('P12_FRAME_GATE');
 const _window = bool.fromEnvironment('P12_WINDOW');
 
 void main() {
-  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('P12 production long-note editor five-minute frame gate', (
     tester,
@@ -134,9 +136,25 @@ void main() {
     if (const bool.fromEnvironment('P12_TRACE')) {
       debugProfileLayoutsEnabled = true;
       debugProfileBuildsEnabled = true;
+      // In-process collection: traceAction needs the VM service, which a
+      // profile build on the device cannot reach.
+      debugProfilePaintsEnabled = true;
+      FlutterTimeline.debugCollectionEnabled = true;
       try {
-        await binding.traceAction(editWorkload, reportKey: 'p12_plain_trace');
+        await editWorkload();
+        final timings = FlutterTimeline.debugCollect();
+        final top = [...timings.aggregatedBlocks]
+          ..sort((a, b) => b.duration.compareTo(a.duration));
+        for (final block in top.take(30)) {
+          // ignore: avoid_print
+          print(
+            'P12 trace ${block.name} total_ms=${block.duration.toStringAsFixed(1)} '
+            'count=${block.count}',
+          );
+        }
       } finally {
+        FlutterTimeline.debugCollectionEnabled = false;
+        debugProfilePaintsEnabled = false;
         debugProfileLayoutsEnabled = false;
         debugProfileBuildsEnabled = false;
       }

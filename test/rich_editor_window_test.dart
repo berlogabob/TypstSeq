@@ -199,4 +199,48 @@ void main() {
     expect('\n'.allMatches(window.text).length, lessThanOrEqualTo(20));
     expect(window.end, main.text.length);
   });
+
+  test('long lines split into units at spaces', () {
+    final text = List.filled(200, 'word').join(' ');
+    final breaks = TyLogWindowController.softBreaks(text, 0, text.length);
+    expect(breaks, hasLength(text.length ~/ kWindowUnitChars));
+    for (final (k, b) in breaks.indexed) {
+      expect(text[b - 1], ' ');
+      expect(b - (k + 1) * kWindowUnitChars, inInclusiveRange(1, 6));
+    }
+    final at = breaks.lastIndexWhere((b) => b <= 700);
+    expect(TyLogWindowController.unitStart(text, 700), breaks[at]);
+    expect(TyLogWindowController.unitEnd(text, 700), breaks[at + 1]);
+    expect(TyLogWindowController.unitStart(text, 5), 0);
+    expect(TyLogWindowController.unitEnd(text, 990), text.length);
+  });
+
+  test('a long growing paragraph keeps the window bounded', () {
+    final source = '${_header}start\n${List.filled(180, 'word').join(' ')}';
+    final viaWindow = _main(source);
+    final direct = _main(source);
+    addTearDown(viaWindow.dispose);
+    addTearDown(direct.dispose);
+    viaWindow.selection = TextSelection.collapsed(
+      offset: viaWindow.text.length,
+    );
+    direct.selection = TextSelection.collapsed(offset: direct.text.length);
+    final window = TyLogWindowController(viaWindow);
+    addTearDown(window.dispose);
+    for (var i = 0; i < 300; i++) {
+      final insert = i % 5 == 4 ? ' ' : 'x';
+      _type(window, insert);
+      _type(direct, insert);
+      expect(window.text.length, lessThanOrEqualTo(kWindowMaxChars + 400));
+    }
+    expect(window.end, viaWindow.text.length);
+    expect(window.text, viaWindow.text.substring(window.start, window.end));
+    expect(viaWindow.document.toSource(), direct.document.toSource());
+    // Moving to the top and back recenters within the long line.
+    viaWindow.selection = const TextSelection.collapsed(offset: 0);
+    expect(window.start, 0);
+    viaWindow.selection = TextSelection.collapsed(offset: 700);
+    expect(window.start, lessThanOrEqualTo(700));
+    expect(window.end, greaterThanOrEqualTo(700));
+  });
 }
