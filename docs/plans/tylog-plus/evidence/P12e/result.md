@@ -592,3 +592,22 @@ regression checks: in `make verify` the formatted run failed on a macOS debug
 build (71 edits, 100% over budget), which is the known open P12 result and
 kept U0's verify red. Run them on the A24 profile build for P12 acceptance.
 The double `removeTimingsCallback` assertion on the failure path is fixed.
+
+## A24 rerun on main (2026-09-27)
+
+Isolated `.profiletest` package, `P12_FRAME_GATE=true`, production app left
+installed and idle.
+
+| Run | Refresh / budget | Edits / frames | Over budget | Build p95 | Raster p95 |
+|---|---|---|---|---|---|
+| Plain 900-row, 300 s (device-chosen rate) | 120 Hz / 8.333 ms | 1,106 / 1,106 | **290 (26.22%)**; build 278, raster 18 | 10.343 ms | 7.106 ms |
+| Plain, 1,024-char active row, 20 s, min rate pinned to 120 Hz | 120 Hz / 8.333 ms | 74 / 74 | 28 (37.8%) | 11.244 ms | 6.756 ms |
+| Same, `TextField(decoration: null)` + outer padding | 120 Hz / 8.333 ms | 74 / 74 | 31 (41.9%) | 10.755 ms | 7.279 ms |
+
+The earlier 7.56% result was taken at 90 Hz (11.1 ms budget); at 120 Hz the
+same build cost fails by a wider margin. Removing the InputDecorator does not
+change build time (within run-to-run noise), so it was reverted: the cost is
+laying out the growing paragraph itself (~10 ms for ~1k chars on this device).
+Both plain and formatted gates therefore need the bounded-layout (P12k)
+change; no cheaper widget-level fix remains. The device refresh setting was
+restored (`min_refresh_rate=0.0`) after the pinned runs.
