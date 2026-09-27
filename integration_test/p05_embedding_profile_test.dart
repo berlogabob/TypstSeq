@@ -13,6 +13,9 @@ const _handshake = bool.fromEnvironment('P05_HANDSHAKE');
 var _modelPath = const String.fromEnvironment('P05_MODEL_PATH');
 var _tokenizerPath = const String.fromEnvironment('P05_TOKENIZER_PATH');
 var _goldenPath = const String.fromEnvironment('P05_GOLDEN_PATH');
+var _passageGoldenPath = const String.fromEnvironment(
+  'P05_PASSAGE_GOLDEN_PATH',
+);
 
 /// Android: the app creates its own external dir, prints P05_READY, and waits
 /// for the host to push model_O4.onnx, tokenizer.json, smoke-golden.json and a
@@ -34,6 +37,7 @@ Future<void> _awaitPushedModel() async {
       : '${dir.path}/model_O4.onnx';
   _tokenizerPath = '${dir.path}/tokenizer.json';
   _goldenPath = '${dir.path}/smoke-golden.json';
+  _passageGoldenPath = '${dir.path}/passage-golden.json';
 }
 
 void main() {
@@ -92,6 +96,37 @@ void main() {
       );
       expect(cosine, greaterThanOrEqualTo(0.999));
       expect(maxAbsDifference, lessThanOrEqualTo(0.02));
+
+      // Passage vectors use the "passage: " prefix; plan P20 requires both.
+      if (_passageGoldenPath.isNotEmpty &&
+          File(_passageGoldenPath).existsSync()) {
+        final passage = await embed(
+          modelPath: _modelPath,
+          tokenizerPath: _tokenizerPath,
+          kind: 'passage',
+          text: 'Offline passage smoke: a research note about cited evidence.',
+        );
+        final golden =
+            (jsonDecode(await File(_passageGoldenPath).readAsString()) as List)
+                .cast<num>()
+                .map((value) => value.toDouble())
+                .toList();
+        expect(passage.vector.length, golden.length);
+        var dot = 0.0;
+        var maxAbs = 0.0;
+        for (var i = 0; i < golden.length; i++) {
+          dot += passage.vector[i] * golden[i];
+          maxAbs = math.max(maxAbs, (passage.vector[i] - golden[i]).abs());
+        }
+        final cosine = dot / passage.norm;
+        // ignore: avoid_print
+        print(
+          'P05_PASSAGE_PARITY cosine=${cosine.toStringAsFixed(6)} '
+          'max_abs=${maxAbs.toStringAsFixed(6)}',
+        );
+        expect(cosine, greaterThanOrEqualTo(0.999));
+        expect(maxAbs, lessThanOrEqualTo(0.02));
+      }
 
       // Query-embedding latency: the call above loaded the model (first query);
       // these 20 reuse the cached session (warm). Synthetic text, timings only.
