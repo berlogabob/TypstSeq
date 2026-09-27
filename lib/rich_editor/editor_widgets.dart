@@ -592,6 +592,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               hintText: 'Start writing…',
               contentPadding: EdgeInsets.all(18),
             )
+          // The windowed field has no decorator: InputDecorator asks for a
+          // dry baseline, a second full text layout on every keystroke
+          // (P12). Its hint is painted by _windowedField instead.
+          : controller is TyLogWindowController
+          ? null
           : InputDecoration.collapsed(
               hintText: widget.controller.text.isEmpty
                   ? 'Start writing…'
@@ -676,14 +681,23 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         valueListenable: window.windowRevision,
         builder: (context, _, _) {
           final text = widget.controller.text;
+          // Window edges are unit breaks: a line end, or a space inside a
+          // long line. A chunk drops its final line break only; the next
+          // widget starts on its own line anyway.
+          int chunkEnd(int end) =>
+              end > 0 && text.codeUnitAt(end - 1) == 0x0A ? end - 1 : end;
           // Line starts of the chunks before the window, and of the chunks
           // after it relative to window.end (stable while typing inside).
           final before = _chunkStarts(text, 0, window.start);
           final afterBase = window.end;
-          final after = afterBase < text.length
+          final afterFrom =
+              afterBase < text.length && text.codeUnitAt(afterBase) == 0x0A
+              ? afterBase + 1
+              : afterBase;
+          final after = afterFrom < text.length
               ? _chunkStarts(
                   text,
-                  afterBase + 1,
+                  afterFrom,
                   text.length,
                 ).map((offset) => offset - afterBase).toList()
               : const <int>[];
@@ -713,12 +727,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       child: chunk(
                         context,
                         before[at],
-                        // Drop the line break that ends each chunk: the next
-                        // widget starts on its own line anyway.
-                        (at + 1 < before.length
-                                ? before[at + 1]
-                                : window.start) -
-                            1,
+                        chunkEnd(
+                          at + 1 < before.length
+                              ? before[at + 1]
+                              : window.start,
+                        ),
                       ),
                     );
                   },
@@ -730,7 +743,24 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 sliver: SliverToBoxAdapter(
                   child: KeyedSubtree(
                     key: _windowFieldKey,
-                    child: _field(window, textStyle, expands: false),
+                    child: Stack(
+                      children: [
+                        _field(window, textStyle, expands: false),
+                        ListenableBuilder(
+                          listenable: window,
+                          builder: (context, _) => window.main.text.isEmpty
+                              ? IgnorePointer(
+                                  child: Text(
+                                    'Start writing…',
+                                    style: textStyle?.copyWith(
+                                      color: Theme.of(context).hintColor,
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -753,7 +783,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       child: chunk(
                         context,
                         base + after[i],
-                        i + 1 < after.length ? base + after[i + 1] - 1 : length,
+                        i + 1 < after.length
+                            ? chunkEnd(base + after[i + 1])
+                            : length,
                       ),
                     );
                   },
@@ -1667,21 +1699,67 @@ void _replaceInBlock(
   String replacement, {
   TyLogInlineStyle? insertionStyle,
 }) {
-  final units = _units(block.parts);
+  // Convert only the parts the edit touches (plus the one before it, for the
+  // inherited style): exploding a long paragraph into per-character units on
+  // every keystroke cost ~25 ms on the A24 (P12).
+  final parts = block.parts;
+  int partAt(int offset) {
+    var at = 0;
+    for (var i = 0; i < parts.length; i++) {
+      at += parts[i].isAtom ? 1 : parts[i].text.length;
+      if (offset < at) return i;
+    }
+    return parts.length - 1;
+  }
+
+  final lo = parts.isEmpty ? 0 : partAt(math.max(0, start - 1));
+  // Characters [start, end) are replaced; an insertion only needs part lo.
+  final hi = parts.isEmpty ? -1 : (end > start ? partAt(end - 1) : lo);
+  var base = 0;
+  for (var i = 0; i < lo; i++) {
+    base += parts[i].isAtom ? 1 : parts[i].text.length;
+  }
+  final part = hi == lo ? parts[lo] : null;
+  if (part != null &&
+      !part.isAtom &&
+      (insertionStyle == null || insertionStyle == part.style)) {
+    // Typing inside one text run (the common case): splice its string; one
+    // run can be a whole long paragraph.
+    block
+      ..parts = _normalize([
+        ...parts.sublist(0, lo),
+        TyLogInline.text(
+          part.text.replaceRange(start - base, end - base, replacement),
+          style: part.style,
+        ),
+        ...parts.sublist(lo + 1),
+      ])
+      ..dirty = true;
+    return;
+  }
+  final units = _units(parts.sublist(lo, hi + 1));
+  final from = start - base;
   final inherited =
       insertionStyle ??
-      (start > 0 && start <= units.length
-          ? units[start - 1].style
-          : start < units.length
-          ? units[start].style
+      (from > 0 && from <= units.length
+          ? units[from - 1].style
+          : from < units.length
+          ? units[from].style
           : const TyLogInlineStyle());
   units.replaceRange(
-    start,
-    end,
+    from,
+    end - base,
     replacement.codeUnits.map((code) => _Unit(code, inherited, null)),
   );
   block
-    ..parts = _parts(units)
+    ..parts = _normalize([
+      // _normalize appends into the previous text part: copy the neighbours
+      // it may merge into so the undo snapshot's parts stay untouched.
+      for (var i = 0; i < lo; i++) i == lo - 1 ? parts[i].copy() : parts[i],
+      ..._parts(units),
+      for (var i = hi + 1; i < parts.length; i++)
+        i == hi + 1 ? parts[i].copy() : parts[i],
+    ])
     ..dirty = true;
 }
 
