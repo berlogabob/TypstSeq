@@ -61,7 +61,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P09 | Resumable legacy import | DONE WITH GAPS | [3,483/3,483 items terminal; 16 assets missing and 1,243 wikilinks unresolved](evidence/P09d5/result.md). |
 | P10 | Portable export and conflict-aware re-import | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md). |
 | P11 | Route existing edits/buttons through database | DONE | [Edits, deletes, creation, and import durable](evidence/P11a/result.md). |
-| P12 | Paged startup/list reads and editor performance | OPEN | [Startup/open/save pass. Corrected A24 frame gate fails: plain 7.56%; formatted 100% in the short smoke. Editor parity remains](evidence/P12e/result.md). |
+| P12 | Paged startup/list reads and editor performance | OPEN | [Startup/open/save pass. A24 at 120 Hz: plain 26.2% over budget (layout ~4.4 ms + semantics ~2.6 ms per edit); formatted ~75 ms/edit. Bounded window (P12k) approved, not started](evidence/P12e/result.md). |
 | P13 | Incremental FTS and filters | DONE | [FTS5, changed-record refresh, multilingual latency and UI fallback](evidence/P13/result.md). |
 | P14 | Persistent processing jobs | DONE | [Resume, cancel, deduplicate, stale-result tests](evidence/P14/result.md). |
 | P15 | Revision upload and attachments | DONE | [Durable Nextcloud retry path for revisions and binary assets](evidence/P15/result.md). |
@@ -69,9 +69,9 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P17 | Snapshot bootstrap and recovery | DONE | [Archive bootstrap, resume, and damaged-state rejection](evidence/P17/result.md). |
 | P18 | PDF reader and versioned extraction | DONE | [5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB](evidence/P18/result.md). |
 | P19 | Durable annotations and navigation | OPEN | [Reader and anchor flows pass on Mac/A24; real account annotation sync remains](evidence/P19/result.md). |
-| P20 | Chunking and offline embeddings | OPEN | [Host scheduling and native adapter exist; on-device model, latency, quality, and memory gates remain](evidence/P20/result.md). |
-| P21 | Hybrid retrieval and cited navigation | OPEN | [Host citation/fusion seams pass; full model-to-result-to-source flow needs device acceptance](evidence/P21/result.md). |
-| P22 | Evidence relations and bounded graph | OPEN | [Mac synthetic graph passes; real-vault timing is invalid or above 500 ms; Android timing remains](evidence/P22/result.md). |
+| P20 | Chunking and offline embeddings | OPEN | [Mac and A24 parity pass (cosine 1.000000); lean tokenizer; A24 250k + model: first 952 ms, warm p95 230 ms, peak PSS 736 MB. In-app indexer resume on device remains](evidence/P20/result.md). |
+| P21 | Hybrid retrieval and cited navigation | OPEN | [Semantic search wired in-app (download, incremental chunks, indexer, int8 search + exact rerank, note citations). On-device download-index-search-navigate run remains](evidence/P21/result.md). |
+| P22 | Evidence relations and bounded graph | OPEN | [A24 real vault passes (p95 46 ms both modes, 100/100 valid). macOS 100-sample run remains (needs idle, unlocked Mac)](evidence/P22/result.md). |
 | P23 | Complete research workflow | OPEN | [Host filtered retrieval-to-report path passes; native end-to-end workflow remains](evidence/P23/result.md). |
 | P24 | Migration rehearsal and integrated failures | OPEN | [Host failure matrix and isolated A24 process-death test pass; real-account/release rehearsal remains](evidence/P24/result.md). |
 | P25 | Production migration and release acceptance | OPEN | [macOS universal release and Android profile artifacts build; real vault/account release gate remains](evidence/P25/result.md). |
