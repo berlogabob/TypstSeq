@@ -76,3 +76,40 @@ Nextcloud configuration. Any database-only annotations or unsynced state may
 need recovery from another source. P03 remains open; configure the cloud
 account again in the app before resuming sync acceptance. No credentials are
 recorded here.
+
+## A24 reconnected and initial sync completed (2026-09-27)
+
+- The production app had been removed by an earlier profile run; the release
+  build was reinstalled in place and the user reselected the vault. Nextcloud
+  was configured on the A24 from the ignored `.secrets/` file (HTTPS endpoint;
+  entered with the Maestro CLI so the password never appeared in tool output).
+  Gboard autocorrect had corrupted the server URL ("next cloud. sounding
+  doubts. pt"); fixed in f14721e (no autocorrect on URL/login/folder fields).
+- Before the safe merge, a fresh backup of the phone vault was pulled:
+  11,847 files, full SHA-256 manifest, stored outside Git.
+- Safe merge ("unique files both ways, same-path differences become
+  conflicts, nothing deleted") finished; latest sync reports 12,238 files on
+  Nextcloud, all unchanged.
+- 23 conflicts (2 pre-existing from 2026-09-02, 21 from the merge) were each
+  classified by `tool/p03_conflict_report.py` (drafted by local ornith, fixed
+  and self-checked) against both the pre-merge and 2026-09-15 backups:
+  - 19 article assets: 9 are HTML error pages saved as images on both sides,
+    6 real images where the server copy is the newer re-download, 3 webp where
+    the phone file already equalled the server → keep Nextcloud.
+  - One daily note: the phone copy was 54 lines of editor-benchmark junk from
+    a 2026-09-21 test run against the production app, with no real line the
+    server lacked → keep Nextcloud.
+  - One guide note: the server copy is byte-identical to the 2026-09-15
+    verified backup; the phone copy differed only by unescaped hyphens plus one
+    junk line → keep Nextcloud.
+  - The pre-existing pair (same daily note): the server had three lines
+    written on another device, the phone one line the server lacked. Both
+    records were resolved to Nextcloud and the union (every line from both
+    sides, verified) was then written to the server; the phone downloaded it
+    without a new conflict.
+- No real content was lost; every overwritten phone copy remains in the
+  pre-merge backup.
+
+Remaining for P03: Mac↔A24 small edits in both directions, a concurrent
+same-note edit preserved as a reviewable conflict, and an attachment hash
+round trip with cold restart.
