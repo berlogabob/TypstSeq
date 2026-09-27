@@ -137,3 +137,15 @@ Latency is far above the acceptance table's ≤10 s p95 sync target (a separate
 Sync gate, measured later). Open question for P03 closure: the Mac side has no
 TyLog sync engine, so a concurrent edit is reviewable on the A24 only; the Mac
 keeps its own version and nothing is lost.
+
+Observed on the A24 while a conflict is pending (2026-09-27): a foreground
+poll runs every ~20–25 s and, because any unresolved conflict disables the
+root-etag shortcut (`pollIsUnchanged` / `loadSyncConflicts(...).isNotEmpty`),
+each poll lists the whole remote tree (~5 s) and every few polls rescans all
+12,241 local files (~28 s), with zero changes. The server root etag was
+verified stable over that period. Follow-up for the idle/battery gate: allow
+the shortcut when the root etag is unchanged even with recorded conflicts
+(a recorded conflict cannot go stale remotely without the etag moving; local
+edits still fail the cursor-snapshot match). Also: resolving a conflict was
+refused ("A sync is running") whenever it landed inside one of these passes;
+fixed by letting the resolve wait for the lock (see next commit).
