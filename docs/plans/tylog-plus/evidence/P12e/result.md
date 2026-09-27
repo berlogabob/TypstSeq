@@ -635,3 +635,29 @@ the device's real operating condition. Conclusion: the active-row cost is the
 paragraph's own layout plus semantics; a bounded window removes whole-document
 layout (formatted editor, ~75 ms) but cannot remove per-paragraph cost. P12k
 proceeds (user decision 2026-09-27) with the gate re-measured afterwards.
+
+## P12k design (2026-09-27)
+
+Goal: an edit lays out a bounded window of blocks, not the whole document,
+without changing `TyLogEditingController`, the document model or source bytes.
+
+- `TyLogWindowController` (a `TextEditingController`) is what the `TextField`
+  edits. Its text is `main.text.substring(start, end)` where `[start, end)`
+  covers whole blocks. A user edit is spliced into the main controller's
+  global value (`start` + window offsets), so every existing edit path —
+  formatting, Enter/Backspace across blocks inside the window, paste,
+  composition, undo/redo — runs unchanged on global offsets. Text outside the
+  window is untouched by such an edit, so the new window end is
+  `main.text.length - tail`.
+- Recentering: the window always covers the selection plus a margin of blocks
+  and is recentered only when the selection nears an edge and no composition
+  is active. Select-all or a selection spanning the whole note expands the
+  window to the whole document (correct, slow, rare).
+- Spans: `buildTextSpan` renders only the window's blocks via a block-range
+  variant of the existing `_textSpan`, so composing and chip rendering are the
+  same code.
+- Outside the window each block is a read-only `RichText` with the same
+  style and strut inside one scroll view, laid out once and reused. Tapping one
+  moves the window there and places the caret via its paragraph hit test.
+- Guarded by `kEnableEditorWindow`; enabled only after the existing rich-editor
+  host suite passes against it, then the A24 formatted gate is rerun.
