@@ -693,3 +693,27 @@ The harness's formatted edit minimum was aligned with the plan (≥60 edits in
 assertions pass. Still open for P12: enable the window in production after a
 real-keyboard/IME check (macOS native editor test and A24 hands-on), and the
 plain 900-row gate (currently `VirtualPlainEditor`, 26.2% over at 120 Hz).
+
+## Window regressions resolved; plain gate still fails (2026-09-27)
+
+The scroll-centre layout (needed so the editing field is always built for
+the IME) regressed the formatted gate (3.3% over at 120 Hz; 4.4% with scroll
+compensation off, so compensation was not the cause). Cause: the static list
+above the window is built in reverse, so each chunk added by re-centring
+shifted every index and rebuilt every visible chunk. Stable offset keys with
+`findChildIndexCallback` (8de82fc, drafted by local ornith) fixed it. With the
+production app force-stopped during the run (its sync polls compete for CPU):
+
+| Run (A24 profile, 300 s, `P12_WINDOW`) | Refresh | Edits | Over budget | Build p95 | Raster p95 |
+|---|---|---:|---:|---:|---:|
+| Formatted, keyed chunks | 120 Hz | 1,049 | **0.095%** (1 frame) | 5.6 ms | 3.9 ms |
+| Plain growing paragraph, keyed chunks | 120 Hz | 1,052 | 89.8% | 12.6 ms | 5.6 ms |
+
+The plain workload types into one paragraph for 5 minutes (68 → ~1,120
+chars). A single `RenderEditable` paragraph of that length costs ~3.5 ms layout
+plus ~2.6 ms semantics per frame on this device, and the window adds its
+neighbouring lines; the old one-field-per-line editor measured 26%. Passing it
+needs long paragraphs split into independently laid-out display segments while
+keeping one logical paragraph (a further editor change), or a plan decision on
+that workload. The run also missed the plan's 1,100-edit minimum by 48 (the
+harness paces 4 edits/s).
