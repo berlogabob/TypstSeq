@@ -113,3 +113,27 @@ recorded here.
 Remaining for P03: Mac↔A24 small edits in both directions, a concurrent
 same-note edit preserved as a reviewable conflict, and an attachment hash
 round trip with cold restart.
+
+## Two-way, concurrent and attachment checks (2026-09-27)
+
+Setup: the Mac vault `~/Nextcloud/TyLogVault` syncs through the Nextcloud
+desktop client; the A24 uses TyLog's own sync. Test files: a dedicated test
+note and two random 64×64 PNG attachments (no user content).
+
+| Check | Result |
+|---|---|
+| Mac → A24 small edit | arrived, hash match, 46 s |
+| A24 → Mac small edit | arrived, hash match, 91 s |
+| Attachment Mac → A24 | hash match after 41 s; unchanged after A24 cold restart (220 ms), no conflict, no re-download |
+| Attachment A24 → Mac | hash match after 90 s |
+| Concurrent same-note edit (first try) | **phone edit silently overwritten** — a poll reused the cached local listing (scan-local 53 ms), judged the file unchanged and downloaded over it |
+| Concurrent same-note edit (after 1b891d8) | phone keeps its edit and stores a conflict whose `.local`/`.remote` snapshots equal the two edits byte for byte; later runs skip it as `unresolved-conflict` |
+
+Fix 1b891d8 (drafted by local ornith-1.5:9b, reviewed): the download branch
+re-hashes the real file before overwriting and stores a conflict when it
+differs; host test fails without it; full suite 877 passed.
+
+Latency is far above the acceptance table's ≤10 s p95 sync target (a separate
+Sync gate, measured later). Open question for P03 closure: the Mac side has no
+TyLog sync engine, so a concurrent edit is reviewable on the A24 only; the Mac
+keeps its own version and nothing is lost.
