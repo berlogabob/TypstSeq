@@ -23,7 +23,7 @@
 
 #callout(
   [
-    *Current state — 17 of 26 milestones complete.* Nine milestones remain open or partial: P03, P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+    *Current state — 18 of 26 milestones complete.* Eight milestones remain open or partial: P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
   ],
   title: "Status at a glance",
   tone: "info",
@@ -96,7 +96,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
   ),
   [P01], [Back up and inventory phone vault], [DONE], [#link("evidence/P01/result.md")[Verified inventory: 11,826 files.]],
   [P02], [Restore production selection and release], [DONE], [#link("evidence/P02/result.md")[Vault and release persist.]],
-  [P03], [Real Mac–A24 sync and existing controls], [OPEN], [#link("evidence/P03/result.md")[Cloud config must be re-entered; initial transfer was interrupted; two existing conflict cards need safe inspection.]],
+  [P03], [Real Mac–A24 sync and existing controls], [DONE], [#link("evidence/P03/result.md")[A24 reconnected; initial sync 12,238 files; 23 conflicts reconciled; two-way edits, concurrent conflict (A24 review), attachments + cold restart pass.]],
   [P04], [Corpus fixtures and benchmark runner], [DONE], [#link("evidence/P04b/result.md")[Real, 10k, and 100k manifests and baseline.]],
   [P05], [Offline embedding and retrieval feasibility], [OPEN], [#link("evidence/P05/mac-quality-readiness.md")[Android model/vector/search/resume gates pass. Human review and `Recall@10` score remain.]],
   [P06], [Database bootstrap and migration tests], [DONE], [#link("evidence/P06/result.md")[Background SQLite, WAL/FK, creation, and upgrade tests.]],

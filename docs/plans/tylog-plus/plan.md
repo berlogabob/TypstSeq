@@ -3,7 +3,7 @@
 > **Markdown reading copy — updated 2026-09-26.** The canonical plan is [`plan.typ`](plan.typ); update it first and keep this copy aligned. [`plan.pdf`](plan.pdf) is the reader version. This is one plan with multiple formats, not a second tracker.
 
 **Owner:** Project coordinator · **Scope:** P01–P26  
-**Current state:** 17 of 26 milestones complete. Nine remain open or partial: P03, P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+**Current state:** 18 of 26 milestones complete. Eight remain open or partial: P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
 
 ## How to use this plan
 
@@ -52,7 +52,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 |---|---|---|---|
 | P01 | Back up and inventory phone vault | DONE | [Verified inventory: 11,826 files](evidence/P01/result.md). |
 | P02 | Restore production selection and release | DONE | [Vault and release persist](evidence/P02/result.md). |
-| P03 | Real Mac–A24 sync and existing controls | OPEN | [Cloud config must be re-entered; initial transfer was interrupted; two existing conflict cards need safe inspection](evidence/P03/result.md). |
+| P03 | Real Mac–A24 sync and existing controls | DONE | [A24 reconnected; initial sync 12,238 files; 23 conflicts reconciled; two-way edits, concurrent conflict (A24 review), attachments + cold restart pass](evidence/P03/result.md). |
 | P04 | Corpus fixtures and benchmark runner | DONE | [Real, 10k, and 100k manifests and baseline](evidence/P04b/result.md). |
 | P05 | Offline embedding and retrieval feasibility | OPEN | [Android model/vector/search/resume gates pass; human review and `Recall@10` score remain](evidence/P05/mac-quality-readiness.md). |
 | P06 | Database bootstrap and migration tests | DONE | [Background SQLite, WAL/FK, creation, and upgrade tests](evidence/P06/result.md). |

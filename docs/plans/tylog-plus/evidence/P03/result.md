@@ -149,3 +149,22 @@ the shortcut when the root etag is unchanged even with recorded conflicts
 edits still fail the cursor-snapshot match). Also: resolving a conflict was
 refused ("A sync is running") whenever it landed inside one of these passes;
 fixed by letting the resolve wait for the lock (see next commit).
+
+## P03 DONE (2026-09-27)
+
+- Resolve now waits for a running sync (c134314, drafted by local ornith):
+  the test conflict resolved on the first tap; phone and Mac then held the
+  same bytes.
+- Test note and both PNGs deleted on the Mac; the deletions reached the A24 in
+  50 s; no conflicts remain; the vault holds no test files.
+- Decision (user, 2026-09-27): the Mac keeps syncing through the Nextcloud
+  desktop client, so a concurrent same-note edit is preserved as a reviewable
+  conflict on the TyLog-synced device (A24), with the Mac keeping its own
+  version; nothing is lost. The P03 "conflict on both devices" item is closed
+  on that basis.
+
+Close criteria: Mac↔A24 small edits both directions ✓; concurrent same-note
+edit preserved as a reviewable conflict (A24) ✓; attachment hashes match
+both ways and after cold restart ✓; initial sync finished with counts
+(12,238 files) and no unexplained loss ✓; pre-existing conflicts reconciled
+explicitly ✓.
