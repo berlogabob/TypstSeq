@@ -1699,21 +1699,67 @@ void _replaceInBlock(
   String replacement, {
   TyLogInlineStyle? insertionStyle,
 }) {
-  final units = _units(block.parts);
+  // Convert only the parts the edit touches (plus the one before it, for the
+  // inherited style): exploding a long paragraph into per-character units on
+  // every keystroke cost ~25 ms on the A24 (P12).
+  final parts = block.parts;
+  int partAt(int offset) {
+    var at = 0;
+    for (var i = 0; i < parts.length; i++) {
+      at += parts[i].isAtom ? 1 : parts[i].text.length;
+      if (offset < at) return i;
+    }
+    return parts.length - 1;
+  }
+
+  final lo = parts.isEmpty ? 0 : partAt(math.max(0, start - 1));
+  // Characters [start, end) are replaced; an insertion only needs part lo.
+  final hi = parts.isEmpty ? -1 : (end > start ? partAt(end - 1) : lo);
+  var base = 0;
+  for (var i = 0; i < lo; i++) {
+    base += parts[i].isAtom ? 1 : parts[i].text.length;
+  }
+  final part = hi == lo ? parts[lo] : null;
+  if (part != null &&
+      !part.isAtom &&
+      (insertionStyle == null || insertionStyle == part.style)) {
+    // Typing inside one text run (the common case): splice its string; one
+    // run can be a whole long paragraph.
+    block
+      ..parts = _normalize([
+        ...parts.sublist(0, lo),
+        TyLogInline.text(
+          part.text.replaceRange(start - base, end - base, replacement),
+          style: part.style,
+        ),
+        ...parts.sublist(lo + 1),
+      ])
+      ..dirty = true;
+    return;
+  }
+  final units = _units(parts.sublist(lo, hi + 1));
+  final from = start - base;
   final inherited =
       insertionStyle ??
-      (start > 0 && start <= units.length
-          ? units[start - 1].style
-          : start < units.length
-          ? units[start].style
+      (from > 0 && from <= units.length
+          ? units[from - 1].style
+          : from < units.length
+          ? units[from].style
           : const TyLogInlineStyle());
   units.replaceRange(
-    start,
-    end,
+    from,
+    end - base,
     replacement.codeUnits.map((code) => _Unit(code, inherited, null)),
   );
   block
-    ..parts = _parts(units)
+    ..parts = _normalize([
+      // _normalize appends into the previous text part: copy the neighbours
+      // it may merge into so the undo snapshot's parts stay untouched.
+      for (var i = 0; i < lo; i++) i == lo - 1 ? parts[i].copy() : parts[i],
+      ..._parts(units),
+      for (var i = hi + 1; i < parts.length; i++)
+        i == hi + 1 ? parts[i].copy() : parts[i],
+    ])
     ..dirty = true;
 }
 

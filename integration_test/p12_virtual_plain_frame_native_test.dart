@@ -112,12 +112,14 @@ void main() {
     final fullGate = durationSeconds >= 300;
     final startedAt = DateTime.now();
     final deadline = startedAt.add(Duration(seconds: durationSeconds));
+    var editUs = 0, pumpUs = 0, delayUs = 0;
     Future<void> editWorkload() async {
       while (DateTime.now().isBefore(deadline)) {
         refreshRates.add(display.display.refreshRate);
         // Drive the mounted row controller and its production callback.
         // Platform text-input injection is ignored for this many-row fixture
         // by some Android keyboards, producing a false idle-frame pass.
+        final editWatch = Stopwatch()..start();
         final character = edits % 5 == 4 ? ' ' : 'x';
         final text = '${field.text}$character';
         field.value = TextEditingValue(
@@ -128,8 +130,13 @@ void main() {
         // row editor needs its production onChanged callback.
         if (!_window) tester.widget<TextField>(lastField).onChanged!(text);
         edits++;
+        editUs += editWatch.elapsedMicroseconds;
+        final pumpWatch = Stopwatch()..start();
         await tester.pump(const Duration(milliseconds: 250));
+        pumpUs += pumpWatch.elapsedMicroseconds;
+        final delayWatch = Stopwatch()..start();
         await Future<void>.delayed(const Duration(milliseconds: 1));
+        delayUs += delayWatch.elapsedMicroseconds;
       }
     }
 
@@ -179,6 +186,9 @@ void main() {
     // ignore: avoid_print
     print(
       'P12 actual-long active_chars=$_activeParagraphChars edits=$edits '
+      'edit_ms=${(editUs / edits / 1000).toStringAsFixed(1)} '
+      'pump_ms=${(pumpUs / edits / 1000).toStringAsFixed(1)} '
+      'delay_ms=${(delayUs / edits / 1000).toStringAsFixed(1)} '
       '${metrics.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
     );
     final addedText = List<String>.generate(
