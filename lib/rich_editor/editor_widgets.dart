@@ -699,15 +699,27 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 sliver: SliverList.builder(
                   itemCount: before.length,
                   // Built from the window upwards: item 0 is the last chunk.
+                  // Stable keys: re-centring shifts indices, not content;
+                  // reuse chunks by offset.
+                  findChildIndexCallback: (key) {
+                    if (key is! ValueKey<int>) return null;
+                    final at = before.indexOf(key.value);
+                    return at < 0 ? null : before.length - 1 - at;
+                  },
                   itemBuilder: (context, i) {
                     final at = before.length - 1 - i;
-                    return chunk(
-                      context,
-                      before[at],
-                      // Drop the line break that ends each chunk: the next
-                      // widget starts on its own line anyway.
-                      (at + 1 < before.length ? before[at + 1] : window.start) -
-                          1,
+                    return KeyedSubtree(
+                      key: ValueKey<int>(before[at]),
+                      child: chunk(
+                        context,
+                        before[at],
+                        // Drop the line break that ends each chunk: the next
+                        // widget starts on its own line anyway.
+                        (at + 1 < before.length
+                                ? before[at + 1]
+                                : window.start) -
+                            1,
+                      ),
                     );
                   },
                 ),
@@ -726,13 +738,23 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 sliver: SliverList.builder(
                   itemCount: after.length,
+                  // Stable keys: reuse the "after" chunks by their negative
+                  // offset so they survive re-centre shifts.
+                  findChildIndexCallback: (key) {
+                    if (key is! ValueKey<int>) return null;
+                    final at = after.indexOf(-1 - key.value);
+                    return at < 0 ? null : at;
+                  },
                   itemBuilder: (context, i) {
                     final base = window.end;
                     final length = widget.controller.text.length;
-                    return chunk(
-                      context,
-                      base + after[i],
-                      i + 1 < after.length ? base + after[i + 1] - 1 : length,
+                    return KeyedSubtree(
+                      key: ValueKey<int>(-1 - after[i]),
+                      child: chunk(
+                        context,
+                        base + after[i],
+                        i + 1 < after.length ? base + after[i + 1] - 1 : length,
+                      ),
                     );
                   },
                 ),
