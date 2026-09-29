@@ -3573,7 +3573,7 @@ void main() {
         } else {
           final etag = 'e${DateTime.now().microsecondsSinceEpoch}';
           request.response.statusCode = 201;
-          request.response.headers.set('oc-etag', "$etag");
+          request.response.headers.set('oc-etag', etag);
           await request.drain<void>();
         }
       } else if (request.method == 'PROPFIND') {
