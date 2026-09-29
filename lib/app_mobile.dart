@@ -894,6 +894,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       snapshot = await workspace.readNoteSnapshot(path);
     } on StateError {
       return false;
+    } on FileSystemException {
+      return false;
     }
     if (!mounted || request != _openGeneration || vault != v) return false;
     if (!workspace.adoptNoteRead(path, snapshot)) return false;

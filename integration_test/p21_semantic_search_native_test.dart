@@ -19,6 +19,8 @@ import 'package:tylog/scanner.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 
+import 'p21_inputs.dart';
+
 const _modelDirEnv = 'P21_MODEL_DIR';
 const _vaultDirEnv = 'P21_VAULT_ROOT';
 
@@ -34,16 +36,18 @@ Future<void> main() async {
   });
 
   testWidgets('P21 native semantic search end to end', (tester) async {
-    if (!Platform.isMacOS) {
-      markTestSkipped('P21 native acceptance targets macOS.');
+    if (!Platform.isMacOS && !Platform.isAndroid) {
+      markTestSkipped('P21 native acceptance targets macOS and Android.');
     }
 
-    final modelRoot = await _prepareModel();
+    final inputs = await awaitP21Inputs();
+    final modelRoot = await _prepareModel(inputs?.model);
     if (modelRoot == null) return;
 
     final root = await Directory.systemTemp.createTemp('tylog_p21_vault_');
     addTearDown(() => root.delete(recursive: true));
-    final sourceRoot = Platform.environment[_vaultDirEnv];
+    final sourceRoot =
+        inputs?.vault?.path ?? Platform.environment[_vaultDirEnv];
     if (sourceRoot == null || sourceRoot.isEmpty) {
       await _makeFixture(root);
     } else {
@@ -230,12 +234,12 @@ Future<void> main() async {
   });
 }
 
-Future<Directory?> _prepareModel() async {
+Future<Directory?> _prepareModel([Directory? handshakeRoot]) async {
   final support = await getApplicationSupportDirectory();
   final installedRoot = Directory(
     '${support.path}/models/multilingual-e5-small-ccc66d3',
   );
-  final configured = Platform.environment[_modelDirEnv];
+  final configured = handshakeRoot?.path ?? Platform.environment[_modelDirEnv];
   final source = configured == null || configured.isEmpty
       ? null
       : Directory(configured);
