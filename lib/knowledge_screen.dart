@@ -518,9 +518,18 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            onTap: citation.sourceKind == 'pdf' && widget.onOpenCitation != null
-                ? () => widget.onOpenCitation!(citation)
-                : null,
+            onTap: widget.onOpenCitation == null
+                ? null
+                : switch (citation.sourceKind) {
+                    'pdf' => () => widget.onOpenCitation!(citation),
+                    // A note opens in the main editor, so leave search like a
+                    // keyword result does.
+                    'note' => () {
+                        widget.onOpenCitation!(citation);
+                        Navigator.pop(context);
+                      },
+                    _ => null,
+                  },
           );
         }
         final resultIndex = i - 1 - citations.length;
