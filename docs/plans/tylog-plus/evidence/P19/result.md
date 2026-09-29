@@ -79,3 +79,14 @@ on the real server). Fixed in eacd252 with a regression test.
 Both devices were simulated on the Mac host. Still open for P19: the native
 ambiguous-anchor review interaction (Needs review → Select replacement) on Mac
 and A24, and an A24-to-Mac annotation round trip through the account.
+
+## Native ambiguous-anchor review on Mac (2026-09-28)
+
+`flutter test -d macos integration_test/pdf_reader_review_native_test.dart`
+passes: a highlight saved on "Alpha" in version 1 of a PDF reopens against
+version 2 (same path, "Alpha" twice) as *Needs review: quote appears more than
+once*; Highlights → the entry → *Select replacement* → selecting the second
+"Alpha" → Save highlight keeps one annotation with the same id, moves it to the
+second occurrence, and clears the review state. Drafted by the Studio model
+(Qwen3-Coder-30B), reviewed and run on the Mac. A24 run of the same test
+remains.
