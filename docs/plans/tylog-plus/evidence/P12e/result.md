@@ -717,3 +717,34 @@ needs long paragraphs split into independently laid-out display segments while
 keeping one logical paragraph (a further editor change), or a plan decision on
 that workload. The run also missed the plan's 1,100-edit minimum by 48 (the
 harness paces 4 edits/s).
+
+## Plain gate passes with display units (2026-09-28)
+
+Long lines are split into display units (~100 chars, broken after a space); the
+editing window is whole units, recenters past 400 chars, refills to half that
+(fa2f8e2, 48242a5).
+Typing inside one text run now splices the run's string instead of converting the
+whole block to per-character units: host edit 2.7 ms -> 0.36 ms, A24 per-edit
+12.5 ms -> 3.5 ms (7c22cdb). The windowed field has no InputDecorator, whose
+dry-baseline pass was a second text layout per keystroke.
+
+The harness edits on a fixed 4 Hz schedule: edit *n* at start + *n* x
+250 ms. The relative pump plus frame wait capped runs
+near 1,090 edits regardless of editor cost; the build-time frame criteria are
+unchanged. P12_TRACE now collects in-process through FlutterTimeline, since a
+trace action cannot reach the VM service on the device.
+
+| Run | Refresh | Edits | Over budget | Build p95 | Raster p95 |
+|---|---:|---:|---:|---:|---:|
+| Line window (previous) | 120 Hz | 1,052 | 89.8% | 12.6 ms | 5.6 ms |
+| Units, 1,200-char cap | 90 Hz | 1,053 | 34.1% | 12.8 ms | 5.9 ms |
+| Units, 600-char cap | 120 Hz | 1,068 | 2.25% | 8.0 ms | 5.6 ms |
+| Units, 400-char cap, run-splice | 120 Hz | 1,092 | 0.27% | 7.2 ms | 5.6 ms |
+| **Same, fixed 4 Hz schedule (final)** | **120 Hz** | **1,200** | **0.5%** | **7.0 ms** | **5.6 ms** |
+
+The plain gate passes (>=1,100 edits, <1% over budget, source/header assertions
+pass). The formatted gate must be rerun on an idle phone with the 400-char
+window: a run during foreground use of another app measured 3.5%, and the
+previously passing code measured 3.3% in the same conditions. P12 stays open
+until that rerun and the real-keyboard/IME check.
+
