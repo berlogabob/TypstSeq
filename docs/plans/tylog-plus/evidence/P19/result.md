@@ -59,3 +59,23 @@ and production database were not modified. The check uses the storage API, not
 the changed-range UI interaction. Annotation sync through a real account
 remains open. The repeatable invocation and redacted corpus counts are recorded
 in P18 evidence.
+
+## Real-account annotation sync (2026-09-28)
+
+`test/real_account/p19_annotation_sync_real_test.dart` runs the app's sync
+pass (materialize envelopes into `_system/revisions`, `NextcloudSync.sync`,
+receive every envelope, acknowledge) for two independent vaults and databases
+against the real Nextcloud account, in a per-run scratch folder that is deleted
+afterwards (production `TyLogVault` untouched; credentials from environment
+only). Result: `A->B 1 received, B->A 2 received, repeat 2 duplicate,
+divergent=conflict` — each device applies the other's annotation, a repeated
+sync only yields duplicates, and a divergent-parent revision is rejected as a
+conflict with the existing annotation unchanged.
+
+The first run exposed a sync bug unrelated to annotations: concurrent uploads
+into a new remote folder could PUT before that folder's MKCOL completed (404
+on the real server). Fixed in eacd252 with a regression test.
+
+Both devices were simulated on the Mac host. Still open for P19: the native
+ambiguous-anchor review interaction (Needs review → Select replacement) on Mac
+and A24, and an A24-to-Mac annotation round trip through the account.
