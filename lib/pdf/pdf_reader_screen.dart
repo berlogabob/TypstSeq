@@ -95,35 +95,11 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
   Future<String?> _passwordProvider() async {
     _passwordAttempts++;
-    final controller = TextEditingController();
     final password = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          _passwordAttempts > 1
-              ? 'Wrong password, try again'
-              : 'Password required',
-        ),
-        content: TextField(
-          key: const Key('pdf-password-field'),
-          controller: controller,
-          obscureText: true,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Open'),
-          ),
-        ],
-      ),
+      builder: (context) => _PdfPasswordDialog(attempts: _passwordAttempts),
     );
-    controller.dispose();
     if (password == null && mounted) {
       setState(() => _passwordRequired = true);
     }
@@ -460,5 +436,47 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         ),
       ],
     ),
+  );
+}
+
+class _PdfPasswordDialog extends StatefulWidget {
+  const _PdfPasswordDialog({required this.attempts});
+
+  final int attempts;
+
+  @override
+  State<_PdfPasswordDialog> createState() => _PdfPasswordDialogState();
+}
+
+class _PdfPasswordDialogState extends State<_PdfPasswordDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(
+      widget.attempts > 1 ? 'Wrong password, try again' : 'Password required',
+    ),
+    content: TextField(
+      key: const Key('pdf-password-field'),
+      controller: controller,
+      obscureText: true,
+      autofocus: true,
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, controller.text),
+        child: const Text('Open'),
+      ),
+    ],
   );
 }
