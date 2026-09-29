@@ -96,10 +96,7 @@ Future<void> main() async {
     await controller.refreshNotes();
     expect(controller.ready, isTrue);
     final hits = await controller.searchNotes('cited evidence', limit: 20);
-    expect(
-      hits.map((hit) => hit.id),
-      contains(notePath),
-    );
+    expect(hits.map((hit) => hit.id), contains(notePath));
     final citations = await controller.citations('cited evidence');
     final cited = citations.firstWhere(
       (item) => item.sourceLocator == notePath,
@@ -264,7 +261,6 @@ Future<void> main() async {
     // 6. Only the database changed; copied source files remain byte-identical.
     expect(await vault.storage.readBytes(notePath), sourceBefore);
     expect(await vault.storage.readBytes(pdfPath), pdfBefore);
-    await Directory('build').create(recursive: true);
     final result = {
       'steps_covered': [1, 2, 3, 4, 5, 6],
       'steps_skipped': skipped,
@@ -275,9 +271,15 @@ Future<void> main() async {
       'pdf_unchanged': true,
       'lib_bugs_suspected': <String>[],
     };
-    await File(
-      'build/p23_native_result.json',
-    ).writeAsString(jsonEncode(result));
+    // The app sandbox on Android has no writable ./build; the log line is the record.
+    // ignore: avoid_print
+    print('P23_RESULT ${jsonEncode(result)}');
+    if (!Platform.isAndroid) {
+      await Directory('build').create(recursive: true);
+      await File(
+        'build/p23_native_result.json',
+      ).writeAsString(jsonEncode(result));
+    }
     // ignore: avoid_print
     print('P23 steps covered: 1, 2, 3, 4, 5, 6');
     // ignore: avoid_print
@@ -330,16 +332,7 @@ Future<void> _fixture(Directory root) async {
   final evidencePath = await vault.page('evidence', kind: 'article');
   await vault.saveNote(
     evidencePath,
-    '''${replaceNoteHeader(
-      await vault.storage.readText(evidencePath),
-      const NoteMetadataDraft(
-        id: 'evidence',
-        title: 'Evidence',
-        kind: 'article',
-        tags: ['research'],
-        properties: {'status': 'ready'},
-      ),
-    )}
+    '''${replaceNoteHeader(await vault.storage.readText(evidencePath), const NoteMetadataDraft(id: 'evidence', title: 'Evidence', kind: 'article', tags: ['research'], properties: {'status': 'ready'}))}
 
 cited evidence passage for the native workflow.
 @smith-2026
@@ -348,10 +341,7 @@ cited evidence passage for the native workflow.
   final stalePath = await vault.page('stale', kind: 'article');
   await vault.saveNote(
     stalePath,
-    '${replaceNoteHeader(
-      await vault.storage.readText(stalePath),
-      const NoteMetadataDraft(id: 'stale', title: 'Stale', kind: 'article'),
-    )}\nold row\n',
+    '${replaceNoteHeader(await vault.storage.readText(stalePath), const NoteMetadataDraft(id: 'stale', title: 'Stale', kind: 'article'))}\nold row\n',
   );
   await vault.saveNote(
     'notes/personal.typ',
@@ -400,17 +390,13 @@ Future<void> _annotate(
     ),
   );
   await tester.pumpAndSettle();
-  await _waitFor(
-    tester,
-    () {
-      final save = find.byWidgetPredicate(
-        (widget) =>
-            widget is IconButton && widget.tooltip == 'Save highlight',
-      );
-      return save.evaluate().isNotEmpty &&
-          tester.widget<IconButton>(save).onPressed != null;
-    },
-  );
+  await _waitFor(tester, () {
+    final save = find.byWidgetPredicate(
+      (widget) => widget is IconButton && widget.tooltip == 'Save highlight',
+    );
+    return save.evaluate().isNotEmpty &&
+        tester.widget<IconButton>(save).onPressed != null;
+  });
   await tester.tap(find.byTooltip('Save highlight'));
   await _waitFor(
     tester,

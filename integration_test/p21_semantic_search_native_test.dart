@@ -223,10 +223,15 @@ Future<void> main() async {
       'warm_p95_ms': warmMs[18],
       'note_count': index.notesByPath.length,
     };
-    await Directory('build').create(recursive: true);
-    await File(
-      'build/p21_native_result.json',
-    ).writeAsString(jsonEncode(result));
+    // The app sandbox on Android has no writable ./build; the log line is the record.
+    // ignore: avoid_print
+    print('P21_RESULT ${jsonEncode(result)}');
+    if (!Platform.isAndroid) {
+      await Directory('build').create(recursive: true);
+      await File(
+        'build/p21_native_result.json',
+      ).writeAsString(jsonEncode(result));
+    }
     // ignore: avoid_print
     print(
       'P21_NATIVE index_ms=${result['index_ms']} first_query_ms=${result['first_query_ms']} warm_p50_ms=${result['warm_p50_ms']} warm_p95_ms=${result['warm_p95_ms']}',

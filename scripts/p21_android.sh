@@ -20,7 +20,7 @@ pid=$!
 
 ready=
 while kill -0 "$pid" 2>/dev/null; do
-  ready=$(sed -n 's/^P21_READY //p' "$log" | tail -1)
+  ready=$(sed -n 's/.*P21_READY //p' "$log" | tail -1)
   test -n "$ready" && break
   sleep 1
 done
