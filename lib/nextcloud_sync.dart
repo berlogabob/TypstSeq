@@ -263,7 +263,9 @@ class NextcloudSync {
   final bool Function(String path)? canReplaceLocal;
   final void Function(String path)? onLocalContentChanged;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
-  final _ensuredParents = <String>{};
+  // MKCOL futures by folder URI: concurrent uploads into a new folder must
+  // wait for the one MKCOL, not PUT before it lands (404 on a real server).
+  final _ensuredParents = <String, Future<void>>{};
 
   void _recordLocalContentChange(String path) {
     if (!isDeviceScopedVaultPath(path)) onLocalContentChanged?.call(path);

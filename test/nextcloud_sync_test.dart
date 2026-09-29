@@ -3551,6 +3551,57 @@ void main() {
     ]);
   });
 
+  test('concurrent uploads into a new folder wait for its MKCOL', () async {
+    final folders = <String>{'/remote.php/dav/files/alice/', '/remote.php/dav/files/alice/TyLogVault/'};
+    final put404 = <String>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      if (request.method == 'MKCOL') {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        if (!folders.contains(request.uri.path)) {
+          folders.add(request.uri.path);
+          request.response.statusCode = 201;
+        } else {
+          request.response.statusCode = 405;
+        }
+      } else if (request.method == 'PUT') {
+        final parent = request.uri.path.substring(0, request.uri.path.lastIndexOf('/') + 1);
+        if (!folders.contains(parent)) {
+          request.response.statusCode = 404;
+          put404.add(request.uri.path);
+        } else {
+          final etag = 'e${DateTime.now().microsecondsSinceEpoch}';
+          request.response.statusCode = 201;
+          request.response.headers.set('oc-etag', "$etag");
+          await request.drain<void>();
+        }
+      } else if (request.method == 'PROPFIND') {
+        request.response.statusCode = 207;
+        request.response.write('<d:multistatus xmlns:d="DAV:"/>');
+      } else {
+        request.response.statusCode = 201;
+      }
+      await request.response.close();
+    });
+    final dir = await Directory.systemTemp.createTemp('tylog_concurrent_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    for (var i = 1; i <= 6; i++) {
+      await vault.storage.writeText('notes/new/$i.typ', 'note $i');
+    }
+    final config = NextcloudConfig(
+      serverUrl: 'http://${server.address.address}:${server.port}',
+      username: 'alice',
+      password: 'secret',
+    );
+
+    await NextcloudSync(config).sync(vault, initialMode: InitialSyncMode.uploadLocal);
+
+    expect(put404, isEmpty);
+  });
+
   group('pollIsUnchanged', () {
     Future<
       ({Vault vault, HttpServer server, Map<String, _MutableRemoteFile> remote})

@@ -307,8 +307,13 @@ extension _WebDavClient on NextcloudSync {
     var uri = config.rootUri;
     for (final part in parts) {
       uri = uri.resolve('$part/');
-      if (!_ensuredParents.add(uri.toString())) continue;
-      await _mkcol(uri);
+      final key = uri.toString();
+      try {
+        await (_ensuredParents[key] ??= _mkcol(uri));
+      } catch (_) {
+        _ensuredParents.remove(key);
+        rethrow;
+      }
     }
   }
 
