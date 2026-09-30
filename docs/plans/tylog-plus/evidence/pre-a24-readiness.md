@@ -72,3 +72,23 @@ release-signed package. It failed immediately at `VaultRegistry.active` with
 entry. The test therefore did not scan an empty vault or produce misleading
 timings; P09d5 remains blocked until the production vault registry/SAF grant is
 restored in that package.
+
+## Checkpoint without the A24 (2026-09-30)
+
+All of this ran on the Mac, with the Huawei P30 as an Android proxy (the P30 does not close A24 gates).
+
+- U0: host tests and analyzer clean; all 29 macOS integration files pass or skip for
+  missing inputs ([U0/mac-sweep.md](U0/mac-sweep.md)); release APK and macOS builds OK.
+  P30 sweep ([U0/p30-proxy.md](U0/p30-proxy.md)) found one Android crash in the PDF
+  password dialog (fixed, c2776f7).
+- P12: plain and formatted window gates pass on the P30 at 60 Hz (0.5% / 0.09%,
+  [P12e/p30-proxy.md](P12e/p30-proxy.md)).
+- P19: `pdf_reader_review_native_test` passes on the P30.
+- P21/P23: new native tests pass on Mac and P30 ([P21/proxy-runs.md](P21/proxy-runs.md)).
+  Fixed along the way: note citations weren't tappable (272afb0); opening a deleted note threw (aa76d0f).
+- Open perf item: a first full semantic index of the real vault projects to about 4.7 h on the Mac
+  (5.97 chunks/s against a 27 ms/chunk ORT bench).
+
+A24 runs to do next: P12 formatted rerun plus IME; P19/P21/P23 via
+`scripts/p21_android.sh <A24>`; the P24/P25 production rehearsal.
+Your part: P05 relevance review.
