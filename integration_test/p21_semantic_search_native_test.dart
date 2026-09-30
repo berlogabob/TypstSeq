@@ -97,25 +97,13 @@ Future<void> main() async {
 
     final dynamic home = tester.state(find.byType(HomeScreen));
     final workspace = home.workspace;
-    workspace
-      ..entry = VaultEntry(
-        id: 'p21-native',
-        name: 'P21 native',
-        path: root.path,
-      )
-      ..vault = vault
-      ..index = index
-      ..searchReady = true
-      ..note = targets.first
-      ..source = await vault.storage.readText(targets.first);
-    workspace.notifyListeners();
-    await tester.pumpAndSettle();
 
-    final controller = SemanticSearchController(
-      db: database,
-      modelRoot: modelRoot,
-    );
-    addTearDown(controller.dispose);
+    late final SemanticSearchController controller;
+    var controllerDisposed = false;
+    controller = SemanticSearchController(db: database, modelRoot: modelRoot);
+    addTearDown(() {
+      if (!controllerDisposed) controller.dispose();
+    });
     await controller.init();
     var sampling = true;
     var samplingInFlight = false;
@@ -208,6 +196,39 @@ Future<void> main() async {
     }
     warm.sort();
 
+    final stalePath = index.notesByPath.keys.last;
+    await vault.storage.delete(stalePath);
+    await database.customStatement(
+      "DELETE FROM nodes WHERE json_extract(attributes_json, '\$.path') = '$stalePath'",
+    );
+    index = await scanVaultStorage(vault.storage, force: true);
+    workspace.index = index;
+    workspace.notifyListeners();
+    await controller.refreshNotes();
+    expect(
+      (await controller.searchNotes(
+        queries.last,
+        limit: 50,
+      )).map((hit) => hit.id),
+      isNot(contains(stalePath)),
+    );
+    controller.dispose();
+    controllerDisposed = true;
+
+    workspace
+      ..entry = VaultEntry(
+        id: 'p21-native',
+        name: 'P21 native',
+        path: root.path,
+      )
+      ..vault = vault
+      ..index = index
+      ..searchReady = true
+      ..note = targets.first
+      ..source = await vault.storage.readText(targets.first);
+    workspace.notifyListeners();
+    await tester.pumpAndSettle();
+
     // Open the real maintenance route once, which is the production controller
     // construction and model-install seam used by the search screen.
     await tester.tap(find.text('More'));
@@ -258,23 +279,6 @@ Future<void> main() async {
       await tester.pumpAndSettle();
       expect(find.byType(KnowledgeScreen), findsOneWidget);
     }
-
-    final stalePath = index.notesByPath.keys.last;
-    await vault.storage.delete(stalePath);
-    await database.customStatement(
-      "DELETE FROM nodes WHERE json_extract(attributes_json, '\$.path') = '$stalePath'",
-    );
-    index = await scanVaultStorage(vault.storage, force: true);
-    workspace.index = index;
-    workspace.notifyListeners();
-    await controller.refreshNotes();
-    expect(
-      (await controller.searchNotes(
-        queries.last,
-        limit: 50,
-      )).map((hit) => hit.id),
-      isNot(contains(stalePath)),
-    );
 
     final warmMs = warm.map((value) => value / 1000).toList();
     final result = <String, Object>{

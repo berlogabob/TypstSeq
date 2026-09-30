@@ -35,3 +35,12 @@ status index (schema 9) gave no measurable gain and was not kept.
 
 Open: measure a single-controller in-app run (the test must drive the app's
 controller only) on Mac and phone. Expect about 46 min on the Mac; phones are slower.
+
+### Single-controller rerun (2026-09-30)
+
+With only one controller indexing, the real vault runs at 5.97 chunks/s (3,582 chunks
+in 10 min), projecting ~4 h 43 min for 101,523 chunks on the Mac. That is still ~6x
+slower than the ORT-only bench (27 ms/chunk). Unexplained. Suspects: real chunks
+running longer in tokens than the bench passages, and the app's ORT build differing
+from the bench's `download-binaries`. Open perf item: a first full index is hours on
+Mac and longer on phones. Search itself stays fast (fixture p50/p95 3.9/4.5 ms).
