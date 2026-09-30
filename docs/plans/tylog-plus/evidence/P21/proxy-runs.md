@@ -20,3 +20,18 @@ deleted note threw FileSystemException (aa76d0f).
 
 Remaining: P21/P23 on the real vault (Mac profile build, then A24), and P05 quality
 through this path.
+
+## Real-vault indexing throughput (2026-09-30)
+
+The real Mac vault copy splits into 101,523 chunks. The P21 test measured 3.5 chunks/s
+(a projected 8 h), but that run had two controllers indexing the same database: the app's
+own (`lib/app_mobile.dart` ~465) and the test's direct one. Both serialize on the Rust
+global model lock. The ORT-only bench (`tool/p05_ort_bench`, 200 passages, pinned O4
+model) gives 27 ms/chunk (37/s, ~46 min for the vault). Level3, perf-core intra threads,
+and batch 16 each change it by ≤3%, so none was kept. The pinned O4 file holds fp16
+weights; fp32 variants measure ~39/s, and the pinned model is unchanged. Dart-side
+costs are small: `pendingChunks` 0.4–1.6 ms per batch, chunk write 0.2–7 ms. A
+status index (schema 9) gave no measurable gain and was not kept.
+
+Open: measure a single-controller in-app run (the test must drive the app's
+controller only) on Mac and phone. Expect about 46 min on the Mac; phones are slower.
