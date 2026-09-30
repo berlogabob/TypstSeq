@@ -117,9 +117,70 @@ Future<void> main() async {
     );
     addTearDown(controller.dispose);
     await controller.init();
+    var sampling = true;
+    var samplingInFlight = false;
+    var lastProgressSecond = 0;
+    final chunkingEndedAt = <Duration>[];
+    final indexingStarted = Stopwatch()..start();
+    Future<void> sampleProgress() async {
+      if (!sampling || samplingInFlight) return;
+      samplingInFlight = true;
+      try {
+        final elapsed = indexingStarted.elapsed;
+        final notesSynced = await _p21Count(
+          database,
+          "SELECT COUNT(*) AS count FROM nodes "
+          "WHERE json_extract(attributes_json, '\$.path') IS NOT NULL",
+        );
+        final chunksTotal = await _p21Count(
+          database,
+          'SELECT COUNT(*) AS count FROM chunks',
+        );
+        final chunksEmbedded = await _p21Count(
+          database,
+          "SELECT COUNT(*) AS count FROM chunks "
+          "WHERE status = 'complete' AND embedding IS NOT NULL",
+        );
+        if (chunksTotal > 0 && chunkingEndedAt.isEmpty) {
+          chunkingEndedAt.add(elapsed);
+          // ignore: avoid_print
+          print(
+            'P21_PHASE chunking_s=${elapsed.inMicroseconds / 1000000.0}',
+          );
+        }
+        final elapsedSeconds = elapsed.inMicroseconds / 1000000.0;
+        final elapsedSecond = elapsed.inSeconds;
+        if (elapsedSecond >= 30 &&
+            elapsedSecond ~/ 30 > lastProgressSecond ~/ 30) {
+          lastProgressSecond = elapsedSecond;
+          // ignore: avoid_print
+          print(
+            'P21_PROGRESS '
+            'elapsed_s=${elapsedSeconds.toStringAsFixed(1)} '
+            'notes_synced=$notesSynced '
+            'chunks_total=$chunksTotal '
+            'chunks_embedded=$chunksEmbedded '
+            'chunks_per_s=${(chunksEmbedded / elapsedSeconds).toStringAsFixed(2)}',
+          );
+        }
+      } finally {
+        samplingInFlight = false;
+      }
+    }
+    final progressTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(sampleProgress()),
+    );
+    addTearDown(() {
+      sampling = false;
+      progressTimer.cancel();
+    });
     final indexing = Stopwatch()..start();
     await controller.refreshNotes();
     indexing.stop();
+    await sampleProgress();
+    sampling = false;
+    progressTimer.cancel();
     expect(controller.ready, isTrue);
 
     final first = Stopwatch()..start();
@@ -237,6 +298,11 @@ Future<void> main() async {
       'P21_NATIVE index_ms=${result['index_ms']} first_query_ms=${result['first_query_ms']} warm_p50_ms=${result['warm_p50_ms']} warm_p95_ms=${result['warm_p95_ms']}',
     );
   });
+}
+
+Future<int> _p21Count(TyLogDatabase database, String sql) async {
+  final row = await database.customSelect(sql).getSingle();
+  return row.read<int>('count');
 }
 
 Future<Directory?> _prepareModel([Directory? handshakeRoot]) async {
