@@ -269,7 +269,6 @@ void main() {
         bytes,
       );
       expect(await _hashPaths(source, sample), sourceBefore);
-      // ignore: avoid_print
       print(
         'P24 real-account: notes=${sample.where((s) => s.endsWith('.typ')).length}, '
         'attachments=${sample.where((s) => !s.endsWith('.typ')).length}, '
