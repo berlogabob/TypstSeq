@@ -142,6 +142,7 @@ extension _PathSync on NextcloudSync {
           return null;
         }
         if (_isSyncInternal(path)) continue;
+        path = unorm.nfc(path);
         final expected = remote[path];
         if (expected == null || out.containsKey(path)) return null;
         if (expected.length != null && expected.length != file.size) {
@@ -192,7 +193,12 @@ extension _PathSync on NextcloudSync {
     for (final entity in raw) {
       if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
       if (_isSyncInternal(entity.path)) continue;
-      syncable[entity.path] = entity;
+      // Compare canonical names, but retain the filesystem spelling in the entry.
+      final key = unorm.nfc(entity.path);
+      if (syncable.containsKey(key)) {
+        throw StateError('Local paths have the same NFC name: $key');
+      }
+      syncable[key] = entity;
     }
     return (raw: raw, syncable: syncable);
   }
@@ -834,7 +840,7 @@ extension _PathSync on NextcloudSync {
             old.value.localSize == entry.value.size,
       );
       if (!possible) continue;
-      final hash = await vault.storage.hash(entry.key);
+      final hash = await vault.storage.hash(entry.value.path);
       newLocalByHash.putIfAbsent(hash, () => []).add(entry);
     }
     for (final group in oldLocalByHash.entries) {
@@ -848,6 +854,11 @@ extension _PathSync on NextcloudSync {
       }
       final old = oldMatches.single;
       final replacement = newMatches.single;
+      if (unorm.nfc(old.key) == unorm.nfc(replacement.key)) {
+        state.remove(old.key);
+        state[unorm.nfc(replacement.key)] = old.value;
+        continue;
+      }
       progress('detect-renames', '${old.key} → ${replacement.key}');
       final moved = await _moveRemote(
         old.key,
@@ -923,16 +934,22 @@ extension _PathSync on NextcloudSync {
         if (oldMatches.length != 1 || newMatches.length != 1) continue;
         final old = oldMatches.single;
         final replacement = newMatches.single;
+        // APFS aliases these spellings: never write then delete the same file.
+        if (unorm.nfc(old.key) == unorm.nfc(replacement)) {
+          state.remove(old.key);
+          state[unorm.nfc(replacement)] = old.value;
+          continue;
+        }
         final oldStat = local[old.key];
         final replacementStat = local[replacement];
         if (oldStat == null && replacementStat == null) continue;
         if (oldStat != null &&
-            await _localHash(vault.storage, old.key, oldStat, old.value) !=
+            await _localHash(vault.storage, oldStat.path, oldStat, old.value) !=
                 group.key) {
           continue;
         }
         if (replacementStat != null &&
-            await vault.storage.hash(replacement) != group.key) {
+            await vault.storage.hash(replacementStat.path) != group.key) {
           continue;
         }
         progress('detect-renames', '${old.key} → $replacement');
@@ -941,7 +958,7 @@ extension _PathSync on NextcloudSync {
         if (replacementStat == null) {
           final source = captured[replacement]!.file;
           final bytes = source == null
-              ? await vault.storage.readBytes(old.key)
+              ? await vault.storage.readBytes(oldStat!.path)
               : await source.readAsBytes();
           await vault.storage.writeBytes(replacement, bytes);
           _recordLocalContentChange(replacement);
@@ -951,10 +968,12 @@ extension _PathSync on NextcloudSync {
           }
         }
         if (oldStat != null) {
-          await vault.storage.delete(old.key);
-          _recordLocalContentChange(old.key);
+          await vault.storage.delete(oldStat.path);
+          _recordLocalContentChange(oldStat.path);
         }
-        final nextStat = await vault.storage.stat(replacement);
+        final nextStat = await vault.storage.stat(
+          replacementStat?.path ?? replacement,
+        );
         if (nextStat == null) {
           throw StateError('Local rename did not create $replacement');
         }

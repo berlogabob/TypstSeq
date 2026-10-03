@@ -80,6 +80,7 @@ extension _SyncStatePersistence on NextcloudSync {
         );
       }
       final cursors = <String, SyncCursor>{};
+      var normalizedKeys = false;
       for (final entry in (decoded['cursors'] as Map).entries) {
         if (entry.key is! String || entry.value is! Map) {
           throw const FormatException('sync cursor must be a map');
@@ -88,7 +89,9 @@ extension _SyncStatePersistence on NextcloudSync {
         if (!_validSyncCursor(cursor)) {
           throw const FormatException('sync cursor has invalid fields');
         }
-        cursors[entry.key as String] = SyncCursor.fromJson(cursor);
+        final key = unorm.nfc(entry.key as String);
+        normalizedKeys |= key != entry.key;
+        cursors[key] = SyncCursor.fromJson(cursor);
       }
       return (
         cursors: cursors,
@@ -99,7 +102,10 @@ extension _SyncStatePersistence on NextcloudSync {
         // discarded — that migration is deliberate — but reported, so the pass
         // rewrites the file and the ambiguity lasts exactly one pass instead
         // of until something else happens to change.
-        legacy: decoded['schema'] == null || decoded['remoteKey'] == null,
+        legacy:
+            normalizedKeys ||
+            decoded['schema'] == null ||
+            decoded['remoteKey'] == null,
       );
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
@@ -131,7 +137,9 @@ extension _SyncStatePersistence on NextcloudSync {
         'schema': 2,
         'remoteKey': _remoteKey,
         'rootEtag': ?rootEtag,
-        'cursors': {for (final e in state.entries) e.key: e.value.toJson()},
+        'cursors': {
+          for (final e in state.entries) unorm.nfc(e.key): e.value.toJson(),
+        },
       }),
     );
   }
@@ -144,8 +152,6 @@ extension _SyncStatePersistence on NextcloudSync {
     }
   }
 
-  Future<void> _appendTrace(
-    Vault vault,
-    List<Map<String, Object?>> events,
-  ) => appendVaultTrace(vault, events);
+  Future<void> _appendTrace(Vault vault, List<Map<String, Object?>> events) =>
+      appendVaultTrace(vault, events);
 }

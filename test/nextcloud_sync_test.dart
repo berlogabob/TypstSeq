@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
@@ -649,6 +650,38 @@ void main() {
       expect(await vault.storage.readText('notes/a.typ'), 'note b');
     },
   );
+
+  test('a 423 Locked download is retried, not failed', () async {
+    NextcloudSync.busyRetryDelays = const [Duration.zero];
+    addTearDown(() => NextcloudSync.busyRetryDelays = const [
+      Duration(seconds: 2),
+      Duration(seconds: 8),
+      Duration(seconds: 15),
+      Duration(seconds: 25),
+    ]);
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/locked.typ': _remoteText('locked note'),
+    };
+    final server = await _mutableWebDavServer(
+      remote,
+      lockGetOnce: 'notes/locked.typ',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_locked_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(result.downloaded, remote.length);
+    expect(await vault.storage.readText('notes/locked.typ'), 'locked note');
+  });
 
   test('a transient abort during folder preparation is retried', () async {
     final remote = <String, _MutableRemoteFile>{
@@ -3013,6 +3046,72 @@ void main() {
     },
   );
 
+  for (final insensitive in [false, true]) {
+    test('NFD local path and NFC remote path are unchanged '
+        '(normalization insensitive: $insensitive)', () async {
+      const nfd = 'notes/и\u0306.typ';
+      final nfc = unorm.nfc(nfd);
+      final storage = _UnicodeStorage(insensitive: insensitive);
+      final vault = Vault.withStorage(storage);
+      final remote = <String, _MutableRemoteFile>{};
+      final metrics = _WebDavMetrics();
+      final server = await _mutableWebDavServer(
+        remote,
+        includeChecksums: true,
+        metrics: metrics,
+      );
+      addTearDown(() => server.close(force: true));
+      await vault.ensureCreated();
+      await storage.writeText(nfd, 'same note');
+      await NextcloudSync(_config(server)).sync(vault);
+      // Nextcloud canonicalizes the uploaded name; legacy clients persisted NFD.
+      final uploaded = remote.remove(nfd) ?? remote.remove(nfc)!;
+      remote[nfc] = uploaded;
+      final state =
+          jsonDecode(await storage.readText('.tylog/sync_state.json'))
+              as Map<String, dynamic>;
+      final cursors = state['cursors'] as Map<String, dynamic>;
+      cursors[nfd] = cursors.remove(nfc) ?? cursors[nfd];
+      if (nfd != nfc) cursors.remove(nfc);
+      await storage.writeText('.tylog/sync_state.json', jsonEncode(state));
+      storage.deleted.clear();
+      final puts = metrics.puts;
+      final gets = metrics.individualGets;
+      final result = await NextcloudSync(_config(server)).sync(vault);
+      expect(result.renamed, 0);
+      expect(result.uploaded, 0);
+      expect(result.downloaded, 0);
+      expect(result.deletedLocal, 0);
+      expect(result.deletedRemote, 0);
+      expect(storage.deleted, isEmpty);
+      expect(metrics.puts, puts);
+      expect(metrics.individualGets, gets);
+      expect(await storage.readText(nfd), 'same note');
+      expect(storage.files.keys.where((p) => unorm.nfc(p) == nfc), [nfd]);
+      final saved =
+          jsonDecode(await storage.readText('.tylog/sync_state.json'))
+              as Map<String, dynamic>;
+      expect(saved['cursors'], contains(nfc));
+      expect(saved['cursors'], isNot(contains(nfd)));
+
+      // A later remote edit must update the actual NFD file in place.
+      remote[nfc] = _remoteText('same note plus remote edit');
+      await NextcloudSync(_config(server)).sync(vault);
+      expect(await storage.readText(nfd), 'same note plus remote edit');
+      expect(storage.files.keys.where((p) => unorm.nfc(p) == nfc), [nfd]);
+      expect(storage.deleted, isEmpty);
+
+      // A genuinely different NFC name must still migrate content and cursor.
+      const renamed = 'notes/renamed.typ';
+      remote[renamed] = remote.remove(nfc)!;
+      final rename = await NextcloudSync(_config(server)).sync(vault);
+      expect(rename.renamed, 1);
+      expect(await storage.exists(nfd), isFalse);
+      expect(await storage.readText(renamed), 'same note plus remote edit');
+      expect(storage.deleted, [nfd]);
+    });
+  }
+
   test('remote rename uses checksum and migrates the local cursor', () async {
     final remote = <String, _MutableRemoteFile>{};
     final metrics = _WebDavMetrics();
@@ -3552,7 +3651,10 @@ void main() {
   });
 
   test('concurrent uploads into a new folder wait for its MKCOL', () async {
-    final folders = <String>{'/remote.php/dav/files/alice/', '/remote.php/dav/files/alice/TyLogVault/'};
+    final folders = <String>{
+      '/remote.php/dav/files/alice/',
+      '/remote.php/dav/files/alice/TyLogVault/',
+    };
     final put404 = <String>[];
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
@@ -3566,7 +3668,10 @@ void main() {
           request.response.statusCode = 405;
         }
       } else if (request.method == 'PUT') {
-        final parent = request.uri.path.substring(0, request.uri.path.lastIndexOf('/') + 1);
+        final parent = request.uri.path.substring(
+          0,
+          request.uri.path.lastIndexOf('/') + 1,
+        );
         if (!folders.contains(parent)) {
           request.response.statusCode = 404;
           put404.add(request.uri.path);
@@ -3597,7 +3702,9 @@ void main() {
       password: 'secret',
     );
 
-    await NextcloudSync(config).sync(vault, initialMode: InitialSyncMode.uploadLocal);
+    await NextcloudSync(
+      config,
+    ).sync(vault, initialMode: InitialSyncMode.uploadLocal);
 
     expect(put404, isEmpty);
   });
@@ -4022,6 +4129,7 @@ Future<HttpServer> _mutableWebDavServer(
   Duration archiveChunkDelay = Duration.zero,
   bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
+  String? lockGetOnce,
   bool interruptMkcolOnce = false,
   Map<String, int>? getCounts,
   Duration transferDelay = Duration.zero,
@@ -4031,13 +4139,15 @@ Future<HttpServer> _mutableWebDavServer(
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
   var interrupted = false;
+  final locked = <String>{};
   var mkcolInterrupted = false;
   var archiveChanged = false;
   final upgradedChecksums = <String>{};
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
-    final path = request.uri.path.startsWith(root)
-        ? request.uri.path.substring(root.length)
+    final decodedPath = Uri.decodeComponent(request.uri.path);
+    final path = decodedPath.startsWith(root)
+        ? decodedPath.substring(root.length)
         : '';
     if (request.method == 'MKCOL') {
       metrics?.mkcols.update(
@@ -4109,7 +4219,7 @@ Future<HttpServer> _mutableWebDavServer(
               lowercaseChecksums && !upgradedChecksums.contains(entry.key);
           final checksumType = serveLowercase ? 'sha256' : 'SHA256';
           request.response.write(
-            '<d:response><d:href>$root${entry.key}</d:href>'
+            '<d:response><d:href>${Uri(path: '$root${entry.key}')}</d:href>'
             '<d:propstat><d:prop><d:getlastmodified>'
             '${HttpDate.format(entry.value.modified)}'
             '</d:getlastmodified><d:getetag>${entry.value.etag}</d:getetag>'
@@ -4173,6 +4283,9 @@ Future<HttpServer> _mutableWebDavServer(
         final file = files[path];
         if (file == null) {
           request.response.statusCode = HttpStatus.notFound;
+        } else if (path == lockGetOnce && !locked.contains(path)) {
+          locked.add(path);
+          request.response.statusCode = 423;
         } else if (!interrupted && path == interruptGetOnce) {
           interrupted = true;
           request.response.contentLength = file.bytes.length + 10;
@@ -4238,7 +4351,7 @@ Future<HttpServer> _mutableWebDavServer(
       final destinationValue = request.headers.value('destination');
       final destination = destinationValue == null
           ? null
-          : Uri.parse(destinationValue).path;
+          : Uri.decodeComponent(Uri.parse(destinationValue).path);
       final target = destination != null && destination.startsWith(root)
           ? destination.substring(root.length)
           : null;
@@ -4266,4 +4379,63 @@ Future<HttpServer> _mutableWebDavServer(
     await request.response.close();
   });
   return server;
+}
+
+/// Deterministic Unicode filesystem, independent of the host filesystem.
+class _UnicodeStorage extends VaultStorage {
+  _UnicodeStorage({required this.insensitive});
+  final bool insensitive;
+  final files = <String, Uint8List>{};
+  final deleted = <String>[];
+  final modified = <String, DateTime>{};
+  String _actual(String path) => insensitive
+      ? files.keys.firstWhere(
+          (p) => unorm.nfc(p) == unorm.nfc(path),
+          orElse: () => path,
+        )
+      : path;
+  @override
+  Future<bool> exists(String path) async => files.containsKey(_actual(path));
+  @override
+  Future<void> createDirectory(String path) async {}
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async => [
+    for (final p in files.keys)
+      if (path.isEmpty || p.startsWith('$path/')) (await stat(p))!,
+  ];
+  @override
+  Future<VaultStorageEntry?> stat(String path) async {
+    final actual = _actual(path);
+    final bytes = files[actual];
+    return bytes == null
+        ? null
+        : VaultStorageEntry(
+            path: actual,
+            isDirectory: false,
+            size: bytes.length,
+            modified: modified[actual],
+          );
+  }
+
+  @override
+  Future<Uint8List> readBytes(String path) async => files[_actual(path)]!;
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    final actual = _actual(path);
+    files[actual] = Uint8List.fromList(bytes);
+    modified[actual] = DateTime.now();
+  }
+
+  @override
+  Future<void> delete(String path) async {
+    deleted.add(path);
+    files.remove(_actual(path));
+  }
+
+  @override
+  Future<String> hash(String path) async =>
+      sha256.convert(await readBytes(path)).toString();
 }

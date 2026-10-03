@@ -11,6 +11,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'vault.dart';
 import 'vault_storage.dart';
@@ -27,8 +28,6 @@ part 'nextcloud_sync/conflicts.dart';
 part 'nextcloud_sync/path_sync.dart';
 part 'nextcloud_sync/sync_state.dart';
 part 'nextcloud_sync/webdav_client.dart';
-
-
 
 class NextcloudConfig {
   const NextcloudConfig({
@@ -284,6 +283,14 @@ class NextcloudSync {
     Duration(seconds: 1),
     Duration(seconds: 3),
   ];
+  // ponytail: fixed schedule (~50 s total) for 423/429/503; honour
+  // Retry-After if a server ever needs longer.
+  static List<Duration> busyRetryDelays = const [
+    Duration(seconds: 2),
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+    Duration(seconds: 25),
+  ];
 
   /// Cheap, conservative preflight for a background poll: uncertain remote
   /// state falls through to a full sync.
@@ -408,7 +415,8 @@ class NextcloudSync {
           ? 'download-archive'
           : stage;
       stageMillis[bucket] =
-          (stageMillis[bucket] ?? 0) + (stageWatch.elapsedMilliseconds - stageStartedAt);
+          (stageMillis[bucket] ?? 0) +
+          (stageWatch.elapsedMilliseconds - stageStartedAt);
       stageStartedAt = stageWatch.elapsedMilliseconds;
       stage = next;
       currentPath = path;
@@ -496,6 +504,7 @@ class NextcloudSync {
       if (initialMode == null &&
           !stateRecovered &&
           !loadedState.remoteMismatch &&
+          !loadedState.legacy &&
           !vault.hasPendingSyncWrites &&
           loadedState.rootEtag != null) {
         progress('probe-root');
@@ -509,13 +518,16 @@ class NextcloudSync {
           )) {
             progress('scan-local-shortcut');
             scannedListing = await _localFiles(vault.storage);
-            if (_matchesLocalCursorSnapshot(scannedListing.syncable, syncState)) {
+            if (_matchesLocalCursorSnapshot(
+              scannedListing.syncable,
+              syncState,
+            )) {
               remoteCount = syncState.length;
               traceEvents.add({
                 'timestamp': DateTime.now().toUtc().toIso8601String(),
                 'runId': runId,
                 'event': 'no-change-shortcut',
-        'stageMillis': stageProfile(),
+                'stageMillis': stageProfile(),
                 'trigger': trigger,
                 'uploaded': 0,
                 'downloaded': 0,
@@ -591,8 +603,7 @@ class NextcloudSync {
       // 18.1s pass on the P30's 11,610 files). Nothing local is written
       // between the two points, so the snapshot is the same one either way.
       progress('scan-local');
-      final localListing =
-          scannedListing ?? await _localFiles(vault.storage);
+      final localListing = scannedListing ?? await _localFiles(vault.storage);
       final localEntries = localListing.syncable;
       repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
       if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
@@ -651,13 +662,14 @@ class NextcloudSync {
       }
       if (archiveSnapshot != null) progress('extract-archive');
       for (final path in pristineStarterPaths) {
-        await vault.storage.delete(path);
-        _recordLocalContentChange(path);
+        final actualPath = localEntries[path]?.path ?? path;
+        await vault.storage.delete(actualPath);
+        _recordLocalContentChange(actualPath);
         localEntries.remove(path);
       }
       final unresolved = {
         for (final conflict in await loadSyncConflicts(vault))
-          conflict.path: conflict,
+          unorm.nfc(conflict.path): conflict,
       };
       final allPaths = <String>{
         ...localEntries.keys,
@@ -683,7 +695,7 @@ class NextcloudSync {
             final result = await _retryTransient(
               () => _syncPath(
                 vault: vault,
-                path: path,
+                path: localEntries[path]?.path ?? path,
                 localStat: localEntries[path],
                 remoteFile: remote[path],
                 previous: cursors[path],
@@ -929,7 +941,10 @@ class NextcloudSync {
         // removed it, which means there is nothing left to apply.
         if (reloaded == null) return;
         active = reloaded;
-        if (!_sameBytes(shownRemote, await _conflictRemoteBytes(vault, active))) {
+        if (!_sameBytes(
+          shownRemote,
+          await _conflictRemoteBytes(vault, active),
+        )) {
           throw StateError(NextcloudSync.remoteMovedDuringResolve);
         }
         currentRemote = await _probeRemoteFile(active.path);
@@ -973,14 +988,16 @@ class NextcloudSync {
           : localExists;
       if (localExists && remoteExists) {
         final local = await vault.storage.stat(conflict.path);
-        state.cursors[conflict.path] = SyncCursor(
+        state.cursors[unorm.nfc(conflict.path)] = SyncCursor(
           localMillis: local?.modified?.millisecondsSinceEpoch,
           remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
           localSha256: await vault.storage.hash(conflict.path),
-          remoteEtag: NextcloudSync._normEtag(remoteEtag ?? currentRemote?.etag),
+          remoteEtag: NextcloudSync._normEtag(
+            remoteEtag ?? currentRemote?.etag,
+          ),
         );
       } else {
-        state.cursors.remove(conflict.path);
+        state.cursors.remove(unorm.nfc(conflict.path));
       }
       await _saveSyncState(vault, state.cursors, rootEtag: state.rootEtag);
       for (final snapshot in [
@@ -1086,9 +1103,13 @@ Future<String> _sha256(File file) async =>
       if (lengthValue != null && length == null) {
         throw const FormatException('invalid getcontentlength');
       }
-      final syncInternal = isSyncInternalPath(path) || !isSyncableVaultPath(path);
+      final syncInternal =
+          isSyncInternalPath(path) || !isSyncableVaultPath(path);
       if (args.includeNonSyncable || !syncInternal) {
         final checksum = _xmlSha256Info(block);
+        if (files.containsKey(path)) {
+          throw const FormatException('remote paths have the same NFC name');
+        }
         files[path] = _RemoteFile(
           modified: HttpDate.parse(modifiedValue),
           etag: _xmlValue(block, 'getetag'),
@@ -1122,7 +1143,7 @@ String? _relativeRemotePathFor(String href, String root) {
   final start = href.indexOf(root);
   if (start < 0) return null;
   final path = href.substring(start + root.length);
-  return path.isEmpty ? null : path;
+  return path.isEmpty ? null : unorm.nfc(path);
 }
 
 String? _xmlValue(String xml, String name) {
@@ -1186,10 +1207,10 @@ class _RemoteArchiveSnapshot {
   final InputFileStream input;
   final Map<String, ArchiveFile> files;
 
-  bool contains(String path) => files.containsKey(path);
+  bool contains(String path) => files.containsKey(unorm.nfc(path));
 
   Uint8List read(String path) {
-    final file = files[path];
+    final file = files[unorm.nfc(path)];
     if (file == null) {
       throw FormatException('Archive file is unreadable: $path');
     }
@@ -1473,7 +1494,8 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
           await vault.storage.exists(path) &&
           sha256.convert(await vault.storage.readBytes(path)) ==
               sha256.convert(await vault.storage.readBytes(remoteSnapshot))) {
-        if (localSnapshot != null && await vault.storage.exists(localSnapshot)) {
+        if (localSnapshot != null &&
+            await vault.storage.exists(localSnapshot)) {
           await vault.storage.delete(localSnapshot);
         }
         await vault.storage.delete(remoteSnapshot);

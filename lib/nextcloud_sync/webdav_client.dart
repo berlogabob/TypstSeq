@@ -109,7 +109,8 @@ extension _WebDavClient on NextcloudSync {
       final candidate = match.group(1)!;
       final hrefValue = _xmlValue(candidate, 'href');
       if (hrefValue == null) continue;
-      if (_relativeRemotePath(Uri.decodeComponent(hrefValue)) == path) {
+      if (_relativeRemotePath(Uri.decodeComponent(hrefValue)) ==
+          unorm.nfc(path)) {
         block = candidate;
         break;
       }
@@ -163,7 +164,10 @@ extension _WebDavClient on NextcloudSync {
       throw const _RemoteChanged();
     }
     if (response.statusCode >= 400) {
-      throw WebDavStatusException('PUT $path ${response.statusCode}', response.statusCode);
+      throw WebDavStatusException(
+        'PUT $path ${response.statusCode}',
+        response.statusCode,
+      );
     }
     final remoteHash = response.headers.value('x-hash-sha256');
     if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
@@ -200,7 +204,10 @@ extension _WebDavClient on NextcloudSync {
     request.headers.set('X-Hash', 'sha256');
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode >= 400) {
-      throw WebDavStatusException('GET $path ${response.statusCode}', response.statusCode);
+      throw WebDavStatusException(
+        'GET $path ${response.statusCode}',
+        response.statusCode,
+      );
     }
     final etag =
         response.headers.value(HttpHeaders.etagHeader) ??
@@ -303,7 +310,7 @@ extension _WebDavClient on NextcloudSync {
   }
 
   Future<void> _ensureParents(String path) async {
-    final parts = path.split('/')..removeLast();
+    final parts = unorm.nfc(path).split('/')..removeLast();
     var uri = config.rootUri;
     for (final part in parts) {
       uri = uri.resolve('$part/');
@@ -330,7 +337,7 @@ extension _WebDavClient on NextcloudSync {
   }
 
   Uri _remoteUri(String path) =>
-      config.rootUri.resolveUri(Uri(pathSegments: path.split('/')));
+      config.rootUri.resolveUri(Uri(pathSegments: unorm.nfc(path).split('/')));
 
   Future<void> _mkcol(Uri uri) async {
     final response = await (await _open(
@@ -339,7 +346,10 @@ extension _WebDavClient on NextcloudSync {
     )).close().timeout(const Duration(seconds: 20));
     await response.drain<void>();
     if (response.statusCode >= 400 && response.statusCode != 405) {
-      throw WebDavStatusException('MKCOL ${response.statusCode}', response.statusCode);
+      throw WebDavStatusException(
+        'MKCOL ${response.statusCode}',
+        response.statusCode,
+      );
     }
   }
 
@@ -367,7 +377,10 @@ extension _WebDavClient on NextcloudSync {
       throw const _RemoteChanged();
     }
     if (status >= 400) {
-      throw WebDavStatusException('MOVE $from ${response.statusCode}', response.statusCode);
+      throw WebDavStatusException(
+        'MOVE $from ${response.statusCode}',
+        response.statusCode,
+      );
     }
     return _RemoteFile(
       modified: DateTime.now().toUtc(),
@@ -386,7 +399,10 @@ extension _WebDavClient on NextcloudSync {
     }
     if (response.statusCode >= 400 &&
         response.statusCode != HttpStatus.notFound) {
-      throw WebDavStatusException('DELETE $path ${response.statusCode}', response.statusCode);
+      throw WebDavStatusException(
+        'DELETE $path ${response.statusCode}',
+        response.statusCode,
+      );
     }
   }
 
@@ -397,14 +413,21 @@ extension _WebDavClient on NextcloudSync {
     for (var attempt = 0; ; attempt++) {
       try {
         return await run();
-      } on WebDavStatusException {
+      } on WebDavStatusException catch (error) {
         // A completed HTTP error response means the server was reached and
         // answered definitively; retrying just burns the retry budget at
         // every sync stage. A dropped connection instead surfaces as a plain
-        // IOException below and is still retried.
+        // IOException below and is still retried. The exceptions are
+        // "try later" answers: 423 (a lock, e.g. left by an interrupted
+        // upload), 429 and 503 wait on their own, longer schedule.
         // NB: WebDavStatusException extends HttpException/IOException, so this
         // clause must precede the IOException catch.
-        rethrow;
+        if (!const {423, 429, 503}.contains(error.statusCode) ||
+            attempt >= NextcloudSync.busyRetryDelays.length) {
+          rethrow;
+        }
+        await Future<void>.delayed(NextcloudSync.busyRetryDelays[attempt]);
+        continue;
       } on IOException {
         if (attempt >= NextcloudSync.connectionRetryDelays.length) rethrow;
       } on TimeoutException {

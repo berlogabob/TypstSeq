@@ -55,3 +55,22 @@ cold-index donor ordering, vault switching during sync, retry/backoff, polling
 gates, conflict recovery, and post-sync reindex routing. The A24 profile
 force-stop/reopen run above supplies the physical process boundary; the
 remaining release rehearsal depends on the real sync account and vault.
+
+## Real-account rehearsal (2026-10-03)
+
+`test/real_account/p24_rehearsal_real_test.dart` against the real Nextcloud account, in a
+per-run scratch folder deleted afterwards, on a copy of 300 real notes + 20 attachments
+(production vault and remote folder untouched). Result:
+`synced=638, interrupted=6 (after 2 PUTs), restored=638, conflicts=1, restart=unchanged, imported=611, repeat=0`.
+Source bytes unchanged; device B's restore matches device A's manifest; a same-note
+divergent edit is preserved as a conflict; reopening both sides and syncing again changes
+nothing; export/re-import preserves IDs and hashes and a repeat import is a no-op.
+
+Two sync bugs found and fixed on the way:
+- **Data loss on macOS for NFD file names.** 101 of 12,249 real-vault names are Unicode NFD;
+  Nextcloud lists them as NFC. Rename detection read the NFC name as a rename and, on APFS
+  (normalization-insensitive), wrote and then deleted the same file. Sync now keys local,
+  remote and cursor paths by NFC and keeps the real local name for file operations; equal-NFC
+  paths are never treated as a rename. Regression tests fail before the fix.
+- **423 Locked treated as final.** A lock left by an interrupted upload failed the next
+  restore. 423/429/503 now retry on a separate ~50 s schedule.
