@@ -9,7 +9,7 @@ import 'tylog_database.dart';
 
 const _portableFormat = 'tylog-portable-snapshot';
 const _portableVersion = 2;
-const _portableSchemaVersion = 8;
+const _portableSchemaVersion = 9;
 const _manifestPath = 'manifest.json';
 const _legacyRecordNames = ['sources', 'nodes', 'edges', 'revisions'];
 const _recordNames = [..._legacyRecordNames, 'source_versions', 'annotations'];
@@ -175,7 +175,8 @@ PortableSnapshot parsePortableSnapshot(List<int> bytes) {
   final manifest = _decodeObject(manifestFile.readBytes() ?? const []);
   if (manifest['format'] != _portableFormat ||
       (manifest['version'] != 1 && manifest['version'] != _portableVersion) ||
-      manifest['schemaVersion'] != _portableSchemaVersion) {
+      (manifest['schemaVersion'] != 8 &&
+          manifest['schemaVersion'] != _portableSchemaVersion)) {
     throw const FormatException('Unsupported portable snapshot manifest');
   }
 

@@ -161,3 +161,42 @@ embedder through FRB on the host 16 ms/chunk. None reproduces the in-app ~167 ms
 remaining cost sits in the running app: progress listener rebuilds, concurrent vault/index
 work on the same isolate or Rust lock, or the test's UI. Next step: a DevTools timeline of the
 real app indexing the vault copy. Not a named gate; it affects P26 first-index time.
+
+#### Indexing dips: main-isolate json_extract scan (2026-10-03)
+
+Schema v9 adds `idx_nodes_path` on `json_extract(attributes_json, '$.path')`
+for fresh databases and upgrades. The stamp query explicitly traverses the
+index; the 500-path content batches and note-persistence equality query use
+that same expression. EXPLAIN QUERY PLAN tests verify index use. Portable
+schema v8 backups remain importable; logical records are unchanged.
+
+Triggers: workspace notifications schedule a 300 ms debounced refresh through
+`_ensureSemanticController(refresh: true)`; cloud polling every 25 seconds
+can generate these notifications. App resume and model download completion
+also refresh. Semantic progress only updates state; there is no semantic
+periodic timer. Existing `_refreshInFlight` spans sync AND `runUntilIdle`,
+preventing repeat syncs during indexing. A held-embedder test verifies 20
+refresh calls share that future and only one embedder is created. No new
+trigger guard was needed.
+
+Production opens SQLite via `NativeDatabase.createInBackground` (P06).
+The P21 native integration test injects main-isolate `NativeDatabase.memory()`.
+No database execution restructuring was done.
+
+Host benchmark: 6,500 synthetic nodes (~1 KB content / 1.4 KB attributes each),
+one stamp query plus thirteen 500-path content batches, main-isolate in-memory
+SQLite, warm median of five runs after warm-up: **59.156 ms before → 10.142 ms
+after (5.83x)**. The test prints timings and checks results and query plans.
+This measures lookup cost, not embedding/chunk sync or real-app dip frequency;
+no real-vault before/after profile was captured.
+
+Validation: requested `flutter test --no-pub` for `test/database`, semantic
+controller/indexer, and embedding-jobs suites was attempted via the SDK snapshot
+wrapper; sandbox localhost socket denial blocks the normal launcher. Socket-free
+frontend-server/flutter_tester fallback: **86 passed, 0 failed, 1 opt-in benchmark
+skipped**, including v1/v2/v3/v4/v8 migrations and v8 backup compatibility.
+The widget database lifecycle suite was excluded from the fallback.
+`flutter analyze --no-pub`: only the concurrent job's `avoid_print` info at
+`test/real_account/p24_rehearsal_real_test.dart:148`; scoped analysis of all
+11 changed Dart files passes. `git diff --check` and AST-only `graphify update .`
+pass. `test/real_account/` was not edited; no commit made.

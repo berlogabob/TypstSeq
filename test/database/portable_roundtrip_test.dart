@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/portable_import.dart';
@@ -69,6 +71,28 @@ void main() {
       expect(second.insertedFiles, 0);
       expect(second.unchangedRows, 7);
       expect(second.unchangedFiles, 2);
+
+      // Adding the schema 9 expression index must not invalidate old backups.
+      final legacy = Archive();
+      for (final entry in ZipDecoder().decodeBytes(archive)) {
+        if (entry.name == 'manifest.json') {
+          final manifest =
+              jsonDecode(utf8.decode(entry.readBytes()!))
+                  as Map<String, dynamic>;
+          manifest['schemaVersion'] = 8;
+          legacy.addFile(ArchiveFile.string(entry.name, jsonEncode(manifest)));
+        } else {
+          legacy.addFile(entry);
+        }
+      }
+      final restored = await importPortableSnapshot(
+        database: targetDb,
+        storage: targetVault,
+        bytes: ZipEncoder().encode(legacy),
+      );
+      expect(restored.hasConflicts, isFalse);
+      expect(restored.unchangedRows, 7);
+      expect(restored.unchangedFiles, 2);
     },
   );
 

@@ -34,7 +34,9 @@ Future<PortableImportReport> importPortableSnapshot({
   required List<int> bytes,
 }) async {
   final snapshot = parsePortableSnapshot(bytes);
-  if (snapshot.schemaVersion != database.schemaVersion) {
+  // Schema 9 adds only a derived path index; schema 8 records are unchanged.
+  if (snapshot.schemaVersion != database.schemaVersion &&
+      !(snapshot.schemaVersion == 8 && database.schemaVersion == 9)) {
     throw FormatException(
       'Unsupported portable database schema ${snapshot.schemaVersion}',
     );

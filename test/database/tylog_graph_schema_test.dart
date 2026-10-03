@@ -383,7 +383,7 @@ void main() {
 
       // Open with Drift to trigger migration
       final db = await openDatabaseWithFile(file);
-      expect(db.schemaVersion, equals(8));
+      expect(db.schemaVersion, equals(9));
 
       // Verify metadata preserved
       final metadata = await db.select(db.databaseMetadata).get();
@@ -403,7 +403,7 @@ void main() {
         SELECT name FROM sqlite_master
         WHERE type='index' AND name LIKE 'idx_%'
       ''').get();
-      expect(indexes.length, equals(12));
+      expect(indexes.length, equals(13));
 
       await db.close();
     });

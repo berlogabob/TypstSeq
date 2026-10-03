@@ -302,7 +302,7 @@ class TyLogDatabase extends _$TyLogDatabase {
   TyLogDatabase(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -313,9 +313,10 @@ class TyLogDatabase extends _$TyLogDatabase {
       await _createRevisionGuards(m);
       await _createImportIndexes(m);
       await _createSourceVersionIndexes(m);
+      await _createNodePathIndex(m);
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      if (to != 8 || from < 1 || from > 7) {
+      if (to != 9 || from < 1 || from > 8) {
         throw UnsupportedError(
           'Unsupported schema migration from $from to $to',
         );
@@ -343,8 +344,16 @@ class TyLogDatabase extends _$TyLogDatabase {
       }
       if (from < 7) await m.create(annotations);
       if (from < 8) await m.create(chunks);
+      if (from < 9) await _createNodePathIndex(m);
     },
   );
+
+  Future<void> _createNodePathIndex(Migrator m) async {
+    await m.database.customStatement(
+      "CREATE INDEX IF NOT EXISTS idx_nodes_path "
+      "ON nodes(json_extract(attributes_json, '\$.path'))",
+    );
+  }
 
   Future<void> _createGraphSchema(Migrator m) async {
     await m.create(nodes);

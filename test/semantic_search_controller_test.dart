@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -64,18 +65,36 @@ void main() {
       source: '#show: tylog.note.with(id: "alpha", title: "Alpha")\nalpha',
       updatedAtMs: 1,
     );
+    final started = Completer<void>();
+    final release = Completer<void>();
+    var factories = 0;
     final controller = SemanticSearchController(
       db: db,
       modelRoot: root,
       modelStore: store,
-      passageEmbedderFactory: (_, _) =>
-          (text) async => _vector(text.contains('alpha') ? 1 : 0, 0),
+      passageEmbedderFactory: (_, _) {
+        factories++;
+        return (text) async {
+          started.complete();
+          await release.future;
+          return _vector(text.contains('alpha') ? 1 : 0, 0);
+        };
+      },
       queryEmbedderFactory: (_, _) =>
           (_) async => _vector(1, 0),
     );
     addTearDown(controller.dispose);
     await controller.init();
-    await controller.refreshNotes();
+    final indexing = controller.refreshNotes();
+    await started.future;
+    // Workspace notifications, resume, and progress cannot start a second
+    // stamp/content sync while this indexing flight is running.
+    for (var i = 0; i < 20; i++) {
+      expect(identical(controller.refreshNotes(), indexing), isTrue);
+    }
+    expect(factories, 1);
+    release.complete();
+    await indexing;
     expect(controller.ready, isTrue);
     expect(
       (await controller.searchNotes('alpha')).single.id,

@@ -129,14 +129,15 @@ class SemanticSearchController extends ChangeNotifier {
     if (files == null) return;
     _cancelled = false;
     try {
-      // Paths and change stamps are cheap; only changed notes' text is read,
+      // Traverse the path index even for IS NOT NULL (SQLite may otherwise
+      // choose a table scan and parse every row's JSON). Only changed text is read,
       // so a save does not rehash the whole vault.
       final stamps = <String, int>{};
       for (final row
           in await db
               .customSelect(
                 "SELECT json_extract(attributes_json, '\$.path') AS path, "
-                "updated_at_ms FROM nodes "
+                "updated_at_ms FROM nodes INDEXED BY idx_nodes_path "
                 "WHERE json_extract(attributes_json, '\$.path') IS NOT NULL",
               )
               .get()) {
