@@ -3,7 +3,7 @@
 > **Markdown reading copy — updated 2026-09-26.** The canonical plan is [`plan.typ`](plan.typ); update it first and keep this copy aligned. [`plan.pdf`](plan.pdf) is the reader version. This is one plan with multiple formats, not a second tracker.
 
 **Owner:** Project coordinator · **Scope:** P01–P26  
-**Current state:** 18 of 26 milestones complete. Eight remain open or partial: P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+**Current state (2026-10-03):** 22 of 26 milestones complete; U0 verified on host, Mac and A24. Open: P05 (human relevance labels, owner: user), P12 (real-keyboard/IME hand check on the A24, owner: user), P21 (closes with P05), and P26 (seven-day use, starts when those pass). A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
 
 ## How to use this plan
 
@@ -61,20 +61,20 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P09 | Resumable legacy import | DONE WITH GAPS | [3,483/3,483 items terminal; 16 assets missing and 1,243 wikilinks unresolved](evidence/P09d5/result.md). |
 | P10 | Portable export and conflict-aware re-import | DONE | [Validated, idempotent, non-destructive round trip](evidence/P10/result.md). |
 | P11 | Route existing edits/buttons through database | DONE | [Edits, deletes, creation, and import durable](evidence/P11a/result.md). |
-| P12 | Paged startup/list reads and editor performance | OPEN | [Startup/open/save pass. A24 at 120 Hz: plain 26.2% over budget (layout ~4.4 ms + semantics ~2.6 ms per edit); formatted ~75 ms/edit. Bounded window (P12k) approved, not started](evidence/P12e/result.md). |
+| P12 | Paged startup/list reads and editor performance | OPEN | [A24 at 120 Hz with the bounded window: plain 0.58%, formatted 0.91% over budget (<1%); real-keyboard/IME check by hand remains](evidence/P12e/a24-window.md). |
 | P13 | Incremental FTS and filters | DONE | [FTS5, changed-record refresh, multilingual latency and UI fallback](evidence/P13/result.md). |
 | P14 | Persistent processing jobs | DONE | [Resume, cancel, deduplicate, stale-result tests](evidence/P14/result.md). |
 | P15 | Revision upload and attachments | DONE | [Durable Nextcloud retry path for revisions and binary assets](evidence/P15/result.md). |
 | P16 | Transactional receive and conflict handling | DONE | [Revision envelopes decoded and parent-checked](evidence/P16/result.md). |
 | P17 | Snapshot bootstrap and recovery | DONE | [Archive bootstrap, resume, and damaged-state rejection](evidence/P17/result.md). |
 | P18 | PDF reader and versioned extraction | DONE | [5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB](evidence/P18/result.md). |
-| P19 | Durable annotations and navigation | OPEN | [Reader and anchor flows pass on Mac/A24; real account annotation sync remains](evidence/P19/result.md). |
+| P19 | Durable annotations and navigation | DONE | [Reader, anchor and ambiguous review pass on Mac/A24; real-account annotation sync both ways with conflict preservation (2026-10-03)](evidence/P19/result.md). |
 | P20 | Chunking and offline embeddings | DONE | [Mac+A24 query/passage parity 1.000000; A24 250k + model: first 952 ms, warm p95 230 ms, PSS 736 MB](evidence/P20/result.md). |
-| P21 | Hybrid retrieval and cited navigation | OPEN | [Semantic search wired in-app (download, incremental chunks, indexer, int8 search + exact rerank, note citations). On-device download-index-search-navigate run remains](evidence/P21/result.md). |
+| P21 | Hybrid retrieval and cited navigation | OPEN | [Native download-index-search-navigate passes on Mac, P30 and A24; real-vault index 65 chunks/s on Mac profile. P05 judged quality remains](evidence/P21/a24-native.md). |
 | P22 | Evidence relations and bounded graph | DONE | [Real vault read-only, 100/100 valid per mode: A24 p95 46 ms, Mac p95 18 ms; note opens; manifests identical](evidence/P22/result.md). |
-| P23 | Complete research workflow | OPEN | [Host filtered retrieval-to-report path passes; native end-to-end workflow remains](evidence/P23/result.md). |
-| P24 | Migration rehearsal and integrated failures | OPEN | [Host failure matrix and isolated A24 process-death test pass; real-account/release rehearsal remains](evidence/P24/result.md). |
-| P25 | Production migration and release acceptance | OPEN | [macOS universal release and Android profile artifacts build; real vault/account release gate remains](evidence/P25/result.md). |
+| P23 | Complete research workflow | DONE | [Six-step native workflow passes on Mac, P30 and A24; identical report bytes](evidence/P21/a24-native.md). |
+| P24 | Migration rehearsal and integrated failures | DONE | [Real-account rehearsal on a real-vault sample: interrupted sync, restore, conflict, restart, export/re-import pass; NFD data-loss and 423 bugs fixed](evidence/P24/result.md). |
+| P25 | Production migration and release acceptance | DONE | [A24 release install, vault integrity (0 missing/changed), safe merge, two-way, conflict resolution, cold restart; macOS universal release launch](evidence/P25/result.md). |
 | P26 | Seven-day use and thesis freeze | TODO | Start only after P01–P25 required gates pass; record seven consecutive days of normal use. |
 
 ## Remaining execution plan
@@ -179,11 +179,11 @@ Use at most two implementation agents plus one reviewer at a time, with non-over
 
 ## Completion checklist
 
-- [ ] U0 existing controls and UI regression audit passes on host, Mac, and A24.
+- [x] U0 existing controls and UI regression audit passes on host, Mac, and A24.
 - [ ] P03–P05 gates closed and linked evidence current.
 - [ ] P12 frame and editing parity gates pass on A24 profile.
 - [ ] P18–P23 native reader, annotation sync, retrieval, graph, and workflow gates pass on Mac and A24.
-- [ ] P24 migration/failure rehearsal passes on a verified copy and real account.
-- [ ] P25 release build, install, production-vault integrity, sync, and recovery pass.
+- [x] P24 migration/failure rehearsal passes on a verified copy and real account.
+- [x] P25 release build, install, production-vault integrity, sync, and recovery pass.
 - [ ] P26 records seven consecutive successful days; final evidence is redacted.
 - [ ] Plan state reflects the latest results; no remaining ticket is OPEN, BLOCKED, or CONDITIONAL without a named owner/next action.

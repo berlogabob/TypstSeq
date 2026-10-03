@@ -91,3 +91,34 @@ The existing `/sdcard/TyLog` folder was reselected through SAF and the app
 opened it. This is a recovery/launch smoke only; cloud credentials and the
 production sync/release rehearsal remain open. See P03 for the app-private
 state reset caused by the profile integration runner.
+
+## Production release acceptance (2026-10-03)
+
+**Android (A24 `000251565001005`).** The production package `org.tylog.tylog` was found
+uninstalled; its last sync in the vault's own trace is 2026-09-27 21:14 UTC, so the removal
+predates this session. App-private state (database, vault grant, account) was gone; the
+shared-storage vault was intact. Recovery doubled as the release gate:
+
+- Release APK 0.4.4+99, native libraries source-built (`tool/assert_source_built.sh android macos`
+  ok), SHA-256 `9be0bb287e372ba4cd0d7a0b5f18597751843610cd29c06ac6026ed7b87605b3`.
+- Installed with `adb install -r`, launched, `/sdcard/TyLog` reselected through SAF, account
+  re-entered, **Safe merge** initial sync: uploaded 3, downloaded 1, unchanged 12,235,
+  conflicts 3, deleted 0.
+- Vault integrity: 12,239 files hashed before install; after the merge 0 missing, 0 changed,
+  4 new (1 downloaded article, today's daily note, 2 app metadata files).
+- The 3 conflicts were WebP article images, same size and dimensions, 7–54 bytes different
+  (re-encodes). The Mac copy equals the server copy for all three; resolved as "Keep
+  Nextcloud's version". Phone, server and Mac hashes now match.
+- Two-way: the phone's new daily note is on the server and on the Mac (same hash); the server's
+  new article is on the phone (same hash).
+- Cold restart (force-stop, relaunch): startup sync uploaded 0, downloaded 0, conflicts 0,
+  12,242 files.
+
+**macOS.** Universal release (x86_64 + arm64), `codesign --verify --deep --strict` ok,
+executable SHA-256 `ca0d6b274d8732dd77e5230b1fe65ed4bddf8fc8d0f13068a2d6a364bdb78aa4`;
+launched for 15 s with no fatal/crash log lines and quit cleanly. Open warning: the linker
+reports `libtypst_flutter.a` objects built for macOS 13.4 against the app's 12.0 deployment
+target; macOS 12 is untested.
+
+Mac vault sync runs through the Nextcloud desktop client, which was found not running (only
+its Finder extension) and was restarted; it then pulled the phone's note.

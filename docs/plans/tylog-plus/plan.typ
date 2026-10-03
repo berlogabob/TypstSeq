@@ -23,7 +23,7 @@
 
 #callout(
   [
-    *Current state — 18 of 26 milestones complete.* Eight milestones remain open or partial: P05, P12, P19, P21, and P23–P26. U0, the verification gate for existing controls and the earlier UI audit, is also open. The immediate critical path is verify current controls, restore real sync access, finish P05 human relevance review, close P12 editor frame acceptance, then complete native retrieval and production rehearsal. No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+    *Current state (2026-10-03) — 22 of 26 milestones complete.* U0 is verified on host, Mac and A24. Open: P05 (human relevance labels, owner: user), P12 (real-keyboard/IME hand check on the A24, owner: user), P21 (closes with P05), and P26 (seven-day use, starts when those pass). No milestone is DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
   ],
   title: "Status at a glance",
   tone: "info",
@@ -105,20 +105,20 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
   [P09], [Resumable legacy import], [DONE WITH GAPS], [#link("evidence/P09d5/result.md")[3,483/3,483 items terminal; 16 assets missing and 1,243 wikilinks unresolved.]],
   [P10], [Portable export and conflict-aware re-import], [DONE], [#link("evidence/P10/result.md")[Validated, idempotent, non-destructive round trip.]],
   [P11], [Route existing edits/buttons through database], [DONE], [#link("evidence/P11a/result.md")[Edits, deletes, creation, and import durable.]],
-  [P12], [Paged startup/list reads and editor performance], [OPEN], [#link("evidence/P12e/result.md")[Startup/open/save pass. A24 at 120 Hz: plain 26.2% over budget (layout ~4.4 ms + semantics ~2.6 ms per edit); formatted ~75 ms/edit. Bounded window (P12k) approved, not started.]],
+  [P12], [Paged startup/list reads and editor performance], [OPEN], [#link("evidence/P12e/a24-window.md")[A24 at 120 Hz with the bounded window: plain 0.58%, formatted 0.91% over budget (\<1%); real-keyboard/IME check by hand remains.]],
   [P13], [Incremental FTS and filters], [DONE], [#link("evidence/P13/result.md")[FTS5, changed-record refresh, multilingual latency and UI fallback.]],
   [P14], [Persistent processing jobs], [DONE], [#link("evidence/P14/result.md")[Resume, cancel, deduplicate, stale-result tests.]],
   [P15], [Revision upload and attachments], [DONE], [#link("evidence/P15/result.md")[Durable Nextcloud retry path for revisions and binary assets.]],
   [P16], [Transactional receive and conflict handling], [DONE], [#link("evidence/P16/result.md")[Revision envelopes decoded and parent-checked.]],
   [P17], [Snapshot bootstrap and recovery], [DONE], [#link("evidence/P17/result.md")[Archive bootstrap, resume, and damaged-state rejection.]],
   [P18], [PDF reader and versioned extraction], [DONE], [#link("evidence/P18/result.md")[5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB.]],
-  [P19], [Durable annotations and navigation], [OPEN], [#link("evidence/P19/result.md")[Reader and anchor flows pass on Mac/A24; real account annotation sync remains.]],
+  [P19], [Durable annotations and navigation], [DONE], [#link("evidence/P19/result.md")[Reader, anchor and ambiguous review pass on Mac/A24; real-account annotation sync both ways with conflict preservation.]],
   [P20], [Chunking and offline embeddings], [DONE], [#link("evidence/P20/result.md")[Mac+A24 query/passage parity 1.000000; A24 250k + model: first 952 ms, warm p95 230 ms, PSS 736 MB.]],
-  [P21], [Hybrid retrieval and cited navigation], [OPEN], [#link("evidence/P21/result.md")[Semantic search wired in-app (download, incremental chunks, indexer, int8 search + exact rerank, note citations). On-device download-index-search-navigate run remains.]],
+  [P21], [Hybrid retrieval and cited navigation], [OPEN], [#link("evidence/P21/a24-native.md")[Native download-index-search-navigate passes on Mac, P30 and A24; real-vault index 65 chunks/s on Mac profile. P05 judged quality remains.]],
   [P22], [Evidence relations and bounded graph], [DONE], [#link("evidence/P22/result.md")[Real vault read-only, 100/100 valid per mode: A24 p95 46 ms, Mac p95 18 ms; note opens; manifests identical.]],
-  [P23], [Complete research workflow], [OPEN], [#link("evidence/P23/result.md")[Host filtered retrieval-to-report path passes; native end-to-end workflow remains.]],
-  [P24], [Migration rehearsal and integrated failures], [OPEN], [#link("evidence/P24/result.md")[Host failure matrix and isolated A24 process-death test pass; real-account/release rehearsal remains.]],
-  [P25], [Production migration and release acceptance], [OPEN], [#link("evidence/P25/result.md")[macOS universal release and Android profile artifacts build; real vault/account release gate remains.]],
+  [P23], [Complete research workflow], [DONE], [#link("evidence/P21/a24-native.md")[Six-step native workflow passes on Mac, P30 and A24; identical report bytes.]],
+  [P24], [Migration rehearsal and integrated failures], [DONE], [#link("evidence/P24/result.md")[Real-account rehearsal on a real-vault sample passes; NFD data-loss and 423 sync bugs fixed.]],
+  [P25], [Production migration and release acceptance], [DONE], [#link("evidence/P25/result.md")[A24 release install, vault integrity, safe merge, two-way, conflict resolution, cold restart; macOS universal release launch.]],
   [P26], [Seven-day use and thesis freeze], [TODO], [Start only after P01–P25 required gates pass; record seven consecutive days of normal use.],
 )
 
