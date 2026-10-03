@@ -37,6 +37,7 @@ class SemanticIndexer {
 
   Future<void> _run(bool Function()? cancelled) async {
     var done = 0;
+    var batches = 0;
     var pending = await _pendingCount();
     progress.value = (done: done, pending: pending, running: true);
     try {
@@ -48,7 +49,11 @@ class SemanticIndexer {
           limit: batch,
         );
         done += result.completed;
-        pending = await _pendingCount();
+        pending -= result.completed;
+        if (pending < 0) pending = 0;
+        // COUNT scans the chunk table. Reconcile concurrent additions/deletions
+        // periodically, while reporting this worker's completions each batch.
+        if (++batches % 16 == 0) pending = await _pendingCount();
         progress.value = (done: done, pending: pending, running: true);
         // Failed chunks stay pending for a later run; a batch that completes
         // nothing would otherwise re-claim them forever.
@@ -56,7 +61,11 @@ class SemanticIndexer {
         await Future<void>.delayed(Duration.zero);
       }
     } finally {
-      progress.value = (done: done, pending: pending, running: false);
+      try {
+        pending = await _pendingCount();
+      } finally {
+        progress.value = (done: done, pending: pending, running: false);
+      }
     }
   }
 

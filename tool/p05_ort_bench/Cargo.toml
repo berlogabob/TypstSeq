@@ -7,3 +7,5 @@ edition = "2021"
 ndarray = "0.17.2"
 ort = { version = "2.0.0-rc.13", features = ["ndarray", "download-binaries"] }
 tokenizers = "0.23.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
