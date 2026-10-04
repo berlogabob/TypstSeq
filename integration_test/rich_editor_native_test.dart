@@ -168,6 +168,10 @@ MagicRequest _requestFor(MagicAction action) => switch (action) {
     value: 'Native task',
     due: '2026-07-14',
   ),
+  MagicAction.time => const MagicRequest(
+    action: MagicAction.time,
+    value: '09:07',
+  ),
   MagicAction.date => const MagicRequest(
     action: MagicAction.date,
     value: '2026-07-14',
@@ -223,6 +227,7 @@ String _sourceMarker(MagicAction action) => switch (action) {
   MagicAction.mention => '#tylog.ref-note("native-person")[Ada]',
   MagicAction.tag => '#tylog.tag(',
   MagicAction.task => '#tylog.task(',
+  MagicAction.time => '09:07',
   MagicAction.date => '#tylog.date-ref(',
   MagicAction.citation => '@smith2026',
   MagicAction.attachment => '#tylog.attachment(',
