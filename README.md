@@ -9,6 +9,18 @@ interactive workspace. The shared metadata contract is
 [TyLog Format v1](spec/tylog-format-v1.md); the complete boundary and
 compatibility guide is [TyLog ecosystem](docs/tylog-ecosystem.md).
 
+## View modes and PDF export
+
+- **Edit:** rich block editing.
+- **Read:** reading view with adjustable typography and night mode.
+- **Preview:** compiled Typst on one continuous screen-wide page, refitted on resize or rotation.
+- **Source:** edit the note's Typst source.
+
+PDF export uses Settings → **PDF page size**: A4 (default), Letter, A5, or
+Legal. This applies to note sharing and report PDFs. Unmodified managed themes
+upgrade automatically; a customized `_system/theme.typ` is not overwritten
+and keeps its own layout unless adapted to the preview/export inputs.
+
 ## Development
 
 Flutter stable with Dart 3.12 or newer is required. Native compiler setup is explicit and never runs as a build side effect:

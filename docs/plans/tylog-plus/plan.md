@@ -5,6 +5,21 @@
 **Owner:** Project coordinator · **Scope:** P01–P26  
 **Current state (2026-10-03):** 22 of 26 milestones complete; U0 verified on host, Mac and A24. Open: P05 (human relevance labels, owner: user), P12 (real-keyboard/IME hand check on the A24, owner: user), P21 (closes with P05), and P26 (seven-day use, starts when those pass). A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
 
+**2026-10-04 maintenance:** Sync fix `f3667ed` throttles autosave syncs to 2 min,
+retries transient 5xx/52x responses, and shows “Offline — changes saved, will
+sync” for transient automatic failures (escalates after three consecutive
+failures or 10 min). Note close and backgrounding still sync immediately.
+[Phone trace and fix](evidence/P25/2026-10-04-sync-calm.md). Revision-per-save
+coalescing was attempted and reverted; remains a follow-up. `3221ad6` makes
+Preview a continuous screen-wide page, adds Settings → PDF page size
+(A4 default, Letter, A5, Legal), and gives the four view-mode items icons and
+a current-mode check. Customized `_system/theme.typ` is preserved. Follow-ups:
+`75ac4c0` upgrades real v1 theme copies (they lack the bundle's trailing blank
+line); `bb334ea` sets the page ahead of the source in Preview and export, because
+plain-Typst notes (phone dailies have no `#show: tylog.note`) never reach the theme.
+Housekeeping: Mac `/Applications` app updated to the latest release; Maestro
+helper removed from the A24.
+
 ## How to use this plan
 
 This is the only active project plan. Update milestone state, next action, and evidence in the canonical Typst source. Detailed test logs remain in `evidence/`; they are evidence, not separate plans. Private vault contents, credentials, query text, source excerpts, hashes, and raw samples stay outside Git unless evidence is explicitly redacted.

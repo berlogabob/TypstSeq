@@ -5,6 +5,12 @@ Source audit of live Flutter controls under `lib/`, based on the U0 requirement 
 archived status in `docs/ui-fix-status.md`. Line numbers are source locations;
 `pending` is intentional because no device run was requested.
 
+2026-10-04: View-mode menu has four 48 dp items: Edit (`edit_outlined`),
+Read (`chrome_reader_mode_outlined`), Preview (`preview_outlined`), Source
+(`code`). Each has a leading icon; the current item has a trailing check.
+The menu button shows the current mode's icon. PDF page size is inventoried
+below; no new Mac/A24 verification is claimed.
+
 | ID | Surface | Control label/icon | Source (path:line) | Action/outcome expected | Platforms | Long-press-only? | Existing test covering it | Mac result | A24 result |
 |---|---|---|---|---|---|---|---|---|---|
 | U0-TODAY-01 | Today/journal | Today navigation | lib/app_mobile.dart:4321 | Open Today surface | both | no | test/today_page_test.dart | pending | pending |
@@ -26,10 +32,10 @@ archived status in `docs/ui-fix-status.md`. Line numbers are source locations;
 | U0-NOTES-07 | Notes list | Template Blank note | lib/app_mobile.dart:1042 | Create without a template | both | no | none | pending | pending |
 | U0-NOTES-08 | Notes list | Template entry | lib/app_mobile.dart:1047 | Create from selected template | both | no | none | pending | pending |
 
-| U0-EDITOR-01 | Editor | Edit view mode | lib/app_mobile.dart:4272 | Select normal rich editor mode | both | no | test/rich_editor_test.dart | pending | pending |
-| U0-EDITOR-02 | Editor | Read view mode | lib/app_mobile.dart:4282 | Open reading mode | both | no | none | pending | pending |
-| U0-EDITOR-03 | Editor | Preview view mode | lib/app_mobile.dart:4283 | Open rendered Typst preview | both | no | none | pending | pending |
-| U0-EDITOR-04 | Editor | Source view mode | lib/app_mobile.dart:4284 | Open source editor | both | no | none | pending | pending |
+| U0-EDITOR-01 | Editor | View-mode menu → Edit / edit_outlined | lib/app_mobile.dart:4484 | Select normal rich editor mode; check when current | both | no | test/widget_test.dart | pending | pending |
+| U0-EDITOR-02 | Editor | View-mode menu → Read / chrome_reader_mode_outlined | lib/app_mobile.dart:4484 | Open reading mode; check when current | both | no | test/widget_test.dart | pending | pending |
+| U0-EDITOR-03 | Editor | View-mode menu → Preview / preview_outlined | lib/app_mobile.dart:4484 | Open continuous screen-wide Typst preview; check when current | both | no | test/widget_test.dart | pending | pending |
+| U0-EDITOR-04 | Editor | View-mode menu → Source / code | lib/app_mobile.dart:4484 | Open source editor; check when current | both | no | test/widget_test.dart | pending | pending |
 | U0-EDITOR-05 | Editor | Undo | lib/rich_editor/editor_widgets.dart:637 | Undo latest edit | both | no | test/virtual_plain_editor_test.dart | pending | pending |
 | U0-EDITOR-06 | Editor | Redo | lib/rich_editor/editor_widgets.dart:644 | Redo latest edit | both | no | test/virtual_plain_editor_test.dart | pending | pending |
 | U0-EDITOR-07 | Editor | Heading 1 | lib/rich_editor/editor_widgets.dart:651 | Apply H1 | both | no | test/rich_editor_test.dart | pending | pending |
@@ -128,6 +134,7 @@ archived status in `docs/ui-fix-status.md`. Line numbers are source locations;
 | U0-MORE-18 | More/settings | Clean up imported notes | lib/widgets/settings_sheet.dart:101 | Remove import noise | both | no | none | pending | pending |
 | U0-MORE-19 | More/settings | Import Logseq/Obsidian vault | lib/widgets/settings_sheet.dart:107 | Import whole vault | both | no | integration_test/markdown_import_native_test.dart | pending | pending |
 | U0-MORE-20 | More/settings | Check for updates | lib/widgets/settings_sheet.dart:117 | Check/download desktop update | mac | no | test/desktop_updater_test.dart | pending | pending |
+| U0-MORE-21 | More/settings | PDF page size / picture_as_pdf_outlined | lib/widgets/settings_sheet.dart:80 | Persist A4 (default), Letter, A5 or Legal for note/report PDF export | both | no | test/preview_theme_test.dart | pending | pending |
 
 | U0-VAULT-01 | Sync/vault dialogs | Add or create vault | lib/widgets/vaults_sheet.dart:79 | Add/select a vault | both | no | test/vault_registry_test.dart | pending | pending |
 | U0-VAULT-02 | Sync/vault dialogs | Switch vault row | lib/widgets/vaults_sheet.dart:44 | Make vault active | both | no | none | pending | pending |
@@ -162,10 +169,10 @@ archived status in `docs/ui-fix-status.md`. Line numbers are source locations;
 | Saved views | 5 |
 | PDF reader | 6 |
 | Graph | 9 |
-| More/settings | 20 |
+| More/settings | 21 |
 | Sync/vault dialogs | 12 |
 | Export/report | 6 |
-| **Total** | **130** |
+| **Total** | **131** |
 
 ## Long-press-only actions
 

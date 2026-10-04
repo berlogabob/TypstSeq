@@ -2,6 +2,7 @@
 
 Ground truth for the PKMS competitive audit (`docs/audit-pkms-comparison.md`).
 Gathered by codebase exploration over `lib/`, `packages/`, `docs/`, `spec/`.
+Preview and PDF export entries updated 2026-10-04 (3221ad6).
 TyLog is a deliberately scoped Typst-first workspace prioritizing local-first
 data ownership, plaintext storage, and depth over breadth.
 
@@ -22,7 +23,7 @@ data ownership, plaintext storage, and depth over breadth.
 | Feature | Description | Where | Maturity |
 |---|---|---|---|
 | Block-level editing | Edit individual blocks without full source | controlled_editor.dart, TyLogReadView | Shipped |
-| Preview/Source/Split | Three editor modes | editor_panel.dart, work_surface.dart | Shipped |
+| View modes | Edit (rich blocks), Read (reading view), Preview (continuous screen-wide Typst page), Source (Typst text); menu icons and current-mode check; split editor also uses fitted preview | app_mobile.dart, reading_mode.dart, typst_document_viewer.dart | Shipped |
 | Magic (/) actions | 20+ quick-insert commands | app_mobile.dart applyMagic(), MagicAction | Shipped |
 | Rich formatting | Bold/italic/strike/underline/mono/highlight (4 colors) via Typst | app_mobile.dart | Shipped |
 | Headings, tables, equations | Via magic menu; LaTeX-style math | MagicAction.* | Shipped |
@@ -84,7 +85,7 @@ data ownership, plaintext storage, and depth over breadth.
 | Logseq + Obsidian vault import | Auto-detect; pages→notes, journals→daily, TODO→tasks, wikilinks, assets, import report | vault_import_flow.dart, tylog_import_core | Shipped |
 | Logseq DB (2.0) import | Via EDN export, transpile to file pipeline | docs/superpowers/plans/2026-08-20-logseq-db-import.md | Planned |
 | Markdown article import | Single articles | markdown_article_import.dart | Shipped |
-| PDF export | Any note/report via typst compile; .typ + .pdf siblings in outputs/ | report.dart | Shipped |
+| PDF export | Share any note as PDF; reports persist .typ + .pdf siblings in outputs/. Settings → PDF page size: A4 (default), Letter, A5, Legal; separate from Preview layout. Customized _system/theme.typ is preserved and may retain its own layout | report.dart, settings_sheet.dart, vault_registry.dart | Shipped |
 | Bibliography | BibTeX/BibLaTeX | bibliography.dart | Shipped |
 | ABSENT: HTML export | PDF only | — | N/A |
 
