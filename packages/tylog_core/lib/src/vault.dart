@@ -165,7 +165,10 @@ Future<void> initializeVaultStorage(
   for (final path in [TylogVaultPaths.theme, TylogVaultPaths.export]) {
     if (!await storage.exists(path) ||
         (path == TylogVaultPaths.theme &&
-            await storage.readText(path) == legacyManagedTheme)) {
+            // Vault copies differ from the bundled v1 only in trailing
+            // newlines (177 vs 178 bytes on real vaults).
+            (await storage.readText(path)).trimRight() ==
+                legacyManagedTheme.trimRight())) {
       await storage.writeBytes(path, managedFiles[path]!);
     }
   }

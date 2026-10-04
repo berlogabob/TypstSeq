@@ -18,9 +18,12 @@ void main() {
     final theme = File('${root.path}/_system/theme.typ');
     final current = await theme.readAsString();
     expect(current, startsWith('// tylog-theme-version: 2'));
-    await theme.writeAsString(legacyManagedTheme);
-    await vault.ensureCreated();
-    expect(await theme.readAsString(), current);
+    // Real vault copies carry one trailing newline less than the bundle.
+    for (final legacy in [legacyManagedTheme, legacyManagedTheme.trimRight()]) {
+      await theme.writeAsString(legacy);
+      await vault.ensureCreated();
+      expect(await theme.readAsString(), current);
+    }
     for (final edited in [
       '$legacyManagedTheme// custom\n',
       '$current// custom\n',
