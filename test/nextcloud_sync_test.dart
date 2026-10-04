@@ -14,11 +14,13 @@ import 'package:tylog/vault_storage.dart';
 
 void main() {
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
+  final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   final defaultCheckpointInterval = NextcloudSync.checkpointInterval;
   // Zero-delay single retry keeps failure-path tests fast while still
   // exercising the transient-retry logic.
   setUp(() {
     NextcloudSync.connectionRetryDelays = const [Duration.zero];
+    NextcloudSync.busyRetryDelays = const [Duration.zero];
     // Checkpointing is time-throttled in production, and these fixtures sync a
     // handful of files against a local server in well under one interval — so
     // without this no mid-loop checkpoint would ever fire and the resume tests
@@ -27,6 +29,7 @@ void main() {
   });
   tearDown(() {
     NextcloudSync.connectionRetryDelays = defaultRetryDelays;
+    NextcloudSync.busyRetryDelays = defaultBusyRetryDelays;
     NextcloudSync.checkpointInterval = defaultCheckpointInterval;
   });
 
@@ -653,12 +656,14 @@ void main() {
 
   test('a 423 Locked download is retried, not failed', () async {
     NextcloudSync.busyRetryDelays = const [Duration.zero];
-    addTearDown(() => NextcloudSync.busyRetryDelays = const [
-      Duration(seconds: 2),
-      Duration(seconds: 8),
-      Duration(seconds: 15),
-      Duration(seconds: 25),
-    ]);
+    addTearDown(
+      () => NextcloudSync.busyRetryDelays = const [
+        Duration(seconds: 2),
+        Duration(seconds: 8),
+        Duration(seconds: 15),
+        Duration(seconds: 25),
+      ],
+    );
     final remote = <String, _MutableRemoteFile>{
       '_system/tylog.typ': _remoteText('helper'),
       'notes/locked.typ': _remoteText('locked note'),
@@ -666,6 +671,41 @@ void main() {
     final server = await _mutableWebDavServer(
       remote,
       lockGetOnce: 'notes/locked.typ',
+    );
+    final dir = await Directory.systemTemp.createTemp('tylog_locked_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(result.downloaded, remote.length);
+    expect(await vault.storage.readText('notes/locked.typ'), 'locked note');
+  });
+
+  test('a 502 download is retried, not failed', () async {
+    NextcloudSync.busyRetryDelays = const [Duration.zero];
+    addTearDown(
+      () => NextcloudSync.busyRetryDelays = const [
+        Duration(seconds: 2),
+        Duration(seconds: 8),
+        Duration(seconds: 15),
+        Duration(seconds: 25),
+      ],
+    );
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/locked.typ': _remoteText('locked note'),
+    };
+    final server = await _mutableWebDavServer(
+      remote,
+      lockGetOnce: 'notes/locked.typ',
+      lockStatus: 502,
     );
     final dir = await Directory.systemTemp.createTemp('tylog_locked_');
     final vault = Vault(dir);
@@ -4130,6 +4170,7 @@ Future<HttpServer> _mutableWebDavServer(
   bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
   String? lockGetOnce,
+  int lockStatus = 423,
   bool interruptMkcolOnce = false,
   Map<String, int>? getCounts,
   Duration transferDelay = Duration.zero,
@@ -4285,7 +4326,7 @@ Future<HttpServer> _mutableWebDavServer(
           request.response.statusCode = HttpStatus.notFound;
         } else if (path == lockGetOnce && !locked.contains(path)) {
           locked.add(path);
-          request.response.statusCode = 423;
+          request.response.statusCode = lockStatus;
         } else if (!interrupted && path == interruptGetOnce) {
           interrupted = true;
           request.response.contentLength = file.bytes.length + 10;

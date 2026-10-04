@@ -238,6 +238,11 @@ class WorkspaceController extends ChangeNotifier {
 
   Timer? _autosave;
   Timer? _cloudAutosave;
+  @visibleForTesting
+  static Duration cloudAutosaveInterval = const Duration(minutes: 2);
+  DateTime? _lastAutosaveSyncAt;
+  DateTime? _firstTransientFailureAt;
+  int _transientFailures = 0;
   Timer? _cloudPoll;
   final Map<String, Future<bool>> _noteMutations = {};
   final Map<String, int> _noteMutationVersions = {};
@@ -337,6 +342,9 @@ class WorkspaceController extends ChangeNotifier {
     lastSync = null;
     syncConflicts = const [];
     lastSyncAt = null;
+    _lastAutosaveSyncAt = null;
+    _firstTransientFailureAt = null;
+    _transientFailures = 0;
     syncError = null;
     storageHealthy = false;
     _setDirty(false);
@@ -471,6 +479,9 @@ class WorkspaceController extends ChangeNotifier {
       if (_disposed || generation != _vaultGeneration) return;
       cloud = next.cloud;
       lastSyncAt = null;
+      _lastAutosaveSyncAt = null;
+      _firstTransientFailureAt = null;
+      _transientFailures = 0;
       syncError = null;
       storageHealthy = null;
       savedRevision = editRevision;
@@ -1231,7 +1242,12 @@ class WorkspaceController extends ChangeNotifier {
     _cloudAutosave?.cancel();
     final edited = lastEditAt;
     final elapsed = edited == null ? Duration.zero : _now().difference(edited);
-    final remaining = const Duration(seconds: 10) - elapsed;
+    var remaining = const Duration(seconds: 10) - elapsed;
+    final previous = _lastAutosaveSyncAt;
+    if (previous != null) {
+      final throttled = cloudAutosaveInterval - _now().difference(previous);
+      if (throttled > remaining) remaining = throttled;
+    }
     _cloudAutosave = Timer(
       remaining.isNegative ? Duration.zero : remaining,
       _runIdleMaintenance,
@@ -1363,6 +1379,12 @@ class WorkspaceController extends ChangeNotifier {
     }
     final generation = _vaultGeneration;
     if (syncing) return false;
+    if (trigger == 'autosave' &&
+        _lastAutosaveSyncAt != null &&
+        _now().difference(_lastAutosaveSyncAt!) < cloudAutosaveInterval) {
+      queueCloudSync();
+      return false;
+    }
     final local = localDirectory;
     if (local != null && isNextcloudManagedVault(local)) {
       status = 'Sync handled by Nextcloud Desktop';
@@ -1409,8 +1431,11 @@ class WorkspaceController extends ChangeNotifier {
           'manual',
           'retry',
           'resume',
+          'background',
+          'note-close',
         }.contains(trigger);
     syncing = true;
+    if (trigger == 'autosave') _lastAutosaveSyncAt = _now();
     syncError = null;
     status = 'Syncing…';
     _cloudAutosave?.cancel();
@@ -1599,6 +1624,8 @@ class WorkspaceController extends ChangeNotifier {
       _pollNextAt = null;
       _pollFailures = 0;
       lastSyncAt = _now();
+      _transientFailures = 0;
+      _firstTransientFailureAt = null;
       syncConflicts = conflicts;
       final changed =
           result.uploaded +
@@ -1633,7 +1660,34 @@ class WorkspaceController extends ChangeNotifier {
       // stale record — which is where sync problems are most likely — every
       // sync failure was silently discarded.
       if (!_owns(opened, generation)) return false;
-      syncError = friendlySyncError(error);
+      final transient = error is WebDavStatusException
+          ? error.statusCode >= 500 && error.statusCode <= 599 ||
+                const {423, 429}.contains(error.statusCode)
+          : error is SocketException ||
+                error is TimeoutException ||
+                error is HandshakeException ||
+                (error is HttpException &&
+                    !RegExp(r'\b[1-5]\d{2}\b').hasMatch(error.message));
+      if (transient) {
+        _transientFailures++;
+        _firstTransientFailureAt ??= _now();
+      } else {
+        _transientFailures = 0;
+        _firstTransientFailureAt = null;
+      }
+      final quiet =
+          const {
+            'autosave',
+            'poll',
+            'background',
+            'resume',
+            'startup',
+          }.contains(trigger) &&
+          transient &&
+          _transientFailures < 3 &&
+          _now().difference(_firstTransientFailureAt!) <
+              const Duration(minutes: 10);
+      syncError = quiet ? null : friendlySyncError(error);
       if (_isAuthFailure(error)) {
         _pollBlocked = true;
         _pollNextAt = null;
@@ -1650,7 +1704,7 @@ class WorkspaceController extends ChangeNotifier {
         _pollFailures++;
         _pollNextAt = _now().add(delay);
       }
-      status = syncError!;
+      status = quiet ? 'Offline — changes saved, will sync' : syncError!;
       notifyListeners();
       final conflicts = await loadSyncConflicts(opened);
       if (!_owns(opened, generation)) return false;
@@ -1659,7 +1713,7 @@ class WorkspaceController extends ChangeNotifier {
         await _scan(opened, generation: generation, updateStatus: false);
         if (!_owns(opened, generation)) return false;
       }
-      if (syncConflicts.isNotEmpty) {
+      if (syncConflicts.isNotEmpty && !quiet) {
         status = 'Needs attention';
         notifyListeners();
       }
@@ -1855,11 +1909,15 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void replaceNote(String path, String value) {
+    final closingNote = note != null && note != path;
     note = path;
     source = value;
     _setDirty(false);
     savedRevision = editRevision;
     notifyListeners();
+    if (closingNote && (cloud?.isReady ?? false)) {
+      unawaited(syncNow(trigger: 'note-close'));
+    }
   }
 
   /// Full-text search, wherever the index happens to live.

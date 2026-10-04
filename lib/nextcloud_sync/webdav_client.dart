@@ -414,15 +414,12 @@ extension _WebDavClient on NextcloudSync {
       try {
         return await run();
       } on WebDavStatusException catch (error) {
-        // A completed HTTP error response means the server was reached and
-        // answered definitively; retrying just burns the retry budget at
-        // every sync stage. A dropped connection instead surfaces as a plain
-        // IOException below and is still retried. The exceptions are
-        // "try later" answers: 423 (a lock, e.g. left by an interrupted
-        // upload), 429 and 503 wait on their own, longer schedule.
+        // Locks, rate limits, server failures and Cloudflare origin failures
+        // are transient and use the longer busy retry schedule.
         // NB: WebDavStatusException extends HttpException/IOException, so this
         // clause must precede the IOException catch.
-        if (!const {423, 429, 503}.contains(error.statusCode) ||
+        if ((!const {423, 429, 500, 502, 503, 504}.contains(error.statusCode) &&
+                !(error.statusCode >= 520 && error.statusCode <= 530)) ||
             attempt >= NextcloudSync.busyRetryDelays.length) {
           rethrow;
         }

@@ -32,7 +32,12 @@ Future<void> _waitUntil(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
-  setUp(() => NextcloudSync.connectionRetryDelays = const [Duration.zero]);
+  final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
+  setUp(() {
+    NextcloudSync.connectionRetryDelays = const [Duration.zero];
+    NextcloudSync.busyRetryDelays = const [Duration.zero];
+  });
+  tearDown(() => NextcloudSync.busyRetryDelays = defaultBusyRetryDelays);
   tearDown(() => NextcloudSync.connectionRetryDelays = defaultRetryDelays);
 
   test(
@@ -2211,6 +2216,121 @@ void main() {
     },
   );
 
+  for (final failure in ['502', 'DNS']) {
+    test(
+      '$failure automatic failures stay quiet twice and manual reports immediately',
+      () async {
+        final previousOverrides = HttpOverrides.current;
+        HttpOverrides.global = failure == 'DNS' ? _DnsFailureOverrides() : null;
+        addTearDown(() => HttpOverrides.global = previousOverrides);
+        final busyDelays = NextcloudSync.busyRetryDelays;
+        NextcloudSync.busyRetryDelays = const [Duration.zero];
+        addTearDown(() => NextcloudSync.busyRetryDelays = busyDelays);
+        final server = await _GatedWebDavServer.start();
+        addTearDown(() => server.server.close(force: true));
+        server.propfindStatus = 502;
+        var now = DateTime.utc(2026);
+        final controller = WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          inspector: _FakeInspector(),
+          reconcileTasks: (_) async {},
+          now: () => now,
+        );
+        addTearDown(controller.dispose);
+        await controller.openVault(
+          const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+          storage: _MemoryStorage(),
+        );
+        await _waitUntil(() => controller.index != null);
+        controller.cloud = server.config;
+        for (var attempt = 1; attempt <= 3; attempt++) {
+          expect(await controller.syncNow(trigger: 'autosave'), isFalse);
+          if (attempt < 3) {
+            expect(controller.syncError, isNull);
+            expect(controller.status, 'Offline — changes saved, will sync');
+          } else {
+            expect(controller.syncError, isNotNull);
+          }
+          now = now.add(const Duration(minutes: 2));
+        }
+        expect(await controller.syncNow(), isFalse);
+        expect(controller.syncError, isNotNull);
+      },
+    );
+  }
+
+  test(
+    'success resets failures; manual and ten-minute outages report at once',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final busyDelays = NextcloudSync.busyRetryDelays;
+      NextcloudSync.busyRetryDelays = const [Duration.zero];
+      addTearDown(() => NextcloudSync.busyRetryDelays = busyDelays);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      var now = DateTime.utc(2026);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        now: () => now,
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+      server.propfindStatus = 502;
+      expect(await controller.syncNow(), isFalse);
+      expect(controller.syncError, isNotNull);
+      server.propfindStatus = 207;
+      expect(await controller.syncNow(), isTrue);
+      server.propfindStatus = 502;
+      expect(await controller.syncNow(trigger: 'autosave'), isFalse);
+      expect(controller.syncError, isNull);
+      now = now.add(const Duration(minutes: 10));
+      expect(await controller.syncNow(trigger: 'autosave'), isFalse);
+      expect(controller.syncError, isNotNull);
+    },
+  );
+
+  test(
+    'autosave throttle allows immediate manual and background sync',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      var now = DateTime.utc(2026);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        now: () => now,
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+      expect(await controller.syncNow(trigger: 'autosave'), isTrue);
+      now = now.add(const Duration(seconds: 119));
+      expect(await controller.syncNow(trigger: 'autosave'), isFalse);
+      expect(await controller.syncNow(), isTrue);
+      expect(await controller.syncNow(trigger: 'background'), isTrue);
+      expect(await controller.syncNow(trigger: 'note-close'), isTrue);
+      now = now.add(const Duration(seconds: 1));
+      expect(await controller.syncNow(trigger: 'autosave'), isTrue);
+    },
+  );
+
   test('sync errors explain resumable network and authentication failures', () {
     expect(
       friendlySyncError(const SocketException('offline')),
@@ -2379,10 +2499,10 @@ void main() {
     for (final delay in const [25, 50, 100, 200, 300]) {
       final before = server.propfinds;
       await controller.pollTick();
-      expect(server.propfinds, before + 1);
+      expect(server.propfinds, before + 2);
       now = now.add(Duration(seconds: delay - 1));
       await controller.pollTick();
-      expect(server.propfinds, before + 1);
+      expect(server.propfinds, before + 2);
       now = now.add(const Duration(seconds: 1));
     }
 
@@ -2394,13 +2514,13 @@ void main() {
     server.propfindStatus = HttpStatus.internalServerError;
     final beforeResetFailure = server.propfinds;
     await controller.pollTick();
-    expect(server.propfinds, beforeResetFailure + 1);
+    expect(server.propfinds, beforeResetFailure + 2);
     now = now.add(const Duration(seconds: 24));
     await controller.pollTick();
-    expect(server.propfinds, beforeResetFailure + 1);
+    expect(server.propfinds, beforeResetFailure + 2);
     now = now.add(const Duration(seconds: 1));
     await controller.pollTick();
-    expect(server.propfinds, beforeResetFailure + 2);
+    expect(server.propfinds, beforeResetFailure + 4);
   });
 
   test(
@@ -3070,4 +3190,19 @@ class _GatedWebDavServer {
       await request.response.close();
     });
   }
+}
+
+class _DnsFailureOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => _DnsFailureClient();
+}
+
+class _DnsFailureClient implements HttpClient {
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    throw const SocketException('Failed host lookup');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
