@@ -216,6 +216,7 @@ class HomeScreen extends StatefulWidget {
   final Future<Uint8List> Function({
     required String source,
     required Map<String, Uint8List> files,
+    String paper,
   })?
   onCompilePdf;
   final Future<void> Function(String name, Uint8List pdf)? onSharePdf;
@@ -299,6 +300,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   SemanticSearchController? _semantic;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
+  String? _debouncedPreviewWidth;
+  String? _pendingPreviewWidth;
+  static const _previewPixelsPerPt = 2.0;
   // Path/date of the daily note last opened via _openToday(), so a resume
   // after midnight can detect the Today screen is showing a stale day.
   String? _todayNotePath;
@@ -679,19 +683,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Debounces the preview source by 400ms so a recompile isn't triggered on
   // every keystroke; the first render after entering preview/split is
   // immediate. Reset by `build()` whenever preview isn't visible.
-  String _debouncedPreview() {
+  String _debouncedPreview(String width) {
     final live = _previewSource();
     if (_debouncedPreviewSource == null) {
       _debouncedPreviewSource = live;
       _pendingPreviewSource = live;
+      _debouncedPreviewWidth = width;
+      _pendingPreviewWidth = width;
       return live;
     }
-    if (live != _pendingPreviewSource) {
+    if (live != _pendingPreviewSource || width != _pendingPreviewWidth) {
+      _pendingPreviewWidth = width;
       _pendingPreviewSource = live;
       _previewDebounceTimer?.cancel();
       _previewDebounceTimer = Timer(const Duration(milliseconds: 400), () {
         if (!mounted) return;
-        setState(() => _debouncedPreviewSource = live);
+        setState(() {
+          _debouncedPreviewSource = live;
+          _debouncedPreviewWidth = width;
+        });
       });
     }
     return _debouncedPreviewSource!;
@@ -2061,6 +2071,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
+            pdfPaper: registry?.pdfPaper ?? 'a4',
+            onPdfPaperChanged: (paper) {
+              unawaited(registry?.setPdfPaper(paper) ?? Future.value());
+            },
             themeMode: widget.themeMode,
             onThemeModeChanged: (mode) {
               widget.onThemeModeChanged?.call(mode);
@@ -3309,6 +3323,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       pdf = await (widget.onCompilePdf ?? compileSourcePdf)(
         source: exportSource,
         files: exportFiles,
+        paper: vaultRegistry?.pdfPaper ?? 'a4',
       );
     } catch (error) {
       if (!mounted) return;
@@ -3542,7 +3557,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         to: range == null ? null : isoDay(range.end),
       ),
     );
-    final export = await exportReportPdfStorage(v.storage, report);
+    final export = await exportReportPdfStorage(
+      v.storage,
+      report,
+      paper: vaultRegistry?.pdfPaper ?? 'a4',
+    );
     if (mounted) {
       _magicFeedback('Created report and PDF');
       _queueCloudSync();
@@ -3831,6 +3850,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _previewDebounceTimer = null;
       _debouncedPreviewSource = null;
       _pendingPreviewSource = null;
+      _debouncedPreviewWidth = null;
+      _pendingPreviewWidth = null;
     }
     final v = vault;
     final current = v == null || note == null ? null : note;
@@ -3991,24 +4012,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }),
         communities: communities,
       ),
-      'preview' => TypstDocumentViewer(
-        source: _debouncedPreview(),
-        files: _typstFiles(),
-        loadingBuilder: (_) => const Center(child: LoadingIndicator()),
-        errorBuilder: (_, error) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SelectableText('Typst error:\n$error'),
-                FilledButton.tonalIcon(
-                  onPressed: () =>
-                      unawaited(_showTypstHelp(error: error.toString())),
-                  icon: const Icon(Icons.help_outline),
-                  label: const Text('Explain error'),
-                ),
-              ],
+      'preview' => LayoutBuilder(
+        builder: (context, constraints) => TypstDocumentViewer(
+          source: _debouncedPreview(
+            (constraints.maxWidth / _previewPixelsPerPt).toStringAsFixed(1),
+          ),
+          inputs: {'tylog-page-width': _debouncedPreviewWidth!},
+          pixelsPerPt: _previewPixelsPerPt,
+          pageSpacing: 0,
+          pageElevation: 0,
+          files: _typstFiles(),
+          loadingBuilder: (_) => const Center(child: LoadingIndicator()),
+          errorBuilder: (_, error) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SelectableText('Typst error:\n$error'),
+                  FilledButton.tonalIcon(
+                    onPressed: () =>
+                        unawaited(_showTypstHelp(error: error.toString())),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Explain error'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -4037,9 +4066,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else
               const VerticalDivider(width: 1),
             Expanded(
-              child: TypstDocumentViewer(
-                source: _debouncedPreview(),
-                files: _typstFiles(),
+              child: LayoutBuilder(
+                builder: (context, constraints) => TypstDocumentViewer(
+                  source: _debouncedPreview(
+                    (constraints.maxWidth / _previewPixelsPerPt)
+                        .toStringAsFixed(1),
+                  ),
+                  inputs: {'tylog-page-width': _debouncedPreviewWidth!},
+                  pixelsPerPt: _previewPixelsPerPt,
+                  pageSpacing: 0,
+                  pageElevation: 0,
+                  files: _typstFiles(),
+                ),
               ),
             ),
           ],
@@ -4433,16 +4471,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               tooltip: 'View mode',
               icon: Icon(switch (mode) {
                 'read' => Icons.chrome_reader_mode_outlined,
-                'preview' => Icons.picture_as_pdf_outlined,
+                'preview' => Icons.preview_outlined,
                 'source' => Icons.code,
                 _ => Icons.edit_outlined,
               }),
               onSelected: _setEditorMode,
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'normal', child: Text('Edit')),
-                PopupMenuItem(value: 'read', child: Text('Read')),
-                PopupMenuItem(value: 'preview', child: Text('Preview')),
-                PopupMenuItem(value: 'source', child: Text('Source')),
+              itemBuilder: (_) => [
+                for (final (value, label, icon) in const [
+                  ('normal', 'Edit', Icons.edit_outlined),
+                  ('read', 'Read', Icons.chrome_reader_mode_outlined),
+                  ('preview', 'Preview', Icons.preview_outlined),
+                  ('source', 'Source', Icons.code),
+                ])
+                  PopupMenuItem(
+                    value: value,
+                    height: 48,
+                    child: Row(
+                      children: [
+                        Icon(icon),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(label)),
+                        if (mode == value) const Icon(Icons.check),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ListenableBuilder(

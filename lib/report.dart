@@ -49,18 +49,23 @@ class ReportPreparationException implements Exception {
 /// Compiles Typst [source] straight to PDF bytes, without writing anything.
 ///
 /// [files] is the same virtual filesystem the preview hands the compiler — the
-/// helper, note assets, vendored packages and bibliography — so what comes back
-/// is byte-for-byte what Preview shows. Kept separate from
+/// helper, note assets, vendored packages and bibliography. Paper size applies
+/// only to export. Kept separate from
 /// [exportReportPdfStorage] because that one exists to persist a report *into*
 /// the vault; this one exists so a note can leave the app (the share sheet), and
 /// on a SAF vault there is no file path to hand anyone anyway.
 Future<Uint8List> compileSourcePdf({
   required String source,
   required Map<String, Uint8List> files,
+  String paper = 'a4',
 }) async {
   final compiler = await TypstCompiler.create();
   try {
-    final document = await compiler.compile(source: source, files: files);
+    final document = await compiler.compile(
+      source: source,
+      files: files,
+      inputs: {'tylog-paper': paper},
+    );
     try {
       return await document.exportPdf();
     } finally {
@@ -71,11 +76,19 @@ Future<Uint8List> compileSourcePdf({
   }
 }
 
-Future<File> exportReportPdf(Directory root, File report) async {
+Future<File> exportReportPdf(
+  Directory root,
+  File report, {
+  String paper = 'a4',
+}) async {
   final path = report.absolute.path
       .substring(root.absolute.path.length + 1)
       .replaceAll(Platform.pathSeparator, '/');
-  final output = await exportReportPdfStorage(LocalVaultStorage(root), path);
+  final output = await exportReportPdfStorage(
+    LocalVaultStorage(root),
+    path,
+    paper: paper,
+  );
   return File('${root.path}/${output.path}');
 }
 
@@ -91,7 +104,11 @@ Future<
     int attempts,
   })
 >
-exportReportPdfStorage(VaultStorage storage, String report) async {
+exportReportPdfStorage(
+  VaultStorage storage,
+  String report, {
+  String paper = 'a4',
+}) async {
   final virtual = <String, Uint8List>{};
   final loadedPaths = <String>{};
   var loadedBytes = 0;
@@ -102,7 +119,11 @@ exportReportPdfStorage(VaultStorage storage, String report) async {
     while (true) {
       attempts++;
       try {
-        final document = await compiler.compile(source: source, files: virtual);
+        final document = await compiler.compile(
+          source: source,
+          files: virtual,
+          inputs: {'tylog-paper': paper},
+        );
         await compiler.takeRequestedFiles();
         try {
           final output = '${report.substring(0, report.length - 4)}.pdf';

@@ -168,6 +168,7 @@ class VaultRegistry {
     this.readingFontScale = 1,
     this.readingNightMode = false,
     this.themeMode = 'system',
+    this.pdfPaper = 'a4',
     this.shelfPrefs = const {},
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
@@ -182,6 +183,7 @@ class VaultRegistry {
   /// App-wide appearance: 'system' | 'light' | 'dark'. Stored as a string so
   /// this Flutter-free file stays independent of `ThemeMode`.
   String themeMode;
+  String pdfPaper;
 
   /// Article-shelf filter/sort/group choices, persisted so they survive an app
   /// restart (e.g. `{'status': 'unread', 'sort': 'relevance'}`).
@@ -208,12 +210,17 @@ class VaultRegistry {
     var readingFontScale = 1.0;
     var readingNightMode = false;
     var themeMode = 'system';
+    var pdfPaper = 'a4';
     if (await file.exists()) {
       final json =
           jsonDecode(await file.readAsString()) as Map<String, Object?>;
       readingFontScale = _readingFontScale(json['readingFontScale']);
       readingNightMode = json['readingNightMode'] as bool? ?? false;
       themeMode = json['themeMode'] as String? ?? 'system';
+      final storedPaper = json['pdfPaper'];
+      if (const ['a4', 'us-letter', 'a5', 'us-legal'].contains(storedPaper)) {
+        pdfPaper = storedPaper as String;
+      }
       final parsed = (json['vaults'] as List)
           .map(
             (item) =>
@@ -270,6 +277,7 @@ class VaultRegistry {
           readingFontScale: readingFontScale,
           readingNightMode: readingNightMode,
           themeMode: themeMode,
+          pdfPaper: pdfPaper,
           shelfPrefs:
               (json['shelfPrefs'] as Map?)?.map(
                 (k, v) => MapEntry('$k', '$v'),
@@ -294,6 +302,7 @@ class VaultRegistry {
         onboardingComplete: false,
         readingFontScale: readingFontScale,
         readingNightMode: readingNightMode,
+        pdfPaper: pdfPaper,
       );
       await registry.save();
       return registry;
@@ -316,6 +325,7 @@ class VaultRegistry {
       onboardingComplete: false,
       readingFontScale: readingFontScale,
       readingNightMode: readingNightMode,
+      pdfPaper: pdfPaper,
     );
     await registry.save();
     return registry;
@@ -408,6 +418,11 @@ class VaultRegistry {
   }) {
     readingFontScale = _readingFontScale(fontScale);
     readingNightMode = nightMode;
+    return save();
+  }
+
+  Future<void> setPdfPaper(String paper) {
+    pdfPaper = paper;
     return save();
   }
 
@@ -520,6 +535,7 @@ class VaultRegistry {
         'readingFontScale': readingFontScale,
         'readingNightMode': readingNightMode,
         'themeMode': themeMode,
+        'pdfPaper': pdfPaper,
         'shelfPrefs': shelfPrefs,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),

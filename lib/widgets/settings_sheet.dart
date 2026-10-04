@@ -7,7 +7,7 @@ import '../vault_registry.dart';
 import 'app_version.dart';
 import 'constants.dart';
 
-class SettingsSheet extends StatelessWidget {
+class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
     super.key,
     required this.vaultPath,
@@ -24,8 +24,12 @@ class SettingsSheet extends StatelessWidget {
     required this.onStripImportNoise,
     required this.onImportVault,
     this.onCheckForUpdates,
+    this.pdfPaper = 'a4',
+    this.onPdfPaperChanged,
   });
 
+  final String pdfPaper;
+  final ValueChanged<String>? onPdfPaperChanged;
   final String vaultPath;
   final NextcloudConfig? cloud;
   final bool syncing;
@@ -44,8 +48,15 @@ class SettingsSheet extends StatelessWidget {
   final VoidCallback? onCheckForUpdates;
 
   @override
+  State<SettingsSheet> createState() => _SettingsSheetState();
+}
+
+class _SettingsSheetState extends State<SettingsSheet> {
+  String? _selectedPaper;
+
+  @override
   Widget build(BuildContext context) {
-    final readableVaultPath = readableVaultLocation(vaultPath);
+    final readableVaultPath = readableVaultLocation(widget.vaultPath);
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
@@ -60,10 +71,28 @@ class SettingsSheet extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _ThemeModeSelector(
-                themeMode: themeMode,
-                onChanged: onThemeModeChanged,
+                themeMode: widget.themeMode,
+                onChanged: widget.onThemeModeChanged,
               ),
               const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('PDF page size'),
+                trailing: DropdownButton<String>(
+                  value: _selectedPaper ?? widget.pdfPaper,
+                  items: const [
+                    DropdownMenuItem(value: 'a4', child: Text('A4')),
+                    DropdownMenuItem(value: 'us-letter', child: Text('Letter')),
+                    DropdownMenuItem(value: 'a5', child: Text('A5')),
+                    DropdownMenuItem(value: 'us-legal', child: Text('Legal')),
+                  ],
+                  onChanged: (paper) {
+                    if (paper == null) return;
+                    setState(() => _selectedPaper = paper);
+                    widget.onPdfPaperChanged?.call(paper);
+                  },
+                ),
+              ),
               SettingsTile(
                 icon: Icons.folder_open,
                 title: 'Local folder',
@@ -73,38 +102,38 @@ class SettingsSheet extends StatelessWidget {
               SettingsTile(
                 icon: Icons.create_new_folder,
                 title: 'Vaults',
-                subtitle: '$vaultCount vaults · manage and switch',
-                onTap: onManageVaults,
+                subtitle: '${widget.vaultCount} vaults · manage and switch',
+                onTap: widget.onManageVaults,
               ),
               SettingsTile(
                 icon: Icons.sync,
                 title: 'Sync',
-                subtitle: syncStatusSubtitle,
-                onTap: onNextcloud,
+                subtitle: widget.syncStatusSubtitle,
+                onTap: widget.onNextcloud,
               ),
               SettingsTile(
                 icon: Icons.notifications_outlined,
                 title: 'Task reminders',
                 subtitle: 'Enable local scheduled notifications',
-                onTap: () => unawaited(onEnableReminders()),
+                onTap: () => unawaited(widget.onEnableReminders()),
               ),
               SettingsTile(
                 icon: Icons.build_outlined,
                 title: 'Migrate entity types',
                 subtitle: 'Update older notes to the current format',
-                onTap: () => unawaited(onMigrateEntityTypes()),
+                onTap: () => unawaited(widget.onMigrateEntityTypes()),
               ),
               SettingsTile(
                 icon: Icons.cleaning_services_outlined,
                 title: 'Clean up imported notes',
                 subtitle: 'Remove empty Logseq drawers and trailing blanks',
-                onTap: () => unawaited(onStripImportNoise()),
+                onTap: () => unawaited(widget.onStripImportNoise()),
               ),
               SettingsTile(
                 icon: Icons.drive_folder_upload_outlined,
                 title: 'Import Logseq/Obsidian vault',
                 subtitle: 'Convert a whole vault folder into TyLog notes',
-                onTap: () => unawaited(onImportVault()),
+                onTap: () => unawaited(widget.onImportVault()),
               ),
               FutureBuilder<String>(
                 future: appVersion(),
@@ -114,7 +143,7 @@ class SettingsSheet extends StatelessWidget {
                   subtitle: snapshot.data ?? '...',
                 ),
               ),
-              if (onCheckForUpdates case final onTap?)
+              if (widget.onCheckForUpdates case final onTap?)
                 SettingsTile(
                   icon: Icons.system_update,
                   title: 'Check for updates',

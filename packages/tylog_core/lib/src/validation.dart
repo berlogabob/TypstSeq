@@ -39,7 +39,7 @@ Future<PkmsValidationReport> validatePkmsStorage(
   if (await storage.exists('_system/theme.typ') &&
       !(await storage.readText(
         '_system/theme.typ',
-      )).contains('// tylog-theme-version: 1')) {
+      )).contains(RegExp(r'// tylog-theme-version: [12](?:\s|$)'))) {
     problems.add(
       const PkmsProblem(
         code: 'custom-typst-theme',

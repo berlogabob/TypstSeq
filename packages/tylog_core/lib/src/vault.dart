@@ -13,18 +13,15 @@ import 'storage.dart';
 /// corpus compresses roughly 4:1 (the search index's measured ratio). The
 /// path keeps its `.json` name — `_index/` is local and disposable, and
 /// [decodeVaultIndexBytes] still reads the old plain format.
-Uint8List encodeVaultIndexBytes(VaultIndex index) => Uint8List.fromList(
-  gzip.encode(utf8.encode(jsonEncode(index.toJson()))),
-);
+Uint8List encodeVaultIndexBytes(VaultIndex index) =>
+    Uint8List.fromList(gzip.encode(utf8.encode(jsonEncode(index.toJson()))));
 
 /// Decodes bytes written by [encodeVaultIndexBytes], accepting both the
 /// gzip format (magic `1f 8b`) and the plain JSON written by older builds.
 VaultIndex decodeVaultIndexBytes(List<int> bytes) {
   final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
   final json = utf8.decode(isGzip ? gzip.decode(bytes) : bytes);
-  return VaultIndex.fromJson(
-    (jsonDecode(json) as Map).cast<String, Object?>(),
-  );
+  return VaultIndex.fromJson((jsonDecode(json) as Map).cast<String, Object?>());
 }
 
 abstract final class TylogVaultPaths {
@@ -103,6 +100,16 @@ Future<VaultStorageInspection> inspectVaultStorage(VaultStorage storage) async {
   );
 }
 
+const legacyManagedTheme = '''// tylog-theme-version: 1
+#let document(body) = {
+  set page(paper: "a4", margin: 2cm)
+  set text(font: "Libertinus Serif", size: 11pt)
+  set heading(numbering: "1.1")
+  body
+}
+
+''';
+
 Future<void> initializeVaultStorage(
   VaultStorage storage, {
   required Map<String, List<int>> managedFiles,
@@ -156,7 +163,9 @@ Future<void> initializeVaultStorage(
     }
   }
   for (final path in [TylogVaultPaths.theme, TylogVaultPaths.export]) {
-    if (!await storage.exists(path)) {
+    if (!await storage.exists(path) ||
+        (path == TylogVaultPaths.theme &&
+            await storage.readText(path) == legacyManagedTheme)) {
       await storage.writeBytes(path, managedFiles[path]!);
     }
   }

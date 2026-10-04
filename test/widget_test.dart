@@ -256,7 +256,37 @@ void main() {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
     expect(find.byTooltip('View mode'), findsOneWidget);
-    await setViewMode(tester, 'Read');
+    await tester.tap(find.byTooltip('View mode'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    for (final icon in [
+      Icons.edit_outlined,
+      Icons.chrome_reader_mode_outlined,
+      Icons.preview_outlined,
+      Icons.code,
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byType(PopupMenuItem<String>),
+          matching: find.byIcon(icon),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.byIcon(Icons.check),
+      ),
+      findsOneWidget,
+    );
+    for (final item in tester.widgetList<PopupMenuItem<String>>(
+      find.byType(PopupMenuItem<String>),
+    )) {
+      expect(item.height, greaterThanOrEqualTo(48));
+    }
+    await tester.tap(find.text('Read').last);
+    await tester.pump();
     expect(find.byType(SelectionArea), findsWidgets);
     expect(find.byTooltip('View mode'), findsNothing);
     await tester.tap(find.byTooltip('Back to edit'));
@@ -269,6 +299,32 @@ void main() {
           .widget<TypstDocumentViewer>(find.byType(TypstDocumentViewer))
           .renderMode,
       TypstRenderMode.svg,
+    );
+    final viewer = tester.widget<TypstDocumentViewer>(
+      find.byType(TypstDocumentViewer),
+    );
+    expect(
+      double.parse(viewer.inputs!['tylog-page-width']!),
+      closeTo(
+        tester.getSize(find.byType(TypstDocumentViewer)).width /
+            viewer.pixelsPerPt,
+        0.1,
+      ),
+    );
+    tester.view.physicalSize = const Size(1000, 600);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 401));
+    final resized = tester.widget<TypstDocumentViewer>(
+      find.byType(TypstDocumentViewer),
+    );
+    expect(
+      double.parse(resized.inputs!['tylog-page-width']!),
+      closeTo(
+        tester.getSize(find.byType(TypstDocumentViewer)).width /
+            resized.pixelsPerPt,
+        0.1,
+      ),
     );
     await setViewMode(tester, 'Source');
 
@@ -1000,22 +1056,31 @@ void main() {
     storage.readGate = releaseAsset.future;
     storage.gatedPath = 'assets/pic.png';
     String? compiledSource;
+    String? compiledPaper;
     Map<String, Uint8List>? compiledFiles;
     String? sharedName;
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
-          onCompilePdf: ({required source, required files}) async {
-            compiledSource = source;
-            compiledFiles = files;
-            return Uint8List.fromList([1, 2, 3]);
-          },
+          onCompilePdf:
+              ({required source, required files, String paper = 'a4'}) async {
+                compiledSource = source;
+                compiledPaper = paper;
+                compiledFiles = files;
+                return Uint8List.fromList([1, 2, 3]);
+              },
           onSharePdf: (name, _) async => sharedName = name,
         ),
       ),
     );
     await tester.pump();
     final dynamic home = tester.state(find.byType(HomeScreen));
+    home.vaultRegistry = VaultRegistry(
+      File('/unused/vaults.json'),
+      [],
+      '',
+      pdfPaper: 'us-letter',
+    );
     final controller = home.workspace;
     const source = '#image("/assets/pic.png")';
     controller.vault = vault;
@@ -1035,6 +1100,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(compiledSource, source);
+    expect(compiledPaper, 'us-letter');
     expect(compiledFiles!['assets/pic.png'], [1, 2, 3]);
     expect(sharedName, 'current');
   });
@@ -1047,10 +1113,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
-          onCompilePdf: ({required source, required files}) async {
-            compileCalls++;
-            return compileSourcePdf(source: source, files: files);
-          },
+          onCompilePdf:
+              ({required source, required files, String paper = 'a4'}) async {
+                compileCalls++;
+                return compileSourcePdf(
+                  source: source,
+                  files: files,
+                  paper: paper,
+                );
+              },
           onSharePdf: (_, _) async => shareCalls++,
         ),
       ),
@@ -1082,11 +1153,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
-          onCompilePdf: ({required source, required files}) async {
-            compiledSource = source;
-            await compileGate.future;
-            return Uint8List.fromList([4, 5, 6]);
-          },
+          onCompilePdf:
+              ({required source, required files, String paper = 'a4'}) async {
+                compiledSource = source;
+                await compileGate.future;
+                return Uint8List.fromList([4, 5, 6]);
+              },
           onSharePdf: (_, _) async => shareCalls++,
         ),
       ),

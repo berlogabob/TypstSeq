@@ -21,6 +21,7 @@ class TypstDocumentViewer extends StatefulWidget {
     required this.source,
     super.key,
     this.files,
+    this.inputs,
     this.date,
     this.renderMode = TypstRenderMode.svg,
     this.pixelsPerPt = 2.0,
@@ -33,6 +34,9 @@ class TypstDocumentViewer extends StatefulWidget {
 
   /// The Typst markup source to compile and render.
   final String source;
+
+  /// String values exposed to Typst through `sys.inputs`.
+  final Map<String, String>? inputs;
 
   /// Virtual files (images, data, includes) the markup may reference,
   /// keyed by the virtual path used in the markup.
@@ -96,6 +100,7 @@ class _TypstDocumentViewerState extends State<TypstDocumentViewer> {
     // compare — identity would recompile the preview on every keystroke.
     if (widget.source != old.source ||
         widget.date != old.date ||
+        !mapEquals(widget.inputs, old.inputs) ||
         !mapEquals(widget.files, old.files)) {
       unawaited(_compileDocument());
     }
@@ -123,6 +128,7 @@ class _TypstDocumentViewerState extends State<TypstDocumentViewer> {
       final doc = await _compiler!.compile(
         source: widget.source,
         files: widget.files,
+        inputs: widget.inputs,
         date: widget.date,
       );
 
