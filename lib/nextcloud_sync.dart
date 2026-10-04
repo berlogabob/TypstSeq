@@ -1366,6 +1366,7 @@ bool isSyncableVaultPath(String path) => const [
   'notes/',
   'projects/',
   'articles/',
+  'screenshots/',
   'assets/',
   'outputs/',
   '_system/',

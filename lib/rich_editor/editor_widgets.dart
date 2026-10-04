@@ -210,13 +210,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   List<MagicAction> _filterCommands(String query) {
     final actions = kMagicActionDisplay.keys.toList();
     if (query.isEmpty) return actions;
-    final normalized = query.toLowerCase();
     return actions
-        .where(
-          (action) => (kMagicActionDisplay[action]?.$2 ?? action.name)
-              .toLowerCase()
-              .contains(normalized),
-        )
+        .where((action) => magicActionMatches(action, query))
         .toList();
   }
 

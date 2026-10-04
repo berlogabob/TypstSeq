@@ -779,7 +779,13 @@ Future<VaultIndex> scanVaultStorage(
   return _buildVaultIndex(notes, problems: problems, tasks: tasks);
 }
 
-const _noteRoots = ['daily/', 'notes/', 'projects/', 'articles/'];
+const _noteRoots = [
+  'daily/',
+  'notes/',
+  'projects/',
+  'articles/',
+  'screenshots/',
+];
 
 Future<Map<String, Uint8List>> _inspectionFiles(
   VaultStorage storage, {
@@ -2395,6 +2401,7 @@ String _kindFromPath(String path) {
   if (path.startsWith('daily/')) return 'daily';
   if (path.startsWith('projects/')) return 'project';
   if (path.startsWith('articles/')) return 'article';
+  if (path.startsWith('screenshots/')) return 'screenshot';
   return 'note';
 }
 

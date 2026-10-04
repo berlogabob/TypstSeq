@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'app_version.dart';
+import 'screenshots_settings.dart';
 import 'constants.dart';
 
 class SettingsSheet extends StatefulWidget {
@@ -24,10 +25,20 @@ class SettingsSheet extends StatefulWidget {
     required this.onStripImportNoise,
     required this.onImportVault,
     this.onCheckForUpdates,
+    this.screenshotsMode = 'off',
+    this.screenshotsTime = '03:00',
+    this.onConfigureScreenshots,
+    this.onProcessScreenshots,
+    this.readScreenshotsStatus,
     this.pdfPaper = 'a4',
     this.onPdfPaperChanged,
   });
 
+  final String screenshotsMode;
+  final String screenshotsTime;
+  final Future<void> Function(String, String)? onConfigureScreenshots;
+  final Future<void> Function()? onProcessScreenshots;
+  final Future<String> Function()? readScreenshotsStatus;
   final String pdfPaper;
   final ValueChanged<String>? onPdfPaperChanged;
   final String vaultPath;
@@ -53,6 +64,10 @@ class SettingsSheet extends StatefulWidget {
 
 class _SettingsSheetState extends State<SettingsSheet> {
   String? _selectedPaper;
+  bool get readScreenshotsStatusAvailable =>
+      widget.readScreenshotsStatus != null &&
+      widget.onConfigureScreenshots != null &&
+      widget.onProcessScreenshots != null;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +108,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   },
                 ),
               ),
+              if (readScreenshotsStatusAvailable)
+                ScreenshotsSettings(
+                  mode: widget.screenshotsMode,
+                  time: widget.screenshotsTime,
+                  onConfigure: widget.onConfigureScreenshots!,
+                  onProcessNow: widget.onProcessScreenshots!,
+                  readStatus: widget.readScreenshotsStatus!,
+                ),
               SettingsTile(
                 icon: Icons.folder_open,
                 title: 'Local folder',

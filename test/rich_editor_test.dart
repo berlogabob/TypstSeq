@@ -31,6 +31,59 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('Time inserts at the cursor in source and rich editors', () {
+    expect(localTime(DateTime(2026, 10, 5, 9, 7)), '09:07');
+    const request = MagicRequest(action: MagicAction.time, value: '09:07');
+    final edit = applyMagicEdit(
+      'ab',
+      const TextSelection.collapsed(offset: 1),
+      request,
+    );
+    expect(edit.text, 'a09:07b');
+    expect(edit.selection.baseOffset, 6);
+    final controller = TyLogEditingController(
+      source: 'ab',
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection.collapsed(offset: 1);
+    controller.applyMagic(request);
+    expect(controller.text, 'a09:07b');
+    expect(controller.selection.baseOffset, 6);
+    expect(kMagicActionGroups['Insert'], contains(MagicAction.time));
+    for (final alias in ['time', 'now', 'current time']) {
+      expect(magicActionMatches(MagicAction.time, alias), isTrue);
+    }
+    for (final alias in ['image', 'photo', 'picture']) {
+      expect(magicActionMatches(MagicAction.attachment, alias), isTrue);
+    }
+  });
+
+  test(
+    'timestamp capture keeps unsaved rich content and ends at the new line',
+    () {
+      final controller = TyLogEditingController(
+        source: '#show: tylog.note.with(id: "today", kind: "daily")\nOriginal',
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.value = const TextEditingValue(
+        text: 'Unsaved',
+        selection: TextSelection.collapsed(offset: 7),
+      );
+      controller.appendTimestamp(DateTime(2026, 10, 5, 9, 7));
+      expect(controller.text, 'Unsaved\n- 09:07 ');
+      expect(controller.selection.baseOffset, controller.text.length);
+      expect(controller.document.toSource(), contains('id: "today"'));
+      controller.appendTimestamp(DateTime(2026, 10, 5, 9, 8));
+      expect(controller.text, endsWith('\n- 09:07 \n- 09:08 '));
+    },
+  );
+
   test(
     'rich document hides generated title and preserves unchanged source',
     () {

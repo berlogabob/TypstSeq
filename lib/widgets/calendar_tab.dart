@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'screenshot_strip.dart';
 
 import '../models.dart';
 import '../month_calendar.dart';
@@ -8,6 +10,7 @@ import 'loading.dart';
 class CalendarTab extends StatefulWidget {
   const CalendarTab({
     super.key,
+    this.imageResolver,
     required this.index,
     required this.calendar,
     required this.dayMarks,
@@ -16,6 +19,7 @@ class CalendarTab extends StatefulWidget {
     required this.onOpenDay,
   });
 
+  final Future<Uint8List?> Function(String)? imageResolver;
   final VaultIndex? index;
 
   /// Derived once per index by the controller — walking `index.calendar` here
@@ -37,7 +41,7 @@ class _CalendarTabState extends State<CalendarTab> {
   Widget build(BuildContext context) {
     final iso = isoDay(selected);
     final items = widget.calendar.where((item) => item.date == iso).toList();
-    const headerCount = 3;
+    const headerCount = 4;
     final itemCount = headerCount + (items.isEmpty ? 1 : items.length);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -47,6 +51,10 @@ class _CalendarTabState extends State<CalendarTab> {
           case 0:
             return MonthCalendar(
               dayMarks: widget.dayMarks,
+              screenshotDays: {
+                for (final n in widget.index?.notes ?? const <NoteRef>[])
+                  if (n.kind == 'screenshot' && n.date != null) n.date!,
+              },
               initialMonth: selected,
               onDaySelected: (day) => setState(() => selected = day),
               onOpenDay: widget.onOpenDay,
@@ -58,6 +66,13 @@ class _CalendarTabState extends State<CalendarTab> {
               leading: const Icon(Icons.edit_note),
               title: Text('Open journal $iso'),
               onTap: () => widget.onOpenDay(selected),
+            );
+          case 3:
+            return ScreenshotStrip(
+              index: widget.index,
+              day: iso,
+              onOpenPath: widget.onOpenPath,
+              imageResolver: widget.imageResolver,
             );
           default:
             if (items.isEmpty) {

@@ -443,7 +443,14 @@ class TaskRef {
 ///
 /// Structural kinds are the app's own taxonomy (journal, pages, projects, …);
 /// everything else — including any custom kind — renders as an entity page.
-const structuralNoteKinds = {'daily', 'note', 'project', 'article', 'research'};
+const structuralNoteKinds = {
+  'daily',
+  'note',
+  'project',
+  'article',
+  'research',
+  'screenshot',
+};
 
 /// First-class entity-page kinds (knowledge graph): known, not "unknown".
 const entityNoteKinds = {'person', 'organization', 'place', 'website', 'event'};

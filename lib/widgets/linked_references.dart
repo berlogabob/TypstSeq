@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'screenshot_strip.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
@@ -13,6 +15,8 @@ import 'constants.dart';
 class LinkedReferences extends StatefulWidget {
   const LinkedReferences({
     super.key,
+    this.day,
+    this.imageResolver,
     required this.backlinks,
     required this.index,
     required this.targets,
@@ -20,6 +24,8 @@ class LinkedReferences extends StatefulWidget {
     required this.onOpenPath,
   });
 
+  final String? day;
+  final Future<Uint8List?> Function(String)? imageResolver;
   final List<String> backlinks;
   final VaultIndex? index;
 
@@ -71,6 +77,13 @@ class _LinkedReferencesState extends State<LinkedReferences> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (widget.day != null)
+            ScreenshotStrip(
+              index: widget.index,
+              day: widget.day!,
+              onOpenPath: widget.onOpenPath,
+              imageResolver: widget.imageResolver,
+            ),
           const Divider(height: 1),
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),

@@ -54,6 +54,7 @@ abstract final class TylogVaultPaths {
     'notes',
     'projects',
     'articles',
+    'screenshots',
     'assets',
     'outputs',
     '_system',

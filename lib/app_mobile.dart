@@ -19,6 +19,8 @@ import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'saved_searches.dart';
 import 'markdown_article_import.dart';
+import 'screenshots_ocr.dart';
+import 'widgets/screenshot_strip.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
@@ -966,6 +968,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return true;
   }
 
+  Future<void> _captureTimestamp() async {
+    if (vault == null) return;
+    try {
+      final path = await workspace.ensureTodayNote();
+      if (!mounted) return;
+      if (note != path && !await _openToday()) return;
+      if (!mounted || note != path) return;
+      _showEditor();
+      richController.appendTimestamp(DateTime.now());
+      setState(() => primaryDestination = 0);
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not capture: $error');
+    }
+  }
+
   Future<bool> _openDay(DateTime day) async {
     final generation = ++_openGeneration;
     final v = vault;
@@ -1034,6 +1051,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: MonthCalendar(
+              screenshotDays: {
+                for (final n in index?.notes ?? const <NoteRef>[])
+                  if (n.kind == 'screenshot' && n.date != null) n.date!,
+              },
               dayMarks: workspace.calendarDayMarks,
               initialMonth: _dailyDateOf(
                 vault == null || note == null ? null : note!,
@@ -2079,6 +2100,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
+            screenshotsMode: registry?.screenshotsMode ?? 'off',
+            screenshotsTime: registry?.screenshotsTime ?? '03:00',
+            readScreenshotsStatus: () async =>
+                vault!.storage.readText('_system/screenshots/status.json'),
+            onConfigureScreenshots: (mode, time) async {
+              await configureScreenshotsOcr(vaultPath, mode, time);
+              await registry?.setScreenshotsOcr(mode, time);
+            },
+            onProcessScreenshots: () async {
+              if (Platform.isMacOS) {
+                await runScreenshotsBackfill(vaultPath);
+              } else {
+                await requestScreenshotsRun(vault!.storage);
+                unawaited(_syncNow());
+              }
+            },
             pdfPaper: registry?.pdfPaper ?? 'a4',
             onPdfPaperChanged: (paper) {
               unawaited(registry?.setPdfPaper(paper) ?? Future.value());
@@ -2417,7 +2454,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Delete article?',
+      title: 'Delete ${ref.kind == 'screenshot' ? 'screenshot' : 'article'}?',
       message:
           '"${ref.title}" will be removed from the vault. '
           'There is no recovery.',
@@ -3164,6 +3201,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             value: text,
             due: due == null ? null : isoDay(due),
           ),
+        );
+        return;
+      case MagicAction.time:
+        _applyMagic(
+          MagicRequest(action: action, value: localTime(DateTime.now())),
         );
         return;
       case MagicAction.date:
@@ -3979,6 +4021,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           unawaited(_openDay(day));
         },
         onSetTaskStatus: _setTaskStatus,
+        imageResolver: _readAsset,
         onSetReadStatus: _setReadStatus,
         onSetRelevance: _setRelevance,
         noteToCluster: communities?.noteToCluster ?? const {},
@@ -4252,6 +4295,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(child: content),
           if (backlinks.isNotEmpty && v != null)
             LinkedReferences(
+              imageResolver: _readAsset,
               backlinks: backlinks,
               index: index,
               targets: {
@@ -4271,11 +4315,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       );
     }
+    if (documentModes.contains(mode) && currentDaily != null) {
+      documentContent = Column(
+        children: [
+          ScreenshotStrip(
+            index: index,
+            day: isoDay(currentDaily),
+            onOpenPath: _openPath,
+            imageResolver: _readAsset,
+          ),
+          Expanded(child: documentContent),
+        ],
+      );
+    }
     final bodyContent = isTodayDocument
         ? TodayPage(
             tasks: index?.tasks ?? const [],
             recent: _recentNotes(),
-            editor: content,
+            editor: documentContent,
             onOpenPath: _openPath,
             onSetStatus: _setTaskStatus,
             onReadPath: _readPath,
@@ -4446,6 +4503,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
         actions: [
+          if (mode == 'journal' || currentDaily != null)
+            IconButton(
+              tooltip: 'Timestamped capture',
+              icon: const Icon(Icons.more_time),
+              onPressed: () => unawaited(_captureTimestamp()),
+            ),
           if (mode == 'journal')
             IconButton(
               tooltip: 'Choose journal date',

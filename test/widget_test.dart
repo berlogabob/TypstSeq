@@ -193,6 +193,9 @@ void main() {
     await tester.pump();
     expect(find.text(version), findsOneWidget);
 
+    // The Screenshots section made the sheet taller; scroll before tapping.
+    await tester.ensureVisible(find.text('Vaults'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Vaults'));
     await tester.pumpAndSettle();
     expect(find.text('Settings'), findsNothing);
@@ -1320,6 +1323,42 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('day capture appends to the unsaved daily buffer', (
+    tester,
+  ) async {
+    final storage = _FailingStorage();
+    final vault = Vault.withStorage(storage);
+    final path = await vault.todayNote(DateTime.now());
+    final original = await storage.readText(path);
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    final workspace = home.workspace;
+    workspace.vault = vault;
+    workspace.replaceNote(path, original);
+    home.sourceController.text = original;
+    home.richController.loadSource(original);
+    workspace.notifyListeners();
+    await tester.pump();
+    final rich = find.byKey(const Key('rich-journal-editor'));
+    await tester.enterText(rich, 'Unsaved daily text');
+    await tester.tap(find.byTooltip('Timestamped capture'));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      home.richController.text,
+      matches(r'^Unsaved daily text\n- \d{2}:\d{2} $'),
+    );
+    expect(
+      home.richController.selection.baseOffset,
+      home.richController.text.length,
+    );
+    expect(workspace.source, contains('Unsaved daily text'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(await storage.readText(path), contains('Unsaved daily text'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -1335,6 +1374,7 @@ void main() {
       'Mention',
       'Tag',
       'Date',
+      'Time',
       'Citation',
       'Attachment',
       'Equation',

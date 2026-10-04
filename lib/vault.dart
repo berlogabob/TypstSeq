@@ -156,6 +156,7 @@ class Vault {
     final directory = switch (kind) {
       'project' => 'projects',
       'article' => 'articles',
+      'screenshot' => 'screenshots',
       _ => 'notes',
     };
     final path = '$directory/$safe.typ';

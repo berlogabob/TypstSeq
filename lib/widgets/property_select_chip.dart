@@ -123,3 +123,10 @@ class PropertySelectChip extends StatelessWidget {
     ),
   );
 }
+
+const screenshotStatusOptions = ['inbox', 'kept', 'acted', 'archived'];
+const screenshotStatusLabels = {
+  'inbox': 'Inbox', 'kept': 'Kept', 'acted': 'Acted', 'archived': 'Archived',
+};
+String screenshotStatusStage(String? status) =>
+    screenshotStatusOptions.contains(status) ? status! : 'inbox';

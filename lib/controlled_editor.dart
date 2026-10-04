@@ -370,6 +370,7 @@ enum MagicAction {
   tag,
   task,
   date,
+  time,
   project,
   citation,
   attachment,
@@ -460,6 +461,7 @@ SourceEdit applyMagicEdit(
     ),
     MagicAction.date =>
       '#tylog.date-ref(${typstString(value ?? selected)})[${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}]',
+    MagicAction.time => value ?? localTime(DateTime.now()),
     MagicAction.citation => '@${_citationKey(value ?? selected)}',
     MagicAction.attachment =>
       '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${request.kind == 'image' ? '#image(${typstString(value ?? '')})' : escapeMarkup(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
@@ -557,3 +559,6 @@ String _citationKey(String value) {
   }
   return key;
 }
+
+String localTime(DateTime time) =>
+    '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';

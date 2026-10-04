@@ -16,6 +16,7 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.tag: (Icons.tag, 'Tag'),
   MagicAction.task: (Icons.task_alt, 'Task'),
   MagicAction.date: (Icons.event, 'Date'),
+  MagicAction.time: (Icons.access_time, 'Time'),
   MagicAction.project: (Icons.work_outline, 'Project'),
   MagicAction.citation: (Icons.format_quote, 'Citation'),
   MagicAction.attachment: (Icons.attach_file, 'Attachment'),
@@ -37,6 +38,7 @@ const Map<String, List<MagicAction>> kMagicActionGroups = {
     MagicAction.mention,
     MagicAction.tag,
     MagicAction.date,
+    MagicAction.time,
     MagicAction.citation,
     MagicAction.attachment,
     MagicAction.equation,
@@ -1201,4 +1203,16 @@ class _RichClipboard {
   const _RichClipboard(this.plain, this.parts);
   final String plain;
   final List<TyLogInline>? parts;
+}
+
+bool magicActionMatches(MagicAction action, String query) {
+  final terms = [
+    kMagicActionDisplay[action]?.$2 ?? action.name,
+    ...switch (action) {
+      MagicAction.time => ['now', 'current time'],
+      MagicAction.attachment => ['image', 'photo', 'picture'],
+      _ => <String>[],
+    },
+  ];
+  return terms.any((term) => term.toLowerCase().contains(query.toLowerCase()));
 }

@@ -78,6 +78,7 @@ IconData iconForKind(String? kind) => switch (kind) {
   'org' || 'organization' || 'company' => Icons.business_outlined,
   'project' => Icons.work_outline,
   'article' => Icons.article_outlined,
+  'screenshot' => Icons.screenshot_outlined,
   'daily' => Icons.event_note,
   _ => Icons.description_outlined, // generic note reference
 };

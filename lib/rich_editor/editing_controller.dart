@@ -573,9 +573,30 @@ class TyLogEditingController extends TextEditingController {
     }
   }
 
+  void appendTimestamp(DateTime now) {
+    selection = TextSelection.collapsed(offset: text.length);
+    final prefix = text.isEmpty || text.endsWith('\n') ? '' : '\n';
+    value = TextEditingValue(
+      text: '$text$prefix- ${localTime(now)} ',
+      selection: TextSelection.collapsed(
+        offset: text.length + prefix.length + 8,
+      ),
+    );
+  }
+
   void applyMagic(MagicRequest request) {
     _clearComposition();
     switch (request.action) {
+      case MagicAction.time:
+        final range = selection.isValid
+            ? selection
+            : TextSelection.collapsed(offset: text.length);
+        final time = request.value ?? localTime(DateTime.now());
+        value = TextEditingValue(
+          text: text.replaceRange(range.start, range.end, time),
+          selection: TextSelection.collapsed(offset: range.start + time.length),
+        );
+        return;
       case MagicAction.bold:
         toggleBold();
         return;

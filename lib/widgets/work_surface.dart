@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'screenshot_strip.dart';
 
 import 'package:flutter/material.dart';
 
@@ -268,11 +270,13 @@ class LibraryView extends StatelessWidget {
     required this.onImportMarkdownArticles,
     required this.onReadPath,
     required this.onDeleteArticle,
+    this.imageResolver,
     this.noteToCluster = const {},
     this.shelfPrefs = const {},
     this.onShelfPrefsChanged,
   });
 
+  final Future<Uint8List?> Function(String)? imageResolver;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
 
@@ -297,7 +301,7 @@ class LibraryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 4,
+    length: 5,
     child: Column(
       children: [
         const TabBar(
@@ -306,6 +310,7 @@ class LibraryView extends StatelessWidget {
           tabs: [
             Tab(text: 'Notes'),
             Tab(text: 'Articles'),
+            Tab(text: 'Screenshots'),
             Tab(text: 'Tasks'),
             Tab(text: 'Calendar'),
           ],
@@ -335,6 +340,22 @@ class LibraryView extends StatelessWidget {
                 shelfPrefs: shelfPrefs,
                 onShelfPrefsChanged: onShelfPrefsChanged,
               ),
+              _ArticlesShelf(
+                kind: 'screenshot',
+                imageResolver: imageResolver,
+                index: index,
+                pagedNotes: pagedNotes,
+                indexing: indexing,
+                progressByPath: progressByPath,
+                onReadPath: onReadPath,
+                onSetReadStatus: onSetReadStatus,
+                onSetRelevance: onSetRelevance,
+                onDeleteArticle: onDeleteArticle,
+                onImportMarkdownArticles: onImportMarkdownArticles,
+                noteToCluster: noteToCluster,
+                shelfPrefs: const {},
+                onShelfPrefsChanged: null,
+              ),
               _PrimaryTasksView(
                 tasks: index?.tasks ?? const <TaskRef>[],
                 indexing: indexing,
@@ -342,6 +363,7 @@ class LibraryView extends StatelessWidget {
                 onOpenPath: onOpenPath,
               ),
               CalendarTab(
+                imageResolver: imageResolver,
                 index: index,
                 calendar: calendar,
                 dayMarks: dayMarks,
@@ -396,7 +418,7 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
     final selected = _kind;
     final notes = all.where((note) {
       if (selected != null) return note.kind == selected;
-      return note.kind != 'article';
+      return note.kind != 'article' && note.kind != 'screenshot';
     }).toList()..sort((a, b) => a.title.compareTo(b.title));
     return Column(
       children: [
@@ -484,6 +506,8 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
 /// write goes back to disk (via [onSetReadStatus]).
 class _ArticlesShelf extends StatefulWidget {
   const _ArticlesShelf({
+    this.kind = 'article',
+    this.imageResolver,
     required this.index,
     this.pagedNotes,
     required this.indexing,
@@ -498,6 +522,8 @@ class _ArticlesShelf extends StatefulWidget {
     required this.onShelfPrefsChanged,
   });
 
+  final String kind;
+  final Future<Uint8List?> Function(String)? imageResolver;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
   final bool indexing;
@@ -529,7 +555,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     statusFilter = p['status'];
     relevanceFilter = p['relevance'];
     sort = p['sort'] ?? 'recent';
-    groupBy = p['group'] ?? 'none';
+    groupBy = p['group'] ?? (screenshots ? 'source' : 'none');
   }
 
   /// Persist the current filter/sort/group so they survive an app restart.
@@ -562,8 +588,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   /// Maps a note onto one of the five reading-triage stages
   /// (unread → skimmed → read → extracted → cited).
-  static String _bucket(NoteRef note) =>
-      articleStatusStage(note.properties['status'] as String?);
+  bool get screenshots => widget.kind == 'screenshot';
+  List<String> get statuses =>
+      screenshots ? screenshotStatusOptions : articleStatusOptions;
+  Map<String, String> get labels =>
+      screenshots ? screenshotStatusLabels : articleStatusLabels;
+  String _bucket(NoteRef note) => screenshots
+      ? screenshotStatusStage(note.properties['status'] as String?)
+      : articleStatusStage(note.properties['status'] as String?);
 
   /// high > medium > low > unrated, for the relevance sort.
   static int _relevanceRank(NoteRef note) =>
@@ -575,6 +607,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       };
 
   String? _source(NoteRef note) {
+    if (screenshots) return note.properties['source_app'] as String?;
     final url = note.properties['url'] as String?;
     final host = url == null ? null : Uri.tryParse(url)?.host;
     if (host != null && host.isNotEmpty) return host;
@@ -585,6 +618,10 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   String _groupKey(NoteRef note) => switch (groupBy) {
     'tag' => note.tags.isEmpty ? 'Untagged' : note.tags.first,
     'year' => _year(note),
+    'month' =>
+      note.date != null && note.date!.length >= 7
+          ? note.date!.substring(0, 7)
+          : 'Undated',
     'cluster' => widget.noteToCluster[note.path] ?? 'Uncategorized',
     _ => _source(note) ?? 'Unknown source',
   };
@@ -602,7 +639,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   @override
   Widget build(BuildContext context) {
     final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
-        .where((note) => note.kind == 'article')
+        .where((note) => note.kind == widget.kind)
         .toList();
     final q = _query.text.trim().toLowerCase();
     final searched = q.isEmpty
@@ -611,10 +648,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
               .where(
                 (note) =>
                     note.title.toLowerCase().contains(q) ||
-                    note.tags.any((tag) => tag.toLowerCase().contains(q)),
+                    note.tags.any((tag) => tag.toLowerCase().contains(q)) ||
+                    (screenshots &&
+                        '${note.properties['source_app']} ${note.properties['keywords']}'
+                            .toLowerCase()
+                            .contains(q)),
               )
               .toList();
-    final counts = {for (final stage in articleStatusOptions) stage: 0};
+    final counts = {for (final stage in statuses) stage: 0};
     for (final note in searched) {
       counts[_bucket(note)] = (counts[_bucket(note)] ?? 0) + 1;
     }
@@ -664,8 +705,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
     final statusChips = <(String?, String)>[
       (null, 'All'),
-      for (final stage in articleStatusOptions)
-        (stage, articleStatusLabels[stage]!),
+      for (final stage in statuses) (stage, labels[stage]!),
     ];
     return Column(
       children: [
@@ -675,13 +715,16 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             children: [
               Expanded(
                 child: TextField(
-                  key: const Key('articles-search'),
+                  key: Key(
+                    '${screenshots ? 'screenshots' : 'articles'}-search',
+                  ),
                   controller: _query,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     isDense: true,
                     prefixIcon: const Icon(Icons.search),
-                    hintText: 'Search articles',
+                    hintText:
+                        'Search ${screenshots ? 'screenshots' : 'articles'}',
                     border: const OutlineInputBorder(),
                     suffixIcon: _query.text.isEmpty
                         ? null
@@ -697,7 +740,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 ),
               ),
               PopupMenuButton<String>(
-                key: const Key('articles-sort'),
+                key: Key('${screenshots ? 'screenshots' : 'articles'}-sort'),
                 tooltip: 'Sort: ${_sortLabels[sort]}',
                 icon: const Icon(Icons.sort),
                 initialValue: sort,
@@ -711,7 +754,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 ],
               ),
               PopupMenuButton<String>(
-                key: const Key('articles-group'),
+                key: Key('${screenshots ? 'screenshots' : 'articles'}-group'),
                 tooltip: 'Grouping: ${_groupLabels[groupBy]}',
                 icon: const Icon(Icons.workspaces_outline),
                 initialValue: groupBy,
@@ -720,7 +763,15 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   _persist();
                 },
                 itemBuilder: (_) => [
-                  for (final entry in _groupLabels.entries)
+                  for (final entry
+                      in (screenshots
+                              ? const {
+                                  'none': 'No grouping',
+                                  'source': 'Group by source app',
+                                  'month': 'Group by month',
+                                }
+                              : _groupLabels)
+                          .entries)
                     PopupMenuItem(value: entry.key, child: Text(entry.value)),
                 ],
               ),
@@ -775,18 +826,21 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
         Expanded(
           child: ListView(
             children: [
-              ListTile(
-                key: const ValueKey('import-markdown-articles'),
-                leading: const Icon(Icons.file_upload_outlined),
-                title: const Text('Import Markdown articles'),
-                subtitle: const Text(
-                  'Select one or more .md or .markdown files',
+              if (!screenshots)
+                ListTile(
+                  key: const ValueKey('import-markdown-articles'),
+                  leading: const Icon(Icons.file_upload_outlined),
+                  title: const Text('Import Markdown articles'),
+                  subtitle: const Text(
+                    'Select one or more .md or .markdown files',
+                  ),
+                  onTap: () => unawaited(widget.onImportMarkdownArticles()),
                 ),
-                onTap: () => unawaited(widget.onImportMarkdownArticles()),
-              ),
-              if (continueNote != null)
+              if (!screenshots && continueNote != null)
                 Card(
-                  key: const Key('articles-continue-reading'),
+                  key: Key(
+                    '${screenshots ? 'screenshots' : 'articles'}-continue-reading',
+                  ),
                   child: ListTile(
                     leading: const Icon(Icons.auto_stories),
                     title: Text('Continue reading · ${continueNote.title}'),
@@ -811,6 +865,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                               ? 'Indexing…'
                               : q.isNotEmpty || statusFilter != null
                               ? 'Nothing matches'
+                              : screenshots
+                              ? 'No screenshots yet'
                               : 'No articles yet — import one above',
                         ),
                       ],
@@ -841,7 +897,9 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       if (note.tags.isNotEmpty) note.tags.map((tag) => '#$tag').join(' '),
     ].join(' · ');
     return ListTile(
-      leading: const Icon(Icons.article_outlined),
+      leading: screenshots
+          ? ScreenshotThumbnail(note: note, imageResolver: widget.imageResolver)
+          : const Icon(Icons.article_outlined),
       title: Text(note.title),
       subtitle: subtitle.isEmpty
           ? null
@@ -875,8 +933,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
         ],
         PropertySelectChip(
           value: status,
-          options: articleStatusOptions,
-          labels: articleStatusLabels,
+          options: statuses,
+          labels: labels,
           tooltip: 'Change status',
           backgroundColor: background,
           foregroundColor: foreground,
@@ -903,7 +961,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             PopupMenuItem(
               value: 'delete',
               child: Text(
-                'Delete article…',
+                'Delete ${screenshots ? 'screenshot' : 'article'}…',
                 style: TextStyle(color: scheme.error),
               ),
             ),

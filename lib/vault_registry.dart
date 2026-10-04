@@ -169,6 +169,8 @@ class VaultRegistry {
     this.readingNightMode = false,
     this.themeMode = 'system',
     this.pdfPaper = 'a4',
+    this.screenshotsMode = 'off',
+    this.screenshotsTime = '03:00',
     this.shelfPrefs = const {},
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
@@ -184,6 +186,8 @@ class VaultRegistry {
   /// this Flutter-free file stays independent of `ThemeMode`.
   String themeMode;
   String pdfPaper;
+  String screenshotsMode;
+  String screenshotsTime;
 
   /// Article-shelf filter/sort/group choices, persisted so they survive an app
   /// restart (e.g. `{'status': 'unread', 'sort': 'relevance'}`).
@@ -278,6 +282,11 @@ class VaultRegistry {
           readingNightMode: readingNightMode,
           themeMode: themeMode,
           pdfPaper: pdfPaper,
+          screenshotsMode:
+              ['off', 'watch', 'schedule'].contains(json['screenshotsMode'])
+              ? json['screenshotsMode'] as String
+              : 'off',
+          screenshotsTime: _screenshotsTime(json['screenshotsTime']),
           shelfPrefs:
               (json['shelfPrefs'] as Map?)?.map(
                 (k, v) => MapEntry('$k', '$v'),
@@ -421,6 +430,21 @@ class VaultRegistry {
     return save();
   }
 
+  static String _screenshotsTime(Object? value) =>
+      value is String && RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value)
+      ? value
+      : '03:00';
+
+  Future<void> setScreenshotsOcr(String mode, String time) {
+    if (!['off', 'watch', 'schedule'].contains(mode) ||
+        _screenshotsTime(time) != time) {
+      throw ArgumentError('Invalid screenshot mode or schedule');
+    }
+    screenshotsMode = mode;
+    screenshotsTime = time;
+    return save();
+  }
+
   Future<void> setPdfPaper(String paper) {
     pdfPaper = paper;
     return save();
@@ -536,6 +560,8 @@ class VaultRegistry {
         'readingNightMode': readingNightMode,
         'themeMode': themeMode,
         'pdfPaper': pdfPaper,
+        'screenshotsMode': screenshotsMode,
+        'screenshotsTime': screenshotsTime,
         'shelfPrefs': shelfPrefs,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),

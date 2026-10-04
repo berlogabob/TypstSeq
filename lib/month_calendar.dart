@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 /// Logseq-style month grid: days carrying journal entries or references are
 /// marked, tapping any day opens (or creates) that day's journal file.
 class MonthCalendar extends StatefulWidget {
@@ -8,6 +7,7 @@ class MonthCalendar extends StatefulWidget {
     super.key,
     required this.dayMarks,
     required this.onOpenDay,
+    this.screenshotDays = const {},
     this.initialMonth,
     this.onDaySelected,
   });
@@ -17,6 +17,7 @@ class MonthCalendar extends StatefulWidget {
   /// vault on every month page and every rebuild.
   final ({Set<String> daily, Set<String> refs}) dayMarks;
   final ValueChanged<DateTime> onOpenDay;
+  final Set<String> screenshotDays;
   final DateTime? initialMonth;
 
   /// When set, tapping a day selects it (calls this) instead of opening it;
@@ -182,6 +183,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
                   if (hasDaily) _dot(scheme.primary),
                   if (hasDaily && hasRefs) const SizedBox(width: 2),
                   if (hasRefs) _dot(scheme.tertiary),
+                  if (widget.screenshotDays.contains(iso))
+                    Icon(
+                      Icons.screenshot,
+                      key: Key('screenshot-marker-$iso'),
+                      size: 6,
+                    ),
                 ],
               ),
             ),
