@@ -54,6 +54,11 @@ class ReportPreparationException implements Exception {
 /// [exportReportPdfStorage] because that one exists to persist a report *into*
 /// the vault; this one exists so a note can leave the app (the share sheet), and
 /// on a SAF vault there is no file path to hand anyone anyway.
+/// Plain-Typst notes never reach the theme, so the export paper is also set
+/// ahead of the source; templated notes get the same page from the theme.
+String withPaper(String source, String paper) =>
+    '#set page(paper: "$paper", margin: 2cm)\n$source';
+
 Future<Uint8List> compileSourcePdf({
   required String source,
   required Map<String, Uint8List> files,
@@ -62,7 +67,7 @@ Future<Uint8List> compileSourcePdf({
   final compiler = await TypstCompiler.create();
   try {
     final document = await compiler.compile(
-      source: source,
+      source: withPaper(source, paper),
       files: files,
       inputs: {'tylog-paper': paper},
     );
@@ -120,7 +125,7 @@ exportReportPdfStorage(
       attempts++;
       try {
         final document = await compiler.compile(
-          source: source,
+          source: withPaper(source, paper),
           files: virtual,
           inputs: {'tylog-paper': paper},
         );

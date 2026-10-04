@@ -690,7 +690,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _pendingPreviewSource = live;
       _debouncedPreviewWidth = width;
       _pendingPreviewWidth = width;
-      return live;
+      return _screenPage(live);
     }
     if (live != _pendingPreviewSource || width != _pendingPreviewWidth) {
       _pendingPreviewWidth = width;
@@ -704,8 +704,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       });
     }
-    return _debouncedPreviewSource!;
+    return _screenPage(_debouncedPreviewSource!);
   }
+
+  // Notes without the TyLog template (plain Typst, e.g. phone dailies) never
+  // reach the theme, so the screen-wide page is set here as well; templated
+  // notes get the same page from the theme via `tylog-page-width`.
+  // ponytail: shifts Typst error line numbers by one in Preview.
+  String _screenPage(String source) =>
+      '#set page(width: ${_debouncedPreviewWidth}pt, height: auto, '
+      'margin: 12pt)\n$source';
 
   void _loadSource(String source) {
     sourceController.text = source;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:tylog/widgets/settings_sheet.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/report.dart' show withPaper;
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog_core/src/vault.dart' show legacyManagedTheme;
@@ -149,4 +150,24 @@ void main() {
       }
     }, skip: !hasTypst ? 'Host Typst CLI unavailable' : false);
   }
+
+  test('a note without the template still exports at the chosen paper', () async {
+    final root = await Directory.systemTemp.createTemp('tylog-plain-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/note.typ').writeAsString(
+      withPaper('= Plain note\nNo tylog.note template here.\n', 'us-letter'),
+    );
+    final result = Process.runSync('typst', [
+      'compile',
+      '${root.path}/note.typ',
+      '${root.path}/page.svg',
+    ]);
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+    final svg = await File('${root.path}/page.svg').readAsString();
+    final dimensions = RegExp(
+      r'<svg[^>]*width="([\d.]+)pt"[^>]*height="([\d.]+)pt"',
+    ).firstMatch(svg)!;
+    expect(double.parse(dimensions[1]!), closeTo(612, 0.01));
+    expect(double.parse(dimensions[2]!), closeTo(792, 0.01));
+  }, skip: !hasTypst ? 'Host Typst CLI unavailable' : false);
 }
