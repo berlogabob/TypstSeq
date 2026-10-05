@@ -9,15 +9,6 @@ import 'package:typst_flutter/src/document.dart';
 import 'package:typst_flutter/src/exceptions.dart';
 import 'package:typst_flutter/src/rust/api/typst.dart' as api;
 
-/// How the Typst document should be rendered.
-enum TypstRenderMode {
-  /// Render as a scalable vector graphic (SVG). Crisp at any zoom.
-  svg,
-
-  /// Render as a rasterized pixel image.
-  raster,
-}
-
 /// Whether raw RGBA pixels contain content beyond white or transparent pixels.
 bool svgRasterHasContent(Uint8List rgba, {int threshold = 12}) {
   for (var i = 0; i + 3 < rgba.length; i += 4) {
@@ -43,11 +34,7 @@ class TypstView extends StatefulWidget {
     required this.document,
     super.key,
     this.pageIndex = 0,
-    this.renderMode = TypstRenderMode.svg,
     this.pixelsPerPt = 2.0,
-    this.fit = BoxFit.contain,
-    this.loadingBuilder,
-    this.errorBuilder,
   });
 
   /// The compiled document to render.
@@ -56,26 +43,8 @@ class TypstView extends StatefulWidget {
   /// The 0-based index of the page to render.
   final int pageIndex;
 
-  /// The rendering mode (SVG or Raster).
-  final TypstRenderMode renderMode;
-
   /// Pixel density for raster rendering.
   final double pixelsPerPt;
-
-  /// How the image/SVG should be inscribed into the available space.
-  final BoxFit fit;
-
-  /// Builder for the loading state.
-  final WidgetBuilder? loadingBuilder;
-
-  /// Builder for the error state.
-  ///
-  /// Receives the [BuildContext] and the [TypstException] that caused the
-  /// failure. Inspect the concrete type to distinguish between compile
-  /// errors ([TypstCompileException]) and render errors
-  /// ([TypstRenderException]).
-  final Widget Function(BuildContext context, TypstException error)?
-  errorBuilder;
 
   @override
   State<TypstView> createState() => _TypstViewState();
@@ -107,7 +76,6 @@ class _TypstViewState extends State<TypstView> {
     super.didUpdateWidget(old);
     if (widget.document != old.document ||
         widget.pageIndex != old.pageIndex ||
-        widget.renderMode != old.renderMode ||
         widget.pixelsPerPt != old.pixelsPerPt) {
       unawaited(_prepareAndRender());
     }
@@ -138,53 +106,35 @@ class _TypstViewState extends State<TypstView> {
         _pageInfo = pageInfo;
       });
 
-      if (widget.renderMode == TypstRenderMode.svg) {
-        if (!identical(_svgCacheDocument, doc)) {
-          _svgCacheDocument = doc;
-          _svgContentCache.clear();
-        }
+      if (!identical(_svgCacheDocument, doc)) {
+        _svgCacheDocument = doc;
+        _svgContentCache.clear();
+      }
 
-        String? svg;
-        Object? fallbackReason;
-        try {
-          svg = await doc.renderSvg(widget.pageIndex);
-          if (!mounted) return;
-          if (!await _svgRendersNonBlank(svg)) {
-            fallbackReason = 'SVG was blank or could not be decoded';
-          }
-        } on Object catch (e) {
-          fallbackReason = e;
-        }
+      String? svg;
+      Object? fallbackReason;
+      try {
+        svg = await doc.renderSvg(widget.pageIndex);
         if (!mounted) return;
-        if (fallbackReason == null) {
-          setState(() {
-            _svgString = svg;
-            _image?.dispose();
-            _image = null;
-            _loading = false;
-          });
-        } else {
-          debugPrint(
-            'TypstView: SVG render failed; falling back to raster: '
-            '$fallbackReason',
-          );
-          final result = await doc.renderRaster(
-            pageIndex: widget.pageIndex,
-            pixelsPerPt: widget.pixelsPerPt,
-          );
-          final image = await result.toImage();
-          if (!mounted) {
-            image.dispose();
-            return;
-          }
-          setState(() {
-            _image?.dispose();
-            _image = image;
-            _svgString = null;
-            _loading = false;
-          });
+        if (!await _svgRendersNonBlank(svg)) {
+          fallbackReason = 'SVG was blank or could not be decoded';
         }
+      } on Object catch (e) {
+        fallbackReason = e;
+      }
+      if (!mounted) return;
+      if (fallbackReason == null) {
+        setState(() {
+          _svgString = svg;
+          _image?.dispose();
+          _image = null;
+          _loading = false;
+        });
       } else {
+        debugPrint(
+          'TypstView: SVG render failed; falling back to raster: '
+          '$fallbackReason',
+        );
         final result = await doc.renderRaster(
           pageIndex: widget.pageIndex,
           pixelsPerPt: widget.pixelsPerPt,
@@ -269,26 +219,22 @@ class _TypstViewState extends State<TypstView> {
   Widget build(BuildContext context) {
     if (_loading && _image == null && _svgString == null) {
       return _buildWrapper(
-        child:
-            widget.loadingBuilder?.call(context) ??
-            const Center(child: CircularProgressIndicator()),
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
     final error = _error;
     if (error != null && _image == null && _svgString == null) {
       return _buildWrapper(
-        child:
-            widget.errorBuilder?.call(context, error) ??
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  error.toString(),
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              error.toString(),
+              style: const TextStyle(color: Colors.red),
             ),
+          ),
+        ),
       );
     }
 
@@ -296,10 +242,10 @@ class _TypstViewState extends State<TypstView> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (widget.renderMode == TypstRenderMode.svg && _svgString != null)
-            SvgPicture.string(_svgString!, fit: widget.fit)
+          if (_svgString != null)
+            SvgPicture.string(_svgString!, fit: BoxFit.contain)
           else if (_image != null)
-            RawImage(image: _image, fit: widget.fit),
+            RawImage(image: _image, fit: BoxFit.contain),
           if (_loading)
             const Positioned(
               right: 8,

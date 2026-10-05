@@ -174,7 +174,7 @@ class SemanticSearchController extends ChangeNotifier {
       _indexDirty = true;
       final embed =
           _passageFactory?.call(files.model, files.tokenizer) ??
-          nativePassageEmbedder(
+          nativeEmbedder(
             modelPath: files.model,
             tokenizerPath: files.tokenizer,
           );
@@ -269,7 +269,8 @@ class SemanticSearchController extends ChangeNotifier {
     if (files == null) return const [];
     final embed =
         _queryFactory?.call(files.model, files.tokenizer) ??
-        nativeQueryEmbedder(
+        nativeEmbedder(
+          kind: 'query',
           modelPath: files.model,
           tokenizerPath: files.tokenizer,
         );

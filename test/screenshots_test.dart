@@ -99,7 +99,7 @@ void main() {
     );
   });
 
-  testWidgets('screenshot card fallbacks, metadata and height hug content', (
+  testWidgets('square screenshot card overlays meaningful titles and metadata', (
     tester,
   ) async {
     final longSentence = List.filled(20, 'word').join(' ');
@@ -136,6 +136,8 @@ void main() {
         '${longSentence.substring(0, 59)}…',
         '00:42',
       ),
+      ('Screenshot', '', '', '2026-10-04T00:42:00', 'Screenshot', '00:42'),
+      ('IMG_20261004', '', '', '2026-10-04T00:42:00', 'IMG_20261004', '00:42'),
       ('capture.png', '', '', '2026-10-04T00:42:00', 'Screenshot', '00:42'),
       ('capture.png', '', null, '2026-10-04T00:42:00', 'Screenshot', '00:42'),
       ('', '', ' Browser ', null, 'Screenshot', 'Browser'),
@@ -156,6 +158,9 @@ void main() {
             body: LibraryView(
               key: UniqueKey(),
               initialTab: 2,
+              imageResolver: (_) async => base64Decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+              ),
               index: VaultIndex(
                 notesByPath: {note.path: note},
                 backlinksByTarget: const {},
@@ -187,28 +192,61 @@ void main() {
         of: card,
         matching: find.text(metadata),
       );
-      expect(titleFinder, findsOneWidget, reason: title);
-      expect(subtitleFinder, findsOneWidget, reason: title);
-      expect(tester.widget<Text>(titleFinder).maxLines, 2);
-      expect(tester.widget<Text>(subtitleFinder).maxLines, 1);
-      final image = find.descendant(
-        of: card,
-        matching: find.byType(AspectRatio),
-      );
+      final showTitle =
+          expectedTitle != 'Screenshot' && expectedTitle != 'IMG_20261004';
       expect(
-        tester.getSize(card).height,
-        closeTo(
-          tester.getSize(image).height +
-              tester.getSize(titleFinder).height +
-              tester.getSize(subtitleFinder).height +
-              24,
-          0.01,
+        titleFinder,
+        showTitle ? findsOneWidget : findsNothing,
+        reason: title,
+      );
+      expect(subtitleFinder, findsOneWidget, reason: title);
+      if (showTitle) {
+        final text = tester.widget<Text>(titleFinder);
+        expect(text.maxLines, 2);
+        expect(text.overflow, TextOverflow.ellipsis);
+        expect(text.style?.color, Colors.white);
+      }
+      final metadataText = tester.widget<Text>(subtitleFinder);
+      expect(metadataText.maxLines, 1);
+      expect(metadataText.overflow, TextOverflow.ellipsis);
+      expect(metadataText.style?.color, Colors.white);
+      final tile = tester.getRect(card);
+      expect(tile.height, closeTo(tile.width, 0.01));
+      final image = find.descendant(of: card, matching: find.byType(Image));
+      expect(tester.getRect(image), tile);
+      expect(tester.widget<Image>(image).fit, BoxFit.cover);
+      final cardWidget = tester.widget<Card>(card);
+      expect(cardWidget.clipBehavior, Clip.antiAlias);
+      expect(cardWidget.shape, isA<RoundedRectangleBorder>());
+      final gradient = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).gradient is LinearGradient,
         ),
+      );
+      final decoration =
+          tester.widget<DecoratedBox>(gradient).decoration as BoxDecoration;
+      final colors = (decoration.gradient! as LinearGradient).colors;
+      expect(colors, [Colors.transparent, const Color(0x99000000)]);
+      final gradientRect = tester.getRect(gradient);
+      expect(gradientRect.height, closeTo(tile.height * 0.35, 0.01));
+      expect(gradientRect.bottom, tile.bottom);
+      expect(tile.contains(tester.getRect(subtitleFinder).bottomRight), isTrue);
+      final actions = tester.widget<IconButton>(
+        find.descendant(of: card, matching: find.byType(IconButton)),
+      );
+      expect(actions.style?.shape?.resolve({}), isA<CircleBorder>());
+      expect(
+        actions.style?.backgroundColor?.resolve({}),
+        const Color(0x66000000),
       );
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Screenshot actions'));
       await tester.pumpAndSettle();
-      expect(find.text(expectedTitle), findsNWidgets(2));
+      expect(find.text(expectedTitle), findsNWidgets(showTitle ? 2 : 1));
       await tester.tap(find.text('Open screenshot'));
       await tester.pumpAndSettle();
     }
@@ -242,11 +280,11 @@ void main() {
       addTearDown(db.close);
       const source =
           '#show: tylog.note.with(id: "shot-0123456789abcdef", title: "Saved screen", kind: "screenshot", date: "2026-10-04", properties: (status: "inbox", keywords: ("quasar",)))\nOCR nebula';
-      final saved = await persistVaultNote(
-        db,
+      final saved = await persistNoteSource(
+        database: db,
         path: shot.path,
         source: source,
-        nowMs: 1,
+        updatedAtMs: 1,
       );
       expect(await db.searchNodeIds('nebula'), [shot.id]);
       expect(await db.searchNodeIds('quasar'), [shot.id]);
@@ -571,24 +609,26 @@ void main() {
         final first = find.byKey(ValueKey(notes.first.path));
         final second = find.byKey(ValueKey(notes[1].path));
         final tile = tester.getRect(first);
-        final context = tester.element(first);
-        final theme = Theme.of(context);
-        double lineHeight(TextStyle? style) {
-          final painter = TextPainter(
-            text: TextSpan(text: 'Ag', style: style),
-            textDirection: TextDirection.ltr,
-            textScaler: TextScaler.linear(scale),
-          );
-          final height = painter.preferredLineHeight;
-          painter.dispose();
-          return height;
-        }
-
-        final textHeight =
-            2 * lineHeight(theme.textTheme.titleSmall?.copyWith(height: 1.4)) +
-            lineHeight(theme.textTheme.bodySmall) +
-            24;
-        expect(tile.height, closeTo(tile.width + textHeight, 0.01));
+        expect(tile.height, closeTo(tile.width, 0.01));
+        final titleFinder = find.descendant(
+          of: first,
+          matching: find.text(notes.first.title),
+        );
+        expect(tester.widget<Text>(titleFinder).maxLines, 2);
+        final titleRect = tester.getRect(titleFinder);
+        expect(titleRect.left, greaterThanOrEqualTo(tile.left));
+        expect(titleRect.top, greaterThanOrEqualTo(tile.top));
+        expect(titleRect.right, lessThanOrEqualTo(tile.right));
+        expect(titleRect.bottom, lessThanOrEqualTo(tile.bottom));
+        final metadata = find.descendant(
+          of: first,
+          matching: find.text('09:07 · Browser'),
+        );
+        expect(
+          tester.getRect(metadata).top,
+          greaterThanOrEqualTo(titleRect.bottom),
+        );
+        expect(tester.getRect(metadata).bottom, lessThanOrEqualTo(tile.bottom));
         final thumbnail = tester.getSize(
           find.descendant(
             of: first,

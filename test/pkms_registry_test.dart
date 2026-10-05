@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
-import 'package:tylog/pkms_registry.dart';
+import 'package:tylog_core/validation.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {

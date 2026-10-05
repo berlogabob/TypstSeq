@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/date_format.dart';
+
 /// Logseq-style month grid: days carrying journal entries or references are
 /// marked, tapping any day opens (or creates) that day's journal file.
 class MonthCalendar extends StatefulWidget {
@@ -33,21 +35,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
   DateTime? selected;
 
   static const _weekdays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-  static const _months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -57,9 +44,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
 
   void _page(int delta) =>
       setState(() => month = DateTime(month.year, month.month + delta));
-
-  String _iso(DateTime day) =>
-      '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +69,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
             Expanded(
               child: Text(
-                '${_months[month.month - 1]} ${month.year}',
+                monthYear(month),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
@@ -126,7 +110,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     ColorScheme scheme,
     DateTime today,
   ) {
-    final iso = _iso(day);
+    final iso = isoDay(day);
     final isToday =
         day.year == today.year &&
         day.month == today.month &&

@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
-import 'package:tylog/search_index.dart';
+import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {

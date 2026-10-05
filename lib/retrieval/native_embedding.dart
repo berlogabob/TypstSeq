@@ -28,17 +28,3 @@ ChunkEmbedder nativeEmbedder({
     return result.vector.buffer.asUint8List().toList(growable: false);
   };
 }
-
-ChunkEmbedder nativePassageEmbedder({
-  required String modelPath,
-  required String tokenizerPath,
-}) => nativeEmbedder(modelPath: modelPath, tokenizerPath: tokenizerPath);
-
-ChunkEmbedder nativeQueryEmbedder({
-  required String modelPath,
-  required String tokenizerPath,
-}) => nativeEmbedder(
-  modelPath: modelPath,
-  tokenizerPath: tokenizerPath,
-  kind: 'query',
-);

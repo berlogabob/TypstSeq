@@ -7,7 +7,7 @@ import 'saved_searches.dart';
 import 'retrieval/cosine_search.dart';
 import 'retrieval/hybrid_search.dart';
 import 'scanner.dart';
-import 'search_index.dart';
+import 'package:tylog_core/search_index.dart';
 import 'widgets/constants.dart';
 import 'widgets/property_select_chip.dart';
 import 'widgets/snack.dart';

@@ -8,7 +8,8 @@ import 'package:tylog_core/image_identity.dart';
 import 'package:tylog_core/maintenance.dart';
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show compute, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show compute, listEquals, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
@@ -307,13 +308,14 @@ class NextcloudSync {
   // Nextcloud quotes the etag in PROPFIND (getetag) but not in the PUT `oc-etag`
   // header, so a stored upload etag never string-matches the next PROPFIND and
   // every upload looks like a remote change → spurious download (ping-pong).
-  // Canonicalize (drop surrounding quotes and a weak `W/` prefix) for compares
+  // Apache also adds `-gzip` to GET etags for compressed representations.
+  // Canonicalize those, surrounding quotes and a weak `W/` prefix for compares
   // and cursor storage; the raw etag is still sent verbatim in If-Match.
   static String? _normEtag(String? etag) {
     if (etag == null) return null;
     var value = etag.trim();
     if (value.toLowerCase().startsWith('w/')) value = value.substring(2);
-    return value.replaceAll('"', '');
+    return value.replaceAll('"', '').replaceFirst(RegExp(r'-gzip$'), '');
   }
 
   Future<bool> pollIsUnchanged(Vault vault, {required bool dirty}) async {
@@ -941,7 +943,7 @@ class NextcloudSync {
         // removed it, which means there is nothing left to apply.
         if (reloaded == null) return;
         active = reloaded;
-        if (!_sameBytes(
+        if (!listEquals(
           shownRemote,
           await _conflictRemoteBytes(vault, active),
         )) {
@@ -1332,15 +1334,6 @@ Future<void> appendVaultTrace(
 ///
 /// Nothing is lost by taking the remote copy: a donor is derived data, and the
 /// worst case is that this device prunes it again on the next scan.
-bool _sameBytes(List<int>? a, List<int>? b) {
-  if (a == null || b == null) return a == null && b == null;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
-}
-
 bool isRegenerableCachePath(String path) =>
     path.startsWith('_system/index/') && path.endsWith('.json');
 
@@ -1464,7 +1457,7 @@ SyncConflictResolution? fastForwardWinner({
 }) {
   final template = emptyDailyTemplate(path);
   if (template != null &&
-      (local.isEmpty || _sameBytes(local, utf8.encode(template)))) {
+      (local.isEmpty || listEquals(local, utf8.encode(template)))) {
     return SyncConflictResolution.keepRemote;
   }
   // Note IDs hash entity, parent and content; envelopes also carry local

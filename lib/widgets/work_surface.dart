@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' show max;
 import 'dart:typed_data';
 import 'screenshot_strip.dart';
 
@@ -820,29 +819,6 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   @override
   Widget build(BuildContext context) {
-    double lineHeight(TextStyle? style) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: 'Ag',
-          style: DefaultTextStyle.of(context).style.merge(style),
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-      );
-      final height = painter.preferredLineHeight;
-      painter.dispose();
-      return height;
-    }
-
-    final titleHeight = screenshots
-        ? 2 *
-              lineHeight(
-                Theme.of(context).textTheme.titleSmall?.copyWith(height: 1.4),
-              )
-        : 0.0;
-    final subtitleHeight = screenshots
-        ? lineHeight(Theme.of(context).textTheme.bodySmall)
-        : 0.0;
     final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == widget.kind)
         .toList();
@@ -1094,35 +1070,18 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                         ),
                       SliverPadding(
                         padding: const EdgeInsets.all(4),
-                        sliver: SliverLayoutBuilder(
-                          builder: (context, constraints) {
-                            final columns = max(
-                              1,
-                              (constraints.crossAxisExtent / (180 + 8)).ceil(),
-                            );
-                            final width =
-                                (constraints.crossAxisExtent -
-                                    (columns - 1) * 8) /
-                                columns;
-                            return SliverGrid(
-                              gridDelegate:
-                                  SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: 180,
-                                    crossAxisSpacing: 8,
-                                    mainAxisSpacing: 8,
-                                    mainAxisExtent:
-                                        width +
-                                        titleHeight +
-                                        subtitleHeight +
-                                        24,
-                                  ),
-                              delegate: SliverChildBuilderDelegate(
-                                (context, i) =>
-                                    _screenshotCard(notes[i], titleHeight),
-                                childCount: notes.length,
+                        sliver: SliverGrid(
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 180,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 1,
                               ),
-                            );
-                          },
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) => _screenshotCard(notes[i]),
+                            childCount: notes.length,
+                          ),
                         ),
                       ),
                     ],
@@ -1320,73 +1279,98 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     ),
   );
 
-  Widget _screenshotCard(NoteRef note, double titleHeight) => Align(
-    alignment: Alignment.topCenter,
-    child: Card(
+  Widget _screenshotCard(NoteRef note) {
+    final title = _screenshotTitle(note);
+    final showTitle =
+        title.toLowerCase() != 'screenshot' &&
+        !RegExp(
+          r'^(screenshot|img|dsc|shot)[_-]',
+          caseSensitive: false,
+        ).hasMatch(title);
+    return Card(
       key: ValueKey(note.path),
       margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(kRadiusMedium),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => widget.onReadPath(note.path),
         onLongPress: () => _screenshotActions(note),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(kRadiusMedium),
-                    child: ScreenshotThumbnail(
-                      note: note,
-                      imageResolver: widget.imageResolver,
-                      width: null,
-                      height: null,
+            ScreenshotThumbnail(
+              note: note,
+              imageResolver: widget.imageResolver,
+              width: null,
+              height: null,
+            ),
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: FractionallySizedBox(
+                heightFactor: 0.35,
+                widthFactor: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0x99000000)],
                     ),
                   ),
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: IconButton.filledTonal(
-                      tooltip: 'Screenshot actions',
-                      icon: const Icon(Icons.more_vert),
-                      onPressed: () => _screenshotActions(note),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 8,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showTitle)
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall?.copyWith(color: Colors.white),
                     ),
+                  Text(
+                    _screenshotMetadata(note),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.white),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: SizedBox(
-                height: titleHeight,
-                child: Text(
-                  _screenshotTitle(note),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(height: 1.4),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                tooltip: 'Screenshot actions',
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0x66000000),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(32, 32),
+                  padding: const EdgeInsets.all(4),
+                  shape: const CircleBorder(),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                _screenshotMetadata(note),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                icon: const Icon(Icons.more_vert, size: 20),
+                onPressed: () => _screenshotActions(note),
               ),
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _row(NoteRef note) {
     final subtitle = [

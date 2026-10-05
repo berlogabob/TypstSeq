@@ -740,32 +740,55 @@ void main() {
     },
   );
 
-  test('a gzip-encoded download is not mistaken for a truncated body', () async {
-    final body = List.filled(40, '{"note": "reading position"} ').join();
-    final remote = <String, _MutableRemoteFile>{
-      '_system/tylog.typ': _remoteText('helper'),
-      'notes/cloud.typ': _remoteText('cloud note'),
-      '_system/reading/a7b7c8e38457f660.json': _remoteText(body),
-    };
-    final server = await _mutableWebDavServer(remote, gzipGets: true);
-    final dir = await Directory.systemTemp.createTemp('tylog_gzip_');
-    final vault = Vault(dir);
-    addTearDown(() async {
-      await server.close(force: true);
-      await dir.delete(recursive: true);
-    });
-    await vault.ensureCreated();
+  test(
+    'a gzip-encoded download is not mistaken for a truncated body',
+    () async {
+      final body = List.filled(40, '{"note": "reading position"} ').join();
+      final remote = <String, _MutableRemoteFile>{
+        '_system/tylog.typ': _remoteText('helper'),
+        'notes/cloud.typ': _remoteText('cloud note'),
+        '_system/reading/a7b7c8e38457f660.json': _remoteText(body),
+      };
+      final server = await _mutableWebDavServer(remote, gzipGets: true);
+      final dir = await Directory.systemTemp.createTemp('tylog_gzip_');
+      final vault = Vault(dir);
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      await vault.ensureCreated();
 
-    final result = await NextcloudSync(
-      _config(server),
-    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+      final result = await NextcloudSync(_config(server))
+          .sync(vault, initialMode: InitialSyncMode.downloadRemote);
 
-    expect(result.downloaded, remote.length);
-    expect(
-      await vault.storage.readText('_system/reading/a7b7c8e38457f660.json'),
-      body,
-    );
-  });
+      expect(result.downloaded, remote.length);
+      expect(
+        await vault.storage.readText('_system/reading/a7b7c8e38457f660.json'),
+        body,
+      );
+      // Force full passes: a root shortcut would conceal the cursor mismatch.
+      for (var i = 0; i < 2; i++) {
+        final state = jsonDecode(
+          await vault.storage.readText('.tylog/sync_state.json'),
+        ) as Map;
+        state.remove('rootEtag');
+        if (i == 1) {
+          // Upgrade a cursor saved by 0.8.5 on the P30.
+          final cursor =
+              (state['cursors'] as Map)['_system/reading/a7b7c8e38457f660.json']
+                  as Map;
+          cursor['remoteEtag'] = '${cursor['remoteEtag']}-gzip';
+        }
+        await vault.storage.writeText(
+          '.tylog/sync_state.json',
+          jsonEncode(state),
+        );
+        final next = await NextcloudSync(_config(server)).sync(vault);
+        expect(next.downloaded, 0);
+        expect(next.conflicts, 0);
+      }
+    },
+  );
 
   test('a 423 Locked download is retried, not failed', () async {
     NextcloudSync.busyRetryDelays = const [Duration.zero];
@@ -4529,7 +4552,10 @@ Future<HttpServer> _mutableWebDavServer(
                 .contains('gzip')) {
           // Like Cloudflare: gzip body, Content-Length of the compressed bytes.
           final packed = gzip.encode(file.bytes);
-          request.response.headers.set(HttpHeaders.etagHeader, file.etag);
+          request.response.headers.set(
+            HttpHeaders.etagHeader,
+            '"${file.etag.replaceAll('"', '')}-gzip"',
+          );
           request.response.headers.set(
             HttpHeaders.contentEncodingHeader,
             'gzip',

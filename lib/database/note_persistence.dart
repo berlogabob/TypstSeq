@@ -10,31 +10,6 @@ import 'tylog_database.dart';
 /// The rows created by [persistNoteSource].
 typedef NotePersistenceResult = ({NodeData node, RevisionData revision});
 
-Future<NotePersistenceResult> persistVaultNote(
-  TyLogDatabase database, {
-  required String path,
-  required String source,
-  required int nowMs,
-}) => persistNoteSource(
-  database: database,
-  path: path,
-  source: source,
-  updatedAtMs: nowMs,
-);
-
-Future<NotePersistenceResult> persistDeletedVaultNote(
-  TyLogDatabase database, {
-  required String path,
-  required String previousSource,
-  required int nowMs,
-}) => persistNoteSource(
-  database: database,
-  path: path,
-  source: previousSource,
-  updatedAtMs: nowMs,
-  deleted: true,
-);
-
 Future<String?> persistedNoteSourceForPath(
   TyLogDatabase database,
   String path,

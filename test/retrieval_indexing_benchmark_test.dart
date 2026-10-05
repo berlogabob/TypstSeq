@@ -148,7 +148,7 @@ Future<void> runNativeBenchmark() async {
   final modelDir = Platform.environment['TYLOG_BENCH_MODEL_DIR'];
   if (library == null || modelDir == null) return;
   await RustLib.init(externalLibrary: ExternalLibrary.open(library));
-  final embed = nativePassageEmbedder(
+  final embed = nativeEmbedder(
     modelPath: '$modelDir/model_O4.onnx',
     tokenizerPath: '$modelDir/tokenizer.json',
   );

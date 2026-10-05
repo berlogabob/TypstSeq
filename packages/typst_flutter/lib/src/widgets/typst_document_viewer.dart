@@ -23,12 +23,10 @@ class TypstDocumentViewer extends StatefulWidget {
     this.files,
     this.inputs,
     this.date,
-    this.renderMode = TypstRenderMode.svg,
     this.pixelsPerPt = 2.0,
     this.loadingBuilder,
     this.errorBuilder,
     this.pageSpacing = 8.0,
-    this.pageColor = Colors.white,
     this.pageElevation = 2.0,
   });
 
@@ -45,10 +43,7 @@ class TypstDocumentViewer extends StatefulWidget {
   /// The date to inject for `#datetime.today()`.
   final DateTime? date;
 
-  /// The rendering mode (SVG or Raster).
-  final TypstRenderMode renderMode;
-
-  /// Density for raster rendering (only used if [renderMode] is raster).
+  /// Density for the raster fallback.
   final double pixelsPerPt;
 
   /// Builder for the loading state shown while the compiler is running.
@@ -65,9 +60,6 @@ class TypstDocumentViewer extends StatefulWidget {
 
   /// Spacing between pages in the list.
   final double pageSpacing;
-
-  /// Background color of the pages.
-  final Color pageColor;
 
   /// Elevation of the page cards.
   final double pageElevation;
@@ -188,13 +180,12 @@ class _TypstDocumentViewerState extends State<TypstDocumentViewer> {
         padding: EdgeInsets.symmetric(horizontal: widget.pageSpacing),
         child: Card(
           elevation: widget.pageElevation,
-          color: widget.pageColor,
+          color: Colors.white,
           clipBehavior: Clip.antiAlias,
           margin: EdgeInsets.zero,
           child: TypstView(
             document: doc,
             pageIndex: index,
-            renderMode: widget.renderMode,
             pixelsPerPt: widget.pixelsPerPt,
           ),
         ),

@@ -2427,6 +2427,48 @@ void main() {
     },
   );
 
+  test(
+    'an idle saved edit syncs after a long sync with a retained IME range',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      var now = DateTime.utc(2026);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        now: () => now,
+        isComposing: () => true,
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await _waitUntil(() => controller.index != null);
+      controller.cloud = server.config;
+      expect(await controller.syncNow(), isTrue);
+      server.uploaded.clear();
+      server.armGate();
+      final longSync = controller.syncNow(trigger: 'poll');
+      await server.gateReached.future;
+      controller.edit('${controller.source}\nIdle edit');
+      expect(controller.editingRecently, isTrue);
+      now = now.add(const Duration(minutes: 4));
+      await controller.save();
+      // Let the queued maintenance encounter the active sync and reschedule.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      server.releaseGate.complete();
+      expect(await longSync, isTrue);
+      await _waitUntil(() => controller.lastSync?.trigger == 'autosave');
+      expect(server.uploaded, contains(controller.note));
+      expect(controller.editingRecently, isFalse);
+    },
+  );
+
   test('sync errors explain resumable network and authentication failures', () {
     expect(
       friendlySyncError(const SocketException('offline')),

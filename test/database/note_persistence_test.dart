@@ -85,11 +85,12 @@ Body''';
       updatedAtMs: 100,
     );
 
-    final deleted = await persistDeletedVaultNote(
-      database,
+    final deleted = await persistNoteSource(
+      database: database,
+      deleted: true,
       path: 'notes/a.typ',
-      previousSource: source,
-      nowMs: 200,
+      source: source,
+      updatedAtMs: 200,
     );
     final attributes =
         jsonDecode(deleted.node.attributesJson) as Map<String, dynamic>;

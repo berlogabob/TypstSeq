@@ -174,7 +174,7 @@ extension _SyncConflicts on NextcloudSync {
     try {
       captured = (await _captureRemote(path, remoteFile: remoteFile)).file;
       final remoteBytes = await captured.readAsBytes();
-      if (_sameBytes(localBytes, remoteBytes)) return 'same-content';
+      if (listEquals(localBytes, remoteBytes)) return 'same-content';
       final winner = fastForwardWinner(
         local: localBytes,
         remote: remoteBytes,

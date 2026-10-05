@@ -12,9 +12,9 @@ import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
-import 'pkms_registry.dart';
+import 'package:tylog_core/validation.dart';
 import 'scanner.dart';
-import 'search_index.dart';
+import 'package:tylog_core/search_index.dart';
 import 'task_scheduler.dart';
 import 'tylog_assets.dart';
 import 'vault.dart';
@@ -297,7 +297,9 @@ class WorkspaceController extends ChangeNotifier {
   bool get hasActiveCloudPoll => _cloudPoll?.isActive ?? false;
 
   bool get editingRecently {
-    if (dirty || isComposing()) return true;
+    if (dirty) return true;
+    // IMEs can retain a composing range after typing stops. Saved text is
+    // safe to sync once the same ten-second edit debounce has elapsed.
     final edited = lastEditAt;
     return edited != null &&
         _now().difference(edited) < const Duration(seconds: 10);
@@ -1033,20 +1035,19 @@ class WorkspaceController extends ChangeNotifier {
       if (!identical(vault, opened)) throw StateError('Vault changed');
       final nowMs = _now().millisecondsSinceEpoch;
       if (await opened.storage.exists(path)) {
-        await persistVaultNote(
-          db,
+        await persistNoteSource(
+          database: db,
           path: path,
           source: await opened.storage.readText(path),
-          nowMs: nowMs,
+          updatedAtMs: nowMs,
         );
       } else if (previous != null || persistedSource != null) {
-        await persistDeletedVaultNote(
-          db,
+        await persistNoteSource(
+          database: db,
+          deleted: true,
           path: path,
-          previousSource: previous == null
-              ? persistedSource!
-              : utf8.decode(previous),
-          nowMs: nowMs,
+          source: previous == null ? persistedSource! : utf8.decode(previous),
+          updatedAtMs: nowMs,
         );
       }
     } catch (_) {
@@ -1483,7 +1484,7 @@ class WorkspaceController extends ChangeNotifier {
       if (_pollNextAt != null && _now().isBefore(_pollNextAt!)) return;
       final unchanged = await NextcloudSync(
         config,
-      ).pollIsUnchanged(opened, dirty: dirty || isComposing());
+      ).pollIsUnchanged(opened, dirty: dirty);
       // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
       if (unchanged) return;
@@ -2261,7 +2262,7 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> _runIdleMaintenance() async {
     if (_disposed) return;
-    if (dirty || isComposing()) return;
+    if (dirty) return;
     if (editingRecently) {
       queueCloudSync();
       return;

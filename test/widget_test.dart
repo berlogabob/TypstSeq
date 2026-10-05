@@ -21,7 +21,7 @@ import 'package:tylog/report.dart';
 import 'package:tylog/retrieval/cosine_search.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/saved_searches.dart';
-import 'package:tylog/search_index.dart';
+import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
@@ -298,12 +298,6 @@ void main() {
 
     await setViewMode(tester, 'Preview');
 
-    expect(
-      tester
-          .widget<TypstDocumentViewer>(find.byType(TypstDocumentViewer))
-          .renderMode,
-      TypstRenderMode.svg,
-    );
     final viewer = tester.widget<TypstDocumentViewer>(
       find.byType(TypstDocumentViewer),
     );

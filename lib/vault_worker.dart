@@ -7,9 +7,9 @@ import 'package:tylog_core/index_donor.dart';
 import 'package:tylog_core/maintenance.dart';
 
 import 'models.dart';
-import 'pkms_registry.dart';
+import 'package:tylog_core/validation.dart';
 import 'scanner.dart';
-import 'search_index.dart';
+import 'package:tylog_core/search_index.dart';
 import 'task_scheduler.dart';
 import 'vault.dart';
 import 'vault_registry.dart';

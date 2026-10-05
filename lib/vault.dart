@@ -272,20 +272,7 @@ class Vault {
     DateTime? now,
     Set<String>? knownIds,
   }) async {
-    final instant = now ?? DateTime.now();
-    final stamp =
-        '${instant.year.toString().padLeft(4, '0')}'
-        '${instant.month.toString().padLeft(2, '0')}'
-        '${instant.day.toString().padLeft(2, '0')}-'
-        '${instant.hour.toString().padLeft(2, '0')}'
-        '${instant.minute.toString().padLeft(2, '0')}'
-        '${instant.second.toString().padLeft(2, '0')}';
-    final slug = title
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-|-$'), '');
-    final base = slug.isEmpty ? stamp : '$stamp-$slug';
+    final base = _idPrefix(title, now ?? DateTime.now());
     final ids =
         knownIds ??
         (await loadIndex())?.notes.map((note) => note.id).toSet() ??
@@ -299,12 +286,7 @@ class Vault {
     return id;
   }
 
-  Future<String> nextTaskId(
-    String text, {
-    DateTime? now,
-    Set<String> reserved = const {},
-  }) async {
-    final instant = now ?? DateTime.now();
+  String _idPrefix(String text, DateTime instant) {
     final stamp =
         '${instant.year.toString().padLeft(4, '0')}'
         '${instant.month.toString().padLeft(2, '0')}'
@@ -317,7 +299,15 @@ class Vault {
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
-    final base = slug.isEmpty ? stamp : '$stamp-$slug';
+    return slug.isEmpty ? stamp : '$stamp-$slug';
+  }
+
+  Future<String> nextTaskId(
+    String text, {
+    DateTime? now,
+    Set<String> reserved = const {},
+  }) async {
+    final base = _idPrefix(text, now ?? DateTime.now());
     final ids = {
       ...?(await loadIndex())?.tasks.map((task) => task.id),
       ...reserved,

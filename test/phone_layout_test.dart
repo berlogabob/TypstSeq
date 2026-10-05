@@ -159,7 +159,7 @@ void main() {
       expect(find.byType(SliverGrid), findsOneWidget);
       expect(find.text('Screenshot_20261005.png'), findsNothing);
       expect(find.text('Useful Flutter layout.'), findsOneWidget);
-      expect(find.text('Screenshot'), findsOneWidget);
+      expect(find.text('Screenshot'), findsNothing);
       expect(find.text('10:08 · Browser'), findsOneWidget);
       final title = find.text('Useful Flutter layout.');
       expect(tester.getSize(title).width, greaterThan(120));

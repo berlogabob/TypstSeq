@@ -460,39 +460,6 @@ class TyLogDatabase extends _$TyLogDatabase {
             ..orderBy([(row) => OrderingTerm.asc(row.startOffset)]))
           .get();
 
-  /// Resolves a retrieved chunk to a stable source and character range.
-  Future<
-    ({
-      String chunkId,
-      String sourceId,
-      String sourceVersionId,
-      int startOffset,
-      int endOffset,
-    })?
-  >
-  navigationForChunk(String chunkId) async {
-    final rows = await customSelect(
-      '''
-      SELECT c.id AS chunk_id, v.source_id, c.source_version_id,
-             c.start_offset, c.end_offset
-      FROM chunks c
-      JOIN source_versions v ON v.id = c.source_version_id
-      WHERE c.id = ?
-      LIMIT 1
-      ''',
-      variables: [Variable.withString(chunkId)],
-    ).get();
-    if (rows.isEmpty) return null;
-    final row = rows.single;
-    return (
-      chunkId: row.read<String>('chunk_id'),
-      sourceId: row.read<String>('source_id'),
-      sourceVersionId: row.read<String>('source_version_id'),
-      startOffset: row.read<int>('start_offset'),
-      endOffset: row.read<int>('end_offset'),
-    );
-  }
-
   /// Resolves a bounded set of retrieved chunks in one query, preserving the
   /// caller's hit order for cited navigation.
   Future<
@@ -536,69 +503,6 @@ class TyLogDatabase extends _$TyLogDatabase {
           startOffset: row.read<int>('start_offset'),
           endOffset: row.read<int>('end_offset'),
         ),
-    };
-    return [for (final id in ids) ?byId[id]];
-  }
-
-  /// Resolves safe, extracted PDF citations without narrowing generic
-  /// navigation results used by other source kinds.
-  Future<
-    List<
-      ({
-        String chunkId,
-        String sourceId,
-        String sourceKind,
-        String sourceLocator,
-        String? sourceTitle,
-        String sourceVersionId,
-        int startOffset,
-        int endOffset,
-        String content,
-      })
-    >
-  >
-  pdfCitationsForChunks(Iterable<String> chunkIds) async {
-    final ids = chunkIds.toList(growable: false);
-    if (ids.isEmpty) return const [];
-    if (ids.length > 100) {
-      throw ArgumentError.value(
-        ids.length,
-        'chunkIds',
-        'must contain at most 100 ids',
-      );
-    }
-    final placeholders = List.filled(ids.length, '?').join(', ');
-    final rows = await customSelect(
-      '''
-      SELECT c.id AS chunk_id, v.source_id, s.kind AS source_kind,
-             s.locator AS source_locator, s.title AS source_title,
-             c.source_version_id, c.start_offset, c.end_offset, c.content
-      FROM chunks c
-      JOIN source_versions v ON v.id = c.source_version_id
-      JOIN sources s ON s.id = v.source_id
-      WHERE c.id IN ($placeholders)
-        AND v.status = 'extracted'
-        AND s.kind = 'pdf'
-        AND s.locator IS NOT NULL
-        AND c.end_offset > c.start_offset
-      ''',
-      variables: [for (final id in ids) Variable.withString(id)],
-    ).get();
-    final byId = {
-      for (final row in rows)
-        if (row.read<int>('end_offset') - row.read<int>('start_offset') ==
-            row.read<String>('content').length)
-          row.read<String>('chunk_id'): (
-            chunkId: row.read<String>('chunk_id'),
-            sourceId: row.read<String>('source_id'),
-            sourceKind: row.read<String>('source_kind'),
-            sourceLocator: row.read<String>('source_locator'),
-            sourceTitle: row.readNullable<String>('source_title'),
-            sourceVersionId: row.read<String>('source_version_id'),
-            startOffset: row.read<int>('start_offset'),
-            endOffset: row.read<int>('end_offset'),
-            content: row.read<String>('content'),
-          ),
     };
     return [for (final id in ids) ?byId[id]];
   }
@@ -691,22 +595,6 @@ class TyLogDatabase extends _$TyLogDatabase {
       final depth = a.depth.compareTo(b.depth);
       return depth == 0 ? a.id.compareTo(b.id) : depth;
     });
-  }
-
-  Future<void> saveEdge(EdgeData edge) async {
-    await into(edges).insertOnConflictUpdate(
-      EdgesCompanion.insert(
-        id: edge.id,
-        fromNodeId: edge.fromNodeId,
-        toNodeId: edge.toNodeId,
-        type: edge.type,
-        attributesJson: Value(edge.attributesJson),
-        validFromMs: Value(edge.validFromMs),
-        validToMs: Value(edge.validToMs),
-        createdAtMs: edge.createdAtMs,
-        updatedAtMs: edge.updatedAtMs,
-      ),
-    );
   }
 
   Future<void> deleteEdge(String edgeId) async {
@@ -804,32 +692,6 @@ class TyLogDatabase extends _$TyLogDatabase {
     return [
       for (final row in rows)
         (id: row.read(chunks.id)!, embedding: row.read(chunks.embedding)!),
-    ];
-  }
-
-  Future<List<({String id, List<int> embedding})>> embeddedChunkCandidates({
-    required String model,
-    int limit = 10000,
-  }) async {
-    if (model.isEmpty) throw ArgumentError.value(model, 'model');
-    if (limit < 1 || limit > 100000) {
-      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 100000');
-    }
-    final rows =
-        await (select(chunks)
-              ..where(
-                (row) =>
-                    row.status.equals('complete') &
-                    row.embeddingModel.equals(model) &
-                    row.embedding.isNotNull(),
-              )
-              ..orderBy([(row) => OrderingTerm.asc(row.id)])
-              ..limit(limit))
-            .get();
-    return [
-      for (final row in rows)
-        if (row.embedding case final embedding?)
-          (id: row.id, embedding: embedding),
     ];
   }
 

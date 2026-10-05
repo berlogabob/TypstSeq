@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/retrieval/cosine_search.dart';
 import 'package:tylog/retrieval/hybrid_search.dart';
-import 'package:tylog/search_index.dart';
+import 'package:tylog_core/search_index.dart';
 
 void main() {
   test('reciprocal-rank fusion rewards agreement and is deterministic', () {

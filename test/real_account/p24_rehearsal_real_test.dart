@@ -60,11 +60,11 @@ void main() {
       await a.ensureCreated();
       await b.ensureCreated();
       for (final path in sample.where((path) => path.endsWith('.typ'))) {
-        await persistVaultNote(
-          dbA,
+        await persistNoteSource(
+          database: dbA,
           path: path,
           source: await a.storage.readText(path),
-          nowMs: 1,
+          updatedAtMs: 1,
         );
       }
       expect(await _hashPaths(aDir, sample), before);
@@ -138,7 +138,12 @@ void main() {
         expect(await a.storage.exists(path), isFalse);
         final content = '= P24 recovery $i\n\nCommitted edit $i\n';
         await a.saveNote(path, content);
-        await persistVaultNote(dbA, path: path, source: content, nowMs: 10 + i);
+        await persistNoteSource(
+          database: dbA,
+          path: path,
+          source: content,
+          updatedAtMs: 10 + i,
+        );
       }
       relay.interrupt = true;
       Object? interruptError;
@@ -185,17 +190,17 @@ void main() {
       const localB = '= P24 recovery 0\n\nDevice B edit\n';
       await a.saveNote(conflictPath, localA);
       await b.saveNote(conflictPath, localB);
-      await persistVaultNote(
-        dbA,
+      await persistNoteSource(
+        database: dbA,
         path: conflictPath,
         source: localA,
-        nowMs: 30,
+        updatedAtMs: 30,
       );
-      await persistVaultNote(
-        dbB,
+      await persistNoteSource(
+        database: dbB,
         path: conflictPath,
         source: localB,
-        nowMs: 31,
+        updatedAtMs: 31,
       );
       await pass(a, dbA);
       expect((await pass(b, dbB)).conflicts, greaterThan(0));

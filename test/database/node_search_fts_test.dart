@@ -25,12 +25,12 @@ void main() {
         source: '#show: tylog.note.with(id: "deleted", title: "Gone")\nsecret',
         updatedAtMs: 1,
       );
-      await persistDeletedVaultNote(
-        database,
+      await persistNoteSource(
+        database: database,
+        deleted: true,
         path: 'notes/deleted.typ',
-        previousSource:
-            '#show: tylog.note.with(id: "deleted", title: "Gone")\nsecret',
-        nowMs: 2,
+        source: '#show: tylog.note.with(id: "deleted", title: "Gone")\nsecret',
+        updatedAtMs: 2,
       );
 
       expect(await database.searchNodeIds('acao'), ['pt']);
