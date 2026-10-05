@@ -5,6 +5,7 @@ import 'screenshot_strip.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../article_jobs.dart';
 import 'calendar_tab.dart';
 import 'constants.dart';
 import 'date_format.dart';
@@ -61,7 +62,16 @@ class TodayPage extends StatelessWidget {
             b.due ?? b.scheduled ?? '9999',
           ),
         );
-    final hasTopContent = agenda.isNotEmpty || recent.isNotEmpty;
+    final otherTasks = tasks
+        .where(
+          (task) =>
+              task.status != 'done' &&
+              task.status != 'cancelled' &&
+              !isTaskInTodayAgenda(task, today),
+        )
+        .toList();
+    final hasTopContent =
+        agenda.isNotEmpty || otherTasks.isNotEmpty || recent.isNotEmpty;
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
@@ -83,7 +93,6 @@ class TodayPage extends StatelessWidget {
                     if (agenda.isNotEmpty)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
-                        initiallyExpanded: true,
                         leading: const Icon(Icons.event_note),
                         title: Text('Agenda · ${agenda.length}'),
                         children: [
@@ -119,6 +128,27 @@ class TodayPage extends StatelessWidget {
                                 onPressed: () => onOpenPath(task.notePath),
                                 icon: const Icon(Icons.open_in_new),
                               ),
+                            ),
+                        ],
+                      ),
+                    if (otherTasks.isNotEmpty)
+                      ExpansionTile(
+                        key: const PageStorageKey('today-tasks'),
+                        leading: const Icon(Icons.checklist),
+                        title: Text('Tasks · ${otherTasks.length}'),
+                        children: [
+                          for (final task in otherTasks)
+                            ListTile(
+                              leading: TaskCheckbox(
+                                value: false,
+                                onChanged: (done) {
+                                  if (done == true) {
+                                    unawaited(onSetStatus(task, 'done'));
+                                  }
+                                },
+                              ),
+                              title: Text(task.text),
+                              onTap: () => onOpenPath(task.notePath),
                             ),
                         ],
                       ),
@@ -399,6 +429,7 @@ class LibraryView extends StatelessWidget {
     super.key,
     required this.index,
     this.pagedNotes,
+    this.articleJobs = const [],
     required this.calendar,
     required this.dayMarks,
     this.indexing = false,
@@ -422,6 +453,7 @@ class LibraryView extends StatelessWidget {
   final Future<Uint8List?> Function(String)? imageResolver;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
+  final List<ArticleJob> articleJobs;
 
   /// Derived once per index by the controller, not per build.
   final List<CalendarItem> calendar;
@@ -470,6 +502,7 @@ class LibraryView extends StatelessWidget {
                 onCreateEntity: onCreateEntity,
               ),
               _ArticlesShelf(
+                articleJobs: articleJobs,
                 index: index,
                 pagedNotes: pagedNotes,
                 indexing: indexing,
@@ -654,6 +687,7 @@ class _ArticlesShelf extends StatefulWidget {
     this.imageResolver,
     required this.index,
     this.pagedNotes,
+    this.articleJobs = const [],
     required this.indexing,
     required this.progressByPath,
     required this.onReadPath,
@@ -670,6 +704,7 @@ class _ArticlesShelf extends StatefulWidget {
   final Future<Uint8List?> Function(String)? imageResolver;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
+  final List<ArticleJob> articleJobs;
   final bool indexing;
   final Map<String, double> progressByPath;
   final Map<String, String> noteToCluster;
@@ -980,6 +1015,23 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   ),
                   onTap: () => unawaited(widget.onImportMarkdownArticles()),
                 ),
+              if (!screenshots)
+                for (final job in widget.articleJobs.where(
+                  (job) =>
+                      '${job.title ?? ''} ${job.url}'.toLowerCase().contains(q),
+                ))
+                  ListTile(
+                    key: ValueKey(job.path),
+                    leading: Icon(
+                      job.status == 'processing'
+                          ? Icons.hourglass_top
+                          : Icons.schedule,
+                    ),
+                    title: Text(job.title ?? job.url),
+                    subtitle: Text(
+                      '${job.status == 'processing' ? 'Processing' : 'Queued'} · ${job.url}',
+                    ),
+                  ),
               if (!screenshots && continueNote != null)
                 Card(
                   key: Key(
@@ -993,7 +1045,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     onTap: () => widget.onReadPath(continueNote!.path),
                   ),
                 ),
-              if (filtered.isEmpty)
+              if (filtered.isEmpty &&
+                  (screenshots || widget.articleJobs.isEmpty))
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Center(

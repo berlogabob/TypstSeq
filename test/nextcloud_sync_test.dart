@@ -913,12 +913,37 @@ void main() {
     },
   );
 
+  test('article requests upload and worker status downloads', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final dir = await Directory.systemTemp.createTemp('tylog_job_sync_');
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    const path = '_system/jobs/articles/request.json';
+    const queued = '{"url":"https://example.org/a","status":"queued"}';
+    await vault.storage.writeText(path, queued);
+    // Each sync closes its client; use a fresh instance per run, as the app does.
+    await NextcloudSync(_config(server)).sync(vault, initialMode: InitialSyncMode.uploadLocal);
+    expect(utf8.decode(remote[path]!.bytes), queued);
+    const processing = '{"url":"https://example.org/a","status":"processing"}';
+    remote[path] = _remoteText(processing);
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(await vault.storage.readText(path), processing);
+  });
+
   test('sync excludes operational state and keeps durable v5 roots', () {
     expect(isSyncInternalPath('_index/index.json'), isTrue);
     expect(isSyncInternalPath('_index/search-index.json.gz'), isTrue);
     expect(isSyncInternalPath('.tylog/settings.json'), isTrue);
     expect(isSyncInternalPath('.tylog/backups/123/notes/a.typ'), isTrue);
     expect(isSyncableVaultPath('_system/tylog.typ'), isTrue);
+    expect(isSyncableVaultPath('_system/jobs/articles/abc.json'), isTrue);
+    expect(isSyncableVaultPath('_system/jobs/other/nested/abc.json'), isTrue);
+    expect(isSyncInternalPath('_system/jobs/articles/abc.json'), isFalse);
     expect(isSyncableVaultPath('daily/2026/07/a.typ'), isTrue);
     expect(isSyncableVaultPath('notes/a.typ'), isTrue);
     expect(isSyncableVaultPath('journal/a.typ'), isFalse);

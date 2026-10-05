@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications_platform_interface/flutter_local_not
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
+import 'package:tylog/article_jobs.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/graph.dart';
 import 'package:tylog/knowledge_screen.dart';
@@ -1323,6 +1324,126 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  for (final destination in [
+    'library',
+    'graph',
+    'normal',
+    'source',
+    'split',
+    'journal',
+  ]) {
+    testWidgets('clock captures today from $destination', (tester) async {
+      final storage = _FailingStorage();
+      final vault = Vault.withStorage(storage);
+      await tester.runAsync(() => vault.ensureCreated());
+      await storage.writeText('notes/other.typ', 'Other note');
+      await tester.pumpWidget(
+        const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+      );
+      await tester.pumpAndSettle();
+      final dynamic home = tester.state(find.byType(HomeScreen));
+      home.workspace.vault = vault;
+      home.workspace.replaceNote('notes/other.typ', 'Other note');
+      home.sourceController.text = 'Other note';
+      home.richController.loadSource('Other note');
+      home.mode = destination;
+      home.primaryDestination = 2;
+      home.workspace.notifyListeners();
+      await tester.pump();
+      expect(find.byTooltip('Timestamped capture'), findsOneWidget);
+      await tester.tap(find.byTooltip('Timestamped capture'));
+      await tester.pump();
+      await tester.pump();
+      expect(home.workspace.note, await vault.todayNote(DateTime.now()));
+      expect(home.richController.text, matches(r'- \d{2}:\d{2} $'));
+      expect(
+        home.richController.selection.baseOffset,
+        home.richController.text.length,
+      );
+      expect(home.primaryDestination, 0);
+      expect(home.mode, 'normal');
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('rich-journal-editor')),
+      );
+      expect(field.focusNode!.hasFocus, isTrue);
+      expect(await storage.readText('notes/other.typ'), 'Other note');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  for (final choice in ['Save as article', 'Add to today']) {
+    testWidgets('Android share sheet: $choice', (tester) async {
+      const channel = MethodChannel('org.tylog.tylog/share');
+      var pending = true;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        expect(call.method, 'getPendingShare');
+        if (!pending) return null;
+        pending = false;
+        return {'text': 'https://example.org/shared', 'title': 'Shared title'};
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      final storage = _FailingStorage();
+      final vault = Vault.withStorage(storage);
+      await tester.runAsync(() => vault.ensureCreated());
+      await tester.pumpWidget(
+        const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+      );
+      await tester.pumpAndSettle();
+      final dynamic home = tester.state(find.byType(HomeScreen));
+      home.workspace.vault = vault;
+      home.workspace.index = VaultIndex(notesByPath: {}, backlinksByTarget: {});
+      home.workspace.notifyListeners();
+      await tester.pump();
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          const MethodCall('shareAvailable'),
+        ),
+        (_) {},
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Save as article'), findsOneWidget);
+      expect(find.text('Add to today'), findsOneWidget);
+      await tester.tap(find.text(choice));
+      await tester.pumpAndSettle();
+      if (choice == 'Save as article') {
+        final job = SharedArticle.parse('https://example.org/shared')!;
+        final data = jsonDecode(await storage.readText(job.path));
+        expect(data['status'], 'queued');
+        expect(data['title'], 'Shared title');
+        expect(vault.isPendingSyncWrite(job.path), isTrue);
+        home.mode = 'library';
+        home.workspace.notifyListeners();
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Articles'));
+        await tester.pumpAndSettle();
+        expect(find.text('Shared title'), findsOneWidget);
+        expect(
+          find.text('Queued · https://example.org/shared'),
+          findsOneWidget,
+        );
+      } else {
+        expect(home.workspace.note, await vault.todayNote(DateTime.now()));
+        expect(
+          home.richController.text,
+          contains('https://example.org/shared'),
+        );
+        expect(
+          home.richController.selection.baseOffset,
+          home.richController.text.length,
+        );
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('day capture appends to the unsaved daily buffer', (
     tester,
   ) async {
@@ -2216,3 +2337,5 @@ class _SearchStateProbe extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+Future<void> _emptyStartup() async {}

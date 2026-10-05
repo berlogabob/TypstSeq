@@ -22,6 +22,7 @@ class KnowledgeScreen extends StatefulWidget {
     required this.search,
     required this.problems,
     required this.onOpenNote,
+    this.onCaptureTimestamp,
     this.searchState,
     this.searchReady,
     this.searchRevision,
@@ -59,6 +60,7 @@ class KnowledgeScreen extends StatefulWidget {
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
+  final VoidCallback? onCaptureTimestamp;
 
   /// Optional controller notifications used to refresh an already-open search
   /// screen when the background search index becomes usable or is replaced.
@@ -306,6 +308,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         KnowledgeView.problems => 'Problems',
       }),
       actions: [
+        if (widget.onCaptureTimestamp != null)
+          IconButton(
+            tooltip: 'Timestamped capture',
+            icon: const Icon(Icons.more_time),
+            onPressed: widget.onCaptureTimestamp,
+          ),
         PopupMenuButton<KnowledgeView>(
           tooltip: 'Knowledge sections',
           initialValue: view,

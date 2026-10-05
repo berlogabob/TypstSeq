@@ -14,6 +14,24 @@ PkmsProblem _broken(String subject, String target) => PkmsProblem(
 );
 
 void main() {
+  testWidgets('search top bar exposes timestamp capture', (tester) async {
+    var captures = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: KnowledgeScreen(
+          index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+          search: (_, _, _) async => const [],
+          problems: const [],
+          onOpenNote: (_) {},
+          onCaptureTimestamp: () => captures++,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Timestamped capture'));
+    expect(captures, 1);
+  });
+
   // Shapes taken from the real migrated vault: 2687 broken links over 1350
   // targets, of which 98 still carry escaped brackets and ~150 are really an
   // existing tag under a different casing.

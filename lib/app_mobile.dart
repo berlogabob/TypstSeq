@@ -14,6 +14,7 @@ import 'package:typst_flutter/typst_flutter.dart';
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'article_jobs.dart';
 import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'graph.dart';
@@ -353,7 +354,109 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get rebuilding => workspace.rebuilding;
   double? get rebuildProgress => workspace.rebuildProgress;
 
-  bool get _usePlainLongEditor => shouldUseVirtualPlainEditor(richController);
+  final _captureFocus = FocusNode();
+  final _todayStorage = PageStorageBucket();
+  String? _timestampCapturePath;
+  bool get _usePlainLongEditor =>
+      note != _timestampCapturePath && shouldUseVirtualPlainEditor(richController);
+  static const _shareChannel = MethodChannel('org.tylog.tylog/share');
+  bool _handlingShare = false;
+  List<ArticleJob> _articleJobs = const [];
+  int _articleJobsGeneration = 0;
+  (Vault?, bool, int)? _jobsRevision;
+
+  Future<void> _refreshArticleJobs() async {
+    final generation = ++_articleJobsGeneration;
+    final currentVault = vault;
+    if (currentVault == null) {
+      _articleJobs = const [];
+      return;
+    }
+    try {
+      final jobs = await loadArticleJobs(currentVault.storage);
+      if (mounted &&
+          identical(vault, currentVault) &&
+          generation == _articleJobsGeneration) {
+        setState(() => _articleJobs = jobs);
+      }
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not read article jobs: $error');
+    }
+  }
+
+  Future<void> _handlePendingShares() async {
+    if (_handlingShare || vault == null || !mounted) return;
+    _handlingShare = true;
+    try {
+      while (mounted && vault != null) {
+        final data = await _shareChannel.invokeMapMethod<String, String>(
+          'getPendingShare',
+        );
+        if (data == null || !mounted || vault == null) break;
+        final text = data['text'] ?? '';
+        final article = SharedArticle.parse(text, title: data['title']);
+        final targetVault = vault!;
+        final choice = await showModalBottomSheet<String>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text(
+                    article?.title ?? article?.url ?? text,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.article_outlined),
+                  title: const Text('Save as article'),
+                  subtitle: Text(
+                    article == null
+                        ? 'Share a web URL to save an article'
+                        : 'Default',
+                  ),
+                  enabled: article != null,
+                  onTap: () => Navigator.pop(context, 'article'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.today),
+                  title: const Text('Add to today'),
+                  onTap: () => Navigator.pop(context, 'today'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (!mounted || !identical(vault, targetVault)) continue;
+        if (choice == 'article' && article != null) {
+          await article.enqueue(targetVault.storage);
+          targetVault.restoreWriteMarkers(
+            article.path,
+            stale: false,
+            pendingSync: true,
+          );
+          workspace.queueCloudSync();
+          await _refreshArticleJobs();
+          if (mounted) showSnack(context, 'Article queued');
+        } else if (choice == 'today') {
+          if (!await _captureTimestamp()) continue;
+          if (!mounted || !identical(vault, targetVault)) continue;
+          richController.value = TextEditingValue(
+            text: '${richController.text}$text',
+            selection: TextSelection.collapsed(
+              offset: richController.text.length + text.length,
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not save share: $error');
+    } finally {
+      _handlingShare = false;
+    }
+  }
 
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
@@ -381,7 +484,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       databaseForVault: _databaseForVault,
     )..addListener(_workspaceChanged);
     WidgetsBinding.instance.addObserver(this);
-    unawaited((widget.startup ?? _open)());
+    _shareChannel.setMethodCallHandler((call) async {
+      if (call.method == 'shareAvailable') await _handlePendingShares();
+    });
+    unawaited(
+      (widget.startup ?? _open)().then((_) async {
+        await _refreshArticleJobs();
+        if (Platform.isAndroid) await _handlePendingShares();
+      }),
+    );
     // One silent update check per launch on macOS (only prompts if newer).
     // Skipped under `flutter test`: it would hit GitHub and leave an unawaited
     // rootBundle/HTTP load pending past teardown, wedging the asset channel for
@@ -396,6 +507,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _openGeneration++;
+    _captureFocus.dispose();
+    _shareChannel.setMethodCallHandler(null);
     _previewDebounceTimer?.cancel();
     _semanticRefreshTimer?.cancel();
     _semantic?.dispose();
@@ -502,6 +615,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       sourceController.text = workspace.source;
       if (changed) richController.loadSource(workspace.source);
     }
+    final jobsRevision = (vault, syncing, workspace.indexRevision);
+    if (_jobsRevision != jobsRevision) {
+      _jobsRevision = jobsRevision;
+      unawaited(_refreshArticleJobs());
+    }
+    if (Platform.isAndroid) unawaited(_handlePendingShares());
     _maybeSnackNewSyncTrouble();
     _refreshPagedLibraryNotes();
     _queueSemanticRefresh();
@@ -1020,18 +1139,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> _captureTimestamp() async {
-    if (vault == null) return;
+  Future<bool> _captureTimestamp() async {
+    if (vault == null) return false;
+    _navDebounce?.cancel();
+    _navDay = null;
     try {
       final path = await workspace.ensureTodayNote();
-      if (!mounted) return;
-      if (note != path && !await _openToday()) return;
-      if (!mounted || note != path) return;
+      if (!mounted) return false;
+      if (note != path && !await _openToday()) return false;
+      if (!mounted || note != path) return false;
+      _timestampCapturePath = path;
       _showEditor();
       richController.appendTimestamp(DateTime.now());
       setState(() => primaryDestination = 0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _captureFocus.requestFocus();
+      });
+      return true;
     } catch (error) {
       if (mounted) showSnack(context, 'Could not capture: $error');
+      return false;
     }
   }
 
@@ -1386,6 +1513,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _queueCloudSync();
           },
           problems: _knowledgeProblems(),
+          onCaptureTimestamp: () {
+            Navigator.of(context).pop();
+            unawaited(_captureTimestamp());
+          },
           onOpenNote: _openPath,
           onOpenCitation: _openCitation,
           onFixProblems: _fixProblems,
@@ -4058,6 +4189,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'library' => LibraryView(
+        articleJobs: _articleJobs,
         index: index,
         pagedNotes: _pagedLibraryNotes,
         calendar: workspace.calendar,
@@ -4234,6 +4366,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'normal' => TyLogRichEditor(
+        focusNode: _captureFocus,
         controller: richController,
         onInsert: _showMagicMenu,
         onMentionQuery: (query, kind) async {
@@ -4419,13 +4552,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
     final bodyContent = isTodayDocument
-        ? TodayPage(
-            tasks: index?.tasks ?? const [],
-            recent: _recentNotes(),
-            editor: documentContent,
-            onOpenPath: _openPath,
-            onSetStatus: _setTaskStatus,
-            onReadPath: _readPath,
+        ? PageStorage(
+            bucket: _todayStorage,
+            child: TodayPage(
+              tasks: index?.tasks ?? const [],
+              recent: _recentNotes(),
+              editor: documentContent,
+              onOpenPath: _openPath,
+              onSetStatus: _setTaskStatus,
+              onReadPath: _readPath,
+            ),
           )
         : documentContent;
     // Floats over the body (see workArea's Stack): transient status must
@@ -4593,12 +4729,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
         actions: [
-          if (mode == 'journal' || currentDaily != null)
-            IconButton(
-              tooltip: 'Timestamped capture',
-              icon: const Icon(Icons.more_time),
-              onPressed: () => unawaited(_captureTimestamp()),
-            ),
+          IconButton(
+            tooltip: 'Timestamped capture',
+            icon: const Icon(Icons.more_time),
+            onPressed: () => unawaited(_captureTimestamp()),
+          ),
           if (mode == 'journal')
             IconButton(
               tooltip: 'Choose journal date',

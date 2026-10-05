@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog/article_jobs.dart';
 import 'package:tylog/widgets/property_select_chip.dart';
 import 'package:tylog/widgets/task_checkbox.dart';
 import 'package:tylog/widgets/work_surface.dart';
@@ -58,34 +59,70 @@ void main() {
     outgoingLinks: [],
   );
 
-  Widget shelf({Future<void> Function(NoteRef note)? onDeleteArticle}) =>
-      MaterialApp(
-        home: Scaffold(
-          body: LibraryView(
-            calendar: const [],
-            dayMarks: (daily: <String>{}, refs: <String>{}),
-            index: VaultIndex(
-              notesByPath: {
-                for (final n in [unread, reading, summarized, plainNote])
-                  n.path: n,
-              },
-              backlinksByTarget: const {},
-              tasks: const [],
-            ),
-            progressByPath: const {'articles/Halfway.typ': 0.4},
-            onOpenPath: (_) {},
-            onOpenDay: (_) {},
-            onSetTaskStatus: (_, _) async {},
-            onSetReadStatus: (_, _) async {},
-            onSetRelevance: (_, _) async {},
-            onCreateNote: (_) {},
-            onCreateEntity: () {},
-            onImportMarkdownArticles: () async {},
-            onReadPath: (_) {},
-            onDeleteArticle: onDeleteArticle ?? (_) async {},
-          ),
+  Widget shelf({
+    Future<void> Function(NoteRef note)? onDeleteArticle,
+    List<ArticleJob> articleJobs = const [],
+  }) => MaterialApp(
+    home: Scaffold(
+      body: LibraryView(
+        articleJobs: articleJobs,
+        calendar: const [],
+        dayMarks: (daily: <String>{}, refs: <String>{}),
+        index: VaultIndex(
+          notesByPath: {
+            for (final n in [unread, reading, summarized, plainNote]) n.path: n,
+          },
+          backlinksByTarget: const {},
+          tasks: const [],
         ),
-      );
+        progressByPath: const {'articles/Halfway.typ': 0.4},
+        onOpenPath: (_) {},
+        onOpenDay: (_) {},
+        onSetTaskStatus: (_, _) async {},
+        onSetReadStatus: (_, _) async {},
+        onSetRelevance: (_, _) async {},
+        onCreateNote: (_) {},
+        onCreateEntity: () {},
+        onImportMarkdownArticles: () async {},
+        onReadPath: (_) {},
+        onDeleteArticle: onDeleteArticle ?? (_) async {},
+      ),
+    ),
+  );
+
+  testWidgets('article jobs show queued and processing placeholders', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      shelf(
+        articleJobs: const [
+          ArticleJob(
+            path: '_system/jobs/articles/a.json',
+            url: 'https://example.org/a',
+            status: 'queued',
+            title: 'Shared article',
+          ),
+          ArticleJob(
+            path: '_system/jobs/articles/b.json',
+            url: 'https://example.org/b',
+            status: 'processing',
+          ),
+        ],
+      ),
+    );
+    await tester.tap(find.text('Articles'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shared article'), findsOneWidget);
+    expect(find.text('Queued · https://example.org/a'), findsOneWidget);
+    expect(find.text('Processing · https://example.org/b'), findsOneWidget);
+    final row = tester.widget<ListTile>(
+      find.byKey(const ValueKey('_system/jobs/articles/a.json')),
+    );
+    expect(row.onTap, isNull);
+    await tester.pumpWidget(shelf());
+    await tester.pumpAndSettle();
+    expect(find.text('Shared article'), findsNothing);
+  });
 
   testWidgets('articles shelf: counts, recent order, filter, resume card', (
     tester,

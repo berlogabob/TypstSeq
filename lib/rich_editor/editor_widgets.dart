@@ -4,6 +4,7 @@ class TyLogRichEditor extends StatefulWidget {
   const TyLogRichEditor({
     super.key,
     required this.controller,
+    this.focusNode,
     required this.onInsert,
     this.onMentionQuery,
     this.onCommandSelected,
@@ -11,6 +12,7 @@ class TyLogRichEditor extends StatefulWidget {
   });
 
   final TyLogEditingController controller;
+  final FocusNode? focusNode;
   final Future<void> Function() onInsert;
 
   /// Resolves candidates for the inline "@" mention popup. Kept decoupled
@@ -118,7 +120,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void initState() {
     super.initState();
     if (debugEnableEditorWindow) _attachWindow();
-    focusNode = FocusNode(onKeyEvent: _handleKey);
+    focusNode = widget.focusNode ?? FocusNode();
+    focusNode.onKeyEvent = _handleKey;
     focusNode.addListener(_focusChanged);
     if (kEnableInlineAutocomplete) {
       widget.controller.addListener(_handleControllerChanged);
@@ -545,7 +548,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       widget.controller.removeListener(_handleControllerChanged);
     }
     focusNode.removeListener(_focusChanged);
-    focusNode.dispose();
+    focusNode.onKeyEvent = null;
+    if (widget.focusNode == null) focusNode.dispose();
     super.dispose();
   }
 

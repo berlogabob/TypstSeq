@@ -21,6 +21,47 @@ TaskRef _task(String id, {String? due}) => TaskRef(
 );
 
 void main() {
+  testWidgets('Agenda and Tasks start collapsed and remember expansion', (
+    tester,
+  ) async {
+    final bucket = PageStorageBucket();
+    Widget page({bool show = true}) => MaterialApp(
+      home: Scaffold(
+        body: PageStorage(
+          bucket: bucket,
+          child: show
+              ? TodayPage(
+                  tasks: [
+                    _task('due', due: '2000-01-01'),
+                    _task('undated'),
+                  ],
+                  recent: const [],
+                  editor: const SizedBox(),
+                  onOpenPath: (_) {},
+                  onSetStatus: (_, _) async {},
+                )
+              : const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pumpWidget(page());
+    expect(find.text('Agenda · 1'), findsOneWidget);
+    expect(find.text('Tasks · 1'), findsOneWidget);
+    expect(find.text('Task due'), findsNothing);
+    expect(find.text('Task undated'), findsNothing);
+    await tester.tap(find.text('Agenda · 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tasks · 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Task due'), findsOneWidget);
+    expect(find.text('Task undated'), findsOneWidget);
+    await tester.pumpWidget(page(show: false));
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    expect(find.text('Task due'), findsOneWidget);
+    expect(find.text('Task undated'), findsOneWidget);
+  });
+
   testWidgets('continue reading renders each entry as a card with progress', (
     tester,
   ) async {
@@ -130,6 +171,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('Task t1'), findsNothing);
+      await tester.tap(find.text('Agenda · 1'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Task t1'));
       expect(opened, ['notes/t1.typ']);
       expect(setStatusCalls, 0);
