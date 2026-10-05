@@ -3,14 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
-## 0.5.2+102
+## 0.5.3+103
 
 ### Changed
 
 - **Tasks is an agenda, not a list of everything.** Open tasks are grouped
   into Overdue, Today, Upcoming by day, Later and No date (by project,
   collapsed); recently done tasks sit in a collapsed section. Filter by
-  Open, Done or All, by project, or by text.
+  Open, Done or All, by project, or by text. Undated tasks from daily notes
+  sit under "From journal", grouped by month, newest first.
 - **The Voronoi map opens quickly.** Communities appear first; a cell's
   notes are laid out when you zoom into it, and very large cells show their
   biggest notes plus a "+N more" cell that opens the rest as a list.
