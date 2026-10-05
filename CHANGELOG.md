@@ -3,6 +3,12 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.4+111
+
+### Changed
+
+- **Screenshot cards are square**, so more fit on screen.
+
 ## 0.8.3+110
 
 ### Fixed
