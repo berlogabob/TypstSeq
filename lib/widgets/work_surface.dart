@@ -1311,7 +1311,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             AspectRatio(
-              aspectRatio: 9 / 16,
+              aspectRatio: 1,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
