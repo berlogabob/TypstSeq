@@ -9,6 +9,7 @@ import 'package:tylog_core/storage.dart';
 import 'package:tylog_core/vault.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/nextcloud_sync.dart';
+import 'package:tylog/calendar_feeds.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault_lock.dart';
@@ -31,6 +32,77 @@ Future<void> _waitUntil(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'calendar bodies cache offline, refresh after six hours, and materialize once',
+    () async {
+      final storage = _MemoryStorage();
+      var now = DateTime(2026, 10, 8);
+      var calls = 0;
+      var offline = false;
+      var course = 'Ética';
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        now: () => now,
+        fetchFeed: (url) async {
+          calls++;
+          if (offline) throw const SocketException('offline');
+          if (url == labUrl) return 'BEGIN:VCALENDAR\nEND:VCALENDAR';
+          return jsonEncode([
+            {
+              'date': '2026-10-08',
+              'start': '19:00',
+              'end': '21:00',
+              'course': course,
+              'groups': ['MCIA003N01'],
+              'teachers': ['Ana'],
+              'rooms': ['020'],
+            },
+          ]);
+        },
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'events', name: 'Events', path: '/events'),
+        storage: storage,
+      );
+      await controller.refreshCalendarFeeds();
+      expect(calls, 2);
+      final event = controller.feedEvents.single;
+      expect(
+        controller.calendar.any((item) => item.notePath == event.path),
+        isTrue,
+      );
+      expect(controller.calendarDayMarks.refs, contains('2026-10-08'));
+      expect(await storage.exists(event.path), isFalse);
+      await Future.wait([
+        controller.materializeEvent(event.path),
+        controller.materializeEvent(event.path),
+      ]);
+      await storage.writeText(
+        event.path,
+        '${await storage.readText(event.path)}\nMy class notes',
+      );
+      await controller.materializeEvent(event.path);
+      expect(await storage.readText(event.path), contains('My class notes'));
+      await controller.refreshCalendarFeeds();
+      expect(calls, 2);
+      offline = true;
+      now = now.add(const Duration(hours: 6));
+      await controller.refreshCalendarFeeds();
+      expect(calls, 4);
+      expect(controller.feedEvents.single.id, event.id);
+      offline = false;
+      course = 'Another course';
+      await controller.refreshCalendarFeeds(force: true);
+      final source = await storage.readText(event.path);
+      expect(source, contains('cancelled'));
+      expect(source, contains('My class notes'));
+      await controller.shutdown();
+    },
+  );
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   setUp(() {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:tylog_core/graph.dart';
 
+import 'calendar_feeds.dart';
 import 'database/note_persistence.dart';
 import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
@@ -33,6 +34,7 @@ class WorkspaceController extends ChangeNotifier {
     this.isComposing = _notComposing,
     this.inspector,
     Future<void> Function(Iterable<TaskRef>)? reconcileTasks,
+    this.fetchFeed = fetchCalendarBody,
     this.database,
     this.databaseForVault,
     DateTime Function()? now,
@@ -41,6 +43,12 @@ class WorkspaceController extends ChangeNotifier {
        _now = now ?? DateTime.now,
        _useForegroundService = useForegroundService ?? Platform.isAndroid;
 
+  final Future<String> Function(String) fetchFeed;
+  List<FeedEvent> feedEvents = [];
+  Map<String, dynamic> calendarSettings = {};
+  Timer? _feedTimer;
+  Future<void>? _feedFlight;
+  final Map<String, Future<String>> _eventCreates = {};
   final TaskScheduler taskScheduler;
   final bool Function() isComposing;
   final TypstInspector? inspector;
@@ -302,6 +310,8 @@ class WorkspaceController extends ChangeNotifier {
 
   void close(String message, {NextcloudConfig? nextCloud}) {
     _vaultGeneration++;
+    _feedFlight = null;
+    _eventCreates.clear();
     if (_foregroundGeneration != null) {
       _foregroundGeneration = null;
       unawaited(_stopSyncForeground());
@@ -317,6 +327,8 @@ class WorkspaceController extends ChangeNotifier {
     syncStage = null;
     rebuilding = false;
     rebuildProgress = null;
+    feedEvents = [];
+    calendarSettings = {};
     vault = null;
     entry = null;
     note = null;
@@ -380,6 +392,8 @@ class WorkspaceController extends ChangeNotifier {
     VaultStorage? storage,
   }) async {
     final generation = ++_vaultGeneration;
+    _feedFlight = null;
+    _eventCreates.clear();
     _cancelTimers();
     _shutdownWorker();
     _noteMutations.clear();
@@ -456,6 +470,8 @@ class WorkspaceController extends ChangeNotifier {
       // Fast path: assign what a handful of reads can give us right away so
       // the UI is usable immediately, instead of waiting on a full index +
       // search-index rebuild (thousands of sequential reads on SAF vaults).
+      feedEvents = [];
+      calendarSettings = {};
       vault = opened;
       entry = next;
       if (!todayExisted) {
@@ -510,6 +526,13 @@ class WorkspaceController extends ChangeNotifier {
       if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
+      if (inspector == null) {
+        unawaited(refreshCalendarFeeds(force: true));
+        _feedTimer = Timer.periodic(
+          const Duration(hours: 1),
+          (_) => unawaited(refreshCalendarFeeds()),
+        );
+      }
       unawaited(_sweepSafBackups(opened));
       unawaited(reloadReadingState(opened: opened, generation: generation));
       if (_useWorker && storage == null) {
@@ -570,6 +593,7 @@ class WorkspaceController extends ChangeNotifier {
     final becameDirty = !dirty;
     _setDirty(true);
     if (becameDirty) status = 'Autosave pending...';
+    _feedTimer?.cancel();
     _autosave?.cancel();
     _autosave = Timer(const Duration(milliseconds: 400), save);
   }
@@ -618,12 +642,153 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  Future<String> materializeEvent(String path) {
+    final event = feedEvents.where((e) => e.path == path).firstOrNull;
+    if (event == null) return Future.value(path);
+    return _eventCreates.putIfAbsent(
+      path,
+      () => createPage(
+        event.title,
+        kind: 'event',
+        event: event,
+      ).whenComplete(() {
+        _eventCreates.remove(path);
+      }),
+    );
+  }
+
+  Future<void> configureCalendars(Map<String, dynamic> config) async {
+    await _feedFlight;
+    final opened = vault;
+    if (opened == null) return;
+    final settings =
+        jsonDecode(await opened.storage.readText(Vault.settingsPath))
+            as Map<String, dynamic>;
+    final previous = settings['calendars'] as Map?;
+    settings['calendars'] = {
+      ...config,
+      if (previous?['cache'] != null) 'cache': previous!['cache'],
+    };
+    await opened.storage.writeText(Vault.settingsPath, jsonEncode(settings));
+    await refreshCalendarFeeds(force: true);
+  }
+
+  Future<void> refreshCalendarFeeds({bool force = false}) {
+    final generation = _vaultGeneration;
+    return _feedFlight ??= _refreshCalendarFeeds(force).whenComplete(() {
+      if (generation == _vaultGeneration) _feedFlight = null;
+    });
+  }
+
+  Future<void> _refreshCalendarFeeds(bool force) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return;
+    try {
+      final settings =
+          jsonDecode(await opened.storage.readText(Vault.settingsPath))
+              as Map<String, dynamic>;
+      final config = Map<String, dynamic>.from(
+        settings['calendars'] as Map? ?? {},
+      );
+      if (!_owns(opened, generation)) return;
+      calendarSettings = config;
+      final previous = Map<String, dynamic>.from(config['cache'] as Map? ?? {});
+      List<FeedEvent> parse(String key, String body) => key == 'classes'
+          ? parseTimetable(
+              body,
+              group: config['group'] as String? ?? 'MCIA003N01',
+              programme: config['programme'] as String? ?? '',
+              degree: config['degree'] as String? ?? '',
+            )
+          : parseLabCalendar(body);
+      final cached = <FeedEvent>[];
+      for (final key in ['classes', 'lab']) {
+        final entry = previous[key] as Map?;
+        if (entry != null) {
+          try {
+            cached.addAll(parse(key, entry['body'] as String));
+          } catch (_) {}
+        }
+      }
+      feedEvents = cached;
+      _publishCalendar(index);
+      notifyListeners();
+      final events = <FeedEvent>[];
+      for (final key in ['classes', 'lab']) {
+        final url =
+            config['${key}Url'] as String? ??
+            (key == 'classes' ? timetableUrl : labUrl);
+        final old = previous[key] as Map?;
+        final fetched = DateTime.tryParse(old?['fetched'] as String? ?? '');
+        final hours = (config['${key}Hours'] as num?)?.toInt() ?? 6;
+        if (force ||
+            old?['url'] != url ||
+            fetched == null ||
+            _now().difference(fetched) >= Duration(hours: hours)) {
+          try {
+            final body = await fetchFeed(url);
+            final next = parse(key, body);
+            if (!_owns(opened, generation)) return;
+            previous[key] = {
+              'url': url,
+              'body': body,
+              'fetched': _now().toIso8601String(),
+            };
+            final byId = {for (final e in next) e.id: e};
+            if (old != null && old['url'] == url) {
+              for (final before in parse(key, old['body'] as String)) {
+                final after = byId[before.id];
+                final status = after == null
+                    ? 'cancelled'
+                    : jsonEncode(before.properties) !=
+                              jsonEncode(after.properties) ||
+                          before.title != after.title
+                    ? 'changed'
+                    : null;
+                if (status != null &&
+                    await opened.storage.exists(before.path)) {
+                  if (!_owns(opened, generation)) return;
+                  await mutateNote(
+                    before.path,
+                    (source) =>
+                        replaceNoteProperty(source, 'source_status', status),
+                  );
+                }
+              }
+            }
+          } catch (_) {
+            /* Keep the last successful feed offline. */
+          }
+        }
+        final entry = previous[key] as Map?;
+        if (entry != null) events.addAll(parse(key, entry['body'] as String));
+      }
+      if (!_owns(opened, generation)) return;
+      config['cache'] = previous;
+      final latest =
+          jsonDecode(await opened.storage.readText(Vault.settingsPath))
+              as Map<String, dynamic>;
+      if (!_owns(opened, generation)) return;
+      latest['calendars'] = config;
+      await opened.storage.writeText(Vault.settingsPath, jsonEncode(latest));
+      if (!_owns(opened, generation)) return;
+      feedEvents = events;
+      calendarSettings = config;
+      _publishCalendar(index);
+      notifyListeners();
+    } catch (_) {
+      /* A broken cache must not prevent opening the vault. */
+    }
+  }
+
   /// Creates a page and records its initial source in the durable database.
   /// Existing pages are returned untouched.
   Future<String> createPage(
     String title, {
     String kind = 'note',
     String? template,
+    FeedEvent? event,
     Set<String>? knownIds,
     DateTime? now,
   }) async {
@@ -637,13 +802,23 @@ class WorkspaceController extends ChangeNotifier {
       'article' => 'articles',
       _ => 'notes',
     };
-    final path = '$directory/$safe.typ';
+    final path = event?.path ?? '$directory/$safe.typ';
     final existed = await opened.storage.exists(path);
     if (!_owns(opened, generation)) throw StateError('Vault changed');
     final created = await opened.page(
       title,
       kind: kind,
       template: template,
+      eventPath: event?.path,
+      metadata: event == null
+          ? null
+          : NoteMetadataDraft(
+              id: event.id,
+              title: event.title,
+              kind: 'event',
+              date: event.date,
+              properties: event.properties,
+            ),
       knownIds: knownIds,
       now: now,
     );
@@ -2025,9 +2200,41 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void _publishCalendar(VaultIndex? source) {
-    calendar = source?.calendar ?? const [];
+    calendar = [
+      ...?source?.calendar.where(
+        (item) => !feedEvents.any((event) => event.path == item.notePath),
+      ),
+      for (final event in feedEvents)
+        CalendarItem(
+          date: event.date,
+          kind: CalendarItemKind.dateRef,
+          title:
+              '${event.label}${source?.notesByPath[event.path]?.properties['source_status'] == 'changed' ? ' · changed' : ''}',
+          notePath: event.path,
+        ),
+      for (final note in source?.notes ?? const <NoteRef>[])
+        if (note.kind == 'event' &&
+            note.date != null &&
+            !feedEvents.any((e) => e.path == note.path))
+          CalendarItem(
+            date: note.date!,
+            kind: CalendarItemKind.dateRef,
+            title:
+                '${note.title} · ${note.properties['source_status'] ?? 'current'}',
+            notePath: note.path,
+          ),
+    ]..sort((a, b) => a.date.compareTo(b.date));
     calendarDayMarks =
         source?.calendarDayMarks ?? (daily: <String>{}, refs: <String>{});
+    calendarDayMarks = (
+      daily: calendarDayMarks.daily,
+      refs: {
+        ...calendarDayMarks.refs,
+        ...calendar
+            .where((e) => e.kind != CalendarItemKind.daily)
+            .map((e) => e.date),
+      },
+    );
   }
 
   VaultIndex _retainIndex(VaultIndex next) {

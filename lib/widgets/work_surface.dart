@@ -38,6 +38,7 @@ bool continueReadingEligible(NoteRef note) => note.kind == 'article';
 class TodayPage extends StatelessWidget {
   const TodayPage({
     super.key,
+    this.events = const [],
     required this.tasks,
     required this.recent,
     required this.editor,
@@ -46,6 +47,7 @@ class TodayPage extends StatelessWidget {
     this.onReadPath,
   });
 
+  final List<CalendarItem> events;
   final List<TaskRef> tasks;
   final List<(NoteRef note, double progress)> recent;
   final Widget editor;
@@ -71,7 +73,10 @@ class TodayPage extends StatelessWidget {
         )
         .toList();
     final hasTopContent =
-        agenda.isNotEmpty || otherTasks.isNotEmpty || recent.isNotEmpty;
+        events.isNotEmpty ||
+        agenda.isNotEmpty ||
+        otherTasks.isNotEmpty ||
+        recent.isNotEmpty;
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
@@ -90,12 +95,20 @@ class TodayPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (agenda.isNotEmpty)
+                    if (agenda.isNotEmpty || events.isNotEmpty)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
                         leading: const Icon(Icons.event_note),
-                        title: Text('Agenda · ${agenda.length}'),
+                        title: Text(
+                          'Agenda · ${agenda.length + events.length}',
+                        ),
                         children: [
+                          for (final event in events)
+                            ListTile(
+                              leading: const Icon(Icons.event),
+                              title: Text(event.title),
+                              onTap: () => onOpenPath(event.notePath),
+                            ),
                           for (final task in agenda)
                             ListTile(
                               leading: TaskCheckbox(

@@ -11,6 +11,8 @@ import 'constants.dart';
 class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
     super.key,
+    this.calendarSettings = const {},
+    this.onConfigureCalendars,
     required this.vaultPath,
     required this.cloud,
     required this.syncing,
@@ -34,6 +36,8 @@ class SettingsSheet extends StatefulWidget {
     this.onPdfPaperChanged,
   });
 
+  final Map<String, dynamic> calendarSettings;
+  final Future<void> Function(Map<String, dynamic>)? onConfigureCalendars;
   final String screenshotsMode;
   final String screenshotsTime;
   final Future<void> Function(String, String)? onConfigureScreenshots;
@@ -68,6 +72,92 @@ class _SettingsSheetState extends State<SettingsSheet> {
       widget.readScreenshotsStatus != null &&
       widget.onConfigureScreenshots != null &&
       widget.onProcessScreenshots != null;
+
+  Future<void> _calendars() async {
+    final config = widget.calendarSettings;
+    final defaults = <String, String>{
+      'classesUrl': 'https://berlogabob.github.io/iade-lab-schedule/all.json',
+      'group': 'MCIA003N01',
+      'programme': '',
+      'degree': '',
+      'classesHours': '6',
+      'labUrl': 'https://berlogabob.github.io/openlabtwin/calendar/lab.ics',
+      'labHours': '6',
+    };
+    final labels = [
+      'My classes URL',
+      'Group',
+      'Programme (optional)',
+      'Degree (optional)',
+      'Classes refresh hours',
+      'Lab schedule URL',
+      'Lab refresh hours',
+    ];
+    final controllers = {
+      for (final entry in defaults.entries)
+        entry.key: TextEditingController(
+          text: config[entry.key]?.toString() ?? entry.value,
+        ),
+    };
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Calendars'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (i, key) in defaults.keys.indexed)
+                TextField(
+                  controller: controllers[key],
+                  decoration: InputDecoration(labelText: labels[i]),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final next = <String, dynamic>{
+                for (final key in defaults.keys)
+                  key: controllers[key]!.text.trim(),
+              };
+              for (final key in ['classesHours', 'labHours']) {
+                final hours = int.tryParse(next[key]);
+                if (hours == null || hours < 1) return;
+                next[key] = hours;
+              }
+              for (final key in ['classesUrl', 'labUrl']) {
+                final uri = Uri.tryParse(next[key]);
+                if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+                  return;
+                }
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save & refresh'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      final next = <String, dynamic>{
+        ...config,
+        for (final key in defaults.keys)
+          key: key.endsWith('Hours')
+              ? int.parse(controllers[key]!.text.trim())
+              : controllers[key]!.text.trim(),
+      };
+      await widget.onConfigureCalendars!(next);
+    }
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +198,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   },
                 ),
               ),
+              if (widget.onConfigureCalendars != null)
+                SettingsTile(
+                  icon: Icons.calendar_month,
+                  title: 'Calendars',
+                  subtitle: 'My classes · Lab schedule',
+                  onTap: _calendars,
+                ),
               if (readScreenshotsStatusAvailable)
                 ScreenshotsSettings(
                   mode: widget.screenshotsMode,

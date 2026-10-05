@@ -358,7 +358,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _todayStorage = PageStorageBucket();
   String? _timestampCapturePath;
   bool get _usePlainLongEditor =>
-      note != _timestampCapturePath && shouldUseVirtualPlainEditor(richController);
+      note != _timestampCapturePath &&
+      shouldUseVirtualPlainEditor(richController);
   static const _shareChannel = MethodChannel('org.tylog.tylog/share');
   bool _handlingShare = false;
   List<ArticleJob> _articleJobs = const [];
@@ -1251,6 +1252,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final generation = ++_openGeneration;
     final v = vault;
     if (v == null) return;
+    final event = workspace.feedEvents
+        .where((e) => e.id == title || e.title == title)
+        .firstOrNull;
+    if (event != null) {
+      await workspace.materializeEvent(event.path);
+      await _openNote(event.path, generation: generation);
+      return;
+    }
     final existing = _pathForLink(title);
     if (existing != null) {
       await _openNote(existing, generation: generation);
@@ -2279,6 +2288,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   conflicts: syncConflicts.length,
                 );
           return SettingsSheet(
+            calendarSettings: workspace.calendarSettings,
+            onConfigureCalendars: workspace.configureCalendars,
             vaultPath: vaultPath,
             cloud: cloud,
             syncing: syncing,
@@ -2474,6 +2485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openPath(String path) async {
     final v = vault;
     if (v == null) return;
+    await workspace.materializeEvent(path);
     await _openNote(path);
   }
 
@@ -4178,6 +4190,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     };
     final content = switch (mode) {
       'journal' => JournalFeed(
+        events: workspace.calendar
+            .where((e) => e.notePath.startsWith('events/'))
+            .toList(),
         vault: v,
         index: index,
         resolveKind: _resolveKind,
@@ -4369,12 +4384,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         focusNode: _captureFocus,
         controller: richController,
         onInsert: _showMagicMenu,
+        onSelectMention: (item) async {
+          final event = workspace.feedEvents
+              .where((e) => e.id == item.id)
+              .firstOrNull;
+          if (event != null) {
+            await workspace.materializeEvent(event.path);
+            unawaited(workspace.refreshIndex(always: true));
+          }
+        },
         onMentionQuery: (query, kind) async {
           // Query the note index (populated the moment the vault opens), not
           // the full-text search index — the latter can take a while to finish
           // building on large SAF vaults, and mentions must resolve instantly.
           final q = query.trim().toLowerCase();
-          final notes = index?.notes ?? const <NoteRef>[];
+          final eventSuggestions = [
+            for (final e in workspace.feedEvents.where(
+              (e) =>
+                  e.date == isoDay(DateTime.now()) &&
+                  e.title.toLowerCase().contains(q),
+            ))
+              MentionSuggestion(
+                id: e.id,
+                title: e.title,
+                noteKind: 'event',
+                subtitle: e.label,
+              ),
+          ];
+          final eventIds = eventSuggestions.map((e) => e.id).toSet();
+          final notes = (index?.notes ?? const <NoteRef>[])
+              .where((n) => !eventIds.contains(n.id))
+              .toList();
           // Built once per query, not per candidate: _mergedRecent() allocates
           // and sorts, and it is capped at 30 entries.
           final recency = <String, int>{
@@ -4387,6 +4427,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (q.isEmpty) {
             final byPath = index?.notesByPath ?? const <String, NoteRef>{};
             return [
+              ...eventSuggestions,
               for (final recent in _mergedRecent().take(8))
                 if (byPath[recent.path] case final NoteRef n)
                   MentionSuggestion(
@@ -4415,17 +4456,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ).compareTo(mentionScore(a, q, recency));
                   return byScore != 0 ? byScore : a.title.compareTo(b.title);
                 });
-          final suggestions = matchedNotes
-              .take(8)
-              .map(
-                (n) => MentionSuggestion(
-                  id: n.id,
-                  title: n.title,
-                  noteKind: n.kind,
-                  subtitle: mentionSubtitle(n),
+          final suggestions = [
+            ...eventSuggestions,
+            ...matchedNotes
+                .take(8)
+                .map(
+                  (n) => MentionSuggestion(
+                    id: n.id,
+                    title: n.title,
+                    noteKind: n.kind,
+                    subtitle: mentionSubtitle(n),
+                  ),
                 ),
-              )
-              .toList();
+          ];
           // `[[` also completes existing tags into concepts; `@` stays notes.
           if (kind == AutocompleteTriggerKind.wikiLink) {
             final tags = <String>{
@@ -4555,6 +4598,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? PageStorage(
             bucket: _todayStorage,
             child: TodayPage(
+              events: workspace.calendar
+                  .where(
+                    (e) =>
+                        e.date == isoDay(DateTime.now()) &&
+                        e.notePath.startsWith('events/'),
+                  )
+                  .toList(),
               tasks: index?.tasks ?? const [],
               recent: _recentNotes(),
               editor: documentContent,

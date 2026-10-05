@@ -12,6 +12,7 @@ import 'loading.dart';
 class JournalFeed extends StatefulWidget {
   const JournalFeed({
     super.key,
+    this.events = const [],
     required this.vault,
     required this.index,
     required this.onOpenPath,
@@ -19,6 +20,7 @@ class JournalFeed extends StatefulWidget {
     this.onAtomTap,
   });
 
+  final List<CalendarItem> events;
   final Vault? vault;
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
@@ -198,6 +200,14 @@ class _JournalFeedState extends State<JournalFeed> {
                         : humanDate(DateTime.parse(day.date!)),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
+                  for (final event in widget.events.where(
+                    (e) => e.date == _dayKey(day),
+                  ))
+                    ListTile(
+                      leading: const Icon(Icons.event),
+                      title: Text(event.title),
+                      onTap: () => widget.onOpenPath(event.notePath),
+                    ),
                   const Divider(),
                   FutureBuilder<String>(
                     future: source,

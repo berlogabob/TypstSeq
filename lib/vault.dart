@@ -148,6 +148,8 @@ class Vault {
     String title, {
     String kind = 'note',
     String? template,
+    String? eventPath,
+    NoteMetadataDraft? metadata,
     DateTime? now,
     Set<String>? knownIds,
   }) async {
@@ -159,16 +161,21 @@ class Vault {
       'screenshot' => 'screenshots',
       _ => 'notes',
     };
-    final path = '$directory/$safe.typ';
+    final path = eventPath ?? '$directory/$safe.typ';
     if (!await storage.exists(path)) {
-      final id = await nextNoteId(title, now: now, knownIds: knownIds);
+      final id =
+          metadata?.id ?? await nextNoteId(title, now: now, knownIds: knownIds);
       final source = template == null
           ? _noteSource(id: id, title: title.trim(), kind: kind)
           : replaceNoteHeader(
               await storage.readText(template),
               NoteMetadataDraft(id: id, title: title.trim(), kind: kind),
             );
-      await storage.writeText(path, source);
+      await storage.createDirectory(path.substring(0, path.lastIndexOf('/')));
+      await storage.writeText(
+        path,
+        metadata == null ? source : replaceNoteHeader(source, metadata),
+      );
     }
     return path;
   }

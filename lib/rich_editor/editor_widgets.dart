@@ -9,6 +9,7 @@ class TyLogRichEditor extends StatefulWidget {
     this.onMentionQuery,
     this.onCommandSelected,
     this.onCreateNote,
+    this.onSelectMention,
   });
 
   final TyLogEditingController controller;
@@ -37,6 +38,7 @@ class TyLogRichEditor extends StatefulWidget {
   /// chip and confirms a dialog. Returning null falls back to the old
   /// unresolved-chip behavior.
   final Future<String?> Function(String title)? onCreateNote;
+  final Future<void> Function(MentionSuggestion)? onSelectMention;
 
   @override
   State<TyLogRichEditor> createState() => _TyLogRichEditorState();
@@ -276,6 +278,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (trigger == null) return;
     final caret = widget.controller.selection.baseOffset;
     _cancelAutocomplete();
+    try {
+      await widget.onSelectMention?.call(item);
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
     // A create row materialises the page first, so the reference inserted
     // below resolves immediately. On failure (or no handler) the old
     // behavior remains: an unresolved chip the user can tap to create.
