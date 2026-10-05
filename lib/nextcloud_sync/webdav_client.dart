@@ -215,8 +215,14 @@ extension _WebDavClient on NextcloudSync {
     try {
       await response.pipe(tmp.openWrite()).timeout(const Duration(minutes: 5));
       // A truncated body (dropped connection, chunked short read) must never
-      // be committed as the local note.
-      final declaredLength = response.headers.contentLength;
+      // be committed as the local note. A body the client decompressed (gzip
+      // from Cloudflare) has a Content-Length of the compressed bytes, not of
+      // what reached disk, so it can't be checked this way.
+      final declaredLength =
+          response.compressionState ==
+              HttpClientResponseCompressionState.decompressed
+          ? -1
+          : response.contentLength;
       if (declaredLength >= 0 && await tmp.length() != declaredLength) {
         throw HttpException('GET $path truncated body');
       }

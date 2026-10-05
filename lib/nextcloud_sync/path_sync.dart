@@ -86,8 +86,11 @@ extension _PathSync on NextcloudSync {
           .pipe(temporary.openWrite())
           .timeout(const Duration(minutes: 5));
       report();
-      if (response.headers.contentLength >= 0 &&
-          await temporary.length() != response.headers.contentLength) {
+      // Skipped for a decompressed body; see _download in webdav_client.dart.
+      if (response.compressionState !=
+              HttpClientResponseCompressionState.decompressed &&
+          response.contentLength >= 0 &&
+          await temporary.length() != response.contentLength) {
         throw const HttpException('GET archive truncated body');
       }
       progress('validate-archive', null);

@@ -654,6 +654,33 @@ void main() {
     },
   );
 
+  test('a gzip-encoded download is not mistaken for a truncated body', () async {
+    final body = List.filled(40, '{"note": "reading position"} ').join();
+    final remote = <String, _MutableRemoteFile>{
+      '_system/tylog.typ': _remoteText('helper'),
+      'notes/cloud.typ': _remoteText('cloud note'),
+      '_system/reading/a7b7c8e38457f660.json': _remoteText(body),
+    };
+    final server = await _mutableWebDavServer(remote, gzipGets: true);
+    final dir = await Directory.systemTemp.createTemp('tylog_gzip_');
+    final vault = Vault(dir);
+    addTearDown(() async {
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    });
+    await vault.ensureCreated();
+
+    final result = await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
+
+    expect(result.downloaded, remote.length);
+    expect(
+      await vault.storage.readText('_system/reading/a7b7c8e38457f660.json'),
+      body,
+    );
+  });
+
   test('a 423 Locked download is retried, not failed', () async {
     NextcloudSync.busyRetryDelays = const [Duration.zero];
     addTearDown(
@@ -4170,6 +4197,7 @@ Future<HttpServer> _mutableWebDavServer(
   bool changeSnapshotAfterArchive = false,
   String? interruptGetOnce,
   String? lockGetOnce,
+  bool gzipGets = false,
   int lockStatus = 423,
   bool interruptMkcolOnce = false,
   Map<String, int>? getCounts,
@@ -4337,6 +4365,18 @@ Future<HttpServer> _mutableWebDavServer(
           await socket.flush();
           socket.destroy();
           return;
+        } else if (gzipGets &&
+            (request.headers.value(HttpHeaders.acceptEncodingHeader) ?? '')
+                .contains('gzip')) {
+          // Like Cloudflare: gzip body, Content-Length of the compressed bytes.
+          final packed = gzip.encode(file.bytes);
+          request.response.headers.set(HttpHeaders.etagHeader, file.etag);
+          request.response.headers.set(
+            HttpHeaders.contentEncodingHeader,
+            'gzip',
+          );
+          request.response.contentLength = packed.length;
+          request.response.add(packed);
         } else {
           request.response.headers.set(HttpHeaders.etagHeader, file.etag);
           request.response.add(file.bytes);
