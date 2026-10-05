@@ -3,6 +3,105 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.5.0+100
+
+Screenshot capture, in-app semantic search, a PDF reader, and a quieter sync.
+Everything since `v0.4.4+99`, including the move to durable local storage.
+No forced note re-index: database schema 9 adds its path index automatically.
+Semantic search needs a one-time model download and an initial embedding pass.
+
+### Added
+
+- **Screenshots have their own shelf.** The `screenshot` kind has inbox,
+  kept, acted and archived states, plus a rating. Library groups captures by
+  source app or month; the day view shows thumbnails in capture-time order,
+  and the calendar marks days with screenshots.
+- **Screenshot OCR has settings.** Off, Watch, Schedule and Process now
+  control the existing Mac OCR producer through a launch agent; Android sends
+  a run request through the vault. The settings show the producer's last run,
+  pending work, duplicates, sensitive skips and errors.
+- **Time is a magic action.** `/time`, `/now` and `/current time` insert
+  `HH:mm`; the day page also offers a quick `- HH:mm ` capture line. `/image`,
+  `/photo` and `/picture` find the attachment action.
+- **Semantic search runs in the app.** Maintenance ▸ Semantic search offers
+  the model download, then indexes notes incrementally with visible progress.
+  Search combines keyword and meaning-based matches, works while indexing,
+  and opens cited notes or the matching passage in a version-checked PDF.
+  Interrupted embedding work resumes rather than starting over.
+- **PDFs open in a reader.** Text and image-only pages render in the app;
+  protected files ask for a password and let you retry or cancel. Highlights
+  survive reopening, sync as revisions, and travel in portable exports.
+  Replacing or re-indexing a PDF reattaches matching highlights; ambiguous
+  anchors are offered for review and reassignment.
+- **The graph can be shared as SVG.** Export SVG sends the visible bounded
+  graph through the platform share sheet.
+
+### Fixed
+
+- **Sync no longer deletes accented filenames on macOS.** Nextcloud's NFC
+  spelling and a local NFD spelling could look like a rename, causing sync to
+  write and then delete the same APFS file. Names now compare canonically
+  while disk operations keep the real local spelling; ambiguous names stop
+  visibly instead of being merged.
+- **Server locks and temporary failures are retried.** HTTP 423 and 429,
+  common 5xx failures and Cloudflare 520–530 responses get a bounded retry
+  window instead of aborting immediately. Concurrent uploads also wait for
+  their shared destination folder to finish being created.
+- **Edits made outside TyLog are checked before a download.** A same-size,
+  same-timestamp change could evade the cached listing and be overwritten.
+  Sync now checks the actual bytes and preserves a conflict when needed.
+- **Resolving a conflict waits for a running sync.** The row says it is
+  waiting instead of refusing the tap while background polls hold the vault.
+  Concurrent conflict-record writes no longer overwrite one another.
+- **A failed save keeps the editor open.** Opening another note or switching
+  vaults requires a successful save. Task, status and rating changes use the
+  open buffer, so a later autosave cannot undo them; stale operations from a
+  previous vault no longer publish into the newly selected one.
+- **Search updates when indexing finishes.** An open search reruns against
+  the new index, saved searches no longer overwrite each other or leave stale
+  chips, and opening a result deleted since the search fails visibly.
+- **Inserted images appear in preview and export immediately.** Asset loads
+  belong to the note that requested them, and PDF export waits for its files.
+  Reports load their selected notes and dependencies rather than the whole
+  vault, and show preparation progress and failures.
+- **Stopping indexing no longer strands the worker.** Closing or switching
+  vaults completes outstanding work; late-stage cancellation is honoured.
+  Failed syncs only refresh the index if local content changed, and startup
+  no longer repeats a scan already completed by sync.
+- **Long-note editing keeps pending changes and undo.** The editing window
+  flushes before navigation, preserves focused undo, and resets its history
+  when the source changes. Closing the PDF password dialog no longer crashes
+  during its exit animation.
+
+### Changed
+
+- **Autosave sync is calmer.** Typing triggers at most one autosave sync every
+  two minutes; closing a note or backgrounding still syncs immediately.
+  Brief automatic-sync failures show "Offline — changes saved, will sync";
+  repeated failures still surface an error.
+- **Preview fits the screen.** Compiled Typst uses a continuous page that
+  refits on resize or rotation, including plain daily notes without the TyLog
+  template. The view-mode menu gives Edit, Read, Preview and Source their own
+  icons.
+- **PDF page size is an export setting.** Settings offers A4, Letter, A5 and
+  Legal for both note sharing and report PDFs, independently of the preview.
+- **Managed themes upgrade to v2.** Unmodified v1 copies upgrade automatically,
+  including those missing the final blank line. Customized themes are kept;
+  they need to adopt the preview/export inputs to follow the new layout.
+- **Semantic indexing spends less time looking up paths.** Schema 9's path
+  index replaces repeated full-table JSON scans; a 6,500-note resync fell from
+  59 to 10 ms. Pending chunks are recounted every 16 batches, model sessions
+  are reused, and a leaner tokenizer reduces memory use on Android.
+- **Large vaults do less work on the screen thread.** Startup cache decoding
+  moves off it, note lists and pickers use bounded pages, and keyword search
+  uses incremental SQLite FTS. Long notes edit through a bounded window;
+  graph layout is capped at 200 nodes and 500 edges and cached per mode.
+- **Note edits have durable local revisions.** Creation and edits are recorded
+  atomically in SQLite, with a persistent publication queue, conflict-aware
+  revision receive, resumable imports and portable recovery snapshots.
+- **Heading levels and saved-search deletion have tap controls.** Neither
+  needs a long-press to be discovered.
+
 ## 0.4.3+98
 
 An audit of the 0.4.x batch, several of whose findings were created by that
