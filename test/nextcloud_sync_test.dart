@@ -3061,6 +3061,53 @@ void main() {
     );
   });
 
+  test('loadSyncConflicts deletes records for excluded sync paths', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'tylog_excluded_conflicts_',
+    );
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+
+    const excluded = [
+      'notes/.DS_Store',
+      'assets/nested/._photo.jpg',
+      '_system/Thumbs.db',
+      'daily/desktop.ini/note.typ',
+      'projects/.directory',
+      'journal/note.typ',
+    ];
+    for (final path in [...excluded, 'notes/real.typ']) {
+      await vault.storage.writeText(path, 'local content');
+      await createSyncConflict(
+        vault,
+        path,
+        localBytes: utf8.encode('local content'),
+        remoteBytes: utf8.encode('remote content'),
+      );
+    }
+    final records = (await vault.storage.list(
+      path: '.tylog/conflicts',
+    )).where((entry) => entry.path.endsWith('.json')).toList();
+    expect(records, hasLength(excluded.length + 1));
+
+    final conflicts = await loadSyncConflicts(vault);
+
+    expect(conflicts.map((conflict) => conflict.path), ['notes/real.typ']);
+    for (final entry in records) {
+      expect(
+        await vault.storage.exists(entry.path),
+        entry.path == conflicts.single.recordPath,
+      );
+    }
+    for (final path in excluded) {
+      expect(await vault.storage.readText(path), 'local content');
+    }
+    expect((await loadSyncConflicts(vault)).map((conflict) => conflict.path), [
+      'notes/real.typ',
+    ]);
+  });
+
   test(
     'loadSyncConflicts self-heals a record whose snapshots are identical',
     () async {

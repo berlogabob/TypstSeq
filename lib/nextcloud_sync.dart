@@ -1500,6 +1500,11 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
     try {
       final json = (jsonDecode(await vault.storage.readText(entry.path)) as Map)
           .cast<String, Object?>();
+      final path = json['path'] as String?;
+      if (path != null && !isSyncableVaultPath(path)) {
+        await vault.storage.delete(entry.path);
+        continue;
+      }
       final localSnapshot = json['localSnapshot'] as String?;
       final remoteSnapshot = json['remoteSnapshot'] as String?;
       // A record that says the remote is gone keeps its snapshot as evidence,
@@ -1519,7 +1524,6 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
       //
       // A record whose remote is gone keeps its snapshot only as evidence, so
       // it is never a candidate.
-      final path = json['path'] as String?;
       if (json['remoteExists'] != false &&
           path != null &&
           remoteSnapshot != null &&
