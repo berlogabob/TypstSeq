@@ -124,24 +124,10 @@ class Vault {
     final day = isoDay(instant);
     final month =
         'daily/${instant.year.toString().padLeft(4, '0')}/${instant.month.toString().padLeft(2, '0')}';
-    await storage.createDirectory(month);
-    final path = '$month/$day.typ';
-    if (!await storage.exists(path)) {
-      await storage.writeText(
-        path,
-        _noteSource(
-          id: day,
-          title: day,
-          kind: 'daily',
-          date: day,
-          tags: const ['journal'],
-        ),
-      );
-    }
-    return path;
+    return '$month/$day.typ';
   }
 
-  /// Opens (creating if missing) the journal file for an arbitrary day.
+  /// Returns the journal path without materializing an untouched daily.
   Future<String> dailyNote(DateTime day) => todayNote(day);
 
   Future<String> page(
@@ -391,7 +377,12 @@ class Vault {
     }
   }
 
-  Future<String> readText(String path) => storage.readText(path);
+  Future<String> readText(String path) async {
+    final template = emptyDailyTemplate(path);
+    if (template != null && !await storage.exists(path)) return template;
+    return storage.readText(path);
+  }
+
   Future<List<int>> readBytes(String path) => storage.readBytes(path);
   Future<bool> exists(String path) => storage.exists(path);
 }
@@ -461,21 +452,25 @@ String _noteSource({
 /// content that has not been converted.
 const noteHeaderMarker = '#show: tylog.note';
 
-bool isPristineStarterNote(String path, String source) {
+String? emptyDailyTemplate(String path) {
   final match = RegExp(
-    r'^daily/\d{4}/\d{2}/(\d{4}-\d{2}-\d{2})\.typ$',
+    r'^daily/(\d{4})/(\d{2})/(\d{4}-\d{2}-\d{2})\.typ$',
   ).firstMatch(path);
-  final day = match?.group(1);
-  return day != null &&
-      source ==
-          _noteSource(
-            id: day,
-            title: day,
-            kind: 'daily',
-            date: day,
-            tags: const ['journal'],
-          );
+  final day = match?.group(3);
+  if (day == null || !day.startsWith('${match!.group(1)}-${match.group(2)}-')) {
+    return null;
+  }
+  return _noteSource(
+    id: day,
+    title: day,
+    kind: 'daily',
+    date: day,
+    tags: const ['journal'],
+  );
 }
+
+bool isPristineStarterNote(String path, String source) =>
+    emptyDailyTemplate(path) == source;
 
 String _typstList(List<String> values) =>
     values.isEmpty ? '()' : '(${values.map(typstString).join(', ')},)';

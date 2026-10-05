@@ -22,7 +22,6 @@ import 'vault_lock.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
 import 'vault_worker.dart';
-import 'widgets/date_format.dart';
 
 class WorkspaceSyncNotConfigured implements Exception {
   const WorkspaceSyncNotConfigured();
@@ -292,10 +291,6 @@ class WorkspaceController extends ChangeNotifier {
 
   bool get hasSyncConflicts => syncConflicts.isNotEmpty;
 
-  String _todayPath(DateTime day) =>
-      'daily/${day.year.toString().padLeft(4, '0')}/'
-      '${day.month.toString().padLeft(2, '0')}/${isoDay(day)}.typ';
-
   /// Exposed for tests only, to verify [startCloudPolling]/[stopCloudPolling]
   /// actually toggle the background poll timer.
   @visibleForTesting
@@ -418,9 +413,6 @@ class WorkspaceController extends ChangeNotifier {
       );
       if (_disposed || generation != _vaultGeneration) return;
       final todayInstant = _now();
-      final todayPath = _todayPath(todayInstant);
-      final todayExisted = await opened.storage.exists(todayPath);
-      if (_disposed || generation != _vaultGeneration) return;
       final today = await opened.todayNote(todayInstant);
       if (_disposed || generation != _vaultGeneration) return;
       final loadedFiles = <String, Uint8List>{};
@@ -474,10 +466,6 @@ class WorkspaceController extends ChangeNotifier {
       calendarSettings = {};
       vault = opened;
       entry = next;
-      if (!todayExisted) {
-        await _persistCreatedNote(opened, generation, today);
-        if (!_owns(opened, generation)) return;
-      }
       note = today;
       // The worker owns the production index cache. Decoding the complete
       // compressed index here duplicates its work and can stall the root
@@ -522,7 +510,7 @@ class WorkspaceController extends ChangeNotifier {
       indexedRevision = editRevision;
       lastEditAt = null;
       _setDirty(false);
-      source = await opened.storage.readText(today);
+      source = await opened.readText(today);
       if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
@@ -611,6 +599,10 @@ class WorkspaceController extends ChangeNotifier {
     final revision = editRevision;
     final value = source;
     final generation = _vaultGeneration;
+    if (!dirty && isPristineStarterNote(path, value) &&
+        !await opened.storage.exists(path)) {
+      return _owns(opened, generation);
+    }
     try {
       await _persistNote(opened, path, value);
       if (!_owns(opened, generation)) return false;
@@ -827,19 +819,11 @@ class WorkspaceController extends ChangeNotifier {
     return created;
   }
 
-  /// Creates today's journal file and persists it when it was absent.
+  /// Opens today's journal without writing until the first edit.
   Future<String> ensureTodayNote([DateTime? day]) async {
     final opened = vault;
-    final generation = _vaultGeneration;
     if (opened == null) throw StateError('No vault is open');
-    final instant = day ?? _now();
-    final path = _todayPath(instant);
-    final existed = await opened.storage.exists(path);
-    if (!_owns(opened, generation)) throw StateError('Vault changed');
-    final created = await opened.todayNote(instant);
-    if (!_owns(opened, generation)) throw StateError('Vault changed');
-    if (!existed) await _persistCreatedNote(opened, generation, created);
-    return created;
+    return opened.todayNote(day ?? _now());
   }
 
   /// Persists a file materialized by an import whose path was previously
@@ -951,7 +935,7 @@ class WorkspaceController extends ChangeNotifier {
         if (!_owns(opened, generation)) throw StateError('Vault changed');
         continue;
       }
-      final value = await opened.storage.readText(path);
+      final value = await opened.readText(path);
       if (!_owns(opened, generation)) throw StateError('Vault changed');
       if (version == (_noteMutationVersions[path] ?? 0) &&
           _noteMutations[path] == null) {

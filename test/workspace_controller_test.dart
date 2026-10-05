@@ -16,6 +16,7 @@ import 'package:tylog/vault_lock.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'package:tylog/vault.dart' show Vault, emptyDailyTemplate;
 
 Future<void> _waitUntil(
   bool Function() condition, {
@@ -257,8 +258,9 @@ void main() {
       expect(controller.source, contains('#import "/_system/tylog.typ"'));
 
       await _waitUntil(() => controller.index != null);
-      expect(controller.index?.notes, hasLength(1));
-      expect(inspector.calls, 1);
+      expect(controller.index?.notes, isEmpty);
+      expect(await storage.exists(controller.note!), isFalse);
+      expect(inspector.calls, 0);
       expect(controller.searchReady, isTrue);
       expect(controller.searchRevision, greaterThan(0));
 
@@ -273,7 +275,7 @@ void main() {
 
       await controller.refreshIndex(always: true);
       expect(controller.index?.notes.single.metadataSource, 'typst-query');
-      expect(inspector.calls, 2);
+      expect(inspector.calls, 1);
     },
   );
 
@@ -358,7 +360,8 @@ void main() {
       oldStorage.releaseWrite();
       await Future.wait([first, queued, replacement]);
       expect(controller.entry?.id, 'mutation-new');
-      expect(await newStorage.readText(path), isNot(contains('queued')));
+      expect(await newStorage.exists(path), isFalse);
+      expect(controller.source, isNot(contains('queued')));
     },
   );
 
@@ -532,7 +535,8 @@ void main() {
 
       storage.gate.complete();
       await _waitUntil(() => controller.index != null);
-      expect(controller.index?.notes, hasLength(1));
+      expect(controller.index?.notes, isEmpty);
+      expect(await storage.exists(controller.note!), isFalse);
     },
   );
 
@@ -909,6 +913,10 @@ void main() {
   // every autosave, sync tick and tab tap.
   test('calendar is derived once per index, not per build', () async {
     final storage = _MemoryStorage();
+    // Lazy daily creation requires an explicit persisted note fixture.
+    await Vault.withStorage(storage).ensureCreated();
+    const daily = 'daily/2026/10/2026-10-05.typ';
+    await storage.writeText(daily, '${emptyDailyTemplate(daily)}Fixture body');
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
       inspector: _FakeInspector(),
@@ -1019,6 +1027,13 @@ void main() {
       // overwhelmingly exercises - and the Android background service did not,
       // so every no-op scan rewrote the whole file.
       final storage = _MemoryStorage();
+      // Lazy daily creation requires an explicit persisted note fixture.
+      await Vault.withStorage(storage).ensureCreated();
+      const daily = 'daily/2026/10/2026-10-05.typ';
+      await storage.writeText(
+        daily,
+        '${emptyDailyTemplate(daily)}Fixture body',
+      );
       final controller = WorkspaceController(
         taskScheduler: TaskScheduler(),
         inspector: _FakeInspector(),
@@ -1162,15 +1177,15 @@ void main() {
     expect(await controller.save(syncAfter: false), isTrue);
 
     expect(await database.select(database.nodes).get(), hasLength(1));
-    expect(await database.select(database.revisions).get(), hasLength(2));
-    expect(await database.select(database.outboxEntries).get(), hasLength(2));
+    expect(await database.select(database.revisions).get(), hasLength(1));
+    expect(await database.select(database.outboxEntries).get(), hasLength(1));
     expect(
       await database.select(database.derivedInvalidations).get(),
-      hasLength(2),
+      hasLength(1),
     );
   });
 
-  test('page and daily creation persist their initial durable rows', () async {
+  test('page creation persists; daily stays in memory until edited', () async {
     final storage = _MemoryStorage();
     final database = TyLogDatabase(NativeDatabase.memory());
     final controller = WorkspaceController(
@@ -1206,47 +1221,52 @@ void main() {
     expect(page, 'projects/Project.typ');
     expect(daily, 'daily/2026/07/2026-07-03.typ');
     final nodes = await database.select(database.nodes).get();
-    expect(nodes, hasLength(3));
+    expect(nodes, hasLength(1));
     final project = nodes.singleWhere((node) => node.type == 'project');
     expect(project.title, 'Project');
     expect(project.content, contains('Template body'));
-    final journal = nodes.singleWhere(
-      (node) => jsonDecode(node.attributesJson)['path'] == daily,
+    expect(
+      nodes.any((node) => jsonDecode(node.attributesJson)['path'] == daily),
+      isFalse,
     );
-    expect(journal.title, '2026-07-03');
-    expect(await database.select(database.revisions).get(), hasLength(3));
+    expect(await storage.exists(daily), isFalse);
+    expect(await database.select(database.revisions).get(), hasLength(1));
+    expect(await storage.exists(controller.note!), isFalse);
+    expect(await controller.save(syncAfter: false), isTrue);
+    expect(await storage.exists(controller.note!), isFalse);
+    controller.edit('${controller.source}First edit');
+    expect(await controller.save(syncAfter: false), isTrue);
+    expect(await storage.exists(controller.note!), isTrue);
+    expect(await database.select(database.revisions).get(), hasLength(2));
   });
 
-  test(
-    'startup daily creation rolls back when durable persistence fails',
-    () async {
-      final storage = _MemoryStorage();
-      final database = TyLogDatabase(NativeDatabase.memory());
-      await database.customStatement('''
+  test('startup daily does not need a database write', () async {
+    final storage = _MemoryStorage();
+    final database = TyLogDatabase(NativeDatabase.memory());
+    await database.customStatement('''
       CREATE TRIGGER reject_startup_note
       BEFORE INSERT ON nodes
       BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
     ''');
-      final controller = WorkspaceController(
-        taskScheduler: TaskScheduler(),
-        inspector: _FakeInspector(),
-        reconcileTasks: (_) async {},
-        database: Future.value(database),
-        now: () => DateTime(2026, 7, 4, 12),
-      );
-      addTearDown(controller.dispose);
-      addTearDown(database.close);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      database: Future.value(database),
+      now: () => DateTime(2026, 7, 4, 12),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(database.close);
 
-      await controller.openVault(
-        const VaultEntry(id: 'startup-failure', name: 'Database', path: '/db'),
-        storage: storage,
-      );
+    await controller.openVault(
+      const VaultEntry(id: 'startup-failure', name: 'Database', path: '/db'),
+      storage: storage,
+    );
 
-      expect(controller.vault, isNull);
-      expect(await storage.exists('daily/2026/07/2026-07-04.typ'), isFalse);
-      expect(await database.select(database.nodes).get(), isEmpty);
-    },
-  );
+    expect(controller.vault, isNotNull);
+    expect(await storage.exists('daily/2026/07/2026-07-04.typ'), isFalse);
+    expect(await database.select(database.nodes).get(), isEmpty);
+  });
 
   test(
     'database save failure restores the file and keeps the editor dirty',
@@ -1267,6 +1287,9 @@ void main() {
       );
       await _waitUntil(() => controller.index != null);
       final path = controller.note!;
+      controller.edit('${controller.source}Existing content');
+      expect(await controller.save(syncAfter: false), isTrue);
+      await controller.refreshIndex(always: true);
       final before = await storage.readBytes(path);
       final pendingBefore = controller.vault!.isPendingSyncWrite(path);
       await database.customStatement('''
@@ -1410,7 +1433,7 @@ void main() {
       database.nodes,
     )..where((node) => node.id.equals('closed'))).getSingle();
     expect(closed.id, 'closed');
-    expect(await database.select(database.revisions).get(), hasLength(2));
+    expect(await database.select(database.revisions).get(), hasLength(1));
   });
 
   test('deleting a disposable note records a durable tombstone', () async {
@@ -1430,6 +1453,7 @@ void main() {
     );
     await _waitUntil(() => controller.index != null);
     final path = controller.note!;
+    controller.edit('x');
     expect(await controller.save(syncAfter: false), isTrue);
 
     controller.edit('');
@@ -1441,7 +1465,7 @@ void main() {
     );
     expect(node.content, isEmpty);
     expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
-    expect(await database.select(database.revisions).get(), hasLength(3));
+    expect(await database.select(database.revisions).get(), hasLength(2));
   });
 
   test(
@@ -1478,7 +1502,7 @@ void main() {
       )..where((table) => table.id.equals('paper'))).getSingle();
       expect(node.content, isEmpty);
       expect(jsonDecode(node.attributesJson), contains('deletedAtMs'));
-      expect(await database.select(database.revisions).get(), hasLength(3));
+      expect(await database.select(database.revisions).get(), hasLength(2));
     },
   );
 
@@ -2959,14 +2983,14 @@ class _GatedOpenStorage extends _MemoryStorage {
   }
 
   @override
-  Future<String> readText(String path) async {
+  Future<bool> exists(String path) async {
     if (_armed && path.endsWith('.typ')) {
       _armed = false;
       reached.complete();
       await _release.future;
       if (failAfterGate) throw const FileSystemException('old open failed');
     }
-    return super.readText(path);
+    return super.exists(path);
   }
 }
 

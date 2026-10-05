@@ -1450,7 +1450,7 @@ void main() {
     final storage = _FailingStorage();
     final vault = Vault.withStorage(storage);
     final path = await vault.todayNote(DateTime.now());
-    final original = await storage.readText(path);
+    final original = await vault.readText(path);
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
     final dynamic home = tester.state(find.byType(HomeScreen));

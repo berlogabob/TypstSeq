@@ -82,6 +82,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(Card), findsNothing);
+    await tester.tap(find.text('Continue reading'));
+    await tester.pumpAndSettle();
     expect(find.byType(Card), findsNWidgets(2));
     expect(find.text('40%'), findsOneWidget);
     expect(find.text('0%'), findsOneWidget);

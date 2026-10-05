@@ -77,12 +77,10 @@ Future<Directory> seedJournalVault(
   await vault.ensureCreated();
   for (final entry in dailies) {
     final path = await vault.dailyNote(entry.key);
-    if (entry.value.isNotEmpty) {
-      final file = File('${vaultDir.path}/$path');
-      await file.writeAsString(
-        '${await file.readAsString()}\n${entry.value}\n',
-      );
-    }
+    await vault.storage.writeText(
+      path,
+      '${await vault.readText(path)}\n${entry.value}\n',
+    );
   }
   final vaultEntry = VaultEntry(
     id: 'vault',

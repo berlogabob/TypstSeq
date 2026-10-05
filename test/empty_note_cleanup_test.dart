@@ -44,7 +44,8 @@ void main() {
 
   test('emptying an untouched starter daily removes it', () async {
     final path = await vault.todayNote(DateTime.utc(2026, 8, 20));
-    final starter = await storage.readText(path);
+    final starter = await vault.readText(path);
+    await storage.writeText(path, starter);
     expect(isPristineStarterNote(path, starter), isTrue);
 
     await vault.saveNote(path, '   \n');

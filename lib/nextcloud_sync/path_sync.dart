@@ -308,6 +308,36 @@ extension _PathSync on NextcloudSync {
     var deletedRemote = 0;
     var deletedLocal = 0;
 
+    var adoptRemoteConflict = false;
+    if (unresolvedConflict != null && localExists && remoteExists) {
+      final captured = await _captureRemote(
+        path,
+        archive: archive,
+        remoteFile: remoteFile,
+      );
+      try {
+        final bytes = localBytes ?? await vault.storage.readBytes(path);
+        final winner = fastForwardWinner(
+          local: bytes,
+          remote: await captured.file.readAsBytes(),
+          path: path,
+        );
+        if (winner == SyncConflictResolution.keepRemote &&
+            (isPristineStarterNote(
+                  path,
+                  utf8.decode(bytes, allowMalformed: true),
+                ) ||
+                (bytes.isEmpty && emptyDailyTemplate(path) != null) ||
+                path.startsWith('_system/revisions/note-'))) {
+          await _discardConflictsForPath(vault, path);
+          unresolvedConflict = null;
+          adoptRemoteConflict = true;
+        }
+      } finally {
+        await captured.file.delete();
+      }
+    }
+
     if (unresolvedConflict != null && isRegenerableCachePath(path)) {
       // A conflict already recorded against a cache file would otherwise sit
       // there forever: the loop skips a conflicted path before reaching the
@@ -366,13 +396,12 @@ extension _PathSync on NextcloudSync {
         skipped++;
         reason = 'initial-local-only';
       }
-    } else if ((previous == null && localExists && remoteExists) ||
-        (stateRecovered && localExists && remoteExists) ||
-        (previous != null &&
-            localChanged &&
-            remoteChanged &&
-            localExists &&
-            remoteExists)) {
+    } else if (localExists &&
+        remoteExists &&
+        (adoptRemoteConflict ||
+            previous == null ||
+            stateRecovered ||
+            (localChanged && remoteChanged))) {
       if (remoteFile.sha256 != null && remoteFile.sha256 == localHash) {
         observedRemoteEtag = remoteFile.etag;
         skipped++;
@@ -407,7 +436,14 @@ extension _PathSync on NextcloudSync {
           reason = 'same-image-metadata-differs';
         } else if (_protectFromEmpty(path) &&
             await captured.file.length() == 0 &&
-            (localStat?.size ?? 0) > 0) {
+            (localStat?.size ?? 0) > 0 &&
+            !isPristineStarterNote(
+              path,
+              utf8.decode(
+                localBytes ?? await vault.storage.readBytes(path),
+                allowMalformed: true,
+              ),
+            )) {
           await captured.file.delete();
           action = SyncAction.upload;
           await snapshotForUpload();
@@ -456,7 +492,15 @@ extension _PathSync on NextcloudSync {
             final download = await _downloadStorage(
               path,
               vault.storage,
-              protectNonEmpty: true,
+              protectNonEmpty:
+                  emptyDailyTemplate(path) == null ||
+                  !isPristineStarterNote(
+                    path,
+                    utf8.decode(
+                      localBytes ?? await vault.storage.readBytes(path),
+                      allowMalformed: true,
+                    ),
+                  ),
               archive: archive,
               remoteFile: remoteFile,
             );

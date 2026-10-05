@@ -13,6 +13,90 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  test('OS junk is excluded under every syncable tree', () {
+    for (final root in ['daily', 'notes', 'assets', '_system']) {
+      for (final name in [
+        '.DS_Store',
+        '._note.typ',
+        'Thumbs.db',
+        'desktop.ini',
+        '.directory',
+      ]) {
+        expect(isSyncableVaultPath('$root/$name'), isFalse);
+        expect(isSyncableVaultPath('$root/$name/note.typ'), isFalse);
+      }
+      expect(isSyncableVaultPath('$root/note.typ'), isTrue);
+    }
+  });
+
+  test('empty daily and matching revision IDs silently adopt remote', () async {
+    const daily = 'daily/2026/10/2026-10-05.typ';
+    final id = 'note-${List.filled(64, 'a').join()}';
+    final revisionPath = '_system/revisions/$id.json';
+    final remoteDaily = '#import "/_system/tylog.typ" as tylog\nUser text\n';
+    final remoteRevision = jsonEncode({
+      'revision': {'id': id, 'createdAtMs': 2},
+    });
+    for (final local in [emptyDailyTemplate(daily)!, '']) {
+      final remote = <String, _MutableRemoteFile>{
+        daily: _MutableRemoteFile(
+          bytes: utf8.encode(remoteDaily),
+          etag: '"daily"',
+          modified: DateTime.now().toUtc(),
+        ),
+        revisionPath: _MutableRemoteFile(
+          bytes: utf8.encode(remoteRevision),
+          etag: '"revision"',
+          modified: DateTime.now().toUtc(),
+        ),
+        'notes/.DS_Store': _MutableRemoteFile(
+          bytes: [1],
+          etag: '"junk"',
+          modified: DateTime.now().toUtc(),
+        ),
+      };
+      final server = await _mutableWebDavServer(remote);
+      final dir = await Directory.systemTemp.createTemp('tylog_lazy_daily_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeText(daily, local);
+      await vault.storage.writeText(
+        revisionPath,
+        jsonEncode({
+          'revision': {'id': id, 'createdAtMs': 1},
+        }),
+      );
+      await vault.storage.writeText('notes/._junk', 'junk');
+      final result = await NextcloudSync(_config(server)).sync(vault);
+      expect(result.conflicts, 0);
+      expect(await loadSyncConflicts(vault), isEmpty);
+      expect(await vault.readText(daily), remoteDaily);
+      expect(await vault.readText(revisionPath), remoteRevision);
+      expect(await vault.storage.exists('notes/.DS_Store'), isFalse);
+      expect(remote.containsKey('notes/._junk'), isFalse);
+      await vault.storage.writeText(daily, local);
+      await createSyncConflict(
+        vault, daily, localBytes: utf8.encode(local), remoteBytes: utf8.encode(remoteDaily),
+      );
+      final repaired = await NextcloudSync(_config(server)).sync(vault);
+      expect(repaired.conflicts, 0);
+      expect(await loadSyncConflicts(vault), isEmpty);
+      expect(await vault.readText(daily), remoteDaily);
+    }
+    expect(
+      fastForwardWinner(
+        local: utf8.encode('${emptyDailyTemplate(daily)}User edit'),
+        remote: utf8.encode(remoteDaily),
+        path: daily,
+      ),
+      isNull,
+    );
+  });
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   final defaultCheckpointInterval = NextcloudSync.checkpointInterval;
@@ -202,6 +286,7 @@ void main() {
       final vault = Vault(dir);
       await vault.ensureCreated();
       final starter = await vault.todayNote(DateTime(2026, 7, 14));
+      await vault.storage.writeText(starter, emptyDailyTemplate(starter)!);
 
       final pristine = await inspectLocalSync(vault);
       expect(pristine.hasUserContent, isFalse);
@@ -244,6 +329,7 @@ void main() {
         final vault = Vault(dir);
         await vault.ensureCreated();
         final starter = await vault.todayNote(DateTime(2026, 7, 14));
+        await vault.storage.writeText(starter, emptyDailyTemplate(starter)!);
         return (vault: vault, dir: dir, starter: starter);
       }
 
@@ -3701,6 +3787,7 @@ void main() {
     });
     await vault.ensureCreated();
     final starter = await vault.todayNote(DateTime(2026, 7, 15));
+    await vault.storage.writeText(starter, emptyDailyTemplate(starter)!);
 
     await expectLater(
       NextcloudSync(

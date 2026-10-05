@@ -190,7 +190,7 @@ void main() {
     expect(await vault.readText(paths.first), contains('kind: "person"'));
   });
 
-  test('dailyNote opens or creates the journal file for any date', () async {
+  test('dailyNote stays in memory until its first edit', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_daily_');
     addTearDown(() => dir.delete(recursive: true));
     final vault = Vault(dir);
@@ -202,6 +202,8 @@ void main() {
     expect(past, 'daily/2025/01/2025-01-09.typ');
     expect(future, 'daily/2027/12/2027-12-31.typ');
     expect(await vault.readText(past), contains('kind: "daily"'));
+    expect(await vault.storage.exists(past), isFalse);
+    expect(await vault.storage.exists(future), isFalse);
     // Reopening returns the existing file untouched.
     await vault.saveNote(past, 'existing content');
     expect(await vault.dailyNote(DateTime(2025, 1, 9)), past);

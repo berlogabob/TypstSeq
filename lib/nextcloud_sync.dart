@@ -1361,16 +1361,29 @@ bool isDeviceScopedVaultPath(String path) =>
     path.startsWith('_system/reading/') ||
     path.startsWith('${Vault.indexDonorsPath}/');
 
-bool isSyncableVaultPath(String path) => const [
-  'daily/',
-  'notes/',
-  'projects/',
-  'articles/',
-  'screenshots/',
-  'assets/',
-  'outputs/',
-  '_system/',
-].any((prefix) => path.startsWith(prefix));
+bool isSyncableVaultPath(String path) =>
+    !path
+        .split('/')
+        .any(
+          (name) =>
+              const [
+                '.DS_Store',
+                'Thumbs.db',
+                'desktop.ini',
+                '.directory',
+              ].contains(name) ||
+              name.startsWith('._'),
+        ) &&
+    const [
+      'daily/',
+      'notes/',
+      'projects/',
+      'articles/',
+      'screenshots/',
+      'assets/',
+      'outputs/',
+      '_system/',
+    ].any((prefix) => path.startsWith(prefix));
 
 bool isNextcloudManagedVault(
   Directory vault, {
@@ -1449,6 +1462,25 @@ SyncConflictResolution? fastForwardWinner({
   required List<int> remote,
   required String path,
 }) {
+  final template = emptyDailyTemplate(path);
+  if (template != null &&
+      (local.isEmpty || _sameBytes(local, utf8.encode(template)))) {
+    return SyncConflictResolution.keepRemote;
+  }
+  // Note IDs hash entity, parent and content; envelopes also carry local
+  // timestamps and node metadata, so identical revisions can differ in bytes.
+  if (RegExp(r'^_system/revisions/note-[a-f0-9]{64}\.json$').hasMatch(path)) {
+    try {
+      final id = path.split('/').last.replaceFirst('.json', '');
+      final left = jsonDecode(utf8.decode(local)) as Map;
+      final right = jsonDecode(utf8.decode(remote)) as Map;
+      if (left['revision']['id'] == id && right['revision']['id'] == id) {
+        return SyncConflictResolution.keepRemote;
+      }
+    } catch (_) {
+      // Invalid envelopes still require review.
+    }
+  }
   if (!isTextSyncPath(path)) return null;
   if (local.length == remote.length) return null;
   final shorter = local.length < remote.length ? local : remote;

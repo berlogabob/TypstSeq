@@ -168,7 +168,6 @@ class TodayPage extends StatelessWidget {
                     if (recent.isNotEmpty)
                       ExpansionTile(
                         key: const PageStorageKey('today-continue-reading'),
-                        initiallyExpanded: true,
                         leading: const Icon(Icons.history),
                         title: const Text('Continue reading'),
                         children: [
