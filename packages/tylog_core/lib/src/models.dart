@@ -324,12 +324,14 @@ enum CalendarItemKind { daily, task, dateRef }
 class CalendarItem {
   const CalendarItem({
     required this.date,
+    this.start,
     required this.kind,
     required this.title,
     required this.notePath,
   });
 
   final String date;
+  final String? start;
   final CalendarItemKind kind;
   final String title;
   final String notePath;

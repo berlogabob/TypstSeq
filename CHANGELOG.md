@@ -3,6 +3,23 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.1+108
+
+### Changed
+
+- **Today shows one Agenda.** Today's classes, lab slots, consultations and
+  tasks, with overdue tasks in a collapsed group and a link to all tasks.
+  Agenda and Continue reading start collapsed, so your note comes first.
+
+### Fixed
+
+- **No more "Custom Typst" chip on every daily.** TyLog's own import line is
+  hidden like the rest of the note header.
+- **Opening the app no longer creates a conflict on today's note.** Today's
+  note is written when you first type, and an untouched copy yields to the
+  real one from your other device.
+- **Finder's `.DS_Store` and similar files no longer sync.**
+
 ## 0.8.0+107
 
 ### Added
