@@ -6,8 +6,13 @@ import 'package:tylog_core/tylog_core.dart';
 
 const unitSquare = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
 
-NoteRef _note(String path, List<String> tags) =>
-    NoteRef(id: path, path: path, title: path, outgoingLinks: const [], tags: tags);
+NoteRef _note(String path, List<String> tags) => NoteRef(
+  id: path,
+  path: path,
+  title: path,
+  outgoingLinks: const [],
+  tags: tags,
+);
 
 VaultIndex _index(List<NoteRef> notes) => VaultIndex(
   notesByPath: {for (final n in notes) n.path: n},
@@ -23,14 +28,76 @@ List<List<(double, double)>> _cellsOf(VoronoiResult r) => [
 ];
 
 void main() {
-  test('unweighted bisector splits the unit square into exact halves', () {
-    final cell = clipPowerBisector(
-      unitSquare,
-      (0.25, 0.5),
-      0,
-      (0.75, 0.5),
-      0,
+  test('4000 notes stay lazy and capped with lossless overflow', () {
+    final index = _index([
+      for (var i = 0; i < 4000; i++) _note('n$i', ['shared']),
+    ]);
+    final communities = computeCommunities(index, minNotes: 2);
+    final watch = Stopwatch()..start();
+    final req = buildVoronoiRequest(index, communities, 800, 600);
+    final result = computeVoronoiTreemap(req);
+    watch.stop();
+    expect(watch.elapsedMilliseconds, lessThan(1000));
+    for (final p in req.parent.toSet()) {
+      expect(
+        req.parent.where((value) => value == p).length,
+        lessThanOrEqualTo(150),
+      );
+    }
+    final more = req.morePaths.entries.single;
+    expect(req.labels[more.key], '+3851 more');
+    expect(more.value.toSet().length, 3851);
+    final represented = {
+      for (var i = 0; i < req.ids.length; i++)
+        if (index.notesByPath.containsKey(req.ids[i])) req.ids[i],
+      ...more.value,
+    };
+    expect(represented, index.notesByPath.keys.toSet());
+    final cells = _cellsOf(result);
+    for (var i = 0; i < cells.length; i++) {
+      expect(cells[i].isEmpty, req.parent[i] != -1);
+    }
+    final root = req.parent.indexOf(-1);
+    final children = _cellsOf(
+      computeVoronoiTreemap(voronoiChildrenRequest(req, root, cells[root])),
     );
+    final tag = req.ids.indexOf('concept:shared');
+    expect(children[tag], isNotEmpty);
+    final leaves = _cellsOf(
+      computeVoronoiTreemap(voronoiChildrenRequest(req, tag, children[tag])),
+    );
+    expect(leaves.where((cell) => cell.isNotEmpty).length, 150);
+  });
+
+  test('caps tags by weight and retains all omitted descendants', () {
+    final notes = [
+      for (var tag = 0; tag < 151; tag++)
+        for (var note = 0; note < (tag == 150 ? 5 : 1); note++)
+          _note('$tag/$note', ['tag$tag']),
+    ];
+    final index = _index(notes);
+    final communities = CommunityMap(
+      tagToCluster: {for (var tag = 0; tag < 151; tag++) 'tag$tag': 'group'},
+      noteToCluster: {for (final note in notes) note.path: 'group'},
+      clusterOrder: ['group'],
+    );
+    final req = buildVoronoiRequest(index, communities, 800, 600);
+    final root = req.ids.indexOf('cluster:group');
+    final tags = [
+      for (var i = 0; i < req.ids.length; i++)
+        if (req.parent[i] == root) i,
+    ];
+    expect(tags.length, 150);
+    expect(req.ids, contains('concept:tag150'));
+    final overflow = req.morePaths.entries.single;
+    expect(req.labels[overflow.key], '+2 more');
+    expect(req.weight[overflow.key], 2);
+    expect(overflow.value.length, 2);
+    expect(req.weight[root], 155);
+  });
+
+  test('unweighted bisector splits the unit square into exact halves', () {
+    final cell = clipPowerBisector(unitSquare, (0.25, 0.5), 0, (0.75, 0.5), 0);
     expect(polygonArea(cell), closeTo(0.5, 1e-9));
     for (final (x, _) in cell) {
       expect(x, lessThanOrEqualTo(0.5 + 1e-9));
@@ -78,8 +145,11 @@ void main() {
     }
     final smallMax = areas.sublist(0, 20).reduce(math.max);
     for (var i = 20; i < areas.length; i++) {
-      expect(areas[i], greaterThan(smallMax),
-          reason: 'target ${targets[i]} not bigger than every 1-note cell');
+      expect(
+        areas[i],
+        greaterThan(smallMax),
+        reason: 'target ${targets[i]} not bigger than every 1-note cell',
+      );
     }
     // A 1-note cell must stay near its fair share, not just below the heavy
     // cells (the relative convergence bound: within 25% of avgArea/4).
@@ -110,7 +180,9 @@ void main() {
       height: 1470,
       seed: 7,
     );
-    final areas = _cellsOf(computeVoronoiTreemap(req)).map(polygonArea).toList();
+    final areas = _cellsOf(
+      computeVoronoiTreemap(req),
+    ).map(polygonArea).toList();
     final total = areas.fold(0.0, (a, b) => a + b);
     expect(total, closeTo(1450 * 1470, 1450 * 1470 * 1e-6));
     // Every community visible and big enough to at least register (>0.1%).
@@ -129,8 +201,10 @@ void main() {
   });
 
   test('degenerates: single site fills the boundary, duplicates survive', () {
-    expect(polygonArea(weightedTessellation(unitSquare, [5], 1).single),
-        closeTo(1.0, 1e-9));
+    expect(
+      polygonArea(weightedTessellation(unitSquare, [5], 1).single),
+      closeTo(1.0, 1e-9),
+    );
     final dup = weightedTessellation(unitSquare, [1, 1, 1], 2);
     expect(dup.length, 3);
     expect(dup.fold(0.0, (a, c) => a + polygonArea(c)), closeTo(1.0, 1e-6));
@@ -164,8 +238,10 @@ void main() {
       final iN1 = req.ids.indexOf('n1');
       expect(req.depth[iN1], 2);
       expect(req.ids[req.parent[iN1]], 'concept:a1');
-      expect(req.parent[req.parent[iN1]],
-          req.ids.indexOf('cluster:${communities.noteToCluster['n1']}'));
+      expect(
+        req.parent[req.parent[iN1]],
+        req.ids.indexOf('cluster:${communities.noteToCluster['n1']}'),
+      );
 
       // The unclustered note is a direct depth-1 child of Uncategorized.
       final iN7 = req.ids.indexOf('n7');
@@ -180,6 +256,15 @@ void main() {
     test('cells nest inside their parent and cover the rectangle', () {
       final result = computeVoronoiTreemap(req);
       final cells = _cellsOf(result);
+      for (var i = 0; i < cells.length; i++) {
+        if (cells[i].length < 3) continue;
+        final level = _cellsOf(
+          computeVoronoiTreemap(voronoiChildrenRequest(req, i, cells[i])),
+        );
+        for (var j = 0; j < cells.length; j++) {
+          if (req.parent[j] == i) cells[j] = level[j];
+        }
+      }
       expect(cells.length, req.ids.length);
 
       final rootArea = [

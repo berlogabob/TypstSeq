@@ -12,6 +12,16 @@ NoteRef _note(String path, List<String> tags) => NoteRef(
   tags: tags,
 );
 
+Future<void> _waitForLayout(WidgetTester tester) async {
+  // compute uses real isolates; let their completion return to the test zone.
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 30)),
+    );
+    await tester.pump();
+  }
+}
+
 void main() {
   final index = VaultIndex(
     notesByPath: {
@@ -46,7 +56,7 @@ void main() {
     // past the reveal threshold, so a tap lands on a leaf note cell.
     final opened = <String>[];
     await tester.pumpWidget(host(c: communities, onOpen: opened.add));
-    await tester.pump();
+    await _waitForLayout(tester);
     expect(find.byType(CustomPaint), findsWidgets);
     expect(find.byKey(const Key('voronoi-fit')), findsOneWidget);
 
@@ -66,7 +76,7 @@ void main() {
     final handle = tester.ensureSemantics();
     final opened = <String>[];
     await tester.pumpWidget(host(c: communities, onOpen: opened.add));
-    await tester.pump();
+    await _waitForLayout(tester);
 
     // ignore: deprecated_member_use — rootPipelineOwner has no semanticsOwner
     final owner = tester.binding.pipelineOwner.semanticsOwner!;
@@ -95,6 +105,120 @@ void main() {
     await tester.pump();
     expect(opened, ['n1']);
 
+    handle.dispose();
+  });
+
+  testWidgets(
+    'overflow activation opens omitted notes and cached levels survive zoom',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      final large = VaultIndex(
+        notesByPath: {
+          for (var i = 0; i < 151; i++) 'note$i': _note('note$i', []),
+        },
+        backlinksByTarget: const {},
+      );
+      final groups = computeCommunities(large);
+      final opened = <List<String>>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VoronoiView(
+              index: large,
+              communities: groups,
+              indexRevision: 1,
+              onOpenPath: (_) {},
+              onOpenNotes: opened.add,
+            ),
+          ),
+        ),
+      );
+      await _waitForLayout(tester);
+      // The initial community is revealed at this viewport, so its overflow
+      // becomes an accessible leaf after the child isolate completes.
+      // ignore: deprecated_member_use
+      final owner = tester.binding.pipelineOwner.semanticsOwner!;
+      SemanticsNode? overflow;
+      void visit(SemanticsNode node) {
+        if (node.getSemanticsData().label == '+2 more') overflow = node;
+        node.visitChildren((child) {
+          visit(child);
+          return true;
+        });
+      }
+
+      visit(owner.rootSemanticsNode!);
+      expect(overflow, isNotNull);
+      owner.performAction(overflow!.id, SemanticsAction.tap);
+      expect(opened.single.length, 2);
+      expect(opened.single.toSet().length, 2);
+      final viewer = tester.widget<InteractiveViewer>(
+        find.byType(InteractiveViewer),
+      );
+      final controller = viewer.transformationController!;
+      controller.value = Matrix4.identity()..scaleByDouble(0.5, 0.5, 0.5, 1);
+      await tester.pump();
+      controller.value = Matrix4.identity();
+      await tester.pump();
+      overflow = null;
+      visit(owner.rootSemanticsNode!);
+      expect(overflow, isNotNull);
+      handle.dispose();
+    },
+  );
+
+  testWidgets('unrevealed group loads only after crossing the zoom threshold', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final small = VaultIndex(
+      notesByPath: {'leaf': _note('leaf', [])},
+      backlinksByTarget: const {},
+    );
+    final opened = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 100,
+            height: 100,
+            child: VoronoiView(
+              index: small,
+              communities: computeCommunities(small),
+              indexRevision: 1,
+              onOpenPath: opened.add,
+            ),
+          ),
+        ),
+      ),
+    );
+    await _waitForLayout(tester);
+    // ignore: deprecated_member_use
+    final owner = tester.binding.pipelineOwner.semanticsOwner!;
+    final labels = <String>[];
+    void visit(SemanticsNode node) {
+      labels.add(node.getSemanticsData().label);
+      node.visitChildren((child) {
+        visit(child);
+        return true;
+      });
+    }
+
+    visit(owner.rootSemanticsNode!);
+    expect(labels, contains('Uncategorized, 1 notes'));
+    expect(labels, isNot(contains('leaf')));
+    await tester.tapAt(tester.getCenter(find.byType(VoronoiView)));
+    expect(opened, isEmpty);
+    await tester.pumpAndSettle();
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    viewer.transformationController!.value = Matrix4.identity()
+      ..scaleByDouble(2, 2, 2, 1);
+    await _waitForLayout(tester);
+    labels.clear();
+    visit(owner.rootSemanticsNode!);
+    expect(labels, contains('leaf'));
     handle.dispose();
   });
 

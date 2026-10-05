@@ -151,6 +151,9 @@ void main() {
         text: 'Write report',
         notePath: 'notes/task.typ',
         status: 'todo',
+        // Due today, so it sits in the expanded Today section; undated tasks
+        // are grouped and collapsed in the agenda.
+        due: DateTime.now().toIso8601String().substring(0, 10),
       );
       await tester.pumpWidget(
         MaterialApp(

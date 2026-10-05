@@ -12,10 +12,6 @@ import 'widgets/graph_label.dart';
 /// (per-cell semantic zoom — big communities open earlier than small ones).
 const kRevealPx = 180.0;
 
-/// Above this many cells the tessellation runs in a background isolate
-/// (mirrors the force layout's threshold in graph.dart).
-const _isolateThreshold = 400;
-
 /// Zoomable Voronoi treemap of the vault: community → tag → note cells packed
 /// into a screen-filling rectangle, deeper levels revealed by zooming. Tap a
 /// cell to dive into it; tap a note cell to open the note.
@@ -26,6 +22,7 @@ class VoronoiView extends StatefulWidget {
     required this.communities,
     required this.onOpenPath,
     required this.indexRevision,
+    this.onOpenNotes,
   });
 
   final VaultIndex index;
@@ -33,6 +30,7 @@ class VoronoiView extends StatefulWidget {
   /// Null while the community pass hasn't landed yet ⇒ placeholder.
   final CommunityMap? communities;
   final ValueChanged<String> onOpenPath;
+  final ValueChanged<List<String>>? onOpenNotes;
 
   /// Cache key: cells are retessellated only when this changes (or the
   /// viewport size does).
@@ -68,6 +66,7 @@ class _Cell {
   final double area;
   final Offset centroid;
   final List<int> children = [];
+  bool ready = false;
 }
 
 Rect _bboxOf(List<Offset> pts) {
@@ -89,6 +88,7 @@ double _areaOf(List<Offset> pts) {
 }
 
 Offset _centroidOf(List<Offset> pts) {
+  if (pts.isEmpty) return Offset.zero;
   final (x, y) = polygonCentroid([for (final p in pts) (p.dx, p.dy)]);
   return Offset(x, y);
 }
@@ -98,7 +98,9 @@ bool _containsPoint(List<Offset> pts, Offset p) =>
 
 /// Whether [cell]'s children are shown at the current zoom [scale].
 bool _isOpen(_Cell cell, double scale) =>
-    cell.children.isNotEmpty && cell.area * scale * scale > kRevealPx * kRevealPx;
+    cell.ready &&
+    cell.children.isNotEmpty &&
+    cell.area * scale * scale > kRevealPx * kRevealPx;
 
 class _VoronoiViewState extends State<VoronoiView>
     with SingleTickerProviderStateMixin {
@@ -112,17 +114,22 @@ class _VoronoiViewState extends State<VoronoiView>
   Size? _builtSize;
   bool _computing = false;
   int _token = 0;
+  VoronoiRequest? _request;
+  final Set<int> _pending = {};
+  bool _revealScheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _zoomCtl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-    )..addListener(() {
-        final anim = _zoomAnim;
-        if (anim != null) _transform.value = anim.value;
-      });
+    _transform.addListener(_scheduleReveal);
+    _zoomCtl =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 260),
+        )..addListener(() {
+          final anim = _zoomAnim;
+          if (anim != null) _transform.value = anim.value;
+        });
   }
 
   @override
@@ -138,15 +145,14 @@ class _VoronoiViewState extends State<VoronoiView>
     if (widget.indexRevision != oldWidget.indexRevision ||
         !identical(widget.communities, oldWidget.communities)) {
       _token++;
+      _pending.clear();
       _cells = null;
       _builtSize = null;
       _computing = false;
     }
   }
 
-  /// Tessellates (or re-tessellates) for [viewport]: small vaults synchronously,
-  /// large ones on an isolate guarded by [_token] (the `_layoutToken` pattern
-  /// from graph.dart).
+  /// Computes only root geometry on an isolate, guarded by the revision token.
   void _ensureCells(Size viewport) {
     final communities = widget.communities;
     if (communities == null || _computing) return;
@@ -157,19 +163,25 @@ class _VoronoiViewState extends State<VoronoiView>
       viewport.width,
       viewport.height,
     );
-    if (req.ids.length <= _isolateThreshold) {
-      _apply(req, computeVoronoiTreemap(req), viewport);
-      return;
-    }
     _computing = true;
-    final token = _token;
-    compute(computeVoronoiTreemap, req).then((result) {
-      if (!mounted || token != _token) return;
-      setState(() {
-        _computing = false;
-        _apply(req, result, viewport);
-      });
-    });
+    _pending.clear();
+    final token = ++_token;
+    compute(computeVoronoiTreemap, req).then(
+      (result) {
+        if (!mounted || token != _token) return;
+        setState(() {
+          _computing = false;
+          _apply(req, result, viewport);
+        });
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!mounted || token != _token) return;
+        setState(() => _computing = false);
+        FlutterError.reportError(
+          FlutterErrorDetails(exception: error, stack: stack),
+        );
+      },
+    );
   }
 
   void _apply(VoronoiRequest req, VoronoiResult result, Size viewport) {
@@ -183,25 +195,115 @@ class _VoronoiViewState extends State<VoronoiView>
           colorSlot: req.colorSlot[i],
           count: req.weight[i].round(),
           pts: [
-            for (var v = result.cellStart[i]; v < result.cellStart[i + 1]; v += 2)
+            for (
+              var v = result.cellStart[i];
+              v < result.cellStart[i + 1];
+              v += 2
+            )
               Offset(result.verts[v], result.verts[v + 1]),
           ],
         ),
     ];
     final roots = <int>[];
     for (var i = 0; i < cells.length; i++) {
-      if (cells[i].pts.length < 3) continue; // vanished cell: don't render
       if (cells[i].parent == -1) {
-        roots.add(i);
+        if (cells[i].pts.length >= 3) roots.add(i);
       } else {
         cells[cells[i].parent].children.add(i);
       }
     }
+    _request = req;
     _cells = cells;
     _roots = roots;
     _rootCount = math.max(1, voronoiRootCount(req));
     _builtSize = viewport;
     _transform.value = Matrix4.identity();
+    _scheduleReveal();
+  }
+
+  void _scheduleReveal() {
+    if (_revealScheduled) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (mounted) _revealChildren();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _revealChildren() {
+    final cells = _cells;
+    final req = _request;
+    if (cells == null || req == null) return;
+    final scale = _transform.value.getMaxScaleOnAxis();
+    final matrix = _transform.value;
+    final visible = Rect.fromLTWH(
+      -matrix.storage[12] / scale,
+      -matrix.storage[13] / scale,
+      _builtSize!.width / scale,
+      _builtSize!.height / scale,
+    );
+    void visit(int i) {
+      final cell = cells[i];
+      if (!cell.bbox.overlaps(visible) ||
+          cell.children.isEmpty ||
+          cell.area * scale * scale <= kRevealPx * kRevealPx) {
+        return;
+      }
+      if (cell.ready) {
+        for (final child in cell.children) {
+          visit(child);
+        }
+        return;
+      }
+      if (!_pending.add(i)) return;
+      final token = _token;
+      final request = voronoiChildrenRequest(req, i, [
+        for (final p in cell.pts) (p.dx, p.dy),
+      ]);
+      compute(computeVoronoiTreemap, request).then(
+        (result) {
+          if (!mounted || token != _token) return;
+          setState(() {
+            _pending.remove(i);
+            final updated = List<_Cell>.of(_cells!);
+            for (final child in cell.children) {
+              final old = updated[child];
+              updated[child] = _Cell(
+                id: old.id,
+                label: old.label,
+                parent: old.parent,
+                depth: old.depth,
+                colorSlot: old.colorSlot,
+                count: old.count,
+                pts: [
+                  for (
+                    var v = result.cellStart[child];
+                    v < result.cellStart[child + 1];
+                    v += 2
+                  )
+                    Offset(result.verts[v], result.verts[v + 1]),
+                ],
+              )..children.addAll(old.children);
+            }
+            cell.ready = true;
+            _cells = updated;
+          });
+          _scheduleReveal();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!mounted || token != _token) return;
+          _pending.remove(i);
+          FlutterError.reportError(
+            FlutterErrorDetails(exception: error, stack: stack),
+          );
+        },
+      );
+    }
+
+    for (final root in _roots) {
+      visit(root);
+    }
   }
 
   void _onTap(Offset point, Size viewport) {
@@ -214,7 +316,8 @@ class _VoronoiViewState extends State<VoronoiView>
     while (true) {
       _Cell? found;
       for (final i in level) {
-        if (cells[i].bbox.contains(point) && _containsPoint(cells[i].pts, point)) {
+        if (cells[i].bbox.contains(point) &&
+            _containsPoint(cells[i].pts, point)) {
           found = cells[i];
           break;
         }
@@ -232,7 +335,10 @@ class _VoronoiViewState extends State<VoronoiView>
   /// above and the semantics `onTap` wired into the painter below, so a
   /// screen reader activates exactly what a sighted tap would.
   void _activate(_Cell cell, Size viewport) {
-    if (cell.children.isEmpty) {
+    final more = _request?.morePaths[_cells!.indexOf(cell)];
+    if (more != null) {
+      widget.onOpenNotes?.call(more);
+    } else if (cell.children.isEmpty) {
       widget.onOpenPath(cell.id);
     } else {
       _animateTo(viewport, cell.bbox);
@@ -255,9 +361,10 @@ class _VoronoiViewState extends State<VoronoiView>
         1,
       )
       ..scaleByDouble(scale, scale, scale, 1);
-    _zoomAnim = Matrix4Tween(begin: _transform.value.clone(), end: end).animate(
-      CurvedAnimation(parent: _zoomCtl, curve: Curves.easeInOut),
-    );
+    _zoomAnim = Matrix4Tween(
+      begin: _transform.value.clone(),
+      end: end,
+    ).animate(CurvedAnimation(parent: _zoomCtl, curve: Curves.easeInOut));
     _zoomCtl.forward(from: 0);
   }
 
@@ -309,8 +416,10 @@ class _VoronoiViewState extends State<VoronoiView>
               child: IconButton.filledTonal(
                 key: const Key('voronoi-fit'),
                 tooltip: 'Fit map',
-                onPressed: () =>
-                    _animateTo(viewport, Offset.zero & (_builtSize ?? viewport)),
+                onPressed: () => _animateTo(
+                  viewport,
+                  Offset.zero & (_builtSize ?? viewport),
+                ),
                 icon: const Icon(Icons.fit_screen),
               ),
             ),
@@ -365,8 +474,10 @@ class _VoronoiPainter extends CustomPainter {
     // Deeper levels fade toward the surface; alternate siblings a notch so
     // adjacent cells of one parent still separate without borders doing all
     // the work.
-    final t = (0.18 * cell.depth + (siblingIndex.isOdd ? 0.07 : 0.0))
-        .clamp(0.0, 0.6);
+    final t = (0.18 * cell.depth + (siblingIndex.isOdd ? 0.07 : 0.0)).clamp(
+      0.0,
+      0.6,
+    );
     return Color.lerp(base, colorScheme.surface, 0.35 + t)!;
   }
 
@@ -398,7 +509,17 @@ class _VoronoiPainter extends CustomPainter {
         );
         return;
       }
-      canvas.drawPath(cell.path, Paint()..color = _fillFor(cell, siblingIndex));
+      canvas.drawPath(
+        cell.path,
+        Paint()
+          ..color = cell.children.isNotEmpty && !cell.ready
+              ? Color.lerp(
+                  _fillFor(cell, siblingIndex),
+                  colorScheme.surface,
+                  0.5,
+                )!
+              : _fillFor(cell, siblingIndex),
+      );
       canvas.drawPath(cell.path, border);
       labels.add((cell, siblingIndex));
     }

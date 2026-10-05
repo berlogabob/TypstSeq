@@ -11,6 +11,8 @@ import 'date_format.dart';
 import 'loading.dart';
 import 'property_select_chip.dart';
 import 'task_checkbox.dart';
+import 'task_agenda.dart';
+export 'task_agenda.dart' show isTaskInTodayAgenda, isTaskOverdue;
 
 class WorkSurface extends StatelessWidget {
   const WorkSurface({super.key, required this.child});
@@ -27,28 +29,10 @@ class WorkSurface extends StatelessWidget {
   );
 }
 
-/// Whether [task] belongs on the Today agenda given [today] (an ISO
-/// `yyyy-MM-dd` day string): not done/cancelled, and due on-or-before today
-/// or scheduled on-or-before today. `due`/`scheduled` may carry a time
-/// component (`yyyy-MM-ddTHH:mm:ss`); only the date part is compared.
-bool isTaskInTodayAgenda(TaskRef task, String today) {
-  if (task.status == 'done' || task.status == 'cancelled') return false;
-  final due = task.due?.split('T').first;
-  final scheduled = task.scheduled?.split('T').first;
-  return (due != null && due.compareTo(today) <= 0) ||
-      (scheduled != null && scheduled.compareTo(today) <= 0);
-}
-
 /// Continue-reading is for articles only: entities are often stored with
 /// kind 'note' (created before their kind is rewritten), so allowing any
 /// non-article kind lets them leak in.
 bool continueReadingEligible(NoteRef note) => note.kind == 'article';
-
-bool isTaskOverdue(TaskRef task, String today) {
-  if (task.status == 'done' || task.status == 'cancelled') return false;
-  final due = task.due?.split('T').first;
-  return due != null && due.compareTo(today) < 0;
-}
 
 class TodayPage extends StatelessWidget {
   const TodayPage({
@@ -184,71 +168,219 @@ class TodayPage extends StatelessWidget {
   }
 }
 
-class _PrimaryTasksView extends StatelessWidget {
+class _PrimaryTasksView extends StatefulWidget {
   const _PrimaryTasksView({
     required this.tasks,
+    required this.notes,
     required this.indexing,
     required this.onOpenPath,
     required this.onSetStatus,
   });
 
   final List<TaskRef> tasks;
+  final Map<String, NoteRef> notes;
   final bool indexing;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
 
   @override
-  Widget build(BuildContext context) {
-    final today = isoDay(DateTime.now());
-    final sorted = tasks.toList()
-      ..sort((a, b) => (a.due ?? '9999').compareTo(b.due ?? '9999'));
-    // No "Tasks" headline: the Library tab bar already names this screen,
-    // and no sibling tab (Notes/Projects/Articles/Entities/Calendar) has one.
-    final itemCount = sorted.isEmpty ? 1 : sorted.length;
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: itemCount,
-      itemBuilder: (context, i) {
-        if (sorted.isEmpty) {
-          return ListTile(
-            leading: indexing
-                ? const LoadingIndicator(size: 20, strokeWidth: 2)
-                : null,
-            title: Text(indexing ? 'Indexing…' : 'No indexed tasks'),
-          );
-        }
-        final task = sorted[i];
-        final overdue = isTaskOverdue(task, today);
-        return ListTile(
-          leading: TaskCheckbox(
-            value: task.status == 'done',
-            onChanged: (done) =>
-                onSetStatus(task, done == true ? 'done' : 'todo'),
-          ),
-          title: Text(task.text),
-          subtitle: Text(
-            [
-              if (task.project != null) task.project!,
-              if (task.due != null)
-                'due ${task.due}${overdue ? ' · overdue' : ''}',
-            ].join(' · '),
-            style: overdue
-                ? TextStyle(color: Theme.of(context).colorScheme.error)
-                : null,
-          ),
-          // Row opens the task's note; completing is the checkbox's job
-          // only — a row tap that marks done makes the task vanish under
-          // the finger (same reasoning as TodayPage's agenda row).
-          onTap: () => onOpenPath(task.notePath),
-          trailing: IconButton(
-            tooltip: 'Open source note',
-            icon: const Icon(Icons.open_in_new),
-            onPressed: () => onOpenPath(task.notePath),
-          ),
-        );
+  State<_PrimaryTasksView> createState() => _PrimaryTasksViewState();
+}
+
+class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
+  final _cache = TaskAgendaCache();
+  final _expanded = <String>{};
+  TaskAgendaFilter _filter = TaskAgendaFilter.open;
+  String? _project;
+  String _search = '';
+  List<TaskAgendaGroup> _groups = const [];
+  Timer? _dayTimer;
+  late String _today;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _scheduleDay();
+  }
+
+  void _scheduleDay() {
+    final now = DateTime.now();
+    _dayTimer = Timer(
+      DateTime(now.year, now.month, now.day + 1).difference(now),
+      () {
+        if (!mounted) return;
+        setState(_refresh);
+        _scheduleDay();
       },
     );
   }
+
+  @override
+  void didUpdateWidget(covariant _PrimaryTasksView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _refresh();
+  }
+
+  void _refresh() {
+    _today = isoDay(DateTime.now());
+    final groups = _cache.resolve(widget.tasks, widget.notes, _today);
+    if (!_cache.projects.contains(_project)) _project = null;
+    _groups = filterTaskAgenda(groups, _filter, _project, _search);
+  }
+
+  @override
+  void dispose() {
+    _dayTimer?.cancel();
+    super.dispose();
+  }
+
+  Widget _row(TaskRef task) {
+    final overdue = isTaskOverdue(task, _today);
+    return ListTile(
+      leading: TaskCheckbox(
+        value: task.status == 'done',
+        onChanged: (done) =>
+            widget.onSetStatus(task, done == true ? 'done' : 'todo'),
+      ),
+      title: Text(task.text),
+      subtitle: Text(
+        [
+          if (task.project != null) task.project!,
+          if (task.due != null) 'due ${task.due}${overdue ? ' · overdue' : ''}',
+        ].join(' · '),
+        style: overdue
+            ? TextStyle(color: Theme.of(context).colorScheme.error)
+            : null,
+      ),
+      onTap: () => widget.onOpenPath(task.notePath),
+      trailing: IconButton(
+        tooltip: 'Open source note',
+        icon: const Icon(Icons.open_in_new),
+        onPressed: () => widget.onOpenPath(task.notePath),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (final filter in TaskAgendaFilter.values)
+                  ChoiceChip(
+                    label: Text(switch (filter) {
+                      TaskAgendaFilter.open => 'Open',
+                      TaskAgendaFilter.done => 'Done',
+                      TaskAgendaFilter.all => 'All',
+                    }),
+                    selected: _filter == filter,
+                    onSelected: (_) => setState(() {
+                      _filter = filter;
+                      _refresh();
+                    }),
+                  ),
+                DropdownButton<String>(
+                  value: _project,
+                  hint: const Text('All projects'),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('All projects'),
+                    ),
+                    for (final project in _cache.projects)
+                      DropdownMenuItem(value: project, child: Text(project)),
+                  ],
+                  onChanged: (value) => setState(() {
+                    _project = value;
+                    _refresh();
+                  }),
+                ),
+              ],
+            ),
+            TextField(
+              decoration: const InputDecoration(
+                hintText: 'Search task text',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) => setState(() {
+                _search = value;
+                _refresh();
+              }),
+            ),
+          ],
+        ),
+      ),
+      Expanded(
+        child: CustomScrollView(
+          slivers: [
+            if (_groups.isEmpty)
+              SliverToBoxAdapter(
+                child: ListTile(
+                  leading: widget.indexing
+                      ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                      : null,
+                  title: Text(
+                    widget.indexing ? 'Indexing…' : 'No matching tasks',
+                  ),
+                ),
+              ),
+            for (final group in _groups) ...[
+              if (group.key.startsWith('upcoming:') &&
+                  group ==
+                      _groups.firstWhere((g) => g.key.startsWith('upcoming:')))
+                const SliverToBoxAdapter(
+                  child: ListTile(title: Text('Upcoming')),
+                ),
+              if ((group.key.startsWith('project:') ||
+                      group.key.startsWith('note:')) &&
+                  group ==
+                      _groups.firstWhere(
+                        (g) =>
+                            g.key.startsWith('project:') ||
+                            g.key.startsWith('note:'),
+                      ))
+                const SliverToBoxAdapter(
+                  child: ListTile(title: Text('No date')),
+                ),
+              SliverToBoxAdapter(
+                child: ListTile(
+                  title: Text('${group.title} · ${group.tasks.length}'),
+                  trailing: group.collapsed
+                      ? Icon(
+                          _expanded.contains(group.key)
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                        )
+                      : null,
+                  onTap: group.collapsed
+                      ? () => setState(() {
+                          if (!_expanded.add(group.key)) {
+                            _expanded.remove(group.key);
+                          }
+                        })
+                      : null,
+                ),
+              ),
+              if (!group.collapsed || _expanded.contains(group.key))
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => _row(group.tasks[i]),
+                    childCount: group.tasks.length,
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 class LibraryView extends StatelessWidget {
@@ -358,6 +490,7 @@ class LibraryView extends StatelessWidget {
               ),
               _PrimaryTasksView(
                 tasks: index?.tasks ?? const <TaskRef>[],
+                notes: index?.notesByPath ?? const <String, NoteRef>{},
                 indexing: indexing,
                 onSetStatus: onSetTaskStatus,
                 onOpenPath: onOpenPath,

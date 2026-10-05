@@ -8,7 +8,7 @@ import 'models.dart';
 /// hierarchy level; the loop exits early once every cell is within 2% of the
 /// total area from its target — approximate area matching is the requirement
 /// ("big tag looks big"), not exact proportions.
-const kVoronoiIterations = 120;
+const kVoronoiIterations = 40;
 
 /// Signed shoelace area; positive when [poly] winds counter-clockwise in a
 /// y-up frame (clockwise on screen). Callers wanting a magnitude use
@@ -108,9 +108,7 @@ List<List<(double, double)>> powerCells(
   List<(double, double)> boundary,
 ) {
   final n = sites.length;
-  return [
-    for (var i = 0; i < n; i++) _powerCell(i, sites, weights, boundary),
-  ];
+  return [for (var i = 0; i < n; i++) _powerCell(i, sites, weights, boundary)];
 }
 
 List<(double, double)> _powerCell(
@@ -202,8 +200,66 @@ List<List<(double, double)>> weightedTessellation(
       totalW > 0 ? totalArea * math.max(w, 0.0) / totalW : totalArea / n,
   ];
   final rng = math.Random(seed);
-  final sites = List.generate(n, (_) => _randomPointIn(boundary, rng));
-  final weights = List.filled(n, 0.0);
+  final sites = List<(double, double)>.filled(n, (0, 0));
+  // Start each site in a region matching its target area, rather than
+  // spending most of the iteration budget moving a large random cell.
+  void seedRegions(List<int> indices, List<(double, double)> region) {
+    if (indices.length == 1) {
+      sites[indices.single] = polygonCentroid(region);
+      return;
+    }
+    final sum = indices.fold(0.0, (sum, i) => sum + target[i]);
+    var split = 1;
+    var leftWeight = target[indices.first];
+    while (split < indices.length - 1 &&
+        (leftWeight + target[indices[split]] - sum / 2).abs() <
+            (leftWeight - sum / 2).abs()) {
+      leftWeight += target[indices[split++]];
+    }
+    final xs = region.map((p) => p.$1), ys = region.map((p) => p.$2);
+    final minX = xs.reduce(math.min), maxX = xs.reduce(math.max);
+    final minY = ys.reduce(math.min), maxY = ys.reduce(math.max);
+    final vertical = maxX - minX >= maxY - minY;
+    var lo = vertical ? minX : minY, hi = vertical ? maxX : maxY;
+    List<(double, double)> clip(double cut) => clipPowerBisector(
+      region,
+      vertical ? (-1, 0) : (0, -1),
+      4 * cut,
+      vertical ? (1, 0) : (0, 1),
+      0,
+    );
+    final desired = polygonArea(region) * leftWeight / sum;
+    for (var round = 0; round < 32; round++) {
+      final mid = (lo + hi) / 2;
+      if (polygonArea(clip(mid)) < desired) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    final cut = (lo + hi) / 2;
+    final left = clip(cut);
+    final right = clipPowerBisector(
+      region,
+      vertical ? (1, 0) : (0, 1),
+      0,
+      vertical ? (-1, 0) : (0, -1),
+      4 * cut,
+    );
+    seedRegions(indices.sublist(0, split), left);
+    seedRegions(indices.sublist(split), right);
+  }
+
+  if (target.any((area) => area <= 0)) {
+    for (var i = 0; i < n; i++) {
+      sites[i] = _randomPointIn(boundary, rng);
+    }
+  } else {
+    seedRegions([for (var i = 0; i < n; i++) i]..shuffle(rng), boundary);
+  }
+  // A small initial power bias keeps the larger seed regions from being
+  // swallowed before the first area correction.
+  final weights = [for (final area in target) area * 0.1];
   var cells = powerCells(sites, weights, boundary);
   final avgArea = totalArea / n;
   // Vanished cell: raise its weight to the minimum that lets its own site
@@ -301,7 +357,8 @@ List<List<(double, double)>> weightedTessellation(
 /// 2 note — uncategorized notes sit at depth 1 directly under their
 /// community), community color slot `colorSlot[i]`, and area weight
 /// `weight[i]`. `ids` are `cluster:<label>`, `concept:<tag>`, or a note path;
-/// a leaf cell (no children) is always a note.
+/// Overflow leaves use `more:<parent>` and retain omitted note paths in
+/// [VoronoiRequest.morePaths].
 class VoronoiRequest {
   const VoronoiRequest({
     required this.ids,
@@ -313,6 +370,9 @@ class VoronoiRequest {
     required this.width,
     required this.height,
     required this.seed,
+    this.morePaths = const {},
+    this.levelParent = -1,
+    this.boundary,
   });
 
   final List<String> ids;
@@ -324,6 +384,9 @@ class VoronoiRequest {
   final double width;
   final double height;
   final int seed;
+  final Map<int, List<String>> morePaths;
+  final int levelParent;
+  final List<(double, double)>? boundary;
 }
 
 /// Tessellated cell polygons, flat: cell i's vertices are
@@ -453,7 +516,64 @@ VoronoiRequest buildVoronoiRequest(
     }
   }
 
+  // Prune each sibling level before any geometry is computed.
+  final oldIds = List.of(ids), oldLabels = List.of(labels);
+  final oldParent = List.of(parent), oldDepth = List.of(depth);
+  final oldSlots = List.of(colorSlot), oldWeights = List.of(weight);
+  final children = <int, List<int>>{};
+  for (var i = 0; i < oldIds.length; i++) {
+    children.putIfAbsent(oldParent[i], () => []).add(i);
+  }
+  ids.clear();
+  labels.clear();
+  parent.clear();
+  depth.clear();
+  colorSlot.clear();
+  weight.clear();
+  final morePaths = <int, List<String>>{};
+  List<String> pathsUnder(int i) => children.containsKey(i)
+      ? [for (final child in children[i]!) ...pathsUnder(child)]
+      : [oldIds[i]];
+  void copyLevel(int oldP, int newP) {
+    final siblings = List.of(children[oldP] ?? const <int>[]);
+    if (siblings.length > 150) {
+      siblings.sort((a, b) {
+        final order = oldWeights[b].compareTo(oldWeights[a]);
+        return order != 0 ? order : oldIds[a].compareTo(oldIds[b]);
+      });
+    }
+    final visible = siblings.length > 150 ? siblings.take(149) : siblings;
+    for (final i in visible) {
+      final next = ids.length;
+      add(
+        oldIds[i],
+        oldLabels[i],
+        newP,
+        oldDepth[i],
+        oldSlots[i],
+        oldWeights[i],
+      );
+      copyLevel(i, next);
+    }
+    if (siblings.length > 150) {
+      final omitted = siblings.skip(149).toList();
+      final paths = [for (final i in omitted) ...pathsUnder(i)];
+      morePaths[ids.length] = paths;
+      add(
+        'more:$newP',
+        '+${omitted.length} more',
+        newP,
+        oldDepth[omitted.first],
+        oldSlots[omitted.first],
+        omitted.fold(0.0, (sum, i) => sum + oldWeights[i]),
+      );
+    }
+  }
+
+  copyLevel(-1, -1);
+
   return VoronoiRequest(
+    morePaths: morePaths,
     ids: ids,
     labels: labels,
     parent: Int32List.fromList(parent),
@@ -467,8 +587,8 @@ VoronoiRequest buildVoronoiRequest(
 }
 
 /// Top-level `compute()` entry: tessellates the communities inside the
-/// [VoronoiRequest.width] x [VoronoiRequest.height] rectangle, then each
-/// parent's children inside the parent polygon, recursively (depth <= 3).
+/// [VoronoiRequest.width] x [VoronoiRequest.height] rectangle, or computes
+/// only the requested child level. Descendants have empty vertex ranges.
 VoronoiResult computeVoronoiTreemap(VoronoiRequest req) {
   final n = req.ids.length;
   final childrenOf = <int, List<int>>{};
@@ -493,16 +613,19 @@ VoronoiResult computeVoronoiTreemap(VoronoiRequest req) {
     );
     for (var j = 0; j < kids.length; j++) {
       polys[kids[j]] = cells[j];
-      tessellate(kids[j], cells[j]);
     }
   }
 
-  tessellate(-1, [
-    (0.0, 0.0),
-    (req.width, 0.0),
-    (req.width, req.height),
-    (0.0, req.height),
-  ]);
+  tessellate(
+    req.levelParent,
+    req.boundary ??
+        [
+          (0.0, 0.0),
+          (req.width, 0.0),
+          (req.width, req.height),
+          (0.0, req.height),
+        ],
+  );
 
   final cellStart = Int32List(n + 1);
   var total = 0;
@@ -521,3 +644,23 @@ VoronoiResult computeVoronoiTreemap(VoronoiRequest req) {
   }
   return VoronoiResult(verts: verts, cellStart: cellStart);
 }
+
+/// Reuses the hierarchy and deterministic seed for one revealed parent's level.
+VoronoiRequest voronoiChildrenRequest(
+  VoronoiRequest req,
+  int parent,
+  List<(double, double)> boundary,
+) => VoronoiRequest(
+  ids: req.ids,
+  labels: req.labels,
+  parent: req.parent,
+  depth: req.depth,
+  colorSlot: req.colorSlot,
+  weight: req.weight,
+  width: req.width,
+  height: req.height,
+  seed: req.seed,
+  morePaths: req.morePaths,
+  levelParent: parent,
+  boundary: boundary,
+);

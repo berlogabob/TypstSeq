@@ -4039,6 +4039,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         communities: communities,
         indexRevision: workspace.indexRevision,
         onOpenPath: (path) => unawaited(_openPath(path)),
+        onOpenNotes: (paths) {
+          final ids = paths.toSet();
+          final filtered = VaultIndex(
+            notesByPath: {
+              for (final entry in index!.notesByPath.entries)
+                if (ids.contains(entry.key)) entry.key: entry.value,
+            },
+            backlinksByTarget: const {},
+          );
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => Scaffold(
+                appBar: AppBar(title: Text('${ids.length} notes')),
+                body: LibraryView(
+                  index: filtered,
+                  calendar: const [],
+                  dayMarks: (daily: <String>{}, refs: <String>{}),
+                  progressByPath: const {},
+                  onOpenPath: (path) {
+                    Navigator.of(context).pop();
+                    unawaited(_openPath(path));
+                  },
+                  onOpenDay: (day) => unawaited(_openDay(day)),
+                  onSetTaskStatus: _setTaskStatus,
+                  onSetReadStatus: _setReadStatus,
+                  onSetRelevance: _setRelevance,
+                  onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
+                  onCreateEntity: () => unawaited(_createEntity()),
+                  onImportMarkdownArticles: _importMarkdownArticles,
+                  onReadPath: _readPath,
+                  onDeleteArticle: _deleteArticle,
+                ),
+              ),
+            ),
+          );
+        },
       ),
       'graph' => GraphView(
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
