@@ -3,6 +3,17 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.7.0+106
+
+### Added
+
+- **Your classes and the lab schedule are in the agenda.** Settings ▸
+  Calendars takes the IADE timetable (filtered by your group) and the lab
+  calendar. Classes and lab slots show in Today, the journal day and the
+  calendar, also offline. Open one, or link it with `@`, and TyLog creates
+  a note for it to write what was asked or discussed; it is created once and
+  reused, and a changed or cancelled lesson keeps your text.
+
 ## 0.6.0+105
 
 ### Added
