@@ -450,6 +450,7 @@ const structuralNoteKinds = {
   'article',
   'research',
   'screenshot',
+  'idea',
 };
 
 /// First-class entity-page kinds (knowledge graph): known, not "unknown".

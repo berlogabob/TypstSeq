@@ -3,6 +3,18 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.0+107
+
+### Added
+
+- **Idea hub ideas live in TyLog.** Student ideas from openlabtwin arrive as
+  idea notes (AI title, summary, keywords, links to matching ideas) with a
+  dated History; the day view shows what happened to ideas that day.
+  Approve or archive in TyLog and the hub follows. Mark your own note as an
+  Idea and the hub normalizes and matches it, writing the result back.
+- **Consultations students book with you** appear in the agenda and the day
+  view, each with a note ready for what you discussed.
+
 ## 0.7.0+106
 
 ### Added
