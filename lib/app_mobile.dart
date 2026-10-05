@@ -4771,7 +4771,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         automaticallyImplyLeading: false,
         centerTitle: false,
         title: mode == 'journal'
-            ? const Text('Journal')
+            ? CompactDateTitle(day: currentDaily ?? DateTime.now())
             : mode == 'library'
             ? const Text('Library')
             : mode == 'graph'
@@ -4799,11 +4799,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             child: Center(
                               child: ValueListenableBuilder<bool>(
                                 valueListenable: workspace.dirtyNotifier,
-                                builder: (context, dirty, _) => Text(
-                                  '${MediaQuery.sizeOf(context).width < 390 ? compactHumanDate(currentDaily) : humanDate(currentDaily)}${dirty ? ' •' : ''}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                builder: (context, dirty, _) =>
+                                    CompactDateTitle(
+                                      day: currentDaily,
+                                      dirty: dirty,
+                                    ),
                               ),
                             ),
                           ),

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' show max;
 import 'dart:typed_data';
 import 'screenshot_strip.dart';
 
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../controlled_editor.dart' show localTime;
 import '../article_jobs.dart';
 import 'calendar_tab.dart';
 import 'constants.dart';
@@ -958,136 +960,398 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
+        if (screenshots)
+          SingleChildScrollView(
+            key: const Key('screenshots-filters'),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Row(
               children: [
                 for (final (value, label) in statusChips)
-                  ChoiceChip(
-                    label: Text(
-                      '$label · ${value == null ? searched.length : counts[value]}',
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(
+                        '$label · ${value == null ? searched.length : counts[value]}',
+                      ),
+                      selected: statusFilter == value,
+                      onSelected: (_) => setState(() => statusFilter = value),
                     ),
-                    selected: statusFilter == value,
-                    onSelected: (_) {
-                      setState(() => statusFilter = value);
-                      _persist();
-                    },
                   ),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              children: [
                 for (final (value, label) in <(String?, String)>[
                   (null, 'Any relevance'),
                   for (final r in relevanceOptions) (r, relevanceLabels[r]!),
                 ])
-                  ChoiceChip(
-                    label: Text(label),
-                    selected: relevanceFilter == value,
-                    onSelected: (_) {
-                      setState(() => relevanceFilter = value);
-                      _persist();
-                    },
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: relevanceFilter == value,
+                      onSelected: (_) =>
+                          setState(() => relevanceFilter = value),
+                    ),
                   ),
               ],
             ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final (value, label) in statusChips)
+                    ChoiceChip(
+                      label: Text(
+                        '$label · ${value == null ? searched.length : counts[value]}',
+                      ),
+                      selected: statusFilter == value,
+                      onSelected: (_) {
+                        setState(() => statusFilter = value);
+                        _persist();
+                      },
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final (value, label) in <(String?, String)>[
+                    (null, 'Any relevance'),
+                    for (final r in relevanceOptions) (r, relevanceLabels[r]!),
+                  ])
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: relevanceFilter == value,
+                      onSelected: (_) {
+                        setState(() => relevanceFilter = value);
+                        _persist();
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
         Expanded(
-          child: ListView(
-            children: [
-              if (!screenshots)
-                ListTile(
-                  key: const ValueKey('import-markdown-articles'),
-                  leading: const Icon(Icons.file_upload_outlined),
-                  title: const Text('Import Markdown articles'),
-                  subtitle: const Text(
-                    'Select one or more .md or .markdown files',
-                  ),
-                  onTap: () => unawaited(widget.onImportMarkdownArticles()),
-                ),
-              if (!screenshots)
-                for (final job in widget.articleJobs.where(
-                  (job) =>
-                      '${job.title ?? ''} ${job.url}'.toLowerCase().contains(q),
-                ))
-                  ListTile(
-                    key: ValueKey(job.path),
-                    leading: Icon(
-                      job.status == 'processing'
-                          ? Icons.hourglass_top
-                          : Icons.schedule,
-                    ),
-                    title: Text(job.title ?? job.url),
-                    subtitle: Text(
-                      '${job.status == 'processing' ? 'Processing' : 'Queued'} · ${job.url}',
-                    ),
-                  ),
-              if (!screenshots && continueNote != null)
-                Card(
-                  key: Key(
-                    '${screenshots ? 'screenshots' : 'articles'}-continue-reading',
-                  ),
-                  child: ListTile(
-                    leading: const Icon(Icons.auto_stories),
-                    title: Text('Continue reading · ${continueNote.title}'),
-                    subtitle: LinearProgressIndicator(value: continueProgress),
-                    trailing: Text('${(continueProgress * 100).round()}%'),
-                    onTap: () => widget.onReadPath(continueNote!.path),
-                  ),
-                ),
-              if (filtered.isEmpty &&
-                  (screenshots || widget.articleJobs.isEmpty))
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.indexing && all.isEmpty) ...[
-                          const LoadingIndicator(size: 20, strokeWidth: 2),
-                          const SizedBox(width: 8),
-                        ],
-                        Text(
-                          widget.indexing && all.isEmpty
-                              ? 'Indexing…'
-                              : q.isNotEmpty || statusFilter != null
-                              ? 'Nothing matches'
-                              : screenshots
-                              ? 'No screenshots yet'
-                              : 'No articles yet — import one above',
+          child: screenshots
+              ? CustomScrollView(
+                  slivers: [
+                    if (filtered.isEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            widget.indexing && all.isEmpty
+                                ? 'Indexing…'
+                                : all.isEmpty
+                                ? 'No screenshots yet'
+                                : 'Nothing matches',
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    for (final (header, notes) in groups) ...[
+                      if (header.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                            child: Text(
+                              '$header · ${notes.length}',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                        ),
+                      SliverPadding(
+                        padding: const EdgeInsets.all(4),
+                        sliver: SliverLayoutBuilder(
+                          builder: (context, constraints) {
+                            final columns = max(
+                              1,
+                              (constraints.crossAxisExtent / (180 + 8)).ceil(),
+                            );
+                            final width =
+                                (constraints.crossAxisExtent -
+                                    (columns - 1) * 8) /
+                                columns;
+                            final scaler = MediaQuery.textScalerOf(context);
+                            return SliverGrid(
+                              gridDelegate:
+                                  SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 180,
+                                    crossAxisSpacing: 8,
+                                    mainAxisSpacing: 8,
+                                    mainAxisExtent:
+                                        width * 16 / 9 +
+                                        scaler.scale(48) +
+                                        scaler.scale(18) +
+                                        24,
+                                  ),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, i) => _screenshotCard(notes[i]),
+                                childCount: notes.length,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                )
+              : ListView(
+                  children: [
+                    if (!screenshots)
+                      ListTile(
+                        key: const ValueKey('import-markdown-articles'),
+                        leading: const Icon(Icons.file_upload_outlined),
+                        title: const Text('Import Markdown articles'),
+                        subtitle: const Text(
+                          'Select one or more .md or .markdown files',
+                        ),
+                        onTap: () =>
+                            unawaited(widget.onImportMarkdownArticles()),
+                      ),
+                    if (!screenshots)
+                      for (final job in widget.articleJobs.where(
+                        (job) => '${job.title ?? ''} ${job.url}'
+                            .toLowerCase()
+                            .contains(q),
+                      ))
+                        ListTile(
+                          key: ValueKey(job.path),
+                          leading: Icon(
+                            job.status == 'processing'
+                                ? Icons.hourglass_top
+                                : Icons.schedule,
+                          ),
+                          title: Text(job.title ?? job.url),
+                          subtitle: Text(
+                            '${job.status == 'processing' ? 'Processing' : 'Queued'} · ${job.url}',
+                          ),
+                        ),
+                    if (!screenshots && continueNote != null)
+                      Card(
+                        key: Key(
+                          '${screenshots ? 'screenshots' : 'articles'}-continue-reading',
+                        ),
+                        child: ListTile(
+                          leading: const Icon(Icons.auto_stories),
+                          title: Text(
+                            'Continue reading · ${continueNote.title}',
+                          ),
+                          subtitle: LinearProgressIndicator(
+                            value: continueProgress,
+                          ),
+                          trailing: Text(
+                            '${(continueProgress * 100).round()}%',
+                          ),
+                          onTap: () => widget.onReadPath(continueNote!.path),
+                        ),
+                      ),
+                    if (filtered.isEmpty &&
+                        (screenshots || widget.articleJobs.isEmpty))
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.indexing && all.isEmpty) ...[
+                                const LoadingIndicator(
+                                  size: 20,
+                                  strokeWidth: 2,
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
+                                widget.indexing && all.isEmpty
+                                    ? 'Indexing…'
+                                    : q.isNotEmpty || statusFilter != null
+                                    ? 'Nothing matches'
+                                    : screenshots
+                                    ? 'No screenshots yet'
+                                    : 'No articles yet — import one above',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    for (final (header, notes) in groups) ...[
+                      if (header.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text(
+                            '$header · ${notes.length}',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      for (final note in notes) _row(note),
+                    ],
+                  ],
                 ),
-              for (final (header, notes) in groups) ...[
-                if (header.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Text(
-                      '$header · ${notes.length}',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                for (final note in notes) _row(note),
-              ],
-            ],
-          ),
         ),
       ],
     );
   }
+
+  String _screenshotMetadata(NoteRef note) => [
+    if (screenshotCapturedAt(note) case final time?) localTime(time),
+    _source(note) ?? 'Unknown source',
+  ].join(' · ');
+
+  String _screenshotTitle(NoteRef note) {
+    if (!note.title.startsWith('Screenshot_') &&
+        !RegExp(
+          r'\.(png|jpe?g|webp|gif|heic|heif|bmp|tiff?)$',
+          caseSensitive: false,
+        ).hasMatch(note.title)) {
+      return note.title;
+    }
+    final description = '${note.properties['description'] ?? ''}'.trim();
+    if (description.isNotEmpty) {
+      return description.split(RegExp(r'(?<=[.!?。！？])\s+|\n')).first;
+    }
+    return [
+      _source(note) ?? 'Screenshot',
+      if (screenshotCapturedAt(note) case final time?) localTime(time),
+    ].join(' · ');
+  }
+
+  void _screenshotActions(NoteRef note) => unawaited(
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _screenshotTitle(note),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    PropertySelectChip(
+                      value: _bucket(note),
+                      options: statuses,
+                      labels: labels,
+                      tooltip: 'Change status',
+                      onChanged: (next) {
+                        Navigator.pop(context);
+                        unawaited(widget.onSetReadStatus(note, next));
+                      },
+                    ),
+                    PropertySelectChip(
+                      value: note.properties['relevance'] as String?,
+                      options: relevanceOptions,
+                      labels: relevanceLabels,
+                      tooltip: 'Set relevance',
+                      placeholder: '★',
+                      onChanged: (next) {
+                        Navigator.pop(context);
+                        unawaited(widget.onSetRelevance(note, next));
+                      },
+                    ),
+                  ],
+                ),
+                ListTile(
+                  leading: const Icon(Icons.open_in_new),
+                  title: const Text('Open screenshot'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    widget.onReadPath(note.path);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text('Delete screenshot…'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    unawaited(widget.onDeleteArticle(note));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _screenshotCard(NoteRef note) => Card(
+    key: ValueKey(note.path),
+    margin: EdgeInsets.zero,
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: () => widget.onReadPath(note.path),
+      onLongPress: () => _screenshotActions(note),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AspectRatio(
+            aspectRatio: 9 / 16,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(kRadiusMedium),
+                  child: ScreenshotThumbnail(
+                    note: note,
+                    imageResolver: widget.imageResolver,
+                    width: null,
+                    height: null,
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton.filledTonal(
+                    tooltip: 'Screenshot actions',
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () => _screenshotActions(note),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+            child: Text(
+              _screenshotTitle(note),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(height: 1.4),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              _screenshotMetadata(note),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _row(NoteRef note) {
     final subtitle = [

@@ -36,15 +36,19 @@ class ScreenshotThumbnail extends StatelessWidget {
     super.key,
     required this.note,
     this.imageResolver,
+    this.width = 72,
+    this.height = 64,
   });
+  final double? width;
+  final double? height;
   final NoteRef note;
   final Future<Uint8List?> Function(String)? imageResolver;
   @override
   Widget build(BuildContext context) {
     final path = screenshotAssetPath(note);
     return SizedBox(
-      width: 72,
-      height: 64,
+      width: width,
+      height: height,
       child: FutureBuilder<Uint8List?>(
         future: path == null ? null : imageResolver?.call(path),
         builder: (context, snapshot) => snapshot.data == null
