@@ -87,12 +87,16 @@ class NoteRef {
     this.modifiedMillis,
     this.metadataSource = 'fallback',
     this.queryFacts,
+    this.screenshotDescription = '',
   });
 
   final String id;
   final String path;
   final String title;
   final String kind;
+
+  /// Plain text from the screenshot note's Description section.
+  final String screenshotDescription;
   final String? project;
   final String? date;
   final List<String> tags;
@@ -137,6 +141,7 @@ class NoteRef {
     String? id,
     String? title,
     String? kind,
+    String? screenshotDescription,
     String? project,
     String? date,
     List<String>? tags,
@@ -158,6 +163,7 @@ class NoteRef {
     path: path,
     title: title ?? this.title,
     kind: kind ?? this.kind,
+    screenshotDescription: screenshotDescription ?? this.screenshotDescription,
     project: project ?? this.project,
     date: date ?? this.date,
     tags: tags ?? this.tags,
@@ -193,6 +199,8 @@ class NoteRef {
     'dateRefs': dateRefs.map((item) => item.toJson()).toList(),
     'attachments': attachments.map((item) => item.toJson()).toList(),
     'properties': properties,
+    if (screenshotDescription.isNotEmpty)
+      'screenshotDescription': screenshotDescription,
     'fingerprint': fingerprint,
     'contentHash': contentHash,
     'modifiedMillis': modifiedMillis,
@@ -207,6 +215,7 @@ class NoteRef {
     path: json['path'] as String,
     title: json['title'] as String,
     kind: json['kind'] as String? ?? 'note',
+    screenshotDescription: json['screenshotDescription'] as String? ?? '',
     project: json['project'] as String?,
     date: json['date'] as String?,
     tags: stringList(json['tags']),
@@ -485,7 +494,8 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 ///    a re-derivation rather than a recompile — see [kVaultQueryVersion]. This
 ///    bump itself is the last one that has to be paid the old way, because
 ///    entries written before it have no facts to re-derive from.
-const kVaultIndexVersion = 10;
+/// 11: screenshot Description sections are cached for library card titles.
+const kVaultIndexVersion = 11;
 
 /// Version of the *Typst query output* a cached entry was built from — the
 /// expensive half.

@@ -1895,6 +1895,18 @@ _TopLevelField? _locateTopLevelField(String callSource, String name) {
 bool _identifierStart(int code) =>
     code >= 65 && code <= 90 || code >= 97 && code <= 122 || code == 95;
 
+String _screenshotDescription(String source) {
+  final heading = RegExp(
+    r'^=+\s+Description\s*\r?$',
+    multiLine: true,
+    caseSensitive: false,
+  ).firstMatch(source);
+  if (heading == null) return '';
+  final body = source.substring(heading.end);
+  final nextHeading = RegExp(r'^=+\s+', multiLine: true).firstMatch(body);
+  return unescapeMarkup(body.substring(0, nextHeading?.start)).trim();
+}
+
 NoteRef _queriedNote(
   String path,
   String source,
@@ -1911,6 +1923,9 @@ NoteRef _queriedNote(
     path: path,
     title: _text(note['title']) ?? stem,
     kind: kind,
+    screenshotDescription: kind == 'screenshot'
+        ? _screenshotDescription(source)
+        : '',
     project: _text(note['project']),
     date: _text(note['date']) ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
@@ -1990,6 +2005,9 @@ NoteRef? rederiveNote(
       .map((item) => item.cast<String, Object?>())
       .toList();
   return cached.copyWith(
+    screenshotDescription: cached.kind == 'screenshot'
+        ? _screenshotDescription(source)
+        : '',
     tags: _normalizedTags({
       ...stringList(facts['tags']),
       ..._legacyTags(source),
@@ -2040,6 +2058,9 @@ NoteRef _fallbackNote(
     path: path,
     title: _field(header, 'title') ?? stem,
     kind: kind,
+    screenshotDescription: kind == 'screenshot'
+        ? _screenshotDescription(source)
+        : '',
     project: _field(header, 'project'),
     date: _field(header, 'date') ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({

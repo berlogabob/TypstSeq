@@ -3,6 +3,13 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.3+110
+
+### Fixed
+
+- **Screenshot cards show a real title.** Untitled screenshots use the first
+  sentence of their description; the time and app line has no stray dots.
+
 ## 0.8.2+109
 
 ### Fixed
