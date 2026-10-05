@@ -3,6 +3,17 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.2+109
+
+### Fixed
+
+- **The date in Today and Journal fits.** It reads "Mon 5 Oct" and shrinks
+  to fit instead of "Mon, Octob…".
+- **Screenshots are a grid of cards.** Image, a readable title, and time
+  and app; status and rating are in the card's menu, and the filters sit in
+  one scrolling row. Works with large system text.
+- **Old sync conflicts on files that are no longer synced disappear.**
+
 ## 0.8.1+108
 
 ### Changed
