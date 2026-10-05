@@ -1203,25 +1203,30 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   String _screenshotMetadata(NoteRef note) => [
     if (screenshotCapturedAt(note) case final time?) localTime(time),
-    _source(note) ?? 'Unknown source',
-  ].join(' · ');
+    _source(note)?.trim() ?? '',
+  ].where((part) => part.isNotEmpty).join(' · ');
 
   String _screenshotTitle(NoteRef note) {
-    if (!note.title.startsWith('Screenshot_') &&
+    final title = note.title.trim();
+    if (title.isNotEmpty &&
+        !title.startsWith('Screenshot_') &&
         !RegExp(
           r'\.(png|jpe?g|webp|gif|heic|heif|bmp|tiff?)$',
           caseSensitive: false,
-        ).hasMatch(note.title)) {
-      return note.title;
+        ).hasMatch(title)) {
+      return title;
     }
-    final description = '${note.properties['description'] ?? ''}'.trim();
+    final description = note.screenshotDescription.trim();
     if (description.isNotEmpty) {
-      return description.split(RegExp(r'(?<=[.!?。！？])\s+|\n')).first;
+      final sentence = description
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .split(RegExp(r'(?<=[.!?。！？])\s+'))
+          .first;
+      return sentence.characters.length <= 60
+          ? sentence
+          : '${sentence.characters.take(59)}…';
     }
-    return [
-      _source(note) ?? 'Screenshot',
-      if (screenshotCapturedAt(note) case final time?) localTime(time),
-    ].join(' · ');
+    return 'Screenshot';
   }
 
   void _screenshotActions(NoteRef note) => unawaited(
@@ -1292,63 +1297,67 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     ),
   );
 
-  Widget _screenshotCard(NoteRef note) => Card(
-    key: ValueKey(note.path),
-    margin: EdgeInsets.zero,
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: () => widget.onReadPath(note.path),
-      onLongPress: () => _screenshotActions(note),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AspectRatio(
-            aspectRatio: 9 / 16,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(kRadiusMedium),
-                  child: ScreenshotThumbnail(
-                    note: note,
-                    imageResolver: widget.imageResolver,
-                    width: null,
-                    height: null,
+  Widget _screenshotCard(NoteRef note) => Align(
+    alignment: Alignment.topCenter,
+    child: Card(
+      key: ValueKey(note.path),
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => widget.onReadPath(note.path),
+        onLongPress: () => _screenshotActions(note),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 9 / 16,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(kRadiusMedium),
+                    child: ScreenshotThumbnail(
+                      note: note,
+                      imageResolver: widget.imageResolver,
+                      width: null,
+                      height: null,
+                    ),
                   ),
-                ),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: IconButton.filledTonal(
-                    tooltip: 'Screenshot actions',
-                    icon: const Icon(Icons.more_vert),
-                    onPressed: () => _screenshotActions(note),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: IconButton.filledTonal(
+                      tooltip: 'Screenshot actions',
+                      icon: const Icon(Icons.more_vert),
+                      onPressed: () => _screenshotActions(note),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-            child: Text(
-              _screenshotTitle(note),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(height: 1.4),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Text(
+                _screenshotTitle(note),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(height: 1.4),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Text(
-              _screenshotMetadata(note),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                _screenshotMetadata(note),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );

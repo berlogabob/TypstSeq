@@ -92,8 +92,8 @@ void main() {
           title: 'Screenshot_20261005.png',
           kind: 'screenshot',
           outgoingLinks: [],
+          screenshotDescription: 'Useful Flutter layout. More details here.',
           properties: {
-            'description': 'Useful Flutter layout. More details here.',
             'captured_at': '2026-10-05T09:07:00',
             'source_app': 'Browser',
           },
@@ -159,7 +159,8 @@ void main() {
       expect(find.byType(SliverGrid), findsOneWidget);
       expect(find.text('Screenshot_20261005.png'), findsNothing);
       expect(find.text('Useful Flutter layout.'), findsOneWidget);
-      expect(find.text('Browser · 10:08'), findsOneWidget);
+      expect(find.text('Screenshot'), findsOneWidget);
+      expect(find.text('10:08 · Browser'), findsOneWidget);
       final title = find.text('Useful Flutter layout.');
       expect(tester.getSize(title).width, greaterThan(120));
       final text = tester.widget<Text>(title);

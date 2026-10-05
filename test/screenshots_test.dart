@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/scanner.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/database/note_persistence.dart';
 import 'package:tylog/retrieval/note_chunk_sync.dart';
@@ -59,6 +60,160 @@ VaultIndex get index => VaultIndex(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('screenshot Description is extracted, cached and rederived', () {
+    const source =
+        '#show: tylog.note.with(id: "shot", title: "capture.png", '
+        'kind: "screenshot")\n'
+        '= Description\r\nA saved \\#screen. Second sentence.\r\n'
+        '= OCR\nOther text';
+    final note = scanNote('screenshots/shot.typ', source);
+    expect(note.screenshotDescription, 'A saved #screen. Second sentence.');
+    final cached = NoteRef.fromJson(
+      note.toJson(),
+    ).copyWith(queryFacts: {'tags': [], 'links': [], 'dates': []});
+    expect(cached.screenshotDescription, note.screenshotDescription);
+    expect(
+      rederiveNote(
+        cached,
+        source.replaceFirst('A saved', 'An updated'),
+        '1:1',
+        1,
+      )?.screenshotDescription,
+      'An updated #screen. Second sentence.',
+    );
+    expect(
+      rederiveNote(
+        cached,
+        source.replaceFirst('Description', 'Details'),
+        '1:1',
+        1,
+      )?.screenshotDescription,
+      isEmpty,
+    );
+    expect(
+      scanNote(
+        'screenshots/shot.typ',
+        source.replaceFirst('screenshot', 'note'),
+      ).screenshotDescription,
+      isEmpty,
+    );
+  });
+
+  testWidgets('screenshot card fallbacks, metadata and height hug content', (
+    tester,
+  ) async {
+    final longSentence = List.filled(20, 'word').join(' ');
+    final cases = [
+      (
+        'Chosen title',
+        'Description ignored.',
+        'Browser',
+        '2026-10-04T00:42:00',
+        'Chosen title',
+        '00:42 · Browser',
+      ),
+      (
+        'Screenshot_20261004',
+        'First sentence. Second sentence.',
+        '',
+        '2026-10-04T00:42:00',
+        'First sentence.',
+        '00:42',
+      ),
+      (
+        'capture.JPG',
+        'First sentence! Second sentence.',
+        '  ',
+        '2026-10-04T00:42:00',
+        'First sentence!',
+        '00:42',
+      ),
+      (
+        'capture.webp',
+        longSentence,
+        '',
+        '2026-10-04T00:42:00',
+        '${longSentence.substring(0, 59)}…',
+        '00:42',
+      ),
+      ('capture.png', '', '', '2026-10-04T00:42:00', 'Screenshot', '00:42'),
+      ('capture.png', '', null, '2026-10-04T00:42:00', 'Screenshot', '00:42'),
+      ('', '', ' Browser ', null, 'Screenshot', 'Browser'),
+      ('capture.png', '', '', 'invalid', 'Screenshot', ''),
+      ('capture.png', '', null, null, 'Screenshot', ''),
+      ('capture.png', '   ', '', null, 'Screenshot', ''),
+    ];
+    for (final (title, description, app, captured, expectedTitle, metadata)
+        in cases) {
+      final note = shot.copyWith(
+        title: title,
+        screenshotDescription: description,
+        properties: {'source_app': app, 'captured_at': captured},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LibraryView(
+              key: UniqueKey(),
+              initialTab: 2,
+              index: VaultIndex(
+                notesByPath: {note.path: note},
+                backlinksByTarget: const {},
+              ),
+              calendar: const [],
+              dayMarks: (daily: <String>{}, refs: <String>{}),
+              progressByPath: const {},
+              onOpenPath: (_) {},
+              onOpenDay: (_) {},
+              onSetTaskStatus: (_, _) async {},
+              onSetReadStatus: (_, _) async {},
+              onSetRelevance: (_, _) async {},
+              onCreateNote: (_) {},
+              onCreateEntity: () {},
+              onImportMarkdownArticles: () async {},
+              onReadPath: (_) {},
+              onDeleteArticle: (_) async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final card = find.byKey(ValueKey(note.path));
+      final titleFinder = find.descendant(
+        of: card,
+        matching: find.text(expectedTitle),
+      );
+      final subtitleFinder = find.descendant(
+        of: card,
+        matching: find.text(metadata),
+      );
+      expect(titleFinder, findsOneWidget, reason: title);
+      expect(subtitleFinder, findsOneWidget, reason: title);
+      expect(tester.widget<Text>(titleFinder).maxLines, 2);
+      expect(tester.widget<Text>(subtitleFinder).maxLines, 1);
+      final image = find.descendant(
+        of: card,
+        matching: find.byType(AspectRatio),
+      );
+      expect(
+        tester.getSize(card).height,
+        closeTo(
+          tester.getSize(image).height +
+              tester.getSize(titleFinder).height +
+              tester.getSize(subtitleFinder).height +
+              24,
+          0.01,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Screenshot actions'));
+      await tester.pumpAndSettle();
+      expect(find.text(expectedTitle), findsNWidgets(2));
+      await tester.tap(find.text('Open screenshot'));
+      await tester.pumpAndSettle();
+    }
+  });
+
   test('phone request writes only syncable system state', () async {
     final dir = await Directory.systemTemp.createTemp('screenshots-request-');
     addTearDown(() => dir.delete(recursive: true));
