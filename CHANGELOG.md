@@ -3,6 +3,21 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.8.6+113
+
+### Fixed
+
+- **Sync no longer re-downloads hundreds of files every time.** Compressed
+  downloads stored a different version tag than the server listing reports,
+  so each sync fetched the same ~350 files again (minutes on slower phones),
+  delaying your edits. A repeat sync now transfers nothing.
+- **An edit made while the keyboard was mid-word could wait forever to sync.**
+
+### Changed
+
+- **Screenshot cards are square images** with the time and app on a dark
+  gradient at the bottom.
+
 ## 0.8.5+112
 
 ### Fixed
