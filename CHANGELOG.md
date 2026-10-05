@@ -3,6 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.5.4+104
+
+### Fixed
+
+- **The Mac app no longer crashes when you quit.** Quitting could free the
+  database while background work still held queries, which macOS reported
+  as "TyLog quit unexpectedly". The app now saves, stops sync and indexing,
+  and closes the database before it exits (at most three seconds).
+
 ## 0.5.3+103
 
 ### Changed
