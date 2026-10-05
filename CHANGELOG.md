@@ -3,6 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.5.1+101
+
+### Fixed
+
+- **Sync no longer stops at a compressed file.** Cloudflare sends small JSON
+  files gzip-compressed; the download check compared the unpacked file with
+  the compressed size and called it truncated, so every sync failed at the
+  same file and never finished. Compressed downloads now pass.
+
 ## 0.5.0+100
 
 Screenshot capture, in-app semantic search, a PDF reader, and a quieter sync.
