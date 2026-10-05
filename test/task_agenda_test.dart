@@ -202,7 +202,7 @@ void main() {
   );
 
   testWidgets(
-    'collapsed groups build no task rows; expansion preserves actions',
+    'Library can open Tasks directly; collapsed groups preserve actions',
     (tester) async {
       final tasks = [
         task('hidden', project: 'Work'),
@@ -214,6 +214,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LibraryView(
+              initialTab: 3,
               index: VaultIndex(
                 notesByPath: notes,
                 backlinksByTarget: {},
@@ -238,7 +239,6 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Tasks'));
       await tester.pumpAndSettle();
       expect(find.text('Task hidden'), findsNothing);
       expect(find.text('Task journal'), findsNothing);

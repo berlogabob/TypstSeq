@@ -2191,6 +2191,7 @@ class WorkspaceController extends ChangeNotifier {
       for (final event in feedEvents)
         CalendarItem(
           date: event.date,
+          start: event.properties['start']?.toString(),
           kind: CalendarItemKind.dateRef,
           title:
               '${event.label}${source?.notesByPath[event.path]?.properties['source_status'] == 'changed' ? ' · changed' : ''}',
@@ -2202,6 +2203,7 @@ class WorkspaceController extends ChangeNotifier {
             !feedEvents.any((e) => e.path == note.path))
           CalendarItem(
             date: note.date!,
+            start: note.properties['start']?.toString(),
             kind: CalendarItemKind.dateRef,
             title: materializedEventLabel(note),
             notePath: note.path,

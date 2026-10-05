@@ -31,6 +31,31 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('standard import is hidden and round-trips exactly', () {
+    const import = '#import "/_system/tylog.typ" as tylog';
+    for (final gap in ['', '\n', '\n\n', '\r\n \t\r\n']) {
+      final source = '$import$gap${gap.isEmpty ? '' : 'Daily text'}';
+      final document = TyLogDocument.parse(source);
+      expect(document.visibleText, gap.isEmpty ? '' : 'Daily text');
+      expect(document.blocks.any((block) => block.isProtected), isFalse);
+      expect(document.toSource(), source);
+      if (document.visibleText.isNotEmpty) {
+        document.replace(0, 0, 'Edited ');
+        expect(document.toSource(), '$import${gap}Edited Daily text');
+      }
+    }
+  });
+
+  test('custom Typst after the standard import still shows a chip', () {
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n\n'
+        '#let custom = 1\n\nDaily text';
+    final document = TyLogDocument.parse(source);
+    expect(document.blocks.first.protectedLabel, 'Custom Typst');
+    expect(document.visibleText, contains('\uFFFC'));
+    expect(document.toSource(), source);
+  });
+
   test('Time inserts at the cursor in source and rich editors', () {
     expect(localTime(DateTime(2026, 10, 5, 9, 7)), '09:07');
     const request = MagicRequest(action: MagicAction.time, value: '09:07');

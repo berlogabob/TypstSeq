@@ -21,7 +21,7 @@ TaskRef _task(String id, {String? due}) => TaskRef(
 );
 
 void main() {
-  testWidgets('Agenda and Tasks start collapsed and remember expansion', (
+  testWidgets('Agenda and Overdue start collapsed and remember expansion', (
     tester,
   ) async {
     final bucket = PageStorageBucket();
@@ -46,20 +46,102 @@ void main() {
     );
     await tester.pumpWidget(page());
     expect(find.text('Agenda · 1'), findsOneWidget);
-    expect(find.text('Tasks · 1'), findsOneWidget);
+    expect(find.text('Tasks · 1'), findsNothing);
     expect(find.text('Task due'), findsNothing);
     expect(find.text('Task undated'), findsNothing);
     await tester.tap(find.text('Agenda · 1'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Tasks · 1'));
+    expect(find.text('Task due'), findsNothing);
+    await tester.tap(find.text('Overdue · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Task due'), findsOneWidget);
-    expect(find.text('Task undated'), findsOneWidget);
+    expect(find.text('Task undated'), findsNothing);
     await tester.pumpWidget(page(show: false));
     await tester.pumpWidget(page());
     await tester.pumpAndSettle();
     expect(find.text('Task due'), findsOneWidget);
-    expect(find.text('Task undated'), findsOneWidget);
+    expect(find.text('Task undated'), findsNothing);
+  });
+
+  testWidgets('Agenda orders events, shows today tasks and links to all tasks', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    var openedTasks = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TodayPage(
+            events: [
+              CalendarItem(
+                date: today,
+                start: '${today}T15:00',
+                kind: CalendarItemKind.dateRef,
+                title: 'Lab',
+                notePath: 'events/lab.typ',
+              ),
+              CalendarItem(
+                date: today,
+                start: '${today}T09:00',
+                kind: CalendarItemKind.dateRef,
+                title: 'Class',
+                notePath: 'events/class.typ',
+              ),
+              CalendarItem(
+                date: '2000-01-01',
+                kind: CalendarItemKind.dateRef,
+                title: 'Old event',
+                notePath: 'events/old.typ',
+              ),
+            ],
+            tasks: [
+              _task('today', due: today),
+              TaskRef(
+                id: 'scheduled',
+                text: 'Scheduled task',
+                notePath: 'notes/s.typ',
+                scheduled: today,
+              ),
+              _task('overdue', due: '2000-01-01'),
+              _task('future', due: '9999-01-01'),
+              _task('undated'),
+              TaskRef(
+                id: 'done',
+                text: 'Done task',
+                notePath: 'notes/d.typ',
+                due: today,
+                status: 'done',
+              ),
+            ],
+            recent: const [],
+            editor: const SizedBox(),
+            onOpenPath: (_) {},
+            onSetStatus: (_, _) async {},
+            onAllTasks: () => openedTasks = true,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Agenda · 5'), findsOneWidget);
+    expect(find.text('All tasks →'), findsNothing);
+    await tester.tap(find.text('Agenda · 5'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Class')).dy,
+      lessThan(tester.getTopLeft(find.text('Lab')).dy),
+    );
+    expect(find.text('Task today'), findsOneWidget);
+    expect(find.text('Scheduled task'), findsOneWidget);
+    expect(find.text('Task overdue'), findsNothing);
+    expect(find.text('Task future'), findsNothing);
+    expect(find.text('Task undated'), findsNothing);
+    expect(find.text('Done task'), findsNothing);
+    expect(find.text('Old event'), findsNothing);
+    await tester.ensureVisible(find.text('All tasks →'));
+    await tester.tap(find.text('All tasks →'));
+    expect(openedTasks, isTrue);
   });
 
   testWidgets('continue reading renders each entry as a card with progress', (
@@ -176,6 +258,8 @@ void main() {
 
       expect(find.text('Task t1'), findsNothing);
       await tester.tap(find.text('Agenda · 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Overdue · 1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Task t1'));
       expect(opened, ['notes/t1.typ']);

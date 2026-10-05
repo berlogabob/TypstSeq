@@ -25,6 +25,7 @@ class FeedEvent {
 
   CalendarItem get item => CalendarItem(
     date: date,
+    start: properties['start']?.toString(),
     kind: CalendarItemKind.dateRef,
     title: label,
     notePath: path,

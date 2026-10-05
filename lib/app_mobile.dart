@@ -300,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   int primaryDestination = 0;
+  int _libraryTab = 0;
   String? selectedTag;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
@@ -3892,7 +3893,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _selectDestination(int destination) async {
+  Future<void> _selectDestination(int destination, {int libraryTab = 0}) async {
     if (destination == 3) {
       await _showKnowledge();
       return;
@@ -3913,6 +3914,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 2:
         setState(() {
           primaryDestination = 2;
+          _libraryTab = libraryTab;
           mode = 'library';
         });
         return;
@@ -4205,6 +4207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'library' => LibraryView(
+        initialTab: _libraryTab,
         articleJobs: _articleJobs,
         index: index,
         pagedNotes: _pagedLibraryNotes,
@@ -4649,6 +4652,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   )
                   .toList(),
               tasks: index?.tasks ?? const [],
+              notes: index?.notesByPath ?? const {},
+              onAllTasks: () => unawaited(_selectDestination(2, libraryTab: 3)),
               recent: _recentNotes(),
               editor: documentContent,
               onOpenPath: _openPath,

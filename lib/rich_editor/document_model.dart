@@ -249,6 +249,18 @@ class TyLogDocument {
   List<TyLogBlock> blocks;
 
   static TyLogDocument parse(String source) {
+    final managedImport = RegExp(
+      r'^#import "/_system/tylog\.typ" as tylog(?:\r?\n(?:[ \t]*\r?\n)*|$)',
+    ).matchAsPrefix(source);
+    if (managedImport != null) {
+      final document = _parseBody(source.substring(managedImport.end));
+      document.prefix = '${managedImport.group(0)}${document.prefix}';
+      return document;
+    }
+    return _parseBody(source);
+  }
+
+  static TyLogDocument _parseBody(String source) {
     final parsed = parseControlledTypst(source);
     if (parsed.blocks.isEmpty) {
       return TyLogDocument._(prefix: source, blocks: []);

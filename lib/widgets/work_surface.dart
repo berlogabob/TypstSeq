@@ -45,8 +45,12 @@ class TodayPage extends StatelessWidget {
     required this.onOpenPath,
     required this.onSetStatus,
     this.onReadPath,
+    this.onAllTasks,
+    this.notes = const {},
   });
 
+  final VoidCallback? onAllTasks;
+  final Map<String, NoteRef> notes;
   final List<CalendarItem> events;
   final List<TaskRef> tasks;
   final List<(NoteRef note, double progress)> recent;
@@ -58,25 +62,44 @@ class TodayPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = isoDay(DateTime.now());
-    final agenda =
-        tasks.where((task) => isTaskInTodayAgenda(task, today)).toList()..sort(
-          (a, b) => (a.due ?? a.scheduled ?? '9999').compareTo(
-            b.due ?? b.scheduled ?? '9999',
-          ),
-        );
-    final otherTasks = tasks
-        .where(
-          (task) =>
-              task.status != 'done' &&
-              task.status != 'cancelled' &&
-              !isTaskInTodayAgenda(task, today),
-        )
+    final groups = TaskAgendaCache().resolve(tasks, notes, today);
+    final agenda = groups
+        .where((g) => g.key == 'today')
+        .expand((g) => g.tasks)
         .toList();
+    final overdue = groups
+        .where((g) => g.key == 'overdue')
+        .expand((g) => g.tasks)
+        .toList();
+    final todayEvents = events.where((e) => e.date == today).toList()
+      ..sort((a, b) => (a.start ?? '9999').compareTo(b.start ?? '9999'));
     final hasTopContent =
-        events.isNotEmpty ||
+        todayEvents.isNotEmpty ||
         agenda.isNotEmpty ||
-        otherTasks.isNotEmpty ||
+        overdue.isNotEmpty ||
+        onAllTasks != null ||
         recent.isNotEmpty;
+    Widget taskRow(TaskRef task) => ListTile(
+      leading: TaskCheckbox(
+        value: false,
+        onChanged: (done) {
+          if (done == true) unawaited(onSetStatus(task, 'done'));
+        },
+      ),
+      title: Text(task.text),
+      subtitle: Text(
+        task.due == null ? 'Scheduled today' : 'Due ${task.due}',
+        style: isTaskOverdue(task, today)
+            ? TextStyle(color: Theme.of(context).colorScheme.error)
+            : null,
+      ),
+      onTap: () => onOpenPath(task.notePath),
+      trailing: IconButton(
+        tooltip: 'Open source note',
+        onPressed: () => onOpenPath(task.notePath),
+        icon: const Icon(Icons.open_in_new),
+      ),
+    );
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
@@ -95,73 +118,36 @@ class TodayPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (agenda.isNotEmpty || events.isNotEmpty)
+                    if (agenda.isNotEmpty ||
+                        overdue.isNotEmpty ||
+                        todayEvents.isNotEmpty ||
+                        onAllTasks != null)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
                         leading: const Icon(Icons.event_note),
                         title: Text(
-                          'Agenda · ${agenda.length + events.length}',
+                          'Agenda · ${agenda.length + overdue.length + todayEvents.length}',
                         ),
                         children: [
-                          for (final event in events)
+                          for (final event in todayEvents)
                             ListTile(
                               leading: const Icon(Icons.event),
                               title: Text(event.title),
                               onTap: () => onOpenPath(event.notePath),
                             ),
-                          for (final task in agenda)
-                            ListTile(
-                              leading: TaskCheckbox(
-                                value: task.status == 'done',
-                                onChanged: (done) {
-                                  if (done == true) {
-                                    unawaited(onSetStatus(task, 'done'));
-                                  }
-                                },
-                              ),
-                              title: Text(task.text),
-                              subtitle: Text(
-                                task.due == null
-                                    ? 'Scheduled today'
-                                    : 'Due ${task.due}${isTaskOverdue(task, today) ? ' · overdue' : ''}',
-                                style: isTaskOverdue(task, today)
-                                    ? TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.error,
-                                      )
-                                    : null,
-                              ),
-                              // Row opens the task's note; completing is the
-                              // checkbox's job only — a row tap that marks
-                              // done makes the task vanish under the finger.
-                              onTap: () => onOpenPath(task.notePath),
-                              trailing: IconButton(
-                                tooltip: 'Open source note',
-                                onPressed: () => onOpenPath(task.notePath),
-                                icon: const Icon(Icons.open_in_new),
-                              ),
+                          for (final task in agenda) taskRow(task),
+                          if (overdue.isNotEmpty)
+                            ExpansionTile(
+                              key: const PageStorageKey('today-overdue'),
+                              title: Text('Overdue · ${overdue.length}'),
+                              children: [
+                                for (final task in overdue) taskRow(task),
+                              ],
                             ),
-                        ],
-                      ),
-                    if (otherTasks.isNotEmpty)
-                      ExpansionTile(
-                        key: const PageStorageKey('today-tasks'),
-                        leading: const Icon(Icons.checklist),
-                        title: Text('Tasks · ${otherTasks.length}'),
-                        children: [
-                          for (final task in otherTasks)
+                          if (onAllTasks != null)
                             ListTile(
-                              leading: TaskCheckbox(
-                                value: false,
-                                onChanged: (done) {
-                                  if (done == true) {
-                                    unawaited(onSetStatus(task, 'done'));
-                                  }
-                                },
-                              ),
-                              title: Text(task.text),
-                              onTap: () => onOpenPath(task.notePath),
+                              title: const Text('All tasks →'),
+                              onTap: onAllTasks,
                             ),
                         ],
                       ),
@@ -441,6 +427,7 @@ class LibraryView extends StatelessWidget {
     super.key,
     required this.index,
     this.pagedNotes,
+    this.initialTab = 0,
     this.articleJobs = const [],
     required this.calendar,
     required this.dayMarks,
@@ -463,6 +450,7 @@ class LibraryView extends StatelessWidget {
   });
 
   final Future<Uint8List?> Function(String)? imageResolver;
+  final int initialTab;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
   final List<ArticleJob> articleJobs;
@@ -489,6 +477,7 @@ class LibraryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DefaultTabController(
     length: 5,
+    initialIndex: initialTab,
     child: Column(
       children: [
         const TabBar(
