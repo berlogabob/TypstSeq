@@ -3,6 +3,21 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.6.0+105
+
+### Added
+
+- **Share a link to TyLog.** Android's share sheet offers TyLog: "Save as
+  article" queues the link and the Mac worker turns it into an article note
+  using the Studio model; it shows as "queued" in Articles until done. "Add
+  to today" puts the link in today's note.
+
+### Changed
+
+- **The clock in the top bar always writes into today.** From any screen it
+  opens today's note and starts a new "- HH:mm" line.
+- **Today opens with Agenda and Tasks collapsed**, so your note comes first.
+
 ## 0.5.4+104
 
 ### Fixed
