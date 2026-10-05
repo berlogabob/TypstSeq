@@ -89,6 +89,65 @@ void main() {
     },
   );
 
+  test(
+    'journal months follow count-ranked no-date groups, newest day first',
+    () {
+      final journalNotes = {
+        ...notes,
+        'daily/2026/10/2026-10-01.typ': const NoteRef(
+          id: 'fallback',
+          path: 'daily/2026/10/2026-10-01.typ',
+          title: 'Fallback',
+          kind: 'note',
+          outgoingLinks: [],
+        ),
+        'journal.typ': const NoteRef(
+          id: 'journal',
+          path: 'journal.typ',
+          title: 'Journal',
+          kind: 'daily',
+          date: '2026-10-03',
+          outgoingLinks: [],
+        ),
+      };
+      final groups = TaskAgendaCache().resolve(
+        [
+          task('a'),
+          task('b'),
+          task('work', project: 'Work'),
+          task('home', project: 'Home'),
+          task('older', path: 'daily/2026/09/2026-09-30.typ'),
+          task('early', path: 'daily/2026/10/2026-10-01.typ'),
+          task('newer', path: 'journal.typ', project: 'Work'),
+          task('dated', path: 'journal.typ', due: '2026-10-06'),
+        ],
+        journalNotes,
+        today,
+      );
+      expect(groups.map((g) => g.key), [
+        'upcoming:2026-10-06',
+        'note:notes/a.typ',
+        'project:Home',
+        'project:Work',
+        'journal:2026-10',
+        'journal:2026-09',
+      ]);
+      expect(groups[4].title, 'October 2026');
+      expect(groups[4].tasks.map((t) => t.id), ['newer', 'early']);
+      expect(groups[4].collapsed, isTrue);
+      expect(groups[5].collapsed, isTrue);
+      expect(
+        filterTaskAgenda(
+          groups,
+          TaskAgendaFilter.open,
+          'Work',
+          '',
+        ).last.tasks.single.id,
+        'newer',
+      );
+    },
+  );
+
   test('cache reuses grouping and sorting until identity or day changes', () {
     final cache = TaskAgendaCache();
     final tasks = [task('a', due: today)];
@@ -145,7 +204,10 @@ void main() {
   testWidgets(
     'collapsed groups build no task rows; expansion preserves actions',
     (tester) async {
-      final tasks = [task('hidden', project: 'Work')];
+      final tasks = [
+        task('hidden', project: 'Work'),
+        task('journal', path: 'daily/2020/10/2020-10-03.typ'),
+      ];
       String? opened;
       String? status;
       await tester.pumpWidget(
@@ -179,6 +241,19 @@ void main() {
       await tester.tap(find.text('Tasks'));
       await tester.pumpAndSettle();
       expect(find.text('Task hidden'), findsNothing);
+      expect(find.text('Task journal'), findsNothing);
+      expect(find.text('From journal'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('From journal')).dy,
+        greaterThan(tester.getTopLeft(find.text('No date')).dy),
+      );
+      await tester.tap(find.text('October 2020 · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Task journal'), findsOneWidget);
+      expect(find.text('Oct 3'), findsOneWidget);
+      await tester.tap(find.text('October 2020 · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Task journal'), findsNothing);
       await tester.tap(find.text('Work · 1'));
       await tester.pumpAndSettle();
       expect(find.text('Task hidden'), findsOneWidget);

@@ -29,3 +29,8 @@ String humanDate(DateTime day, {DateTime? now}) {
 
 String compactHumanDate(DateTime day) =>
     '${_weekdayNames[day.weekday - 1]}, ${_monthNames[day.month - 1].substring(0, 3)} ${day.day}';
+
+String monthYear(DateTime day) => '${_monthNames[day.month - 1]} ${day.year}';
+
+String monthDay(DateTime day) =>
+    '${_monthNames[day.month - 1].substring(0, 3)} ${day.day}';

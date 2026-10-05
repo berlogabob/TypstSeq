@@ -235,7 +235,8 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
     super.dispose();
   }
 
-  Widget _row(TaskRef task) {
+  Widget _row(TaskRef task, {bool journal = false}) {
+    final day = journal ? journalTaskDay(task, widget.notes) : null;
     final overdue = isTaskOverdue(task, _today);
     return ListTile(
       leading: TaskCheckbox(
@@ -246,6 +247,7 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
       title: Text(task.text),
       subtitle: Text(
         [
+          if (day != null) monthDay(day),
           if (task.project != null) task.project!,
           if (task.due != null) 'due ${task.due}${overdue ? ' · overdue' : ''}',
         ].join(' · '),
@@ -349,6 +351,12 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
                 const SliverToBoxAdapter(
                   child: ListTile(title: Text('No date')),
                 ),
+              if (group.key.startsWith('journal:') &&
+                  group ==
+                      _groups.firstWhere((g) => g.key.startsWith('journal:')))
+                const SliverToBoxAdapter(
+                  child: ListTile(title: Text('From journal')),
+                ),
               SliverToBoxAdapter(
                 child: ListTile(
                   title: Text('${group.title} · ${group.tasks.length}'),
@@ -371,7 +379,10 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
               if (!group.collapsed || _expanded.contains(group.key))
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) => _row(group.tasks[i]),
+                    (context, i) => _row(
+                      group.tasks[i],
+                      journal: group.key.startsWith('journal:'),
+                    ),
                     childCount: group.tasks.length,
                   ),
                 ),

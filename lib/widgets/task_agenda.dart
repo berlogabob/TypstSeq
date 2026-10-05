@@ -15,6 +15,20 @@ bool isTaskOverdue(TaskRef task, String today) {
   return due != null && due.compareTo(today) < 0;
 }
 
+final _journalPath = RegExp(r'^daily/\d{4}/\d{2}/(\d{4}-\d{2}-\d{2})\.typ$');
+
+bool isJournalTask(TaskRef task, Map<String, NoteRef> notes) =>
+    notes[task.notePath]?.kind == 'daily' ||
+    _journalPath.hasMatch(task.notePath);
+
+DateTime? journalTaskDay(TaskRef task, Map<String, NoteRef> notes) {
+  final note = notes[task.notePath];
+  final day =
+      (note == null ? null : dailyDayOf(note)) ??
+      _journalPath.firstMatch(task.notePath)?.group(1);
+  return day == null ? null : DateTime.tryParse(day);
+}
+
 enum TaskAgendaFilter { open, done, all }
 
 class TaskAgendaGroup {
@@ -57,6 +71,7 @@ class TaskAgendaCache {
     final cutoff = isoDay(DateTime(date.year, date.month, date.day - 6));
     final buckets = <String, List<TaskRef>>{};
     final titles = <String, String>{};
+    final journalTitles = <String, String>{};
     final sorted = tasks.toList()
       ..sort((a, b) {
         final order = (a.due ?? a.scheduled ?? '9999').compareTo(
@@ -90,16 +105,31 @@ class TaskAgendaCache {
       } else {
         final day = (task.due ?? task.scheduled)?.split('T').first;
         if (day == null) {
-          key = task.project != null
-              ? 'project:${task.project}'
-              : 'note:${task.notePath}';
-          titles[key] =
-              task.project ?? notes[task.notePath]?.title ?? task.notePath;
+          if (isJournalTask(task, notes)) {
+            final day = journalTaskDay(task, notes);
+            key = day == null
+                ? 'journal:unknown'
+                : 'journal:${isoDay(day).substring(0, 7)}';
+            journalTitles[key] = day == null ? 'Unknown date' : monthYear(day);
+          } else {
+            key = task.project != null
+                ? 'project:${task.project}'
+                : 'note:${task.notePath}';
+            titles[key] =
+                task.project ?? notes[task.notePath]?.title ?? task.notePath;
+          }
         } else {
           key = day.compareTo(horizon) <= 0 ? 'upcoming:$day' : 'later';
         }
       }
       buckets.putIfAbsent(key, () => []).add(task);
+    }
+    for (final key in journalTitles.keys) {
+      buckets[key]!.sort((a, b) {
+        final order = (journalTaskDay(b, notes)?.toIso8601String() ?? '')
+            .compareTo(journalTaskDay(a, notes)?.toIso8601String() ?? '');
+        return order != 0 ? order : a.id.compareTo(b.id);
+      });
     }
     final keys = [
       'overdue',
@@ -107,8 +137,13 @@ class TaskAgendaCache {
       ...(buckets.keys.where((k) => k.startsWith('upcoming:')).toList()
         ..sort()),
       'later',
-      ...(titles.keys.toList()
-        ..sort((a, b) => titles[a]!.compareTo(titles[b]!))),
+      ...(titles.keys.toList()..sort((a, b) {
+        final count = buckets[b]!.length.compareTo(buckets[a]!.length);
+        return count != 0 ? count : titles[a]!.compareTo(titles[b]!);
+      })),
+      ...(journalTitles.keys.where((k) => k != 'journal:unknown').toList()
+        ..sort((a, b) => b.compareTo(a))),
+      'journal:unknown',
       'done',
     ];
     _groups = [
@@ -121,10 +156,13 @@ class TaskAgendaCache {
               'today' => 'Today',
               'later' => 'Later',
               'done' => 'Done',
-              _ => titles[key] ?? key.substring(9),
+              _ => titles[key] ?? journalTitles[key] ?? key.substring(9),
             },
             List.unmodifiable(buckets[key]!),
-            collapsed: key == 'done' || titles.containsKey(key),
+            collapsed:
+                key == 'done' ||
+                titles.containsKey(key) ||
+                journalTitles.containsKey(key),
           ),
     ];
     return _groups;
