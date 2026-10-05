@@ -65,6 +65,7 @@ class SemanticSearchController extends ChangeNotifier {
   SemanticModelStore? _store;
   Future<void>? _refreshInFlight;
   bool _cancelled = false;
+  bool _stopping = false;
 
   bool get ready => state is SemanticReady;
 
@@ -113,6 +114,7 @@ class SemanticSearchController extends ChangeNotifier {
   void cancel() => _cancelled = true;
 
   Future<void> refreshNotes() {
+    if (_stopping) return Future.value();
     final active = _refreshInFlight;
     if (active != null) return active;
     late Future<void> flight;
@@ -126,7 +128,7 @@ class SemanticSearchController extends ChangeNotifier {
   Future<void> _refresh() async {
     final store = _store ??= _providedStore ?? SemanticModelStore(modelRoot);
     final files = await store.installed();
-    if (files == null) return;
+    if (files == null || _stopping) return;
     _cancelled = false;
     try {
       // Traverse the path index even for IS NOT NULL (SQLite may otherwise
@@ -354,12 +356,20 @@ class SemanticSearchController extends ChangeNotifier {
   }
 
   void _set(SemanticSearchState next) {
+    if (_stopping) return;
     state = next;
     notifyListeners();
   }
 
+  Future<void> shutdown() async {
+    _stopping = true;
+    _cancelled = true;
+    await _refreshInFlight;
+  }
+
   @override
   void dispose() {
+    _stopping = true;
     _cancelled = true;
     super.dispose();
   }

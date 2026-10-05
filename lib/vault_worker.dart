@@ -184,6 +184,10 @@ Future<void> vaultWorkerMain(VaultWorkerBoot boot) async {
   }
   final worker = _VaultWorker(boot);
   await worker.serve();
+  // serve drains the active command and disposes the inspector. Flutter's
+  // background messenger retains a receive port, so returning alone cannot
+  // terminate this isolate. Exit only after all platform/native awaits finish.
+  Isolate.exit();
 }
 
 class _VaultWorker {
@@ -402,6 +406,7 @@ class VaultWorkerClient {
     // forever. `onExit` also lands here, with a null message.
     _errors.listen((message) {
       if (message == null) {
+        if (!_exited.isCompleted) _exited.complete();
         _finishRunning(const WorkFailedEvent('worker stopped'));
         _events.close();
         _errors.close();
@@ -475,6 +480,7 @@ class VaultWorkerClient {
   bool _running = false;
   bool _disposed = false;
   Future<void>? _disposeFuture;
+  final Completer<void> _exited = Completer<void>();
 
   void _finishRunning(WorkFailedEvent event) {
     if (!_running || _relay.isClosed) return;
@@ -536,6 +542,9 @@ class VaultWorkerClient {
     // makes a later result.success/error fatal in the engine. A permanently
     // wedged native call leaves a detached isolate by design; there is no safe
     // timeout kill for a platform reply whose port may still be in flight.
-    return _disposeFuture = _relay.close();
+    return _disposeFuture = Future.wait([
+      _relay.close(),
+      _exited.future,
+    ]).then((_) {});
   }
 }

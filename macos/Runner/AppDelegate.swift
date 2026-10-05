@@ -5,6 +5,13 @@ import FlutterMacOS
 class AppDelegate: FlutterAppDelegate {
   private var statusItem: NSStatusItem?
 
+  // Flutter 3.47 routes this through System.requestAppExit and retries after
+  // Dart returns exit. Keep its asynchronous .terminateCancel mechanism;
+  // .terminateLater enters a modal run loop that can block channel replies.
+  override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    return super.applicationShouldTerminate(sender)
+  }
+
   // Closing the window keeps the process alive so the worker isolate and the
   // 25 s sync poll keep running; the status item is the way back in.
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

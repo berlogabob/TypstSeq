@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 import 'dart:convert';
 import 'dart:io';
 
@@ -234,6 +235,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Future<TyLogDatabase?> database;
   final Map<String, Future<TyLogDatabase?>> _vaultDatabases = {};
   final List<TyLogDatabase> _additionalDatabases = [];
+  bool _exiting = false;
+  Future<void>? _shutdownFuture;
+  Future<void>? _databaseCloseFuture;
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   late final TyLogEditingController richController;
@@ -405,35 +409,83 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _closeDatabases() async {
-    await Future.wait(
-      _vaultDatabases.values.map((future) => future.catchError((_) => null)),
-    );
-    final primary = await database;
-    if (primary != null) {
-      await (widget.databaseCloser ?? (value) => value.close())(primary);
+  @override
+  Future<AppExitResponse> didRequestAppExit() async {
+    try {
+      await (_shutdownFuture ??= _shutdown()).timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (error, stack) {
+      debugPrint('Desktop shutdown did not finish: $error\n$stack');
     }
-    for (final scoped in _additionalDatabases) {
-      await scoped.close();
+    return AppExitResponse.exit;
+  }
+
+  Future<void> _shutdown() async {
+    setState(() => _exiting = true);
+    _openGeneration++;
+    _previewDebounceTimer?.cancel();
+    _semanticRefreshTimer?.cancel();
+    _navDebounce?.cancel();
+    workspace.removeListener(_workspaceChanged);
+    final semantic = _semantic;
+    _semantic = null;
+    // Unmount preview widgets so their owned Typst engines/documents dispose.
+    final frame = WidgetsBinding.instance.endOfFrame;
+    try {
+      await Future.wait([
+        workspace.shutdown(),
+        if (semantic != null) semantic.shutdown(),
+      ]);
+    } finally {
+      semantic?.dispose();
+      await _closeDatabases();
+      await frame;
     }
   }
 
-  Future<TyLogDatabase?> _databaseForVault(
-    VaultEntry entry,
-  ) => _vaultDatabases.putIfAbsent(entry.id, () async {
-    final primary = await database;
-    if (primary == null || await primary.claimVault(entry.id)) return primary;
-    if (widget.databaseOpener != null) {
-      throw StateError('The test database is already bound to another vault');
-    }
-    final scoped = await openDatabaseForVault(entry.id);
-    await scoped.claimVault(entry.id);
-    _additionalDatabases.add(scoped);
-    return scoped;
-  });
+  Future<void> _closeDatabases() =>
+      _databaseCloseFuture ??= _closeOwnedDatabases();
+
+  Future<void> _closeOwnedDatabases() async {
+    await Future.wait(
+      _vaultDatabases.values.map((future) => future.catchError((_) => null)),
+    );
+    final primary = await database.catchError((_) => null);
+    // Start every close even if another connection hangs or fails.
+    await Future.wait([
+      for (final db in {?primary, ..._additionalDatabases})
+        Future<void>.sync(
+          () => (widget.databaseCloser ?? (value) => value.close())(db),
+        ),
+    ]);
+  }
+
+  Future<TyLogDatabase?> _databaseForVault(VaultEntry entry) => _exiting
+      ? (_vaultDatabases[entry.id] ?? Future.value(null))
+      : _vaultDatabases.putIfAbsent(entry.id, () async {
+          final primary = await database;
+          if (primary == null || await primary.claimVault(entry.id)) {
+            return primary;
+          }
+          if (widget.databaseOpener != null) {
+            throw StateError(
+              'The test database is already bound to another vault',
+            );
+          }
+          final scoped = await openDatabaseForVault(entry.id);
+          try {
+            await scoped.claimVault(entry.id);
+          } catch (_) {
+            await scoped.close();
+            rethrow;
+          }
+          _additionalDatabases.add(scoped);
+          return scoped;
+        });
 
   void _workspaceChanged() {
-    if (!mounted) return;
+    if (!mounted || _exiting) return;
     if (workspace.entry == null) {
       _semantic?.dispose();
       _semantic = null;
@@ -467,12 +519,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final entry = workspace.entry;
     if (entry == null) return;
     final db = await _databaseForVault(entry);
-    if (!mounted || workspace.entry != entry || db == null) return;
+    if (!mounted || _exiting || workspace.entry != entry || db == null) return;
     var controller = _semantic;
     if (controller == null || !identical(controller.db, db)) {
       controller?.dispose();
       final support = await getApplicationSupportDirectory();
-      if (!mounted || workspace.entry != entry) return;
+      if (!mounted || _exiting || workspace.entry != entry) return;
       controller = SemanticSearchController(
         db: db,
         modelRoot: Directory(
@@ -1949,6 +2001,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_exiting) return;
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _semantic?.pause();
@@ -3895,6 +3948,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_exiting) return const SizedBox.shrink();
     if (mode != 'preview' && mode != 'split') {
       _previewDebounceTimer?.cancel();
       _previewDebounceTimer = null;

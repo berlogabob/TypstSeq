@@ -1372,7 +1372,14 @@ Future<TyLogDatabase> openDatabaseForVault(String stableVaultId) async {
   }
   final dir = await getApplicationSupportDirectory();
   final legacy = await openDatabaseWithFile(File('${dir.path}/tylog.db'));
-  if (await legacy.claimVault(stableVaultId)) return legacy;
+  try {
+    if (await legacy.claimVault(stableVaultId)) return legacy;
+  } catch (_) {
+    // No caller owns this connection when claiming fails. Let Drift finalize
+    // its statements and close its background isolate before propagating.
+    await legacy.close();
+    rethrow;
+  }
   await legacy.close();
   return openDatabaseWithFile(
     File('${dir.path}/${_vaultDatabaseName(stableVaultId)}'),
@@ -1383,6 +1390,8 @@ String _vaultDatabaseName(String stableVaultId) =>
     'tylog-${sha256.convert(utf8.encode(stableVaultId))}.db';
 
 Future<TyLogDatabase> openDatabaseWithFile(File file) async {
+  // Drift owns the statements and the worker isolate. Always await db.close()
+  // when releasing ownership; don't dispose raw handles or kill the isolate.
   final db = TyLogDatabase(
     NativeDatabase.createInBackground(
       file,

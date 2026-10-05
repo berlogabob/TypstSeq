@@ -356,7 +356,25 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  final Set<Future<void>> _vaultOpens = {};
+
   Future<void> openVault(
+    VaultEntry next, {
+    String? trigger,
+    VaultStorage? storage,
+  }) {
+    if (_disposed) return Future.value();
+    late final Future<void> flight;
+    flight = _openVault(
+      next,
+      trigger: trigger,
+      storage: storage,
+    ).whenComplete(() => _vaultOpens.remove(flight));
+    _vaultOpens.add(flight);
+    return flight;
+  }
+
+  Future<void> _openVault(
     VaultEntry next, {
     String? trigger,
     VaultStorage? storage,
@@ -1170,7 +1188,7 @@ class WorkspaceController extends ChangeNotifier {
         inspector: inspector,
         force: force,
         deviceId: deviceId,
-        isCancelled: showProgress ? () => cancelRebuild : null,
+        isCancelled: () => _disposed || (showProgress && cancelRebuild),
         // Throttled here rather than in the callback so both paths tick at the
         // same rate — the worker path throttles worker-side, before the port.
         onProgress: (onProgress == null && !showProgress)
@@ -1239,6 +1257,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void queueCloudSync() {
+    if (_disposed) return;
     _cloudAutosave?.cancel();
     final edited = lastEditAt;
     final elapsed = edited == null ? Duration.zero : _now().difference(edited);
@@ -1255,6 +1274,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void startCloudPolling() {
+    if (_disposed) return;
     _cloudPoll?.cancel();
     if (!(cloud?.isReady ?? false)) return;
     _cloudPoll = Timer.periodic(
@@ -1273,6 +1293,7 @@ class WorkspaceController extends ChangeNotifier {
   /// of waiting on a real 25-second timer.
   @visibleForTesting
   Future<void> pollTick() async {
+    if (_disposed) return;
     final generation = _vaultGeneration;
     if (syncing || editingRecently || _pollInFlight) return;
     _pollInFlight = true;
@@ -1366,7 +1387,25 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  final Set<Future<bool>> _syncFlights = {};
+
   Future<bool> syncNow({
+    String trigger = 'manual',
+    NextcloudConfig? configOverride,
+    InitialSyncMode? initialMode,
+  }) {
+    if (_disposed) return Future.value(false);
+    late final Future<bool> flight;
+    flight = _syncNow(
+      trigger: trigger,
+      configOverride: configOverride,
+      initialMode: initialMode,
+    ).whenComplete(() => _syncFlights.remove(flight));
+    _syncFlights.add(flight);
+    return flight;
+  }
+
+  Future<bool> _syncNow({
     String trigger = 'manual',
     NextcloudConfig? configOverride,
     InitialSyncMode? initialMode,
@@ -2029,6 +2068,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Future<void> _runIdleMaintenance() async {
+    if (_disposed) return;
     if (dirty || isComposing()) return;
     if (editingRecently) {
       queueCloudSync();
@@ -2055,11 +2095,32 @@ class WorkspaceController extends ChangeNotifier {
     _cloudPoll?.cancel();
   }
 
+  final List<Future<void>> _workerShutdowns = [];
+
   void _shutdownWorker() {
     final worker = _worker;
     _worker = null;
     _indexing = false;
-    unawaited(worker?.dispose() ?? Future<void>.value());
+    if (worker != null) _workerShutdowns.add(worker.dispose());
+  }
+
+  Future<void> shutdown() async {
+    _cancelTimers();
+    // Flush the debounce before invalidating ownership or closing SQLite.
+    final pendingSave = dirty ? save(syncAfter: false) : Future.value(false);
+    _disposed = true;
+    cancelRebuild = true;
+    _shutdownWorker();
+    await Future.wait<void>([
+      pendingSave.then((_) {}),
+      ..._vaultOpens,
+      ..._workerShutdowns,
+      ?_activeScan,
+      for (final write in _noteWrites.values) write,
+      for (final mutation in _noteMutations.values) mutation.then((_) {}),
+      ?_mutationRefreshFuture,
+      for (final sync in _syncFlights) sync.then((_) {}),
+    ]);
   }
 
   @override
