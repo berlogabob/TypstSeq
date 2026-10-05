@@ -31,6 +31,28 @@ class FeedEvent {
   );
 }
 
+String materializedEventLabel(NoteRef note) {
+  if (note.properties['event_type'] != 'consultation') {
+    return '${note.title} · ${note.properties['source_status'] ?? 'current'}';
+  }
+  String time(Object? value) {
+    final text = value?.toString() ?? '';
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) return text;
+    final local = parsed.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  return [
+    note.title,
+    'Consultation',
+    if (note.properties['start'] != null)
+      '${time(note.properties['start'])}${note.properties['end'] == null ? '' : '–${time(note.properties['end'])}'}',
+    if (note.properties['student'] != null) '${note.properties['student']}',
+    if (note.properties['status'] != null) '${note.properties['status']}',
+  ].join(' · ');
+}
+
 List<FeedEvent> parseTimetable(
   String body, {
   String group = 'MCIA003N01',

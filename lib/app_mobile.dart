@@ -62,6 +62,7 @@ import 'widgets/snack.dart';
 import 'desktop_updater.dart' as updater;
 import 'widgets/sync_dashboard.dart';
 import 'widgets/sync_status.dart';
+import 'widgets/idea_hub.dart';
 import 'widgets/vaults_sheet.dart';
 import 'widgets/work_surface.dart';
 import 'widgets/virtual_plain_editor.dart';
@@ -4581,9 +4582,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       );
     }
+    if (documentModes.contains(mode) &&
+        currentNote != null &&
+        currentDaily == null) {
+      documentContent = Column(
+        children: [
+          IdeaProperties(
+            note: currentNote,
+            onToggle: (enabled) async {
+              try {
+                final updated = await workspace.mutateNote(
+                  currentNote.path,
+                  (source) => setIdeaKind(currentNote.path, source, enabled),
+                );
+                if (!updated && context.mounted) {
+                  showSnack(
+                    context,
+                    'Could not update that note: the vault changed.',
+                  );
+                }
+              } catch (error) {
+                if (context.mounted) {
+                  showSnack(context, 'Could not update that note: $error');
+                }
+              }
+            },
+            onStatus: (value) => _setNoteProperty(currentNote, 'status', value),
+          ),
+          Expanded(child: documentContent),
+        ],
+      );
+    }
     if (documentModes.contains(mode) && currentDaily != null) {
       documentContent = Column(
         children: [
+          IdeaHubStrip(
+            key: ValueKey((
+              vault,
+              workspace.indexRevision,
+              isoDay(currentDaily),
+            )),
+            index: index,
+            day: isoDay(currentDaily),
+            readSource: (path) => vault!.storage.readText(path),
+            onOpenPath: _openPath,
+          ),
           ScreenshotStrip(
             index: index,
             day: isoDay(currentDaily),

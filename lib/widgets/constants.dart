@@ -77,6 +77,7 @@ IconData iconForKind(String? kind) => switch (kind) {
   'place' => Icons.location_on_outlined, // map pin / locator
   'org' || 'organization' || 'company' => Icons.business_outlined,
   'project' => Icons.work_outline,
+  'idea' => Icons.lightbulb_outline,
   'article' => Icons.article_outlined,
   'screenshot' => Icons.screenshot_outlined,
   'daily' => Icons.event_note,

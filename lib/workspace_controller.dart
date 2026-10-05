@@ -2219,8 +2219,7 @@ class WorkspaceController extends ChangeNotifier {
           CalendarItem(
             date: note.date!,
             kind: CalendarItemKind.dateRef,
-            title:
-                '${note.title} · ${note.properties['source_status'] ?? 'current'}',
+            title: materializedEventLabel(note),
             notePath: note.path,
           ),
     ]..sort((a, b) => a.date.compareTo(b.date));

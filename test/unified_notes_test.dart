@@ -17,6 +17,7 @@ void main() {
     _note('the-project', 'project'),
     _note('ilya', 'person'),
     _note('an-article', 'article'),
+    _note('an-idea', 'idea'),
   ];
 
   Widget surface() => MaterialApp(
@@ -70,6 +71,13 @@ void main() {
     expect(find.text('ilya'), findsOneWidget);
     expect(find.text('plain-note'), findsNothing);
     expect(find.text('the-project'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilterChip, 'idea'));
+    await tester.pumpAndSettle();
+    expect(find.text('an-idea'), findsOneWidget);
+    expect(find.text('ilya'), findsNothing);
+    await tester.tap(find.widgetWithText(FilterChip, 'person'));
+    await tester.pumpAndSettle();
 
     // Tapping again clears the filter.
     await tester.tap(find.widgetWithText(FilterChip, 'person'));
