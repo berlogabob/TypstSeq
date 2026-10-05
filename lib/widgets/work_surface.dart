@@ -820,6 +820,29 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   @override
   Widget build(BuildContext context) {
+    double lineHeight(TextStyle? style) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: 'Ag',
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      );
+      final height = painter.preferredLineHeight;
+      painter.dispose();
+      return height;
+    }
+
+    final titleHeight = screenshots
+        ? 2 *
+              lineHeight(
+                Theme.of(context).textTheme.titleSmall?.copyWith(height: 1.4),
+              )
+        : 0.0;
+    final subtitleHeight = screenshots
+        ? lineHeight(Theme.of(context).textTheme.bodySmall)
+        : 0.0;
     final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == widget.kind)
         .toList();
@@ -1081,7 +1104,6 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                                 (constraints.crossAxisExtent -
                                     (columns - 1) * 8) /
                                 columns;
-                            final scaler = MediaQuery.textScalerOf(context);
                             return SliverGrid(
                               gridDelegate:
                                   SliverGridDelegateWithMaxCrossAxisExtent(
@@ -1089,13 +1111,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                                     crossAxisSpacing: 8,
                                     mainAxisSpacing: 8,
                                     mainAxisExtent:
-                                        width * 16 / 9 +
-                                        scaler.scale(48) +
-                                        scaler.scale(18) +
+                                        width +
+                                        titleHeight +
+                                        subtitleHeight +
                                         24,
                                   ),
                               delegate: SliverChildBuilderDelegate(
-                                (context, i) => _screenshotCard(notes[i]),
+                                (context, i) =>
+                                    _screenshotCard(notes[i], titleHeight),
                                 childCount: notes.length,
                               ),
                             );
@@ -1297,7 +1320,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     ),
   );
 
-  Widget _screenshotCard(NoteRef note) => Align(
+  Widget _screenshotCard(NoteRef note, double titleHeight) => Align(
     alignment: Alignment.topCenter,
     child: Card(
       key: ValueKey(note.path),
@@ -1338,13 +1361,16 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: Text(
-                _screenshotTitle(note),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(height: 1.4),
+              child: SizedBox(
+                height: titleHeight,
+                child: Text(
+                  _screenshotTitle(note),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(height: 1.4),
+                ),
               ),
             ),
             Padding(

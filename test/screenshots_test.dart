@@ -506,6 +506,107 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saved screen'), findsOneWidget);
   });
+  for (final width in [360.0, 1200.0]) {
+    for (final scale in [1.0, 1.3]) {
+      testWidgets('screenshot grid at width $width and text scale $scale', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width, 1000);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final notes = List.generate(
+          14,
+          (i) => NoteRef(
+            id: 'grid-$i',
+            path: 'screenshots/grid-$i.typ',
+            title: 'A long screenshot title that wraps onto two lines $i',
+            kind: 'screenshot',
+            date: shot.date,
+            outgoingLinks: const [],
+            properties: shot.properties,
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(
+              platform: width == 1200
+                  ? TargetPlatform.macOS
+                  : TargetPlatform.android,
+            ),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: WorkSurface(
+                child: LibraryView(
+                  initialTab: 2,
+                  index: null,
+                  pagedNotes: notes,
+                  calendar: const [],
+                  dayMarks: (daily: <String>{}, refs: <String>{}),
+                  progressByPath: const {},
+                  onOpenPath: (_) {},
+                  onOpenDay: (_) {},
+                  onSetTaskStatus: (_, _) async {},
+                  onSetReadStatus: (_, _) async {},
+                  onSetRelevance: (_, _) async {},
+                  onCreateNote: (_) {},
+                  onCreateEntity: () {},
+                  onImportMarkdownArticles: () async {},
+                  onReadPath: (_) {},
+                  onDeleteArticle: (_) async {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(SliverGrid), findsOneWidget);
+        expect(find.byType(ListTile), findsNothing);
+        final first = find.byKey(ValueKey(notes.first.path));
+        final second = find.byKey(ValueKey(notes[1].path));
+        final tile = tester.getRect(first);
+        final context = tester.element(first);
+        final theme = Theme.of(context);
+        double lineHeight(TextStyle? style) {
+          final painter = TextPainter(
+            text: TextSpan(text: 'Ag', style: style),
+            textDirection: TextDirection.ltr,
+            textScaler: TextScaler.linear(scale),
+          );
+          final height = painter.preferredLineHeight;
+          painter.dispose();
+          return height;
+        }
+
+        final textHeight =
+            2 * lineHeight(theme.textTheme.titleSmall?.copyWith(height: 1.4)) +
+            lineHeight(theme.textTheme.bodySmall) +
+            24;
+        expect(tile.height, closeTo(tile.width + textHeight, 0.01));
+        final thumbnail = tester.getSize(
+          find.descendant(
+            of: first,
+            matching: find.byType(ScreenshotThumbnail),
+          ),
+        );
+        expect(thumbnail.height, closeTo(tile.width, 0.01));
+        expect(thumbnail.width, closeTo(tile.width, 0.01));
+        expect(tester.getRect(second).top, tile.top);
+        final columns = ((width - 40) / 188).ceil();
+        expect(columns, width == 360 ? 2 : greaterThan(2));
+        final nextRow = tester.getRect(
+          find.byKey(ValueKey(notes[columns].path)),
+        );
+        expect(nextRow.top - tile.bottom, closeTo(8, 0.01));
+      });
+    }
+  }
   testWidgets('phone OCR controls are read-only but Process now works', (
     tester,
   ) async {
