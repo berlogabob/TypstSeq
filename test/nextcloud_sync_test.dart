@@ -877,6 +877,32 @@ void main() {
     });
 
     test(
+      'cached poll preserves a conflicted new local file without a cursor',
+      () async {
+        final s = await synced();
+        const path = 'notes/new-conflict.typ';
+        const local = 'local new file';
+        await s.vault.storage.writeText(path, local);
+        s.remote[path] = _remoteText('remote new file');
+        await NextcloudSync(_config(s.server)).sync(s.vault);
+        final conflict = (await loadSyncConflicts(s.vault)).single;
+        expect(conflict.path, path);
+        final state =
+            jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+                as Map;
+        expect((state['cursors'] as Map).containsKey(path), isFalse);
+        s.remote.remove(path);
+        s.remote['daily/2026/10/day.typ'] = _remoteText('unrelated change');
+        final storage = s.vault.storage as _ListCountingStorage;
+        storage.recursiveLists = 0;
+        await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+        expect(storage.recursiveLists, 0);
+        expect((await loadSyncConflicts(s.vault)).single.id, conflict.id);
+        expect(await s.vault.storage.readText(path), local);
+      },
+    );
+
+    test(
       'pending conflict polls only probe root and relist changed folders',
       () async {
         final s = await synced();

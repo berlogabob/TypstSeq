@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
@@ -568,6 +569,56 @@ void main() {
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget); // place
     expect(find.byIcon(Icons.tag), findsOneWidget); // tag
   });
+
+  testWidgets(
+    'event chip resolves after indexing and has readable wrapped lines',
+    (tester) async {
+      var indexed = false;
+      const title =
+          'A long calendar class title repeated over several wrapped lines with plenty of words';
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (_) {},
+        onError: (e) => fail('$e'),
+        onProtectedTap: (_) {},
+        resolveKind: (_) => indexed ? 'event' : 'unresolved',
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (_, _) async => const [
+                MentionSuggestion(id: 'class', title: title, noteKind: 'event'),
+              ],
+              onSelectMention: (_) async {
+                indexed = true;
+              },
+            ),
+          ),
+        ),
+      );
+      final field = find.byKey(const Key('rich-journal-editor'));
+      await tester.tap(field);
+      await tester.enterText(field, '[[Class');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(indexed, isTrue);
+      // The editor toolbar has its own add button; the chip must have none.
+      expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
+      expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+      final label = tester.widget<Text>(find.text(title));
+      expect(label.style?.height, greaterThanOrEqualTo(1.5));
+      expect(
+        tester.getSize(find.text(title)).height,
+        greaterThan(label.style!.fontSize! * 2),
+      );
+    },
+  );
 
   testWidgets('unresolved note chips show create styling', (tester) async {
     await tester.pumpWidget(

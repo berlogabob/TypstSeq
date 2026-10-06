@@ -748,7 +748,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (ix == null || resolved == null) return null;
     return switch (resolved.status) {
       LinkResolutionStatus.resolved => ix.notesByPath[resolved.path]?.kind,
-      LinkResolutionStatus.unresolved => 'unresolved',
+      // A class picked from the calendar exists before the index catches up.
+      LinkResolutionStatus.unresolved =>
+        workspace.feedEvents.any((e) => e.id == target)
+            ? 'event'
+            : 'unresolved',
       LinkResolutionStatus.ambiguous => 'ambiguous',
     };
   }

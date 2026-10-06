@@ -231,6 +231,6 @@ bool _isWhitespace(int code) =>
 List<MentionSuggestion> orderMentionSuggestions(
   List<MentionSuggestion> items,
 ) => [
-  ...items.where((item) => item.create),
   ...items.where((item) => !item.create),
+  ...items.where((item) => item.create),
 ];

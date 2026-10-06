@@ -12,6 +12,7 @@ import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
+import 'nextcloud_sync/push_client.dart';
 import 'package:tylog_core/validation.dart';
 import 'scanner.dart';
 import 'package:tylog_core/search_index.dart';
@@ -251,6 +252,8 @@ class WorkspaceController extends ChangeNotifier {
   DateTime? _firstTransientFailureAt;
   int _transientFailures = 0;
   Timer? _cloudPoll;
+  NextcloudPushClient? _pushClient;
+  Timer? _pushDebounce;
   final Map<String, Future<bool>> _noteMutations = {};
   final Map<String, int> _noteMutationVersions = {};
   bool _mutationRefreshQueued = false;
@@ -1427,8 +1430,18 @@ class WorkspaceController extends ChangeNotifier {
 
   void startCloudPolling() {
     if (_disposed) return;
-    _cloudPoll?.cancel();
+    stopCloudPolling();
     if (!(cloud?.isReady ?? false)) return;
+    _pushClient = NextcloudPushClient(
+      cloud!,
+      onFilesChanged: () {
+        _pushDebounce?.cancel();
+        _pushDebounce = Timer(
+          const Duration(seconds: 1),
+          () => unawaited(pollTick(remoteChanged: true)),
+        );
+      },
+    )..start();
     _cloudPoll = Timer.periodic(
       const Duration(seconds: 20),
       (_) => unawaited(pollTick()),
@@ -1438,13 +1451,16 @@ class WorkspaceController extends ChangeNotifier {
   /// Stops the background cloud poll, e.g. while the app is backgrounded.
   void stopCloudPolling() {
     _cloudPoll?.cancel();
+    _pushDebounce?.cancel();
+    _pushClient?.close();
+    _pushClient = null;
   }
 
   /// One 20s poll tick's worth of work. Exposed (not just called from the
   /// [Timer] in [startCloudPolling]) so tests can drive it directly instead
   /// of waiting on a real 20-second timer.
   @visibleForTesting
-  Future<void> pollTick() async {
+  Future<void> pollTick({bool remoteChanged = false}) async {
     if (_disposed) return;
     final generation = _vaultGeneration;
     if (syncing || editingRecently || _pollInFlight) return;
@@ -1474,6 +1490,17 @@ class WorkspaceController extends ChangeNotifier {
       _setPollConfig(configKey);
       if (_pollBlocked) return;
       if (_pollNextAt != null && _now().isBefore(_pollNextAt!)) return;
+      if (remoteChanged) {
+        await appendVaultTrace(opened, [
+          {
+            'timestamp': _now().toUtc().toIso8601String(),
+            'event': 'push',
+            'trigger': 'poll',
+          },
+        ]).catchError((_) {});
+      }
+      // A push still goes through the root probe: it is one cheap request and
+      // filters out the echo of this device's own uploads.
       final unchanged = await NextcloudSync(config).pollIsUnchanged(
         opened,
         dirty: dirty || opened.hasPendingSyncWrites,
@@ -2325,7 +2352,7 @@ class WorkspaceController extends ChangeNotifier {
   void _cancelTimers() {
     _autosave?.cancel();
     _cloudAutosave?.cancel();
-    _cloudPoll?.cancel();
+    stopCloudPolling();
   }
 
   final List<Future<void>> _workerShutdowns = [];

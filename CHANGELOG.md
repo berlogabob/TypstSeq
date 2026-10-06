@@ -3,6 +3,27 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.0+123
+
+### Added
+
+- **Live Nextcloud updates.** While TyLog is open, servers with push support
+  notify it of changes within a second or two; the sync that follows still
+  takes several seconds. Other servers keep the usual 20-second check.
+
+### Changed
+
+- **Smaller Android download.** The APK is 85 MB instead of 204 MB; it now
+  contains only the 64-bit ARM build.
+- Mac releases also refresh the local note indexer and its Typst package.
+
+### Fixed
+
+- Existing `@` and `[[` matches appear before the new-page option, so Enter
+  links the matching note instead of creating a stray page.
+- Calendar event links resolve after creation, and long chip titles wrap
+  without overlapping lines.
+
 ## 0.10.2+122
 
 ### Fixed

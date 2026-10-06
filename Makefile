@@ -4,7 +4,7 @@ APP_NAME := tylog
 BRANCH := $(shell git branch --show-current)
 OWNER_REPO ?= berlogabob/TypstSeq
 
-.PHONY: help setup-native test-core test-typst test verify verify-android verify-real-vault build-android release
+.PHONY: help setup-native test-core test-typst test verify verify-android verify-real-vault build-android install-indexer release
 
 help:
 	@echo "TyLog release commands"
@@ -75,7 +75,7 @@ INTEGRATION_TESTS := $(filter-out integration_test/vault_worker_real_vault_test.
 
 verify: test
 	@for t in $(INTEGRATION_TESTS); do echo "== $$t"; flutter test $$t -d macos -r expanded || exit 1; done
-	@flutter build apk --release
+	@flutter build apk --release --target-platform android-arm64
 	@flutter build macos --release
 	@if [ "$$(uname -s)" = Linux ]; then flutter build linux; else echo "Skipping Linux build on $$(uname -s); covered by CI."; fi
 
@@ -110,13 +110,20 @@ verify-real-vault:
 		--target=integration_test/vault_worker_real_vault_test.dart -d $(ANDROID_DEVICE)
 
 build-android:
-	@flutter build apk --release
+	@flutter build apk --release --target-platform android-arm64
 	@echo "APK: build/app/outputs/flutter-apk/app-release.apk"
+
+install-indexer:
+	@mkdir -p "$(HOME)/.local/bin" "$(HOME)/.local/share/tylog/typst"
+	@cd packages/tylog_core && dart compile exe bin/tylog.dart -o "$(HOME)/.local/bin/tylog"
+	@rsync -a --delete typst/ "$(HOME)/.local/share/tylog/typst/"
+	@launchctl kickstart -k gui/$$(id -u)/org.tylog.indexer || true
 
 release:
 	@if [ -z "$(SKIP_BUMP)" ]; then $(MAKE) bump-version; else echo "Skipping bump"; fi
 	@$(MAKE) test
 	@$(MAKE) build-android
+	@if [ "$$(uname -s)" = Darwin ]; then $(MAKE) install-indexer; fi
 	@set -e; \
 	NEW_VERSION="$$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d '[:space:]')"; \
 	TAG="v$$NEW_VERSION"; \

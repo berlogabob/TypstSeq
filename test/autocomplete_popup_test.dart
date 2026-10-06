@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:tylog/calendar_feeds.dart';
 import 'package:tylog/vault.dart';
@@ -50,12 +51,15 @@ void main() {
     expect(popup.top, greaterThan(caret.bottom));
     expect(
       tester.getTopLeft(find.byKey(const Key('autocomplete-mention-new'))).dy,
-      lessThan(
+      greaterThan(
         tester
             .getTopLeft(find.byKey(const Key('autocomplete-mention-near')))
             .dy,
       ),
     );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(controller.document.toSource(), contains('#tylog.ref-note("near")'));
   });
   testWidgets('selecting a future class twice creates one note and links it', (
     tester,
@@ -143,12 +147,13 @@ void main() {
       );
     });
   });
-  test('create page leads near matches', () {
+  test('create page follows real matches', () {
     final rows = orderMentionSuggestions(const [
       MentionSuggestion(id: 'near', title: 'Near'),
       MentionSuggestion(id: 'new', title: 'New', create: true),
     ]);
-    expect(rows.first.create, isTrue);
+    expect(rows.first.create, isFalse);
+    expect(rows.last.create, isTrue);
   });
   test('popup stays below caret or above when space is limited', () {
     const size = Size(400, 600);

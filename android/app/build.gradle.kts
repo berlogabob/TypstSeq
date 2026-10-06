@@ -110,3 +110,12 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Phones are 64-bit ARM. `--target-platform android-arm64` drops Flutter's own
+// other-ABI libraries but not the prebuilt Typst engine, which would ride
+// along for x86_64 and 32-bit ARM (+57 MB).
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll("lib/x86_64/**", "lib/armeabi-v7a/**")
+    }
+}

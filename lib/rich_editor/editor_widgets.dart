@@ -1152,9 +1152,7 @@ class _ProtectedChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // height 1.0 so the chip doesn't stretch the line box it sits in — the
-    // surrounding run is 1.55.
-    final inline = textStyle?.copyWith(height: 1.0);
+    final inline = textStyle?.copyWith(height: 1.55);
     final radius = BorderRadius.circular(block ? kRadiusMedium : kRadiusSmall);
     return Semantics(
       button: onTap != null,

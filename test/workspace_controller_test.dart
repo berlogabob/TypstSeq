@@ -3089,7 +3089,8 @@ class _TimerPollingController extends WorkspaceController {
   Future<void> flight = Future.value();
 
   @override
-  Future<void> pollTick() => flight = ioZone.run(super.pollTick);
+  Future<void> pollTick({bool remoteChanged = false}) =>
+      flight = ioZone.run(() => super.pollTick(remoteChanged: remoteChanged));
 }
 
 class _GatedPollInspector extends _FakeInspector {
