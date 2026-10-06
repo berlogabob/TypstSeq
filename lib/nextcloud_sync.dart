@@ -530,6 +530,9 @@ class NextcloudSync {
           }
           final previous = syncState[unorm.nfc(path)];
           if (previous != null && previous.remoteEtag == null) continue;
+          // The receipt certifies the bytes as of the read, not the PUT's end:
+          // an autosave landing during a slow upload must not look synced.
+          final readAt = DateTime.now().millisecondsSinceEpoch;
           final stat = await vault.storage.stat(path);
           if (stat == null) continue; // Deletions need the normal sync guards.
           final bytes = await vault.storage.readBytes(path);
@@ -553,7 +556,7 @@ class NextcloudSync {
                 ),
               );
               syncState[unorm.nfc(path)] = SyncCursor(
-                recordedAt: DateTime.now().millisecondsSinceEpoch,
+                recordedAt: readAt,
                 localMillis: stat.modified?.millisecondsSinceEpoch,
                 localSize: bytes.length,
                 localSha256: hash,

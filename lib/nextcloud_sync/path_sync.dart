@@ -1003,7 +1003,7 @@ extension _PathSync on NextcloudSync {
       final stat = replacement.value;
       state.remove(old.key);
       state[replacement.key] = SyncCursor(
-        recordedAt: DateTime.now().millisecondsSinceEpoch,
+        // No recordedAt: the stat is from the scan, so the next index pass re-reads once.
         localMillis: stat.modified?.millisecondsSinceEpoch,
         localSize: stat.size,
         remoteMillis: moved.modified.millisecondsSinceEpoch,
