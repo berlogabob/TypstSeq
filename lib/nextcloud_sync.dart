@@ -888,6 +888,7 @@ class NextcloudSync {
             ...localEntries.keys,
             ...remote.keys,
             ...syncState.keys,
+            ...unresolved.keys,
           }.toList()..sort((a, b) {
             // Apply proven absences before transfers; _syncPath keeps the wipe and
             // local-change guards. No second confirmation pull is needed.
@@ -1845,7 +1846,10 @@ Future<void> _discardConflictsForPath(Vault vault, String path) async {
     } catch (_) {
       continue;
     }
-    if (json['path'] != path) continue;
+    final recordPath = json['path'];
+    if (recordPath is! String || unorm.nfc(recordPath) != unorm.nfc(path)) {
+      continue;
+    }
     for (final key in const ['localSnapshot', 'remoteSnapshot']) {
       final snapshot = json[key] as String?;
       if (snapshot != null && await vault.storage.exists(snapshot)) {

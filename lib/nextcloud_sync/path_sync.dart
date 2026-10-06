@@ -329,6 +329,16 @@ extension _PathSync on NextcloudSync {
       verifiedRevision = true;
     }
 
+    // Both sides accepted the deletion while a conflict was pending. There
+    // is no live version left to arbitrate; do not leave a permanent blocker.
+    if (unresolvedConflict != null &&
+        !localExists &&
+        !remoteExists &&
+        allowLocalDeletes) {
+      await _discardConflictsForPath(vault, path);
+      unresolvedConflict = null;
+    }
+
     var adoptRemoteConflict = false;
     if (unresolvedConflict != null && localExists && remoteExists) {
       final captured = await _captureRemote(

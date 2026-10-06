@@ -5,14 +5,419 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:drift/native.dart';
+import 'package:tylog/database/note_persistence.dart';
+import 'package:tylog/database/revision_publisher.dart';
+import 'package:tylog/database/tylog_database.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'package:tylog/nextcloud_sync.dart';
+import 'package:tylog/nextcloud_sync/chunked_upload.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  group('soak', () {
+    test(
+      'three devices converge without losing written content',
+      () async {
+        const seed = 708;
+        final random = Random(seed);
+        final rounds = Platform.environment['SOAK'] == '1' ? 300 : 30;
+        final remote = <String, _MutableRemoteFile>{};
+        var failAfter = -1;
+        var injectedErrors = 0;
+        final server = await _mutableWebDavServer(
+          remote,
+          serverError: () {
+            if (failAfter < 0) return false;
+            if (failAfter-- > 0) return false;
+            injectedErrors++;
+            failAfter = 0; // Fail retries too, until this sync run ends.
+            return true;
+          },
+        );
+        addTearDown(() => server.close(force: true));
+        final vaults = <Vault>[];
+        for (var i = 0; i < 3; i++) {
+          final root = await Directory.systemTemp.createTemp('tylog-soak-$i-');
+          addTearDown(() => root.delete(recursive: true));
+          final vault = Vault(root);
+          await vault.ensureCreated();
+          vaults.add(vault);
+          await NextcloudSync(_config(server)).sync(vault);
+        }
+        final diary = <String>[];
+        final written = <String, String>{}; // hash -> stable note identity
+        final parents = <String, String?>{};
+        final superseded = <String>{};
+        final deleted = <String>{};
+        final attachmentHashes = <String, String>{};
+        String hash(List<int> bytes) => sha256.convert(bytes).toString();
+        String identity(String source) =>
+            RegExp(r'id: "([^"]+)"').firstMatch(source)!.group(1)!;
+        bool ancestor(String older, String newer) {
+          for (
+            String? cursor = parents[newer];
+            cursor != null;
+            cursor = parents[cursor]
+          ) {
+            if (cursor == older) return true;
+          }
+          return false;
+        }
+
+        Future<List<String>> notes(Vault vault) async => [
+          for (final entry in await vault.storage.list(recursive: true))
+            if (!entry.isDirectory &&
+                entry.path.startsWith('notes/') &&
+                entry.path.endsWith('.typ'))
+              entry.path,
+        ]..sort();
+        Future<void> write(
+          Vault vault,
+          String path,
+          String id,
+          int round,
+        ) async {
+          final previous = await vault.storage.exists(path)
+              ? hash(await vault.storage.readBytes(path))
+              : null;
+          final bytes = utf8.encode(
+            '#show: tylog.note.with(id: "$id", title: "Soak")\nversion $round device ${vaults.indexOf(vault)}\n',
+          );
+          final current = hash(bytes);
+          written[current] = id;
+          parents[current] = previous;
+          if (previous != null) superseded.add(previous);
+          await vault.storage.writeBytes(path, bytes);
+          vault.restoreWriteMarkers(path, stale: true, pendingSync: true);
+        }
+
+        Future<void> sync(
+          int device, {
+          bool pushOnly = false,
+          bool interrupt = false,
+        }) async {
+          failAfter = interrupt ? 2 : -1;
+          try {
+            await NextcloudSync(
+              _config(server),
+            ).sync(vaults[device], pushOnly: pushOnly);
+          } on HttpException {
+            if (!interrupt || failAfter != 0) rethrow;
+          } on ChunkUploadException catch (error) {
+            if (!interrupt || failAfter != 0 || error.statusCode != 500) {
+              rethrow;
+            }
+          } finally {
+            failAfter = -1;
+          }
+        }
+
+        // Ensure the short run also exercises chunked attachments and errors.
+        final actions = <int, int>{};
+        for (var round = 0; round < rounds; round++) {
+          final vault = vaults[random.nextInt(3)];
+          final paths = await notes(vault);
+          final action = round == 0
+              ? 4
+              : paths.isEmpty
+              ? 0
+              : random.nextInt(100) < 2
+              ? 4
+              : random.nextInt(4);
+          actions.update(action, (n) => n + 1, ifAbsent: () => 1);
+          final path = paths.isEmpty ? '' : paths[random.nextInt(paths.length)];
+          final before = path.isEmpty ? '' : await vault.storage.readText(path);
+          diary.add(
+            'round=$round device=${vaults.indexOf(vault)} action=$action path=$path $before',
+          );
+          switch (action) {
+            case 0:
+              await write(vault, 'notes/n-$round.typ', 'n-$round', round);
+            case 1:
+              await write(
+                vault,
+                path,
+                identity(await vault.storage.readText(path)),
+                round,
+              );
+            case 2:
+              final bytes = await vault.storage.readBytes(path);
+              final name = round.isEven
+                  ? 'cafe\u0301-$round'
+                  : 'Заметка-$round';
+              final target = 'notes/$name.typ';
+              await vault.storage.writeBytes(target, bytes);
+              await vault.deleteNote(path);
+              vault.restoreWriteMarkers(target, stale: true, pendingSync: true);
+            case 3:
+              final id = identity(await vault.storage.readText(path));
+              deleted.addAll(
+                written.entries.where((e) => e.value == id).map((e) => e.key),
+              );
+              await vault.deleteNote(path);
+            case 4:
+              final path = 'assets/attachment-$round.bin';
+              final bytes = Uint8List(12 * 1024 * 1024)
+                ..fillRange(0, 12 * 1024 * 1024, round % 256);
+              attachmentHashes[path] = hash(bytes);
+              await vault.storage.writeBytes(path, bytes);
+              vault.restoreWriteMarkers(path, stale: true, pendingSync: true);
+          }
+          for (var device = 0; device < 3; device++) {
+            if (round == 0 || random.nextBool()) {
+              await sync(
+                device,
+                pushOnly: random.nextBool(),
+                interrupt: round == 0 && device == 1 || random.nextInt(8) == 0,
+              );
+            }
+          }
+        }
+        final preserved = <String>{};
+        var quiet = false;
+        for (var pass = 0; pass < 30; pass++) {
+          var changes = 0;
+          for (var device = 0; device < 3; device++) {
+            final vault = vaults[device];
+            final result = await NextcloudSync(_config(server)).sync(vault);
+            changes +=
+                result.uploadedContent +
+                result.downloadedContent +
+                result.renamed +
+                result.deletedLocal +
+                result.deletedRemote;
+            for (final conflict in await loadSyncConflicts(vault)) {
+              expect(
+                conflict.localExists && conflict.remoteExists,
+                isTrue,
+                reason:
+                    'seed=$seed pass=$pass unexpected delete/rename conflict: ${conflict.path} local=${conflict.localExists} remote=${conflict.remoteExists}\n${diary.join('\n')}',
+              );
+              final local = await vault.storage.readBytes(
+                conflict.localSnapshot!,
+              );
+              final other = await vault.storage.readBytes(
+                conflict.remoteSnapshot!,
+              );
+              final a = hash(local), b = hash(other);
+              expect(written[a], isNotNull);
+              expect(written[a], written[b]);
+              expect(
+                ancestor(a, b) || ancestor(b, a),
+                isFalse,
+                reason: 'non-concurrent conflict ${conflict.path}',
+              );
+              // Make the losing branch durable before resolving, then let normal
+              // sync distribute it. The conflict snapshots must contain both.
+              final copy = 'notes/conflict-$a.typ';
+              await vault.storage.writeBytes(copy, local);
+              vault.restoreWriteMarkers(copy, stale: true, pendingSync: true);
+              preserved.addAll([a, b]);
+              try {
+                await NextcloudSync(_config(server)).resolveConflict(
+                  vault,
+                  conflict,
+                  SyncConflictResolution.keepRemote,
+                );
+              } catch (error) {
+                fail(
+                  '$error path=${conflict.path} recorded=${conflict.remoteEtag} actual=${remote[unorm.nfc(conflict.path)]?.etag} exists=${remote.containsKey(unorm.nfc(conflict.path))}',
+                );
+              }
+              changes++;
+            }
+          }
+          if (changes == 0) {
+            quiet = true;
+            break;
+          }
+        }
+        expect(quiet, isTrue, reason: 'seed=$seed failed to settle');
+        bool userContent(String path) =>
+            path.startsWith('notes/') || path.startsWith('assets/');
+        final expected = {
+          for (final e in remote.entries)
+            if (userContent(e.key)) unorm.nfc(e.key): hash(e.value.bytes),
+        };
+        final present = <String>{};
+        for (final vault in vaults) {
+          final actual = <String, String>{};
+          for (final entry in await vault.storage.list(recursive: true)) {
+            if (!entry.isDirectory && userContent(entry.path)) {
+              actual[unorm.nfc(entry.path)] = hash(
+                await vault.storage.readBytes(entry.path),
+              );
+            }
+          }
+          expect(
+            actual,
+            expected,
+            reason: 'seed=$seed device=${vaults.indexOf(vault)}',
+          );
+          present.addAll(actual.values);
+          expect(await loadSyncConflicts(vault), isEmpty);
+        }
+        for (final value in written.keys) {
+          expect(
+            present.contains(value) ||
+                superseded.contains(value) ||
+                deleted.contains(value),
+            isTrue,
+            reason: 'seed=$seed lost note ${written[value]} hash=$value',
+          );
+        }
+        for (final value in preserved) {
+          expect(
+            present.contains(value) ||
+                superseded.contains(value) ||
+                deleted.contains(value),
+            isTrue,
+          );
+        }
+        for (final entry in attachmentHashes.entries) {
+          expect(expected[entry.key], entry.value);
+        }
+        expect(actions.keys, containsAll([0, 1, 2, 3, 4]));
+        expect(injectedErrors, greaterThan(0));
+      },
+      tags: ['soak'],
+      timeout: const Timeout(Duration(minutes: 10)),
+    );
+  });
+
+  test(
+    'a pending delete conflict clears when both live sides disappear',
+    () async {
+      const path = 'notes/deleted.typ';
+      final remote = <String, _MutableRemoteFile>{
+        path: _remoteText('original'),
+      };
+      final server = await _mutableWebDavServer(remote);
+      addTearDown(() => server.close(force: true));
+      final root = await Directory.systemTemp.createTemp('tylog-both-deleted-');
+      addTearDown(() => root.delete(recursive: true));
+      final vault = Vault(root);
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+      await vault.deleteNote(path);
+      remote[path] = _remoteText('peer edit');
+      await NextcloudSync(_config(server)).sync(vault);
+      final conflict = (await loadSyncConflicts(vault)).single;
+      expect(conflict.localExists, isFalse);
+      expect(conflict.remoteExists, isTrue);
+      remote.remove(path);
+      await NextcloudSync(_config(server)).sync(vault);
+      expect(await loadSyncConflicts(vault), isEmpty);
+      expect(await vault.storage.exists(path), isFalse);
+      expect(await vault.storage.list(path: '.tylog/conflicts'), isEmpty);
+    },
+  );
+
+  test('conflict replacement treats NFC and NFD as the same path', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'tylog-conflict-unicode-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    const nfd = 'notes/cafe\u0301.typ';
+    await createSyncConflict(
+      vault,
+      nfd,
+      localBytes: utf8.encode('first'),
+      remoteBytes: utf8.encode('remote'),
+    );
+    await createSyncConflict(
+      vault,
+      unorm.nfc(nfd),
+      localBytes: utf8.encode('second'),
+      remoteBytes: utf8.encode('remote'),
+    );
+    final conflicts = await loadSyncConflicts(vault);
+    expect(conflicts, hasLength(1));
+    expect(
+      await vault.storage.readText(conflicts.single.localSnapshot!),
+      'second',
+    );
+    expect(await vault.storage.list(path: '.tylog/conflicts'), hasLength(3));
+  });
+
+  test(
+    '20 autosaves materialize one revision and upload once per push',
+    () async {
+      final database = TyLogDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final remote = <String, _MutableRemoteFile>{};
+      final uploads = <Map<String, Object?>>[];
+      final server = await _mutableWebDavServer(remote, uploads: uploads);
+      addTearDown(() => server.close(force: true));
+      final root = await Directory.systemTemp.createTemp(
+        'tylog-revision-session-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final vault = Vault(root);
+      await vault.ensureCreated();
+      final paths = <String>{};
+      Future<void> push() async {
+        final publisher = RevisionPublisher(database);
+        final ids = await publisher.materialize(
+          write: (path, bytes) async {
+            paths.add(path);
+            await vault.storage.writeBytes(path, bytes);
+            vault.restoreWriteMarkers(path, stale: true, pendingSync: true);
+          },
+        );
+        await NextcloudSync(_config(server)).sync(vault, pushOnly: true);
+        await publisher.acknowledge(ids);
+      }
+
+      for (var save = 0; save < 20; save++) {
+        await persistNoteSource(
+          database: database,
+          path: 'notes/a.typ',
+          source: '#show: tylog.note.with(id: "a", title: "A")\n$save',
+          updatedAtMs: save + 1,
+        );
+      }
+      await push();
+      expect(paths, hasLength(1));
+      expect(
+        uploads.where(
+          (r) => (r['path'] as String).startsWith('_system/revisions/'),
+        ),
+        hasLength(1),
+      );
+      expect(await vault.storage.list(path: '_system/revisions'), hasLength(1));
+      uploads.clear();
+      await push();
+      expect(uploads, isEmpty);
+      await persistNoteSource(
+        database: database,
+        path: 'notes/a.typ',
+        source: '#show: tylog.note.with(id: "a", title: "A")\nnext',
+        updatedAtMs: 21,
+      );
+      await push();
+      expect(paths, hasLength(1));
+      expect(
+        uploads.where(
+          (r) => (r['path'] as String).startsWith('_system/revisions/'),
+        ),
+        hasLength(1),
+      );
+      expect(
+        RevisionPublisher.decodeEnvelope(
+          remote[paths.single]!.bytes,
+        ).node!.content,
+        endsWith('next'),
+      );
+    },
+  );
+
   for (final interrupted in [false, true]) {
     test(
       '25 MB chunk upload resumes=$interrupted, streams, and normalizes etag',
@@ -5396,6 +5801,7 @@ Future<HttpServer> _mutableWebDavServer(
   List<Map<String, Object?>>? uploads,
   List<Map<String, Object?>>? chunkRequests,
   bool interruptChunk3Once = false,
+  bool Function()? serverError,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
@@ -5408,6 +5814,12 @@ Future<HttpServer> _mutableWebDavServer(
   var chunkInterrupted = false;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
+    if (serverError?.call() == true) {
+      await request.drain<void>();
+      request.response.statusCode = HttpStatus.internalServerError;
+      await request.response.close();
+      return;
+    }
     final decodedPath = Uri.decodeComponent(request.uri.path);
     final path = decodedPath.startsWith(root)
         ? decodedPath.substring(root.length)
@@ -5532,7 +5944,7 @@ Future<HttpServer> _mutableWebDavServer(
           request.response.statusCode = 207;
           request.response.write(
             '<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
-            '<d:response><d:href>$root$path</d:href>'
+            '<d:response><d:href>${Uri(path: '$root$path')}</d:href>'
             '<d:propstat><d:prop><d:getlastmodified>'
             '${HttpDate.format(file.modified)}'
             '</d:getlastmodified><d:getetag>${file.etag}</d:getetag>'
@@ -5555,7 +5967,7 @@ Future<HttpServer> _mutableWebDavServer(
       // state so it reacts to direct test mutations of `files`, not just
       // PUT/MOVE/DELETE routed through this handler.
       request.response.write(
-        '<d:response><d:href>$root$path</d:href>'
+        '<d:response><d:href>${Uri(path: '$root$path')}</d:href>'
         '<d:propstat><d:prop><d:getetag>${_collectionEtag({for (final e in files.entries)
           if (e.key.startsWith(path)) e.key: e.value})}</d:getetag>'
         '<d:resourcetype><d:collection/></d:resourcetype>'

@@ -108,19 +108,14 @@ extension _WebDavClient on NextcloudSync {
               length: cursor.localSize,
             );
           }
-          // Conflicts can have no cursor, or a cursor from before divergence.
-          // Their records describe the remote version in this unchanged folder.
+          // A local MOVE/DELETE can certify a newer folder etag while a
+          // conflict still describes an older remote. Probe those paths;
+          // reconstructing them from the record resurrects deleted files.
           for (final entry in pendingConflicts.entries) {
             if (!entry.key.startsWith(child)) continue;
-            final conflict = entry.value;
-            if (conflict.remoteExists) {
-              files[entry.key] = _RemoteFile(
-                modified:
-                    conflict.remoteModified ??
-                    files[entry.key]?.modified ??
-                    DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-                etag: conflict.remoteEtag,
-              );
+            final current = await _probeRemoteFile(entry.key);
+            if (current != null) {
+              files[entry.key] = current;
             } else {
               files.remove(entry.key);
             }

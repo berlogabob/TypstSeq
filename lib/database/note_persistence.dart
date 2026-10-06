@@ -7,6 +7,28 @@ import 'package:tylog_core/storage.dart';
 
 import 'tylog_database.dart';
 
+// Publication grouping is device-local metadata; received revisions have no
+// mapping. Keep it durable so an offline outbox still coalesces after restart.
+Future<List<RevisionData>> noteRevisionEnvelope(
+  TyLogDatabase database,
+  RevisionData revision,
+) async {
+  final mapping =
+      await (database.select(database.databaseMetadata)
+            ..where((t) => t.key.equals('note-envelope:${revision.id}')))
+          .getSingleOrNull();
+  if (mapping == null) return [revision];
+  final rows = await database
+      .customSelect(
+        'SELECT revisions.* FROM revisions JOIN database_metadata m '
+        "ON m.key = 'note-envelope:' || revisions.id WHERE m.value = ? "
+        'ORDER BY revisions.created_at_ms, revisions.id',
+        variables: [Variable.withString(mapping.value)],
+      )
+      .get();
+  return rows.map((row) => database.revisions.map(row.data)).toList();
+}
+
 /// The rows created by [persistNoteSource].
 typedef NotePersistenceResult = ({NodeData node, RevisionData revision});
 
@@ -125,6 +147,24 @@ Future<NotePersistenceResult> persistNoteSource({
       createdAtMs: now,
     );
     await database.commitNodeEdit(node: node, revision: revision);
+    final parentEnvelope = parent == null
+        ? null
+        : await (database.select(database.databaseMetadata)
+                ..where((t) => t.key.equals('note-envelope:${parent.id}')))
+              .getSingleOrNull();
+    final continues =
+        !deleted &&
+        parentEnvelope != null &&
+        now - parent!.createdAtMs < const Duration(minutes: 10).inMilliseconds;
+    await database
+        .into(database.databaseMetadata)
+        .insertOnConflictUpdate(
+          DatabaseMetadataData(
+            key: 'note-envelope:$revisionId',
+            value: continues ? parentEnvelope.value : revisionId,
+            updatedAtMs: now,
+          ),
+        );
     return (node: node, revision: revision);
   });
 }

@@ -603,7 +603,8 @@ class WorkspaceController extends ChangeNotifier {
     final revision = editRevision;
     final value = source;
     final generation = _vaultGeneration;
-    if (!dirty && isPristineStarterNote(path, value) &&
+    if (!dirty &&
+        isPristineStarterNote(path, value) &&
         !await opened.storage.exists(path)) {
       return _owns(opened, generation);
     }
@@ -643,13 +644,10 @@ class WorkspaceController extends ChangeNotifier {
     if (event == null) return Future.value(path);
     return _eventCreates.putIfAbsent(
       path,
-      () => createPage(
-        event.title,
-        kind: 'event',
-        event: event,
-      ).whenComplete(() {
-        _eventCreates.remove(path);
-      }),
+      () =>
+          createPage(event.title, kind: 'event', event: event).whenComplete(() {
+            _eventCreates.remove(path);
+          }),
     );
   }
 
@@ -1741,22 +1739,23 @@ class WorkspaceController extends ChangeNotifier {
           )) {
             if (file.isDirectory || !file.path.endsWith('.json')) continue;
             try {
-              final envelope = RevisionPublisher.decodeEnvelope(
+              for (final envelope in RevisionPublisher.decodeEnvelopes(
                 await opened.storage.readBytes(file.path),
-              );
-              final node = envelope.node;
-              if (node != null) {
-                await revisionDatabase.receiveRevision(
-                  node: node,
-                  revision: envelope.revision,
-                );
-              }
-              final annotation = envelope.annotation;
-              if (annotation != null) {
-                await revisionDatabase.receiveAnnotationRevision(
-                  annotation: annotation,
-                  revision: envelope.revision,
-                );
+              )) {
+                final node = envelope.node;
+                if (node != null) {
+                  await revisionDatabase.receiveRevision(
+                    node: node,
+                    revision: envelope.revision,
+                  );
+                }
+                final annotation = envelope.annotation;
+                if (annotation != null) {
+                  await revisionDatabase.receiveAnnotationRevision(
+                    annotation: annotation,
+                    revision: envelope.revision,
+                  );
+                }
               }
             } catch (_) {
               // A malformed or partial envelope is retried on the next sync.
