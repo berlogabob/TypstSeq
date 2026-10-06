@@ -24,7 +24,10 @@ Future<String?> chunkedUpload({
   required String uploadId,
   int chunkSize = 5 * 1024 * 1024,
   String? ifMatch,
+  bool ifNoneMatch = false,
+  String? localHash,
   Set<int> alreadyUploaded = const {},
+  void Function(int)? onChunkUploaded,
 }) async {
   final destination =
       '$davBase/files/${Uri.encodeComponent(user)}/'
@@ -42,15 +45,19 @@ Future<String?> chunkedUpload({
     request.headers.set('Authorization', authHeader);
     request.headers.set('Destination', destination);
     if (total) request.headers.set('OC-Total-Length', '$length');
-    if (method == 'MOVE' && ifMatch != null) {
-      request.headers.set('If-Match', ifMatch);
+    if (method == 'MOVE') {
+      if (ifMatch != null) request.headers.set('If-Match', ifMatch);
+      if (ifNoneMatch) request.headers.set('If-None-Match', '*');
+      if (localHash != null) {
+        request.headers.set('OC-Checksum', 'SHA256:$localHash');
+      }
     }
     if (body != null) {
       request.contentLength = bodyLength!;
-      await request.addStream(body);
+      await request.addStream(body).timeout(const Duration(minutes: 5));
     }
-    final response = await request.close();
-    await response.drain<void>();
+    final response = await request.close().timeout(const Duration(seconds: 60));
+    await response.drain<void>().timeout(const Duration(seconds: 60));
     return response;
   }
 
@@ -65,20 +72,34 @@ Future<String?> chunkedUpload({
     if (alreadyUploaded.contains(n)) continue;
     final start = (n - 1) * chunkSize;
     final end = start + chunkSize < length ? start + chunkSize : length;
-    final put = await send(
-      'PUT',
-      '$uploadDir/${n.toString().padLeft(5, '0')}',
-      body: openRange(start, end),
-      bodyLength: end - start,
-    );
+    HttpClientResponse put;
+    try {
+      put = await send(
+        'PUT',
+        '$uploadDir/${n.toString().padLeft(5, '0')}',
+        body: openRange(start, end),
+        bodyLength: end - start,
+      );
+    } on IOException {
+      throw ChunkUploadException(n, 503);
+    } on TimeoutException {
+      throw ChunkUploadException(n, 503);
+    }
     if (put.statusCode != 201 && put.statusCode != 204) {
       throw ChunkUploadException(n, put.statusCode);
     }
+    onChunkUploaded?.call(n);
   }
 
   final move = await send('MOVE', '$uploadDir/.file');
   if (move.statusCode != 201 && move.statusCode != 204) {
     throw ChunkUploadException(0, move.statusCode);
+  }
+  final remoteHash = move.headers.value('x-hash-sha256');
+  if (remoteHash != null &&
+      localHash != null &&
+      remoteHash.toLowerCase() != localHash) {
+    throw const HttpException('Chunked upload checksum mismatch');
   }
   return move.headers.value('oc-etag') ?? move.headers.value('etag');
 }

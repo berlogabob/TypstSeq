@@ -271,8 +271,8 @@ extension _PathSync on NextcloudSync {
         // across the platform channel for every changed path, even the ones
         // that turn out to be downloads or skips. _uploadStorage reads the
         // bytes itself on the paths that actually upload.
-        localHash = await vault.storage.hash(path);
         recordedAt = DateTime.now().millisecondsSinceEpoch;
+        localHash = await vault.storage.hash(path);
       }
     }
     // The editor's 400ms autosave can land between the scan-time hash above
@@ -281,11 +281,15 @@ extension _PathSync on NextcloudSync {
     // recorded cursor describing one version — otherwise the next run sees
     // its own upload as a remote change and manufactures a conflict.
     Future<void> snapshotForUpload() async {
+      if ((localStat?.size ?? 0) > 10 * 1024 * 1024 &&
+          vault.storage.openRead(path, 0, 0) != null) {
+        return;
+      }
+      recordedAt = DateTime.now().millisecondsSinceEpoch;
       localBytes = await vault.storage.readBytes(path);
       final snapshotHash = sha256.convert(localBytes!).toString();
       if (snapshotHash != localHash) {
         localHash = snapshotHash;
-        recordedAt = DateTime.now().millisecondsSinceEpoch;
         localStat = await vault.storage.stat(path) ?? localStat;
       }
     }
@@ -891,9 +895,8 @@ extension _PathSync on NextcloudSync {
       if (nextLocalExists && nextRemoteExists) {
         updateCursor = true;
         cursor = SyncCursor(
-          recordedAt: wasDownloaded
-              ? DateTime.now().millisecondsSinceEpoch
-              : recordedAt,
+          // Downloads have no receipt: their hash predates the local write.
+          recordedAt: wasDownloaded ? null : recordedAt,
           localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
           localSize: nextLocal?.size,
           remoteMillis: nextRemote?.millisecondsSinceEpoch,
@@ -1118,7 +1121,6 @@ extension _PathSync on NextcloudSync {
         local[replacement] = nextStat;
         state.remove(old.key);
         state[replacement] = SyncCursor(
-          recordedAt: DateTime.now().millisecondsSinceEpoch,
           localMillis: nextStat.modified?.millisecondsSinceEpoch,
           localSize: nextStat.size,
           remoteMillis: remoteFile.modified.millisecondsSinceEpoch,

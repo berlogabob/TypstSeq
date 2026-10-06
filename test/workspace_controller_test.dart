@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
@@ -3290,7 +3291,8 @@ class _MemoryStorage extends VaultStorage {
       _files.containsKey(path) || _directories.contains(path);
 
   @override
-  Future<String> hash(String path) async => base64.encode(_files[path]!);
+  Future<String> hash(String path) async =>
+      sha256.convert(_files[path]!).toString();
 
   @override
   Future<List<VaultStorageEntry>> list({

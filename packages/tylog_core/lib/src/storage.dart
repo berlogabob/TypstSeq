@@ -67,6 +67,9 @@ abstract class VaultStorage {
   });
   Future<VaultStorageEntry?> stat(String path);
   Future<Uint8List> readBytes(String path);
+
+  /// Null when this provider only supports whole-file reads.
+  Stream<List<int>>? openRead(String path, [int? start, int? end]) => null;
   Future<void> writeBytes(String path, List<int> bytes);
   Future<void> delete(String path);
   Future<String> hash(String path);
@@ -138,6 +141,10 @@ class LocalVaultStorage extends VaultStorage {
       modified: info.modified,
     );
   }
+
+  @override
+  Stream<List<int>> openRead(String path, [int? start, int? end]) =>
+      File(_path(path)).openRead(start, end);
 
   @override
   Future<Uint8List> readBytes(String path) => File(_path(path)).readAsBytes();

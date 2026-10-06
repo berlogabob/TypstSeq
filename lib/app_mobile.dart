@@ -59,6 +59,7 @@ import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
 import 'widgets/settings_sheet.dart';
+import 'widgets/nextcloud_connect_dialog.dart';
 import 'widgets/snack.dart';
 import 'desktop_updater.dart' as updater;
 import 'widgets/sync_dashboard.dart';
@@ -1964,23 +1965,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return false;
     }
     final vaultId = vaultRegistry?.activeId;
-    final cfg =
+    var cfg =
         await NextcloudConfig.load(vaultId: vaultId) ??
         cloud ??
         await NextcloudConfig.load();
     if (!mounted) return false;
-    final url = TextEditingController(text: cfg?.serverUrl ?? '');
-    final user = TextEditingController(text: cfg?.username ?? '');
-    final pass = TextEditingController(text: cfg?.password ?? '');
-    final folder = TextEditingController(
-      text: cfg?.remoteFolder ?? 'TyLogVault',
-    );
-    NextcloudConfig draft() => NextcloudConfig(
-      serverUrl: url.text,
-      username: user.text,
-      password: pass.text,
-      remoteFolder: folder.text,
-    );
     while (true) {
       if (!mounted) return false;
       if (workspace.syncing) {
@@ -1989,71 +1978,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final saved = await showDialog<NextcloudConfig>(
         context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Connect Nextcloud'),
-            content: SingleChildScrollView(
-              child: AutofillGroup(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _dialogField(
-                      url,
-                      label: 'Server URL',
-                      plain: true,
-                      hint: 'https://cloud.example.com',
-                      keyboardType: TextInputType.url,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.url],
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    _dialogField(
-                      user,
-                      label: 'Login',
-                      plain: true,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.username],
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    _dialogField(
-                      pass,
-                      label: 'Password or app password',
-                      obscureText: true,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.password],
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                    _dialogField(
-                      folder,
-                      label: 'Remote folder',
-                      plain: true,
-                      helper: 'Created inside your Nextcloud files.',
-                      textInputAction: TextInputAction.done,
-                      onChanged: (_) => setDialogState(() {}),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: draft().isReady
-                    ? () {
-                        TextInput.finishAutofillContext();
-                        Navigator.pop(context, draft());
-                      }
-                    : null,
-                child: const Text('Check folder'),
-              ),
-            ],
-          ),
-        ),
+        builder: (context) => NextcloudConnectDialog(config: cfg),
       );
       if (saved == null || !mounted) return false;
+      cfg = saved;
       final opened = vault;
       final registry = vaultRegistry;
       if (opened == null || registry == null) return false;

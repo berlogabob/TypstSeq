@@ -14,6 +14,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import 'nextcloud_sync/chunked_upload.dart';
 import 'vault.dart';
 import 'vault_storage.dart';
 
@@ -535,14 +536,18 @@ class NextcloudSync {
           final readAt = DateTime.now().millisecondsSinceEpoch;
           final stat = await vault.storage.stat(path);
           if (stat == null) continue; // Deletions need the normal sync guards.
-          final bytes = await vault.storage.readBytes(path);
-          final hash = sha256.convert(bytes).toString();
+          final large = (stat.size ?? 0) > 10 * 1024 * 1024;
+          final bytes = large ? null : await vault.storage.readBytes(path);
+          final hash = bytes == null
+              ? await vault.storage.hash(path)
+              : sha256.convert(bytes).toString();
           if (hash != previous?.localSha256) {
             try {
               final etag = await _retryTransient(
-                () => _upload(
+                () => _uploadStorage(
                   path,
-                  bytes,
+                  vault.storage,
+                  bytes: bytes,
                   localHash: hash,
                   remote: previous == null
                       ? null
@@ -558,7 +563,7 @@ class NextcloudSync {
               syncState[unorm.nfc(path)] = SyncCursor(
                 recordedAt: readAt,
                 localMillis: stat.modified?.millisecondsSinceEpoch,
-                localSize: bytes.length,
+                localSize: bytes?.length ?? stat.size,
                 localSha256: hash,
                 remoteMillis: DateTime.now().millisecondsSinceEpoch,
                 // A later probe may describe a peer edit, not these bytes.
@@ -1182,12 +1187,13 @@ class NextcloudSync {
       conflict = active;
 
       String? remoteEtag;
+      String? resolvedHash;
+      VaultStorageEntry? resolvedStat;
       if (resolution == SyncConflictResolution.keepRemote) {
         if (conflict.remoteExists) {
-          await vault.storage.writeBytes(
-            conflict.path,
-            await vault.storage.readBytes(conflict.remoteSnapshot!),
-          );
+          final bytes = await vault.storage.readBytes(conflict.remoteSnapshot!);
+          resolvedHash = sha256.convert(bytes).toString();
+          await vault.storage.writeBytes(conflict.path, bytes);
           remoteEtag = currentRemote?.etag;
         } else {
           await vault.storage.delete(conflict.path);
@@ -1200,10 +1206,12 @@ class NextcloudSync {
           await vault.storage.writeText(conflict.path, mergedText);
         }
         if (await vault.storage.exists(conflict.path)) {
+          resolvedStat = await vault.storage.stat(conflict.path);
+          resolvedHash = await vault.storage.hash(conflict.path);
           remoteEtag = await _uploadStorage(
             conflict.path,
             vault.storage,
-            localHash: await vault.storage.hash(conflict.path),
+            localHash: resolvedHash,
             remote: currentRemote,
           );
         } else if (currentRemote != null) {
@@ -1217,13 +1225,13 @@ class NextcloudSync {
           ? conflict.remoteExists
           : localExists;
       if (localExists && remoteExists) {
-        final local = await vault.storage.stat(conflict.path);
+        final local = resolvedStat ?? await vault.storage.stat(conflict.path);
         state.cursors[unorm.nfc(conflict.path)] = SyncCursor(
-          recordedAt: DateTime.now().millisecondsSinceEpoch,
           localSize: local?.size,
           localMillis: local?.modified?.millisecondsSinceEpoch,
           remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
-          localSha256: await vault.storage.hash(conflict.path),
+          // Certify the transferred version, even if autosave has since landed.
+          localSha256: resolvedHash,
           remoteEtag: NextcloudSync._normEtag(
             remoteEtag ?? currentRemote?.etag,
           ),

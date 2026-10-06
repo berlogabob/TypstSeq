@@ -13,6 +13,179 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  for (final interrupted in [false, true]) {
+    test(
+      '25 MB chunk upload resumes=$interrupted, streams, and normalizes etag',
+      () async {
+        final remote = <String, _MutableRemoteFile>{};
+        final chunks = <Map<String, Object?>>[];
+        final metrics = _WebDavMetrics();
+        final server = await _mutableWebDavServer(
+          remote,
+          chunkRequests: chunks,
+          interruptChunk3Once: interrupted,
+          unquotedPutEtag: true,
+          metrics: metrics,
+        );
+        final root = await Directory.systemTemp.createTemp('tylog-chunks-');
+        addTearDown(() async {
+          await server.close(force: true);
+          await root.delete(recursive: true);
+        });
+        final storage = _StreamingUploadStorage(root);
+        final vault = Vault.withStorage(storage);
+        await vault.ensureCreated();
+        const path = 'assets/large.bin';
+        final payload = Uint8List(25 * 1024 * 1024)
+          ..fillRange(0, 25 * 1024 * 1024, 42);
+        await storage.writeBytes(path, payload);
+        await NextcloudSync(_config(server)).sync(vault);
+        expect(remote[path]!.bytes, orderedEquals(payload));
+        final puts = chunks
+            .where((r) => r['method'] == 'PUT')
+            .map((r) => r['name'])
+            .toList();
+        expect(
+          puts,
+          interrupted
+              ? ['00001', '00002', '00003', '00003', '00004', '00005']
+              : ['00001', '00002', '00003', '00004', '00005'],
+        );
+        expect(chunks.map((r) => r['id']).toSet(), {
+          sha256
+              .convert(utf8.encode(path + sha256.convert(payload).toString()))
+              .toString(),
+        });
+        expect(chunks.last['ifNoneMatch'], '*');
+        final state =
+            jsonDecode(await storage.readText('.tylog/sync_state.json')) as Map;
+        expect(
+          state['cursors'][path]['remoteEtag'],
+          remote[path]!.etag.replaceAll('"', ''),
+        );
+        chunks.clear();
+        final putsBefore = metrics.puts;
+        final unchanged = await NextcloudSync(_config(server)).sync(vault);
+        expect(unchanged.uploaded, 0);
+        expect(unchanged.downloaded, 0);
+        expect(chunks, isEmpty);
+        expect(metrics.puts, putsBefore);
+        // Editing the attachment exercises If-Match on MOVE.
+        payload[0] = 43;
+        await storage.writeBytes(path, payload);
+        vault.restoreWriteMarkers(path, stale: true, pendingSync: true);
+        final oldEtag = remote[path]!.etag;
+        await NextcloudSync(_config(server)).sync(vault, pushOnly: true);
+        expect(chunks.last['ifMatch'], oldEtag);
+        expect(remote[path]!.bytes, orderedEquals(payload));
+      },
+    );
+  }
+
+  test('small files still use one PUT', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final chunks = <Map<String, Object?>>[];
+    final requests = <Map<String, Object?>>[];
+    final server = await _mutableWebDavServer(
+      remote,
+      chunkRequests: chunks,
+      uploads: requests,
+    );
+    final root = await Directory.systemTemp.createTemp('tylog-small-');
+    addTearDown(() async {
+      await server.close(force: true);
+      await root.delete(recursive: true);
+    });
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.storage.writeText('notes/small.typ', 'small');
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(requests.where((r) => r['path'] == 'notes/small.typ'), hasLength(1));
+    expect(chunks, isEmpty);
+  });
+
+  test(
+    'receipts predate both slow hashes and changed upload snapshot reads',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog-read-receipt-');
+      final remote = <String, _MutableRemoteFile>{};
+      final server = await _mutableWebDavServer(remote);
+      addTearDown(() async {
+        await server.close(force: true);
+        await root.delete(recursive: true);
+      });
+      final storage = _SlowReceiptStorage(root);
+      final vault = Vault.withStorage(storage);
+      await vault.ensureCreated();
+      await storage.writeText('notes/receipt.typ', 'before');
+      storage.changeSnapshot = true;
+      await NextcloudSync(_config(server)).sync(vault);
+      var state =
+          jsonDecode(await storage.readText('.tylog/sync_state.json')) as Map;
+      expect(
+        state['cursors']['notes/receipt.typ']['recordedAt'],
+        lessThanOrEqualTo(storage.readStarted!),
+      );
+      storage.hashStarted = null;
+      await NextcloudSync(
+        _config(server),
+      ).sync(Vault.withStorage(storage), remoteChanged: true);
+      state =
+          jsonDecode(await storage.readText('.tylog/sync_state.json')) as Map;
+      expect(
+        state['cursors']['notes/receipt.typ']['recordedAt'],
+        lessThanOrEqualTo(storage.hashStarted!),
+      );
+    },
+  );
+
+  test(
+    'conflict resolution retains the uploaded hash when autosave lands during PUT',
+    () async {
+      const path = 'notes/resolve-race.typ';
+      final root = await Directory.systemTemp.createTemp('tylog-resolve-race-');
+      final vault = Vault(root);
+      final remote = <String, _MutableRemoteFile>{};
+      var armed = false;
+      final server = await _mutableWebDavServer(
+        remote,
+        onAfterPut: (uploaded) async {
+          if (armed && uploaded == path) {
+            armed = false;
+            await vault.storage.writeText(path, 'late autosave');
+          }
+        },
+      );
+      addTearDown(() async {
+        await server.close(force: true);
+        await root.delete(recursive: true);
+      });
+      await vault.ensureCreated();
+      await vault.storage.writeText(path, 'baseline');
+      await NextcloudSync(_config(server)).sync(vault);
+      await vault.storage.writeText(path, 'local choice');
+      remote[path] = _remoteText('peer choice');
+      await NextcloudSync(_config(server)).sync(vault);
+      final conflict = (await loadSyncConflicts(vault)).single;
+      armed = true;
+      await NextcloudSync(
+        _config(server),
+      ).resolveConflict(vault, conflict, SyncConflictResolution.keepLocal);
+      final state =
+          jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+              as Map;
+      final cursor = state['cursors'][path] as Map;
+      expect(cursor['recordedAt'], isNull);
+      expect(
+        cursor['localSha256'],
+        sha256.convert(utf8.encode('local choice')).toString(),
+      );
+      expect(await vault.storage.readText(path), 'late autosave');
+      await NextcloudSync(_config(server)).sync(vault);
+      expect(utf8.decode(remote[path]!.bytes), 'late autosave');
+    },
+  );
+
   test('OS junk is excluded under every syncable tree', () {
     for (final root in ['daily', 'notes', 'assets', '_system']) {
       for (final name in [
@@ -4853,6 +5026,47 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
 
 /// Counts recursive tree walks. On the P30's 11,610-file vault one walk is
 /// 9.3s of an 18.1s pass, so a pass must never pay for two.
+class _StreamingUploadStorage extends LocalVaultStorage {
+  _StreamingUploadStorage(super.root);
+  @override
+  Future<Uint8List> readBytes(String path) {
+    if (path == 'assets/large.bin') throw StateError('Whole-file buffering');
+    return super.readBytes(path);
+  }
+}
+
+class _SlowReceiptStorage extends LocalVaultStorage {
+  _SlowReceiptStorage(super.root);
+  bool changeSnapshot = false;
+  int? hashStarted;
+  int? readStarted;
+  @override
+  Future<String> hash(String path) async {
+    if (path == 'notes/receipt.typ') {
+      hashStarted = DateTime.now().millisecondsSinceEpoch;
+      final hash = await super.hash(path);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      return hash;
+    }
+    return super.hash(path);
+  }
+
+  @override
+  Future<Uint8List> readBytes(String path) async {
+    if (path == 'notes/receipt.typ') {
+      readStarted = DateTime.now().millisecondsSinceEpoch;
+      if (changeSnapshot) {
+        changeSnapshot = false;
+        await super.writeText(path, 'after!');
+      }
+      final bytes = await super.readBytes(path);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      return bytes;
+    }
+    return super.readBytes(path);
+  }
+}
+
 class _ListCountingStorage extends LocalVaultStorage {
   _ListCountingStorage(this.root) : super(root);
 
@@ -5180,6 +5394,8 @@ Future<HttpServer> _mutableWebDavServer(
   _WebDavMetrics? metrics,
   Map<String, String>? folderEtags,
   List<Map<String, Object?>>? uploads,
+  List<Map<String, Object?>>? chunkRequests,
+  bool interruptChunk3Once = false,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
@@ -5188,12 +5404,87 @@ Future<HttpServer> _mutableWebDavServer(
   var mkcolInterrupted = false;
   var archiveChanged = false;
   final upgradedChecksums = <String>{};
+  final chunks = <String, Map<String, List<int>>>{};
+  var chunkInterrupted = false;
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((request) async {
     final decodedPath = Uri.decodeComponent(request.uri.path);
     final path = decodedPath.startsWith(root)
         ? decodedPath.substring(root.length)
         : '';
+    const uploadsRoot = '/remote.php/dav/uploads/alice/';
+    if (decodedPath.startsWith(uploadsRoot)) {
+      final parts = decodedPath.substring(uploadsRoot.length).split('/');
+      final id = parts.first;
+      final name = parts.last;
+      chunkRequests?.add({
+        'method': request.method,
+        'id': id,
+        'name': name,
+        'ifMatch': request.headers.value('if-match'),
+        'ifNoneMatch': request.headers.value('if-none-match'),
+        'checksum': request.headers.value('oc-checksum'),
+      });
+      if (request.method == 'MKCOL') {
+        request.response.statusCode = chunks.containsKey(id) ? 405 : 201;
+        chunks.putIfAbsent(id, () => {});
+      } else if (request.method == 'PUT') {
+        final body = await request.fold<List<int>>(
+          [],
+          (all, b) => all..addAll(b),
+        );
+        if (interruptChunk3Once && name == '00003' && !chunkInterrupted) {
+          chunkInterrupted = true;
+          final socket = await request.response.detachSocket(
+            writeHeaders: false,
+          );
+          socket.destroy();
+          return;
+        } else {
+          chunks[id]![name] = body;
+          request.response.statusCode = 201;
+        }
+      } else if (request.method == 'MOVE') {
+        final destination = Uri.decodeComponent(
+          Uri.parse(request.headers.value('destination')!).path,
+        );
+        final target = destination.substring(root.length);
+        await onBeforePut?.call(target);
+        final existing = files[target];
+        final ifMatch = request.headers.value('if-match');
+        if ((ifMatch != null && existing?.etag != ifMatch) ||
+            (request.headers.value('if-none-match') == '*' &&
+                existing != null)) {
+          request.response.statusCode = 412;
+        } else {
+          final parts = chunks[id]!;
+          final body = [
+            for (final key in parts.keys.toList()..sort()) ...parts[key]!,
+          ];
+          final hash = sha256.convert(body).toString();
+          expect(request.headers.value('oc-checksum'), 'SHA256:$hash');
+          final etag = '"upload-${version++}"';
+          files[target] = _MutableRemoteFile(
+            bytes: body,
+            etag: etag,
+            modified: DateTime.now().toUtc(),
+          );
+          upgradedChecksums.add(target);
+          request.response.statusCode = 201;
+          if (!omitPutEtag) {
+            request.response.headers.set(
+              'oc-etag',
+              unquotedPutEtag ? etag.replaceAll('"', '') : etag,
+            );
+          }
+          request.response.headers.set('x-hash-sha256', hash);
+          await onAfterPut?.call(target);
+          chunks.remove(id);
+        }
+      }
+      await request.response.close();
+      return;
+    }
     if (request.method == 'MKCOL') {
       metrics?.mkcols.update(
         request.uri.path,

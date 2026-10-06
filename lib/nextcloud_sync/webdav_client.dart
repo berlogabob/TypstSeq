@@ -339,6 +339,15 @@ extension _WebDavClient on NextcloudSync {
     required String localHash,
     required _RemoteFile? remote,
   }) async {
+    if (bytes.length > 10 * 1024 * 1024) {
+      return _uploadChunks(
+        path,
+        bytes.length,
+        (start, end) => Stream.value(bytes.sublist(start, end)),
+        localHash: localHash,
+        remote: remote,
+      );
+    }
     await _ensureParents(path);
     final request = await _open('PUT', _remoteUri(path));
     request.contentLength = bytes.length;
@@ -352,8 +361,6 @@ extension _WebDavClient on NextcloudSync {
     } else if (remote == null) {
       request.headers.set(HttpHeaders.ifNoneMatchHeader, '*');
     }
-    // ponytail: flat 5-minute cap per file transfer; chunked/resumable uploads if
-    // large attachments start hitting this.
     request.add(bytes);
     final response = await request.close().timeout(const Duration(seconds: 60));
     if (response.statusCode == HttpStatus.preconditionFailed) {
@@ -381,12 +388,82 @@ extension _WebDavClient on NextcloudSync {
     required _RemoteFile? remote,
     List<int>? bytes,
   }) async {
-    return _upload(
-      path,
-      bytes ?? await storage.readBytes(path),
-      localHash: localHash,
-      remote: remote,
+    final length = bytes?.length ?? (await storage.stat(path))?.size ?? 0;
+    if (bytes == null && length > 10 * 1024 * 1024) {
+      final source = storage.openRead(path);
+      if (source != null) {
+        // Stream to a stable snapshot: edits during chunking cannot mix versions.
+        final directory = await Directory.systemTemp.createTemp(
+          'tylog-upload-',
+        );
+        final snapshot = File('${directory.path}/snapshot');
+        try {
+          await source.pipe(snapshot.openWrite());
+          if (await _sha256(snapshot) != localHash) {
+            throw HttpException('Local file changed before upload: $path');
+          }
+          return await _uploadChunks(
+            path,
+            await snapshot.length(),
+            (start, end) => snapshot.openRead(start, end),
+            localHash: localHash,
+            remote: remote,
+          );
+        } finally {
+          await directory.delete(recursive: true);
+        }
+      }
+    }
+    final body = bytes ?? await storage.readBytes(path);
+    if (bytes == null && sha256.convert(body).toString() != localHash) {
+      throw HttpException('Local file changed before upload: $path');
+    }
+    return _upload(path, body, localHash: localHash, remote: remote);
+  }
+
+  Future<String?> _uploadChunks(
+    String path,
+    int length,
+    Stream<List<int>> Function(int, int) openRange, {
+    required String localHash,
+    required _RemoteFile? remote,
+  }) async {
+    await _ensureParents(path);
+    final destination = _remoteUri(path);
+    final segments = destination.pathSegments;
+    final filesIndex = segments.indexOf('files');
+    final davBase = destination.replace(
+      pathSegments: segments.take(filesIndex).toList(),
     );
+    final completed = <int>{};
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final etag = await chunkedUpload(
+          client: _client,
+          davBase: davBase,
+          user: segments[filesIndex + 1],
+          authHeader:
+              'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}',
+          destinationPath: segments.skip(filesIndex + 2).join('/'),
+          length: length,
+          openRange: openRange,
+          uploadId: sha256.convert(utf8.encode(path + localHash)).toString(),
+          ifMatch: remote?.etag,
+          ifNoneMatch: remote == null,
+          localHash: localHash,
+          alreadyUploaded: completed,
+          onChunkUploaded: completed.add,
+        );
+        _remoteWrites.add(unorm.nfc(path));
+        return etag;
+      } on ChunkUploadException catch (error) {
+        if (error.statusCode == HttpStatus.preconditionFailed) {
+          throw const _RemoteChanged();
+        }
+        // Keep this exception outside the generic transient retry loop.
+        if (attempt == 1) rethrow;
+      }
+    }
   }
 
   Future<_DownloadResult> _download(
