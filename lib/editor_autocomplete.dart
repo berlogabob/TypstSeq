@@ -89,8 +89,7 @@ class MentionSuggestion {
       create == other.create;
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, kind, noteKind, subtitle, create);
+  int get hashCode => Object.hash(id, title, kind, noteKind, subtitle, create);
 }
 
 /// How strongly a note answers a mention query. Tiers are lifted from
@@ -223,3 +222,10 @@ final _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
 bool _isWhitespace(int code) =>
     code == 0x20 || code == 0x09 || code == 0x0a || code == 0x0d;
+
+List<MentionSuggestion> orderMentionSuggestions(
+  List<MentionSuggestion> items,
+) => [
+  ...items.where((item) => item.create),
+  ...items.where((item) => !item.create),
+];

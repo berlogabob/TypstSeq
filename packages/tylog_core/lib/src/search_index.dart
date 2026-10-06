@@ -319,7 +319,14 @@ class PkmsSearchIndex {
     if (terms.isEmpty) {
       candidates = _documents.keys.toSet();
     } else {
-      final lists = terms.map((term) => _postings[term] ?? const <String>{});
+      // ponytail: scan vocabulary for prefixes; add a prefix index if query latency warrants it.
+      final lists = terms.map(
+        (term) => <String>{
+          ...?_postings[term],
+          for (final entry in _postings.entries)
+            if (entry.key != term && entry.key.startsWith(term)) ...entry.value,
+        },
+      );
       candidates = lists.isEmpty
           ? <String>{}
           : lists.skip(1).fold<Set<String>>({

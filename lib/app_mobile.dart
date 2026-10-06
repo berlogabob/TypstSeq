@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'calendar_feeds.dart';
 import 'dart:ui' show AppExitResponse;
 import 'dart:convert';
 import 'dart:io';
@@ -2230,7 +2231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (db != null && await db.nodeProjectionComplete()) {
           final ids = await db.searchNodeIds(query);
           final byId = {for (final note in fallbackIndex.notes) note.id: note};
-          return [
+          return mergeKeywordResults([
             for (var i = 0; i < ids.length; i++)
               if (byId[ids[i]] case final NoteRef note)
                 if ((tag == null || note.tags.contains(tag)) &&
@@ -2243,7 +2244,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     tags: note.tags,
                     score: ids.length - i,
                   ),
-          ];
+          ], await workspace.searchNotes(query, tag: tag, status: status));
         }
       } catch (_) {
         // The derived index is optional; preserve the existing search path.
@@ -4194,7 +4195,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final content = switch (mode) {
       'journal' => JournalFeed(
         events: workspace.calendar
-            .where((e) => e.notePath.startsWith('events/'))
+            .where((e) => e.kind != CalendarItemKind.daily)
             .toList(),
         vault: v,
         index: index,
@@ -4403,16 +4404,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // building on large SAF vaults, and mentions must resolve instantly.
           final q = query.trim().toLowerCase();
           final eventSuggestions = [
-            for (final e in workspace.feedEvents.where(
-              (e) =>
-                  e.date == isoDay(DateTime.now()) &&
-                  e.title.toLowerCase().contains(q),
+            for (final e in searchFeedEvents(
+              workspace.feedEvents,
+              query,
+              today: DateTime.now(),
+              editedDay:
+                  index?.notesByPath[current]?.date ??
+                  (_dailyDateOf(current) == null
+                      ? null
+                      : isoDay(_dailyDateOf(current)!)),
             ))
               MentionSuggestion(
                 id: e.id,
                 title: e.title,
                 noteKind: 'event',
-                subtitle: e.label,
+                subtitle: '${e.date} · ${e.label}',
               ),
           ];
           final eventIds = eventSuggestions.map((e) => e.id).toSet();

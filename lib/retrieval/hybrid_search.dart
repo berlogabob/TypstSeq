@@ -94,3 +94,11 @@ List<PkmsSearchResult> mergeHybridSearchResults({
       .whereType<PkmsSearchResult>()
       .toList(growable: false);
 }
+
+/// The SQLite projection can lag synced files; keep live-vault keyword hits.
+List<PkmsSearchResult> mergeKeywordResults(
+  Iterable<PkmsSearchResult> projected,
+  Iterable<PkmsSearchResult> live,
+) => {
+  for (final hit in [...projected, ...live]) hit.path: hit,
+}.values.toList()..sort((a, b) => b.score.compareTo(a.score));

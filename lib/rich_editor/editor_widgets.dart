@@ -106,7 +106,7 @@ const _autocompleteMaxVisible = 6;
 
 class _TyLogRichEditorState extends State<TyLogRichEditor> {
   late final FocusNode focusNode;
-  final LayerLink _layerLink = LayerLink();
+  final GlobalKey _editorKey = GlobalKey();
   final ValueNotifier<_AutocompleteState?> _autocomplete = ValueNotifier(null);
   OverlayEntry? _overlayEntry;
   Timer? _debounce;
@@ -234,7 +234,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     }
     _autocomplete.value = _AutocompleteState(
       trigger: current.trigger,
-      mentionItems: results,
+      mentionItems: orderMentionSuggestions(results),
       commandItems: const [],
       highlighted: 0,
       loading: false,
@@ -357,6 +357,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (overlay == null) return;
     _overlayEntry = OverlayEntry(builder: _buildOverlayContent);
     overlay.insert(_overlayEntry!);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _overlayEntry?.markNeedsBuild(),
+    );
   }
 
   void _removeOverlay() {
@@ -364,37 +367,53 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     _overlayEntry = null;
   }
 
-  Widget _buildOverlayContent(BuildContext context) => Positioned(
-    width: 320,
-    child: CompositedTransformFollower(
-      link: _layerLink,
-      showWhenUnlinked: false,
-      targetAnchor: Alignment.topLeft,
-      followerAnchor: Alignment.topLeft,
-      offset: const Offset(16, 44),
-      child: TextFieldTapRegion(
-        child: ValueListenableBuilder<_AutocompleteState?>(
-          valueListenable: _autocomplete,
-          builder: (context, state, _) {
-            if (state == null) return const SizedBox.shrink();
-            return Material(
-              elevation: 6,
-              borderRadius: BorderRadius.circular(kRadiusMedium),
-              clipBehavior: Clip.antiAlias,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxHeight: _autocompleteRowHeight * _autocompleteMaxVisible,
-                ),
+  Widget _buildOverlayContent(BuildContext context) =>
+      ValueListenableBuilder<_AutocompleteState?>(
+        valueListenable: _autocomplete,
+        builder: (context, state, _) {
+          final editable = _editableIn(_editorKey.currentContext);
+          if (state == null || editable == null) return const SizedBox.shrink();
+          final overlay =
+              Overlay.of(context).context.findRenderObject()! as RenderBox;
+          final selection = (_window ?? widget.controller).selection;
+          final local = editable.getLocalRectForCaret(
+            TextPosition(offset: selection.extentOffset),
+          );
+          final caret = Rect.fromPoints(
+            editable.localToGlobal(local.topLeft, ancestor: overlay),
+            editable.localToGlobal(local.bottomRight, ancestor: overlay),
+          );
+          final count = _isMentionLike(state.trigger.kind)
+              ? math.max(1, state.mentionItems.length)
+              : math.max(1, state.commandItems.length);
+          final viewport = Size(
+            overlay.size.width,
+            overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
+          );
+          final rect = autocompletePopupRect(
+            caret,
+            viewport,
+            Size(
+              320,
+              _autocompleteRowHeight * math.min(count, _autocompleteMaxVisible),
+            ),
+          );
+          return Positioned.fromRect(
+            rect: rect,
+            child: TextFieldTapRegion(
+              child: Material(
+                key: const Key('autocomplete-popup'),
+                elevation: 6,
+                borderRadius: BorderRadius.circular(kRadiusMedium),
+                clipBehavior: Clip.antiAlias,
                 child: _isMentionLike(state.trigger.kind)
                     ? _mentionList(state)
                     : _commandList(state),
               ),
-            );
-          },
-        ),
-      ),
-    ),
-  );
+            ),
+          );
+        },
+      );
 
   Widget _mentionList(_AutocompleteState state) {
     if (state.loading && state.mentionItems.isEmpty) {
@@ -489,7 +508,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     window.windowRevision.addListener(_windowMoved);
   }
 
-  RenderEditable? _windowEditable() {
+  RenderEditable? _windowEditable() =>
+      _editableIn(_windowFieldKey.currentContext);
+
+  RenderEditable? _editableIn(BuildContext? context) {
     RenderEditable? found;
     void visit(Element element) {
       if (found != null) return;
@@ -501,7 +523,6 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       element.visitChildren(visit);
     }
 
-    final context = _windowFieldKey.currentContext;
     if (context is Element) visit(context);
     return found;
   }
@@ -892,11 +913,17 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return Column(
       children: [
         Expanded(
-          child: CompositedTransformTarget(
-            link: _layerLink,
-            child: _window == null
-                ? _field(widget.controller, textStyle, expands: true)
-                : _windowedField(textStyle),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (_) {
+              _overlayEntry?.markNeedsBuild();
+              return false;
+            },
+            child: SizedBox(
+              key: _editorKey,
+              child: _window == null
+                  ? _field(widget.controller, textStyle, expands: true)
+                  : _windowedField(textStyle),
+            ),
           ),
         ),
         // AnimatedSize slides the dock open/closed instead of snapping the

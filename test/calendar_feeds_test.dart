@@ -21,6 +21,37 @@ void main() {
       'degrees': ['Master'],
     },
   ]);
+  test(
+    'event mentions match title, course and date and prioritize edited day',
+    () {
+      FeedEvent event(
+        String id,
+        String date,
+        String title, {
+        String course = '',
+      }) => FeedEvent(id, title, date, {
+        'course': course,
+        'event_type': 'lab',
+        'start': '19:00',
+      });
+      final events = [
+        event('past', '2026-10-05', 'Ética'),
+        event('future', '2026-10-08', 'Ética'),
+        event('edited', '2026-10-09', 'Open lab', course: 'Ética'),
+        event('old', '2026-09-28', 'Ética'),
+        event('far', '2026-10-21', 'Ética'),
+      ];
+      List<String> ids(String q) => searchFeedEvents(
+        events,
+        q,
+        today: DateTime(2026, 10, 6),
+        editedDay: '2026-10-09',
+      ).map((e) => e.id).toList();
+      expect(ids('Éti'), ['edited', 'future', 'past']);
+      expect(ids('lab 8 Oct'), ['future']);
+      expect(ids('2026-10-09'), ['edited']);
+    },
+  );
   test('classes filter and stable identity', () {
     final event = parseTimetable(body).single;
     expect(

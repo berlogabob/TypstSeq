@@ -60,7 +60,8 @@ class _JournalFeedState extends State<JournalFeed> {
   // growth on the newest visible day having finished loading.
   bool _lastVisibleLoaded(List<NoteRef> days) {
     if (_visibleDays > days.length) return true;
-    return _loadedPaths.contains(days[_visibleDays - 1].path);
+    return days[_visibleDays - 1].path.isEmpty ||
+        _loadedPaths.contains(days[_visibleDays - 1].path);
   }
 
   @override
@@ -93,11 +94,56 @@ class _JournalFeedState extends State<JournalFeed> {
   /// handful of undated notes pushed *today* six entries down a feed that
   /// loads one day at a time. The scanner now derives the day from the path,
   /// and this fallback keeps a stray null from ever outranking a real day.
-  List<NoteRef> _days() =>
-      (widget.index?.notes ?? const <NoteRef>[])
-          .where((note) => note.kind == 'daily')
-          .toList()
-        ..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
+  List<NoteRef> _days() {
+    final days = (widget.index?.notes ?? const <NoteRef>[])
+        .where((note) => note.kind == 'daily')
+        .toList();
+    final known = days.map(_dayKey).toSet();
+    final today = isoDay(DateTime.now());
+    for (final event in widget.events) {
+      if (event.date.compareTo(today) <= 0 && known.add(event.date)) {
+        days.add(
+          NoteRef(
+            id: event.date,
+            path: '',
+            title: event.date,
+            kind: 'daily',
+            date: event.date,
+            outgoingLinks: const [],
+          ),
+        );
+      }
+    }
+    return days..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
+  }
+
+  List<CalendarItem> _eventsOn(String day) =>
+      widget.events.where((e) => e.date == day).toList()
+        ..sort((a, b) => (a.start ?? '').compareTo(b.start ?? ''));
+
+  Widget _eventRow(CalendarItem event) => ListTile(
+    dense: true,
+    leading: const Icon(Icons.event),
+    title: Text(event.title),
+    subtitle: event.start == null
+        ? null
+        : Text(
+            event.start!.contains('T')
+                ? event.start!
+                      .split('T')
+                      .last
+                      .substring(0, min(5, event.start!.split('T').last.length))
+                : event.start!,
+          ),
+    onTap: () => widget.onOpenPath(event.notePath),
+    trailing: event.notePath.startsWith('events/')
+        ? IconButton(
+            tooltip: 'Write about this',
+            icon: const Icon(Icons.edit_note),
+            onPressed: () => widget.onOpenPath(event.notePath),
+          )
+        : null,
+  );
 
   static final _dayInPath = RegExp(r'(\d{4}-\d{2}-\d{2})\.typ$');
 
@@ -157,7 +203,20 @@ class _JournalFeedState extends State<JournalFeed> {
   @override
   Widget build(BuildContext context) {
     final days = _days();
-    if (days.isEmpty) {
+    final upcomingDays =
+        widget.events
+            .where(
+              (e) =>
+                  e.notePath.startsWith('events/') &&
+                  e.date.compareTo(isoDay(DateTime.now())) > 0,
+            )
+            .map((e) => e.date)
+            .toSet()
+            .toList()
+          ..sort();
+    final comingUp = upcomingDays.take(7).toList();
+    final headerCount = comingUp.isEmpty ? 0 : 1;
+    if (days.isEmpty && comingUp.isEmpty) {
       return const Center(child: Text('No journal pages yet'));
     }
     final visible = min(_visibleDays, days.length);
@@ -166,8 +225,35 @@ class _JournalFeedState extends State<JournalFeed> {
     return ListView.builder(
       key: const PageStorageKey('journal-feed'),
       controller: _scroll,
-      itemCount: visible + (hasMore ? 1 : 0),
+      itemCount: headerCount + visible + (hasMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (headerCount == 1 && index == 0) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Coming up',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  for (final day in comingUp) ...[
+                    Text(
+                      humanDate(DateTime.parse(day)),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    for (final event in _eventsOn(
+                      day,
+                    ).where((e) => e.notePath.startsWith('events/')))
+                      _eventRow(event),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+        index -= headerCount;
         if (index >= visible) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -175,20 +261,22 @@ class _JournalFeedState extends State<JournalFeed> {
           );
         }
         final day = days[index];
-        final source = sources.putIfAbsent(
-          day.path,
-          // whenComplete registers before FutureBuilder subscribes, so the
-          // loaded marker is set by the time the completion frame's
-          // bootstrap/scroll checks run.
-          () =>
-              widget.vault!.storage.readText(day.path)
-                ..whenComplete(() => _loadedPaths.add(day.path)),
-        );
+        final source = day.path.isEmpty
+            ? Future.value('')
+            : sources.putIfAbsent(
+                day.path,
+                // whenComplete registers before FutureBuilder subscribes, so the
+                // loaded marker is set by the time the completion frame's
+                // bootstrap/scroll checks run.
+                () =>
+                    widget.vault!.storage.readText(day.path)
+                      ..whenComplete(() => _loadedPaths.add(day.path)),
+              );
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => widget.onOpenPath(day.path),
+            onTap: day.path.isEmpty ? null : () => widget.onOpenPath(day.path),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -200,18 +288,12 @@ class _JournalFeedState extends State<JournalFeed> {
                         : humanDate(DateTime.parse(day.date!)),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  for (final event in widget.events.where(
-                    (e) => e.date == _dayKey(day),
-                  ))
-                    ListTile(
-                      leading: const Icon(Icons.event),
-                      title: Text(event.title),
-                      onTap: () => widget.onOpenPath(event.notePath),
-                    ),
+                  for (final event in _eventsOn(_dayKey(day))) _eventRow(event),
                   const Divider(),
                   FutureBuilder<String>(
                     future: source,
                     builder: (context, snapshot) {
+                      if (day.path.isEmpty) return const SizedBox.shrink();
                       if (!snapshot.hasData) {
                         return const LinearProgressIndicator();
                       }

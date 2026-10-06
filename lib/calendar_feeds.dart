@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:crypto/crypto.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -209,4 +211,50 @@ Future<String> fetchCalendarBody(String url) async {
   } finally {
     client.close(force: true);
   }
+}
+
+/// Nearby virtual events, with the edited day first and future dates next.
+List<FeedEvent> searchFeedEvents(
+  Iterable<FeedEvent> events,
+  String query, {
+  required DateTime today,
+  String? editedDay,
+}) {
+  initializeDateFormatting('en');
+  final day = DateTime(today.year, today.month, today.day);
+  final from = DateTime(day.year, day.month, day.day - 7);
+  final until = DateTime(day.year, day.month, day.day + 14);
+  final words = query
+      .trim()
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((s) => s.isNotEmpty);
+  final matches = events.where((event) {
+    final date = DateTime.tryParse(event.date);
+    if (date == null || date.isBefore(from) || date.isAfter(until)) {
+      return false;
+    }
+    final text =
+        '${event.title} ${event.properties['course'] ?? ''} ${event.properties['event_type'] ?? ''} ${event.date} ${DateFormat('d MMMM', 'en').format(date)}'
+            .toLowerCase();
+    return words.every(text.contains);
+  }).toList();
+  int tier(FeedEvent e) => e.date == editedDay
+      ? 0
+      : DateTime.parse(e.date).isBefore(day)
+      ? 2
+      : 1;
+  matches.sort((a, b) {
+    final byTier = tier(a).compareTo(tier(b));
+    if (byTier != 0) return byTier;
+    final byDate = tier(a) == 2
+        ? b.date.compareTo(a.date)
+        : a.date.compareTo(b.date);
+    return byDate != 0
+        ? byDate
+        : (a.properties['start']?.toString() ?? '').compareTo(
+            b.properties['start']?.toString() ?? '',
+          );
+  });
+  return matches;
 }
