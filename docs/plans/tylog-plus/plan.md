@@ -1,9 +1,9 @@
 # TyLog+ delivery plan
 
-> **Markdown reading copy — updated 2026-09-26.** The canonical plan is [`plan.typ`](plan.typ); update it first and keep this copy aligned. [`plan.pdf`](plan.pdf) is the reader version. This is one plan with multiple formats, not a second tracker.
+> **Markdown reading copy — updated 2026-10-06.** The canonical plan is [`plan.typ`](plan.typ); update it first and keep this copy aligned. [`plan.pdf`](plan.pdf) is the reader version. This is one plan with multiple formats, not a second tracker.
 
 **Owner:** Project coordinator · **Scope:** P01–P26  
-**Current state (2026-10-03):** 22 of 26 milestones complete; U0 verified on host, Mac and A24. Open: P05 (human relevance labels, owner: user), P12 (real-keyboard/IME hand check on the A24, owner: user), P21 (closes with P05), and P26 (seven-day use, starts when those pass). A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
+**Current state (2026-10-06):** 22 of 26 milestones complete; 2 WAIVED; U0 verified on host, Mac and A24. P05 (90 relevance labels) and P21 are WAIVED by the user on 2026-10-06: search quality is judged by real use instead. Open: P12 (real-keyboard/IME hand check on the A24, owner: user) and P26 (seven-day use, starts when P12 passes). A milestone is not DONE from host tests alone when its contract requires device, corpus, account, or real-use evidence.
 
 **2026-10-04 maintenance:** Sync fix `f3667ed` throttles autosave syncs to 2 min,
 retries transient 5xx/52x responses, and shows “Offline — changes saved, will
@@ -24,7 +24,7 @@ helper removed from the A24.
 
 This is the only active project plan. Update milestone state, next action, and evidence in the canonical Typst source. Detailed test logs remain in `evidence/`; they are evidence, not separate plans. Private vault contents, credentials, query text, source excerpts, hashes, and raw samples stay outside Git unless evidence is explicitly redacted.
 
-States mean: **DONE** has every acceptance item and linked evidence; **OPEN** has work left; **BLOCKED** has a concrete dependency that must change; **CONDITIONAL** runs only when its stated gate fails. Keep implementation completion separate from real-device and production acceptance.
+States mean: **DONE** has every acceptance item and linked evidence; **OPEN** has work left; **BLOCKED** has a concrete dependency that must change; **CONDITIONAL** runs only when its stated gate fails; **WAIVED** is explicitly waived by the user, with date and reason recorded. Keep implementation completion separate from real-device and production acceptance.
 
 ## Project outcome and fixed decisions
 
@@ -50,7 +50,7 @@ Current measurements and failures are in the milestone table and linked evidence
 | Startup/edit | Cold workspace ready ≤2 s p95; note open and durable save each ≤150 ms p95 for ≤50 KB notes. | 30 startup and 100 open/save samples on a normal profile/release path. |
 | Keyword search | First 50 results ≤200 ms p95 at full scale. | 250k searchable chunks; record device, build, corpus, p50/p95/max. |
 | Semantic search | Query embedding plus top 20 ≤3 s warm p95; first query ≤6 s. | Real on-device model, offline after installation; include memory. |
-| Retrieval quality | `Recall@10` ≥85% overall and ≥80% in each query-language and cross-language group. | 90 human-judged queries; publish aggregate scores and reviewed-pack digest only. |
+| Retrieval quality | WAIVED by the user on 2026-10-06; search quality is judged by real use instead. | P05: 90 relevance labels and Recall@10 scoring waived; P21 waived. |
 | Graph | ≤500 ms p95 for bounded interactive graph operations. | 200-node/500-edge view; 100 valid foreground samples per platform and real-vault route. |
 | Frames | Fewer than 1% of frames exceed the observed refresh-stage budget. | Five-minute scripted editing runs; count a frame once if build **or** raster exceeds budget. Report total latency separately. |
 | Android memory | ≤350 MB PSS during ordinary editing; ≤750 MB during embedding/search and heavy reader checks. | Profile build, repeatable workload, peak PSS. |
@@ -69,7 +69,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P02 | Restore production selection and release | DONE | [Vault and release persist](evidence/P02/result.md). |
 | P03 | Real Mac–A24 sync and existing controls | DONE | [A24 reconnected; initial sync 12,238 files; 23 conflicts reconciled; two-way edits, concurrent conflict (A24 review), attachments + cold restart pass](evidence/P03/result.md). |
 | P04 | Corpus fixtures and benchmark runner | DONE | [Real, 10k, and 100k manifests and baseline](evidence/P04b/result.md). |
-| P05 | Offline embedding and retrieval feasibility | OPEN | [Android model/vector/search/resume gates pass; human review and `Recall@10` score remain](evidence/P05/mac-quality-readiness.md). |
+| P05 | Offline embedding and retrieval feasibility | WAIVED | [User waiver, 2026-10-06: 90 relevance labels waived; search quality judged by real use](evidence/P05/mac-quality-readiness.md). |
 | P06 | Database bootstrap and migration tests | DONE | [Background SQLite, WAL/FK, creation, and upgrade tests](evidence/P06/result.md). |
 | P07 | Nodes, edges, sources, revisions | DONE | [Atomic writes, stable identity, dates, references, and migrations](evidence/P07/result.md). |
 | P08 | Transactional edit, outbox, and jobs | DONE | [Failure-injected all-or-nothing edit transaction](evidence/P08/result.md). |
@@ -85,7 +85,7 @@ Completed milestone evidence is linked so the remaining plan stays compact. “D
 | P18 | PDF reader and versioned extraction | DONE | [5/5 private PDFs on Mac and A24 (identical extraction); explicit password flow; A24 peak PSS 312 MB](evidence/P18/result.md). |
 | P19 | Durable annotations and navigation | DONE | [Reader, anchor and ambiguous review pass on Mac/A24; real-account annotation sync both ways with conflict preservation (2026-10-03)](evidence/P19/result.md). |
 | P20 | Chunking and offline embeddings | DONE | [Mac+A24 query/passage parity 1.000000; A24 250k + model: first 952 ms, warm p95 230 ms, PSS 736 MB](evidence/P20/result.md). |
-| P21 | Hybrid retrieval and cited navigation | OPEN | [Native download-index-search-navigate passes on Mac, P30 and A24; real-vault index 65 chunks/s on Mac profile. P05 judged quality remains](evidence/P21/a24-native.md). |
+| P21 | Hybrid retrieval and cited navigation | WAIVED | [Native download-index-search-navigate passes on Mac, P30 and A24; real-vault index 65 chunks/s on Mac profile. User waived P21 on 2026-10-06; search quality judged by real use](evidence/P21/a24-native.md). |
 | P22 | Evidence relations and bounded graph | DONE | [Real vault read-only, 100/100 valid per mode: A24 p95 46 ms, Mac p95 18 ms; note opens; manifests identical](evidence/P22/result.md). |
 | P23 | Complete research workflow | DONE | [Six-step native workflow passes on Mac, P30 and A24; identical report bytes](evidence/P21/a24-native.md). |
 | P24 | Migration rehearsal and integrated failures | DONE | [Real-account rehearsal on a real-vault sample: interrupted sync, restore, conflict, restart, export/re-import pass; NFD data-loss and 423 bugs fixed](evidence/P24/result.md). |
@@ -114,15 +114,9 @@ Re-enter the existing Mac and A24 account configuration, install profile builds 
 
 **Close when:** Mac↔A24 small edits pass in both directions; a concurrent same-note edit is preserved as a reviewable conflict on both devices; an attachment hash matches after round trip and cold restart; the initial sync finishes with counts and no unexplained data loss. Reconcile each pre-existing conflict explicitly.
 
-### 2 · Finish judged retrieval quality — P05
+### 2 · Judged retrieval quality — P05 WAIVED
 
-**Depends on:** P04; Android exact-search and durable-resume evidence is already accepted. **State:** waiting for human review.
-
-Use the private `P05-human-review-v2.pdf` to read the 90 candidate query/passage pairs and enter final labels in `p05-human-review-worklist-v2.tsv`. Review 30 EN, 30 PT, and 30 RU queries; each group contains 10 cross-language cases. Mark relevant, not relevant, or unresolved; add any missed relevant passage IDs. Resolve the flagged mixed-language Russian query. Keep source excerpts, query text, paths, identifiers, and vectors outside Git.
-
-Run the scorer only when all 90 judgments are resolved. Record the private reviewed-pack digest and runtime metadata outside Git, and add only aggregate scores to the evidence report.
-
-**Close when:** `Recall@10` is at least 85% overall, 80% in each language, and 80% in the cross-language subset; pack validation passes; scorer command and aggregate-only result reproduce. If a threshold fails, fix retrieval/model behavior and rerun the same frozen judged set. Run sqlite-vec only if exact search misses its established latency or memory gate.
+WAIVED by the user on 2026-10-06: the 90 relevance labels and Recall@10 scoring are no longer required. Search quality is judged by real use instead. Existing numerical, device, and runtime evidence remains historical evidence; no judged quality score is claimed.
 
 ### 3 · Close editor frame and behavior acceptance — P12
 
@@ -148,11 +142,11 @@ Run annotation save, close/reopen, navigation, exact reattachment, ambiguous rea
 
 **Depends on:** P05, P14, P18, P19, and P13 as listed in the milestone graph.
 
-On both Mac and A24, run the pinned ONNX model offline after installation. Verify query/passage vector parity against the frozen reference (cosine similarity ≥0.999 and maximum absolute difference ≤0.02) and verify chunking/tokenization/pooling/normalization versions. Exercise interrupted embedding and resume; confirm stale vectors cannot publish. Measure initial and warm query latency and peak PSS on 250,000 representative searchable chunks. Keep the quality set frozen while making implementation changes.
+On both Mac and A24, run the pinned ONNX model offline after installation. Verify query/passage vector parity against the frozen reference (cosine similarity ≥0.999 and maximum absolute difference ≤0.02) and verify chunking/tokenization/pooling/normalization versions. Exercise interrupted embedding and resume; confirm stale vectors cannot publish. Measure initial and warm query latency and peak PSS on 250,000 representative searchable chunks. Search quality is judged by real use instead (user waiver, 2026-10-06).
 
 Wire the actual search action through query embedding, FTS and vector candidate retrieval, reciprocal-rank fusion, result display, and tap navigation to the correct source version and offset. Test missing/stale sources, duplicate candidates, cancellation, offline first-use, and back navigation.
 
-**Close P20 when:** passage/query vectors meet those parity thresholds on both platforms, jobs resume deterministically, semantic query/top-20 meets ≤3 s warm p95 and ≤6 s first-query latency, and PSS stays ≤750 MB. **Close P21 when:** the in-app path returns stable citations to the expected source/version/offset and meets P05 quality gates on Mac and A24 with no network dependency after model installation.
+**Close P20 when:** passage/query vectors meet those parity thresholds on both platforms, jobs resume deterministically, semantic query/top-20 meets ≤3 s warm p95 and ≤6 s first-query latency, and PSS stays ≤750 MB. **P21: WAIVED by the user on 2026-10-06; search quality is judged by real use instead.**
 
 ### 6 · Close bounded graph performance — P22
 
@@ -184,9 +178,9 @@ Repeat migration on a fresh verified copy of the real vault, never the only prod
 
 | Wave | Work | Exit condition |
 |---|---|---|
-| A | U0 host verification; P03 account re-entry and safe initial sync; P05 human relevance review and scoring. | Existing controls verified; real sync usable; quality gate scored. |
+| A | U0 host verification; P03 account re-entry and safe initial sync; P05 user waiver (2026-10-06). | Existing controls verified; real sync usable; search quality judged by real use. |
 | B | P12 editor parity/frame fix; P18 Android reader/password/memory; P22 valid graph timings. These can proceed independently with disjoint files. | Each local/device gate passes with reproducible evidence. |
-| C | P19 annotation sync; P20 on-device embedding; P21 in-app hybrid cited search. | P05 quality plus native end-to-end retrieval pass. |
+| C | P19 annotation sync; P20 on-device embedding; P21 in-app hybrid cited search. | P05/P21 waived by the user on 2026-10-06; search quality judged by real use. |
 | D | P23 workflow, P24 failure/migration rehearsal, P25 release and production acceptance. | Real-vault integrity and two-device acceptance pass. |
 | E | P26 seven-day normal use. | Seven consecutive days meet the use contract. |
 

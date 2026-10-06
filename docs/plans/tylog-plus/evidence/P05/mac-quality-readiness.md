@@ -1,6 +1,8 @@
 # P05 Mac quality readiness — 2026-09-26
 
-Status: SYNTHETIC MAC SMOKE PASSES; PRIVATE DRAFT PACK READY FOR HUMAN REVIEW.
+Status: WAIVED by the user on 2026-10-06 (90 relevance labels and Recall@10 scoring). Search quality is judged by real use instead. P21 is also WAIVED. No human-judged score is claimed.
+
+The following records the prior readiness state; human review and scoring are no longer required.
 
 The repository contains the numerical reference runner and private-pack
 validator. The immutable P05.0 model/tokenizer files were downloaded to a
@@ -38,4 +40,4 @@ subgroup, the reviewed pack digest, and runtime metadata.
 P05 Mac exact-cosine timing evidence remains in `mac-exact-search.md`; it
 measures the search primitive over synthetic vectors and is not semantic
 retrieval-quality evidence. Android profile vector parity, exact-search/PSS,
-and durable-resume gates are now closed; semantic Recall@10 remains open.
+and durable-resume gates are now closed; semantic Recall@10 was waived by the user on 2026-10-06.

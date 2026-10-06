@@ -623,7 +623,9 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
     final all = (widget.pagedNotes ?? widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind != 'daily')
         .toList();
-    final kinds = {for (final note in all) note.kind}..remove('note');
+    final kinds = {for (final note in all) note.kind}
+      ..remove('note')
+      ..remove('screenshot');
     final chips = kinds.toList()..sort();
     final selected = _kind;
     final notes = all.where((note) {

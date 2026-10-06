@@ -145,6 +145,125 @@ source:: [[real-id]]
     expect(second.problems.where((p) => p.code == 'broken-link'), isEmpty);
   });
 
+  test('escaped source:: wiki links resolve or stay silent', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_escsrc_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/articles').create(recursive: true);
+    // The importer escapes Typst markup, so a Logseq `source:: [[habr.com]]`
+    // arrives as `source:: \[\[habr.com\]\]`.
+    await File('${dir.path}/articles/A.typ').writeAsString(
+      '''#show: tylog.note.with(id: "a", title: "A", kind: "article")
+source:: \\[\\[habr.com\\]\\]
+''',
+    );
+    await File('${dir.path}/articles/B.typ').writeAsString(
+      '''#show: tylog.note.with(id: "b", title: "B", kind: "article")
+source:: \\[\\[3dnews.ru\\]\\]
+''',
+    );
+    // An entity note for habr.com exists; none for 3dnews.ru.
+    await File('${dir.path}/notes/habr.typ').create(recursive: true).then(
+      (f) => f.writeAsString(
+        '#show: tylog.note.with(id: "habr", title: "habr.com")',
+      ),
+    );
+
+    final index = await scanVaultStorage(LocalVaultStorage(dir));
+
+    // Unescaped to a real wiki target, resolved by title -> backlink.
+    expect(index.notesByPath['articles/A.typ']!.outgoingLinks, ['habr.com']);
+    expect(index.backlinksByTarget['notes/habr.typ'], ['articles/A.typ']);
+    // Unresolvable domain-like source entity: kept as a link, but no
+    // broken-link noise for an external reference.
+    expect(index.notesByPath['articles/B.typ']!.outgoingLinks, ['3dnews.ru']);
+    expect(index.problems.where((p) => p.code == 'broken-link'), isEmpty);
+  });
+
+  test('cached escaped-garbage link targets stay silent too', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_escache_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/articles').create(recursive: true);
+    await File('${dir.path}/articles/A.typ').writeAsString(
+      '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
+    );
+    final first = await scanVaultStorage(LocalVaultStorage(dir));
+    // A pre-fix cache recorded the raw escaped line as the link target.
+    final poisoned = VaultIndex(
+      notesByPath: {
+        'articles/A.typ': first.notesByPath['articles/A.typ']!.copyWith(
+          outgoingLinks: ['\\[\\[3dnews.ru\\]\\]'],
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+
+    final second = await scanVaultStorage(
+      LocalVaultStorage(dir),
+      previous: poisoned,
+    );
+    expect(second.problems.where((p) => p.code == 'broken-link'), isEmpty);
+  });
+
+  test('repairArticleTypst closes an unbalanced raw fence', () {
+    const broken = '''#show: tylog.note.with(id: "x", title: "X")
+Some prose.
+
+```
+let code = 1;
+
+More prose that Typst now reads as raw text.
+''';
+    final repaired = repairArticleTypst(broken);
+    expect(
+      RegExp(r'^\s*```', multiLine: true).allMatches(repaired).length.isEven,
+      isTrue,
+    );
+    // Balanced sources are untouched (idempotent).
+    expect(repairArticleTypst(repaired), repaired);
+    const balanced = 'prose\n```\ncode\n```\nmore prose\n';
+    expect(repairArticleTypst(balanced), balanced);
+  });
+
+  test('stranded SAF write temps are recovered into missing notes', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_stranded_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/articles').create(recursive: true);
+    const content =
+        '#show: tylog.note.with(id: "lost", title: "Lost note", kind: "article")';
+    // Interrupted SAF atomic write: hidden temp exists, real note gone.
+    await File(
+      '${dir.path}/articles/.Lost.typ.tylog-449257966368947.tmp',
+    ).writeAsString(content);
+    // A stray temp whose target survived is dead bytes and just gets removed.
+    await File('${dir.path}/articles/Kept.typ').writeAsString(
+      '#show: tylog.note.with(id: "kept", title: "Kept")',
+    );
+    await File(
+      '${dir.path}/articles/.Kept.typ.tylog-1.tmp',
+    ).writeAsString('stale');
+
+    final index = await scanVaultStorage(LocalVaultStorage(dir));
+
+    expect(index.notesByPath['articles/Lost.typ']?.id, 'lost');
+    expect(
+      await File('${dir.path}/articles/Lost.typ').readAsString(),
+      content,
+    );
+    expect(
+      File('${dir.path}/articles/.Lost.typ.tylog-449257966368947.tmp')
+          .existsSync(),
+      isFalse,
+    );
+    expect(
+      File('${dir.path}/articles/.Kept.typ.tylog-1.tmp').existsSync(),
+      isFalse,
+    );
+    expect(
+      await File('${dir.path}/articles/Kept.typ').readAsString(),
+      contains('"kept"'),
+    );
+  });
+
   test('link resolver prefers id, alias, title, then filename stem', () {
     final index = VaultIndex(
       notesByPath: {

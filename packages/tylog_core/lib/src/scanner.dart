@@ -432,8 +432,10 @@ Future<VaultIndex> scanVaultStorage(
   void Function(int complete, int total)? onProgress,
   bool Function()? isCancelled,
 }) async {
+  final listing = entries ?? await storage.list(recursive: true);
+  final recovered = await _recoverStrandedWrites(storage, listing);
   final files = <VaultStorageEntry>[];
-  for (final entity in entries ?? await storage.list(recursive: true)) {
+  for (final entity in [...listing, ...recovered]) {
     if (entity.isDirectory || !entity.path.endsWith('.typ')) continue;
     final relative = entity.path;
     if (!_noteRoots.any(relative.startsWith)) {
@@ -787,6 +789,47 @@ const _noteRoots = [
   'screenshots/',
 ];
 
+/// The hidden temp/backup copies of the Android SAF atomic write
+/// (`.<name>.tylog-<nonce>.tmp` / `.backup`).
+final _strandedWrite = RegExp(r'^\.(.+)\.tylog-\d+\.(tmp|backup)$');
+
+/// An interrupted SAF atomic write (process death mid-commit, flaky
+/// DocumentsProvider) can strand its hidden copy with the real note gone —
+/// the "phantom-deleted note" class: the note silently vanishes while its
+/// full content sits in an invisible dotfile next to it. Restore the copy
+/// when the target is missing; drop it as dead bytes when the target
+/// survived. Best-effort per file: a failure leaves the stray for the next
+/// scan.
+Future<List<VaultStorageEntry>> _recoverStrandedWrites(
+  VaultStorage storage,
+  List<VaultStorageEntry> listing,
+) async {
+  final present = {
+    for (final entry in listing)
+      if (!entry.isDirectory) entry.path,
+  };
+  final restored = <VaultStorageEntry>[];
+  for (final entry in listing) {
+    if (entry.isDirectory) continue;
+    final slash = entry.path.lastIndexOf('/');
+    final dir = slash < 0 ? '' : entry.path.substring(0, slash + 1);
+    final match = _strandedWrite.firstMatch(entry.path.substring(dir.length));
+    if (match == null) continue;
+    final target = '$dir${match.group(1)!}';
+    try {
+      if (!present.contains(target) && !await storage.exists(target)) {
+        await storage.writeBytes(target, await storage.readBytes(entry.path));
+        final stat = await storage.stat(target);
+        if (stat != null) restored.add(stat);
+      }
+      await storage.delete(entry.path);
+    } catch (_) {
+      // Recovery must never break the scan it rides on.
+    }
+  }
+  return restored;
+}
+
 Future<Map<String, Uint8List>> _inspectionFiles(
   VaultStorage storage, {
   List<VaultStorageEntry>? entries,
@@ -794,6 +837,7 @@ Future<Map<String, Uint8List>> _inspectionFiles(
   final files = <String, Uint8List>{};
   for (final entry in entries ?? await storage.list(recursive: true)) {
     if (entry.isDirectory ||
+        _strandedWrite.hasMatch(entry.path.split('/').last) ||
         entry.path.startsWith('_index/') ||
         // TylogVaultPaths.indexDonors — index caches, not compile inputs, and
         // megabytes each. Held twice in this map, they are the same
@@ -977,6 +1021,14 @@ VaultIndex _buildVaultIndex(
       final resolved = resolver.resolve(target);
       if (resolved.status == LinkResolutionStatus.resolved) {
         backlinks.putIfAbsent(resolved.path!, () => {}).add(source.path);
+      } else if (target.contains(r'\[') || _domainLike.hasMatch(target)) {
+        // Domain-like targets (`3dnews.ru`) are legacy source-entity refs to
+        // websites — external references, not missing notes; they resolve to
+        // a backlink above when a matching entity note exists, and stay
+        // silent otherwise. `\[` covers raw escaped-garbage targets from
+        // pre-fix caches. ponytail: a genuinely missing note titled like a
+        // domain (`Node.js`) is also silenced; revisit if that ever bites.
+        continue;
       } else {
         allProblems.add(
           PkmsProblem(
@@ -1140,6 +1192,15 @@ String repairArticleTypst(String source) {
       (m) => '${m[1]}\\@${m[2]}',
     ),
   );
+  // An odd number of ``` fences (a markdown code block the importer never
+  // closed) leaves everything after it inside a raw block — "unclosed raw
+  // text" plus an expected-expression cascade through the whole article.
+  // Close it at the end of the file. Counting line-leading fences only:
+  // that is where markdown fences live, and inline backtick runs in prose
+  // must not flip the parity.
+  if (RegExp(r'^\s*```', multiLine: true).allMatches(out).length.isOdd) {
+    out = '${out.trimRight()}\n```\n';
+  }
   return out;
 }
 
@@ -2254,6 +2315,10 @@ String? _field(String source, String name) =>
         ?.group(1)
         ?.replaceAllMapped(_escapedChar, (match) => match.group(1)!);
 
+/// A bare domain, optionally with a path — the shape of legacy
+/// `source:: [[site.tld]]` entity references.
+final _domainLike = RegExp(r'^[\w-]+(\.[\w-]+)+(/\S*)?$');
+
 final _legacyTagLine = RegExp(r'^\s*tags::\s*(.+)$', multiLine: true);
 final _legacyDateLine = RegExp(r'^\s*journal-day::\s*(.+)$', multiLine: true);
 final _legacySourceLine = RegExp(r'^\s*source::\s*(.+)$', multiLine: true);
@@ -2283,7 +2348,11 @@ Set<String> _wikiLinkTargets(String source) => {
 Set<String> _legacySources(String source) {
   final result = <String>{};
   for (final line in _legacySourceLine.allMatches(source)) {
-    final value = line.group(1)!;
+    // The importer escapes Typst markup in body text, so a Logseq
+    // `source:: [[habr.com]]` arrives as `source:: \[\[habr.com\]\]` —
+    // unescape first or the wiki link never matches (same treatment as
+    // _legacyTags).
+    final value = unescapeMarkup(line.group(1)!);
     final links = _wikiLink
         .allMatches(value)
         .map((m) => m.group(1)!.trim())

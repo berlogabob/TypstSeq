@@ -18,6 +18,7 @@ void main() {
     _note('ilya', 'person'),
     _note('an-article', 'article'),
     _note('an-idea', 'idea'),
+    _note('a-screenshot', 'screenshot'),
   ];
 
   Widget surface() => MaterialApp(
@@ -60,6 +61,9 @@ void main() {
     expect(find.text('ilya'), findsOneWidget);
     // Articles keep their own shelf; the unified list does not double them.
     expect(find.text('an-article'), findsNothing);
+    expect(find.text('a-screenshot'), findsNothing);
+    expect(find.widgetWithText(FilterChip, 'screenshot'), findsNothing);
+    expect(find.text('Screenshots'), findsOneWidget);
   });
 
   testWidgets('kind chips filter the unified list', (tester) async {

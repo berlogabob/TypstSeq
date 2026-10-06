@@ -91,6 +91,22 @@ void main() {
 
   tearDown(() => root.delete(recursive: true));
 
+  test('recovery keeps shared-listing metadata inspection working', () async {
+    await storage.writeText('notes/.lost.typ.tylog-1.backup', _note('Lost'));
+    final entries = await storage.list(recursive: true);
+    final inspector = _CountingInspector();
+    final index = await scanVaultStorage(
+      storage,
+      entries: entries,
+      inspector: inspector,
+    );
+    expect(index.notesByPath['notes/lost.typ']?.metadataSource, 'typst-query');
+    expect(
+      inspector.inspected,
+      containsAll(['notes/a.typ', 'notes/b.typ', 'notes/lost.typ']),
+    );
+  });
+
   test('an unchanged note is served from cache without being re-read', () async {
     final first = await scanVaultStorage(storage);
     expect(first.notes, hasLength(2));

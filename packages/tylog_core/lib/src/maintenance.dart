@@ -381,6 +381,15 @@ Future<int> sweepVaultLeftovers(
         modified.isBefore(tempCutoff);
     if (!backup && !staleTemp) continue;
     try {
+      final copy = _safWriteCopy.firstMatch(item.path);
+      if (copy != null &&
+          !await storage.exists(
+            item.path.substring(0, copy.start) +
+                copy.group(1)! +
+                copy.group(2)!,
+          )) {
+        continue; // The scanner must recover this copy first.
+      }
       await storage.delete(item.path);
       deleted++;
     } catch (_) {
@@ -401,6 +410,8 @@ bool isSafBackupPath(String path) {
 /// A temp file from an interrupted atomic write: `<name>.<nanos>.tmp`.
 bool isOrphanedTempPath(String path) =>
     _orphanTempPattern.hasMatch(path.split('/').last);
+
+final _safWriteCopy = RegExp(r'(^|/)\.(.+)\.tylog-\d+\.(tmp|backup)$');
 
 final RegExp _orphanTempPattern = RegExp(r'\.(?:tylog-)?\d+\.tmp$');
 
