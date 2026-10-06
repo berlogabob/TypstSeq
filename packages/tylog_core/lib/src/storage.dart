@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -27,7 +28,24 @@ class VaultStorageEntry {
   final DateTime? modified;
 }
 
+const indexDirtyPath = '.tylog/index_dirty';
+final _writeMarkerRandom = Random.secure();
+
 abstract class VaultStorage {
+  /// Persist before writing: immutable markers survive crashes and a scanner
+  /// only removes the markers it saw, leaving concurrent writes queued.
+  Future<void> markIndexDirty(String path) async {
+    if (!path.endsWith('.typ') ||
+        path.startsWith('.tylog/') ||
+        path.startsWith('_index/') ||
+        path.startsWith('_system/')) {
+      return;
+    }
+    final token =
+        '${DateTime.now().microsecondsSinceEpoch}-${_writeMarkerRandom.nextInt(1 << 32)}';
+    await writeText('$indexDirtyPath/$token.json', jsonEncode(path));
+  }
+
   Future<bool> exists(String path);
   Future<void> createDirectory(String path);
   Future<List<VaultStorageEntry>> list({
@@ -112,8 +130,10 @@ class LocalVaultStorage extends VaultStorage {
   Future<Uint8List> readBytes(String path) => File(_path(path)).readAsBytes();
 
   @override
-  Future<void> writeBytes(String path, List<int> bytes) =>
-      writeFileAtomic(File(_path(path)), bytes);
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    await markIndexDirty(path);
+    await writeFileAtomic(File(_path(path)), bytes);
+  }
 
   @override
   Future<void> delete(String path) async {

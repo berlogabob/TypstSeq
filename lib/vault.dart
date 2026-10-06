@@ -251,6 +251,7 @@ class Vault {
         force: force,
         deviceId: deviceId,
         stale: staleNow,
+        hashStale: pendingSyncWrites,
         onProgress: onProgress,
         isCancelled: isCancelled,
       );

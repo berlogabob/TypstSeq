@@ -269,7 +269,9 @@ void main() {
       'original daily',
     );
     expect(
-      (await storage.list(recursive: true)).where((e) => !e.isDirectory),
+      (await storage.list(
+        recursive: true,
+      )).where((e) => !e.isDirectory && isSyncableVaultPath(e.path)),
       hasLength(2),
     );
   });

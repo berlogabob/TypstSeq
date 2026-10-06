@@ -144,6 +144,16 @@ class VaultMaintenance {
   }) async {
     final timer = Stopwatch()..start();
     entries ??= await storage.list(recursive: true);
+    final dirtyMarkers = <String, String>{};
+    for (final entry in entries) {
+      if (!entry.isDirectory && entry.path.startsWith('$indexDirtyPath/')) {
+        final path = jsonDecode(await storage.readText(entry.path)) as String;
+        dirtyMarkers[entry.path] = path;
+      }
+    }
+    final hashStaleNow = {...stale, ...?hashStale, ...dirtyMarkers.values};
+    final knownHashes = await _syncedHashes(storage, entries, hashStaleNow);
+    final staleNow = {...stale, ...hashStaleNow};
     parsedNotes = 0;
     final previous = _lastBuiltIndex ?? await loadVaultIndex(storage);
     // Only *our own* last index says anything about what our donor holds; a
@@ -165,14 +175,14 @@ class VaultMaintenance {
       inspector: inspector,
       previous: previous,
       donor: publishDonor && force ? null : donor,
-      knownHashes: await _syncedHashes(storage, entries, hashStale ?? stale),
+      knownHashes: knownHashes,
       onParsed: () => parsedNotes++,
       onDonorReused: (tasks) {
         reusedNotes++;
         reusedTasks += tasks;
       },
       force: force,
-      stale: stale,
+      stale: staleNow,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
@@ -192,6 +202,9 @@ class VaultMaintenance {
         await storage.writeBytes(TylogVaultPaths.index, encoded);
         _lastIndexDigest = digest;
       }
+    }
+    for (final marker in dirtyMarkers.keys) {
+      await storage.delete(marker);
     }
     _lastBuiltIndex = index;
     if (publishDonor && deviceId != null && deviceId.isNotEmpty) {
@@ -467,7 +480,9 @@ Future<Map<String, String>> _syncedHashes(
 ) async {
   if (entries == null) return const {};
   try {
-    final state = jsonDecode(await storage.readText('.tylog/sync_state.json'));
+    const receiptPath = '.tylog/sync_state.json';
+    final receiptTime = (await storage.stat(receiptPath))?.modified;
+    final state = jsonDecode(await storage.readText(receiptPath));
     if (state is! Map || state['schema'] != 2 || state['cursors'] is! Map) {
       return const {};
     }
@@ -480,6 +495,14 @@ Future<Map<String, String>> _syncedHashes(
       }
       final cursor = cursors[entry.path];
       if (cursor is! Map || entry.modified == null || entry.size == null) {
+        continue;
+      }
+      // SAF rounds timestamps to seconds. A write near the receipt can have
+      // identical mtime+size; only reading the bytes establishes its hash.
+      if (receiptTime == null ||
+          entry.modified!.difference(receiptTime).inMilliseconds.abs() <=
+              1000) {
+        stale.add(entry.path);
         continue;
       }
       final hash = cursor['localSha256'];

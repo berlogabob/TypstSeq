@@ -327,7 +327,9 @@ extension _PathSync on NextcloudSync {
                 ) ||
                 (bytes.isEmpty && emptyDailyTemplate(path) != null) ||
                 path.startsWith('_system/revisions/note-'))) {
-          await _discardConflictsForPath(vault, path);
+          if (!isMachineRevisionPath(path)) {
+            await _discardConflictsForPath(vault, path);
+          }
           unresolvedConflict = null;
           adoptRemoteConflict = true;
         }
@@ -344,9 +346,9 @@ extension _PathSync on NextcloudSync {
         remoteExists &&
         (unresolvedConflict != null || (localChanged && remoteChanged));
 
-    if (unresolvedConflict != null &&
-        (isRegenerableCachePath(path) ||
-            (isMachineRevisionPath(path) && !localExists && remoteExists))) {
+    final restoreRevision =
+        isMachineRevisionPath(path) && !localExists && remoteExists;
+    if (unresolvedConflict != null && isRegenerableCachePath(path)) {
       // A conflict already recorded against a cache file would otherwise sit
       // there forever: the loop skips a conflicted path before reaching the
       // branches that know a donor is regenerable, so the record is the only
@@ -357,7 +359,7 @@ extension _PathSync on NextcloudSync {
       repaired++;
     }
 
-    if (unresolvedConflict != null && !resolveJobConflict) {
+    if (unresolvedConflict != null && !resolveJobConflict && !restoreRevision) {
       skipped++;
       reason = 'unresolved-conflict';
       // The stored etag is frozen at record time; the sync loop skips this
@@ -837,7 +839,12 @@ extension _PathSync on NextcloudSync {
     // whose mtime lands in the same second as the scan's listing, at the same
     // size, is indexed as unchanged — and stays that way until something else
     // moves it.
-    if (wasDownloaded) vault.markLocallyWritten(path);
+    if (wasDownloaded) {
+      vault.markLocallyWritten(path);
+      if (isMachineRevisionPath(path)) {
+        await _discardConflictsForPath(vault, path);
+      }
+    }
     final nextLocal = wasDownloaded
         ? await vault.storage.stat(path)
         : localStat;

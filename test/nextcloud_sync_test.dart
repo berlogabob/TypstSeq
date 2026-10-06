@@ -100,6 +100,47 @@ void main() {
     );
   });
 
+  test(
+    'offline revision conflicts retain envelopes until a successful download',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'tylog_revision_evidence_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final vault = Vault(root);
+      final path = '_system/revisions/note-${'b' * 64}.json';
+      await createSyncConflict(
+        vault,
+        path,
+        localBytes: utf8.encode('retained local envelope'),
+        remoteBytes: utf8.encode('retained remote envelope'),
+      );
+      final records = await vault.storage.list(path: '.tylog/conflicts');
+      final before = {
+        for (final entry in records)
+          entry.path: await vault.storage.readText(entry.path),
+      };
+      expect(await loadSyncConflicts(vault), hasLength(1));
+      for (final entry in before.entries) {
+        expect(await vault.storage.readText(entry.key), entry.value);
+      }
+      final remote = {path: _remoteText('retained remote envelope')};
+      var server = await _mutableWebDavServer(remote);
+      final offlineConfig = _config(server);
+      await server.close(force: true);
+      await expectLater(
+        NextcloudSync(offlineConfig).sync(vault),
+        throwsA(anything),
+      );
+      expect(await loadSyncConflicts(vault), hasLength(1));
+      server = await _mutableWebDavServer(remote);
+      addTearDown(() => server.close(force: true));
+      await NextcloudSync(_config(server)).sync(vault);
+      expect(await vault.readText(path), 'retained remote envelope');
+      expect(await loadSyncConflicts(vault), isEmpty);
+    },
+  );
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   final defaultCheckpointInterval = NextcloudSync.checkpointInterval;
@@ -683,7 +724,7 @@ void main() {
               localBytes: const [],
               remoteBytes: utf8.encode('{"revision":"old"}'),
             );
-            expect(await loadSyncConflicts(s.vault), isEmpty);
+            expect(await loadSyncConflicts(s.vault), hasLength(1));
           }
           final result = await NextcloudSync(_config(s.server)).sync(s.vault);
           expect(result.conflicts, 0);

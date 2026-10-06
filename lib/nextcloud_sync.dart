@@ -1744,18 +1744,6 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
       }
       final localSnapshot = json['localSnapshot'] as String?;
       final remoteSnapshot = json['remoteSnapshot'] as String?;
-      if (path != null &&
-          isMachineRevisionPath(path) &&
-          json['remoteExists'] != false &&
-          !await vault.storage.exists(path)) {
-        for (final snapshot in [localSnapshot, remoteSnapshot]) {
-          if (snapshot != null && await vault.storage.exists(snapshot)) {
-            await vault.storage.delete(snapshot);
-          }
-        }
-        await vault.storage.delete(entry.path);
-        continue;
-      }
       // A record that says the remote is gone keeps its snapshot as evidence,
       // not as a side to compare. Self-healing on snapshot equality there would
       // delete a real delete-vs-edit conflict without anyone deciding it.
@@ -1775,6 +1763,7 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
       // it is never a candidate.
       if (json['remoteExists'] != false &&
           path != null &&
+          !isMachineRevisionPath(path) &&
           remoteSnapshot != null &&
           await vault.storage.exists(remoteSnapshot) &&
           await vault.storage.exists(path) &&

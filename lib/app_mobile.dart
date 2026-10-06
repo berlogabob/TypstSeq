@@ -1468,7 +1468,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     final v = vault;
     if (v == null) return;
-    final ix = index ??= VaultIndex(notesByPath: {}, backlinksByTarget: {});
+    final ix = index ?? VaultIndex(notesByPath: {}, backlinksByTarget: {});
     unawaited(_ensureSemanticController());
     if (!mounted) return;
     final searchStore = SavedSearchStore(v.storage);
@@ -1492,8 +1492,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           searchRevision: () => workspace.searchRevision,
           // Checked per query: the controller may finish installing or
           // indexing while the search screen is open.
-          vectorSearch: _semantic?.searchNotes,
-          citedSearch: _semantic?.citations,
+          vectorSearch: (query) async =>
+              await _semantic?.searchNotes(query) ?? const [],
+          citedSearch: (query) async =>
+              await _semantic?.citations(query) ?? const [],
           resolveMissing: (id) {
             final note = ix.notesByPath[id];
             if (note == null) return null;

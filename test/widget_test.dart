@@ -84,6 +84,40 @@ void main() {
     );
   });
 
+  testWidgets('cold Search keeps the workspace index absent', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = Vault.withStorage(_FailingStorage());
+    home.workspace.index = null;
+    await tester.tap(find.text('Search').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(KnowledgeScreen), findsOneWidget);
+    expect(home.workspace.index, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Search semantic callbacks remain available before async init', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = Vault.withStorage(_FailingStorage());
+    await tester.tap(find.text('Search').last);
+    await tester.pumpAndSettle();
+    final route = tester.widget<KnowledgeScreen>(find.byType(KnowledgeScreen));
+    expect(route.vectorSearch, isNotNull);
+    expect(route.citedSearch, isNotNull);
+    expect(await route.vectorSearch!('query'), isEmpty);
+    expect(await route.citedSearch!('query'), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('TyLog shell renders', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();

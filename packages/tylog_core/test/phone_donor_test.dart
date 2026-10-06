@@ -85,7 +85,7 @@ void main() {
     () async {
       final receipts = _ReceiptStorage(root);
       final hash = await storage.hash('notes/a.typ');
-      final stamp = DateTime.now();
+      final stamp = DateTime(2020);
       receipts.notes = List.generate(
         6731,
         (i) => VaultStorageEntry(
@@ -163,6 +163,57 @@ void main() {
       );
       expect(receipts.bodyReads, greaterThan(0));
       expect(receipts.hashReads, greaterThan(0));
+    },
+  );
+
+  test(
+    'same-stamp receipt edits are hashed across restart and receipt window',
+    () async {
+      final receipts = _ReceiptStorage(root);
+      await run(VaultMaintenance(receipts, publishDonor: true), 'cli-mac');
+      final entry = (await receipts.stat('notes/a.typ'))!;
+      final oldHash = await receipts.hash(entry.path);
+      for (final recent in [true, false]) {
+        final stamp = recent ? DateTime.now() : DateTime(2020);
+        await receipts.writeText(
+          '.tylog/sync_state.json',
+          jsonEncode({
+            'schema': 2,
+            'cursors': {
+              entry.path: {
+                'localSha256': oldHash,
+                'localMillis': stamp.millisecondsSinceEpoch,
+                'localSize': 4,
+              },
+            },
+          }),
+        );
+        if (recent) {
+          // An external same-second edit has no app write marker.
+          await File('${root.path}/${entry.path}').writeAsString('= C\n');
+        } else {
+          await receipts.writeText(entry.path, '= D\n');
+        }
+        receipts.notes = [
+          VaultStorageEntry(
+            path: entry.path,
+            isDirectory: false,
+            size: 4,
+            modified: stamp,
+          ),
+        ];
+        File('${root.path}/${entry.path}').setLastModifiedSync(stamp);
+        // New maintenance instance models a process restart losing memory sets.
+        final index = await VaultMaintenance(
+          receipts,
+          publishDonor: false,
+        ).buildIndex();
+        expect(
+          index.notesByPath[entry.path]!.contentHash,
+          await storage.hash(entry.path),
+          reason: 'recent=$recent',
+        );
+      }
     },
   );
 
