@@ -131,6 +131,8 @@ void main() {
     synced({
       FutureOr<void> Function(String)? onBeforePut,
       bool ignoreDepthOne = false,
+      bool omitPutEtag = false,
+      FutureOr<void> Function(String)? onAfterPut,
     }) async {
       final remote = {
         'daily/2026/10/day.typ': _remoteText('base daily'),
@@ -148,6 +150,8 @@ void main() {
         onBeforePut: onBeforePut,
         unquotedPutEtag: true,
         ignoreDepthOne: ignoreDepthOne,
+        omitPutEtag: omitPutEtag,
+        onAfterPut: onAfterPut,
       );
       final dir = await Directory.systemTemp.createTemp('tylog_seamless_');
       addTearDown(() async {
@@ -239,6 +243,62 @@ void main() {
         expect(s.vault.hasPendingSyncWrites, isFalse);
       },
     );
+
+    test('PUT without ETag never adopts a later peer ETag', () async {
+      late Map<String, _MutableRemoteFile> remote;
+      var armed = false;
+      const path = 'daily/2026/10/day.typ';
+      final s = await synced(
+        omitPutEtag: true,
+        onAfterPut: (uploadedPath) {
+          if (armed && uploadedPath == path) {
+            armed = false;
+            remote[path] = _remoteText('peer edit after upload');
+          }
+        },
+      );
+      remote = s.remote;
+      armed = true;
+      await s.vault.saveNote(path, 'local upload');
+      await NextcloudSync(_config(s.server)).sync(s.vault, pushOnly: true);
+      final state =
+          jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+              as Map;
+      expect(state['cursors'][path]['remoteEtag'], isNull);
+      expect(s.metrics.propfinds, 0);
+      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(result.downloaded, 1);
+      expect(await s.vault.readText(path), 'peer edit after upload');
+      expect(utf8.decode(remote[path]!.bytes), 'peer edit after upload');
+    });
+
+    test('push-first rejects NFC/NFD collisions before any PUT', () async {
+      for (final pushOnly in [false, true]) {
+        const nfd = 'notes/и\u0306.typ';
+        final nfc = unorm.nfc(nfd);
+        final storage = _UnicodeStorage(insensitive: false);
+        final vault = Vault.withStorage(storage);
+        final remote = <String, _MutableRemoteFile>{};
+        final metrics = _WebDavMetrics();
+        final server = await _mutableWebDavServer(remote, metrics: metrics);
+        addTearDown(() => server.close(force: true));
+        await vault.ensureCreated();
+        await vault.saveNote(nfc, 'original note');
+        await NextcloudSync(_config(server)).sync(vault);
+        final original = remote[nfc]!;
+        metrics.puts = 0;
+        await vault.saveNote(nfd, 'different local note');
+        await expectLater(
+          NextcloudSync(_config(server)).sync(vault, pushOnly: pushOnly),
+          throwsA(isA<StateError>()),
+        );
+        expect(metrics.puts, 0);
+        expect(remote[nfc], same(original));
+        expect(await vault.readText(nfc), 'original note');
+        expect(await vault.readText(nfd), 'different local note');
+        expect(vault.isPendingSyncWrite(nfd), isTrue);
+      }
+    });
 
     test(
       'stale cursor PUT gets 412 and falls back without losing either edit',
@@ -4620,6 +4680,8 @@ Future<HttpServer> _mutableWebDavServer(
   /// between the client's read and its write — the ETag race itself.
   FutureOr<void> Function(String path)? onBeforePut,
   bool unquotedPutEtag = false,
+  bool omitPutEtag = false,
+  FutureOr<void> Function(String path)? onAfterPut,
   bool ignoreDepthOne = false,
   bool rejectDelete = false,
   bool rejectMove = false,
@@ -4899,10 +4961,13 @@ Future<HttpServer> _mutableWebDavServer(
         );
         request.response.statusCode = HttpStatus.created;
         // Real Nextcloud sends OC-Etag unquoted while PROPFIND getetag is quoted.
-        request.response.headers.set(
-          'OC-Etag',
-          unquotedPutEtag ? etag.replaceAll('"', '') : etag,
-        );
+        if (!omitPutEtag) {
+          request.response.headers.set(
+            'OC-Etag',
+            unquotedPutEtag ? etag.replaceAll('"', '') : etag,
+          );
+        }
+        await onAfterPut?.call(path);
         request.response.headers.set('X-Hash-SHA256', sha256.convert(bytes));
       } finally {
         metrics?.finishTransfer();

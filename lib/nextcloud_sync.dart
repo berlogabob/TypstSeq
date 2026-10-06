@@ -446,8 +446,7 @@ class NextcloudSync {
     // unseen.
     final coveredWrites = vault.pendingSyncWrites;
 
-    /// The no-change shortcut's local listing, kept so the full path can reuse
-    /// it instead of walking the tree again.
+    /// The push/shortcut local listing, reused by the full path.
     ({List<VaultStorageEntry> raw, Map<String, VaultStorageEntry> syncable})?
     scannedListing;
 
@@ -501,6 +500,10 @@ class NextcloudSync {
             unorm.nfc(conflict.path),
         };
         progress('push-local');
+        if (coveredWrites.isNotEmpty) {
+          // Reject NFC collisions before any upload can overwrite another note.
+          scannedListing = await _localFiles(vault.storage);
+        }
         for (final path in coveredWrites.toList()) {
           if (_isSyncInternal(path) || conflicted.contains(unorm.nfc(path))) {
             continue;
@@ -534,9 +537,8 @@ class NextcloudSync {
                 localSize: bytes.length,
                 localSha256: hash,
                 remoteMillis: DateTime.now().millisecondsSinceEpoch,
-                remoteEtag: _normEtag(
-                  etag ?? (await _probeRemoteFile(path))?.etag,
-                ),
+                // A later probe may describe a peer edit, not these bytes.
+                remoteEtag: _normEtag(etag),
               );
               cursorsDirty = true;
               up++;
@@ -616,7 +618,7 @@ class NextcloudSync {
             currentEtag: probedEtag,
           )) {
             progress('scan-local-shortcut');
-            scannedListing = await _localFiles(vault.storage);
+            scannedListing ??= await _localFiles(vault.storage);
             if (_matchesLocalCursorSnapshot(
               scannedListing.syncable,
               syncState,
