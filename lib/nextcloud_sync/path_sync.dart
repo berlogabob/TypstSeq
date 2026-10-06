@@ -334,7 +334,10 @@ extension _PathSync on NextcloudSync {
     if (unresolvedConflict != null &&
         !localExists &&
         !remoteExists &&
-        allowLocalDeletes) {
+        allowLocalDeletes &&
+        // A cached poll only knows paths with a cursor; a conflicted new file
+        // has none. Ask the disk before discarding the only evidence.
+        !await vault.storage.exists(path)) {
       await _discardConflictsForPath(vault, path);
       unresolvedConflict = null;
     }

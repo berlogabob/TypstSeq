@@ -3,6 +3,26 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.10.0+120
+
+### Added
+
+- **Sign in with browser.** The Connect Nextcloud screen can open your
+  server's login page and receive an app password by itself (Login Flow v2).
+- **Large files upload in pieces.** Files over 10 MB use chunked upload and
+  resume after an interruption.
+
+### Changed
+
+- **One revision per editing session.** Repeated saves of a note update a
+  single revision file instead of adding one per save.
+
+### Fixed
+
+- Sync bugs found by a new three-device soak test: stale or orphaned
+  conflict records, leftovers after renames between Unicode forms, and
+  entries for server files that no longer exist.
+
 ## 0.9.5+119
 
 ### Changed
