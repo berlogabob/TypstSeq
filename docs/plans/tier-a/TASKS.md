@@ -17,24 +17,26 @@ Small tasks, one run each. Update the status column when a task changes state.
 | ID | Task | Who | Verify | Status |
 |---|---|---|---|---|
 | A1 | Install 0.9.4 on A24 and P30 | claude | `dumpsys package` shows 0.9.4 | done |
-| A2 | P30 first sync on 0.9.4 finishes, no conflicts, no re-download loop | claude | `sync_trace.jsonl`: completed, then idle probes | todo |
-| A3 | Search "MONSANTOS" finds the screenshot note on a phone | claude | screenshot of result | todo |
-| A4 | Today arrow to Wed 8 Oct shows the class; `@Éti` links it | claude | screenshots | todo |
+| A2 | P30 first sync on 0.9.4 finishes, no conflicts, no re-download loop | claude | `sync_trace.jsonl`: completed, then idle probes | done: startup sync 10 s, polls 4 s, no loop |
+| A3 | Search "MONSANTOS" finds the screenshot note on a phone | claude | screenshot of result | done on A24: 2 screenshots + 1 daily found |
+| A4 | Journal "Coming up" shows the classes; `@Éti` links it | claude | screenshots | half: Coming up lists Thu 8 Oct Ética 19:00 Sala 020; `@` link not checked |
 | A5 | Edit on P30 reaches A24 (phone to phone) under 30 s | claude | timed with adb | todo |
 
 ## B. Sync
 
 | ID | Task | Who | Files | Verify | Status |
 |---|---|---|---|---|---|
-| B1 | Login Flow v2 client: start flow, poll, return server + login + app password | studio | new `lib/nextcloud_sync/login_flow.dart`, new `test/login_flow_test.dart` (fake HTTP server) | `flutter test test/login_flow_test.dart` | todo |
+| B1 | Login Flow v2 client: start flow, poll, return server + login + app password | studio | new `lib/nextcloud_sync/login_flow.dart`, new `test/login_flow_test.dart` (fake HTTP server) | `flutter test test/login_flow_test.dart` | running |
 | B2 | Chunked upload v2 client: MKCOL upload dir, PUT chunks, MOVE to destination, resume after a failed chunk | studio | new `lib/nextcloud_sync/chunked_upload.dart`, new `test/chunked_upload_test.dart` | `flutter test test/chunked_upload_test.dart` | todo |
 | B3 | Wire B1 into the Connect Nextcloud screen: "Sign in with browser" button | codex | settings/connect UI | widget test + A24 check | todo (after B1) |
 | B4 | Use B2 for files over 10 MB in the upload path | codex | `webdav_client.dart` | sync tests with a 25 MB file, interrupted once | todo (after B2) |
-| B5 | Remote delete takes ~40 s to apply, edits 0–7 s: find why, fix | codex | sync | A24 timing: delete under 15 s | todo |
-| B6 | Phone index scan takes ~150 s with 0 notes parsed: make the all-reused case cheap | codex | `maintenance.dart`, `scanner.dart` | A24 trace `durationMs` under 20 s | todo |
+| B5 | Remote delete takes ~40 s to apply, edits 0–7 s: find why, fix | codex | sync | A24 timing: delete under 15 s | running |
+| B6 | Phone index scan takes ~150 s with 0 notes parsed: make the all-reused case cheap | codex | `maintenance.dart`, `scanner.dart` | A24 trace `durationMs` under 20 s; no full rebuild after an update | running |
 | B7 | Soak test: 3 simulated devices edit, rename, delete for 500 rounds, must converge | codex | new `test/sync_soak_test.dart` | test passes, tagged slow | todo |
 | B8 | One revision file per save (no revision churn on autosave) | codex | sync revisions | existing 22 revision tests + new one | todo |
-| B9 | Release with B1–B8 | claude | — | GitHub release green, 3 devices updated | todo |
+| B10 | Machine-written `_system/revisions/**` with local missing downloads without a conflict (stale record on P30) | codex | sync | test | running |
+| B11 | Search tab does nothing while the index rebuilds | codex | search/navigation | widget test | running |
+| B9 | Release with B1–B11 | claude | — | GitHub release green, 3 devices updated | todo |
 
 ## C. Screenshots (Studio, already automated)
 
