@@ -3,6 +3,13 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.4+118
+
+### Fixed
+
+- Linux and Windows desktops publish the shared index too (0.9.3 limited it
+  to macOS, which also broke the release build).
+
 ## 0.9.3+117
 
 ### Fixed
