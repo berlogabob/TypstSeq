@@ -46,8 +46,13 @@ Future<String?> chunkedUpload({
     request.headers.set('Destination', destination);
     if (total) request.headers.set('OC-Total-Length', '$length');
     if (method == 'MOVE') {
-      if (ifMatch != null) request.headers.set('If-Match', ifMatch);
-      if (ifNoneMatch) request.headers.set('If-None-Match', '*');
+      // If-Match/If-None-Match on a MOVE test the upload source, not the
+      // destination (verified against Nextcloud: a correct destination ETag
+      // answers 412). Condition the destination explicitly instead.
+      if (ifMatch != null) {
+        request.headers.set('If', '<$destination> ([$ifMatch])');
+      }
+      if (ifNoneMatch) request.headers.set('Overwrite', 'F');
       if (localHash != null) {
         request.headers.set('OC-Checksum', 'SHA256:$localHash');
       }

@@ -114,7 +114,7 @@ void main() {
     expect(assembled, payload);
   });
 
-  test('If-Match is sent on MOVE and 412 is reported', () async {
+  test('the MOVE conditions the destination and 412 is reported', () async {
     moveStatus = 412;
     await expectLater(
       upload(ifMatch: '"old"'),
@@ -124,6 +124,8 @@ void main() {
             .having((e) => e.statusCode, 'statusCode', 412),
       ),
     );
-    expect(headers['MOVE .file']!.value('if-match'), '"old"');
+    final move = headers['MOVE .file']!;
+    expect(move.value('if-match'), isNull);
+    expect(move.value('if'), '<${move.value('destination')}> (["old"])');
   });
 }

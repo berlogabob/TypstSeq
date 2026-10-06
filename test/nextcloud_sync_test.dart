@@ -5421,8 +5421,11 @@ Future<HttpServer> _mutableWebDavServer(
         'method': request.method,
         'id': id,
         'name': name,
-        'ifMatch': request.headers.value('if-match'),
-        'ifNoneMatch': request.headers.value('if-none-match'),
+        // Destination conditions as real Nextcloud honours them on MOVE.
+        'ifMatch': RegExp(
+          r'\(\[(.*)\]\)',
+        ).firstMatch(request.headers.value('if') ?? '')?.group(1),
+        'ifNoneMatch': request.headers.value('overwrite') == 'F' ? '*' : null,
         'checksum': request.headers.value('oc-checksum'),
       });
       if (request.method == 'MKCOL') {
@@ -5451,10 +5454,15 @@ Future<HttpServer> _mutableWebDavServer(
         final target = destination.substring(root.length);
         await onBeforePut?.call(target);
         final existing = files[target];
-        final ifMatch = request.headers.value('if-match');
-        if ((ifMatch != null && existing?.etag != ifMatch) ||
-            (request.headers.value('if-none-match') == '*' &&
-                existing != null)) {
+        final ifMatch = RegExp(
+          r'\(\[(.*)\]\)',
+        ).firstMatch(request.headers.value('if') ?? '')?.group(1);
+        // If-Match/If-None-Match test the upload source on a real server:
+        // sending them is always a 412.
+        if (request.headers.value('if-match') != null ||
+            request.headers.value('if-none-match') != null ||
+            (ifMatch != null && existing?.etag != ifMatch) ||
+            (request.headers.value('overwrite') == 'F' && existing != null)) {
           request.response.statusCode = 412;
         } else {
           final parts = chunks[id]!;

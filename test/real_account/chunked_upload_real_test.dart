@@ -56,6 +56,36 @@ void main() {
           expect(response.statusCode, 200);
           final digest = await sha256.bind(response).first;
           expect(digest, sha256.convert(bytes));
+          // Conditions must test the destination (If-Match on a MOVE tests
+          // the upload source and answers 412 even for a correct ETag).
+          Future<int> attempt(
+            String id, {
+            String? match,
+            bool none = false,
+          }) async {
+            try {
+              await chunkedUpload(
+                client: client,
+                davBase: dav,
+                user: user,
+                authHeader: auth,
+                destinationPath: name,
+                openRange: (start, end) =>
+                    Stream.value(bytes.sublist(start, end)),
+                length: bytes.length,
+                uploadId: 'tylog-$id-$name',
+                ifMatch: match,
+                ifNoneMatch: none,
+              );
+              return 200;
+            } on ChunkUploadException catch (e) {
+              return e.statusCode;
+            }
+          }
+
+          expect(await attempt('stale', match: '"0000000000000"'), 412);
+          expect(await attempt('new', none: true), 412);
+          expect(await attempt('current', match: etag), 200);
         } finally {
           await (await send('DELETE')).drain<void>();
           client.close();
