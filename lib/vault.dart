@@ -21,6 +21,14 @@ class Vault {
 
   final VaultStorage storage;
 
+  // Session-only: a newly opened vault must always get a full sync scan.
+  DateTime? lastFullSyncScan;
+
+  bool get syncScanIsFresh =>
+      lastFullSyncScan != null &&
+      DateTime.now().difference(lastFullSyncScan!) <
+          const Duration(minutes: 10);
+
   /// Notes written through [saveNote] since the last completed scan. The scan
   /// cache keys on mtime+size, which SAF reports at second granularity, so a
   /// same-size edit landing in the same second would otherwise be skipped.

@@ -303,7 +303,7 @@ class NextcloudSync {
   /// `WorkspaceController.queueCloudSync`, and `sync()` still runs the local
   /// check on every startup, resume and manual run. What this gives up is
   /// noticing a local change made by *another app* during a poll — that now
-  /// waits for the next real sync instead.
+  /// waits for the next full scan (at most ten minutes) instead.
 
   // Nextcloud quotes the etag in PROPFIND (getetag) but not in the PUT `oc-etag`
   // header, so a stored upload etag never string-matches the next PROPFIND and
@@ -320,7 +320,9 @@ class NextcloudSync {
 
   Future<bool> pollIsUnchanged(Vault vault, {required bool dirty}) async {
     try {
-      if (dirty) return false;
+      if (dirty || vault.hasPendingSyncWrites || !vault.syncScanIsFresh) {
+        return false;
+      }
       final state = await _loadSyncState(vault);
       if (state.recovered ||
           state.remoteMismatch ||
@@ -339,6 +341,7 @@ class NextcloudSync {
       }
       return true;
     } catch (_) {
+      vault.lastFullSyncScan = null;
       return false;
     } finally {
       _client.close(force: true);
@@ -445,6 +448,9 @@ class NextcloudSync {
     // Snapshotted before any work so a save landing mid-pass is not cleared
     // unseen.
     final coveredWrites = vault.pendingSyncWrites;
+    final hadLocalWrites = coveredWrites.isNotEmpty;
+    var skippedLocalScan = false;
+    final deferredLocalPaths = <String>{};
 
     /// The push/shortcut local listing, reused by the full path.
     ({List<VaultStorageEntry> raw, Map<String, VaultStorageEntry> syncable})?
@@ -474,6 +480,14 @@ class NextcloudSync {
           ? loadedState.cursors
           : <String, SyncCursor>{};
       final stateRecovered = initialMode == null && loadedState.recovered;
+      final canSkipLocalScan =
+          trigger == 'poll' &&
+          initialMode == null &&
+          !hadLocalWrites &&
+          vault.syncScanIsFresh &&
+          !stateRecovered &&
+          !loadedState.remoteMismatch &&
+          !loadedState.legacy;
       if (loadedState.remoteMismatch) {
         traceEvents.add({
           'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -584,14 +598,9 @@ class NextcloudSync {
           );
         }
       }
-      // Fast path for a steady-state poll: the root collection's own etag
-      // changes whenever anything beneath it changes (the mechanism real
-      // Nextcloud clients rely on). If it still matches what the last full
-      // run observed, and every local file is exactly where its cursor left
-      // it, nothing at all changed and the Depth:infinity crawl, rename
-      // detection, conflict-copy scan and per-path loop can all be skipped.
-      // Any mismatch falls straight through to the full run below — this
-      // must never be the thing that decides a local edit is safe to skip.
+      // An unchanged remote root needs no pull. Clean polls reuse a recent
+      // full scan; startup/resume/manual and expired polls verify the tree.
+      // A changed root falls through to the folder listing below.
       // `!vault.hasPendingSyncWrites` is load-bearing, not belt-and-braces.
       // The shortcut's local check is mtime+size, and SAF reports mtime at
       // second granularity, so a same-size edit landing in the same second as
@@ -618,11 +627,17 @@ class NextcloudSync {
             currentEtag: probedEtag,
           )) {
             progress('scan-local-shortcut');
-            scannedListing ??= await _localFiles(vault.storage);
-            if (_matchesLocalCursorSnapshot(
-              scannedListing.syncable,
-              syncState,
-            )) {
+            final useCachedLocal =
+                canSkipLocalScan && !vault.hasPendingSyncWrites;
+            if (!useCachedLocal) {
+              scannedListing ??= await _localFiles(vault.storage);
+              vault.lastFullSyncScan = DateTime.now();
+            }
+            if (useCachedLocal ||
+                _matchesLocalCursorSnapshot(
+                  scannedListing!.syncable,
+                  syncState,
+                )) {
               remoteCount = syncState.length;
               traceEvents.add({
                 'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -712,23 +727,71 @@ class NextcloudSync {
       // 18.1s pass on the P30's 11,610 files). Nothing local is written
       // between the two points, so the snapshot is the same one either way.
       progress('scan-local');
-      final localListing = scannedListing ?? await _localFiles(vault.storage);
-      final localEntries = localListing.syncable;
-      repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
+      skippedLocalScan =
+          canSkipLocalScan &&
+          !vault.hasPendingSyncWrites &&
+          !pushRaced &&
+          scannedListing == null &&
+          (await loadSyncConflicts(vault)).isEmpty;
+      final Map<String, VaultStorageEntry> localEntries;
+      if (skippedLocalScan) {
+        localEntries = {
+          for (final entry in syncState.entries)
+            entry.key: VaultStorageEntry(
+              path: entry.key,
+              isDirectory: false,
+              size: entry.value.localSize,
+              modified: entry.value.localMillis == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(
+                      entry.value.localMillis!,
+                    ),
+            ),
+        };
+        for (final path in {...syncState.keys, ...remote.keys}) {
+          final previous = syncState[path];
+          final file = remote[path];
+          if (previous != null &&
+              file != null &&
+              previous.remoteEtag != null &&
+              _normEtag(file.etag) == _normEtag(previous.remoteEtag)) {
+            continue;
+          }
+          final stat = await vault.storage.stat(path);
+          if (stat != null) {
+            localEntries[path] = stat;
+          } else if (isRegenerableCachePath(path)) {
+            localEntries.remove(path);
+          } else if (previous != null) {
+            // A partial view cannot prove a local deletion. Defer until full scan.
+            deferredLocalPaths.add(path);
+          }
+        }
+      } else {
+        final localListing = scannedListing ?? await _localFiles(vault.storage);
+        vault.lastFullSyncScan = DateTime.now();
+        localEntries = localListing.syncable;
+        repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
+      }
       if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
         throw StateError(
           'Local vault listed no syncable files; refusing to propagate deletions.',
         );
       }
       progress('detect-renames');
-      final renameDetection = await _detectRenames(
-        vault,
-        localEntries,
-        remote,
-        syncState,
-        progress,
-        rootEtag: freshRootEtag,
-      );
+      final renameDetection = deferredLocalPaths.isNotEmpty
+          ? const _RenameDetection(
+              decisions: [],
+              protectedLocalDeletions: <String>{},
+            )
+          : await _detectRenames(
+              vault,
+              localEntries,
+              remote,
+              syncState,
+              progress,
+              rootEtag: freshRootEtag,
+            );
       renamed = renameDetection.decisions.length;
       decisions.addAll(renameDetection.decisions);
       // ponytail: proportional guard against a flaky DocumentsProvider dropping
@@ -797,6 +860,7 @@ class NextcloudSync {
           final index = nextPath++;
           if (index >= allPaths.length) return;
           final path = allPaths[index];
+          if (deferredLocalPaths.contains(path)) continue;
           progress('sync-file $completed/${allPaths.length}', path);
           try {
             // Android drops sockets mid-request (power save, network switch);
@@ -911,6 +975,12 @@ class NextcloudSync {
       // *next* full run's own pre-loop listing will already reflect those
       // changes and persist an accurate etag if nothing further happens.
       progress('save-local-state');
+      if (deferredLocalPaths.isNotEmpty) {
+        // Re-list and fully scan next time; these cursors do not describe the
+        // freshly listed folder, so its etag cannot safely be cached yet.
+        freshFolders = null;
+        vault.lastFullSyncScan = null;
+      }
       // Folder skips are safe only after every listed file has a cursor.
       // Partial checkpoints deliberately omit folders so a retry re-lists.
       await _saveSyncState(
@@ -957,6 +1027,7 @@ class NextcloudSync {
         deletedRemote: deletedRemote,
       );
     } catch (error) {
+      vault.lastFullSyncScan = null;
       final checkpoint = syncState;
       if (checkpoint != null) {
         try {

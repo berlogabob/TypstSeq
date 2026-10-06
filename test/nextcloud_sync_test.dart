@@ -80,7 +80,10 @@ void main() {
       expect(remote.containsKey('notes/._junk'), isFalse);
       await vault.storage.writeText(daily, local);
       await createSyncConflict(
-        vault, daily, localBytes: utf8.encode(local), remoteBytes: utf8.encode(remoteDaily),
+        vault,
+        daily,
+        localBytes: utf8.encode(local),
+        remoteBytes: utf8.encode(remoteDaily),
       );
       final repaired = await NextcloudSync(_config(server)).sync(vault);
       expect(repaired.conflicts, 0);
@@ -158,7 +161,7 @@ void main() {
         await server.close(force: true);
         await dir.delete(recursive: true);
       });
-      final vault = Vault(dir);
+      final vault = Vault.withStorage(_ListCountingStorage(dir));
       await vault.ensureCreated();
       await NextcloudSync(_config(server)).sync(vault);
       await NextcloudSync(_config(server)).sync(vault);
@@ -406,6 +409,124 @@ void main() {
         );
       },
     );
+
+    test(
+      'clean poll pulls stat touched paths without enumerating local tree',
+      () async {
+        final s = await synced();
+        final storage = s.vault.storage as _ListCountingStorage;
+        storage.recursiveLists = 0;
+        storage.statPaths.clear();
+        s.remote['notes/other.typ'] = _remoteText('peer edit');
+        s.remote['notes/new.typ'] = _remoteText('peer creation');
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, trigger: 'poll');
+        expect(result.downloaded, 2);
+        expect(storage.recursiveLists, 0);
+        expect(
+          storage.statPaths,
+          containsAll(['notes/other.typ', 'notes/new.typ']),
+        );
+        expect(storage.statPaths, isNot(contains('notes/keeper.typ')));
+        expect(await s.vault.readText('notes/other.typ'), 'peer edit');
+      },
+    );
+
+    test(
+      'remote deletion in a re-listed folder applies in one poll pull',
+      () async {
+        final s = await synced();
+        final storage = s.vault.storage as _ListCountingStorage;
+        storage.recursiveLists = 0;
+        s.remote.remove('notes/other.typ');
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, trigger: 'poll');
+        expect(s.metrics.listedFolders, contains('notes/'));
+        expect(result.deletedLocal, 1);
+        expect(storage.recursiveLists, 0);
+        expect(await storage.exists('notes/other.typ'), isFalse);
+        expect(await s.vault.readText('notes/keeper.typ'), 'keeper');
+      },
+    );
+
+    for (final trigger in ['poll', 'resume']) {
+      test(
+        'outside-app changes reach cloud on ${trigger == 'poll' ? '10-minute scan' : 'resume'}',
+        () async {
+          final s = await synced();
+          final storage = s.vault.storage as _ListCountingStorage;
+          storage.recursiveLists = 0;
+          await storage.writeText('notes/other.typ', 'outside edit');
+          await storage.writeText('notes/outside.typ', 'outside creation');
+          final cleanPoll = await NextcloudSync(
+            _config(s.server),
+          ).sync(s.vault, trigger: 'poll');
+          expect(cleanPoll.uploaded, 0);
+          expect(storage.recursiveLists, 0);
+          if (trigger == 'poll') {
+            s.vault.lastFullSyncScan = DateTime.now().subtract(
+              const Duration(minutes: 10),
+            );
+            expect(
+              await NextcloudSync(
+                _config(s.server),
+              ).pollIsUnchanged(s.vault, dirty: false),
+              isFalse,
+            );
+          }
+          final result = await NextcloudSync(
+            _config(s.server),
+          ).sync(s.vault, trigger: trigger);
+          expect(storage.recursiveLists, 1);
+          expect(result.uploaded, 2);
+          expect(
+            utf8.decode(s.remote['notes/other.typ']!.bytes),
+            'outside edit',
+          );
+        },
+      );
+    }
+
+    test(
+      'partial scan never turns a missing touched path into a local deletion',
+      () async {
+        final s = await synced();
+        await s.vault.storage.delete('notes/other.typ');
+        s.remote['notes/other.typ'] = _remoteText('peer edit');
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, trigger: 'poll');
+        expect(result.deletedRemote, 0);
+        expect(s.remote.containsKey('notes/other.typ'), isTrue);
+        expect(s.vault.syncScanIsFresh, isFalse);
+        final next = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, trigger: 'poll');
+        expect(next.deletedRemote, 0);
+        expect(
+          next.conflicts,
+          1,
+          reason: 're-list before deciding local delete versus peer edit',
+        );
+      },
+    );
+
+    test('a sync error forces the next poll to scan fully', () async {
+      final s = await synced();
+      final storage = s.vault.storage as _ListCountingStorage;
+      storage.recursiveLists = 0;
+      await expectLater(
+        NextcloudSync(
+          const NextcloudConfig(serverUrl: '', username: '', password: ''),
+        ).sync(s.vault, trigger: 'poll'),
+        throwsStateError,
+      );
+      expect(s.vault.syncScanIsFresh, isFalse);
+      await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+      expect(storage.recursiveLists, 1);
+    });
 
     test('absence in an unchanged folder never proves deletion', () async {
       final s = await synced();
@@ -1001,7 +1122,7 @@ void main() {
 
       final result = await NextcloudSync(
         _config(server),
-      ).sync(vault, trigger: 'poll');
+      ).sync(vault, trigger: 'resume');
 
       expect(metrics.depthZeroPropfinds, 1);
       expect(metrics.depthInfinityPropfinds, 0);
@@ -2100,7 +2221,9 @@ void main() {
     // deletion cursor rule must not turn that into a local wipe.
     remote.clear();
 
-    final recovery = await NextcloudSync(_config(server)).sync(vault);
+    final recovery = await NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'poll');
     expect(recovery.deletedLocal, 0);
     for (var i = 0; i < 4; i++) {
       expect(
@@ -2723,7 +2846,7 @@ void main() {
     await vault.storage.delete(donor);
     final result = await NextcloudSync(
       _config(server),
-    ).sync(vault, trigger: 'poll');
+    ).sync(vault, trigger: 'resume');
 
     expect(result.deletedRemote, 0, reason: 'a peer\'s donor is not ours');
     expect(remote.containsKey(donor), isTrue);
@@ -4001,11 +4124,11 @@ void main() {
       await NextcloudSync(_config(server)).sync(vault);
       await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
 
-      // A clean shortcut walks once and issues no MKCOL at all.
+      // A clean poll skips the local tree and issues no MKCOL at all.
       metrics.mkcols.clear();
       storage.recursiveLists = 0;
       await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
-      expect(storage.recursiveLists, 1);
+      expect(storage.recursiveLists, 0);
       expect(metrics.mkcols, isEmpty, reason: 'root MKCOL always answers 405');
 
       // A local edit makes the shortcut fall through to the full run, which
@@ -4015,7 +4138,7 @@ void main() {
       storage.recursiveLists = 0;
       final result = await NextcloudSync(
         _config(server),
-      ).sync(vault, trigger: 'poll');
+      ).sync(vault, trigger: 'resume');
 
       expect(result.uploaded, 1);
       expect(storage.recursiveLists, 1);
@@ -4391,6 +4514,13 @@ class _ListCountingStorage extends LocalVaultStorage {
   _ListCountingStorage(super.root);
 
   int recursiveLists = 0;
+  final statPaths = <String>[];
+
+  @override
+  Future<VaultStorageEntry?> stat(String path) {
+    statPaths.add(path);
+    return super.stat(path);
+  }
 
   @override
   Future<List<VaultStorageEntry>> list({
