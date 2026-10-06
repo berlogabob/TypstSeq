@@ -553,6 +553,7 @@ class NextcloudSync {
                 ),
               );
               syncState[unorm.nfc(path)] = SyncCursor(
+                recordedAt: DateTime.now().millisecondsSinceEpoch,
                 localMillis: stat.modified?.millisecondsSinceEpoch,
                 localSize: bytes.length,
                 localSha256: hash,
@@ -1215,6 +1216,8 @@ class NextcloudSync {
       if (localExists && remoteExists) {
         final local = await vault.storage.stat(conflict.path);
         state.cursors[unorm.nfc(conflict.path)] = SyncCursor(
+          recordedAt: DateTime.now().millisecondsSinceEpoch,
+          localSize: local?.size,
           localMillis: local?.modified?.millisecondsSinceEpoch,
           remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
           localSha256: await vault.storage.hash(conflict.path),
@@ -1240,6 +1243,7 @@ class NextcloudSync {
 }
 
 bool _validSyncCursor(Map<String, Object?> json) =>
+    (json['recordedAt'] == null || json['recordedAt'] is num) &&
     (json['localMillis'] == null || json['localMillis'] is num) &&
     (json['localSize'] == null || json['localSize'] is num) &&
     (json['remoteMillis'] == null || json['remoteMillis'] is num) &&
@@ -1257,6 +1261,7 @@ bool _validSyncCursor(Map<String, Object?> json) =>
 /// nearly every steady-state file dirty on every run, defeating the point.
 bool _cursorNeedsPersist(SyncCursor? previous, SyncCursor next) =>
     previous == null ||
+    previous.recordedAt != next.recordedAt ||
     previous.localMillis != next.localMillis ||
     previous.localSize != next.localSize ||
     previous.localSha256 != next.localSha256 ||
@@ -1975,6 +1980,7 @@ class SyncResult {
 class SyncCursor {
   const SyncCursor({
     this.localMillis,
+    this.recordedAt,
     this.localSize,
     this.remoteMillis,
     this.localSha256,
@@ -1982,12 +1988,14 @@ class SyncCursor {
   });
 
   final int? localMillis;
+  final int? recordedAt;
   final int? localSize;
   final int? remoteMillis;
   final String? localSha256;
   final String? remoteEtag;
 
   factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
+    recordedAt: (json['recordedAt'] as num?)?.toInt(),
     localMillis: (json['localMillis'] as num?)?.toInt(),
     localSize: (json['localSize'] as num?)?.toInt(),
     remoteMillis: (json['remoteMillis'] as num?)?.toInt(),
@@ -1996,6 +2004,7 @@ class SyncCursor {
   );
 
   Map<String, Object?> toJson() => {
+    if (recordedAt != null) 'recordedAt': recordedAt,
     'localMillis': localMillis,
     if (localSize != null) 'localSize': localSize,
     'remoteMillis': remoteMillis,

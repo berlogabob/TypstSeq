@@ -32,18 +32,31 @@ const indexDirtyPath = '.tylog/index_dirty';
 final _writeMarkerRandom = Random.secure();
 
 abstract class VaultStorage {
-  /// Persist before writing: immutable markers survive crashes and a scanner
-  /// only removes the markers it saw, leaving concurrent writes queued.
-  Future<void> markIndexDirty(String path) async {
+  /// Persist before writing: unique markers survive crashes and a scanner
+  /// only removes writes committed before its scan started.
+  Future<String?> markIndexDirty(String path) async {
     if (!path.endsWith('.typ') ||
         path.startsWith('.tylog/') ||
         path.startsWith('_index/') ||
         path.startsWith('_system/')) {
-      return;
+      return null;
     }
     final token =
         '${DateTime.now().microsecondsSinceEpoch}-${_writeMarkerRandom.nextInt(1 << 32)}';
-    await writeText('$indexDirtyPath/$token.json', jsonEncode(path));
+    final marker = '$indexDirtyPath/$token.json';
+    await writeText(marker, jsonEncode({'path': path}));
+    return marker;
+  }
+
+  Future<void> commitIndexWrite(String? marker, String path) async {
+    if (marker == null) return;
+    await writeText(
+      marker,
+      jsonEncode({
+        'path': path,
+        'committedAt': DateTime.now().microsecondsSinceEpoch,
+      }),
+    );
   }
 
   Future<bool> exists(String path);
@@ -131,8 +144,9 @@ class LocalVaultStorage extends VaultStorage {
 
   @override
   Future<void> writeBytes(String path, List<int> bytes) async {
-    await markIndexDirty(path);
+    final marker = await markIndexDirty(path);
     await writeFileAtomic(File(_path(path)), bytes);
+    await commitIndexWrite(marker, path);
   }
 
   @override

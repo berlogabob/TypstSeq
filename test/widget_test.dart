@@ -99,6 +99,45 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('cold Search observes the index published while open', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = Vault.withStorage(_FailingStorage());
+    home.workspace.index = null;
+    await tester.tap(find.text('Search').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'coldtag');
+    await tester.pump(const Duration(milliseconds: 400));
+    final live = VaultIndex(
+      notesByPath: {
+        'notes/live.typ': const NoteRef(
+          id: 'live',
+          path: 'notes/live.typ',
+          title: 'Live',
+          outgoingLinks: [],
+          tags: ['coldtag'],
+        ),
+      },
+      backlinksByTarget: {},
+    );
+    home.workspace.index = live;
+    home.workspace.notifyListeners();
+    await tester.pump();
+    expect(
+      tester.widget<KnowledgeScreen>(find.byType(KnowledgeScreen)).index,
+      same(live),
+    );
+    expect(find.text('#coldtag'), findsOneWidget);
+    final route = tester.widget<KnowledgeScreen>(find.byType(KnowledgeScreen));
+    expect(route.resolveMissing!('notes/live.typ')!.title, 'Live');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Search semantic callbacks remain available before async init', (
     tester,
   ) async {

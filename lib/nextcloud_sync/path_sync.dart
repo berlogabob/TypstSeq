@@ -246,6 +246,7 @@ extension _PathSync on NextcloudSync {
     Uint8List? localBytes;
     String? localHash;
     String? downloadedHash;
+    int? recordedAt;
     if (localExists) {
       final millis = localStat.modified?.millisecondsSinceEpoch;
       // The same mtime+size gate as the shortcut, and the same blind spot: at
@@ -256,17 +257,22 @@ extension _PathSync on NextcloudSync {
       // always re-hashed. That costs one digest for a file we know just moved.
       if (previous?.localSha256 != null &&
           !vault.isPendingSyncWrite(path) &&
+          !(unresolvedConflict != null && isMachineRevisionPath(path)) &&
           millis != null &&
           millis == previous!.localMillis &&
+          previous.recordedAt != null &&
+          previous.recordedAt! - millis >= 2000 &&
           localStat.size != null &&
           localStat.size == previous.localSize) {
         localHash = previous.localSha256;
+        recordedAt = previous.recordedAt;
       } else {
         // Native streaming digest: hashing here used to pull the whole file
         // across the platform channel for every changed path, even the ones
         // that turn out to be downloads or skips. _uploadStorage reads the
         // bytes itself on the paths that actually upload.
         localHash = await vault.storage.hash(path);
+        recordedAt = DateTime.now().millisecondsSinceEpoch;
       }
     }
     // The editor's 400ms autosave can land between the scan-time hash above
@@ -279,6 +285,7 @@ extension _PathSync on NextcloudSync {
       final snapshotHash = sha256.convert(localBytes!).toString();
       if (snapshotHash != localHash) {
         localHash = snapshotHash;
+        recordedAt = DateTime.now().millisecondsSinceEpoch;
         localStat = await vault.storage.stat(path) ?? localStat;
       }
     }
@@ -306,6 +313,18 @@ extension _PathSync on NextcloudSync {
     var deletedRemote = 0;
     var deletedLocal = 0;
 
+    var verifiedRevision = false;
+    if (unresolvedConflict != null &&
+        isMachineRevisionPath(path) &&
+        localExists &&
+        remoteExists &&
+        remoteFile.sha256 != null &&
+        localHash == remoteFile.sha256) {
+      await _discardConflictsForPath(vault, path);
+      unresolvedConflict = null;
+      verifiedRevision = true;
+    }
+
     var adoptRemoteConflict = false;
     if (unresolvedConflict != null && localExists && remoteExists) {
       final captured = await _captureRemote(
@@ -315,12 +334,19 @@ extension _PathSync on NextcloudSync {
       );
       try {
         final bytes = localBytes ?? await vault.storage.readBytes(path);
+        if (isMachineRevisionPath(path) &&
+            sha256.convert(bytes).toString() == await _sha256(captured.file)) {
+          await _discardConflictsForPath(vault, path);
+          unresolvedConflict = null;
+          verifiedRevision = true;
+        }
         final winner = fastForwardWinner(
           local: bytes,
           remote: await captured.file.readAsBytes(),
           path: path,
         );
-        if (winner == SyncConflictResolution.keepRemote &&
+        if (!verifiedRevision &&
+            winner == SyncConflictResolution.keepRemote &&
             (isPristineStarterNote(
                   path,
                   utf8.decode(bytes, allowMalformed: true),
@@ -385,6 +411,10 @@ extension _PathSync on NextcloudSync {
         // existing UI already knows how to resolve.
         await _markConflictRemoteDeleted(vault, unresolvedConflict);
       }
+    } else if (verifiedRevision) {
+      skipped++;
+      repaired++;
+      reason = 'same-content';
     } else if (initialMode == InitialSyncMode.downloadRemote) {
       if (remoteExists) {
         action = SyncAction.download;
@@ -861,6 +891,9 @@ extension _PathSync on NextcloudSync {
       if (nextLocalExists && nextRemoteExists) {
         updateCursor = true;
         cursor = SyncCursor(
+          recordedAt: wasDownloaded
+              ? DateTime.now().millisecondsSinceEpoch
+              : recordedAt,
           localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
           localSize: nextLocal?.size,
           remoteMillis: nextRemote?.millisecondsSinceEpoch,
@@ -970,6 +1003,7 @@ extension _PathSync on NextcloudSync {
       final stat = replacement.value;
       state.remove(old.key);
       state[replacement.key] = SyncCursor(
+        recordedAt: DateTime.now().millisecondsSinceEpoch,
         localMillis: stat.modified?.millisecondsSinceEpoch,
         localSize: stat.size,
         remoteMillis: moved.modified.millisecondsSinceEpoch,
@@ -1084,6 +1118,7 @@ extension _PathSync on NextcloudSync {
         local[replacement] = nextStat;
         state.remove(old.key);
         state[replacement] = SyncCursor(
+          recordedAt: DateTime.now().millisecondsSinceEpoch,
           localMillis: nextStat.modified?.millisecondsSinceEpoch,
           localSize: nextStat.size,
           remoteMillis: remoteFile.modified.millisecondsSinceEpoch,
@@ -1126,6 +1161,8 @@ extension _PathSync on NextcloudSync {
     if (prev?.localSha256 != null &&
         millis != null &&
         millis == prev!.localMillis &&
+        prev.recordedAt != null &&
+        prev.recordedAt! - millis >= 2000 &&
         stat.size != null &&
         stat.size == prev.localSize) {
       return prev.localSha256!;

@@ -20,6 +20,7 @@ class _ReceiptStorage extends LocalVaultStorage {
   List<VaultStorageEntry>? notes;
   int bodyReads = 0;
   int hashReads = 0;
+  Future<void> Function()? afterListing;
 
   @override
   Future<Uint8List> readBytes(String path) async {
@@ -39,6 +40,7 @@ class _ReceiptStorage extends LocalVaultStorage {
     bool recursive = false,
   }) async {
     final entries = await super.list(path: path, recursive: recursive);
+    if (recursive) await afterListing?.call();
     if (recursive && notes != null) {
       return [
         ...entries.where((entry) => !entry.path.startsWith('notes/')),
@@ -80,6 +82,79 @@ void main() {
     return events.whereType<MaintenanceIndexed>().single;
   }
 
+  test('scan leaves a pending write marker', () async {
+    await VaultMaintenance(storage, publishDonor: false).buildIndex();
+    await storage.markIndexDirty('notes/a.typ');
+    await VaultMaintenance(storage, publishDonor: false).buildIndex();
+    expect(
+      (await storage.list(
+        path: '.tylog/index_dirty',
+      )).where((e) => !e.isDirectory),
+      isNotEmpty,
+    );
+  });
+
+  test('write committed during listing waits for a later scan', () async {
+    final receipts = _ReceiptStorage(root);
+    await run(VaultMaintenance(receipts, publishDonor: false), 'phone');
+    final marker = await receipts.markIndexDirty('notes/a.typ');
+    receipts.afterListing = () async {
+      receipts.afterListing = null;
+      await File('${root.path}/notes/a.typ').writeAsString('= C\n');
+      await receipts.commitIndexWrite(marker, 'notes/a.typ');
+    };
+    final maintenance = VaultMaintenance(receipts, publishDonor: false);
+    await run(maintenance, 'phone');
+    expect(await receipts.exists(marker!), isTrue);
+    await run(maintenance, 'phone');
+    expect(await receipts.exists(marker), isFalse);
+    expect(
+      maintenance.lastBuiltIndex!.notesByPath['notes/a.typ']!.contentHash,
+      await receipts.hash('notes/a.typ'),
+    );
+  });
+
+  test('another receipt cannot certify a same-stamp edit', () async {
+    final receipts = _ReceiptStorage(root);
+    await run(VaultMaintenance(receipts, publishDonor: true), 'cli-mac');
+    final stamp = DateTime(2020);
+    final oldHash = await storage.hash('notes/a.typ');
+    await File('${root.path}/notes/a.typ').writeAsString('= C\n');
+    File('${root.path}/notes/a.typ').setLastModifiedSync(stamp);
+    receipts.notes = [
+      VaultStorageEntry(
+        path: 'notes/a.typ',
+        isDirectory: false,
+        size: 4,
+        modified: stamp,
+      ),
+    ];
+    await receipts.writeText(
+      '.tylog/sync_state.json',
+      jsonEncode({
+        'schema': 2,
+        'cursors': {
+          'notes/a.typ': {
+            'localSha256': oldHash,
+            'localSize': 4,
+            'localMillis': stamp.millisecondsSinceEpoch,
+            'recordedAt': stamp
+                .add(const Duration(seconds: 1))
+                .millisecondsSinceEpoch,
+          },
+        },
+      }),
+    );
+    final index = await VaultMaintenance(
+      receipts,
+      publishDonor: false,
+    ).buildIndex();
+    expect(
+      index.notesByPath['notes/a.typ']!.contentHash,
+      await storage.hash('notes/a.typ'),
+    );
+  });
+
   test(
     'cold and warm 6731-note donor adoption reads zero note bodies',
     () async {
@@ -116,6 +191,9 @@ void main() {
                 'localSha256': hash,
                 'localMillis': stamp.millisecondsSinceEpoch,
                 'localSize': 4,
+                'recordedAt': stamp
+                    .add(const Duration(seconds: 2))
+                    .millisecondsSinceEpoch,
               },
           },
         }),

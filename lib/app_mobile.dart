@@ -1462,13 +1462,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Tens of seconds of dead tap on a big vault, and if the user typed during
     // the wait the old `|| dirty` check threw the navigation away silently.
     // Nothing here needs a fresh scan: worker searches are answered at the
-    // scanner's next yield (vault_worker.dart), and _retainIndex mutates this
-    // very VaultIndex in place, so the screen picks up the new scan itself.
+    // scanner's next yield (vault_worker.dart). The route listens for the
+    // first index too, when there is no existing instance to retain.
     if (dirty && !await _save()) return;
     if (!mounted) return;
     final v = vault;
     if (v == null) return;
-    final ix = index ?? VaultIndex(notesByPath: {}, backlinksByTarget: {});
     unawaited(_ensureSemanticController());
     if (!mounted) return;
     final searchStore = SavedSearchStore(v.storage);
@@ -1482,58 +1481,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => KnowledgeScreen(
-          initialView: initialView,
-          index: ix,
-          search: (query, tag, status) =>
-              _searchNotes(ix, query, tag: tag, status: status),
-          searchState: workspace,
-          searchReady: () => workspace.searchReady,
-          searchRevision: () => workspace.searchRevision,
-          // Checked per query: the controller may finish installing or
-          // indexing while the search screen is open.
-          vectorSearch: (query) async =>
-              await _semantic?.searchNotes(query) ?? const [],
-          citedSearch: (query) async =>
-              await _semantic?.citations(query) ?? const [],
-          resolveMissing: (id) {
-            final note = ix.notesByPath[id];
-            if (note == null) return null;
-            return PkmsSearchResult(
-              id: note.path,
-              path: note.path,
-              title: note.title,
-              kind: note.kind,
-              tags: note.tags,
-              score: 0,
+        builder: (_) => ListenableBuilder(
+          listenable: workspace,
+          builder: (_, _) {
+            final ix =
+                index ?? VaultIndex(notesByPath: {}, backlinksByTarget: {});
+            return KnowledgeScreen(
+              initialView: initialView,
+              index: ix,
+              search: (query, tag, status) =>
+                  _searchNotes(ix, query, tag: tag, status: status),
+              searchState: workspace,
+              searchReady: () => workspace.searchReady,
+              searchRevision: () => workspace.searchRevision,
+              // Checked per query: the controller may finish installing or
+              // indexing while the search screen is open.
+              vectorSearch: (query) async =>
+                  await _semantic?.searchNotes(query) ?? const [],
+              citedSearch: (query) async =>
+                  await _semantic?.citations(query) ?? const [],
+              resolveMissing: (id) {
+                final note = ix.notesByPath[id];
+                if (note == null) return null;
+                return PkmsSearchResult(
+                  id: note.path,
+                  path: note.path,
+                  title: note.title,
+                  kind: note.kind,
+                  tags: note.tags,
+                  score: 0,
+                );
+              },
+              savedSearches: savedSearches,
+              onSaveSearch: (search) async {
+                final next = [
+                  ...savedSearches.where((s) => s.name != search.name),
+                  search,
+                ];
+                await searchStore.save(next);
+                savedSearches = next;
+                _queueCloudSync();
+              },
+              onDeleteSearch: (search) async {
+                final next = savedSearches
+                    .where((s) => s.name != search.name)
+                    .toList();
+                await searchStore.save(next);
+                savedSearches = next;
+                _queueCloudSync();
+              },
+              problems: _knowledgeProblems(),
+              onCaptureTimestamp: () {
+                Navigator.of(context).pop();
+                unawaited(_captureTimestamp());
+              },
+              onOpenNote: _openPath,
+              onOpenCitation: _openCitation,
+              onFixProblems: _fixProblems,
             );
           },
-          savedSearches: savedSearches,
-          onSaveSearch: (search) async {
-            final next = [
-              ...savedSearches.where((s) => s.name != search.name),
-              search,
-            ];
-            await searchStore.save(next);
-            savedSearches = next;
-            _queueCloudSync();
-          },
-          onDeleteSearch: (search) async {
-            final next = savedSearches
-                .where((s) => s.name != search.name)
-                .toList();
-            await searchStore.save(next);
-            savedSearches = next;
-            _queueCloudSync();
-          },
-          problems: _knowledgeProblems(),
-          onCaptureTimestamp: () {
-            Navigator.of(context).pop();
-            unawaited(_captureTimestamp());
-          },
-          onOpenNote: _openPath,
-          onOpenCitation: _openCitation,
-          onFixProblems: _fixProblems,
         ),
       ),
     );

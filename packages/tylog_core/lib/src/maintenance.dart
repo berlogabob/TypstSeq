@@ -134,6 +134,7 @@ class VaultMaintenance {
   /// publishers accept donors up to 14 days old and share their own shard.
   Future<VaultIndex> buildIndex({
     List<VaultStorageEntry>? entries,
+    int? scanStartedAt,
     TypstInspector? inspector,
     bool force = false,
     String? deviceId,
@@ -142,13 +143,22 @@ class VaultMaintenance {
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
+    final scanStarted = scanStartedAt ?? DateTime.now().microsecondsSinceEpoch;
     final timer = Stopwatch()..start();
     entries ??= await storage.list(recursive: true);
     final dirtyMarkers = <String, String>{};
+    final committedMarkers = <String>[];
     for (final entry in entries) {
       if (!entry.isDirectory && entry.path.startsWith('$indexDirtyPath/')) {
-        final path = jsonDecode(await storage.readText(entry.path)) as String;
-        dirtyMarkers[entry.path] = path;
+        final marker = jsonDecode(await storage.readText(entry.path));
+        dirtyMarkers[entry.path] = marker is String
+            ? marker
+            : marker['path'] as String;
+        if (marker is Map &&
+            marker['committedAt'] is int &&
+            (marker['committedAt'] as int) < scanStarted) {
+          committedMarkers.add(entry.path);
+        }
       }
     }
     final hashStaleNow = {...stale, ...?hashStale, ...dirtyMarkers.values};
@@ -203,7 +213,7 @@ class VaultMaintenance {
         _lastIndexDigest = digest;
       }
     }
-    for (final marker in dirtyMarkers.keys) {
+    for (final marker in committedMarkers) {
       await storage.delete(marker);
     }
     _lastBuiltIndex = index;
@@ -246,12 +256,14 @@ class VaultMaintenance {
     final out = StreamController<VaultMaintenanceEvent>();
     out.onListen = () async {
       try {
+        final scanStarted = DateTime.now().microsecondsSinceEpoch;
         final timer = Stopwatch()..start();
         final entries = List<VaultStorageEntry>.unmodifiable(
           await storage.list(recursive: true),
         );
         final index = await buildIndex(
           entries: entries,
+          scanStartedAt: scanStarted,
           inspector: inspector,
           force: force,
           deviceId: deviceId,
@@ -481,7 +493,6 @@ Future<Map<String, String>> _syncedHashes(
   if (entries == null) return const {};
   try {
     const receiptPath = '.tylog/sync_state.json';
-    final receiptTime = (await storage.stat(receiptPath))?.modified;
     final state = jsonDecode(await storage.readText(receiptPath));
     if (state is! Map || state['schema'] != 2 || state['cursors'] is! Map) {
       return const {};
@@ -497,11 +508,10 @@ Future<Map<String, String>> _syncedHashes(
       if (cursor is! Map || entry.modified == null || entry.size == null) {
         continue;
       }
-      // SAF rounds timestamps to seconds. A write near the receipt can have
-      // identical mtime+size; only reading the bytes establishes its hash.
-      if (receiptTime == null ||
-          entry.modified!.difference(receiptTime).inMilliseconds.abs() <=
-              1000) {
+      // Only this file's receipt can prove its timestamp was already stable.
+      final recordedAt = cursor['recordedAt'];
+      if (recordedAt is! int ||
+          recordedAt - entry.modified!.millisecondsSinceEpoch < 2000) {
         stale.add(entry.path);
         continue;
       }

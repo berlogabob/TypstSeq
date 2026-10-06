@@ -141,6 +141,33 @@ void main() {
     },
   );
 
+  test(
+    'verified identical revision clears its conflict without downloading',
+    () async {
+      final root = await Directory.systemTemp.createTemp('revision_equal_');
+      final path = '_system/revisions/note-${'c' * 64}.json';
+      const content = 'identical envelope';
+      final server = await _mutableWebDavServer({path: _remoteText(content)});
+      addTearDown(() async {
+        await server.close(force: true);
+        await root.delete(recursive: true);
+      });
+      final vault = Vault(root);
+      await vault.ensureCreated();
+      await vault.storage.writeText(path, content);
+      await createSyncConflict(
+        vault,
+        path,
+        localBytes: utf8.encode('old local'),
+        remoteBytes: utf8.encode('old remote'),
+      );
+      expect(await loadSyncConflicts(vault), hasLength(1));
+      final result = await NextcloudSync(_config(server)).sync(vault);
+      expect(result.downloaded, 0);
+      expect(await loadSyncConflicts(vault), isEmpty);
+    },
+  );
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   final defaultCheckpointInterval = NextcloudSync.checkpointInterval;

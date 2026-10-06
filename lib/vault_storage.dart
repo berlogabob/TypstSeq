@@ -157,7 +157,7 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<void> writeBytes(String path, List<int> bytes) async {
-    await markIndexDirty(path);
+    final marker = await markIndexDirty(path);
     await invoke(
       channel.invokeMethod<void>(
         'write',
@@ -165,6 +165,7 @@ class AndroidTreeVaultStorage extends VaultStorage {
       ),
       'write',
     );
+    await commitIndexWrite(marker, path);
   }
 
   @override

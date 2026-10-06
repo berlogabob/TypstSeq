@@ -190,6 +190,7 @@ extension _WebDavClient on NextcloudSync {
             continue;
           }
           cursors[entry.key] = SyncCursor(
+            recordedAt: cursor.recordedAt,
             localMillis: cursor.localMillis,
             localSize: cursor.localSize,
             localSha256: cursor.localSha256,
