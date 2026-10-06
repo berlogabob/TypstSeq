@@ -1,14 +1,26 @@
 part of '../nextcloud_sync.dart';
 
 extension _WebDavClient on NextcloudSync {
-  Future<({Map<String, _RemoteFile> files, String? rootEtag})?> _remoteFiles({
+  Future<
+    ({
+      Map<String, _RemoteFile> files,
+      String? rootEtag,
+      Map<String, String?> folders,
+    })?
+  >
+  _remoteFiles({
     bool allowMissing = false,
     bool includeNonSyncable = false,
+    String folder = '',
+    String depth = 'infinity',
   }) async {
-    final request = await _open('PROPFIND', config.rootUri);
-    request.headers.set('Depth', 'infinity');
+    final request = await _open(
+      'PROPFIND',
+      folder.isEmpty ? config.rootUri : _remoteUri(folder),
+    );
+    request.headers.set('Depth', depth);
     request.write(
-      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:getlastmodified/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>''',
+      '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getlastmodified/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
     final body = await response
@@ -34,6 +46,82 @@ extension _WebDavClient on NextcloudSync {
       rootPath: config.rootUri.path,
       includeNonSyncable: includeNonSyncable,
     ));
+  }
+
+  Future<
+    ({
+      Map<String, _RemoteFile> files,
+      String? rootEtag,
+      Map<String, String?> folders,
+    })
+  >
+  _changedRemoteFiles(
+    Map<String, SyncCursor> cursors,
+    Map<String, String?> previousFolders,
+  ) async {
+    if (previousFolders[''] == null) return (await _remoteFiles())!;
+    final files = <String, _RemoteFile>{};
+    final folders = <String, String?>{};
+    String? rootEtag;
+    Future<void> visit(String folder) async {
+      final listed = (await _remoteFiles(folder: folder, depth: '1'))!;
+      if (listed.folders[folder] == null) {
+        throw const HttpException('PROPFIND missing folder etag');
+      }
+      if (listed.files.keys.any(
+            (path) =>
+                !path.startsWith(folder) ||
+                path.substring(folder.length).contains('/'),
+          ) ||
+          listed.folders.keys.any(
+            (path) =>
+                path != folder &&
+                (!path.startsWith(folder) ||
+                    path.substring(folder.length).split('/').length != 2),
+          )) {
+        throw const HttpException('PROPFIND ignored Depth:1');
+      }
+      if (folder.isEmpty) rootEtag = listed.rootEtag;
+      folders.addAll(listed.folders);
+      files.addAll(listed.files);
+      for (final child in listed.folders.keys) {
+        if (child == folder || !isSyncableVaultPath('${child}file')) continue;
+        final etag = listed.folders[child];
+        if (etag != null && etag == previousFolders[child]) {
+          // Absence is only evidence inside a collection we actually listed.
+          // Retain every cursor in a skipped subtree, including deletions.
+          // ponytail: scan cursors per skipped subtree; index by folder if
+          // profiling shows this costs significant CPU.
+          for (final entry in cursors.entries) {
+            if (!entry.key.startsWith(child)) continue;
+            final cursor = entry.value;
+            files[entry.key] = _RemoteFile(
+              modified: DateTime.fromMillisecondsSinceEpoch(
+                cursor.remoteMillis ?? 0,
+                isUtc: true,
+              ),
+              etag: cursor.remoteEtag == null ? null : '"${cursor.remoteEtag}"',
+              length: cursor.localSize,
+            );
+          }
+          folders.addAll({
+            for (final entry in previousFolders.entries)
+              if (entry.key.startsWith(child)) entry.key: entry.value,
+          });
+        } else {
+          await visit(child);
+        }
+      }
+    }
+
+    try {
+      await visit('');
+      return (files: files, rootEtag: rootEtag, folders: folders);
+    } on IOException {
+      return (await _remoteFiles())!;
+    } on TimeoutException {
+      return (await _remoteFiles())!;
+    }
   }
 
   bool _isRootHref(String href) => _isRootHrefFor(href, config.rootUri.path);

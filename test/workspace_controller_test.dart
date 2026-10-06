@@ -2424,6 +2424,13 @@ void main() {
       expect(await controller.syncNow(trigger: 'note-close'), isTrue);
       now = now.add(const Duration(seconds: 1));
       expect(await controller.syncNow(trigger: 'autosave'), isTrue);
+      server.uploaded.clear();
+      final beforePush = server.propfinds;
+      controller.edit('${controller.source}\nPush within the full-sync throttle');
+      now = now.add(const Duration(seconds: 3));
+      expect(await controller.save(), isTrue);
+      await _waitUntil(() => server.uploaded.contains(controller.note) && !controller.syncing);
+      expect(server.propfinds, beforePush, reason: '3s idle pushes bypass the 2min full-sync throttle');
     },
   );
 

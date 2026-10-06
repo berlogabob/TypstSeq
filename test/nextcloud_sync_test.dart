@@ -117,6 +117,255 @@ void main() {
     NextcloudSync.checkpointInterval = defaultCheckpointInterval;
   });
 
+  group('seamless sync', () {
+    Future<
+      ({
+        Vault vault,
+        HttpServer server,
+        Map<String, _MutableRemoteFile> remote,
+        _WebDavMetrics metrics,
+        Map<String, String> folderEtags,
+        List<Map<String, Object?>> uploads,
+      })
+    >
+    synced({
+      FutureOr<void> Function(String)? onBeforePut,
+      bool ignoreDepthOne = false,
+    }) async {
+      final remote = {
+        'daily/2026/10/day.typ': _remoteText('base daily'),
+        'notes/other.typ': _remoteText('base other'),
+        'notes/keeper.typ': _remoteText('keeper'),
+      };
+      final metrics = _WebDavMetrics();
+      final folderEtags = <String, String>{};
+      final uploads = <Map<String, Object?>>[];
+      final server = await _mutableWebDavServer(
+        remote,
+        metrics: metrics,
+        folderEtags: folderEtags,
+        uploads: uploads,
+        onBeforePut: onBeforePut,
+        unquotedPutEtag: true,
+        ignoreDepthOne: ignoreDepthOne,
+      );
+      final dir = await Directory.systemTemp.createTemp('tylog_seamless_');
+      addTearDown(() async {
+        await server.close(force: true);
+        await dir.delete(recursive: true);
+      });
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault);
+      metrics.propfinds = 0;
+      metrics.depthInfinityPropfinds = 0;
+      metrics.depthZeroPropfinds = 0;
+      metrics.individualGets = 0;
+      metrics.puts = 0;
+      metrics.listedFolders.clear();
+      uploads.clear();
+      return (
+        vault: vault,
+        server: server,
+        remote: remote,
+        metrics: metrics,
+        folderEtags: folderEtags,
+        uploads: uploads,
+      );
+    }
+
+    test('unchanged vault costs one PROPFIND and no GETs', () async {
+      final s = await synced();
+      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(result.downloaded, 0);
+      expect(s.metrics.propfinds, 1);
+      expect(s.metrics.depthZeroPropfinds, 1);
+      expect(s.metrics.individualGets, 0);
+    });
+
+    test('deep edit lists only its ancestors and downloads one file', () async {
+      final s = await synced();
+      s.remote['daily/2026/10/day.typ'] = _remoteText('changed daily');
+      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(s.metrics.listedFolders, [
+        '',
+        'daily/',
+        'daily/2026/',
+        'daily/2026/10/',
+      ]);
+      expect(s.metrics.depthInfinityPropfinds, 0);
+      expect(s.metrics.propfinds, 5); // Root probe plus four changed folders.
+      expect(s.metrics.individualGets, 1);
+      expect(result.downloaded, 1);
+      expect(await s.vault.readText('daily/2026/10/day.typ'), 'changed daily');
+    });
+
+    test(
+      'dirty saves push without listing, using cursor and new-file guards',
+      () async {
+        final s = await synced();
+        await s.vault.saveNote('daily/2026/10/day.typ', 'local daily');
+        await s.vault.saveNote('notes/new.typ', 'new note');
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, pushOnly: true);
+        expect(result.uploaded, 2);
+        expect(s.metrics.propfinds, 0);
+        expect(s.metrics.individualGets, 0);
+        expect(
+          s.uploads.singleWhere(
+            (e) => e['path'] == 'daily/2026/10/day.typ',
+          )['ifMatch'],
+          '"fixture-${sha256.convert(utf8.encode('base daily'))}"',
+        );
+        expect(
+          s.uploads.singleWhere(
+            (e) => e['path'] == 'notes/new.typ',
+          )['ifNoneMatch'],
+          '*',
+        );
+        expect(
+          utf8.decode(s.remote['daily/2026/10/day.typ']!.bytes),
+          'local daily',
+        );
+        final state =
+            jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+                as Map;
+        expect(
+          state['cursors']['daily/2026/10/day.typ']['remoteEtag'],
+          s.remote['daily/2026/10/day.typ']!.etag.replaceAll('"', ''),
+        );
+        expect(s.vault.hasPendingSyncWrites, isFalse);
+      },
+    );
+
+    test(
+      'stale cursor PUT gets 412 and falls back without losing either edit',
+      () async {
+        final s = await synced();
+        await s.vault.saveNote(
+          'daily/2026/10/day.typ',
+          'local independent edit',
+        );
+        s.remote['daily/2026/10/day.typ'] = _remoteText(
+          'remote independent edit',
+        );
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, pushOnly: true);
+        expect(s.metrics.puts, 1);
+        expect(s.metrics.depthInfinityPropfinds, 1);
+        expect(result.conflicts, 1);
+        expect(
+          await s.vault.readText('daily/2026/10/day.typ'),
+          'local independent edit',
+        );
+        expect(
+          utf8.decode(s.remote['daily/2026/10/day.typ']!.bytes),
+          'remote independent edit',
+        );
+        final records = await loadSyncConflicts(s.vault);
+        expect(records, hasLength(1));
+        expect(
+          await s.vault.readText(records.single.remoteSnapshot!),
+          'remote independent edit',
+        );
+      },
+    );
+
+    test('a save during a push remains queued for the next push', () async {
+      late Vault vault;
+      var armed = false;
+      final s = await synced(
+        onBeforePut: (path) async {
+          if (armed && path == 'daily/2026/10/day.typ') {
+            armed = false;
+            await vault.saveNote(path, 'second local edit');
+          }
+        },
+      );
+      vault = s.vault;
+      armed = true;
+      await vault.saveNote('daily/2026/10/day.typ', 'first local edit');
+      await NextcloudSync(_config(s.server)).sync(vault, pushOnly: true);
+      expect(vault.hasPendingSyncWrites, isTrue);
+      expect(
+        utf8.decode(s.remote['daily/2026/10/day.typ']!.bytes),
+        'first local edit',
+      );
+      await NextcloudSync(_config(s.server)).sync(vault, pushOnly: true);
+      expect(vault.hasPendingSyncWrites, isFalse);
+      expect(
+        utf8.decode(s.remote['daily/2026/10/day.typ']!.bytes),
+        'second local edit',
+      );
+      expect(s.metrics.propfinds, 0);
+    });
+
+    test(
+      'a server ignoring Depth:1 falls back to the complete listing',
+      () async {
+        final s = await synced(ignoreDepthOne: true);
+        s.remote['daily/2026/10/day.typ'] = _remoteText('changed daily');
+        final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect(s.metrics.propfinds, 3);
+        expect(s.metrics.depthInfinityPropfinds, 1);
+        expect(s.metrics.individualGets, 1);
+        expect(result.downloaded, 1);
+      },
+    );
+
+    test('missing folder state falls back to the complete listing', () async {
+      final s = await synced();
+      const path = '.tylog/sync_state.json';
+      final state = jsonDecode(await s.vault.storage.readText(path)) as Map;
+      state.remove('folders');
+      await s.vault.storage.writeText(path, jsonEncode(state));
+      await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(s.metrics.propfinds, 1);
+      expect(s.metrics.depthInfinityPropfinds, 1);
+    });
+
+    test(
+      'new-file PUT cannot overwrite a concurrently created remote',
+      () async {
+        final s = await synced();
+        await s.vault.saveNote('notes/new.typ', 'local creation');
+        s.remote['notes/new.typ'] = _remoteText('remote creation');
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, pushOnly: true);
+        expect(s.metrics.puts, 1);
+        expect(s.metrics.depthInfinityPropfinds, 1);
+        expect(result.conflicts, 1);
+        expect(await s.vault.readText('notes/new.typ'), 'local creation');
+        expect(
+          utf8.decode(s.remote['notes/new.typ']!.bytes),
+          'remote creation',
+        );
+      },
+    );
+
+    test('absence in an unchanged folder never proves deletion', () async {
+      final s = await synced();
+      final state =
+          jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+              as Map;
+      s.folderEtags['notes/'] = state['folders']['notes/'] as String;
+      s.remote.remove('notes/other.typ');
+      s.remote['daily/2026/10/day.typ'] = _remoteText('changed daily');
+      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(s.metrics.listedFolders, isNot(contains('notes/')));
+      expect(result.deletedLocal, 0);
+      expect(await s.vault.readText('notes/other.typ'), 'base other');
+      s.folderEtags.clear();
+      s.remote['daily/2026/10/day.typ'] = _remoteText('changed again');
+      final next = await NextcloudSync(_config(s.server)).sync(s.vault);
+      expect(next.deletedLocal, 1);
+    });
+  });
+
   test('no-change sync skips the local index rebuild', () {
     const unchanged = SyncResult(
       trigger: 'poll',
@@ -656,7 +905,8 @@ void main() {
       ).sync(vault, trigger: 'poll');
 
       expect(metrics.depthZeroPropfinds, 1);
-      expect(metrics.depthInfinityPropfinds, 1);
+      expect(metrics.depthInfinityPropfinds, 0);
+      expect(metrics.listedFolders, contains('notes/'));
       expect(result.downloaded, 1);
       expect(await vault.storage.readText('notes/a.typ'), 'note a v2');
     },
@@ -694,7 +944,8 @@ void main() {
       ).sync(vault, trigger: 'poll');
 
       expect(metrics.depthZeroPropfinds, 1);
-      expect(metrics.depthInfinityPropfinds, 1);
+      expect(metrics.depthInfinityPropfinds, 0);
+      expect(metrics.listedFolders, isNot(contains('notes/')));
       expect(result.uploaded, 1);
       expect(utf8.decode(remote['notes/a.typ']!.bytes), 'edited locally');
     },
@@ -758,8 +1009,9 @@ void main() {
       });
       await vault.ensureCreated();
 
-      final result = await NextcloudSync(_config(server))
-          .sync(vault, initialMode: InitialSyncMode.downloadRemote);
+      final result = await NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote);
 
       expect(result.downloaded, remote.length);
       expect(
@@ -768,9 +1020,9 @@ void main() {
       );
       // Force full passes: a root shortcut would conceal the cursor mismatch.
       for (var i = 0; i < 2; i++) {
-        final state = jsonDecode(
-          await vault.storage.readText('.tylog/sync_state.json'),
-        ) as Map;
+        final state =
+            jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+                as Map;
         state.remove('rootEtag');
         if (i == 1) {
           // Upgrade a cursor saved by 0.8.5 on the P30.
@@ -1036,7 +1288,9 @@ void main() {
     const queued = '{"url":"https://example.org/a","status":"queued"}';
     await vault.storage.writeText(path, queued);
     // Each sync closes its client; use a fresh instance per run, as the app does.
-    await NextcloudSync(_config(server)).sync(vault, initialMode: InitialSyncMode.uploadLocal);
+    await NextcloudSync(
+      _config(server),
+    ).sync(vault, initialMode: InitialSyncMode.uploadLocal);
     expect(utf8.decode(remote[path]!.bytes), queued);
     const processing = '{"url":"https://example.org/a","status":"processing"}';
     remote[path] = _remoteText(processing);
@@ -4313,11 +4567,12 @@ class _WebDavMetrics {
   int individualGets = 0;
   int activeTransfers = 0;
   int maxTransfers = 0;
-  // Depth:0 root-etag probes vs. Depth:infinity full-tree listings, tracked
+  // Depth:0 probes, Depth:1 folders and Depth:infinity listings, tracked
   // separately from [propfinds] (which counts both) so the no-change
   // shortcut tests can assert exactly which kind of PROPFIND happened.
   int depthZeroPropfinds = 0;
   int depthInfinityPropfinds = 0;
+  final listedFolders = <String>[];
   final mkcols = <String, int>{};
 
   void startTransfer() {
@@ -4363,8 +4618,9 @@ Future<HttpServer> _mutableWebDavServer(
 
   /// Fires just before a PUT is evaluated, so a test can move the remote
   /// between the client's read and its write — the ETag race itself.
-  void Function(String path)? onBeforePut,
+  FutureOr<void> Function(String path)? onBeforePut,
   bool unquotedPutEtag = false,
+  bool ignoreDepthOne = false,
   bool rejectDelete = false,
   bool rejectMove = false,
   bool includeChecksums = false,
@@ -4385,6 +4641,7 @@ Future<HttpServer> _mutableWebDavServer(
   Map<String, int>? getCounts,
   Duration transferDelay = Duration.zero,
   _WebDavMetrics? metrics,
+  Map<String, String>? folderEtags,
   List<Map<String, Object?>>? uploads,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
@@ -4415,13 +4672,17 @@ Future<HttpServer> _mutableWebDavServer(
       request.response.statusCode = HttpStatus.methodNotAllowed;
     } else if (request.method == 'PROPFIND') {
       metrics?.propfinds++;
-      final depth = request.headers.value('Depth');
-      if (depth == '0') {
+      final requestedDepth = request.headers.value('Depth');
+      final depth = ignoreDepthOne && requestedDepth == '1'
+          ? 'infinity'
+          : requestedDepth;
+      if (requestedDepth == '0') {
         metrics?.depthZeroPropfinds++;
-      } else {
+      } else if (requestedDepth == 'infinity') {
         metrics?.depthInfinityPropfinds++;
       }
-      if (path.isNotEmpty) {
+      if (requestedDepth == '1') metrics?.listedFolders.add(path);
+      if (path.isNotEmpty && !path.endsWith('/')) {
         // Single-resource probe (resolveConflict's etag check): one
         // response for that path only, or 404 if it doesn't exist.
         final file = files[path];
@@ -4458,13 +4719,44 @@ Future<HttpServer> _mutableWebDavServer(
       // state so it reacts to direct test mutations of `files`, not just
       // PUT/MOVE/DELETE routed through this handler.
       request.response.write(
-        '<d:response><d:href>$root</d:href>'
-        '<d:propstat><d:prop><d:getetag>${_collectionEtag(files)}</d:getetag>'
+        '<d:response><d:href>$root$path</d:href>'
+        '<d:propstat><d:prop><d:getetag>${_collectionEtag({for (final e in files.entries)
+          if (e.key.startsWith(path)) e.key: e.value})}</d:getetag>'
         '<d:resourcetype><d:collection/></d:resourcetype>'
         '</d:prop></d:propstat></d:response>',
       );
       if (depth != '0') {
+        final folders = <String>{};
+        for (final key in files.keys) {
+          if (!key.startsWith(path)) continue;
+          final parts = key.substring(path.length).split('/')..removeLast();
+          var folder = path;
+          for (final part in parts) {
+            folder += '$part/';
+            folders.add(folder);
+            if (depth == '1') break;
+          }
+        }
+        for (final folder in folders) {
+          final etag =
+              folderEtags?[folder] ??
+              _collectionEtag({
+                for (final e in files.entries)
+                  if (e.key.startsWith(folder)) e.key: e.value,
+              });
+          request.response.write(
+            '<d:response><d:href>${Uri(path: '$root$folder')}</d:href>'
+            '<d:propstat><d:prop><d:getetag>$etag</d:getetag>'
+            '<d:resourcetype><d:collection/></d:resourcetype>'
+            '</d:prop></d:propstat></d:response>',
+          );
+        }
         for (final entry in files.entries) {
+          if (!entry.key.startsWith(path) ||
+              (depth == '1' &&
+                  entry.key.substring(path.length).contains('/'))) {
+            continue;
+          }
           final checksum = sha256.convert(entry.value.bytes);
           final serveLowercase =
               lowercaseChecksums && !upgradedChecksums.contains(entry.key);
@@ -4583,13 +4875,17 @@ Future<HttpServer> _mutableWebDavServer(
           'body': utf8.decode(bytes),
           'checksum': request.headers.value('oc-checksum'),
           'ifMatch': request.headers.value(HttpHeaders.ifMatchHeader),
+          'ifNoneMatch': request.headers.value(HttpHeaders.ifNoneMatchHeader),
         });
-        onBeforePut?.call(path);
+        await onBeforePut?.call(path);
         // Real Nextcloud honours If-Match on PUT: a stale etag means the
         // remote moved since the client last looked, and answers 412.
         final ifMatch = request.headers.value(HttpHeaders.ifMatchHeader);
         final existing = files[path];
-        if (ifMatch != null && (existing == null || existing.etag != ifMatch)) {
+        if ((ifMatch != null &&
+                (existing == null || existing.etag != ifMatch)) ||
+            (request.headers.value(HttpHeaders.ifNoneMatchHeader) == '*' &&
+                existing != null)) {
           request.response.statusCode = HttpStatus.preconditionFailed;
           await request.response.close();
           return;

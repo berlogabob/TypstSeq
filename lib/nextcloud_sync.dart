@@ -325,6 +325,7 @@ class NextcloudSync {
       if (state.recovered ||
           state.remoteMismatch ||
           state.rootEtag == null ||
+          state.folders[''] == null ||
           (await loadSyncConflicts(vault)).isNotEmpty) {
         return false;
       }
@@ -377,6 +378,7 @@ class NextcloudSync {
     Vault vault, {
     String trigger = 'manual',
     InitialSyncMode? initialMode,
+    bool pushOnly = false,
   }) async {
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     var stage = 'start';
@@ -395,6 +397,8 @@ class NextcloudSync {
     var remoteCount = 0;
     var cursorsDirty = false;
     String? freshRootEtag;
+    Map<String, String?>? freshFolders;
+    var pushRaced = false;
     Map<String, SyncCursor>? syncState;
     _RemoteArchiveSnapshot? archiveSnapshot;
     var pristineStarterPaths = const <String>[];
@@ -487,6 +491,97 @@ class NextcloudSync {
           'trigger': trigger,
         });
       }
+      if (initialMode == null &&
+          !stateRecovered &&
+          !loadedState.remoteMismatch &&
+          !loadedState.legacy &&
+          syncState.isNotEmpty) {
+        final conflicted = {
+          for (final conflict in await loadSyncConflicts(vault))
+            unorm.nfc(conflict.path),
+        };
+        progress('push-local');
+        for (final path in coveredWrites.toList()) {
+          if (_isSyncInternal(path) || conflicted.contains(unorm.nfc(path))) {
+            continue;
+          }
+          final previous = syncState[unorm.nfc(path)];
+          if (previous != null && previous.remoteEtag == null) continue;
+          final stat = await vault.storage.stat(path);
+          if (stat == null) continue; // Deletions need the normal sync guards.
+          final bytes = await vault.storage.readBytes(path);
+          final hash = sha256.convert(bytes).toString();
+          if (hash != previous?.localSha256) {
+            try {
+              final etag = await _retryTransient(
+                () => _upload(
+                  path,
+                  bytes,
+                  localHash: hash,
+                  remote: previous == null
+                      ? null
+                      : _RemoteFile(
+                          modified: DateTime.fromMillisecondsSinceEpoch(
+                            previous.remoteMillis ?? 0,
+                            isUtc: true,
+                          ),
+                          etag: '"${_normEtag(previous.remoteEtag)}"',
+                        ),
+                ),
+              );
+              syncState[unorm.nfc(path)] = SyncCursor(
+                localMillis: stat.modified?.millisecondsSinceEpoch,
+                localSize: bytes.length,
+                localSha256: hash,
+                remoteMillis: DateTime.now().millisecondsSinceEpoch,
+                remoteEtag: _normEtag(
+                  etag ?? (await _probeRemoteFile(path))?.etag,
+                ),
+              );
+              cursorsDirty = true;
+              up++;
+              if (!isDeviceScopedVaultPath(path)) upContent++;
+            } on _RemoteChanged {
+              pushRaced = true;
+              continue; // Re-list and let the existing conflict path decide.
+            }
+          }
+          // A save of this same path may have landed during the PUT.
+          if (await vault.storage.hash(path) == hash) {
+            vault.clearPendingSyncWrites([path]);
+          }
+          coveredWrites.remove(path);
+        }
+        if (pushOnly && !pushRaced) {
+          if (cursorsDirty) {
+            await _saveSyncState(
+              vault,
+              syncState,
+              rootEtag: loadedState.rootEtag,
+              folders: loadedState.folders,
+            );
+          }
+          traceEvents.add({
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'runId': runId,
+            'event': 'completed',
+            'trigger': trigger,
+            'stageMillis': stageProfile(),
+            'uploaded': up,
+            'downloaded': 0,
+            'remoteCount': syncState.length,
+          });
+          return SyncResult(
+            trigger: trigger,
+            uploaded: up,
+            uploadedContent: upContent,
+            downloaded: 0,
+            skipped: 0,
+            conflicts: 0,
+            remoteCount: syncState.length,
+          );
+        }
+      }
       // Fast path for a steady-state poll: the root collection's own etag
       // changes whenever anything beneath it changes (the mechanism real
       // Nextcloud clients rely on). If it still matches what the last full
@@ -508,6 +603,8 @@ class NextcloudSync {
           !loadedState.remoteMismatch &&
           !loadedState.legacy &&
           !vault.hasPendingSyncWrites &&
+          !pushRaced &&
+          loadedState.folders[''] != null &&
           loadedState.rootEtag != null) {
         progress('probe-root');
         final unresolvedForShortcut = await loadSyncConflicts(vault);
@@ -560,9 +657,17 @@ class NextcloudSync {
       // per-file loop: a socket abort here otherwise kills every run at start.
       await _retryTransient(_ensureConfiguredFolder);
       progress('list-remote');
-      final remoteResult = (await _retryTransient(_remoteFiles))!;
+      final remoteResult =
+          initialMode != null ||
+              pushRaced ||
+              (await loadSyncConflicts(vault)).isNotEmpty
+          ? (await _retryTransient(_remoteFiles))!
+          : await _retryTransient(
+              () => _changedRemoteFiles(syncState!, loadedState.folders),
+            );
       final remote = remoteResult.files;
       freshRootEtag = remoteResult.rootEtag;
+      freshFolders = remoteResult.folders;
       remoteCount = remote.length;
       final remoteUserCount = remote.keys
           .where((path) => !path.startsWith('_system/'))
@@ -804,9 +909,14 @@ class NextcloudSync {
       // *next* full run's own pre-loop listing will already reflect those
       // changes and persist an accurate etag if nothing further happens.
       progress('save-local-state');
-      if (cursorsDirty || freshRootEtag != loadedState.rootEtag) {
-        await _saveSyncState(vault, syncState, rootEtag: freshRootEtag);
-      }
+      // Folder skips are safe only after every listed file has a cursor.
+      // Partial checkpoints deliberately omit folders so a retry re-lists.
+      await _saveSyncState(
+        vault,
+        syncState,
+        rootEtag: freshRootEtag,
+        folders: freshFolders,
+      );
       // Only what this pass actually looked at. A save landing mid-pass stays
       // queued for the next one — the same contract the scan cache uses for
       // its own stale set, and the reason both take a snapshot up front rather
@@ -1064,12 +1174,18 @@ bool _protectFromEmpty(String path) =>
 Future<String> _sha256(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
 
-/// Parses a Depth:infinity PROPFIND body into remote-file entries. Top-level
+/// Parses a PROPFIND body into remote-file entries. Top-level
 /// and dependent only on plain data so it can run inside compute().
-({Map<String, _RemoteFile> files, String? rootEtag}) _parsePropfindBody(
+({
+  Map<String, _RemoteFile> files,
+  String? rootEtag,
+  Map<String, String?> folders,
+})
+_parsePropfindBody(
   ({String body, String rootPath, bool includeNonSyncable}) args,
 ) {
   final files = <String, _RemoteFile>{};
+  final folders = <String, String?>{};
   // The root collection's own entry (href ends with '/') is included in a
   // Depth:infinity response alongside every file; its etag changes
   // whenever anything beneath it changes, which is what makes the
@@ -1086,7 +1202,18 @@ Future<String> _sha256(File file) async =>
         throw const FormatException('missing href');
       }
       final href = Uri.decodeComponent(hrefValue);
-      if (href.endsWith('/')) {
+      if (href.endsWith('/') ||
+          RegExp(r'<[^:>]*:?collection\b').hasMatch(block)) {
+        final folder = _isRootHrefFor(href, args.rootPath)
+            ? ''
+            : _relativeRemotePathFor(href, args.rootPath);
+        if (folder != null) {
+          folders[folder.endsWith('/') || folder.isEmpty
+              ? folder
+              : '$folder/'] = NextcloudSync._normEtag(
+            _xmlValue(block, 'getetag'),
+          );
+        }
         if (rootEtag == null && _isRootHrefFor(href, args.rootPath)) {
           rootEtag = _xmlValue(block, 'getetag');
         }
@@ -1128,7 +1255,7 @@ Future<String> _sha256(File file) async =>
       throw HttpException('PROPFIND invalid file metadata: $message');
     }
   }
-  return (files: files, rootEtag: rootEtag);
+  return (files: files, rootEtag: rootEtag, folders: folders);
 }
 
 bool _isRootHrefFor(String href, String root) {

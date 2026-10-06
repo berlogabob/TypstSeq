@@ -29,6 +29,7 @@ extension _SyncStatePersistence on NextcloudSync {
       bool recovered,
       bool remoteMismatch,
       String? rootEtag,
+      Map<String, String?> folders,
       bool legacy,
     })
   >
@@ -40,6 +41,7 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: false,
         remoteMismatch: false,
         rootEtag: null,
+        folders: <String, String?>{},
         legacy: false,
       );
     }
@@ -76,6 +78,7 @@ extension _SyncStatePersistence on NextcloudSync {
           recovered: false,
           remoteMismatch: true,
           rootEtag: null,
+          folders: <String, String?>{},
           legacy: false,
         );
       }
@@ -98,6 +101,10 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: false,
         remoteMismatch: false,
         rootEtag: decoded['rootEtag'] as String?,
+        folders: {
+          for (final entry in ((decoded['folders'] as Map?) ?? {}).entries)
+            unorm.nfc(entry.key as String): entry.value as String?,
+        },
         // Written before `schema`/`remoteKey` existed. Accepted rather than
         // discarded — that migration is deliberate — but reported, so the pass
         // rewrites the file and the ambiguity lasts exactly one pass instead
@@ -121,6 +128,7 @@ extension _SyncStatePersistence on NextcloudSync {
         recovered: true,
         remoteMismatch: false,
         rootEtag: null,
+        folders: <String, String?>{},
         legacy: false,
       );
     }
@@ -130,6 +138,7 @@ extension _SyncStatePersistence on NextcloudSync {
     Vault vault,
     Map<String, SyncCursor> state, {
     String? rootEtag,
+    Map<String, String?>? folders,
   }) async {
     await vault.storage.writeText(
       '.tylog/sync_state.json',
@@ -137,6 +146,7 @@ extension _SyncStatePersistence on NextcloudSync {
         'schema': 2,
         'remoteKey': _remoteKey,
         'rootEtag': ?rootEtag,
+        'folders': ?folders,
         'cursors': {
           for (final e in state.entries) unorm.nfc(e.key): e.value.toJson(),
         },

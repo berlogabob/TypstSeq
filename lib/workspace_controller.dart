@@ -1421,9 +1421,9 @@ class WorkspaceController extends ChangeNotifier {
     _cloudAutosave?.cancel();
     final edited = lastEditAt;
     final elapsed = edited == null ? Duration.zero : _now().difference(edited);
-    var remaining = const Duration(seconds: 10) - elapsed;
+    var remaining = const Duration(seconds: 3) - elapsed;
     final previous = _lastAutosaveSyncAt;
-    if (previous != null) {
+    if (previous != null && !(vault?.hasPendingSyncWrites ?? false)) {
       final throttled = cloudAutosaveInterval - _now().difference(previous);
       if (throttled > remaining) remaining = throttled;
     }
@@ -1438,7 +1438,7 @@ class WorkspaceController extends ChangeNotifier {
     _cloudPoll?.cancel();
     if (!(cloud?.isReady ?? false)) return;
     _cloudPoll = Timer.periodic(
-      const Duration(seconds: 25),
+      const Duration(seconds: 20),
       (_) => unawaited(pollTick()),
     );
   }
@@ -1448,9 +1448,9 @@ class WorkspaceController extends ChangeNotifier {
     _cloudPoll?.cancel();
   }
 
-  /// One 25s poll tick's worth of work. Exposed (not just called from the
+  /// One 20s poll tick's worth of work. Exposed (not just called from the
   /// [Timer] in [startCloudPolling]) so tests can drive it directly instead
-  /// of waiting on a real 25-second timer.
+  /// of waiting on a real 20-second timer.
   @visibleForTesting
   Future<void> pollTick() async {
     if (_disposed) return;
@@ -1484,7 +1484,7 @@ class WorkspaceController extends ChangeNotifier {
       if (_pollNextAt != null && _now().isBefore(_pollNextAt!)) return;
       final unchanged = await NextcloudSync(
         config,
-      ).pollIsUnchanged(opened, dirty: dirty);
+      ).pollIsUnchanged(opened, dirty: dirty || opened.hasPendingSyncWrites);
       // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
       if (unchanged) return;
@@ -1578,9 +1578,11 @@ class WorkspaceController extends ChangeNotifier {
     }
     final generation = _vaultGeneration;
     if (syncing) return false;
-    if (trigger == 'autosave' &&
+    final pushOnly =
+        trigger == 'autosave' &&
         _lastAutosaveSyncAt != null &&
-        _now().difference(_lastAutosaveSyncAt!) < cloudAutosaveInterval) {
+        _now().difference(_lastAutosaveSyncAt!) < cloudAutosaveInterval;
+    if (pushOnly && !opened.hasPendingSyncWrites) {
       queueCloudSync();
       return false;
     }
@@ -1634,7 +1636,7 @@ class WorkspaceController extends ChangeNotifier {
           'note-close',
         }.contains(trigger);
     syncing = true;
-    if (trigger == 'autosave') _lastAutosaveSyncAt = _now();
+    if (trigger == 'autosave' && !pushOnly) _lastAutosaveSyncAt = _now();
     syncError = null;
     status = 'Syncing…';
     _cloudAutosave?.cancel();
@@ -1677,7 +1679,7 @@ class WorkspaceController extends ChangeNotifier {
               write: opened.storage.writeBytes,
             );
       if (!_owns(opened, generation)) return false;
-      final result = await NextcloudSync(
+      final sync = NextcloudSync(
         config,
         onProgress: (stage, path) {
           if (!_owns(opened, generation)) return;
@@ -1706,7 +1708,10 @@ class WorkspaceController extends ChangeNotifier {
           localContentChanged = true;
           opened.markLocallyWritten(path);
         },
-      ).sync(opened, trigger: trigger, initialMode: initialMode);
+      );
+      final result = await sync.sync(
+        opened, trigger: trigger, initialMode: initialMode, pushOnly: pushOnly,
+      );
       if (!_owns(opened, generation)) return false;
       if (revisionDatabase != null) {
         for (final file in await opened.storage.list(
@@ -2263,7 +2268,8 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> _runIdleMaintenance() async {
     if (_disposed) return;
     if (dirty) return;
-    if (editingRecently) {
+    if (lastEditAt != null &&
+        _now().difference(lastEditAt!) < const Duration(seconds: 3)) {
       queueCloudSync();
       return;
     }
