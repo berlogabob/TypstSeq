@@ -3,6 +3,23 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.1+115
+
+### Changed
+
+- **Faster sync between devices.** A saved note uploads about 3 seconds
+  after you stop typing, without scanning the whole server first. While the
+  app is open it checks for changes every 20 seconds with one request, and
+  only re-lists folders that changed (one request instead of ~12,900 entries
+  when nothing changed).
+
+### Fixed
+
+- **Notes lost to an interrupted save on Android are restored** from the
+  hidden copy the save left behind.
+- The Notes tab no longer has a screenshot filter; screenshots live in the
+  Screenshots tab grid.
+
 ## 0.9.0+114
 
 ### Added
