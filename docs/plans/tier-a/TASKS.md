@@ -26,16 +26,16 @@ Small tasks, one run each. Update the status column when a task changes state.
 
 | ID | Task | Who | Files | Verify | Status |
 |---|---|---|---|---|---|
-| B1 | Login Flow v2 client: start flow, poll, return server + login + app password | studio | new `lib/nextcloud_sync/login_flow.dart`, new `test/login_flow_test.dart` (fake HTTP server) | `flutter test test/login_flow_test.dart` | running |
-| B2 | Chunked upload v2 client: MKCOL upload dir, PUT chunks, MOVE to destination, resume after a failed chunk | studio | new `lib/nextcloud_sync/chunked_upload.dart`, new `test/chunked_upload_test.dart` | `flutter test test/chunked_upload_test.dart` | todo |
-| B3 | Wire B1 into the Connect Nextcloud screen: "Sign in with browser" button | codex | settings/connect UI | widget test + A24 check | implemented: widget tests; A24 check pending (uncommitted) |
-| B4 | Use B2 for files over 10 MB in the upload path | codex | `webdav_client.dart` | sync tests with a 25 MB file, interrupted once | implemented: 25 MB + interrupted chunk tests (uncommitted) |
-| B5 | Remote delete takes ~40 s to apply, edits 0–7 s: find why, fix | codex | sync | A24 timing: delete under 15 s | running |
-| B6 | Phone index scan takes ~150 s with 0 notes parsed: make the all-reused case cheap | codex | `maintenance.dart`, `scanner.dart` | A24 trace `durationMs` under 20 s; no full rebuild after an update | running |
+| B1 | Login Flow v2 client: start flow, poll, return server + login + app password | studio | new `lib/nextcloud_sync/login_flow.dart`, new `test/login_flow_test.dart` (fake HTTP server) | `flutter test test/login_flow_test.dart` | done (Studio draft + 1 fix: absolute poll URL) |
+| B2 | Chunked upload v2 client: MKCOL upload dir, PUT chunks, MOVE to destination, resume after a failed chunk | studio | new `lib/nextcloud_sync/chunked_upload.dart`, new `test/chunked_upload_test.dart` | `flutter test test/chunked_upload_test.dart` | done (Studio draft unusable, rewritten; verified on real server) |
+| B3 | Wire B1 into the Connect Nextcloud screen: "Sign in with browser" button | codex | settings/connect UI | widget test + A24 check | done in code and widget tests; not yet tapped through on a phone |
+| B4 | Use B2 for files over 10 MB in the upload path | codex | `webdav_client.dart` | sync tests with a 25 MB file, interrupted once | done; real server: 12 MB round-trip, destination conditions verified |
+| B5 | Remote delete takes ~40 s to apply, edits 0–7 s: find why, fix | codex | sync | A24 timing: delete under 15 s | done: P30 delete 12 s (was 31 s) |
+| B6 | Phone index scan takes ~150 s with 0 notes parsed: make the all-reused case cheap | codex | `maintenance.dart`, `scanner.dart` | A24 trace `durationMs` under 20 s; no full rebuild after an update | done: P30 index pass 15 s, 1 note parsed (was 42-58 s); post-update rebuild not yet observed |
 | B7 | Soak test: 3 simulated devices edit, rename, delete for 500 rounds, must converge | codex | new `test/sync_soak_test.dart` | test passes, tagged slow | todo |
 | B8 | One revision file per save (no revision churn on autosave) | codex | sync revisions | existing 22 revision tests + new one | todo |
-| B10 | Machine-written `_system/revisions/**` with local missing downloads without a conflict (stale record on P30) | codex | sync | test | running |
-| B11 | Search tab does nothing while the index rebuilds | codex | search/navigation | widget test | running |
+| B10 | Machine-written `_system/revisions/**` with local missing downloads without a conflict (stale record on P30) | codex | sync | test | done: P30 conflicts 0 |
+| B11 | Search tab does nothing while the index rebuilds | codex | search/navigation | widget test | done in code and widget test; not re-checked on a phone |
 | B9 | Release with B1–B11 | claude | — | GitHub release green, 3 devices updated | todo |
 
 ## C. Screenshots (Studio, already automated)
