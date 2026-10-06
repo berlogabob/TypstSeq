@@ -1192,10 +1192,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// of those sequences *and* left an empty daily note behind for every day
   /// merely passed through. Now the label moves on the tap, the taps collapse,
   /// and only the day actually landed on is created.
-  void _stepDay(int delta) {
+  void _stepDay(int delta, {DateTime? target}) {
     final from = _navDay ?? _dailyDateOf(note);
     if (from == null) return;
-    final next = DateTime(from.year, from.month, from.day + delta);
+    final next = target ?? DateTime(from.year, from.month, from.day + delta);
     setState(() => _navDay = next);
     _navDebounce?.cancel();
     _navDebounce = Timer(const Duration(milliseconds: 180), () {
@@ -4543,12 +4543,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       _ => const SizedBox.shrink(),
     };
-    final today = DateTime.now();
     final isTodayDocument =
         primaryDestination == 0 &&
         documentModes.contains(mode) &&
-        currentDaily != null &&
-        isoDay(currentDaily) == isoDay(today);
+        currentDaily != null;
     // A person/place/… note gets a Logseq-style page: an info header above the
     // body and a linked-references (backlinks) block below it. Any note that is
     // mentioned elsewhere gets the references block too.
@@ -4650,13 +4648,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? PageStorage(
             bucket: _todayStorage,
             child: TodayPage(
-              events: workspace.calendar
-                  .where(
-                    (e) =>
-                        e.date == isoDay(DateTime.now()) &&
-                        e.notePath.startsWith('events/'),
-                  )
-                  .toList(),
+              shownDay: currentDaily,
+              onOpenDay: (day) => _stepDay(0, target: day),
+              events: [
+                for (final event in workspace.feedEvents)
+                  CalendarItem(
+                    date: event.date,
+                    start: event.properties['start']?.toString(),
+                    kind: CalendarItemKind.dateRef,
+                    title: event.title,
+                    notePath: event.path,
+                  ),
+              ],
               tasks: index?.tasks ?? const [],
               notes: index?.notesByPath ?? const {},
               onAllTasks: () => unawaited(_selectDestination(2, libraryTab: 3)),

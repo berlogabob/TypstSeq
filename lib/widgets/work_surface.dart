@@ -40,6 +40,8 @@ class TodayPage extends StatelessWidget {
   const TodayPage({
     super.key,
     this.events = const [],
+    this.shownDay,
+    this.onOpenDay,
     required this.tasks,
     required this.recent,
     required this.editor,
@@ -53,6 +55,8 @@ class TodayPage extends StatelessWidget {
   final VoidCallback? onAllTasks;
   final Map<String, NoteRef> notes;
   final List<CalendarItem> events;
+  final DateTime? shownDay;
+  final ValueChanged<DateTime>? onOpenDay;
   final List<TaskRef> tasks;
   final List<(NoteRef note, double progress)> recent;
   final Widget editor;
@@ -62,7 +66,7 @@ class TodayPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final today = isoDay(DateTime.now());
+    final today = isoDay(shownDay ?? DateTime.now());
     final groups = TaskAgendaCache().resolve(tasks, notes, today);
     final agenda = groups
         .where((g) => g.key == 'today')
@@ -73,8 +77,27 @@ class TodayPage extends StatelessWidget {
         .expand((g) => g.tasks)
         .toList();
     final todayEvents = events.where((e) => e.date == today).toList()
-      ..sort((a, b) => (a.start ?? '9999').compareTo(b.start ?? '9999'));
+      ..sort(
+        (a, b) => (a.start?.split('T').last ?? '9999').compareTo(
+          b.start?.split('T').last ?? '9999',
+        ),
+      );
+    final upcoming = events.where((e) => e.date.compareTo(today) > 0).toList()
+      ..sort((a, b) {
+        final order = a.date.compareTo(b.date);
+        return order != 0
+            ? order
+            : (a.start?.split('T').last ?? '9999').compareTo(
+                b.start?.split('T').last ?? '9999',
+              );
+      });
+    final next = todayEvents.isEmpty ? upcoming.firstOrNull : null;
+    final nextDay = next == null ? null : DateTime.parse(next.date);
+    final nextStart = DateTime.tryParse(
+      '${next?.date}T${next?.start?.split('T').last}',
+    );
     final hasTopContent =
+        next != null ||
         todayEvents.isNotEmpty ||
         agenda.isNotEmpty ||
         overdue.isNotEmpty ||
@@ -120,14 +143,22 @@ class TodayPage extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (agenda.isNotEmpty ||
+                        next != null ||
                         overdue.isNotEmpty ||
                         todayEvents.isNotEmpty ||
                         onAllTasks != null)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
                         leading: const Icon(Icons.event_note),
-                        title: Text(
-                          'Agenda · ${agenda.length + overdue.length + todayEvents.length}',
+                        title: InkWell(
+                          onTap: nextDay == null || onOpenDay == null
+                              ? null
+                              : () => onOpenDay!(nextDay),
+                          child: Text(
+                            next == null
+                                ? 'Agenda · ${agenda.length + overdue.length + todayEvents.length}'
+                                : 'No classes · Next: ${compactHumanDate(nextDay!, now: nextDay)} ${nextStart == null ? '' : '${localTime(nextStart)} '}${next.title}',
+                          ),
                         ),
                         children: [
                           for (final event in todayEvents)

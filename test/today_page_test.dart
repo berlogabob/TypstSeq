@@ -21,6 +21,120 @@ TaskRef _task(String id, {String? due}) => TaskRef(
 );
 
 void main() {
+  testWidgets('Agenda lists events and due tasks for the shown day', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TodayPage(
+            shownDay: DateTime(2001, 1, 2),
+            events: const [
+              CalendarItem(
+                date: '2001-01-02',
+                start: '09:00',
+                kind: CalendarItemKind.dateRef,
+                title: 'Shown class',
+                notePath: 'events/class.typ',
+              ),
+              CalendarItem(
+                date: '2001-01-03',
+                kind: CalendarItemKind.dateRef,
+                title: 'Other class',
+                notePath: 'events/other.typ',
+              ),
+            ],
+            tasks: [
+              _task('shown', due: '2001-01-02'),
+              _task('other', due: '2001-01-03'),
+            ],
+            recent: const [],
+            editor: const SizedBox(),
+            onOpenPath: (_) {},
+            onSetStatus: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Agenda · 2'), findsOneWidget);
+    expect(find.text('Shown class'), findsNothing);
+    await tester.tap(find.text('Agenda · 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shown class'), findsOneWidget);
+    expect(find.text('Task shown'), findsOneWidget);
+    expect(find.text('Other class'), findsNothing);
+    expect(find.text('Task other'), findsNothing);
+  });
+
+  testWidgets('Empty shown day links to the earliest next feed event', (
+    tester,
+  ) async {
+    var day = DateTime(2001, 1, 2);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => TodayPage(
+              shownDay: day,
+              onOpenDay: (next) => setState(() => day = next),
+              events: const [
+                CalendarItem(
+                  date: '2001-01-04',
+                  start: '2001-01-04T08:00',
+                  kind: CalendarItemKind.dateRef,
+                  title: 'Later class',
+                  notePath: 'events/later.typ',
+                ),
+                CalendarItem(
+                  date: '2001-01-03',
+                  start: '08:00',
+                  kind: CalendarItemKind.dateRef,
+                  title: 'Lab',
+                  notePath: 'events/lab.typ',
+                ),
+                CalendarItem(
+                  date: '2001-01-03',
+                  start: '2001-01-03T09:00',
+                  kind: CalendarItemKind.dateRef,
+                  title: 'Consultation',
+                  notePath: 'events/consultation.typ',
+                ),
+                CalendarItem(
+                  date: '2001-01-01',
+                  start: '2001-01-01T08:00',
+                  kind: CalendarItemKind.dateRef,
+                  title: 'Past class',
+                  notePath: 'events/past.typ',
+                ),
+              ],
+              tasks: const [],
+              recent: const [],
+              editor: const SizedBox(),
+              onOpenPath: (_) {},
+              onSetStatus: (_, _) async {},
+            ),
+          ),
+        ),
+      ),
+    );
+    final next = find.text('No classes · Next: Wed 3 Jan 08:00 Lab');
+    expect(next, findsOneWidget);
+    expect(find.text('Lab'), findsNothing);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(day, DateTime(2001, 1, 3));
+    expect(find.text('Agenda · 2'), findsOneWidget);
+    expect(find.text('Consultation'), findsNothing);
+    await tester.tap(find.text('Agenda · 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('Consultation'), findsOneWidget);
+    expect(find.text('Lab'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Lab')).dy,
+      lessThan(tester.getTopLeft(find.text('Consultation')).dy),
+    );
+  });
+
   testWidgets('Agenda and Overdue start collapsed and remember expansion', (
     tester,
   ) async {
