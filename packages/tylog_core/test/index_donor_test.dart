@@ -85,16 +85,15 @@ void main() {
 
   /// Ages a donor past [IndexDonorStore.staleDonorAge] so the prune may touch
   /// it. A fresh peer donor is deliberately untouchable.
-  void age(String id) => File('${root.path}/${path(id)}').setLastModifiedSync(
-    DateTime.now().subtract(const Duration(days: 30)),
-  );
+  void age(String id) => File(
+    '${root.path}/${path(id)}',
+  ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 31)));
 
   test('publishing writes a donor a peer can read back', () async {
     await donors.publish('desktop', _index());
 
-    final json =
-        (jsonDecode(await storage.readText(path('desktop'))) as Map)
-            .cast<String, Object?>();
+    final json = (jsonDecode(await storage.readText(path('desktop'))) as Map)
+        .cast<String, Object?>();
     expect(json['schema'], indexDonorSchema);
     expect(json['indexVersion'], kVaultIndexVersion);
     expect((json['notes'] as List), hasLength(1));
@@ -112,9 +111,9 @@ void main() {
     await storage.createDirectory(TylogVaultPaths.indexDonors);
     for (final id in ['locked', 'dead-a', 'dead-b']) {
       await storage.writeText(path(id), _donorJson(schema: 1));
-      File('${root.path}/${path(id)}').setLastModifiedSync(
-        DateTime.now().subtract(const Duration(days: 30)),
-      );
+      File(
+        '${root.path}/${path(id)}',
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 31)));
     }
 
     final deleted = await IndexDonorStore(storage).pruneUnusable('mine');
@@ -215,38 +214,46 @@ void main() {
   // `_system/index/` syncs, so a donor this build can never read is downloaded
   // by every device forever. Measured at 5.7 MB of dead weight on the real
   // vault before this pruning existed.
-  test('pruning deletes unusable donors and keeps the rest', () async {
-    await storage.writeText(path('old-schema'), _donorJson(schema: 1));
-    await storage.writeText(
-      path('old-version'),
-      // Unusable now means the *query* is stale: a merely older index version
-      // is re-derivable and must survive.
-      _donorJson(version: 1, queryVersion: kVaultQueryVersion - 1),
-    );
-    await storage.writeText(path('corrupt'), 'not json at all');
-    await storage.writeText(path('current'), _donorJson());
-    await storage.writeText(path('mine'), _donorJson());
-    for (final id in ['old-schema', 'old-version', 'corrupt', 'current']) {
-      age(id);
-    }
+  test(
+    'pruning deletes expired donors of any schema and keeps own donor',
+    () async {
+      await storage.writeText(path('old-schema'), _donorJson(schema: 1));
+      await storage.writeText(
+        path('old-version'),
+        // An expired donor is pruned regardless of its versions.
+        _donorJson(version: 1, queryVersion: kVaultQueryVersion - 1),
+      );
+      await storage.writeText(path('corrupt'), 'not json at all');
+      await storage.writeText(path('current'), _donorJson());
+      await storage.writeText(path('mine'), _donorJson());
+      for (final id in [
+        'old-schema',
+        'old-version',
+        'corrupt',
+        'current',
+        'mine',
+      ]) {
+        age(id);
+      }
 
-    final deleted = await donors.pruneUnusable('mine');
+      final deleted = await donors.pruneUnusable('mine');
 
-    expect(deleted, 3);
-    expect(await storage.exists(path('old-schema')), isFalse);
-    expect(await storage.exists(path('old-version')), isFalse);
-    expect(await storage.exists(path('corrupt')), isFalse);
-    expect(
-      await storage.exists(path('current')),
-      isTrue,
-      reason: 'a readable current-version peer donor must survive',
-    );
-    expect(
-      await storage.exists(path('mine')),
-      isTrue,
-      reason: 'never delete this device\'s own donor',
-    );
-  });
+      expect(deleted, 4);
+      expect(await storage.exists(path('old-schema')), isFalse);
+      expect(await storage.exists(path('old-version')), isFalse);
+      expect(await storage.exists(path('corrupt')), isFalse);
+      expect(
+        await storage.exists(path('current')),
+        isFalse,
+        reason: 'retired current-schema installs must also be reclaimed',
+      );
+      expect(
+        await storage.exists(path('mine')),
+        isTrue,
+        reason: 'never delete this device\'s own donor',
+      );
+    },
+  );
 
   test('publishing prunes as a side effect', () async {
     await storage.writeText(path('old-schema'), _donorJson(schema: 1));
@@ -273,5 +280,39 @@ void main() {
     expect(store.lastReuse.skipped, 1);
     expect(store.lastReuse.isEmpty, isFalse);
     expect(store.lastReuse.toString(), contains('reused 1 notes'));
+  });
+  test(
+    'newest usable donor wins; expired and superseded donors are skipped',
+    () async {
+      await storage.writeText(path('expired'), _donorJson());
+      File(
+        '${root.path}/${path('expired')}',
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 15)));
+      await storage.writeText(path('older'), _donorJson());
+      File(
+        '${root.path}/${path('older')}',
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 2)));
+      await storage.writeText(
+        path('newest'),
+        _donorJson().replaceAll('FROM PEER', 'NEWEST'),
+      );
+      final selected = await donors.load('phone');
+      expect(selected!.notes.single.title, 'NEWEST');
+      expect(donors.lastReuse.devices, 1);
+      expect(donors.lastReuse.skipped, 2);
+    },
+  );
+
+  test('unchanged donor is refreshed after 24 hours', () async {
+    await donors.publish('desktop', _index());
+    File(
+      '${root.path}/${path('desktop')}',
+    ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 2)));
+    await donors.publish('desktop', _index(), previous: _index());
+    final stamp = await storage.stat(path('desktop'));
+    expect(
+      DateTime.now().difference(stamp!.modified!),
+      lessThan(const Duration(minutes: 1)),
+    );
   });
 }

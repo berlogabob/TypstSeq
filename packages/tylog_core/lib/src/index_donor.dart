@@ -82,11 +82,11 @@ class DonorReuse {
   final int notes;
   final int tasks;
 
-  /// Donor files actually merged.
+  /// Donor files selected.
   final int devices;
 
   /// Donor files skipped as unusable (wrong schema/version, corrupt, or a
-  /// synonym map that no longer matches).
+  /// synonym map that no longer matches), expired, or superseded.
   final int skipped;
 
   bool get isEmpty => notes == 0;
@@ -147,12 +147,20 @@ class IndexDonorStore {
   }) async {
     try {
       final path = _pathFor(deviceId);
-      final published = await storage.exists(path);
-      // Cheapest early-out, and the one that matters most on a phone: if we
+      final stamp = await storage.stat(path);
+      final published = stamp != null;
+      final fresh =
+          stamp?.modified != null &&
+          DateTime.now().difference(stamp!.modified!) < freshDonorAge;
+      await pruneUnusable(deviceId);
+      // Cheapest early-out, for repeat desktop passes: if we
       // already published and the scan changed nothing, don't encode ~2 MB of
       // JSON and read the same amount back over SAF just to discover the bytes
       // are identical.
-      if (published && _schemaConfirmed && _sameNotes(previous, index)) {
+      if (published &&
+          fresh &&
+          _schemaConfirmed &&
+          _sameNotes(previous, index)) {
         return;
       }
       final publishable = <String>{
@@ -178,14 +186,12 @@ class IndexDonorStore {
             if (publishable.contains(task.notePath)) task.toJson(),
         ],
       });
-      if (published && await storage.readText(path) == donor) {
+      if (published && fresh && await storage.readText(path) == donor) {
         _schemaConfirmed = true;
-        await pruneUnusable(deviceId);
         return;
       }
       await storage.writeText(path, donor);
       _schemaConfirmed = true;
-      await pruneUnusable(deviceId);
     } catch (error) {
       // A donor is a cache. Failing to publish one must never fail a rebuild —
       // but it must not be invisible either. This file's own history is the
@@ -204,29 +210,11 @@ class IndexDonorStore {
   /// so the failure has to be reportable rather than merely survivable.
   Object? lastPublishError;
 
-  /// Deletes donors this build could never read anyway, once they are old
-  /// enough that no device is still publishing them.
-  ///
-  /// `_system/index/` is inside the sync allowlist, so a donor written by an
-  /// older schema is downloaded by every device forever and never used —
-  /// measured at 5.7 MB of permanently dead weight across four files on the
-  /// real vault.
-  ///
-  /// The age bound is what makes this safe to do to *someone else's* file. A
-  /// donor is deleted from a shared folder, so a device that prunes a peer's
-  /// current donor destroys work the whole fleet was waiting on: the P30 did
-  /// exactly that after the version-10 bump, dropping its unusable local
-  /// replica of the desktop's donor seconds after the desktop had replaced it
-  /// with a readable one, and then propagating the deletion to the server.
-  /// Anything a live device owns is rewritten far inside [staleDonorAge], so
-  /// what is left past it belongs to a device that is gone or is not indexing.
-  ///
-  /// Never touches [ownDeviceId] — that one is replaced wholesale on publish —
-  /// and never a donor it merely disagrees with on synonyms (that one becomes
-  /// usable again when the maps converge).
-  /// How long an unreadable donor must sit untouched before a peer may delete
-  /// it. Longer than any indexing interval and any plausible offline stretch.
-  static const staleDonorAge = Duration(days: 7);
+  /// Retired installs must stop shipping their shards to every device.
+  /// Never delete our own shard or one with an unknown timestamp.
+  static const staleDonorAge = Duration(days: 30);
+  static const readableDonorAge = Duration(days: 14);
+  static const freshDonorAge = Duration(hours: 24);
 
   Future<int> pruneUnusable(String? ownDeviceId) async {
     final own = ownDeviceId == null || ownDeviceId.isEmpty
@@ -234,33 +222,20 @@ class IndexDonorStore {
         : _pathFor(ownDeviceId);
     var deleted = 0;
     try {
-      for (final file in await storage.list(path: TylogVaultPaths.indexDonors)) {
+      for (final file in await storage.list(
+        path: TylogVaultPaths.indexDonors,
+      )) {
         if (file.isDirectory ||
             !file.path.endsWith('.json') ||
             file.path == own) {
           continue;
         }
-        // Someone else's file. Only once nothing has rewritten it for a week,
+        // Someone else's file. Only once nothing has rewritten it for 30 days,
         // and never on the strength of an unknown timestamp.
         final modified = file.modified;
         if (modified == null ||
             DateTime.now().difference(modified) < staleDonorAge) {
           continue;
-        }
-        try {
-          final json = (jsonDecode(await storage.readText(file.path)) as Map)
-              .cast<String, Object?>();
-          // Exactly what load() will accept, or prune and load disagree: the
-          // `||` here kept donors matching only on index version, which load
-          // skips unconditionally on query version — so they were retained
-          // forever and read never, which is precisely the dead synced weight
-          // this function exists to remove.
-          final usable =
-              json['schema'] == indexDonorSchema &&
-              json['queryVersion'] == kVaultQueryVersion;
-          if (usable) continue;
-        } catch (_) {
-          // Unreadable or not JSON: dead weight by definition.
         }
         try {
           await storage.delete(file.path);
@@ -277,7 +252,7 @@ class IndexDonorStore {
     return deleted;
   }
 
-  /// Merges every *other* device's donor into one index the scanner can use as
+  /// Selects the newest usable peer donor as
   /// its cache. Best-effort throughout: an unreadable, corrupt or
   /// wrong-version donor is skipped, never fatal.
   /// What the last [load] took from peers, for callers that report it.
@@ -288,7 +263,11 @@ class IndexDonorStore {
     skipped: 0,
   );
 
-  Future<VaultIndex?> load(String? deviceId) async {
+  Future<VaultIndex?> load(
+    String? deviceId, {
+    Duration maxAge = readableDonorAge,
+  }) async {
+    lastReuse = const DonorReuse(notes: 0, tasks: 0, devices: 0, skipped: 0);
     final own = deviceId == null || deviceId.isEmpty
         ? null
         : _pathFor(deviceId);
@@ -298,6 +277,10 @@ class IndexDonorStore {
     } catch (_) {
       return null;
     }
+    files.sort(
+      (a, b) =>
+          (b.modified ?? DateTime(0)).compareTo(a.modified ?? DateTime(0)),
+    );
     final notes = <String, NoteRef>{};
     // Set when any merged donor predates the current index version, so the
     // returned index reports the older one and the scanner re-derives.
@@ -312,6 +295,12 @@ class IndexDonorStore {
       if (file.isDirectory ||
           !file.path.endsWith('.json') ||
           file.path == own) {
+        continue;
+      }
+      if (merged > 0 ||
+          file.modified == null ||
+          DateTime.now().difference(file.modified!) >= maxAge) {
+        skipped++;
         continue;
       }
       try {
@@ -336,7 +325,7 @@ class IndexDonorStore {
           continue;
         }
         final sameIndex = json['indexVersion'] == kVaultIndexVersion;
-        if (!sameIndex) staleDerivation = true;
+
         final donorTasks = <String, List<TaskRef>>{};
         for (final item in (json['tasks'] as List? ?? const []).cast<Map>()) {
           final task = TaskRef.fromJson(item.cast<String, Object?>());
@@ -348,19 +337,15 @@ class IndexDonorStore {
           skipped++;
           continue;
         }
-        merged++;
+        final donorNotes = <String, NoteRef>{};
         for (final item in (json['notes'] as List).cast<Map>()) {
           final note = NoteRef.fromJson(item.cast<String, Object?>());
-          final existing = notes[note.path];
-          // Whichever device saw the note last wins. The scanner verifies
-          // every entry against the bytes on disk regardless, so a wrong guess
-          // costs one re-parse, not a wrong index.
-          if (existing == null ||
-              (note.modifiedMillis ?? 0) >= (existing.modifiedMillis ?? 0)) {
-            notes[note.path] = note;
-            tasksByPath[note.path] = donorTasks[note.path] ?? const [];
-          }
+          donorNotes[note.path] = note;
         }
+        notes.addAll(donorNotes);
+        tasksByPath.addAll(donorTasks);
+        staleDerivation = !sameIndex;
+        merged++;
       } catch (_) {
         skipped++;
         continue;

@@ -9,6 +9,8 @@ interactive workspace. The shared metadata contract is
 [TyLog Format v1](spec/tylog-format-v1.md); the complete boundary and
 compatibility guide is [TyLog ecosystem](docs/tylog-ecosystem.md).
 
+Mac index donor: `tool/launchd/org.tylog.indexer.plist` runs the existing CLI on `~/Nextcloud/TyLogVault`, watches daily/notes/articles/screenshots, and checks every 15 minutes (120-second throttle).
+
 ## View modes and PDF export
 
 - **Edit:** rich block editing.

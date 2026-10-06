@@ -123,6 +123,8 @@ Future<void> _runOnce() async {
           :final index,
           :final donorReuse,
           :final donorPublishError,
+          :final parsedNotes,
+          :final durationMs,
         )) {
           unawaited(
             appendVaultTrace(vault, [
@@ -131,6 +133,8 @@ Future<void> _runOnce() async {
                 'event': 'indexed',
                 'trigger': 'background',
                 'notes': index.notes.length,
+                'parsedNotes': parsedNotes,
+                'durationMs': durationMs,
                 'tasks': index.tasks.length,
                 'reusedNotes': donorReuse.notes,
                 'reusedDevices': donorReuse.devices,

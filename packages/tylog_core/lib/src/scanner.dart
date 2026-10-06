@@ -427,6 +427,9 @@ Future<VaultIndex> scanVaultStorage(
   List<VaultStorageEntry>? entries,
   TypstInspector? inspector,
   VaultIndex? previous,
+  VaultIndex? donor,
+  void Function()? onParsed,
+  void Function(int tasks)? onDonorReused,
   bool force = false,
   Set<String> stale = const {},
   void Function(int complete, int total)? onProgress,
@@ -474,6 +477,11 @@ Future<VaultIndex> scanVaultStorage(
     (cachedTasks[task.notePath] ??= <TaskRef>[]).add(task);
   }
 
+  final donorTasks = <String, List<TaskRef>>{};
+  for (final task in donor?.tasks ?? const <TaskRef>[]) {
+    (donorTasks[task.notePath] ??= <TaskRef>[]).add(task);
+  }
+
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
@@ -490,26 +498,32 @@ Future<VaultIndex> scanVaultStorage(
     final relative = file.path;
     final fingerprint =
         '${file.modified?.millisecondsSinceEpoch ?? 0}:${file.size ?? 0}';
-    final cached = previous?.notesByPath[relative];
+    final donatedNote = donor?.notesByPath[relative];
+    final donorHash = donatedNote?.contentHash == null
+        ? null
+        : await storage.hash(relative);
+    final donated = donorHash != null && donorHash == donatedNote!.contentHash;
+    final cachedIndex = donated ? donor : previous;
+    final cached = cachedIndex?.notesByPath[relative];
     // [stale] carries the paths this process just wrote. SAF reports mtime at
     // second granularity, so a same-size edit inside the same second as the
     // previous scan looks unchanged to both gates below — a writer must never
     // depend on the clock to be seen.
     final reusable =
-        !force &&
-        previous?.version == kVaultIndexVersion &&
+        (!force || donated) &&
+        cachedIndex?.version == kVaultIndexVersion &&
         cached != null &&
-        !stale.contains(relative);
+        (donated || !stale.contains(relative));
     // An entry from an older index version whose *query* half is current: the
     // derivation moved, not the expensive part. Re-derived below against the
     // note's bytes instead of recompiling it. This is the difference between a
     // schema bump costing a file read per note and costing 14 minutes of Typst.
     final rederivable =
-        !force &&
+        (!force || donated) &&
         !reusable &&
         cached?.queryFacts != null &&
-        previous?.queryVersion == kVaultQueryVersion &&
-        !stale.contains(relative);
+        cachedIndex?.queryVersion == kVaultQueryVersion &&
+        (donated || !stale.contains(relative));
 
     // Does the cached entry still describe the bytes on disk? mtime+size is
     // the cheap answer, but it is device-local — SAF and APFS stamp the same
@@ -519,10 +533,10 @@ Future<VaultIndex> scanVaultStorage(
     String? contentHash;
     var matchesDisk = false;
     if ((reusable || rederivable) && cached != null) {
-      if (cached.fingerprint == fingerprint) {
+      if (donorHash == null && cached.fingerprint == fingerprint) {
         matchesDisk = true;
       } else if (cached.contentHash != null) {
-        contentHash = await storage.hash(relative);
+        contentHash = donorHash ?? await storage.hash(relative);
         matchesDisk = contentHash == cached.contentHash;
       }
     }
@@ -541,6 +555,7 @@ Future<VaultIndex> scanVaultStorage(
     // the worst case per scan is unchanged.
     final retryFailed =
         matchesDisk &&
+        !donated &&
         cached!.metadataSource == 'fallback-inspected' &&
         activeInspector != null &&
         failedReinspected < maxFailedReinspectionsPerScan &&
@@ -548,6 +563,7 @@ Future<VaultIndex> scanVaultStorage(
     final reinspect =
         retryFailed ||
         (matchesDisk &&
+            !donated &&
             (cached!.metadataSource == 'fallback' ||
                 cached.metadataSource == 'legacy') &&
             activeInspector != null &&
@@ -568,7 +584,11 @@ Future<VaultIndex> scanVaultStorage(
       );
       if (rederived != null) {
         notes[relative] = rederived;
-        tasks.addAll(cachedTasks[relative] ?? const []);
+        final reusedTasks = donated
+            ? donorTasks[relative] ?? const <TaskRef>[]
+            : cachedTasks[relative] ?? const <TaskRef>[];
+        tasks.addAll(reusedTasks);
+        if (donated) onDonorReused?.call(reusedTasks.length);
         onProgress?.call(fileIndex + 1, files.length);
         continue;
       }
@@ -584,14 +604,18 @@ Future<VaultIndex> scanVaultStorage(
       // launder stale facts into this device's own index and out to every peer
       // through the donor. Dropping them only costs that note its
       // re-derivability until it is next inspected.
-      final trustFacts = previous?.queryVersion == kVaultQueryVersion;
+      final trustFacts = cachedIndex?.queryVersion == kVaultQueryVersion;
       notes[relative] = cached!.fingerprint == fingerprint && trustFacts
           ? cached
           : cached.copyWith(
               fingerprint: fingerprint,
               clearQueryFacts: !trustFacts,
             );
-      tasks.addAll(cachedTasks[relative] ?? const []);
+      final reusedTasks = donated
+          ? donorTasks[relative] ?? const <TaskRef>[]
+          : cachedTasks[relative] ?? const <TaskRef>[];
+      tasks.addAll(reusedTasks);
+      if (donated) onDonorReused?.call(reusedTasks.length);
       if (cached.metadataSource != 'typst-query') {
         problems.add(_fallbackProblem(relative));
       }
@@ -602,6 +626,7 @@ Future<VaultIndex> scanVaultStorage(
     // SAF round trips per note; the bytes needed for both are the same bytes.
     // Byte-compatible with storage.hash: LocalVaultStorage and SafBridge both
     // emit lowercase-hex sha256, so cached hashes still match.
+    onParsed?.call();
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
     // Always from *these* bytes, never the earlier probe hash. Reaching here

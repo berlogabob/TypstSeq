@@ -1258,39 +1258,27 @@ class WorkspaceController extends ChangeNotifier {
           this.index = _retainIndex(index);
           indexedRevision = revision;
           opened.clearStaleNotes(stale);
-          // Indexing wrote nothing to the diagnostics until now, so "was
-          // donor sharing working last Tuesday?" had no answer at all. The
-          // sync trace already solves this shape — same file, same trim,
-          // same Copy diagnostics button. Only when there is something worth
-          // saying, or it would outnumber the sync events it sits beside.
+          // Every pass records parsing cost, including a zero-reuse fallback.
           final reuseNow = event.donorReuse;
-          // Every state the donor machinery can be in that is worth knowing
-          // about: it fed us, it rejected something, or it could not share.
-          // `isEmpty` alone was wrong — it is true whenever no notes were
-          // reused, which includes the case where donors were *skipped*, and
-          // that is precisely the symptom worth a record.
-          final worthRecording =
-              (reuseNow?.notes ?? 0) > 0 ||
-              (reuseNow?.skipped ?? 0) > 0 ||
-              event.donorPublishError != null;
-          if (worthRecording) {
-            unawaited(
-              appendVaultTrace(opened, [
-                {
-                  'timestamp': DateTime.now().toUtc().toIso8601String(),
-                  'event': 'indexed',
-                  'trigger': showProgress ? 'manual' : 'auto',
-                  'notes': index.notes.length,
-                  'tasks': index.tasks.length,
-                  'reusedNotes': reuseNow?.notes ?? 0,
-                  'reusedDevices': reuseNow?.devices ?? 0,
-                  'skippedDonors': reuseNow?.skipped ?? 0,
-                  if (event.donorPublishError != null)
-                    'errorMessage': event.donorPublishError,
-                },
-              ]).catchError((_) {}),
-            );
-          }
+          unawaited(
+            appendVaultTrace(opened, [
+              {
+                'timestamp': DateTime.now().toUtc().toIso8601String(),
+                'event': 'indexed',
+                'trigger': showProgress ? 'manual' : 'auto',
+                'notes': index.notes.length,
+                'parsedNotes': event.parsedNotes,
+                'durationMs': event.durationMs,
+                'tasks': index.tasks.length,
+                'reusedNotes': reuseNow?.notes ?? 0,
+                'reusedDevices': reuseNow?.devices ?? 0,
+                'skippedDonors': reuseNow?.skipped ?? 0,
+                if (event.donorPublishError != null)
+                  'errorMessage': event.donorPublishError,
+              },
+            ]).catchError((_) {}),
+          );
+
           if (showProgress) {
             final reuse = event.donorReuse;
             final shared = reuse == null || reuse.isEmpty

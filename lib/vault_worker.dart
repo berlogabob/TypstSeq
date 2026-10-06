@@ -124,9 +124,17 @@ class IndexProgressEvent extends VaultWorkerEvent {
 /// render notes while validation and the search index are still building — on
 /// SAF vaults that build reads many files and must never gate Journal/Library.
 class IndexBuiltEvent extends VaultWorkerEvent {
-  const IndexBuiltEvent(this.index, {this.donorReuse, this.donorPublishError});
+  const IndexBuiltEvent(
+    this.index, {
+    this.donorReuse,
+    this.donorPublishError,
+    this.parsedNotes = 0,
+    this.durationMs = 0,
+  });
 
   final VaultIndex index;
+  final int parsedNotes;
+  final int durationMs;
 
   /// What this scan took from other devices' donors, when it consulted them.
   /// Reported so "the laptop did the work" is observable instead of a silent
@@ -291,11 +299,15 @@ class _VaultWorker {
             :final index,
             :final donorReuse,
             :final donorPublishError,
+            :final parsedNotes,
+            :final durationMs,
           ):
             _send(
               IndexBuiltEvent(
                 index,
                 donorReuse: donorReuse,
+                parsedNotes: parsedNotes,
+                durationMs: durationMs,
                 donorPublishError: donorPublishError?.toString(),
               ),
             );

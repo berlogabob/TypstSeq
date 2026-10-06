@@ -63,7 +63,7 @@ Future<int> _index(List<String> args) async {
   // other device would otherwise repeat for itself, so the donor is the whole
   // point of running it here — and until this shared it, the CLI published one
   // but never *consumed* the peers', and never swept.
-  final maintenance = VaultMaintenance(storage);
+  final maintenance = VaultMaintenance(storage, publishDonor: true);
   final deviceId = await _cliDeviceId(storage);
   late final VaultIndex index;
   await for (final event in maintenance.run(
@@ -339,7 +339,7 @@ Future<void> _republishIndexArtifacts(
 ) async {
   final deviceId = await _cliDeviceId(storage);
   var notes = 0;
-  await for (final event in VaultMaintenance(storage).run(
+  await for (final event in VaultMaintenance(storage, publishDonor: true).run(
     inspector: CliTypstInspector(root),
     force: true,
     deviceId: deviceId,

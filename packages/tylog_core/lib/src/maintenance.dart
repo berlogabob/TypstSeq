@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
@@ -45,9 +46,13 @@ class MaintenanceIndexed extends VaultMaintenanceEvent {
     this.index, {
     required this.donorReuse,
     this.donorPublishError,
+    this.parsedNotes = 0,
+    this.durationMs = 0,
   });
 
   final VaultIndex index;
+  final int parsedNotes;
+  final int durationMs;
 
   /// What this scan took from other devices' donors.
   final DonorReuse donorReuse;
@@ -82,7 +87,12 @@ class MaintenanceSwept extends VaultMaintenanceEvent {
 /// Holds the caches that make a repeat pass cheap, so it is created once per
 /// process and reused — not per call.
 class VaultMaintenance {
-  VaultMaintenance(this.storage);
+  VaultMaintenance(this.storage, {bool? publishDonor})
+    : publishDonor = publishDonor ?? Platform.isMacOS;
+
+  final bool publishDonor;
+  int parsedNotes = 0;
+  int durationMs = 0;
 
   final VaultStorage storage;
 
@@ -119,13 +129,8 @@ class VaultMaintenance {
 
   VaultIndex? get lastBuiltIndex => _lastBuiltIndex;
 
-  /// Scan, write `_index/index.json`, publish this device's donor.
-  ///
-  /// [deviceId] enables the cross-device cache: this device's notes are
-  /// published to `_system/index/<deviceId>.json` after the scan, and a scan
-  /// with no usable local index seeds itself from the other devices' donors
-  /// instead of re-querying Typst for every note. Omit it and the rebuild is
-  /// purely local.
+  /// Scan and write the local index. Consumers reuse donors younger than 24 h;
+  /// publishers accept donors up to 14 days old and share their own shard.
   Future<VaultIndex> buildIndex({
     List<VaultStorageEntry>? entries,
     TypstInspector? inspector,
@@ -135,20 +140,33 @@ class VaultMaintenance {
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    var previous = _lastBuiltIndex ?? await loadVaultIndex(storage);
+    final timer = Stopwatch()..start();
+    parsedNotes = 0;
+    final previous = _lastBuiltIndex ?? await loadVaultIndex(storage);
     // Only *our own* last index says anything about what our donor holds; a
     // peer's donated index does not, so it must not suppress a republish.
     final ownPrevious = previous?.version == kVaultIndexVersion
         ? previous
         : null;
-    if (previous == null || previous.version != kVaultIndexVersion) {
-      previous = await donors.load(deviceId) ?? previous;
-    }
+    final donor = await donors.load(
+      deviceId,
+      maxAge: publishDonor
+          ? IndexDonorStore.readableDonorAge
+          : IndexDonorStore.freshDonorAge,
+    );
+    var reusedNotes = 0;
+    var reusedTasks = 0;
     final index = await scanVaultStorage(
       storage,
       entries: entries,
       inspector: inspector,
       previous: previous,
+      donor: publishDonor && force ? null : donor,
+      onParsed: () => parsedNotes++,
+      onDonorReused: (tasks) {
+        reusedNotes++;
+        reusedTasks += tasks;
+      },
       force: force,
       stale: stale,
       onProgress: onProgress,
@@ -172,9 +190,16 @@ class VaultMaintenance {
       }
     }
     _lastBuiltIndex = index;
-    if (deviceId != null && deviceId.isNotEmpty) {
+    if (publishDonor && deviceId != null && deviceId.isNotEmpty) {
       await donors.publish(deviceId, index, previous: ownPrevious);
     }
+    donors.lastReuse = DonorReuse(
+      notes: reusedNotes,
+      tasks: reusedTasks,
+      devices: reusedNotes > 0 ? 1 : 0,
+      skipped: donors.lastReuse.skipped,
+    );
+    durationMs = timer.elapsedMilliseconds;
     return index;
   }
 
@@ -203,6 +228,7 @@ class VaultMaintenance {
     final out = StreamController<VaultMaintenanceEvent>();
     out.onListen = () async {
       try {
+        final timer = Stopwatch()..start();
         final entries = List<VaultStorageEntry>.unmodifiable(
           await storage.list(recursive: true),
         );
@@ -221,6 +247,8 @@ class VaultMaintenance {
           MaintenanceIndexed(
             index,
             donorReuse: donorReuse,
+            parsedNotes: parsedNotes,
+            durationMs: timer.elapsedMilliseconds,
             donorPublishError: donorPublishError,
           ),
         );
