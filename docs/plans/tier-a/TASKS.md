@@ -35,16 +35,16 @@ Small tasks, one run each. Update the status column when a task changes state.
 | B7 | Soak test: 3 devices create, edit, rename, delete and attach; 30 rounds by default, 300 with `SOAK=1` | codex | `test/nextcloud_sync_test.dart` soak group, existing fake | tagged `soak`; file/hash convergence and content-loss oracle | done: 300 rounds passed; fixed stale/orphaned conflicts, NFC/NFD cleanup and cached remote ghosts; focused regressions, analysis and full suite green; data-loss review complete; uncommitted |
 | B8 | Coalesce autosaves into one revision envelope per device/note session (gap under 10 min) | codex | note persistence, revision publisher/receiver | 20 saves: one file and one upload per push; gap, peer, restart and retry tests | done: immutable revision IDs retained, durable local grouping, parent history preserved; analysis and full suite green; data-loss review complete; uncommitted |
 | B10 | Machine-written `_system/revisions/**` with local missing downloads without a conflict (stale record on P30) | codex | sync | test | done: P30 conflicts 0 |
-| B11 | Search tab does nothing while the index rebuilds | codex | search/navigation | widget test | done in code and widget test; not re-checked on a phone |
-| B9 | Release with B1–B11 | claude | — | GitHub release green, 3 devices updated | todo |
+| B11 | Search tab does nothing while the index rebuilds | codex | search/navigation | widget test | done in code and widget test; Search opens on the P30 after launch (not caught mid-rebuild) |
+| B9 | Release with B1–B11 | claude | — | GitHub release green, 3 devices updated | done: 0.10.0 published (all assets), 0.10.1 tagged; P30 and Mac updated, A24 still on 0.9.4 |
 
 ## C. Screenshots (Studio, already automated)
 
 | ID | Task | Who | Verify | Status |
 |---|---|---|---|---|
-| C1 | Reprocess notes without tags (about 200) with GLM-OCR + qwen | studio job | notes with tags ≥ 90% | running |
-| C2 | Backfill remaining screenshots | studio job | `backfill-full.log` reaches the end | queued after C1 |
-| C3 | Category coverage check on a 30-note sample | claude | `measure.py`: category ≥ 90%, app ≥ 90% | todo (after C1) |
+| C1 | Reprocess notes without tags (about 200) with GLM-OCR + qwen | studio job | notes with tags ≥ 90% | done: 348 of 349 notes have tags |
+| C2 | Backfill remaining screenshots | studio job | `backfill-full.log` reaches the end | running (`--only-processed`, then `--only-new`) |
+| C3 | Category coverage check on a 30-note sample | claude | `measure.py`: category ≥ 90%, app ≥ 90% | todo (after C2) |
 
 ## D. User
 
