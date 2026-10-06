@@ -544,6 +544,118 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saved screen'), findsOneWidget);
   });
+  testWidgets('screenshot categories group, filter and decorate cards', (
+    tester,
+  ) async {
+    final notes = [
+      shot.copyWith(
+        tags: const ['music-concert'],
+        properties: {...shot.properties, 'category': ' Food-Restaurant '},
+      ),
+      kept.copyWith(tags: const ['unrelated', 'music-concert']),
+      const NoteRef(
+        id: 'tag-fallback',
+        path: 'screenshots/tag-fallback.typ',
+        title: 'Tag fallback',
+        kind: 'screenshot',
+        outgoingLinks: [],
+        tags: ['unrelated', 'music-concert'],
+        properties: {'category': ' ', 'status': 'inbox'},
+      ),
+      const NoteRef(
+        id: 'uncategorized',
+        path: 'screenshots/uncategorized.typ',
+        title: 'No category',
+        kind: 'screenshot',
+        outgoingLinks: [],
+        tags: ['unrelated'],
+        properties: {'category': 123},
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryView(
+            initialTab: 2,
+            index: null,
+            pagedNotes: notes,
+            calendar: const [],
+            dayMarks: (daily: <String>{}, refs: <String>{}),
+            progressByPath: const {},
+            onOpenPath: (_) {},
+            onOpenDay: (_) {},
+            onSetTaskStatus: (_, _) async {},
+            onSetReadStatus: (_, _) async {},
+            onSetRelevance: (_, _) async {},
+            onCreateNote: (_) {},
+            onCreateEntity: () {},
+            onImportMarkdownArticles: () async {},
+            onReadPath: (_) {},
+            onDeleteArticle: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screenshots-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Group by category'));
+    await tester.pumpAndSettle();
+    expect(find.text('music-concert · 2'), findsNWidgets(2));
+    expect(find.text('food-restaurant · 1'), findsNWidgets(2));
+    expect(find.text('Uncategorized · 1'), findsOneWidget);
+    final card = find.byKey(ValueKey(shot.path));
+    final icon = find.descendant(
+      of: card,
+      matching: find.byIcon(Icons.restaurant),
+    );
+    expect(icon, findsOneWidget);
+    expect(tester.widget<Icon>(icon).semanticLabel, 'food-restaurant');
+    expect(tester.widget<Icon>(icon).size, 14);
+    final time = find.descendant(
+      of: card,
+      matching: find.text('09:07 · Browser'),
+    );
+    expect(tester.getRect(icon).right, lessThan(tester.getRect(time).left));
+    expect(find.byIcon(Icons.music_note), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey(notes.last.path)),
+        matching: find.byIcon(Icons.category),
+      ),
+      findsNothing,
+    );
+    final chip = find.byKey(
+      const ValueKey('screenshot-category-music-concert'),
+    );
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(find.byKey(ValueKey(shot.path)), findsNothing);
+    expect(find.byKey(ValueKey(kept.path)), findsOneWidget);
+    expect(find.text('Uncategorized · 1'), findsNothing);
+    final inbox = find.widgetWithText(ChoiceChip, 'Inbox · 3');
+    await tester.ensureVisible(inbox);
+    await tester.tap(inbox);
+    await tester.pumpAndSettle();
+    expect(find.byKey(ValueKey(kept.path)), findsNothing);
+    expect(find.text('Tag fallback'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('screenshots-search')),
+      'missing',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('music-concert · 0'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('screenshots-search')), '');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(chip).selected, isFalse);
+    expect(find.byKey(ValueKey(shot.path)), findsOneWidget);
+    expect(find.text('Uncategorized · 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   for (final width in [360.0, 1200.0]) {
     for (final scale in [1.0, 1.3]) {
       testWidgets('screenshot grid at width $width and text scale $scale', (
@@ -562,7 +674,7 @@ void main() {
             kind: 'screenshot',
             date: shot.date,
             outgoingLinks: const [],
-            properties: shot.properties,
+            properties: {...shot.properties, 'category': 'fashion-bags'},
           ),
         );
         await tester.pumpWidget(

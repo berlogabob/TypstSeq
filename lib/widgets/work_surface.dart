@@ -726,6 +726,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   final _query = TextEditingController();
   String? statusFilter;
   String? relevanceFilter;
+  String? categoryFilter;
   String sort = 'recent';
   String groupBy = 'none';
 
@@ -760,6 +761,42 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     'source': 'Group by source',
     'cluster': 'Group by cluster',
   };
+
+  static const _categoryIcons = {
+    'music-concert': Icons.music_note,
+    'event-nightlife': Icons.celebration,
+    'food-restaurant': Icons.restaurant,
+    'drink-bar': Icons.local_bar,
+    'fashion-bags': Icons.shopping_bag,
+    'shopping-product': Icons.shopping_cart,
+    'travel-place': Icons.flight,
+    'art-design': Icons.palette,
+    'film-tv': Icons.movie,
+    'books': Icons.menu_book,
+    'tech-software': Icons.computer,
+    'ai-ml': Icons.auto_awesome,
+    'job-career': Icons.work,
+    'education': Icons.school,
+    'sport-fitness': Icons.fitness_center,
+    'health': Icons.favorite,
+    'home-interior': Icons.home,
+    'humor-meme': Icons.sentiment_very_satisfied,
+    'chat-message': Icons.chat,
+    'map-location': Icons.location_on,
+    'other': Icons.category,
+  };
+
+  String? _category(NoteRef note) {
+    final property = note.properties['category'];
+    if (property is String && property.trim().isNotEmpty) {
+      return property.trim().toLowerCase();
+    }
+    for (final tag in note.tags) {
+      final category = tag.trim().toLowerCase();
+      if (_categoryIcons.containsKey(category)) return category;
+    }
+    return null;
+  }
 
   @override
   void dispose() {
@@ -797,6 +834,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   }
 
   String _groupKey(NoteRef note) => switch (groupBy) {
+    'category' => _category(note) ?? 'Uncategorized',
     'tag' => note.tags.isEmpty ? 'Untagged' : note.tags.first,
     'year' => _year(note),
     'month' =>
@@ -840,7 +878,29 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     for (final note in searched) {
       counts[_bucket(note)] = (counts[_bucket(note)] ?? 0) + 1;
     }
+    final categoryCounts = <String, int>{};
+    if (screenshots) {
+      for (final note in searched) {
+        if (_category(note) case final category?) {
+          categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+        }
+      }
+    }
+    final topCategories = categoryCounts.keys.toList()
+      ..sort((a, b) {
+        final byCount = categoryCounts[b]!.compareTo(categoryCounts[a]!);
+        return byCount == 0 ? a.compareTo(b) : byCount;
+      });
+    final categoryChips = topCategories.take(6).toList();
+    if (categoryFilter != null && !categoryChips.contains(categoryFilter)) {
+      categoryChips.add(categoryFilter!);
+    }
     final filtered = searched.where((note) {
+      if (screenshots &&
+          categoryFilter != null &&
+          _category(note) != categoryFilter) {
+        return false;
+      }
       if (statusFilter != null && _bucket(note) != statusFilter) return false;
       if (relevanceFilter != null &&
           note.properties['relevance'] != relevanceFilter) {
@@ -936,7 +996,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
               ),
               PopupMenuButton<String>(
                 key: Key('${screenshots ? 'screenshots' : 'articles'}-group'),
-                tooltip: 'Grouping: ${_groupLabels[groupBy]}',
+                tooltip:
+                    'Grouping: ${groupBy == 'category' ? 'Group by category' : _groupLabels[groupBy]}',
                 icon: const Icon(Icons.workspaces_outline),
                 initialValue: groupBy,
                 onSelected: (value) {
@@ -949,6 +1010,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                               ? const {
                                   'none': 'No grouping',
                                   'source': 'Group by source app',
+                                  'category': 'Group by category',
                                   'month': 'Group by month',
                                 }
                               : _groupLabels)
@@ -975,6 +1037,20 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                       ),
                       selected: statusFilter == value,
                       onSelected: (_) => setState(() => statusFilter = value),
+                    ),
+                  ),
+                for (final category in categoryChips)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      key: ValueKey('screenshot-category-$category'),
+                      label: Text(
+                        '$category · ${categoryCounts[category] ?? 0}',
+                      ),
+                      selected: categoryFilter == category,
+                      onSelected: (selected) => setState(
+                        () => categoryFilter = selected ? category : null,
+                      ),
                     ),
                   ),
                 for (final (value, label) in <(String?, String)>[
@@ -1281,6 +1357,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
 
   Widget _screenshotCard(NoteRef note) {
     final title = _screenshotTitle(note);
+    final category = _category(note);
     final showTitle =
         title.toLowerCase() != 'screenshot' &&
         !RegExp(
@@ -1339,13 +1416,28 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                         context,
                       ).textTheme.titleSmall?.copyWith(color: Colors.white),
                     ),
-                  Text(
-                    _screenshotMetadata(note),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.white),
+                  Row(
+                    children: [
+                      if (category != null) ...[
+                        Icon(
+                          _categoryIcons[category] ?? Icons.category,
+                          size: 14,
+                          color: Colors.white,
+                          semanticLabel: category,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          _screenshotMetadata(note),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: Colors.white),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
