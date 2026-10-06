@@ -1467,9 +1467,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (dirty && !await _save()) return;
     if (!mounted) return;
     final v = vault;
-    final ix = index;
-    if (v == null || ix == null) return;
-    await _ensureSemanticController();
+    if (v == null) return;
+    final ix = index ??= VaultIndex(notesByPath: {}, backlinksByTarget: {});
+    unawaited(_ensureSemanticController());
     if (!mounted) return;
     final searchStore = SavedSearchStore(v.storage);
     var savedSearches = await searchStore.load();

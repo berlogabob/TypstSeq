@@ -428,6 +428,7 @@ Future<VaultIndex> scanVaultStorage(
   TypstInspector? inspector,
   VaultIndex? previous,
   VaultIndex? donor,
+  Map<String, String> knownHashes = const {},
   void Function()? onParsed,
   void Function(int tasks)? onDonorReused,
   bool force = false,
@@ -501,7 +502,7 @@ Future<VaultIndex> scanVaultStorage(
     final donatedNote = donor?.notesByPath[relative];
     final donorHash = donatedNote?.contentHash == null
         ? null
-        : await storage.hash(relative);
+        : knownHashes[relative] ?? await storage.hash(relative);
     final donated = donorHash != null && donorHash == donatedNote!.contentHash;
     final cachedIndex = donated ? donor : previous;
     final cached = cachedIndex?.notesByPath[relative];
@@ -536,7 +537,8 @@ Future<VaultIndex> scanVaultStorage(
       if (donorHash == null && cached.fingerprint == fingerprint) {
         matchesDisk = true;
       } else if (cached.contentHash != null) {
-        contentHash = donorHash ?? await storage.hash(relative);
+        contentHash =
+            donorHash ?? knownHashes[relative] ?? await storage.hash(relative);
         matchesDisk = contentHash == cached.contentHash;
       }
     }

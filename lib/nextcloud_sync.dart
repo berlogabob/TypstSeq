@@ -387,6 +387,7 @@ class NextcloudSync {
     String trigger = 'manual',
     InitialSyncMode? initialMode,
     bool pushOnly = false,
+    bool remoteChanged = false,
   }) async {
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     var stage = 'start';
@@ -619,7 +620,8 @@ class NextcloudSync {
       // cursor is never updated and every later pass makes the same mistake
       // until something unrelated moves the file's mtime. The scanner has
       // carried a set for this hazard from the start; sync had none.
-      if (initialMode == null &&
+      if (!remoteChanged &&
+          initialMode == null &&
           !stateRecovered &&
           !loadedState.remoteMismatch &&
           !loadedState.legacy &&
@@ -872,11 +874,19 @@ class NextcloudSync {
         for (final conflict in await loadSyncConflicts(vault))
           unorm.nfc(conflict.path): conflict,
       };
-      final allPaths = <String>{
-        ...localEntries.keys,
-        ...remote.keys,
-        ...syncState.keys,
-      }.toList()..sort();
+      final allPaths =
+          <String>{
+            ...localEntries.keys,
+            ...remote.keys,
+            ...syncState.keys,
+          }.toList()..sort((a, b) {
+            // Apply proven absences before transfers; _syncPath keeps the wipe and
+            // local-change guards. No second confirmation pull is needed.
+            final aMissing =
+                syncState!.containsKey(a) && !remote.containsKey(a);
+            final bMissing = syncState.containsKey(b) && !remote.containsKey(b);
+            return aMissing == bMissing ? a.compareTo(b) : (aMissing ? -1 : 1);
+          });
       final cursors = syncState;
       var completed = 0;
       var nextPath = 0;
@@ -1552,6 +1562,9 @@ Future<void> appendVaultTrace(
   ]);
 }
 
+bool isMachineRevisionPath(String path) =>
+    path.startsWith('_system/revisions/') && path.endsWith('.json');
+
 /// A path holding a regenerable cache rather than anything a user wrote.
 ///
 /// Index donors are the only such thing inside the sync allowlist. They matter
@@ -1731,6 +1744,18 @@ Future<List<SyncConflict>> loadSyncConflicts(Vault vault) async {
       }
       final localSnapshot = json['localSnapshot'] as String?;
       final remoteSnapshot = json['remoteSnapshot'] as String?;
+      if (path != null &&
+          isMachineRevisionPath(path) &&
+          json['remoteExists'] != false &&
+          !await vault.storage.exists(path)) {
+        for (final snapshot in [localSnapshot, remoteSnapshot]) {
+          if (snapshot != null && await vault.storage.exists(snapshot)) {
+            await vault.storage.delete(snapshot);
+          }
+        }
+        await vault.storage.delete(entry.path);
+        continue;
+      }
       // A record that says the remote is gone keeps its snapshot as evidence,
       // not as a side to compare. Self-healing on snapshot equality there would
       // delete a real delete-vs-edit conflict without anyone deciding it.

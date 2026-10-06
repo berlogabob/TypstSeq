@@ -68,13 +68,20 @@ sealed class VaultWorkerCommand {
 
 /// [force] discards the scan cache and re-compiles every note.
 class RebuildIndexCommand extends VaultWorkerCommand {
-  const RebuildIndexCommand({required this.stale, this.force = false});
+  const RebuildIndexCommand({
+    required this.stale,
+    this.hashStale,
+    this.force = false,
+  });
 
   final bool force;
 
   /// The root isolate's pending [Vault.staleNotes] — the worker's own `Vault`
   /// never saw those saves.
   final Set<String> stale;
+
+  /// Unsynced local edits cannot trust a same-mtime/size sync receipt.
+  final Set<String>? hashStale;
 }
 
 class CancelWorkCommand extends VaultWorkerCommand {
@@ -269,6 +276,15 @@ class _VaultWorker {
     _cancelled = false;
     PkmsSearchIndex? pendingSearch;
     try {
+      if (_searchRevision == 0 &&
+          await _vault.storage.exists(Vault.searchIndexPath)) {
+        final cached = await PkmsSearchIndex.loadStorage(
+          _vault.storage,
+          Vault.searchIndexPath,
+        );
+        _search = cached;
+        _send(SearchReadyEvent(++_searchRevision));
+      }
       _inspector ??= await _createInspector();
       // One routine, shared with the background service and the CLI. What used
       // to be inlined here — the index write, the donor publish, the donor
@@ -280,6 +296,7 @@ class _VaultWorker {
         force: command.force,
         deviceId: _boot.deviceId,
         stale: command.stale,
+        hashStale: command.hashStale,
         isCancelled: () => _cancelled,
         extraProblems: (index) => [
           // Unparseable task recurrence rules — rrule lives in the app layer,

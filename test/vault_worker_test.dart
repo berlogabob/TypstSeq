@@ -88,6 +88,35 @@ void main() {
     expect(events.whereType<SearchReadyEvent>().single.revision, 1);
   });
 
+  test(
+    'a cold worker serves saved search before its rebuild finishes',
+    () async {
+      final seeded = await seed(400);
+      final vault = Vault(seeded.root);
+      final index = await vault.rebuildIndex();
+      final search = await PkmsSearchIndex.buildStorage(vault.storage, index);
+      await search.saveStorage(vault.storage, Vault.searchIndexPath);
+      final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
+      addTearDown(worker.dispose);
+      var cachedReady = false;
+      await for (final event in worker.run(
+        const RebuildIndexCommand(force: true, stale: {}),
+      )) {
+        if (event is SearchReadyEvent) {
+          cachedReady = true;
+          expect(await worker.search('unit'), isNotEmpty);
+        }
+        if (event is IndexProgressEvent && event.complete < event.total) {
+          expect(cachedReady, isTrue);
+          expect(await worker.search('unit'), isNotEmpty);
+          worker.cancel();
+        }
+      }
+      expect(cachedReady, isTrue);
+      expect(await worker.search('unit'), isNotEmpty);
+    },
+  );
+
   test('the worker answers a search without shipping the index', () async {
     final vault = await seed(4);
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);

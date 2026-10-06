@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
@@ -10,6 +12,40 @@ class _Inspector implements TypstInspector {
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
     calls++;
     return const [];
+  }
+}
+
+class _ReceiptStorage extends LocalVaultStorage {
+  _ReceiptStorage(super.root);
+  List<VaultStorageEntry>? notes;
+  int bodyReads = 0;
+  int hashReads = 0;
+
+  @override
+  Future<Uint8List> readBytes(String path) async {
+    if (path.startsWith('notes/')) bodyReads++;
+    return super.readBytes(path);
+  }
+
+  @override
+  Future<String> hash(String path) async {
+    if (path.startsWith('notes/')) hashReads++;
+    return super.hash(path);
+  }
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async {
+    final entries = await super.list(path: path, recursive: recursive);
+    if (recursive && notes != null) {
+      return [
+        ...entries.where((entry) => !entry.path.startsWith('notes/')),
+        ...notes!,
+      ];
+    }
+    return entries;
   }
 }
 
@@ -43,6 +79,92 @@ void main() {
         .toList();
     return events.whereType<MaintenanceIndexed>().single;
   }
+
+  test(
+    'cold and warm 6731-note donor adoption reads zero note bodies',
+    () async {
+      final receipts = _ReceiptStorage(root);
+      final hash = await storage.hash('notes/a.typ');
+      final stamp = DateTime.now();
+      receipts.notes = List.generate(
+        6731,
+        (i) => VaultStorageEntry(
+          path: 'notes/$i.typ',
+          isDirectory: false,
+          size: 4,
+          modified: stamp,
+        ),
+      );
+      final donorIndex = VaultIndex(
+        notesByPath: {
+          for (final entry in receipts.notes!)
+            entry.path: scanNote(
+              entry.path,
+              '= A\n',
+            ).copyWith(contentHash: hash),
+        },
+        backlinksByTarget: {},
+      );
+      await IndexDonorStore(receipts).publish('cli-mac', donorIndex);
+      await receipts.writeText(
+        '.tylog/sync_state.json',
+        jsonEncode({
+          'schema': 2,
+          'cursors': {
+            for (final entry in receipts.notes!)
+              entry.path: {
+                'localSha256': hash,
+                'localMillis': stamp.millisecondsSinceEpoch,
+                'localSize': 4,
+              },
+          },
+        }),
+      );
+      await receipts.delete(TylogVaultPaths.index);
+      final phone = VaultMaintenance(receipts, publishDonor: false);
+      for (final force in [false, false, true]) {
+        final indexed = await run(phone, 'phone', force: force);
+        expect(indexed.index.notes.length, 6731);
+        expect(indexed.parsedNotes, 0);
+        expect(indexed.donorReuse.notes, 6731);
+        expect(receipts.bodyReads, 0);
+        expect(receipts.hashReads, 0);
+        expect(indexed.durationMs, lessThan(20000));
+      }
+    },
+  );
+
+  test(
+    'changed receipt stamps and stale local writes must read bodies',
+    () async {
+      final receipts = _ReceiptStorage(root);
+      await run(VaultMaintenance(receipts, publishDonor: true), 'cli-mac');
+      final entry = (await receipts.stat('notes/a.typ'))!;
+      await receipts.writeText(
+        '.tylog/sync_state.json',
+        jsonEncode({
+          'schema': 2,
+          'cursors': {
+            'notes/a.typ': {
+              'localSha256': await receipts.hash(entry.path),
+              'localMillis': entry.modified!.millisecondsSinceEpoch,
+              'localSize': entry.size,
+            },
+          },
+        }),
+      );
+      await receipts.writeText(entry.path, '= edited\n');
+      receipts.bodyReads = receipts.hashReads = 0;
+      final phone = VaultMaintenance(receipts, publishDonor: false);
+      final index = await phone.buildIndex(stale: {entry.path});
+      expect(
+        index.notesByPath[entry.path]!.contentHash,
+        await storage.hash(entry.path),
+      );
+      expect(receipts.bodyReads, greaterThan(0));
+      expect(receipts.hashReads, greaterThan(0));
+    },
+  );
 
   test(
     'phone reuses fresh hashes on warm and forced scans without publishing',

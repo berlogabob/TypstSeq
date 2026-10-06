@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -137,10 +138,12 @@ class VaultMaintenance {
     bool force = false,
     String? deviceId,
     Set<String> stale = const {},
+    Set<String>? hashStale,
     void Function(int complete, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final timer = Stopwatch()..start();
+    entries ??= await storage.list(recursive: true);
     parsedNotes = 0;
     final previous = _lastBuiltIndex ?? await loadVaultIndex(storage);
     // Only *our own* last index says anything about what our donor holds; a
@@ -162,6 +165,7 @@ class VaultMaintenance {
       inspector: inspector,
       previous: previous,
       donor: publishDonor && force ? null : donor,
+      knownHashes: await _syncedHashes(storage, entries, hashStale ?? stale),
       onParsed: () => parsedNotes++,
       onDonorReused: (tasks) {
         reusedNotes++;
@@ -219,6 +223,7 @@ class VaultMaintenance {
     bool force = false,
     String? deviceId,
     Set<String> stale = const {},
+    Set<String>? hashStale,
     bool Function()? isCancelled,
     bool validate = true,
     bool buildSearch = true,
@@ -238,6 +243,7 @@ class VaultMaintenance {
           force: force,
           deviceId: deviceId,
           stale: stale,
+          hashStale: hashStale,
           onProgress: (complete, total) {
             if (!out.isClosed) out.add(MaintenanceProgress(complete, total));
           },
@@ -452,3 +458,40 @@ const orphanTempGrace = Duration(hours: 1);
 bool isForkedVaultLockPath(String path) => _forkedVaultLock.hasMatch(path);
 
 final RegExp _forkedVaultLock = RegExp(r'^\.tylog/vault \(\d+\)\.lock$');
+
+/// Device-local sync receipts are usable only while the listing still matches.
+Future<Map<String, String>> _syncedHashes(
+  VaultStorage storage,
+  List<VaultStorageEntry>? entries,
+  Set<String> stale,
+) async {
+  if (entries == null) return const {};
+  try {
+    final state = jsonDecode(await storage.readText('.tylog/sync_state.json'));
+    if (state is! Map || state['schema'] != 2 || state['cursors'] is! Map) {
+      return const {};
+    }
+    final cursors = state['cursors'] as Map;
+    final hashes = <String, String>{};
+    final validHash = RegExp(r'^[a-f0-9]{64}$');
+    for (final entry in entries) {
+      if (stale.contains(entry.path) || !entry.path.endsWith('.typ')) {
+        continue;
+      }
+      final cursor = cursors[entry.path];
+      if (cursor is! Map || entry.modified == null || entry.size == null) {
+        continue;
+      }
+      final hash = cursor['localSha256'];
+      if (hash is String &&
+          validHash.hasMatch(hash) &&
+          cursor['localMillis'] == entry.modified!.millisecondsSinceEpoch &&
+          cursor['localSize'] == entry.size) {
+        hashes[entry.path] = hash;
+      }
+    }
+    return hashes;
+  } catch (_) {
+    return const {};
+  }
+}

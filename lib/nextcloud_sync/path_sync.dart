@@ -344,7 +344,9 @@ extension _PathSync on NextcloudSync {
         remoteExists &&
         (unresolvedConflict != null || (localChanged && remoteChanged));
 
-    if (unresolvedConflict != null && isRegenerableCachePath(path)) {
+    if (unresolvedConflict != null &&
+        (isRegenerableCachePath(path) ||
+            (isMachineRevisionPath(path) && !localExists && remoteExists))) {
       // A conflict already recorded against a cache file would otherwise sit
       // there forever: the loop skips a conflicted path before reaching the
       // branches that know a donor is regenerable, so the record is the only
@@ -578,6 +580,18 @@ extension _PathSync on NextcloudSync {
           reason = previous == null ? 'first-sync-different' : 'both-changed';
         }
       }
+    } else if (isMachineRevisionPath(path) && !localExists && remoteExists) {
+      action = SyncAction.download;
+      final download = await _downloadStorage(
+        path,
+        vault.storage,
+        archive: archive,
+        remoteFile: remoteFile,
+      );
+      observedRemoteEtag = download.etag;
+      downloadedHash = download.localSha256;
+      downloaded++;
+      reason = 'missing-machine-revision';
     } else if (previous != null && !localExists && remoteExists) {
       if ((remoteChanged || stateRecovered || possibleRename) &&
           isRegenerableCachePath(path)) {

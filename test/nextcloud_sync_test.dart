@@ -665,6 +665,36 @@ void main() {
       },
     );
 
+    for (final staleRecord in [false, true]) {
+      test(
+        'missing machine revision downloads; stale record=$staleRecord',
+        () async {
+          final s = await synced();
+          final path = '_system/revisions/note-${'a' * 64}.json';
+          await s.vault.storage.writeText(path, '{"revision":"old"}');
+          s.remote[path] = _remoteText('{"revision":"old"}');
+          await NextcloudSync(_config(s.server)).sync(s.vault);
+          await s.vault.storage.delete(path);
+          s.remote[path] = _remoteText('{"revision":"new"}');
+          if (staleRecord) {
+            await createSyncConflict(
+              s.vault,
+              path,
+              localBytes: const [],
+              remoteBytes: utf8.encode('{"revision":"old"}'),
+            );
+            expect(await loadSyncConflicts(s.vault), isEmpty);
+          }
+          final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+          expect(result.conflicts, 0);
+          expect(result.deletedRemote, 0);
+          expect(await s.vault.readText(path), '{"revision":"new"}');
+          expect(await loadSyncConflicts(s.vault), isEmpty);
+          expect(await s.vault.storage.list(path: '.tylog/conflicts'), isEmpty);
+        },
+      );
+    }
+
     test(
       'remote deletion in a re-listed folder applies in one poll pull',
       () async {
@@ -672,9 +702,23 @@ void main() {
         final storage = s.vault.storage as _ListCountingStorage;
         storage.recursiveLists = 0;
         s.remote.remove('notes/other.typ');
+        expect(
+          await NextcloudSync(
+            _config(s.server),
+          ).pollIsUnchanged(s.vault, dirty: false),
+          isFalse,
+        );
         final result = await NextcloudSync(
           _config(s.server),
-        ).sync(s.vault, trigger: 'poll');
+        ).sync(s.vault, trigger: 'poll', remoteChanged: true);
+        expect(
+          s.metrics.propfinds,
+          3,
+        ); // One probe, root + notes; no confirmation.
+        expect(s.metrics.depthZeroPropfinds, 1);
+        expect(s.metrics.depthInfinityPropfinds, 0);
+        expect(s.metrics.individualGets, 0);
+        expect(s.metrics.puts, 0);
         expect(s.metrics.listedFolders, contains('notes/'));
         expect(result.deletedLocal, 1);
         expect(storage.recursiveLists, 0);

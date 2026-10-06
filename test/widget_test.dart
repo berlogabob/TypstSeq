@@ -22,6 +22,7 @@ import 'package:tylog/retrieval/cosine_search.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/saved_searches.dart';
 import 'package:tylog_core/search_index.dart';
+import 'package:tylog_core/scanner.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
@@ -1182,6 +1183,56 @@ void main() {
     await tester.pump();
     expect(shareCalls, 0);
   });
+
+  for (final cold in [false, true]) {
+    testWidgets('Search opens during a gated rebuild; cold=$cold', (
+      tester,
+    ) async {
+      final storage = _GatedScanStorage();
+      final vault = Vault.withStorage(storage);
+      await storage.writeText('notes/current.typ', '= Existing result');
+      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpAndSettle();
+      final dynamic home = tester.state(find.byType(HomeScreen));
+      final dynamic controller = home.workspace;
+      controller.vault = vault;
+      controller.replaceNote('notes/current.typ', '= Existing result');
+      final partial = VaultIndex(
+        notesByPath: {
+          'notes/current.typ': scanNote(
+            'notes/current.typ',
+            '= Existing result',
+          ),
+        },
+        backlinksByTarget: {},
+      );
+      controller.index = cold ? null : partial;
+      controller.searchIndex = await PkmsSearchIndex.buildStorage(
+        storage,
+        partial,
+      );
+      controller.searchReady = true;
+      final release = Completer<void>();
+      storage.listGate = release.future;
+      storage.gateNextList = true;
+      final Future<void> rebuild = controller.rebuildIndex();
+      await tester.pump();
+      expect(controller.rebuilding, isTrue);
+      await tester.tap(find.text('Search').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Search notes, tasks, and attachments'), findsOneWidget);
+      expect(find.text('Existing result'), findsOneWidget);
+      expect(controller.rebuilding, isTrue);
+      release.complete();
+      await tester.pumpAndSettle();
+      await rebuild;
+      expect(
+        controller.index.notesByPath.containsKey('notes/current.typ'),
+        isTrue,
+      );
+    });
+  }
 
   testWidgets('new page opens before a gated refresh and deduplicates taps', (
     tester,

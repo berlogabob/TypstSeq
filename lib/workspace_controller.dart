@@ -1239,7 +1239,11 @@ class WorkspaceController extends ChangeNotifier {
     // once the scan reports back covering it.
     final stale = opened.staleNotes;
     await for (final event in worker.run(
-      RebuildIndexCommand(force: force, stale: stale),
+      RebuildIndexCommand(
+        force: force,
+        stale: stale,
+        hashStale: opened.pendingSyncWrites,
+      ),
     )) {
       // Vault closed (or swapped) under us — the events belong to nothing now.
       if (!_owns(opened, generation)) return;
@@ -1498,7 +1502,7 @@ class WorkspaceController extends ChangeNotifier {
       // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
       if (unchanged) return;
-      await syncNow(trigger: 'poll');
+      await syncNow(trigger: 'poll', remoteChanged: true);
     } finally {
       if (_vaultGeneration == generation) _pollInFlight = false;
     }
@@ -1563,6 +1567,7 @@ class WorkspaceController extends ChangeNotifier {
     String trigger = 'manual',
     NextcloudConfig? configOverride,
     InitialSyncMode? initialMode,
+    bool remoteChanged = false,
   }) {
     if (_disposed) return Future.value(false);
     late final Future<bool> flight;
@@ -1570,6 +1575,7 @@ class WorkspaceController extends ChangeNotifier {
       trigger: trigger,
       configOverride: configOverride,
       initialMode: initialMode,
+      remoteChanged: remoteChanged,
     ).whenComplete(() => _syncFlights.remove(flight));
     _syncFlights.add(flight);
     return flight;
@@ -1579,6 +1585,7 @@ class WorkspaceController extends ChangeNotifier {
     String trigger = 'manual',
     NextcloudConfig? configOverride,
     InitialSyncMode? initialMode,
+    bool remoteChanged = false,
   }) async {
     final opened = vault;
     final config = configOverride ?? cloud;
@@ -1720,36 +1727,42 @@ class WorkspaceController extends ChangeNotifier {
         },
       );
       final result = await sync.sync(
-        opened, trigger: trigger, initialMode: initialMode, pushOnly: pushOnly,
+        opened,
+        trigger: trigger,
+        initialMode: initialMode,
+        pushOnly: pushOnly,
+        remoteChanged: remoteChanged,
       );
       if (!_owns(opened, generation)) return false;
       if (revisionDatabase != null) {
-        for (final file in await opened.storage.list(
-          path: '_system/revisions',
-        )) {
-          if (file.isDirectory || !file.path.endsWith('.json')) continue;
-          try {
-            final envelope = RevisionPublisher.decodeEnvelope(
-              await opened.storage.readBytes(file.path),
-            );
-            final node = envelope.node;
-            if (node != null) {
-              await revisionDatabase.receiveRevision(
-                node: node,
-                revision: envelope.revision,
+        await revisionDatabase.transaction(() async {
+          for (final file in await opened.storage.list(
+            path: '_system/revisions',
+          )) {
+            if (file.isDirectory || !file.path.endsWith('.json')) continue;
+            try {
+              final envelope = RevisionPublisher.decodeEnvelope(
+                await opened.storage.readBytes(file.path),
               );
+              final node = envelope.node;
+              if (node != null) {
+                await revisionDatabase.receiveRevision(
+                  node: node,
+                  revision: envelope.revision,
+                );
+              }
+              final annotation = envelope.annotation;
+              if (annotation != null) {
+                await revisionDatabase.receiveAnnotationRevision(
+                  annotation: annotation,
+                  revision: envelope.revision,
+                );
+              }
+            } catch (_) {
+              // A malformed or partial envelope is retried on the next sync.
             }
-            final annotation = envelope.annotation;
-            if (annotation != null) {
-              await revisionDatabase.receiveAnnotationRevision(
-                annotation: annotation,
-                revision: envelope.revision,
-              );
-            }
-          } catch (_) {
-            // A malformed or partial envelope is retried on the next sync.
           }
-        }
+        });
       }
       if (revisionPublisher != null &&
           materializedRevisionIds.isNotEmpty &&
