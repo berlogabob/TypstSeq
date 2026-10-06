@@ -10,6 +10,26 @@ import 'package:tylog_core/values.dart';
 import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes;
 
 void main() {
+  test(
+    'user index files retain pending-write protection and dirtiness',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_pending_index_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      for (final path in [
+        '_system/index/custom.typ',
+        '_system/index/custom.txt',
+      ]) {
+        await vault.saveNote(path, 'user content');
+        expect(vault.pendingSyncWrites, contains(path));
+        expect(vault.hasPendingSyncWrites, isTrue);
+        expect(vault.isPendingSyncWrite(path), isTrue);
+        expect(vault.staleNotes, contains(path));
+        vault.clearPendingSyncWrites([path]);
+      }
+    },
+  );
+
   test('default vault prefers Nextcloud on desktop', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_nextcloud_');
     addTearDown(() => dir.delete(recursive: true));

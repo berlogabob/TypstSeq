@@ -272,6 +272,78 @@ void main() {
       },
     );
 
+    for (final localOnly in [true, false]) {
+      test(
+        'one-sided job change uses ${localOnly ? 'upload' : 'download'} despite clock skew',
+        () async {
+          final s = await synced();
+          const path = '_system/jobs/articles/job.json';
+          await s.vault.storage.writeText(path, '{"status":"queued"}');
+          s.remote[path] = _remoteText('{"status":"queued"}');
+          await NextcloudSync(_config(s.server)).sync(s.vault);
+          final file = File(
+            '${(s.vault.storage as _ListCountingStorage).root.path}/$path',
+          );
+          if (localOnly) {
+            await s.vault.storage.writeText(path, '{"status":"local"}');
+            await file.setLastModified(DateTime.utc(2020));
+          } else {
+            await file.setLastModified(DateTime.utc(2040));
+            s.remote[path] = _remoteText('{"status":"remote"}');
+          }
+          final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+          expect(result.uploaded, localOnly ? 1 : 0);
+          expect(result.downloaded, localOnly ? 0 : 1);
+          final expected = localOnly
+              ? '{"status":"local"}'
+              : '{"status":"remote"}';
+          expect(await s.vault.readText(path), expected);
+          expect(utf8.decode(s.remote[path]!.bytes), expected);
+        },
+      );
+    }
+
+    test('failed job auto-resolution preserves conflict snapshots', () async {
+      const path = '_system/jobs/articles/job.json';
+      var fail = false;
+      late Map<String, _MutableRemoteFile> remote;
+      final s = await synced(
+        onBeforePut: (uploadedPath) {
+          if (fail && uploadedPath == path) {
+            remote[path] = _remoteText('{"status":"raced"}');
+          }
+        },
+      );
+      remote = s.remote;
+      await s.vault.storage.writeText(path, '{"status":"local"}');
+      remote[path] = _MutableRemoteFile(
+        bytes: utf8.encode('{"status":"remote"}'),
+        etag: '"job"',
+        modified: DateTime.utc(2020),
+      );
+      await createSyncConflict(
+        s.vault,
+        path,
+        localBytes: utf8.encode('{"status":"local"}'),
+        remoteBytes: utf8.encode('{"status":"remote"}'),
+      );
+      final conflict = (await loadSyncConflicts(s.vault)).single;
+      fail = true;
+      await expectLater(
+        NextcloudSync(_config(s.server)).sync(s.vault),
+        throwsA(anything),
+      );
+      expect((await loadSyncConflicts(s.vault)).single.id, conflict.id);
+      expect(
+        await s.vault.storage.readText(conflict.localSnapshot!),
+        '{"status":"local"}',
+      );
+      expect(
+        await s.vault.storage.readText(conflict.remoteSnapshot!),
+        '{"status":"remote"}',
+      );
+    });
+
     for (final localNewer in [true, false]) {
       test(
         'job conflict resolves to ${localNewer ? 'local newer' : 'remote on tie'}',
@@ -4626,7 +4698,9 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
 /// Counts recursive tree walks. On the P30's 11,610-file vault one walk is
 /// 9.3s of an 18.1s pass, so a pass must never pay for two.
 class _ListCountingStorage extends LocalVaultStorage {
-  _ListCountingStorage(super.root);
+  _ListCountingStorage(this.root) : super(root);
+
+  final Directory root;
 
   int recursiveLists = 0;
   final statPaths = <String>[];

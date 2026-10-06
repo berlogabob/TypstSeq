@@ -340,13 +340,12 @@ extension _PathSync on NextcloudSync {
 
     final machineJob =
         path.startsWith('_system/jobs/') && path.endsWith('.json');
-    if (unresolvedConflict != null &&
+    final resolveJobConflict =
         machineJob &&
         localExists &&
-        remoteExists) {
-      await _discardConflictsForPath(vault, path);
-      unresolvedConflict = null;
-    }
+        remoteExists &&
+        localChanged &&
+        remoteChanged;
 
     if (unresolvedConflict != null && isRegenerableCachePath(path)) {
       // A conflict already recorded against a cache file would otherwise sit
@@ -359,7 +358,7 @@ extension _PathSync on NextcloudSync {
       repaired++;
     }
 
-    if (unresolvedConflict != null) {
+    if (unresolvedConflict != null && !resolveJobConflict) {
       skipped++;
       reason = 'unresolved-conflict';
       // The stored etag is frozen at record time; the sync loop skips this
@@ -406,10 +405,7 @@ extension _PathSync on NextcloudSync {
         skipped++;
         reason = 'initial-local-only';
       }
-    } else if (machineJob &&
-        localExists &&
-        remoteExists &&
-        (localChanged || remoteChanged)) {
+    } else if (resolveJobConflict) {
       if (localHash == remoteFile.sha256) {
         skipped++;
         reason = 'same-content';
@@ -439,6 +435,9 @@ extension _PathSync on NextcloudSync {
         downloadedHash = download.localSha256;
         downloaded++;
         reason = 'auto-resolved-job-remote-newer';
+      }
+      if (unresolvedConflict != null) {
+        await _discardConflictsForPath(vault, path);
       }
     } else if (localExists &&
         remoteExists &&

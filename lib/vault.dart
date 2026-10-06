@@ -67,7 +67,7 @@ class Vault {
         (path) =>
             !path.startsWith('.tylog/') &&
             !path.startsWith('_index/') &&
-            !path.startsWith('$indexDonorsPath/'),
+            !(path.startsWith('$indexDonorsPath/') && path.endsWith('.json')),
       )
       .toSet();
 
