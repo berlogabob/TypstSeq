@@ -5,15 +5,19 @@
   <key>Label</key><string>org.tylog.indexer</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/berloga/development/flutter/bin/dart</string>
-    <string>run</string>
-    <string>bin/tylog.dart</string>
+    <!-- Compiled CLI (dart compile exe packages/tylog_core/bin/tylog.dart -o ~/.local/bin/tylog):
+         launchd jobs can't read ~/Documents (TCC), where the repo lives. -->
+    <string>/Users/berloga/.local/bin/tylog</string>
     <string>index</string>
     <string>/Users/berloga/Nextcloud/TyLogVault</string>
   </array>
-  <key>WorkingDirectory</key><string>/Users/berloga/Documents/GitHub/TypstSeq/packages/tylog_core</string>
+  <key>WorkingDirectory</key><string>/Users/berloga/Nextcloud/TyLogVault</string>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string>
+    <!-- Copy of the repo's typst/ helpers: rsync -a --delete typst ~/.local/share/tylog/ (redo with the exe after helper changes). -->
+    <key>TYLOG_REPOSITORY_ROOT</key><string>/Users/berloga/.local/share/tylog</string>
+  </dict>
   <key>WatchPaths</key>
   <array>
     <string>/Users/berloga/Nextcloud/TyLogVault/daily</string>

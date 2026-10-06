@@ -3,6 +3,22 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.2+116
+
+### Changed
+
+- **Sync is near-instant between open devices.** A change on the server now
+  reaches a phone in seconds (measured on a Galaxy A24: edits 0-9 s, deletes
+  11 s; before 44-104 s). Routine checks no longer rescan the whole vault or
+  list the whole server.
+- **One shared index.** Phones reuse the index the Mac publishes instead of
+  computing and uploading their own 8 MB copy; stale index files from old
+  installs are removed.
+
+### Fixed
+
+- Conflicts on machine-written article job files resolve by themselves.
+
 ## 0.9.1+115
 
 ### Changed
