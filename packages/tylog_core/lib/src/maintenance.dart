@@ -88,7 +88,7 @@ class MaintenanceSwept extends VaultMaintenanceEvent {
 /// process and reused — not per call.
 class VaultMaintenance {
   VaultMaintenance(this.storage, {bool? publishDonor})
-    : publishDonor = publishDonor ?? Platform.isMacOS;
+    : publishDonor = publishDonor ?? !(Platform.isAndroid || Platform.isIOS);
 
   final bool publishDonor;
   int parsedNotes = 0;
