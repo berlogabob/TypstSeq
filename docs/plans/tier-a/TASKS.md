@@ -19,7 +19,7 @@ Small tasks, one run each. Update the status column when a task changes state.
 | A1 | Install 0.9.4 on A24 and P30 | claude | `dumpsys package` shows 0.9.4 | done |
 | A2 | P30 first sync on 0.9.4 finishes, no conflicts, no re-download loop | claude | `sync_trace.jsonl`: completed, then idle probes | done: startup sync 10 s, polls 4 s, no loop |
 | A3 | Search "MONSANTOS" finds the screenshot note on a phone | claude | screenshot of result | done on A24: 2 screenshots + 1 daily found |
-| A4 | Journal "Coming up" shows the classes; `@Éti` links it | claude | screenshots | half: Coming up lists Thu 8 Oct Ética 19:00 Sala 020; `@` link not checked |
+| A4 | Journal "Coming up" shows the classes; `@Éti` links it | claude | screenshots | done on the P30: `@tica` and, from 0.10.2, `@Eti` link the Ética class |
 | A5 | Edit on P30 reaches A24 (phone to phone) under 30 s | claude | timed with adb | todo |
 
 ## B. Sync
@@ -28,7 +28,7 @@ Small tasks, one run each. Update the status column when a task changes state.
 |---|---|---|---|---|---|
 | B1 | Login Flow v2 client: start flow, poll, return server + login + app password | studio | new `lib/nextcloud_sync/login_flow.dart`, new `test/login_flow_test.dart` (fake HTTP server) | `flutter test test/login_flow_test.dart` | done (Studio draft + 1 fix: absolute poll URL) |
 | B2 | Chunked upload v2 client: MKCOL upload dir, PUT chunks, MOVE to destination, resume after a failed chunk | studio | new `lib/nextcloud_sync/chunked_upload.dart`, new `test/chunked_upload_test.dart` | `flutter test test/chunked_upload_test.dart` | done (Studio draft unusable, rewritten; verified on real server) |
-| B3 | Wire B1 into the Connect Nextcloud screen: "Sign in with browser" button | codex | settings/connect UI | widget test + A24 check | done in code and widget tests; not yet tapped through on a phone |
+| B3 | Wire B1 into the Connect Nextcloud screen: "Sign in with browser" button | codex | settings/connect UI | widget test + A24 check | done; tapped on the P30: browser opens the Nextcloud approval page, app shows "Waiting for approval" (approval itself not completed) |
 | B4 | Use B2 for files over 10 MB in the upload path | codex | `webdav_client.dart` | sync tests with a 25 MB file, interrupted once | done; real server: 12 MB round-trip, destination conditions verified |
 | B5 | Remote delete takes ~40 s to apply, edits 0–7 s: find why, fix | codex | sync | A24 timing: delete under 15 s | done: P30 delete 12 s (was 31 s) |
 | B6 | Phone index scan takes ~150 s with 0 notes parsed: make the all-reused case cheap | codex | `maintenance.dart`, `scanner.dart` | A24 trace `durationMs` under 20 s; no full rebuild after an update | done: P30 index pass 15 s, 1 note parsed (was 42-58 s); post-update rebuild not yet observed |
@@ -44,7 +44,7 @@ Small tasks, one run each. Update the status column when a task changes state.
 |---|---|---|---|---|
 | C1 | Reprocess notes without tags (about 200) with GLM-OCR + qwen | studio job | notes with tags ≥ 90% | done: 348 of 349 notes have tags |
 | C2 | Backfill remaining screenshots | studio job | `backfill-full.log` reaches the end | running (`--only-processed`, then `--only-new`) |
-| C3 | Category coverage check on a 30-note sample | claude | `measure.py`: category ≥ 90%, app ≥ 90% | todo (after C2) |
+| C3 | Category coverage check on a 30-note sample | claude | `measure.py`: category ≥ 90%, app ≥ 90% | done: 30-note sample 93.3% category, 100% app; all 417 notes 94.7% / 99.8% |
 
 ## D. User
 

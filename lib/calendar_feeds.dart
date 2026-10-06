@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:crypto/crypto.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+import 'editor_autocomplete.dart' show foldAccents;
 import 'models.dart';
 
 const timetableUrl = 'https://berlogabob.github.io/iade-lab-schedule/all.json';
@@ -224,19 +225,17 @@ List<FeedEvent> searchFeedEvents(
   final day = DateTime(today.year, today.month, today.day);
   final from = DateTime(day.year, day.month, day.day - 7);
   final until = DateTime(day.year, day.month, day.day + 14);
-  final words = query
-      .trim()
-      .toLowerCase()
-      .split(RegExp(r'\s+'))
-      .where((s) => s.isNotEmpty);
+  final words = foldAccents(
+    query.trim(),
+  ).split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
   final matches = events.where((event) {
     final date = DateTime.tryParse(event.date);
     if (date == null || date.isBefore(from) || date.isAfter(until)) {
       return false;
     }
-    final text =
-        '${event.title} ${event.properties['course'] ?? ''} ${event.properties['event_type'] ?? ''} ${event.date} ${DateFormat('d MMMM', 'en').format(date)}'
-            .toLowerCase();
+    final text = foldAccents(
+      '${event.title} ${event.properties['course'] ?? ''} ${event.properties['event_type'] ?? ''} ${event.date} ${DateFormat('d MMMM', 'en').format(date)}',
+    );
     return words.every(text.contains);
   }).toList();
   int tier(FeedEvent e) => e.date == editedDay

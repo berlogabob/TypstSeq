@@ -48,6 +48,7 @@ void main() {
         editedDay: '2026-10-09',
       ).map((e) => e.id).toList();
       expect(ids('Éti'), ['edited', 'future', 'past']);
+      expect(ids('eti'), ['edited', 'future', 'past']);
       expect(ids('lab 8 Oct'), ['future']);
       expect(ids('2026-10-09'), ['edited']);
     },

@@ -18,6 +18,7 @@ export 'editor_autocomplete.dart'
         MentionSuggestion,
         MentionKind,
         AutocompleteTriggerKind,
+        foldAccents,
         mentionScore,
         mentionSubtitle;
 

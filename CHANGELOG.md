@@ -3,6 +3,14 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.10.2+122
+
+### Fixed
+
+- **`@` and `[[` ignore accents.** Typing `@eti` now finds "Ética"; before,
+  a class or note with an accented name only matched when typed with the
+  accent.
+
 ## 0.10.1+121
 
 ### Fixed

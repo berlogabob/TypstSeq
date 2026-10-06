@@ -4338,7 +4338,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // Query the note index (populated the moment the vault opens), not
           // the full-text search index — the latter can take a while to finish
           // building on large SAF vaults, and mentions must resolve instantly.
-          final q = query.trim().toLowerCase();
+          final q = foldAccents(query.trim());
           final eventSuggestions = [
             for (final e in searchFeedEvents(
               workspace.feedEvents,
@@ -4384,7 +4384,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
             ];
           }
-          bool matches(String s) => s.toLowerCase().contains(q);
+          bool matches(String s) => foldAccents(s).contains(q);
           final matchedNotes =
               notes
                   .where(

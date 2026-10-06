@@ -4,6 +4,7 @@
 library;
 
 import 'package:tylog_core/models.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 enum AutocompleteTriggerKind { mention, command, wikiLink }
 
@@ -92,6 +93,10 @@ class MentionSuggestion {
   int get hashCode => Object.hash(id, title, kind, noteKind, subtitle, create);
 }
 
+/// Lowercase without accents, so "eti" finds "Ética".
+String foldAccents(String s) =>
+    unorm.nfd(s).replaceAll(RegExp(r'[\u0300-\u036f]'), '').toLowerCase();
+
 /// How strongly a note answers a mention query. Tiers are lifted from
 /// `PkmsSearchIndex.searchPrefix`, which was written for this feature but was
 /// never wired up; matching them keeps `@` and the Search screen consistent.
@@ -104,22 +109,22 @@ class MentionSuggestion {
 /// [recencyByPath] maps a note path to its position in the recently-opened
 /// list (0 = most recent); build it once per query, not per candidate.
 int mentionScore(NoteRef note, String query, Map<String, int> recencyByPath) {
-  final q = query.trim().toLowerCase();
+  final q = foldAccents(query.trim());
   if (q.isEmpty) return 0;
-  final title = note.title.toLowerCase();
+  final title = foldAccents(note.title);
   final tier = title == q
       ? 1000
       : title.startsWith(q)
       ? 500
-      : note.aliases.any((alias) => alias.toLowerCase().startsWith(q))
+      : note.aliases.any((alias) => foldAccents(alias).startsWith(q))
       ? 300
-      : note.id.toLowerCase().startsWith(q)
+      : foldAccents(note.id).startsWith(q)
       ? 200
       // Substring last: "assistant" must reach "Home Assistant", but any
       // prefix match still outranks it.
       : title.contains(q)
       ? 100
-      : note.aliases.any((alias) => alias.toLowerCase().contains(q))
+      : note.aliases.any((alias) => foldAccents(alias).contains(q))
       ? 80
       : 0;
   if (tier == 0) return 0;
