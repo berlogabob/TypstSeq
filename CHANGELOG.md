@@ -3,6 +3,20 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.5+119
+
+### Changed
+
+- **Phones reuse the Mac's index without re-reading notes.** An index pass
+  over 6,700 notes takes about 15 s on a P30 (was 42-58 s), and only notes
+  edited on the phone are parsed there.
+- **Deletes arrive faster** (12 s on a P30, was 31-41 s).
+
+### Fixed
+
+- Search opens while the index is rebuilding.
+- Internal revision files no longer raise sync conflicts.
+
 ## 0.9.4+118
 
 ### Fixed
