@@ -320,7 +320,11 @@ class NextcloudSync {
     return value.replaceAll('"', '').replaceFirst(RegExp(r'-gzip$'), '');
   }
 
-  Future<bool> pollIsUnchanged(Vault vault, {required bool dirty}) async {
+  Future<bool> pollIsUnchanged(
+    Vault vault, {
+    required bool dirty,
+    Future<void> Function(bool changed)? onProbe,
+  }) async {
     try {
       if (dirty || vault.hasPendingSyncWrites || !vault.syncScanIsFresh) {
         return false;
@@ -334,14 +338,13 @@ class NextcloudSync {
         return false;
       }
       final currentEtag = await _retryTransient(_rootEtag);
-      if (!canSkipPoll(
+      final unchanged = canSkipPoll(
         dirty: dirty,
         lastEtag: state.rootEtag,
         currentEtag: currentEtag,
-      )) {
-        return false;
-      }
-      return true;
+      );
+      await onProbe?.call(!unchanged);
+      return unchanged;
     } catch (_) {
       vault.lastFullSyncScan = null;
       return false;

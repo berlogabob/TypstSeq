@@ -261,6 +261,7 @@ class WorkspaceController extends ChangeNotifier {
   DateTime? _pollNextAt;
   int _pollFailures = 0;
   bool _pollInFlight = false;
+  DateTime? _lastUnchangedProbeAt;
   int? _foregroundGeneration;
 
   String _cloudKey(NextcloudConfig value) =>
@@ -275,6 +276,7 @@ class WorkspaceController extends ChangeNotifier {
   void _setPollConfig(String key) {
     if (_pollConfigKey == key) return;
     _pollConfigKey = key;
+    _lastUnchangedProbeAt = null;
     _pollBlocked = false;
     _pollNextAt = null;
     _pollFailures = 0;
@@ -1470,9 +1472,29 @@ class WorkspaceController extends ChangeNotifier {
       _setPollConfig(configKey);
       if (_pollBlocked) return;
       if (_pollNextAt != null && _now().isBefore(_pollNextAt!)) return;
-      final unchanged = await NextcloudSync(
-        config,
-      ).pollIsUnchanged(opened, dirty: dirty || opened.hasPendingSyncWrites);
+      final unchanged = await NextcloudSync(config).pollIsUnchanged(
+        opened,
+        dirty: dirty || opened.hasPendingSyncWrites,
+        onProbe: (changed) async {
+          if (!_owns(opened, generation)) return;
+          final now = _now();
+          final previous = _lastUnchangedProbeAt;
+          if (!changed &&
+              previous != null &&
+              now.difference(previous) < const Duration(minutes: 1)) {
+            return;
+          }
+          if (!changed) _lastUnchangedProbeAt = now;
+          await appendVaultTrace(opened, [
+            {
+              'timestamp': now.toUtc().toIso8601String(),
+              'event': 'probe',
+              'trigger': 'poll',
+              'changed': changed,
+            },
+          ]).catchError((_) {});
+        },
+      );
       // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
       if (unchanged) return;
@@ -1785,29 +1807,41 @@ class WorkspaceController extends ChangeNotifier {
       if (result.requiresIndexRefresh ||
           concurrentConflict ||
           indexedRevision < savedRevision) {
-        syncStage = 'index-local-changes';
-        rebuildProgress = 0;
-        notifyListeners();
-        try {
-          // Through _scan, not opened.rebuildIndex: this is the *most frequent*
-          // reindex trigger — any sync that changed anything — so running it
-          // inline here would have left the common case on the root isolate and
-          // undone the whole point of the worker. Sync owns the status line, so
-          // the built-in status updates are suppressed and progress is routed to
-          // syncProgressTick instead.
-          await _scan(
-            opened,
-            generation: generation,
-            updateStatus: false,
-            onProgress: (complete, total) {
-              rebuildProgress = total == 0 ? 1 : complete / total;
+        // Automatic pulls must not hold the poll gate during a SAF scan
+        // (minutes on large vaults). _scan coalesces subsequent changes.
+        if (const {
+          'poll',
+          'autosave',
+          'startup',
+          'resume',
+          'background',
+        }.contains(trigger)) {
+          unawaited(_scan(opened, generation: generation, updateStatus: false));
+        } else {
+          syncStage = 'index-local-changes';
+          rebuildProgress = 0;
+          notifyListeners();
+          try {
+            // Through _scan, not opened.rebuildIndex: this is the *most frequent*
+            // reindex trigger — any sync that changed anything — so running it
+            // inline here would have left the common case on the root isolate and
+            // undone the whole point of the worker. Sync owns the status line, so
+            // the built-in status updates are suppressed and progress is routed to
+            // syncProgressTick instead.
+            await _scan(
+              opened,
+              generation: generation,
+              updateStatus: false,
+              onProgress: (complete, total) {
+                rebuildProgress = total == 0 ? 1 : complete / total;
+                syncProgressTick.notifyListeners();
+              },
+            );
+          } finally {
+            if (_owns(opened, generation)) {
+              rebuildProgress = null;
               syncProgressTick.notifyListeners();
-            },
-          );
-        } finally {
-          if (_owns(opened, generation)) {
-            rebuildProgress = null;
-            syncProgressTick.notifyListeners();
+            }
           }
         }
       }

@@ -2426,11 +2426,19 @@ void main() {
       expect(await controller.syncNow(trigger: 'autosave'), isTrue);
       server.uploaded.clear();
       final beforePush = server.propfinds;
-      controller.edit('${controller.source}\nPush within the full-sync throttle');
+      controller.edit(
+        '${controller.source}\nPush within the full-sync throttle',
+      );
       now = now.add(const Duration(seconds: 3));
       expect(await controller.save(), isTrue);
-      await _waitUntil(() => server.uploaded.contains(controller.note) && !controller.syncing);
-      expect(server.propfinds, beforePush + 4, reason: 'push verifies only the uploaded path folders');
+      await _waitUntil(
+        () => server.uploaded.contains(controller.note) && !controller.syncing,
+      );
+      expect(
+        server.propfinds,
+        beforePush + 4,
+        reason: 'push verifies only the uploaded path folders',
+      );
     },
   );
 
@@ -2520,6 +2528,121 @@ void main() {
 
     controller.stopCloudPolling();
     expect(controller.hasActiveCloudPoll, isFalse);
+  });
+
+  testWidgets('foreground probes continue during post-sync indexing', (
+    tester,
+  ) async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    var now = DateTime.utc(2026, 10, 6);
+    late _TimerPollingController controller;
+    late _GatedWebDavServer server;
+    late Directory directory;
+    late _GatedPollInspector inspector;
+    await tester.runAsync(() async {
+      inspector = _GatedPollInspector();
+      directory = await Directory.systemTemp.createTemp('tylog_poll_timer_');
+      server = await _GatedWebDavServer.start();
+      server.includeRoot = true;
+      controller = _TimerPollingController(
+        ioZone: Zone.current,
+        inspector: inspector,
+        now: () => now,
+      );
+      await controller.openVault(
+        const VaultEntry(id: 'poll', name: 'Poll', path: '/not-used'),
+        storage: LocalVaultStorage(directory),
+      );
+      await controller.refreshIndex(always: true);
+      controller.cloud = server.config;
+      expect(await controller.syncNow(), isTrue);
+      expect(await controller.syncNow(), isTrue);
+      server.rootProbes = 0;
+      server.rootEtag = 'W/"root-first-gzip"';
+    });
+    addTearDown(() async {
+      inspector.release.complete();
+      controller.stopCloudPolling();
+      await tester.runAsync(() async {
+        await controller.flight;
+        await controller.refreshIndex(always: true);
+        controller.dispose();
+        await server.server.close(force: true);
+        await directory.delete(recursive: true);
+      });
+    });
+    controller.startCloudPolling();
+
+    Future<void> tick() async {
+      now = now.add(const Duration(seconds: 20));
+      await tester.pump(const Duration(seconds: 20));
+    }
+
+    await tick();
+    await tester.runAsync(() => controller.flight);
+    expect(server.rootProbes, 1);
+    await tick();
+    await tester.runAsync(() => controller.flight);
+    expect(
+      server.rootProbes,
+      2,
+      reason: 'unchanged probes keep the timer alive',
+    );
+
+    const path = 'notes/probe.typ';
+    server._files[path] = utf8.encode(
+      '#show: tylog.note.with(id: "probe", title: "Probe")\nFirst',
+    );
+    server._etags[path] = '"file-first"';
+    server.rootEtag = '"root-second"';
+    inspector.armed = true;
+    await tick();
+    await tester.runAsync(() => inspector.reached.future);
+    expect(
+      controller.syncing,
+      isFalse,
+      reason: 'a completed sync must release polling before its slow index',
+    );
+    await tester.runAsync(() => controller.flight);
+    final before = server.rootProbes;
+
+    server._files[path] = utf8.encode(
+      '#show: tylog.note.with(id: "probe", title: "Probe")\nSecond',
+    );
+    server._etags[path] = '"file-second"';
+    server.rootEtag = '"root-third"';
+    await tick();
+    await tester.runAsync(() => controller.flight);
+    expect(
+      server.rootProbes,
+      greaterThan(before),
+      reason: 'the next probe runs within 20 seconds of a completed run',
+    );
+    await tester.runAsync(() async {
+      expect(
+        await controller.vault!.storage.readText(path),
+        contains('Second'),
+      );
+    });
+    await tick();
+    await tester.runAsync(() => controller.flight);
+    await tick();
+    await tester.runAsync(() => controller.flight);
+    controller.stopCloudPolling();
+    await tester.runAsync(() async {
+      final events = (await controller.vault!.storage.readText(
+        '.tylog/sync_trace.jsonl',
+      )).trim().split('\n').map((line) => jsonDecode(line) as Map);
+      final probes = events.where((e) => e['event'] == 'probe').toList();
+      expect(probes.where((e) => e['changed'] == true), hasLength(2));
+      expect(
+        probes.where((e) => e['changed'] == false),
+        hasLength(2),
+        reason: 'unchanged probes are traced at most once per minute',
+      );
+    });
   });
 
   test('poll gate skips only a clean, known, unchanged root etag', () {
@@ -2954,6 +3077,35 @@ void main() {
   });
 }
 
+class _TimerPollingController extends WorkspaceController {
+  _TimerPollingController({
+    required this.ioZone,
+    required super.inspector,
+    required super.now,
+  }) : super(taskScheduler: TaskScheduler(), reconcileTasks: (_) async {});
+
+  final Zone ioZone;
+  Future<void> flight = Future.value();
+
+  @override
+  Future<void> pollTick() => flight = ioZone.run(super.pollTick);
+}
+
+class _GatedPollInspector extends _FakeInspector {
+  bool armed = false;
+  final reached = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
+    if (armed && input.path == 'notes/probe.typ') {
+      if (!reached.isCompleted) reached.complete();
+      await release.future;
+    }
+    return super.inspect(input);
+  }
+}
+
 class _FakeInspector implements TypstInspector {
   int calls = 0;
 
@@ -3244,6 +3396,9 @@ class _GatedWebDavServer {
   int? failUploadsAfter;
   int propfindStatus = 207;
   int propfinds = 0;
+  bool includeRoot = false;
+  String rootEtag = '"root-first"';
+  int rootProbes = 0;
   final failGets = <String>{};
   void Function(String path)? onGet;
   final Map<String, String> _etags = {};
@@ -3290,7 +3445,18 @@ class _GatedWebDavServer {
           }
           request.response.statusCode = propfindStatus;
           request.response.write('<d:multistatus xmlns:d="DAV:">');
+          if (includeRoot) {
+            final depth = request.headers.value('Depth');
+            if (depth == '0') rootProbes++;
+            request.response.write(
+              '<d:response><d:href>$_root</d:href><d:propstat><d:prop>'
+              '<d:resourcetype><d:collection/></d:resourcetype>'
+              '<d:getetag>$rootEtag</d:getetag>'
+              '</d:prop></d:propstat></d:response>',
+            );
+          }
           for (final entry in _files.entries) {
+            if (includeRoot && request.headers.value('Depth') == '0') continue;
             request.response.write(
               '<d:response><d:href>$_root${entry.key}</d:href>'
               '<d:propstat><d:prop>'
