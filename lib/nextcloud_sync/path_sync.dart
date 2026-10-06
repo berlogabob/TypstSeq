@@ -338,6 +338,16 @@ extension _PathSync on NextcloudSync {
       }
     }
 
+    final machineJob =
+        path.startsWith('_system/jobs/') && path.endsWith('.json');
+    if (unresolvedConflict != null &&
+        machineJob &&
+        localExists &&
+        remoteExists) {
+      await _discardConflictsForPath(vault, path);
+      unresolvedConflict = null;
+    }
+
     if (unresolvedConflict != null && isRegenerableCachePath(path)) {
       // A conflict already recorded against a cache file would otherwise sit
       // there forever: the loop skips a conflicted path before reaching the
@@ -395,6 +405,40 @@ extension _PathSync on NextcloudSync {
       } else {
         skipped++;
         reason = 'initial-local-only';
+      }
+    } else if (machineJob &&
+        localExists &&
+        remoteExists &&
+        (localChanged || remoteChanged)) {
+      if (localHash == remoteFile.sha256) {
+        skipped++;
+        reason = 'same-content';
+      } else if ((localStat?.modified?.millisecondsSinceEpoch ?? 0) ~/ 1000 >
+          remoteTime!.millisecondsSinceEpoch ~/ 1000) {
+        action = SyncAction.upload;
+        await snapshotForUpload();
+        uploadedRemoteEtag = await _uploadStorage(
+          path,
+          vault.storage,
+          localHash: localHash!,
+          remote: remoteFile,
+          bytes: localBytes,
+        );
+        uploadedRemoteTime = DateTime.now().toUtc();
+        uploaded++;
+        reason = 'auto-resolved-job-local-newer';
+      } else {
+        action = SyncAction.download;
+        final download = await _downloadStorage(
+          path,
+          vault.storage,
+          remoteFile: remoteFile,
+          archive: archive,
+        );
+        observedRemoteEtag = download.etag;
+        downloadedHash = download.localSha256;
+        downloaded++;
+        reason = 'auto-resolved-job-remote-newer';
       }
     } else if (localExists &&
         remoteExists &&
@@ -778,12 +822,6 @@ extension _PathSync on NextcloudSync {
       }
     }
 
-    if (uploadedRemoteTime != null && uploadedRemoteEtag == null) {
-      // The PUT response carried no etag. Falling back to the pre-upload
-      // etag in the cursor would make the next run flag this device's own
-      // upload as a remote change — probe the fresh one instead.
-      uploadedRemoteEtag = (await _probeRemoteFile(path))?.etag;
-    }
     final wasDownloaded = action == SyncAction.download;
     // Tell the scan cache these bytes are new. Without this a downloaded note
     // whose mtime lands in the same second as the scan's listing, at the same

@@ -151,6 +151,7 @@ void main() {
         folderEtags: folderEtags,
         uploads: uploads,
         onBeforePut: onBeforePut,
+        includeChecksums: true,
         unquotedPutEtag: true,
         ignoreDepthOne: ignoreDepthOne,
         omitPutEtag: omitPutEtag,
@@ -191,6 +192,120 @@ void main() {
       expect(s.metrics.individualGets, 0);
     });
 
+    test('idle poll after own upload only probes root', () async {
+      final s = await synced();
+      await s.vault.saveNote('daily/2026/10/day.typ', 'local daily');
+      await NextcloudSync(_config(s.server)).sync(s.vault, pushOnly: true);
+      expect(s.metrics.listedFolders, [
+        'daily/2026/10/',
+        'daily/2026/',
+        'daily/',
+        '',
+      ]);
+      s.metrics.propfinds = 0;
+      s.metrics.depthZeroPropfinds = 0;
+      s.metrics.listedFolders.clear();
+      final storage = s.vault.storage as _ListCountingStorage;
+      storage.recursiveLists = 0;
+      await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+      expect(s.metrics.propfinds, 1);
+      expect(s.metrics.depthZeroPropfinds, 1);
+      expect(s.metrics.listedFolders, isEmpty);
+      expect(storage.recursiveLists, 0);
+    });
+
+    test('own index upload leaves the next poll at one root probe', () async {
+      final s = await synced();
+      await s.vault.storage.writeText('_system/index/own.json', '{"schema":4}');
+      await NextcloudSync(_config(s.server)).sync(s.vault);
+      s.metrics.propfinds = 0;
+      s.metrics.depthZeroPropfinds = 0;
+      s.metrics.listedFolders.clear();
+      await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+      expect(s.metrics.propfinds, 1);
+      expect(s.metrics.depthZeroPropfinds, 1);
+      expect(s.metrics.listedFolders, isEmpty);
+      final trace = (await _traceEvents(s.vault)).last;
+      expect(trace['listedFolders'], 0);
+      expect(trace['listedEntries'], 0);
+    });
+
+    test(
+      'unresolved content conflict lists its folders without scanning locally',
+      () async {
+        final s = await synced();
+        const path = 'notes/conflicted.typ';
+        await s.vault.storage.writeText(path, 'local disagreement');
+        s.remote[path] = _remoteText('remote disagreement');
+        await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect((await loadSyncConflicts(s.vault)).single.path, path);
+        s.metrics.listedFolders.clear();
+        final storage = s.vault.storage as _ListCountingStorage;
+        storage.recursiveLists = 0;
+        await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+        expect(s.metrics.listedFolders, ['', 'notes/']);
+        expect(s.metrics.depthInfinityPropfinds, 0);
+        expect(storage.recursiveLists, 0);
+        expect((await loadSyncConflicts(s.vault)).single.remoteExists, isTrue);
+      },
+    );
+
+    test(
+      'internal writes and autosave reuse the ten-minute local scan',
+      () async {
+        final s = await synced();
+        final storage = s.vault.storage as _ListCountingStorage;
+        storage.recursiveLists = 0;
+        for (final path in [
+          '.tylog/internal.json',
+          '_index/internal.json',
+          '_system/index/own.json',
+        ]) {
+          await s.vault.saveNote(path, '{}');
+        }
+        expect(s.vault.hasPendingSyncWrites, isFalse);
+        await NextcloudSync(
+          _config(s.server),
+        ).sync(s.vault, trigger: 'autosave');
+        expect(storage.recursiveLists, 0);
+        expect(s.metrics.propfinds, 1);
+      },
+    );
+
+    for (final localNewer in [true, false]) {
+      test(
+        'job conflict resolves to ${localNewer ? 'local newer' : 'remote on tie'}',
+        () async {
+          final s = await synced();
+          const path = '_system/jobs/articles/job.json';
+          await s.vault.storage.writeText(path, '{"status":"queued"}');
+          final stat = await s.vault.storage.stat(path);
+          s.remote[path] = _MutableRemoteFile(
+            bytes: utf8.encode('{"status":"done"}'),
+            modified: stat!.modified!.subtract(
+              Duration(seconds: localNewer ? 10 : 0),
+            ),
+            etag: 'job-remote',
+          );
+          await createSyncConflict(
+            s.vault,
+            path,
+            localBytes: utf8.encode('{"status":"queued"}'),
+            remoteBytes: utf8.encode('{"status":"done"}'),
+          );
+          final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+          expect(result.conflicts, 0);
+          expect(await loadSyncConflicts(s.vault), isEmpty);
+          expect(s.metrics.depthInfinityPropfinds, 0);
+          final expected = localNewer
+              ? '{"status":"queued"}'
+              : '{"status":"done"}';
+          expect(await s.vault.storage.readText(path), expected);
+          expect(utf8.decode(s.remote[path]!.bytes), expected);
+        },
+      );
+    }
+
     test('deep edit lists only its ancestors and downloads one file', () async {
       final s = await synced();
       s.remote['daily/2026/10/day.typ'] = _remoteText('changed daily');
@@ -218,7 +333,7 @@ void main() {
           _config(s.server),
         ).sync(s.vault, pushOnly: true);
         expect(result.uploaded, 2);
-        expect(s.metrics.propfinds, 0);
+        expect(s.metrics.listedFolders, isNotEmpty);
         expect(s.metrics.individualGets, 0);
         expect(
           s.uploads.singleWhere(
@@ -268,7 +383,7 @@ void main() {
           jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
               as Map;
       expect(state['cursors'][path]['remoteEtag'], isNull);
-      expect(s.metrics.propfinds, 0);
+      expect(s.metrics.listedFolders, isNotEmpty);
       final result = await NextcloudSync(_config(s.server)).sync(s.vault);
       expect(result.downloaded, 1);
       expect(await s.vault.readText(path), 'peer edit after upload');
@@ -363,7 +478,8 @@ void main() {
         utf8.decode(s.remote['daily/2026/10/day.typ']!.bytes),
         'second local edit',
       );
-      expect(s.metrics.propfinds, 0);
+      expect(s.metrics.listedFolders, hasLength(8));
+      expect(s.metrics.depthInfinityPropfinds, 0);
     });
 
     test(
@@ -1126,7 +1242,7 @@ void main() {
 
       expect(metrics.depthZeroPropfinds, 1);
       expect(metrics.depthInfinityPropfinds, 0);
-      expect(metrics.listedFolders, isNot(contains('notes/')));
+      expect(metrics.listedFolders, contains('notes/'));
       expect(result.uploaded, 1);
       expect(utf8.decode(remote['notes/a.typ']!.bytes), 'edited locally');
     },
@@ -3163,13 +3279,12 @@ void main() {
     });
     final vault = Vault.withStorage(_SecondGranularityStorage(dir));
     await vault.ensureCreated();
-    // Bootstrap, then a settling run: a pass that changes the remote leaves the
-    // root etag one run behind, so the shortcut cannot fire until the next one.
+    // Bootstrap adopts verified folder etags, so the first idle poll is cheap.
     await NextcloudSync(_config(server)).sync(vault);
     await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
     expect(
       (await _traceEvents(vault)).map((event) => event['event']),
-      isNot(contains('no-change-shortcut')),
+      contains('no-change-shortcut'),
     );
 
     // Same length, different content, forced back to the mtime the cursor

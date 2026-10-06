@@ -2430,7 +2430,7 @@ void main() {
       now = now.add(const Duration(seconds: 3));
       expect(await controller.save(), isTrue);
       await _waitUntil(() => server.uploaded.contains(controller.note) && !controller.syncing);
-      expect(server.propfinds, beforePush, reason: '3s idle pushes bypass the 2min full-sync throttle');
+      expect(server.propfinds, beforePush + 4, reason: 'push verifies only the uploaded path folders');
     },
   );
 
@@ -2610,12 +2610,12 @@ void main() {
       await controller.pollTick();
       expect(
         server.propfinds,
-        3,
+        8,
         reason: 'changed credentials retry automatically',
       );
 
       expect(await controller.syncNow(trigger: 'retry'), isTrue);
-      expect(server.propfinds, 4, reason: 'retry bypasses the auth pause');
+      expect(server.propfinds, 9, reason: 'retry bypasses the auth pause');
     },
   );
 
@@ -2654,7 +2654,7 @@ void main() {
     server.propfindStatus = 207;
     final beforeSuccess = server.propfinds;
     await controller.pollTick();
-    expect(server.propfinds, beforeSuccess + 1);
+    expect(server.propfinds, beforeSuccess + 6);
 
     server.propfindStatus = HttpStatus.internalServerError;
     final beforeResetFailure = server.propfinds;

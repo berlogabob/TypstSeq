@@ -263,8 +263,10 @@ class NextcloudSync {
   final bool Function(String path)? canReplaceLocal;
   final void Function(String path)? onLocalContentChanged;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
-  // MKCOL futures by folder URI: concurrent uploads into a new folder must
-  // wait for the one MKCOL, not PUT before it lands (404 on a real server).
+  final _remoteWrites = <String>{};
+  var _listedFolders = 0;
+  var _listedEntries = 0;
+  // Concurrent uploads into a new folder wait for the same MKCOL.
   final _ensuredParents = <String, Future<void>>{};
 
   void _recordLocalContentChange(String path) {
@@ -481,7 +483,7 @@ class NextcloudSync {
           : <String, SyncCursor>{};
       final stateRecovered = initialMode == null && loadedState.recovered;
       final canSkipLocalScan =
-          trigger == 'poll' &&
+          (trigger == 'poll' || trigger == 'autosave') &&
           initialMode == null &&
           !hadLocalWrites &&
           vault.syncScanIsFresh &&
@@ -569,11 +571,14 @@ class NextcloudSync {
           coveredWrites.remove(path);
         }
         if (pushOnly && !pushRaced) {
+          if (_remoteWrites.isNotEmpty) {
+            await _refreshWrittenFolders(syncState, loadedState.folders);
+          }
           if (cursorsDirty) {
             await _saveSyncState(
               vault,
               syncState,
-              rootEtag: loadedState.rootEtag,
+              rootEtag: loadedState.folders[''],
               folders: loadedState.folders,
             );
           }
@@ -583,6 +588,8 @@ class NextcloudSync {
             'event': 'completed',
             'trigger': trigger,
             'stageMillis': stageProfile(),
+            'listedFolders': _listedFolders,
+            'listedEntries': _listedEntries,
             'uploaded': up,
             'downloaded': 0,
             'remoteCount': syncState.length,
@@ -644,6 +651,8 @@ class NextcloudSync {
                 'runId': runId,
                 'event': 'no-change-shortcut',
                 'stageMillis': stageProfile(),
+                'listedFolders': _listedFolders,
+                'listedEntries': _listedEntries,
                 'trigger': trigger,
                 'uploaded': 0,
                 'downloaded': 0,
@@ -674,13 +683,17 @@ class NextcloudSync {
       // per-file loop: a socket abort here otherwise kills every run at start.
       await _retryTransient(_ensureConfiguredFolder);
       progress('list-remote');
-      final remoteResult =
-          initialMode != null ||
-              pushRaced ||
-              (await loadSyncConflicts(vault)).isNotEmpty
+      final conflictPaths = {
+        for (final c in await loadSyncConflicts(vault)) unorm.nfc(c.path),
+      };
+      final remoteResult = initialMode != null || pushRaced
           ? (await _retryTransient(_remoteFiles))!
           : await _retryTransient(
-              () => _changedRemoteFiles(syncState!, loadedState.folders),
+              () => _changedRemoteFiles(
+                syncState!,
+                loadedState.folders,
+                conflictPaths,
+              ),
             );
       final remote = remoteResult.files;
       freshRootEtag = remoteResult.rootEtag;
@@ -731,8 +744,7 @@ class NextcloudSync {
           canSkipLocalScan &&
           !vault.hasPendingSyncWrites &&
           !pushRaced &&
-          scannedListing == null &&
-          (await loadSyncConflicts(vault)).isEmpty;
+          scannedListing == null;
       final Map<String, VaultStorageEntry> localEntries;
       if (skippedLocalScan) {
         localEntries = {
@@ -748,13 +760,17 @@ class NextcloudSync {
                     ),
             ),
         };
+        final conflictedPaths = {
+          for (final c in await loadSyncConflicts(vault)) c.path,
+        };
         for (final path in {...syncState.keys, ...remote.keys}) {
           final previous = syncState[path];
           final file = remote[path];
           if (previous != null &&
               file != null &&
               previous.remoteEtag != null &&
-              _normEtag(file.etag) == _normEtag(previous.remoteEtag)) {
+              _normEtag(file.etag) == _normEtag(previous.remoteEtag) &&
+              !conflictedPaths.contains(path)) {
             continue;
           }
           final stat = await vault.storage.stat(path);
@@ -967,13 +983,11 @@ class NextcloudSync {
         Error.throwWithStackTrace(firstError!, firstStack!);
       }
 
-      // Note: freshRootEtag reflects the remote as it was *before* this
-      // run's own uploads/deletes/renames (it was captured by the same
-      // Depth:infinity listing the per-path loop just used, before the
-      // loop ran). A run that itself changes the remote is therefore one
-      // run behind on enabling the shortcut — self-correcting, since the
-      // *next* full run's own pre-loop listing will already reflect those
-      // changes and persist an accurate etag if nothing further happens.
+      if (_remoteWrites.isNotEmpty) {
+        progress('verify-remote-writes');
+        await _refreshWrittenFolders(syncState, freshFolders);
+        freshRootEtag = freshFolders[''];
+      }
       progress('save-local-state');
       if (deferredLocalPaths.isNotEmpty) {
         // Re-list and fully scan next time; these cursors do not describe the
@@ -999,6 +1013,8 @@ class NextcloudSync {
         'runId': runId,
         'event': 'completed',
         'stageMillis': stageProfile(),
+        'listedFolders': _listedFolders,
+        'listedEntries': _listedEntries,
         'trigger': trigger,
         'uploaded': up,
         'downloaded': down,
@@ -1047,6 +1063,8 @@ class NextcloudSync {
         'runId': runId,
         'event': 'failed',
         'stageMillis': stageProfile(),
+        'listedFolders': _listedFolders,
+        'listedEntries': _listedEntries,
         'trigger': trigger,
         'stage': stage,
         'path': ?currentPath,

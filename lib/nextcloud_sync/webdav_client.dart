@@ -41,11 +41,14 @@ extension _WebDavClient on NextcloudSync {
     // isolate for ~250-300 ms on a phone — the last blocking sync stage — so
     // the parse runs in a compute() isolate. Everything crossing the boundary
     // is plain data.
-    return compute(_parsePropfindBody, (
+    final listed = await compute(_parsePropfindBody, (
       body: body,
       rootPath: config.rootUri.path,
       includeNonSyncable: includeNonSyncable,
     ));
+    _listedFolders += depth == '1' ? 1 : listed.folders.length;
+    _listedEntries += RegExp(r'<[^:>]*:?response\b').allMatches(body).length;
+    return listed;
   }
 
   Future<
@@ -58,6 +61,7 @@ extension _WebDavClient on NextcloudSync {
   _changedRemoteFiles(
     Map<String, SyncCursor> cursors,
     Map<String, String?> previousFolders,
+    Set<String> conflictPaths,
   ) async {
     if (previousFolders[''] == null) return (await _remoteFiles())!;
     final files = <String, _RemoteFile>{};
@@ -87,7 +91,9 @@ extension _WebDavClient on NextcloudSync {
       for (final child in listed.folders.keys) {
         if (child == folder || !isSyncableVaultPath('${child}file')) continue;
         final etag = listed.folders[child];
-        if (etag != null && etag == previousFolders[child]) {
+        if (etag != null &&
+            etag == previousFolders[child] &&
+            !conflictPaths.any((path) => path.startsWith(child))) {
           // Absence is only evidence inside a collection we actually listed.
           // Retain every cursor in a skipped subtree, including deletions.
           // ponytail: scan cursors per skipped subtree; index by folder if
@@ -121,6 +127,92 @@ extension _WebDavClient on NextcloudSync {
       return (await _remoteFiles())!;
     } on TimeoutException {
       return (await _remoteFiles())!;
+    }
+  }
+
+  // Only adopt a collection if every immediate child still describes our
+  // cursors. A peer edit during PUT must stay visible to the next root probe.
+  Future<void> _refreshWrittenFolders(
+    Map<String, SyncCursor> cursors,
+    Map<String, String?> folders,
+  ) async {
+    final affected = <String>{''};
+    for (final path in _remoteWrites) {
+      var folder = '';
+      for (final part in path.split('/')..removeLast()) {
+        folder += '$part/';
+        affected.add(folder);
+      }
+    }
+    final ordered = affected.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final folder in ordered) {
+      final listed = (await _remoteFiles(folder: folder, depth: '1'))!;
+      var verified = listed.folders[folder] != null;
+      final expected = cursors.keys
+          .where(
+            (p) =>
+                p.startsWith(folder) &&
+                !p.substring(folder.length).contains('/'),
+          )
+          .toSet();
+      if ((expected.length != listed.files.length ||
+          !expected.containsAll(listed.files.keys))) {
+        verified = false;
+      }
+      for (final entry in listed.files.entries) {
+        final cursor = cursors[entry.key];
+        if (cursor == null || cursor.localSha256 == null) {
+          verified = false;
+          continue;
+        }
+        if (_remoteWrites.contains(entry.key)) {
+          final hash =
+              entry.value.sha256 ??
+              await _remoteContentHash(entry.key, entry.value);
+          if (hash != cursor.localSha256) {
+            verified = false;
+            continue;
+          }
+          cursors[entry.key] = SyncCursor(
+            localMillis: cursor.localMillis,
+            localSize: cursor.localSize,
+            localSha256: cursor.localSha256,
+            remoteMillis: entry.value.modified.millisecondsSinceEpoch,
+            remoteEtag: NextcloudSync._normEtag(entry.value.etag),
+          );
+        } else if (NextcloudSync._normEtag(entry.value.etag) !=
+            cursor.remoteEtag) {
+          verified = false;
+        }
+      }
+      for (final child in listed.folders.keys) {
+        if (child == folder || !isSyncableVaultPath('${child}file')) continue;
+        if (listed.folders[child] == null ||
+            listed.folders[child] != folders[child]) {
+          verified = false;
+        }
+      }
+      final expectedChildren = folders.keys.where(
+        (p) =>
+            p != folder &&
+            p.startsWith(folder) &&
+            p.substring(folder.length).split('/').length == 2 &&
+            isSyncableVaultPath('${p}file'),
+      );
+      if (expectedChildren.any((p) => !listed.folders.containsKey(p))) {
+        verified = false;
+      }
+      if (verified) folders[folder] = listed.folders[folder];
+    }
+  }
+
+  Future<String> _remoteContentHash(String path, _RemoteFile remote) async {
+    final captured = await _captureRemote(path, remoteFile: remote);
+    try {
+      return await _sha256(captured.file);
+    } finally {
+      await captured.file.delete();
     }
   }
 
@@ -261,6 +353,7 @@ extension _WebDavClient on NextcloudSync {
     if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
       throw HttpException('PUT $path checksum mismatch');
     }
+    _remoteWrites.add(unorm.nfc(path));
     return response.headers.value('oc-etag') ??
         response.headers.value(HttpHeaders.etagHeader);
   }
@@ -476,6 +569,7 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
+    _remoteWrites.addAll([unorm.nfc(from), unorm.nfc(to)]);
     return _RemoteFile(
       modified: DateTime.now().toUtc(),
       etag: etag,
@@ -498,6 +592,7 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
+    _remoteWrites.add(unorm.nfc(path));
   }
 
   // ponytail: retries a whole path sync on any I/O error; a PUT whose success

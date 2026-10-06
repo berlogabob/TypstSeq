@@ -58,10 +58,18 @@ class Vault {
   final _pendingSyncWrites = <String>{};
 
   /// Whether a local write is waiting for a sync pass to look at it.
-  bool get hasPendingSyncWrites => _pendingSyncWrites.isNotEmpty;
+  bool get hasPendingSyncWrites => pendingSyncWrites.isNotEmpty;
 
-  /// Snapshot, for a caller that will clear what it covered.
-  Set<String> get pendingSyncWrites => Set<String>.of(_pendingSyncWrites);
+  /// Snapshot of user writes; derived indexes and sync bookkeeping do not
+  /// invalidate the local tree scan. Donors are picked up by the periodic scan.
+  Set<String> get pendingSyncWrites => _pendingSyncWrites
+      .where(
+        (path) =>
+            !path.startsWith('.tylog/') &&
+            !path.startsWith('_index/') &&
+            !path.startsWith('$indexDonorsPath/'),
+      )
+      .toSet();
 
   /// Records a local write this app made outside [saveNote] — a sync download.
   ///
