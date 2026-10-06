@@ -187,6 +187,14 @@ Future<void> initializeVaultStorage(
   await writeSyncExcludes(storage);
 }
 
+/// Android's media scanner skips any folder holding a `.nomedia` file, so vault
+/// screenshots and attachments stay out of the gallery.
+Future<void> writeNoMedia(VaultStorage storage) async {
+  if (!await storage.exists('.nomedia')) {
+    await storage.writeBytes('.nomedia', const []);
+  }
+}
+
 /// Keeps the device-local caches out of a desktop sync client's upload.
 ///
 /// A vault commonly lives *inside* `~/Nextcloud`, and the client uploads

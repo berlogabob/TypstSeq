@@ -7,7 +7,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/values.dart';
-import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes;
+import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes, writeNoMedia;
 
 void main() {
   test(
@@ -53,6 +53,16 @@ void main() {
       ).path,
       '/sync/TyLogVault',
     );
+  });
+
+  test('writeNoMedia leaves one empty .nomedia at the vault root', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_nomedia_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    await writeNoMedia(vault.storage);
+    await writeNoMedia(vault.storage);
+    expect(await File('${dir.path}/.nomedia').length(), 0);
   });
 
   test('empty folder becomes a complete v5 vault', () async {
@@ -294,7 +304,8 @@ void main() {
         expect(
           result.exitCode,
           0,
-          reason: 'new note does not compile for title "$title":\n'
+          reason:
+              'new note does not compile for title "$title":\n'
               '${result.stderr}\n--- source ---\n$source',
         );
       }
@@ -304,27 +315,33 @@ void main() {
   // The safety net under the bulk maintenance passes. There is no vault-level
   // undo, so if this does not run before a rewrite, a mis-tap over 3,351 notes
   // is recoverable only from the server's versioning.
-  test('snapshotNotes copies notes as they are, under a stamped folder', () async {
-    final dir = await Directory.systemTemp.createTemp('tylog_snapshot_');
-    addTearDown(() => dir.delete(recursive: true));
-    final vault = Vault(dir);
-    await vault.ensureCreated();
-    final a = await vault.page('Alpha');
-    final b = await vault.page('Beta');
-    await vault.saveNote(a, 'original alpha');
-    await vault.saveNote(b, 'original beta');
+  test(
+    'snapshotNotes copies notes as they are, under a stamped folder',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_snapshot_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      final a = await vault.page('Alpha');
+      final b = await vault.page('Beta');
+      await vault.saveNote(a, 'original alpha');
+      await vault.saveNote(b, 'original beta');
 
-    final undo = await vault.snapshotNotes([a, b], now: DateTime.utc(2026, 8, 7, 9, 30));
+      final undo = await vault.snapshotNotes([
+        a,
+        b,
+      ], now: DateTime.utc(2026, 8, 7, 9, 30));
 
-    expect(undo, '.tylog/undo/2026-08-07T09-30-00.000Z');
-    expect(await vault.readText('$undo/$a'), 'original alpha');
-    expect(await vault.readText('$undo/$b'), 'original beta');
+      expect(undo, '.tylog/undo/2026-08-07T09-30-00.000Z');
+      expect(await vault.readText('$undo/$a'), 'original alpha');
+      expect(await vault.readText('$undo/$b'), 'original beta');
 
-    // Overwriting afterwards must leave the copies alone — that is the point.
-    await vault.saveNote(a, 'rewritten alpha');
-    expect(await vault.readText('$undo/$a'), 'original alpha');
-    expect(await vault.readText(a), 'rewritten alpha');
-  });
+      // Overwriting afterwards must leave the copies alone — that is the point.
+      await vault.saveNote(a, 'rewritten alpha');
+      expect(await vault.readText('$undo/$a'), 'original alpha');
+      expect(await vault.readText(a), 'rewritten alpha');
+    },
+  );
 
   test('snapshotNotes throws rather than half-copying', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_snapshot_fail_');
@@ -344,22 +361,31 @@ void main() {
   // vault usually sits inside ~/Nextcloud, and the desktop client uploads what
   // it finds. The search index tokenises whole note bodies, so that upload
   // carries note text.
-  test('ensureCreated keeps device-local caches out of a desktop sync', () async {
-    final dir = await Directory.systemTemp.createTemp('tylog_exclude_');
-    addTearDown(() => dir.delete(recursive: true));
-    final vault = Vault(dir);
+  test(
+    'ensureCreated keeps device-local caches out of a desktop sync',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_exclude_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
 
-    await vault.ensureCreated();
-    final excludes = await vault.readText('.sync-exclude.lst');
+      await vault.ensureCreated();
+      final excludes = await vault.readText('.sync-exclude.lst');
 
-    expect(excludes, contains('_index'));
-    expect(excludes, contains('.tylog'));
+      expect(excludes, contains('_index'));
+      expect(excludes, contains('.tylog'));
 
-    // A user's own edits to the file survive re-opening the vault.
-    await vault.storage.writeText('.sync-exclude.lst', '_index\nmy-own-rule\n');
-    await vault.ensureCreated();
-    expect(await vault.readText('.sync-exclude.lst'), contains('my-own-rule'));
-  });
+      // A user's own edits to the file survive re-opening the vault.
+      await vault.storage.writeText(
+        '.sync-exclude.lst',
+        '_index\nmy-own-rule\n',
+      );
+      await vault.ensureCreated();
+      expect(
+        await vault.readText('.sync-exclude.lst'),
+        contains('my-own-rule'),
+      );
+    },
+  );
 
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');
@@ -379,32 +405,29 @@ void main() {
     expect(await vault.readText(note), original);
   });
 
-  test(
-    'nextTaskId avoids collisions with existing task ids so two inserted '
-    'tasks never share an id',
-    () async {
-      final dir = await Directory.systemTemp.createTemp('tylog_task_id_');
-      addTearDown(() => dir.delete(recursive: true));
-      final vault = Vault(dir);
-      await vault.ensureCreated();
-      final now = DateTime(2026, 7, 15, 9, 30, 0);
+  test('nextTaskId avoids collisions with existing task ids so two inserted '
+      'tasks never share an id', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_task_id_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await vault.ensureCreated();
+    final now = DateTime(2026, 7, 15, 9, 30, 0);
 
-      final firstId = await vault.nextTaskId('Buy milk', now: now);
-      expect(firstId, '20260715-093000-buy-milk');
+    final firstId = await vault.nextTaskId('Buy milk', now: now);
+    expect(firstId, '20260715-093000-buy-milk');
 
-      final note = await vault.todayNote(now);
-      await vault.saveNote(note, '''#import "/_system/tylog.typ" as tylog
+    final note = await vault.todayNote(now);
+    await vault.saveNote(note, '''#import "/_system/tylog.typ" as tylog
 #show: tylog.note.with(id: "day", title: "Day", kind: "daily")
 #tylog.task(id: "$firstId", text: "Buy milk", status: "todo")
 ''');
-      await vault.rebuildIndex();
+    await vault.rebuildIndex();
 
-      final secondId = await vault.nextTaskId('Buy milk', now: now);
+    final secondId = await vault.nextTaskId('Buy milk', now: now);
 
-      expect(secondId, isNot(firstId));
-      expect(secondId, '$firstId-2');
-    },
-  );
+    expect(secondId, isNot(firstId));
+    expect(secondId, '$firstId-2');
+  });
 
   test('index is deterministic and rebuilds v5 backlinks', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_index_');
@@ -571,7 +594,8 @@ void main() {
     // where two donors carried five each.
     test('a donor never publishes properties we did not write', () async {
       const secret = 'S3cretValue123';
-      const withSecret = '''#import "/_system/tylog.typ" as tylog
+      const withSecret =
+          '''#import "/_system/tylog.typ" as tylog
 #show: tylog.note.with(
   id: "creds",
   title: "Creds",
@@ -704,9 +728,7 @@ void main() {
         '{"synonyms":{"a":"b"}}',
       );
       await laptop.rebuildIndex(deviceId: 'laptop');
-      final donor = await laptop.storage.readText(
-        '_system/index/laptop.json',
-      );
+      final donor = await laptop.storage.readText('_system/index/laptop.json');
 
       final phone = await newVault('tylog_donor_syn_phone_');
       await phone.storage.writeText('notes/Root.typ', source);
@@ -720,9 +742,9 @@ void main() {
       final seeded = await phone.rebuildIndex(deviceId: 'phone');
 
       expect(seeded.notesByPath['notes/Root.typ'], isNotNull);
-      final own = jsonDecode(
-        await phone.storage.readText('_system/index/phone.json'),
-      ) as Map<String, Object?>;
+      final own =
+          jsonDecode(await phone.storage.readText('_system/index/phone.json'))
+              as Map<String, Object?>;
       final theirs = jsonDecode(donor) as Map<String, Object?>;
       expect(
         own['synonymsHash'],
@@ -756,11 +778,7 @@ void main() {
     final id1 = await vault.nextTaskId('milk', now: now);
     expect(id1, '20260803-142200-milk');
 
-    final id2 = await vault.nextTaskId(
-      'milk',
-      now: now,
-      reserved: {id1},
-    );
+    final id2 = await vault.nextTaskId('milk', now: now, reserved: {id1});
     expect(id2, '$id1-2');
   });
 }

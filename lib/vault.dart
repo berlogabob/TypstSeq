@@ -127,6 +127,7 @@ class Vault {
       createIfMissing: createIfMissing,
     );
     await _writeSyncExcludes();
+    if (Platform.isAndroid) await writeNoMedia(storage);
   }
 
   /// Keeps the device-local caches out of a desktop client's upload.

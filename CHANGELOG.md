@@ -3,6 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.10.1+121
+
+### Fixed
+
+- **Vault images stay out of the Android gallery.** TyLog writes a `.nomedia`
+  file at the vault root and asks Android to rescan the folder, so screenshots
+  and attachments already listed in the gallery disappear from it. iOS needs
+  nothing: the Photos app never reads an app's files.
+
 ## 0.10.0+120
 
 ### Added

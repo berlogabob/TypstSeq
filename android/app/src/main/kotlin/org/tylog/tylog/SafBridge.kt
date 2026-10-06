@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -277,7 +279,10 @@ class SafBridge(
                     tree,
                     path(call),
                     call.argument<ByteArray>("bytes") ?: ByteArray(0),
-                ).let { null }
+                ).let {
+                    if (path(call) == ".nomedia") forgetIndexedMedia(tree)
+                    null
+                }
                 "delete" -> resolve(tree, path(call))
                     ?.let { DocumentsContract.deleteDocument(resolver, it) }
                     .also { invalidate(tree, path(call)) }
@@ -631,6 +636,18 @@ class SafBridge(
             return cursor.moveToFirst() &&
                 cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)) == DIRECTORY_MIME
         }
+    }
+
+    // A new .nomedia stops future indexing, but the gallery keeps every image
+    // it already indexed until the folder is scanned again.
+    private fun forgetIndexedMedia(tree: Uri) = runCatching {
+        val (volume, relative) = DocumentsContract.getTreeDocumentId(tree).split(":", limit = 2)
+        val base = if (volume == "primary") {
+            Environment.getExternalStorageDirectory().path
+        } else {
+            "/storage/$volume"
+        }
+        MediaScannerConnection.scanFile(context, arrayOf("$base/$relative"), null, null)
     }
 
     private fun read(uri: Uri): ByteArray =
