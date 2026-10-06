@@ -3,6 +3,25 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.0+114
+
+### Added
+
+- **Classes and lab on any day.** The Today agenda follows the day you are
+  viewing; an empty day shows the next class and jumps there on tap. The
+  Journal lists each day's classes, lab sessions and consultations, plus a
+  "Coming up" block for the next seven days.
+- **Link a note to an upcoming class.** `@` finds classes and lab sessions
+  from a week back to two weeks ahead; picking one creates the event note
+  once and links it.
+- **Screenshot categories.** Screenshots group by category with filter chips.
+
+### Fixed
+
+- **Search finds words inside screenshot text**, including partial words.
+- **`@` popup:** "Create page" is first, and the popup sits below the line
+  you are typing so the text stays visible.
+
 ## 0.8.6+113
 
 ### Fixed
