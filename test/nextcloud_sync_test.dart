@@ -231,7 +231,7 @@ void main() {
     });
 
     test(
-      'unresolved content conflict lists its folders without scanning locally',
+      'pending conflict polls only probe root and relist changed folders',
       () async {
         final s = await synced();
         const path = 'notes/conflicted.typ';
@@ -239,14 +239,56 @@ void main() {
         s.remote[path] = _remoteText('remote disagreement');
         await NextcloudSync(_config(s.server)).sync(s.vault);
         expect((await loadSyncConflicts(s.vault)).single.path, path);
+        s.metrics.propfinds = 0;
+        s.metrics.depthZeroPropfinds = 0;
         s.metrics.listedFolders.clear();
         final storage = s.vault.storage as _ListCountingStorage;
         storage.recursiveLists = 0;
         await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
-        expect(s.metrics.listedFolders, ['', 'notes/']);
+        expect(s.metrics.propfinds, 1);
+        expect(s.metrics.depthZeroPropfinds, 1);
+        expect(s.metrics.listedFolders, isEmpty);
         expect(s.metrics.depthInfinityPropfinds, 0);
         expect(storage.recursiveLists, 0);
         expect((await loadSyncConflicts(s.vault)).single.remoteExists, isTrue);
+
+        s.vault.lastFullSyncScan = DateTime.now().subtract(
+          const Duration(minutes: 11),
+        );
+        s.metrics.propfinds = 0;
+        s.metrics.depthZeroPropfinds = 0;
+        await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+        expect(s.metrics.propfinds, 1);
+        expect(s.metrics.depthZeroPropfinds, 1);
+        expect(s.metrics.listedFolders, isEmpty);
+        expect(storage.recursiveLists, 1);
+
+        // An unrelated edit must not re-list the unchanged conflicted folder
+        // or mistake the old cursor for the conflict's current remote version.
+        s.remote['daily/2026/10/day.typ'] = _remoteText('changed daily');
+        await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+        expect(s.metrics.listedFolders, [
+          '',
+          'daily/',
+          'daily/2026/',
+          'daily/2026/10/',
+        ]);
+        var conflict = (await loadSyncConflicts(s.vault)).single;
+        expect(
+          await s.vault.storage.readText(conflict.remoteSnapshot!),
+          'remote disagreement',
+        );
+
+        s.metrics.listedFolders.clear();
+        s.remote[path] = _remoteText('remote changed again');
+        await NextcloudSync(_config(s.server)).sync(s.vault, trigger: 'poll');
+        expect(s.metrics.listedFolders, ['', 'notes/']);
+        conflict = (await loadSyncConflicts(s.vault)).single;
+        expect(
+          await s.vault.storage.readText(conflict.remoteSnapshot!),
+          'remote changed again',
+        );
+        expect(await s.vault.storage.readText(path), 'local disagreement');
       },
     );
 
@@ -346,11 +388,13 @@ void main() {
 
     for (final localNewer in [true, false]) {
       test(
-        'job conflict resolves to ${localNewer ? 'local newer' : 'remote on tie'}',
+        'pre-existing job conflict resolves to ${localNewer ? 'local newer' : 'remote on tie'}',
         () async {
           final s = await synced();
           const path = '_system/jobs/articles/job.json';
           await s.vault.storage.writeText(path, '{"status":"queued"}');
+          s.remote[path] = _remoteText('{"status":"queued"}');
+          await NextcloudSync(_config(s.server)).sync(s.vault);
           final stat = await s.vault.storage.stat(path);
           s.remote[path] = _MutableRemoteFile(
             bytes: utf8.encode('{"status":"done"}'),

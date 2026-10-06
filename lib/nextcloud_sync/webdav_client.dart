@@ -61,7 +61,7 @@ extension _WebDavClient on NextcloudSync {
   _changedRemoteFiles(
     Map<String, SyncCursor> cursors,
     Map<String, String?> previousFolders,
-    Set<String> conflictPaths,
+    Map<String, SyncConflict> pendingConflicts,
   ) async {
     if (previousFolders[''] == null) return (await _remoteFiles())!;
     final files = <String, _RemoteFile>{};
@@ -91,9 +91,7 @@ extension _WebDavClient on NextcloudSync {
       for (final child in listed.folders.keys) {
         if (child == folder || !isSyncableVaultPath('${child}file')) continue;
         final etag = listed.folders[child];
-        if (etag != null &&
-            etag == previousFolders[child] &&
-            !conflictPaths.any((path) => path.startsWith(child))) {
+        if (etag != null && etag == previousFolders[child]) {
           // Absence is only evidence inside a collection we actually listed.
           // Retain every cursor in a skipped subtree, including deletions.
           // ponytail: scan cursors per skipped subtree; index by folder if
@@ -109,6 +107,23 @@ extension _WebDavClient on NextcloudSync {
               etag: cursor.remoteEtag == null ? null : '"${cursor.remoteEtag}"',
               length: cursor.localSize,
             );
+          }
+          // Conflicts can have no cursor, or a cursor from before divergence.
+          // Their records describe the remote version in this unchanged folder.
+          for (final entry in pendingConflicts.entries) {
+            if (!entry.key.startsWith(child)) continue;
+            final conflict = entry.value;
+            if (conflict.remoteExists) {
+              files[entry.key] = _RemoteFile(
+                modified:
+                    conflict.remoteModified ??
+                    files[entry.key]?.modified ??
+                    DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+                etag: conflict.remoteEtag,
+              );
+            } else {
+              files.remove(entry.key);
+            }
           }
           folders.addAll({
             for (final entry in previousFolders.entries)

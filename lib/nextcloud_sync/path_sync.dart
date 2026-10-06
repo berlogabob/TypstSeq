@@ -206,23 +206,21 @@ extension _PathSync on NextcloudSync {
     return (raw: raw, syncable: syncable);
   }
 
-  /// Cheap in-memory check for the no-change shortcut: every local file must
-  /// still match its cursor's recorded mtime+size exactly, and no path may be
-  /// missing or extra. Any mismatch must fall through to the full run — this
-  /// is the only thing standing between a local edit and data loss.
+  /// Unconflicted local paths must match their cursor's mtime+size exactly.
+  /// Pending conflicts stay outside this check until the user resolves them.
   bool _matchesLocalCursorSnapshot(
     Map<String, VaultStorageEntry> local,
-    Map<String, SyncCursor> cursors,
-  ) {
-    if (local.length != cursors.length) return false;
-    for (final entry in local.entries) {
-      final cursor = cursors[entry.key];
-      if (cursor == null) return false;
-      final millis = entry.value.modified?.millisecondsSinceEpoch;
+    Map<String, SyncCursor> cursors, {
+    Set<String> pendingPaths = const {},
+  }) {
+    final paths = {...local.keys, ...cursors.keys}..removeAll(pendingPaths);
+    for (final path in paths) {
+      final entry = local[path];
+      final cursor = cursors[path];
+      if (entry == null || cursor == null) return false;
+      final millis = entry.modified?.millisecondsSinceEpoch;
       if (millis == null || millis != cursor.localMillis) return false;
-      if (entry.value.size == null || entry.value.size != cursor.localSize) {
-        return false;
-      }
+      if (entry.size == null || entry.size != cursor.localSize) return false;
     }
     return true;
   }
@@ -344,8 +342,7 @@ extension _PathSync on NextcloudSync {
         machineJob &&
         localExists &&
         remoteExists &&
-        localChanged &&
-        remoteChanged;
+        (unresolvedConflict != null || (localChanged && remoteChanged));
 
     if (unresolvedConflict != null && isRegenerableCachePath(path)) {
       // A conflict already recorded against a cache file would otherwise sit

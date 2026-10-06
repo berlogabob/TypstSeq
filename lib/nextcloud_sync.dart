@@ -626,7 +626,14 @@ class NextcloudSync {
           loadedState.rootEtag != null) {
         progress('probe-root');
         final unresolvedForShortcut = await loadSyncConflicts(vault);
-        if (unresolvedForShortcut.isEmpty) {
+        if (unresolvedForShortcut.isEmpty ||
+            (trigger == 'poll' &&
+                !unresolvedForShortcut.any(
+                  (c) =>
+                      c.path.startsWith('_system/jobs/') ||
+                      isRegenerableCachePath(c.path) ||
+                      c.path.startsWith('_system/revisions/note-'),
+                ))) {
           final probedEtag = await _retryTransient(_rootEtag);
           if (canSkipPoll(
             dirty: false,
@@ -644,6 +651,9 @@ class NextcloudSync {
                 _matchesLocalCursorSnapshot(
                   scannedListing!.syncable,
                   syncState,
+                  pendingPaths: {
+                    for (final c in unresolvedForShortcut) unorm.nfc(c.path),
+                  },
                 )) {
               remoteCount = syncState.length;
               traceEvents.add({
@@ -683,8 +693,8 @@ class NextcloudSync {
       // per-file loop: a socket abort here otherwise kills every run at start.
       await _retryTransient(_ensureConfiguredFolder);
       progress('list-remote');
-      final conflictPaths = {
-        for (final c in await loadSyncConflicts(vault)) unorm.nfc(c.path),
+      final pendingConflicts = {
+        for (final c in await loadSyncConflicts(vault)) unorm.nfc(c.path): c,
       };
       final remoteResult = initialMode != null || pushRaced
           ? (await _retryTransient(_remoteFiles))!
@@ -692,7 +702,7 @@ class NextcloudSync {
               () => _changedRemoteFiles(
                 syncState!,
                 loadedState.folders,
-                conflictPaths,
+                pendingConflicts,
               ),
             );
       final remote = remoteResult.files;
