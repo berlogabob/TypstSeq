@@ -3,6 +3,17 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.9.3+117
+
+### Fixed
+
+- **Sync kept working only by accident.** The 20-second check for server
+  changes was blocked while the index scan ran (about 150 s on a phone), so
+  a change could wait minutes. Indexing now runs separately (measured on a
+  Galaxy A24: edits arrive in 0-7 s, deletes in about 40 s).
+- Old conflicts on article job files resolve themselves and no longer make
+  every check re-list folders.
+
 ## 0.9.2+116
 
 ### Changed
