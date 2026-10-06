@@ -52,3 +52,12 @@ Small tasks, one run each. Update the status column when a task changes state.
 |---|---|---|
 | D1 | P12: type on the phone with predictive text and swipe, check nothing duplicates and sync still runs | todo |
 | D2 | P26: seven-day trial with TyLog as the only journal | todo |
+
+## E. After 0.11.0
+
+| # | Task | Who | Status |
+|---|------|-----|--------|
+| E1 | Search index load/write dominates the phone index pass (P30: load-search 6.3 s, write-search 6.7 s, worker-load-search 5.0 s, list-stat 4.9 s, build-search 2.8 s; note scan 2 s) — make it incremental or skip when no note text changed | codex | todo |
+| E2 | Incremental note index (branch `wip/incremental-index`): spins at 90% CPU on the P30 and stops syncing; 4 stale-index cases from review (NFC receipts, service vs worker cache, same-content, both-missing) | codex | parked |
+| E3 | Sync `list-remote` costs 8–10 s per run; use notify_push file ids to fetch only the changed files | codex | todo |
+| E4 | Background delivery when the app is suspended | — | not started |
