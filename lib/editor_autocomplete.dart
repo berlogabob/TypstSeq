@@ -109,22 +109,38 @@ String foldAccents(String s) =>
 /// [recencyByPath] maps a note path to its position in the recently-opened
 /// list (0 = most recent); build it once per query, not per candidate.
 int mentionScore(NoteRef note, String query, Map<String, int> recencyByPath) {
-  final q = foldAccents(query.trim());
+  return _mentionScore(
+    note,
+    foldAccents(query.trim()),
+    foldAccents(note.title),
+    foldAccents(note.id),
+    note.aliases.map(foldAccents).toList(),
+    recencyByPath,
+  );
+}
+
+int _mentionScore(
+  NoteRef note,
+  String q,
+  String title,
+  String id,
+  List<String> aliases,
+  Map<String, int> recencyByPath,
+) {
   if (q.isEmpty) return 0;
-  final title = foldAccents(note.title);
   final tier = title == q
       ? 1000
       : title.startsWith(q)
       ? 500
-      : note.aliases.any((alias) => foldAccents(alias).startsWith(q))
+      : aliases.any((alias) => alias.startsWith(q))
       ? 300
-      : foldAccents(note.id).startsWith(q)
+      : id.startsWith(q)
       ? 200
       // Substring last: "assistant" must reach "Home Assistant", but any
       // prefix match still outranks it.
       : title.contains(q)
       ? 100
-      : note.aliases.any((alias) => foldAccents(alias).contains(q))
+      : aliases.any((alias) => alias.contains(q))
       ? 80
       : 0;
   if (tier == 0) return 0;
@@ -137,6 +153,65 @@ int mentionScore(NoteRef note, String query, Map<String, int> recencyByPath) {
   final position = recencyByPath[note.path];
   final recencyBonus = position == null ? 0 : 50 - position;
   return tier + kindBonus + (recencyBonus < 0 ? 0 : recencyBonus);
+}
+
+/// Fold note fields once per index snapshot, then score each match once.
+class MentionQueryCache {
+  VaultIndex? _index;
+  int _revision = -1;
+  List<({NoteRef note, String title, String id, List<String> aliases})>
+  _fields = [];
+
+  List<NoteRef> query(
+    VaultIndex? index,
+    String query,
+    Map<String, int> recencyByPath, {
+    Set<String> excludedIds = const {},
+    int revision = 0,
+  }) {
+    // WorkspaceController can refresh the same index object in place.
+    if (!identical(index, _index) || revision != _revision) {
+      _index = index;
+      _revision = revision;
+      _fields = [
+        for (final note in index?.notes ?? const <NoteRef>[])
+          (
+            note: note,
+            title: foldAccents(note.title),
+            id: foldAccents(note.id),
+            aliases: note.aliases.map(foldAccents).toList(),
+          ),
+      ];
+    }
+    final q = foldAccents(query.trim());
+    if (q.isEmpty) return [];
+    final matches = <({int score, NoteRef note})>[];
+    for (final fields in _fields) {
+      if (excludedIds.contains(fields.note.id)) continue;
+      // ID substrings matched before even when their ranking score was zero.
+      if (!fields.title.contains(q) &&
+          !fields.id.contains(q) &&
+          !fields.aliases.any((alias) => alias.contains(q))) {
+        continue;
+      }
+      matches.add((
+        score: _mentionScore(
+          fields.note,
+          q,
+          fields.title,
+          fields.id,
+          fields.aliases,
+          recencyByPath,
+        ),
+        note: fields.note,
+      ));
+    }
+    matches.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      return byScore != 0 ? byScore : a.note.title.compareTo(b.note.title);
+    });
+    return matches.take(8).map((match) => match.note).toList();
+  }
 }
 
 /// The line under a mention row. A raw note id (`md-3b7a2305beedce32`) tells

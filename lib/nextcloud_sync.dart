@@ -338,6 +338,7 @@ class NextcloudSync {
           state.remoteMismatch ||
           state.rootEtag == null ||
           state.folders[''] == null ||
+          state.cursors.values.any((cursor) => !cursor.remoteConfirmed) ||
           (await loadSyncConflicts(vault)).isNotEmpty) {
         return false;
       }
@@ -564,6 +565,7 @@ class NextcloudSync {
                 ),
               );
               syncState[unorm.nfc(path)] = SyncCursor(
+                remoteConfirmed: false,
                 recordedAt: readAt,
                 localMillis: stat.modified?.millisecondsSinceEpoch,
                 localSize: bytes?.length ?? stat.size,
@@ -611,6 +613,7 @@ class NextcloudSync {
             'downloaded': 0,
             'remoteCount': syncState.length,
           });
+          await _pruneSyncSnapshots(vault.storage);
           return SyncResult(
             trigger: trigger,
             uploaded: up,
@@ -640,6 +643,7 @@ class NextcloudSync {
           !loadedState.legacy &&
           !vault.hasPendingSyncWrites &&
           !pushRaced &&
+          syncState.values.every((cursor) => cursor.remoteConfirmed) &&
           loadedState.folders[''] != null &&
           loadedState.rootEtag != null) {
         progress('probe-root');
@@ -693,6 +697,7 @@ class NextcloudSync {
                 'deletedRemote': 0,
                 'remoteCount': remoteCount,
               });
+              await _pruneSyncSnapshots(vault.storage);
               return SyncResult(
                 trigger: trigger,
                 uploaded: 0,
@@ -880,6 +885,7 @@ class NextcloudSync {
       if (archiveSnapshot != null) progress('extract-archive');
       for (final path in pristineStarterPaths) {
         final actualPath = localEntries[path]?.path ?? path;
+        await _snapshotBeforeReplacement(vault.storage, actualPath);
         await vault.storage.delete(actualPath);
         _recordLocalContentChange(actualPath);
         localEntries.remove(path);
@@ -1026,6 +1032,7 @@ class NextcloudSync {
         await _refreshWrittenFolders(syncState, freshFolders);
         freshRootEtag = freshFolders[''];
       }
+      await _pruneSyncSnapshots(vault.storage);
       progress('save-local-state');
       if (deferredLocalPaths.isNotEmpty) {
         // Re-list and fully scan next time; these cursors do not describe the
@@ -1194,10 +1201,17 @@ class NextcloudSync {
       }
       conflict = active;
 
+      final state = await _loadSyncState(vault);
+      final previous = state.cursors[unorm.nfc(conflict.path)];
       String? remoteEtag;
       String? resolvedHash;
       VaultStorageEntry? resolvedStat;
       if (resolution == SyncConflictResolution.keepRemote) {
+        await _snapshotBeforeReplacement(
+          vault.storage,
+          conflict.path,
+          previous: previous,
+        );
         if (conflict.remoteExists) {
           final bytes = await vault.storage.readBytes(conflict.remoteSnapshot!);
           resolvedHash = sha256.convert(bytes).toString();
@@ -1211,6 +1225,11 @@ class NextcloudSync {
           if (mergedText == null || mergedText.trim().isEmpty) {
             throw ArgumentError('Merged text cannot be empty');
           }
+          await _snapshotBeforeReplacement(
+            vault.storage,
+            conflict.path,
+            previous: previous,
+          );
           await vault.storage.writeText(conflict.path, mergedText);
         }
         if (await vault.storage.exists(conflict.path)) {
@@ -1227,7 +1246,6 @@ class NextcloudSync {
         }
       }
 
-      final state = await _loadSyncState(vault);
       final localExists = await vault.storage.exists(conflict.path);
       final remoteExists = resolution == SyncConflictResolution.keepRemote
           ? conflict.remoteExists
@@ -1235,6 +1253,7 @@ class NextcloudSync {
       if (localExists && remoteExists) {
         final local = resolvedStat ?? await vault.storage.stat(conflict.path);
         state.cursors[unorm.nfc(conflict.path)] = SyncCursor(
+          remoteConfirmed: resolution == SyncConflictResolution.keepRemote,
           localSize: local?.size,
           localMillis: local?.modified?.millisecondsSinceEpoch,
           remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
@@ -1262,6 +1281,7 @@ class NextcloudSync {
 }
 
 bool _validSyncCursor(Map<String, Object?> json) =>
+    (json['remoteConfirmed'] == null || json['remoteConfirmed'] is bool) &&
     (json['recordedAt'] == null || json['recordedAt'] is num) &&
     (json['localMillis'] == null || json['localMillis'] is num) &&
     (json['localSize'] == null || json['localSize'] is num) &&
@@ -1284,7 +1304,8 @@ bool _cursorNeedsPersist(SyncCursor? previous, SyncCursor next) =>
     previous.localMillis != next.localMillis ||
     previous.localSize != next.localSize ||
     previous.localSha256 != next.localSha256 ||
-    previous.remoteEtag != next.remoteEtag;
+    previous.remoteEtag != next.remoteEtag ||
+    previous.remoteConfirmed != next.remoteConfirmed;
 
 /// A benign abort: the user started editing the file mid-sync, so the sync
 /// backs off instead of replacing local content. Callers should re-queue,
@@ -1392,6 +1413,10 @@ _parsePropfindBody(
           : (error as HttpException).message;
       throw HttpException('PROPFIND invalid file metadata: $message');
     }
+  }
+  if (RegExp(r'<(?!/)[^:>]*:?response\b').allMatches(args.body).length !=
+      RegExp(r'</[^:>]*:?response\s*>').allMatches(args.body).length) {
+    throw const HttpException('PROPFIND incomplete response entries');
   }
   return (files: files, rootEtag: rootEtag, folders: folders);
 }
@@ -2043,6 +2068,7 @@ class SyncResult {
 
 class SyncCursor {
   const SyncCursor({
+    this.remoteConfirmed = true,
     this.localMillis,
     this.recordedAt,
     this.localSize,
@@ -2051,6 +2077,8 @@ class SyncCursor {
     this.remoteEtag,
   });
 
+  // A PUT receipt alone cannot prove deletion after an origin rollback.
+  final bool remoteConfirmed;
   final int? localMillis;
   final int? recordedAt;
   final int? localSize;
@@ -2059,6 +2087,7 @@ class SyncCursor {
   final String? remoteEtag;
 
   factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
+    remoteConfirmed: json['remoteConfirmed'] as bool? ?? true,
     recordedAt: (json['recordedAt'] as num?)?.toInt(),
     localMillis: (json['localMillis'] as num?)?.toInt(),
     localSize: (json['localSize'] as num?)?.toInt(),
@@ -2068,6 +2097,7 @@ class SyncCursor {
   );
 
   Map<String, Object?> toJson() => {
+    if (!remoteConfirmed) 'remoteConfirmed': false,
     if (recordedAt != null) 'recordedAt': recordedAt,
     'localMillis': localMillis,
     if (localSize != null) 'localSize': localSize,

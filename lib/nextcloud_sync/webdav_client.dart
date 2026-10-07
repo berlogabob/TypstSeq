@@ -44,7 +44,9 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
-    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+    if (!RegExp(
+      r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
+    ).hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
     }
     // Parsing a Depth:infinity response for ~2000 entries blocks the calling
@@ -105,7 +107,12 @@ extension _WebDavClient on NextcloudSync {
       for (final child in listed.folders.keys) {
         if (child == folder || !isSyncableVaultPath('${child}file')) continue;
         final etag = listed.folders[child];
-        if (etag != null && etag == previousFolders[child]) {
+        if (etag != null &&
+            etag == previousFolders[child] &&
+            !cursors.entries.any(
+              (entry) =>
+                  entry.key.startsWith(child) && !entry.value.remoteConfirmed,
+            )) {
           // Absence is only evidence inside a collection we actually listed.
           // Retain every cursor in a skipped subtree, including deletions.
           // ponytail: scan cursors per skipped subtree; index by folder if
@@ -192,12 +199,19 @@ extension _WebDavClient on NextcloudSync {
           continue;
         }
         if (_remoteWrites.contains(entry.key)) {
-          final hash =
-              entry.value.sha256 ??
-              await _remoteContentHash(entry.key, entry.value);
-          if (hash != cursor.localSha256) {
-            verified = false;
-            continue;
+          final etagMatches =
+              cursor.remoteEtag != null &&
+              entry.value.etag != null &&
+              NextcloudSync._normEtag(entry.value.etag) ==
+                  NextcloudSync._normEtag(cursor.remoteEtag);
+          if (!etagMatches) {
+            final hash =
+                entry.value.sha256 ??
+                await _remoteContentHash(entry.key, entry.value);
+            if (hash != cursor.localSha256) {
+              verified = false;
+              continue;
+            }
           }
           cursors[entry.key] = SyncCursor(
             recordedAt: cursor.recordedAt,
@@ -267,7 +281,9 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
-    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+    if (!RegExp(
+      r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
+    ).hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
     }
     for (final match in RegExp(
@@ -304,7 +320,9 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
-    if (!RegExp(r'<[^:>]*:?multistatus\b').hasMatch(body)) {
+    if (!RegExp(
+      r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
+    ).hasMatch(body)) {
       throw const HttpException('PROPFIND invalid multistatus response');
     }
     String? block;
@@ -537,6 +555,7 @@ extension _WebDavClient on NextcloudSync {
     bool protectNonEmpty = false,
     _RemoteArchiveSnapshot? archive,
     _RemoteFile? remoteFile,
+    SyncCursor? previous,
   }) async {
     if (archive != null && archive.contains(path)) {
       final bytes = archive.read(path);
@@ -557,6 +576,7 @@ extension _WebDavClient on NextcloudSync {
         return _DownloadResult(protected: true, etag: remoteFile?.etag);
       }
       _requireLocalReplacementAllowed(path);
+      await _snapshotBeforeReplacement(storage, path, previous: previous);
       await storage.writeBytes(path, bytes);
       _recordLocalContentChange(path);
       return _DownloadResult(
@@ -586,6 +606,7 @@ extension _WebDavClient on NextcloudSync {
       }
       _requireLocalReplacementAllowed(path);
       final bytes = await temporary.readAsBytes();
+      await _snapshotBeforeReplacement(storage, path, previous: previous);
       await storage.writeBytes(path, bytes);
       _recordLocalContentChange(path);
       return _DownloadResult(

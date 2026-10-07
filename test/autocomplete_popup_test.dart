@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
@@ -10,6 +11,45 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/editor_autocomplete.dart';
 
 void main() {
+  testWidgets('stale mention result is ignored during the next debounce', (
+    tester,
+  ) async {
+    final first = Completer<List<MentionSuggestion>>();
+    final second = Completer<List<MentionSuggestion>>();
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: (_) {},
+      onError: (e) => fail('$e'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(
+            controller: controller,
+            onInsert: () async {},
+            onMentionQuery: (query, _) =>
+                query == 'f' ? first.future : second.future,
+          ),
+        ),
+      ),
+    );
+    final field = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(field);
+    await tester.enterText(field, '@f');
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.enterText(field, '@fix');
+    first.complete(const [MentionSuggestion(id: 'stale', title: 'Stale')]);
+    await tester.pump();
+    expect(find.byKey(const Key('autocomplete-mention-stale')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 150));
+    second.complete(const [MentionSuggestion(id: 'fresh', title: 'Fresh')]);
+    await tester.pump();
+    expect(find.byKey(const Key('autocomplete-mention-fresh')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('rendered popup stays clear of a multiline query caret', (
     tester,
   ) async {

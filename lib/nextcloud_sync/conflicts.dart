@@ -7,6 +7,44 @@ extension _SyncConflicts on NextcloudSync {
     }
   }
 
+  Future<void> _snapshotBeforeReplacement(
+    VaultStorage storage,
+    String path, {
+    SyncCursor? previous,
+  }) async {
+    _requireLocalReplacementAllowed(path);
+    if (isMachineRevisionPath(path) ||
+        path.startsWith('_system/') ||
+        !await storage.exists(path)) {
+      return;
+    }
+    final bytes = await storage.readBytes(path);
+    final hash = sha256.convert(bytes).toString();
+    if (previous?.remoteConfirmed == true && hash == previous?.localSha256) {
+      if (await storage.hash(path) != hash) throw const SyncDeferred();
+      _requireLocalReplacementAllowed(path);
+      return;
+    }
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    await storage.writeBytes('.tylog/undo/sync-$stamp/$path', bytes);
+    if (await storage.hash(path) != hash) {
+      throw const SyncDeferred();
+    }
+    _requireLocalReplacementAllowed(path);
+  }
+
+  Future<void> _pruneSyncSnapshots(VaultStorage storage) async {
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 30))
+        .microsecondsSinceEpoch;
+    for (final entry in await storage.list(path: '.tylog/undo')) {
+      final name = entry.path.split('/').last;
+      if (!entry.isDirectory || !name.startsWith('sync-')) continue;
+      final stamp = int.tryParse(name.substring(5));
+      if (stamp != null && stamp < cutoff) await storage.delete(entry.path);
+    }
+  }
+
   Future<({File file, String? etag})> _captureRemote(
     String path, {
     _RemoteArchiveSnapshot? archive,
@@ -172,7 +210,6 @@ extension _SyncConflicts on NextcloudSync {
     _RemoteFile? remoteFile,
   ) async {
     final revision = isMachineRevisionPath(path);
-    if (remoteFile == null && !revision) return null;
     File? captured;
     try {
       // A 412 can mean a peer created the envelope after our listing, or

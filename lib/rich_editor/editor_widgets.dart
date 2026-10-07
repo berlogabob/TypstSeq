@@ -180,6 +180,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _cancelAutocomplete();
       return;
     }
+    if (_autocomplete.value?.trigger != trigger) _mentionQueryToken++;
     if (trigger.kind == AutocompleteTriggerKind.command) {
       _debounce?.cancel();
       _autocomplete.value = _AutocompleteState(
@@ -223,7 +224,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   Future<void> _runMentionQuery(AutocompleteTrigger trigger) async {
     final onMentionQuery = widget.onMentionQuery;
     if (onMentionQuery == null) return;
-    final token = ++_mentionQueryToken;
+    final token = _mentionQueryToken;
     final results = await onMentionQuery(trigger.query, trigger.kind);
     if (!mounted || token != _mentionQueryToken) return;
     final current = _autocomplete.value;

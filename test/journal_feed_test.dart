@@ -157,42 +157,48 @@ void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
 
-  testWidgets('journal shows virtual event days and coming up without files', (
+  testWidgets('journal lists only real pages; a day\'s events stay collapsed', (
     tester,
   ) async {
-    final root = await Directory.systemTemp.createTemp(
-      'tylog_virtual_journal_',
-    );
+    final root = await Directory.systemTemp.createTemp('tylog_journal_events_');
     addTearDown(() => root.delete(recursive: true));
     final vault = Vault(root);
     final now = DateTime.now();
     final yesterday = isoDay(now.subtract(const Duration(days: 1)));
+    final twoDaysAgo = isoDay(now.subtract(const Duration(days: 2)));
     final tomorrow = isoDay(now.add(const Duration(days: 1)));
+    final path = 'daily/$yesterday.typ';
+    await vault.storage.writeText(path, '= $yesterday\n');
     final opened = <String>[];
+    CalendarItem event(String date, String title) => CalendarItem(
+      date: date,
+      start: '19:00',
+      kind: CalendarItemKind.dateRef,
+      title: title,
+      notePath: 'events/$title.typ',
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: JournalFeed(
             vault: vault,
             index: VaultIndex(
-              notesByPath: const {},
+              notesByPath: {
+                path: NoteRef(
+                  id: yesterday,
+                  path: path,
+                  title: yesterday,
+                  kind: 'daily',
+                  date: yesterday,
+                  outgoingLinks: const [],
+                ),
+              },
               backlinksByTarget: const {},
             ),
             events: [
-              CalendarItem(
-                date: yesterday,
-                start: '19:00',
-                kind: CalendarItemKind.dateRef,
-                title: 'Yesterday class',
-                notePath: 'events/past.typ',
-              ),
-              CalendarItem(
-                date: tomorrow,
-                start: '20:00',
-                kind: CalendarItemKind.dateRef,
-                title: 'Tomorrow lab',
-                notePath: 'events/future.typ',
-              ),
+              event(yesterday, 'Yesterday class'),
+              event(twoDaysAgo, 'Pageless class'),
+              event(tomorrow, 'Tomorrow lab'),
             ],
             onOpenPath: opened.add,
           ),
@@ -200,15 +206,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Coming up'), findsOneWidget);
-    expect(find.text('Tomorrow lab'), findsOneWidget);
-    expect(find.text('Yesterday class'), findsOneWidget);
-    expect(find.text('19:00'), findsOneWidget);
-    await tester.tap(find.byTooltip('Write about this').first);
-    expect(opened, ['events/future.typ']);
+    expect(find.text('Coming up'), findsNothing);
+    expect(find.text('Tomorrow lab'), findsNothing);
+    expect(find.text(humanDate(DateTime.parse(twoDaysAgo))), findsNothing);
+    expect(find.text('Yesterday class'), findsNothing);
+    await tester.tap(find.text('Agenda · 1'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Yesterday class'));
-    expect(opened.last, 'events/past.typ');
-    expect(await vault.storage.list(recursive: true), isEmpty);
+    expect(opened, ['events/Yesterday class.typ']);
   });
 
   testWidgets('journal card atom tap wins while its background still opens', (

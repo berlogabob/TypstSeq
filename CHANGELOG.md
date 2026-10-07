@@ -3,6 +3,29 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.6+129
+
+### Fixed
+
+- **A note written just before the server crashed is no longer deleted.** An
+  upload the server acknowledged and then lost (a crash or restore) left the
+  file missing remotely; the app read that as another device's deletion and
+  removed its own copy. An upload now counts as proof only after the server
+  lists the file again; until then a missing file is uploaded again.
+- A folder listing cut off mid-response is rejected. Files missing from a
+  truncated listing could be treated as deleted on the server.
+- Before sync deletes or overwrites a local file whose content the server
+  never confirmed, it keeps a copy under `.tylog/undo/sync-…` (30 days).
+- Typing `@` to mention a note no longer stalls the keyboard on a large
+  vault: the lookup scored every note again inside the sort (about 390 ms
+  per keystroke at 5,000 notes on a desktop, now about 1 ms).
+
+### Changed
+
+- **Journal lists journal pages only.** The "Coming up" card and the empty
+  days created for past events are gone; a day's events sit behind one
+  collapsed "Agenda" line.
+
 ## 0.11.5+128
 
 ### Fixed

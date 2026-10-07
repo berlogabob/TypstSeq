@@ -19,7 +19,134 @@ NoteRef _note(
   outgoingLinks: const [],
 );
 
+VaultIndex _mentionIndex() => VaultIndex(
+  notesByPath: {
+    for (var i = 0; i < 5000; i++)
+      'notes/$i.typ': NoteRef(
+        id: 'id-$i-fix',
+        path: 'notes/$i.typ',
+        title: [
+          'Fix',
+          'FIX pipeline',
+          'Prefix fix suffix',
+          'Илья',
+          'Игровые движки',
+          'Ética',
+          'Unrelated',
+        ][i % 7],
+        kind: ['note', 'project', 'article', 'person'][i % 4],
+        aliases: [
+          'Alias $i',
+          ['fix alias', 'ИЛЬЯ alias', 'ÉTI alias'][i % 3],
+        ],
+        outgoingLinks: const [],
+      ),
+  },
+  backlinksByTarget: const {},
+);
+const _mentionQueries = [
+  'fix',
+  'FiX',
+  '  FIX  ',
+  'иЛь',
+  'ИГРО',
+  'eTi',
+  'id-',
+  '999-fix',
+  'missing',
+];
+const _mentionRecency = {
+  'notes/0.typ': 0,
+  'notes/7.typ': 1,
+  'notes/14.typ': 55,
+};
+const _mentionExcluded = {'id-0-fix', 'id-11-fix'};
+
 void main() {
+  test('cached mention query preserves old ordering on 5000 notes', () {
+    final index = _mentionIndex();
+    final cache = MentionQueryCache();
+    // Captured from the original filter/comparator before changing production
+    // code. Duplicate titles also lock down List.sort's existing tie order.
+    const oldOrder = <String, List<int>>{
+      'fix': [7, 2499, 2177, 1001, 987, 2401, 2387, 973],
+      'FiX': [7, 2499, 2177, 1001, 987, 2401, 2387, 973],
+      '  FIX  ': [7, 2499, 2177, 1001, 987, 2401, 2387, 973],
+      'иЛь': [2033, 101, 1011, 983, 1025, 1039, 1053, 969],
+      'ИГРО': [4743, 1019, 1033, 1047, 1061, 1075, 1089, 109],
+      'eTi': [4555, 1013, 1027, 985, 103, 1041, 1055, 1069],
+      'id-': [7, 1849, 99, 1009, 981, 1023, 1037, 967],
+      '999-fix': [4999, 3999, 999, 1999, 2999],
+      'missing': [],
+    };
+    for (final query in _mentionQueries) {
+      final expected = oldOrder[query]!.map(
+        (i) => index.notesByPath['notes/$i.typ']!,
+      );
+      expect(
+        cache.query(
+          index,
+          query,
+          _mentionRecency,
+          excludedIds: _mentionExcluded,
+        ),
+        orderedEquals(expected),
+        reason: query,
+      );
+    }
+  });
+
+  test('mention cache rebuilds for replacement and in-place index refresh', () {
+    final cache = MentionQueryCache();
+    final first = _note('first', 'notes/first.typ', 'First');
+    final second = _note('second', 'notes/second.typ', 'Second');
+    final index = VaultIndex(
+      notesByPath: {first.path: first},
+      backlinksByTarget: const {},
+    );
+    expect(cache.query(index, 'first', const {}), [first]);
+    index.notesByPath
+      ..clear()
+      ..[second.path] = second;
+    expect(cache.query(index, 'second', const {}, revision: 1), [second]);
+    expect(cache.query(index, 'first', const {}, revision: 1), isEmpty);
+    final replacement = VaultIndex(
+      notesByPath: {first.path: first},
+      backlinksByTarget: const {},
+    );
+    expect(cache.query(replacement, 'first', const {}, revision: 1), [first]);
+    expect(cache.query(null, 'first', const {}), isEmpty);
+  });
+
+  test('mention query micro-benchmark on 5000 notes', () {
+    final index = _mentionIndex();
+    final cache = MentionQueryCache();
+    for (final query in _mentionQueries) {
+      for (var i = 0; i < 3; i++) {
+        cache.query(
+          index,
+          query,
+          _mentionRecency,
+          excludedIds: _mentionExcluded,
+        );
+      }
+      final stopwatch = Stopwatch()..start();
+      for (var i = 0; i < 10; i++) {
+        cache.query(
+          index,
+          query,
+          _mentionRecency,
+          excludedIds: _mentionExcluded,
+        );
+      }
+      // Informational only: timings are machine-dependent, never a CI gate.
+      // ignore: avoid_print
+      print(
+        '$query: ${(stopwatch.elapsedMicroseconds / 10000).toStringAsFixed(3)} ms/query',
+      );
+    }
+  });
+
   group('detectTrigger', () {
     test('@ alone at start of text triggers a mention with an empty query', () {
       final trigger = detectTrigger('@', 1);
@@ -164,8 +291,12 @@ void main() {
   // scraped articles — indistinguishable rows subtitled md-3b7a2305beedce32
   // and md-bc14d696f4420a94 — above everything else.
   group('mention ranking', () {
-    final project = _note('fg', 'projects/FlowGroove.typ', 'FlowGroove',
-        kind: 'project');
+    final project = _note(
+      'fg',
+      'projects/FlowGroove.typ',
+      'FlowGroove',
+      kind: 'project',
+    );
     final articleA = _note(
       'md-3b7a2305beedce32',
       'articles/FlowGroove.typ',
@@ -197,7 +328,10 @@ void main() {
       // below both notes whose title matches.
       final auditScore = mentionScore(audit, 'flowgroove', const {});
       expect(auditScore, greaterThan(0));
-      expect(auditScore, lessThan(mentionScore(articleA, 'flowgroove', const {})));
+      expect(
+        auditScore,
+        lessThan(mentionScore(articleA, 'flowgroove', const {})),
+      );
       // A word inside the title now matches too (substring tier), but stays
       // below any prefix-tier match so it can't bury the page you named.
       final substring = mentionScore(audit, 'аудит', const {});

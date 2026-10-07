@@ -98,22 +98,6 @@ class _JournalFeedState extends State<JournalFeed> {
     final days = (widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == 'daily')
         .toList();
-    final known = days.map(_dayKey).toSet();
-    final today = isoDay(DateTime.now());
-    for (final event in widget.events) {
-      if (event.date.compareTo(today) <= 0 && known.add(event.date)) {
-        days.add(
-          NoteRef(
-            id: event.date,
-            path: '',
-            title: event.date,
-            kind: 'daily',
-            date: event.date,
-            outgoingLinks: const [],
-          ),
-        );
-      }
-    }
     return days..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
   }
 
@@ -203,20 +187,7 @@ class _JournalFeedState extends State<JournalFeed> {
   @override
   Widget build(BuildContext context) {
     final days = _days();
-    final upcomingDays =
-        widget.events
-            .where(
-              (e) =>
-                  e.notePath.startsWith('events/') &&
-                  e.date.compareTo(isoDay(DateTime.now())) > 0,
-            )
-            .map((e) => e.date)
-            .toSet()
-            .toList()
-          ..sort();
-    final comingUp = upcomingDays.take(7).toList();
-    final headerCount = comingUp.isEmpty ? 0 : 1;
-    if (days.isEmpty && comingUp.isEmpty) {
+    if (days.isEmpty) {
       return const Center(child: Text('No journal pages yet'));
     }
     final visible = min(_visibleDays, days.length);
@@ -225,35 +196,8 @@ class _JournalFeedState extends State<JournalFeed> {
     return ListView.builder(
       key: const PageStorageKey('journal-feed'),
       controller: _scroll,
-      itemCount: headerCount + visible + (hasMore ? 1 : 0),
+      itemCount: visible + (hasMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (headerCount == 1 && index == 0) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Coming up',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  for (final day in comingUp) ...[
-                    Text(
-                      humanDate(DateTime.parse(day)),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    for (final event in _eventsOn(
-                      day,
-                    ).where((e) => e.notePath.startsWith('events/')))
-                      _eventRow(event),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }
-        index -= headerCount;
         if (index >= visible) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -288,7 +232,17 @@ class _JournalFeedState extends State<JournalFeed> {
                         : humanDate(DateTime.parse(day.date!)),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  for (final event in _eventsOn(_dayKey(day))) _eventRow(event),
+                  // Collapsed: a term of recurring classes used to bury the
+                  // day's own text under a screen of rows.
+                  if (_eventsOn(_dayKey(day)) case final events
+                      when events.isNotEmpty)
+                    ExpansionTile(
+                      dense: true,
+                      tilePadding: EdgeInsets.zero,
+                      shape: const Border(),
+                      title: Text('Agenda · ${events.length}'),
+                      children: [for (final e in events) _eventRow(e)],
+                    ),
                   const Divider(),
                   FutureBuilder<String>(
                     future: source,

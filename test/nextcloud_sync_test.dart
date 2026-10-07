@@ -1042,6 +1042,302 @@ void main() {
     NextcloudSync.checkpointInterval = defaultCheckpointInterval;
   });
 
+  for (final failure in [
+    'all 530',
+    'all timeout',
+    'PUT timeout',
+    'GET timeout',
+    'PROPFIND 530 HTML',
+    'PUT 530 HTML',
+    'GET 530 HTML',
+    'PROPFIND timeout',
+    'mid-run 530',
+    'truncated PROPFIND',
+    'truncated entries with closing multistatus',
+    'well-formed partial PROPFIND',
+    'empty PROPFIND',
+    'rollback after PUT',
+    'rollback then 530',
+    'PUT stored then timeout',
+  ]) {
+    test('outage preserves new daily and offline edit: $failure', () async {
+      const daily = 'daily/2026/10/2026-10-07.typ';
+      const existing = 'notes/existing.typ';
+      const article = 'articles/link.typ';
+      final revision = '_system/revisions/note-${'a' * 64}.json';
+      final remote = <String, _MutableRemoteFile>{};
+      var outage = false;
+      var puts = 0;
+      late _MutableRemoteFile originalExisting;
+      var intercepted = 0;
+      final originalTimeout = NextcloudSync.propfindBodyTimeout;
+      NextcloudSync.propfindBodyTimeout = const Duration(milliseconds: 100);
+      addTearDown(() => NextcloudSync.propfindBodyTimeout = originalTimeout);
+      final server = await _mutableWebDavServer(
+        remote,
+        onAfterPut: (path) async {
+          if (!outage) return;
+          puts++;
+          if (failure.startsWith('rollback')) {
+            if (path == daily || path == revision) remote.remove(path);
+            if (path == existing) remote[existing] = originalExisting;
+          }
+          if (failure == 'PUT stored then timeout') {
+            intercepted++;
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          }
+        },
+        intercept: (request, path) async {
+          if (!outage) return false;
+          final method = request.method;
+          final listing = method == 'PROPFIND';
+          if (failure == 'rollback after PUT') return false;
+          if (failure == 'truncated PROPFIND' ||
+              failure == 'truncated entries with closing multistatus' ||
+              failure == 'well-formed partial PROPFIND' ||
+              failure == 'empty PROPFIND') {
+            if (!listing) return false;
+            await request.drain<void>();
+            intercepted++;
+            request.response.statusCode = 207;
+            request.response.write('<d:multistatus xmlns:d="DAV:">');
+            if (failure != 'empty PROPFIND') {
+              // Enough genuine entries to pass the mass-wipe guard, but the
+              // newly uploaded daily is beyond the truncated end of the body.
+              request.response.write(
+                '<d:response><d:href>/remote.php/dav/files/alice/TyLogVault/</d:href>'
+                '<d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype>'
+                '<d:getetag>"partial"</d:getetag></d:prop></d:propstat></d:response>',
+              );
+              for (final entry in remote.entries) {
+                if (entry.key == daily || entry.key == revision) continue;
+                request.response.write(
+                  '<d:response><d:href>/remote.php/dav/files/alice/TyLogVault/${entry.key}</d:href>'
+                  '<d:propstat><d:prop><d:getlastmodified>${HttpDate.format(entry.value.modified)}</d:getlastmodified>'
+                  '<d:getetag>${entry.value.etag}</d:getetag></d:prop></d:propstat></d:response>',
+                );
+              }
+              if (failure != 'well-formed partial PROPFIND') {
+                request.response.write('<d:response>');
+              }
+              if (failure != 'truncated PROPFIND') {
+                request.response.write('</d:multistatus>');
+              }
+            } else {
+              request.response.write('</d:multistatus>');
+            }
+            await request.response.close();
+            return true;
+          }
+          final fail =
+              failure == 'all timeout' ||
+              failure == 'PUT timeout' && method == 'PUT' ||
+              failure == 'GET timeout' && method == 'GET' ||
+              failure == 'all 530' ||
+              failure == 'PROPFIND 530 HTML' && listing ||
+              failure == 'PUT 530 HTML' && method == 'PUT' ||
+              failure == 'GET 530 HTML' && method == 'GET' ||
+              failure == 'PROPFIND timeout' && listing ||
+              (failure == 'mid-run 530' || failure == 'rollback then 530') &&
+                  puts > 0;
+          if (!fail) return false;
+          intercepted++;
+          await request.drain<void>();
+          if (failure.endsWith('timeout') && failure != 'PROPFIND timeout') {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+            request.response.statusCode = 530;
+          } else if (failure == 'PROPFIND timeout') {
+            request.response.statusCode = 207;
+            request.response.write('<d:multistatus xmlns:d="DAV:">');
+            await request.response.flush();
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          } else {
+            request.response.statusCode = 530;
+            request.response.headers.contentType = ContentType.html;
+            request.response.write(
+              '<html>Cloudflare origin unreachable</html>',
+            );
+          }
+          await request.response.close();
+          return true;
+        },
+      );
+      addTearDown(() => server.close(force: true));
+      final root = await Directory.systemTemp.createTemp('tylog-outage-');
+      addTearDown(() => root.delete(recursive: true));
+      final vault = Vault(root);
+      await vault.ensureCreated();
+      await vault.saveNote(existing, 'original remote text');
+      await NextcloudSync(_config(server)).sync(vault);
+      originalExisting = remote[existing]!;
+      final expected = {
+        revision: jsonEncode({
+          'revision': {
+            'id': 'first-offline-revision',
+            'parentRevisionId': null,
+          },
+          'history': [],
+        }),
+        daily:
+            '#show: tylog.note.with(id: "daily", title: "Today")\nmy entry\n',
+        existing: 'original remote text\noffline edit\n',
+        article:
+            '#show: tylog.note.with(id: "article", title: "Link")\nhttps://example.org/article\n',
+      };
+      for (final entry in expected.entries) {
+        await vault.saveNote(entry.key, entry.value);
+      }
+      final bytes = {
+        for (final path in expected.keys)
+          path: await vault.storage.readBytes(path),
+      };
+      // Force a GET after the local pushes, even while the origin is failing.
+      remote['notes/from-peer.typ'] = _MutableRemoteFile(
+        bytes: utf8.encode('peer text'),
+        etag: '"peer"',
+        modified: DateTime.now().toUtc(),
+      );
+      outage = true;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          await runZoned(
+            () => NextcloudSync(_config(server)).sync(vault, trigger: 'poll'),
+            zoneSpecification: ZoneSpecification(
+              createTimer: (self, parent, zone, duration, callback) =>
+                  parent.createTimer(
+                    zone,
+                    duration >= const Duration(seconds: 20)
+                        ? const Duration(milliseconds: 100)
+                        : duration,
+                    callback,
+                  ),
+            ),
+          );
+        } on IOException {
+          // The failed pass must not destroy any of the local versions.
+        } on TimeoutException {
+          // Exercise the actual response-body timeout, with a short deadline.
+        }
+        for (final entry in bytes.entries) {
+          expect(
+            await vault.storage.exists(entry.key),
+            isTrue,
+            reason: failure,
+          );
+          expect(
+            await vault.storage.readBytes(entry.key),
+            entry.value,
+            reason: failure,
+          );
+        }
+        if (attempt == 0) {
+          for (final path in [daily, existing, article]) {
+            await vault.saveNote(
+              path,
+              '${await vault.readText(path)}\nmore text during the outage\n',
+            );
+            bytes[path] = await vault.storage.readBytes(path);
+          }
+        }
+      }
+      if (failure != 'rollback after PUT') expect(intercepted, greaterThan(0));
+      outage = false;
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'resume');
+      for (final entry in bytes.entries) {
+        expect(await vault.storage.readBytes(entry.key), entry.value);
+        expect(remote[entry.key]?.bytes, entry.value);
+      }
+    });
+  }
+
+  test(
+    'sync snapshots live bytes before download and local deletion',
+    () async {
+      const path = 'notes/existing.typ';
+      final remote = <String, _MutableRemoteFile>{};
+      late Vault vault;
+      var editDuringGet = false;
+      final unsynced = utf8.encode('user text saved during the GET');
+      final server = await _mutableWebDavServer(
+        remote,
+        intercept: (request, requestedPath) async {
+          if (editDuringGet &&
+              request.method == 'GET' &&
+              requestedPath == path) {
+            editDuringGet = false;
+            await vault.storage.writeBytes(path, unsynced);
+          }
+          return false;
+        },
+      );
+      addTearDown(() => server.close(force: true));
+      final root = await Directory.systemTemp.createTemp('tylog-sync-undo-');
+      addTearDown(() => root.delete(recursive: true));
+      vault = Vault(root);
+      await vault.ensureCreated();
+      await vault.saveNote(path, 'baseline');
+      await NextcloudSync(_config(server)).sync(vault);
+      final other = utf8.encode('peer change');
+      remote[path] = _MutableRemoteFile(
+        bytes: other,
+        etag: '"peer"',
+        modified: DateTime.now().toUtc(),
+      );
+      editDuringGet = true;
+      await NextcloudSync(_config(server)).sync(vault);
+      expect(editDuringGet, isFalse);
+      expect(await vault.storage.readBytes(path), other);
+      remote.remove(path);
+      await expectLater(
+        NextcloudSync(
+          _config(server),
+          canReplaceLocal: (_) => false,
+        ).sync(vault),
+        throwsA(isA<SyncDeferred>()),
+      );
+      expect(await vault.storage.readBytes(path), other);
+      final deleted = await NextcloudSync(_config(server)).sync(vault);
+      expect(deleted.deletedLocal, 1);
+      final snapshots = [
+        for (final entry in await vault.storage.list(
+          path: '.tylog/undo',
+          recursive: true,
+        ))
+          if (!entry.isDirectory && entry.path.endsWith('/$path'))
+            await vault.storage.readBytes(entry.path),
+      ];
+      expect(snapshots, contains(orderedEquals(unsynced)));
+      expect(snapshots, isNot(contains(orderedEquals(other))));
+    },
+  );
+
+  test('sync prunes only old sync undo directories', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    addTearDown(() => server.close(force: true));
+    final root = await Directory.systemTemp.createTemp('tylog-sync-prune-');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    final now = DateTime.now();
+    final old =
+        'sync-${now.subtract(const Duration(days: 31)).microsecondsSinceEpoch}';
+    final recent = 'sync-${now.microsecondsSinceEpoch}';
+    for (final name in [old, recent, 'manual', 'sync-invalid']) {
+      await vault.storage.writeText('.tylog/undo/$name/notes/a.typ', 'backup');
+    }
+    await NextcloudSync(_config(server)).sync(vault);
+    expect(await vault.storage.exists('.tylog/undo/$old'), isFalse);
+    for (final name in [recent, 'manual', 'sync-invalid']) {
+      expect(
+        await vault.storage.exists('.tylog/undo/$name/notes/a.typ'),
+        isTrue,
+      );
+    }
+    expect(isSyncableVaultPath('.tylog/undo/$recent/notes/a.typ'), isFalse);
+    expect(remote.keys.any((path) => path.startsWith('.tylog/undo/')), isFalse);
+  });
+
   group('seamless sync', () {
     Future<
       ({
@@ -1057,6 +1353,7 @@ void main() {
       FutureOr<void> Function(String)? onBeforePut,
       bool ignoreDepthOne = false,
       bool omitPutEtag = false,
+      bool includeChecksums = true,
       FutureOr<void> Function(String)? onAfterPut,
     }) async {
       final remote = {
@@ -1073,7 +1370,7 @@ void main() {
         folderEtags: folderEtags,
         uploads: uploads,
         onBeforePut: onBeforePut,
-        includeChecksums: true,
+        includeChecksums: includeChecksums,
         unquotedPutEtag: true,
         ignoreDepthOne: ignoreDepthOne,
         omitPutEtag: omitPutEtag,
@@ -1104,6 +1401,115 @@ void main() {
         uploads: uploads,
       );
     }
+
+    test('listed PUT ETags confirm uploads without GETs', () async {
+      final s = await synced(includeChecksums: false);
+      const note = 'notes/other.typ';
+      const revision = '_system/revisions/other.json';
+      await s.vault.saveNote(note, 'autosaved edit');
+      await s.vault.saveNote(revision, jsonEncode({'payload': 'x' * 240000}));
+      final upload = await NextcloudSync(
+        _config(s.server),
+      ).sync(s.vault, trigger: 'autosave', pushOnly: true);
+      expect(upload.uploaded, 2);
+      expect(s.metrics.individualGets, 0);
+      final state =
+          jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+              as Map;
+      expect(state['cursors'][note]['remoteConfirmed'], isNull);
+      expect(state['cursors'][revision]['remoteConfirmed'], isNull);
+      // Resume a cursor checkpoint written before the post-PUT listing.
+      for (final path in [note, revision]) {
+        state['cursors'][path]['remoteConfirmed'] = false;
+      }
+      await s.vault.storage.writeText(
+        '.tylog/sync_state.json',
+        jsonEncode(state),
+      );
+      s.metrics.propfinds = 0;
+      s.metrics.individualGets = 0;
+      final result = await NextcloudSync(
+        _config(s.server),
+      ).sync(s.vault, trigger: 'autosave');
+      expect(result.conflicts, 0);
+      expect(s.metrics.individualGets, 0);
+      expect(
+        await s.vault.storage.readText('.tylog/sync_state.json'),
+        isNot(contains('"remoteConfirmed":false')),
+      );
+    });
+
+    test(
+      'confirmed local bytes need no undo copy on download or delete',
+      () async {
+        final s = await synced();
+        const path = 'notes/other.typ';
+        s.remote[path] = _remoteText('peer replacement');
+        final download = await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect(download.downloaded, 1);
+        s.remote.remove(path);
+        final deletion = await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect(deletion.deletedLocal, 1);
+        expect(await s.vault.storage.exists('.tylog/undo'), isFalse);
+      },
+    );
+
+    test(
+      'unconfirmed local bytes are copied before download overwrite',
+      () async {
+        final s = await synced();
+        const path = 'notes/other.typ';
+        final state =
+            jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+                as Map;
+        state['cursors'][path]['remoteConfirmed'] = false;
+        await s.vault.storage.writeText(
+          '.tylog/sync_state.json',
+          jsonEncode(state),
+        );
+        s.remote[path] = _remoteText('base other\npeer appended\n');
+        final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect(result.downloaded, 1);
+        final copies = await s.vault.storage.list(
+          path: '.tylog/undo',
+          recursive: true,
+        );
+        final copy = copies.singleWhere(
+          (e) => !e.isDirectory && e.path.endsWith('/$path'),
+        );
+        expect(await s.vault.storage.readText(copy.path), 'base other');
+      },
+    );
+
+    test('unsynced local bytes are copied before deleteLocal', () async {
+      final s = await synced();
+      const path = 'notes/other.typ';
+      s.remote.remove(path);
+      var checks = 0;
+      final storage = s.vault.storage as _ListCountingStorage;
+      final deletion = await NextcloudSync(
+        _config(s.server),
+        canReplaceLocal: (candidate) {
+          if (candidate == path && ++checks == 2) {
+            // The save lands after deleteLocal's hash check, before its copy.
+            File(
+              '${storage.root.path}/$path',
+            ).writeAsStringSync('unsynced local edit');
+          }
+          return true;
+        },
+      ).sync(s.vault);
+      expect(deletion.deletedLocal, 1);
+      expect(await s.vault.storage.exists(path), isFalse);
+      final copies = await s.vault.storage.list(
+        path: '.tylog/undo',
+        recursive: true,
+      );
+      final copy = copies.singleWhere(
+        (e) => !e.isDirectory && e.path.endsWith('/$path'),
+      );
+      expect(await s.vault.storage.readText(copy.path), 'unsynced local edit');
+    });
 
     test('unchanged vault costs one PROPFIND and no GETs', () async {
       final s = await synced();
@@ -1426,33 +1832,43 @@ void main() {
       },
     );
 
-    test('PUT without ETag never adopts a later peer ETag', () async {
-      late Map<String, _MutableRemoteFile> remote;
-      var armed = false;
-      const path = 'daily/2026/10/day.typ';
-      final s = await synced(
-        omitPutEtag: true,
-        onAfterPut: (uploadedPath) {
-          if (armed && uploadedPath == path) {
-            armed = false;
-            remote[path] = _remoteText('peer edit after upload');
-          }
-        },
-      );
-      remote = s.remote;
-      armed = true;
-      await s.vault.saveNote(path, 'local upload');
-      await NextcloudSync(_config(s.server)).sync(s.vault, pushOnly: true);
-      final state =
-          jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
-              as Map;
-      expect(state['cursors'][path]['remoteEtag'], isNull);
-      expect(s.metrics.listedFolders, isNotEmpty);
-      final result = await NextcloudSync(_config(s.server)).sync(s.vault);
-      expect(result.downloaded, 1);
-      expect(await s.vault.readText(path), 'peer edit after upload');
-      expect(utf8.decode(remote[path]!.bytes), 'peer edit after upload');
-    });
+    test(
+      'PUT without ETag preserves local upload against a later peer edit',
+      () async {
+        late Map<String, _MutableRemoteFile> remote;
+        var armed = false;
+        const path = 'daily/2026/10/day.typ';
+        final s = await synced(
+          omitPutEtag: true,
+          onAfterPut: (uploadedPath) {
+            if (armed && uploadedPath == path) {
+              armed = false;
+              remote[path] = _remoteText('peer edit after upload');
+            }
+          },
+        );
+        remote = s.remote;
+        armed = true;
+        await s.vault.saveNote(path, 'local upload');
+        await NextcloudSync(_config(s.server)).sync(s.vault, pushOnly: true);
+        final state =
+            jsonDecode(await s.vault.storage.readText('.tylog/sync_state.json'))
+                as Map;
+        expect(state['cursors'][path]['remoteEtag'], isNull);
+        expect(s.metrics.listedFolders, isNotEmpty);
+        final result = await NextcloudSync(_config(s.server)).sync(s.vault);
+        expect(result.conflicts, 1);
+        expect(result.downloaded, 0);
+        expect(await s.vault.readText(path), 'local upload');
+        final conflict = (await loadSyncConflicts(s.vault)).single;
+        expect(await s.vault.readText(conflict.localSnapshot!), 'local upload');
+        expect(
+          await s.vault.readText(conflict.remoteSnapshot!),
+          'peer edit after upload',
+        );
+        expect(utf8.decode(remote[path]!.bytes), 'peer edit after upload');
+      },
+    );
 
     test('push-first rejects NFC/NFD collisions before any PUT', () async {
       for (final pushOnly in [false, true]) {
@@ -6104,6 +6520,7 @@ Future<HttpServer> _mutableWebDavServer(
   List<Map<String, Object?>>? chunkRequests,
   bool interruptChunk3Once = false,
   bool Function()? serverError,
+  FutureOr<bool> Function(HttpRequest request, String path)? intercept,
 }) async {
   const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
@@ -6126,6 +6543,7 @@ Future<HttpServer> _mutableWebDavServer(
     final path = decodedPath.startsWith(root)
         ? decodedPath.substring(root.length)
         : '';
+    if (await intercept?.call(request, path) == true) return;
     const uploadsRoot = '/remote.php/dav/uploads/alice/';
     if (decodedPath.startsWith(uploadsRoot)) {
       final parts = decodedPath.substring(uploadsRoot.length).split('/');

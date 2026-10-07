@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'article_jobs.dart';
 import 'bibliography.dart';
 import 'controlled_editor.dart';
+import 'editor_autocomplete.dart' show MentionQueryCache;
 import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'saved_searches.dart';
@@ -242,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _exiting = false;
   Future<void>? _shutdownFuture;
   Future<void>? _databaseCloseFuture;
+  final _mentionQueryCache = MentionQueryCache();
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   late final TyLogEditingController richController;
@@ -4365,9 +4367,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
           ];
           final eventIds = eventSuggestions.map((e) => e.id).toSet();
-          final notes = (index?.notes ?? const <NoteRef>[])
-              .where((n) => !eventIds.contains(n.id))
-              .toList();
           // Built once per query, not per candidate: _mergedRecent() allocates
           // and sorts, and it is capped at 30 entries.
           final recency = <String, int>{
@@ -4392,23 +4391,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ];
           }
           bool matches(String s) => foldAccents(s).contains(q);
-          final matchedNotes =
-              notes
-                  .where(
-                    (n) =>
-                        matches(n.title) ||
-                        matches(n.id) ||
-                        n.aliases.any(matches),
-                  )
-                  .toList()
-                ..sort((a, b) {
-                  final byScore = mentionScore(
-                    b,
-                    q,
-                    recency,
-                  ).compareTo(mentionScore(a, q, recency));
-                  return byScore != 0 ? byScore : a.title.compareTo(b.title);
-                });
+          final matchedNotes = _mentionQueryCache.query(
+            index,
+            q,
+            recency,
+            excludedIds: eventIds,
+            revision: workspace.indexRevision,
+          );
           final suggestions = [
             ...eventSuggestions,
             ...matchedNotes
@@ -4425,7 +4414,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // `[[` also completes existing tags into concepts; `@` stays notes.
           if (kind == AutocompleteTriggerKind.wikiLink) {
             final tags = <String>{
-              for (final n in notes) ...n.tags,
+              for (final n in index?.notes ?? const <NoteRef>[])
+                if (!eventIds.contains(n.id)) ...n.tags,
             }.where(matches).toList()..sort();
             suggestions.addAll(
               tags

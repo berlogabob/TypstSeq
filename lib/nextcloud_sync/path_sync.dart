@@ -304,6 +304,11 @@ extension _PathSync on NextcloudSync {
                   ? NextcloudSync._normEtag(remoteFile.etag) !=
                         NextcloudSync._normEtag(previous.remoteEtag)
                   : _isChanged(remoteTime, previous.remoteMillis));
+    final listingConfirmsUpload =
+        previous?.remoteEtag != null &&
+        remoteFile?.etag != null &&
+        NextcloudSync._normEtag(remoteFile!.etag) ==
+            NextcloudSync._normEtag(previous!.remoteEtag);
     var action = SyncAction.skip;
     DateTime? uploadedRemoteTime;
     String? uploadedRemoteEtag;
@@ -451,6 +456,11 @@ extension _PathSync on NextcloudSync {
           if (await vault.storage.hash(path) != localHash) {
             throw const SyncDeferred();
           }
+          await _snapshotBeforeReplacement(
+            vault.storage,
+            path,
+            previous: previous,
+          );
           await vault.storage.writeBytes(path, revisionRemoteBytes!);
           _recordLocalContentChange(path);
           action = SyncAction.download;
@@ -514,6 +524,7 @@ extension _PathSync on NextcloudSync {
         final download = await _downloadStorage(
           path,
           vault.storage,
+          previous: previous,
           protectNonEmpty: true,
           archive: archive,
           remoteFile: remoteFile,
@@ -552,6 +563,7 @@ extension _PathSync on NextcloudSync {
         final download = await _downloadStorage(
           path,
           vault.storage,
+          previous: previous,
           remoteFile: remoteFile,
           archive: archive,
         );
@@ -567,6 +579,7 @@ extension _PathSync on NextcloudSync {
         remoteExists &&
         (adoptRemoteConflict ||
             previous == null ||
+            (!previous.remoteConfirmed && !listingConfirmsUpload) ||
             stateRecovered ||
             (localChanged && remoteChanged))) {
       // A producer can rewrite a coalesced envelope after the scan-time hash.
@@ -637,6 +650,7 @@ extension _PathSync on NextcloudSync {
           final download = await _downloadStorage(
             path,
             vault.storage,
+            previous: previous,
             protectNonEmpty: true,
             archive: archive,
             remoteFile: remoteFile,
@@ -662,6 +676,7 @@ extension _PathSync on NextcloudSync {
             final download = await _downloadStorage(
               path,
               vault.storage,
+              previous: previous,
               protectNonEmpty:
                   emptyDailyTemplate(path) == null ||
                   !isPristineStarterNote(
@@ -729,6 +744,7 @@ extension _PathSync on NextcloudSync {
         final download = await _downloadStorage(
           path,
           vault.storage,
+          previous: previous,
           protectNonEmpty: true,
           archive: archive,
           remoteFile: remoteFile,
@@ -761,6 +777,7 @@ extension _PathSync on NextcloudSync {
         final download = await _downloadStorage(
           path,
           vault.storage,
+          previous: previous,
           protectNonEmpty: true,
           archive: archive,
           remoteFile: remoteFile,
@@ -840,6 +857,7 @@ extension _PathSync on NextcloudSync {
         final download = await _downloadStorage(
           path,
           vault.storage,
+          previous: previous,
           protectNonEmpty: true,
           archive: archive,
           remoteFile: remoteFile,
@@ -871,14 +889,20 @@ extension _PathSync on NextcloudSync {
         !localChanged &&
         !stateRecovered &&
         !possibleRename &&
-        previous?.remoteEtag != null) {
+        previous?.remoteEtag != null &&
+        previous!.remoteConfirmed) {
       // Mirror of 'local-deleted' above: the cursor proves this exact content
       // was synced with the server before (etag recorded, bytes unchanged
       // since), so a missing remote is another device's deletion. Re-uploading
       // here resurrected every vault deletion — and the PUT into the deleted
       // parent collection 404-failed the whole run (2026-08-19). Local edits
       // since the last sync still win: localChanged falls through to upload.
+      _requireLocalReplacementAllowed(path);
+      if (await vault.storage.hash(path) != localHash) {
+        throw const SyncDeferred();
+      }
       action = SyncAction.deleteLocal;
+      await _snapshotBeforeReplacement(vault.storage, path, previous: previous);
       await vault.storage.delete(path);
       _recordLocalContentChange(path);
       deletedLocal++;
@@ -987,6 +1011,7 @@ extension _PathSync on NextcloudSync {
       if (nextLocalExists && nextRemoteExists) {
         updateCursor = true;
         cursor = SyncCursor(
+          remoteConfirmed: action != SyncAction.upload,
           // Downloads have no receipt: their hash predates the local write.
           recordedAt: wasDownloaded ? null : recordedAt,
           localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
@@ -1191,14 +1216,21 @@ extension _PathSync on NextcloudSync {
           final bytes = source == null
               ? await vault.storage.readBytes(oldStat!.path)
               : await source.readAsBytes();
+          await _snapshotBeforeReplacement(vault.storage, replacement);
           await vault.storage.writeBytes(replacement, bytes);
           _recordLocalContentChange(replacement);
           if (await vault.storage.hash(replacement) != group.key) {
+            await _snapshotBeforeReplacement(vault.storage, replacement);
             await vault.storage.delete(replacement);
             throw StateError('Local rename verification failed: $replacement');
           }
         }
         if (oldStat != null) {
+          await _snapshotBeforeReplacement(
+            vault.storage,
+            oldStat.path,
+            previous: old.value,
+          );
           await vault.storage.delete(oldStat.path);
           _recordLocalContentChange(oldStat.path);
         }
