@@ -88,6 +88,9 @@ extension _WebDavClient on NextcloudSync {
       if (folder.isEmpty) rootEtag = listed.rootEtag;
       folders.addAll(listed.folders);
       files.addAll(listed.files);
+      // Sibling subtrees touch disjoint keys, so their requests can overlap;
+      // serially, eight changed folders cost ~7 s on a phone.
+      final children = <Future<void>>[];
       for (final child in listed.folders.keys) {
         if (child == folder || !isSyncableVaultPath('${child}file')) continue;
         final etag = listed.folders[child];
@@ -125,9 +128,10 @@ extension _WebDavClient on NextcloudSync {
               if (entry.key.startsWith(child)) entry.key: entry.value,
           });
         } else {
-          await visit(child);
+          children.add(visit(child));
         }
       }
+      await Future.wait(children);
     }
 
     try {

@@ -3,6 +3,14 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.2+125
+
+### Changed
+
+- **Faster sync.** Changed Nextcloud folders are listed concurrently (about
+  7 s down to 5 s per sync on a Huawei P30).
+- The sync trace times every stage of the index pass.
+
 ## 0.11.1+124
 
 ### Changed

@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/maintenance.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/vault.dart';
 
 class _CountingStorage extends LocalVaultStorage {
   _CountingStorage(super.root);
@@ -14,13 +16,37 @@ class _CountingStorage extends LocalVaultStorage {
   Future<List<VaultStorageEntry>> list({
     String path = '',
     bool recursive = false,
-  }) {
-    if (recursive) recursiveListCalls++;
+  }) async {
+    if (recursive) {
+      recursiveListCalls++;
+      await Future<void>.delayed(const Duration(milliseconds: 110));
+    }
     return super.list(path: path, recursive: recursive);
+  }
+
+  @override
+  Future<Uint8List> readBytes(String path) async {
+    if (path == 'assets/a.txt') {
+      await Future<void>.delayed(const Duration(milliseconds: 110));
+    }
+    return super.readBytes(path);
+  }
+
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    if (path == TylogVaultPaths.index) {
+      await Future<void>.delayed(const Duration(milliseconds: 115));
+    }
+    return super.writeBytes(path, bytes);
   }
 }
 
-class _Inspector implements TypstInspector {
+class _Inspector implements TypstInspector, BaseFilesInspector {
+  @override
+  Future<void> setBaseFiles(Map<String, Uint8List> files) async {
+    await Future<void>.delayed(const Duration(milliseconds: 105));
+  }
+
   @override
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async => [
     const TypstMetadataRecord(
@@ -55,9 +81,42 @@ void main() {
       DateTime.now().subtract(const Duration(hours: 2)),
     );
 
-    final events = await VaultMaintenance(
-      storage,
-    ).run(inspector: _Inspector(), buildSearch: false).toList();
+    final maintenance = VaultMaintenance(storage);
+    final events = await maintenance
+        .run(inspector: _Inspector(), buildSearch: false)
+        .toList();
+    final scanStages = Map.of(maintenance.stageMillis)
+      ..remove('validate')
+      ..remove('load-search')
+      ..remove('build-search')
+      ..remove('write-search');
+    expect(
+      scanStages.keys,
+      containsAll([
+        'list-stat',
+        'dirty-markers',
+        'sync-receipts',
+        'load-index',
+        'donor-load',
+        'support-files',
+        'scan',
+        'index-check',
+        'encode-index',
+        'write-index',
+        'delete-markers',
+        'donor-publish',
+        'other',
+      ]),
+    );
+    expect(scanStages.values.every((ms) => ms >= 0), isTrue);
+    expect(scanStages['list-stat'], greaterThanOrEqualTo(100));
+    expect(scanStages['support-files'], greaterThanOrEqualTo(100));
+    expect(scanStages['support-publish'], greaterThanOrEqualTo(100));
+    expect(scanStages['write-index'], greaterThanOrEqualTo(100));
+    expect(
+      scanStages.values.fold<int>(0, (sum, ms) => sum + ms),
+      events.whereType<MaintenanceIndexed>().single.durationMs,
+    );
 
     final indexed = events.whereType<MaintenanceIndexed>().single.index;
     final validation = events.whereType<MaintenanceValidated>().single.report;

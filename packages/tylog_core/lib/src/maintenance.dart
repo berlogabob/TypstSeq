@@ -215,7 +215,12 @@ class VaultMaintenance {
   }) async {
     final scanStarted = scanStartedAt ?? DateTime.now().microsecondsSinceEpoch;
     final timer = Stopwatch()..start();
-    entries ??= await storage.list(recursive: true);
+    final stage = Stopwatch()..start();
+    if (entries == null) {
+      entries = await storage.list(recursive: true);
+      stageMillis['list-stat'] = stage.elapsedMilliseconds;
+    }
+    stage.reset();
     final dirtyMarkers = <String, String>{};
     final committedMarkers = <String>[];
     for (final entry in entries) {
@@ -231,11 +236,17 @@ class VaultMaintenance {
         }
       }
     }
+    stageMillis['dirty-markers'] = stage.elapsedMilliseconds;
+    stage.reset();
     final hashStaleNow = {...stale, ...?hashStale, ...dirtyMarkers.values};
     final knownHashes = await _syncedHashes(storage, entries, hashStaleNow);
+    stageMillis['sync-receipts'] = stage.elapsedMilliseconds;
+    stage.reset();
     final staleNow = {...stale, ...hashStaleNow};
     parsedNotes = 0;
     final previous = _lastBuiltIndex ?? await loadVaultIndex(storage);
+    stageMillis['load-index'] = stage.elapsedMilliseconds;
+    stage.reset();
     // Only *our own* last index says anything about what our donor holds; a
     // peer's donated index does not, so it must not suppress a republish.
     final ownPrevious = previous?.version == kVaultIndexVersion
@@ -247,11 +258,14 @@ class VaultMaintenance {
           ? IndexDonorStore.readableDonorAge
           : IndexDonorStore.freshDonorAge,
     );
+    stageMillis['donor-load'] = stage.elapsedMilliseconds;
+    stage.reset();
     var reusedNotes = 0;
     var reusedTasks = 0;
     final index = await scanVaultStorage(
       storage,
       entries: entries,
+      stageMillis: stageMillis,
       inspector: inspector,
       previous: previous,
       donor: publishDonor && force ? null : donor,
@@ -266,6 +280,15 @@ class VaultMaintenance {
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
+    stageMillis['scan'] =
+        stage.elapsedMilliseconds -
+        (stageMillis['support-files'] ?? 0) -
+        (stageMillis['support-publish'] ?? 0) -
+        (stageMillis['recover-writes'] ?? 0) -
+        (stageMillis['tag-synonyms'] ?? 0) -
+        (stageMillis['scan-prepare'] ?? 0) -
+        (stageMillis['scan-finalize'] ?? 0);
+    stage.reset();
     // Skip the *encode*, not just the write: jsonEncode + gzip of the whole
     // index ran unconditionally just to compute a digest to compare against.
     // Comparing note content hashes answers the same question for the price of
@@ -274,22 +297,33 @@ class VaultMaintenance {
     final unchanged =
         sameIndexedContent(_lastBuiltIndex, index) &&
         await storage.exists(TylogVaultPaths.index);
+    stageMillis['index-check'] = stage.elapsedMilliseconds;
+    stage.reset();
+    stageMillis['encode-index'] = 0;
+    stageMillis['write-index'] = 0;
     if (!unchanged) {
       final encoded = encodeVaultIndexBytes(index);
       final digest = sha256.convert(encoded).toString();
+      stageMillis['encode-index'] = stage.elapsedMilliseconds;
+      stage.reset();
       if (digest != _lastIndexDigest ||
           !await storage.exists(TylogVaultPaths.index)) {
         await storage.writeBytes(TylogVaultPaths.index, encoded);
         _lastIndexDigest = digest;
       }
+      stageMillis['write-index'] = stage.elapsedMilliseconds;
     }
+    stage.reset();
     for (final marker in committedMarkers) {
       await storage.delete(marker);
     }
+    stageMillis['delete-markers'] = stage.elapsedMilliseconds;
+    stage.reset();
     _lastBuiltIndex = index;
     if (publishDonor && deviceId != null && deviceId.isNotEmpty) {
       await donors.publish(deviceId, index, previous: ownPrevious);
     }
+    stageMillis['donor-publish'] = stage.elapsedMilliseconds;
     donors.lastReuse = DonorReuse(
       notes: reusedNotes,
       tasks: reusedTasks,
@@ -332,6 +366,7 @@ class VaultMaintenance {
         stageMillis
           ..clear()
           ..addAll({
+            'support-files': 0,
             'validate': 0,
             'load-search': 0,
             'build-search': 0,
@@ -342,6 +377,7 @@ class VaultMaintenance {
         final entries = List<VaultStorageEntry>.unmodifiable(
           await storage.list(recursive: true),
         );
+        stageMillis['list-stat'] = timer.elapsedMilliseconds;
         final index = await buildIndex(
           entries: entries,
           scanStartedAt: scanStarted,
@@ -355,12 +391,38 @@ class VaultMaintenance {
           },
           isCancelled: isCancelled,
         );
+        const scanStages = [
+          'list-stat',
+          'dirty-markers',
+          'sync-receipts',
+          'load-index',
+          'donor-load',
+          'support-files',
+          'support-publish',
+          'recover-writes',
+          'tag-synonyms',
+          'scan-prepare',
+          'scan-finalize',
+          'scan',
+          'index-check',
+          'encode-index',
+          'write-index',
+          'delete-markers',
+          'donor-publish',
+        ];
+        final scanDuration = timer.elapsedMilliseconds;
+        stageMillis['other'] =
+            scanDuration -
+            scanStages.fold<int>(
+              0,
+              (sum, key) => sum + (stageMillis[key] ?? 0),
+            );
         out.add(
           MaintenanceIndexed(
             index,
             donorReuse: donorReuse,
             parsedNotes: parsedNotes,
-            durationMs: timer.elapsedMilliseconds,
+            durationMs: scanDuration,
             donorPublishError: donorPublishError,
           ),
         );

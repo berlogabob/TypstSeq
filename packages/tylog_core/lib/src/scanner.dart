@@ -429,6 +429,7 @@ Future<VaultIndex> scanVaultStorage(
   VaultIndex? previous,
   VaultIndex? donor,
   Map<String, String> knownHashes = const {},
+  Map<String, int>? stageMillis,
   void Function()? onParsed,
   void Function(int tasks)? onDonorReused,
   bool force = false,
@@ -436,8 +437,14 @@ Future<VaultIndex> scanVaultStorage(
   void Function(int complete, int total)? onProgress,
   bool Function()? isCancelled,
 }) async {
+  stageMillis?['support-files'] = 0;
+  stageMillis?['support-publish'] = 0;
   final listing = entries ?? await storage.list(recursive: true);
+  final prepareTimer = Stopwatch()..start();
+  final stageTimer = Stopwatch()..start();
   final recovered = await _recoverStrandedWrites(storage, listing);
+  final recoveryMs = stageTimer.elapsedMilliseconds;
+  stageMillis?['recover-writes'] = recoveryMs;
   final files = <VaultStorageEntry>[];
   for (final entity in [...listing, ...recovered]) {
     if (entity.isDirectory || !entity.path.endsWith('.typ')) continue;
@@ -469,7 +476,10 @@ Future<VaultIndex> scanVaultStorage(
 
   // One read per scan, shared by every note. Absent or unusable is normal and
   // simply means no merges.
+  stageTimer.reset();
   final synonyms = await loadTagSynonyms(storage);
+  final synonymsMs = stageTimer.elapsedMilliseconds;
+  stageMillis?['tag-synonyms'] = synonymsMs;
 
   // Grouped once. Filtering `previous.tasks` per note made the cached path
   // quadratic — a full pass over every task in the vault, 1700 times.
@@ -483,6 +493,8 @@ Future<VaultIndex> scanVaultStorage(
     (donorTasks[task.notePath] ??= <TaskRef>[]).add(task);
   }
 
+  stageMillis?['scan-prepare'] =
+      prepareTimer.elapsedMilliseconds - recoveryMs - synonymsMs;
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
@@ -643,7 +655,10 @@ Future<VaultIndex> scanVaultStorage(
       if (activeInspector == null) {
         inspectionFiles = const <String, Uint8List>{};
       } else {
+        final supportTimer = Stopwatch()..start();
         final shared = await _inspectionFiles(storage, entries: entries);
+        stageMillis?['support-files'] = supportTimer.elapsedMilliseconds;
+        supportTimer.reset();
         inspectionKeys = shared.keys.toSet();
         final inspector = activeInspector;
         if (inspector is BaseFilesInspector) {
@@ -658,6 +673,7 @@ Future<VaultIndex> scanVaultStorage(
         } else {
           inspectionFiles = shared;
         }
+        stageMillis?['support-publish'] = supportTimer.elapsedMilliseconds;
       }
     }
     var inspectionAttempted = false;
@@ -805,7 +821,10 @@ Future<VaultIndex> scanVaultStorage(
     notes[relative] = notes[relative]!.copyWith(contentHash: contentHash);
     onProgress?.call(fileIndex + 1, files.length);
   }
-  return _buildVaultIndex(notes, problems: problems, tasks: tasks);
+  stageTimer.reset();
+  final index = _buildVaultIndex(notes, problems: problems, tasks: tasks);
+  stageMillis?['scan-finalize'] = stageTimer.elapsedMilliseconds;
+  return index;
 }
 
 const _noteRoots = [
