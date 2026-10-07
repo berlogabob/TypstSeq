@@ -3,6 +3,19 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.4+127
+
+### Changed
+
+- **No more periodic full vault walk on Android.** Once a minute TyLog checks
+  only the folders that contain subfolders (29 of 1,870 on the test vault)
+  instead of re-reading every folder every five minutes: 9.5 s down to about
+  1 s on a Huawei P30. A full walk still runs every 30 minutes and whenever
+  the app is opened. A file another app rewrites in place while TyLog stays
+  open is noticed at that walk.
+- Index passes no longer read sync revision records as Typst inputs (7-9 s
+  down to 1 s per pass on a Samsung A24).
+
 ## 0.11.3+126
 
 ### Changed

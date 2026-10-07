@@ -109,6 +109,16 @@ class SafBridgeWriteTest {
         assertEquals(full, patched)
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun listingCache(): MutableMap<String, SafBridge.Companion.CachedListing> =
+        SafBridge::class.java.getDeclaredField("listingCache").apply { isAccessible = true }
+            .get(null) as MutableMap<String, SafBridge.Companion.CachedListing>
+
+    private fun ageVerification() {
+        val cache = listingCache()
+        cache[tree.toString()] = cache.getValue(tree.toString()).copy(verifiedAt = -60_000L)
+    }
+
     private fun listingFixture(): SafBridge {
         File(root, "notes/sub").mkdirs()
         File(root, "notes/a.typ").writeText("old")
@@ -116,6 +126,10 @@ class SafBridgeWriteTest {
         File(root, "notes/sub/child.typ").writeText("child")
         File(root, "other").mkdirs()
         File(root, "other/z.typ").writeText("untouched")
+        // A fixed old baseline avoids same-tick directory mtimes on fast tests.
+        listOf("", "notes", "notes/sub", "other").forEach {
+            assertTrue(File(root, it).setLastModified(1_000L))
+        }
         return newBridge().also { it.listing() }
     }
 
@@ -322,15 +336,14 @@ class SafBridgeWriteTest {
     @Test
     fun singleWriteQueriesOnlyItsDirectoryAndKeepsTimestamp() {
         val bridge = listingFixture()
-        val field = SafBridge::class.java.getDeclaredField("listingCache").apply { isAccessible = true }
-        @Suppress("UNCHECKED_CAST")
-        val cache = field.get(null) as Map<String, Pair<Long, List<Map<String, Any?>>>>
-        val at = cache[tree.toString()]!!.first
+        val cache = listingCache()
+        val before = cache.getValue(tree.toString())
         bridge.write("notes/a.typ", "new")
         DedupingDocumentsProvider.childQueries.clear()
         bridge.listing()
         assertEquals(listOf("notes"), DedupingDocumentsProvider.childQueries.toList())
-        assertEquals(at, cache[tree.toString()]!!.first)
+        assertEquals(before.walkedAt, cache.getValue(tree.toString()).walkedAt)
+        assertEquals(before.verifiedAt, cache.getValue(tree.toString()).verifiedAt)
         bridge.listing()
         assertEquals(listOf("notes"), DedupingDocumentsProvider.childQueries.toList())
         bridge.assertPatchedMatchesFull()
@@ -393,16 +406,97 @@ class SafBridgeWriteTest {
     }
 
     @Test
-    fun expiredPatchedListingSeesExternalWriter() {
+    fun verificationSeesExternalFileCreationInLeaf() {
         val bridge = listingFixture()
-        bridge.write("notes/a.typ", "new")
+        File(root, "notes/sub/external.typ").writeText("external")
+        ageVerification()
+        assertTrue(bridge.listing().any { it["path"] == "notes/sub/external.typ" })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun verificationSeesExternalFileDeletion() {
+        val bridge = listingFixture()
+        assertTrue(File(root, "notes/sub/child.typ").delete())
+        ageVerification()
+        assertTrue(bridge.listing().none { it["path"] == "notes/sub/child.typ" })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun verificationSeesExternalNestedDirectoryCreation() {
+        val bridge = listingFixture()
+        File(root, "other/new/deep").mkdirs()
+        File(root, "other/new/deep/external.typ").writeText("external")
+        ageVerification()
+        assertTrue(bridge.listing().any { it["path"] == "other/new/deep/external.typ" })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun verificationSeesExternalDirectoryDeletionWithChildren() {
+        val bridge = listingFixture()
+        assertTrue(File(root, "notes/sub").deleteRecursively())
+        ageVerification()
+        assertTrue(bridge.listing().none { (it["path"] as String).startsWith("notes/sub") })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun unchangedVerificationQueriesOnlyParentsOfDirectories() {
+        val bridge = listingFixture()
+        val walkedAt = listingCache().getValue(tree.toString()).walkedAt
+        ageVerification()
+        DedupingDocumentsProvider.childQueries.clear()
         bridge.listing()
-        val field = SafBridge::class.java.getDeclaredField("listingCache").apply { isAccessible = true }
-        @Suppress("UNCHECKED_CAST")
-        val cache = field.get(null) as MutableMap<String, Pair<Long, List<Map<String, Any?>>>>
-        cache[tree.toString()] = -300_000L to cache[tree.toString()]!!.second
-        File(root, "external.typ").writeText("external")
-        assertTrue(bridge.listing().any { it["path"] == "external.typ" })
+        assertEquals(listOf(DedupingDocumentsProvider.ROOT_ID, "notes"),
+            DedupingDocumentsProvider.childQueries.toList())
+        assertEquals(walkedAt, listingCache().getValue(tree.toString()).walkedAt)
+        assertTrue(listingCache().getValue(tree.toString()).verifiedAt >= 0L)
+        bridge.listing()
+        assertEquals(2, DedupingDocumentsProvider.childQueries.size)
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun expiredFullWalkSeesExternalInPlaceRewrite() {
+        val bridge = listingFixture()
+        File(root, "other/z.typ").writeText("external replacement")
+        val cache = listingCache()
+        cache[tree.toString()] = cache.getValue(tree.toString()).copy(walkedAt = -1_800_000L)
+        DedupingDocumentsProvider.childQueries.clear()
+        bridge.listing()
+        assertEquals(listOf(DedupingDocumentsProvider.ROOT_ID, "notes", "notes/sub", "other"),
+            DedupingDocumentsProvider.childQueries.toList())
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun verificationFailureFallsBackToFullWalk() {
+        val bridge = listingFixture()
+        File(root, "notes/sub/external.typ").writeText("external")
+        ageVerification()
+        DedupingDocumentsProvider.childQueries.clear()
+        DedupingDocumentsProvider.failNextChildQuery = true
+        bridge.listing()
+        assertEquals(2, DedupingDocumentsProvider.childQueries.count { it == DedupingDocumentsProvider.ROOT_ID })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun verificationOfMoreThan64DirtyDirectoriesFallsBackToFullWalk() {
+        val bridge = listingFixture()
+        repeat(65) {
+            File(root, "dir$it").mkdirs()
+            assertTrue(File(root, "dir$it").setLastModified(1_000L))
+        }
+        SafBridge.clearUriCache()
+        bridge.listing()
+        repeat(65) { File(root, "dir$it/external.typ").writeText("external") }
+        ageVerification()
+        DedupingDocumentsProvider.childQueries.clear()
+        bridge.listing()
+        assertEquals(2, DedupingDocumentsProvider.childQueries.count { it == DedupingDocumentsProvider.ROOT_ID })
         bridge.assertPatchedMatchesFull()
     }
 

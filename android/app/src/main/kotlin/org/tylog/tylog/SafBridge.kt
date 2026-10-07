@@ -70,26 +70,27 @@ class SafBridge(
         // shape that is asked for repeatedly, and it bounds the cache to a
         // single listing per vault rather than one per directory.
         //
-        // Shared across both engines for the same reason uriCache is, and
-        // patched after writes this process makes. The TTL
-        // is the only cover for a writer outside this process — a file manager
-        // dropping notes into the folder — so it is short enough that such a
-        // change is picked up by the following pass.
-        //
-        // Five minutes rather than one: a walk is 10 s on a P30 and 44 s on an
-        // A24, and passes a minute apart re-walked every time. Another app can
-        // only realistically edit the vault while this one is in the
-        // background, so forgetListings() on resume and at the start of a
-        // background run covers that writer instead of the TTL.
-        private const val LISTING_TTL_MILLIS = 300_000L
+        // Verify every minute: 1,870 directories / 15,456 files take 9.5 s
+        // on the P30 and 50 s on the A24 to walk. Only 29 directories have
+        // subdirectories, with 1,888 direct-child rows to check for changes.
+        // ponytail: an external in-place rewrite in a leaf may not change any
+        // directory time; noticed at the 30-minute full walk or on resume.
+        // Sync re-hashes before overwriting, so this delays discovery but cannot
+        // lose the edit. Shorten the full-walk TTL if that delay matters.
+        private const val VERIFY_TTL = 60_000L
+        private const val FULL_WALK_TTL = 1_800_000L
         private val forgetListings = java.util.concurrent.atomic.AtomicBoolean()
 
         // A flag, not a clear(): the caller is the main thread and a walk in
         // progress holds the listing monitor for its whole duration. A walk
         // that began before the flag was set is discarded by the next list.
         fun forgetListings() = forgetListings.set(true)
-        private val listingCache =
-            ConcurrentHashMap<String, Pair<Long, List<Map<String, Any?>>>>()
+        internal data class CachedListing(
+            val walkedAt: Long,
+            val verifiedAt: Long,
+            val entries: List<Map<String, Any?>>,
+        )
+        private val listingCache = ConcurrentHashMap<String, CachedListing>()
         private val dirtyDirectories = mutableMapOf<String, MutableSet<String>>()
 
         /**
@@ -454,13 +455,14 @@ class SafBridge(
                     listingCache.remove(vault)
                     dirtyDirectories.remove(vault)
                 } else if (listingCache.containsKey(vault)) {
-                    val (at, entries) = listingCache.getValue(vault)
+                    val cached = listingCache.getValue(vault)
+                    val entries = cached.entries
                     if (entries.any { it["path"] == safe && it["isDirectory"] == true }) {
                         // Providers can reuse a directory id after delete/create.
                         // Forget its subtree so the parent scan discovers it anew.
-                        listingCache[vault] = at to entries.filterNot {
+                        listingCache[vault] = cached.copy(entries = entries.filterNot {
                             it["path"] == safe || (it["path"] as String).startsWith("$safe/")
-                        }
+                        })
                     }
                     val dirty = dirtyDirectories.getOrPut(vault) { linkedSetOf() }
                     dirty.add(safe.substringBeforeLast('/', ""))
@@ -556,11 +558,19 @@ class SafBridge(
                 listingCache.clear()
                 dirtyDirectories.clear()
             }
-            listingCache[key]?.let { (at, entries) ->
-                if (SystemClock.elapsedRealtime() - at < LISTING_TTL_MILLIS) {
+            listingCache[key]?.let { cached ->
+                val now = SystemClock.elapsedRealtime()
+                if (now - cached.walkedAt < FULL_WALK_TTL) {
                     try {
-                        val patched = patchListing(tree, entries, dirtyDirectories[key].orEmpty())
-                        listingCache[key] = at to patched
+                        val dirty = dirtyDirectories[key].orEmpty().toMutableSet()
+                        val verify = now - cached.verifiedAt >= VERIFY_TTL
+                        if (verify) verifyListing(tree, cached.entries, dirty)
+                        check(dirty.size <= 64) { "Too many changed directories" }
+                        val patched = patchListing(tree, cached.entries, dirty)
+                        listingCache[key] = cached.copy(
+                            verifiedAt = if (verify) SystemClock.elapsedRealtime() else cached.verifiedAt,
+                            entries = patched,
+                        )
                         dirtyDirectories.remove(key)
                         return@synchronized patched
                     } catch (_: Exception) {
@@ -576,7 +586,8 @@ class SafBridge(
             require(isDirectory(parent)) { "Vault root is not a folder" }
             val full = mutableListOf<Map<String, Any?>>()
             listInto(tree, parent, "", true, full)
-            listingCache[key] = SystemClock.elapsedRealtime() to full.toList()
+            val at = SystemClock.elapsedRealtime()
+            listingCache[key] = CachedListing(at, at, full.toList())
             full
         }
         val parent = resolve(tree, path) ?: return emptyList()
@@ -584,6 +595,29 @@ class SafBridge(
         val out = mutableListOf<Map<String, Any?>>()
         listInto(tree, parent, path, recursive, out)
         return out
+    }
+
+    private fun verifyListing(
+        tree: Uri,
+        entries: List<Map<String, Any?>>,
+        dirty: MutableSet<String>,
+    ) {
+        val childrenByParent = entries.groupBy { (it["path"] as String).substringBeforeLast('/', "") }
+        val parents = linkedSetOf("")
+        entries.filter { it["isDirectory"] == true }.forEach {
+            parents.add((it["path"] as String).substringBeforeLast('/', ""))
+        }
+        for (directory in parents) {
+            val cached = childrenByParent[directory].orEmpty().associateBy { it["path"] }
+            val fresh = mutableListOf<Map<String, Any?>>()
+            listInto(tree, resolveRequired(tree, directory), directory, false, fresh)
+            if (fresh.associateBy { it["path"] } != cached) dirty.add(directory)
+            for (entry in fresh) {
+                if (entry["isDirectory"] == true &&
+                    entry["modified"] != cached[entry["path"]]?.get("modified")
+                ) dirty.add(entry["path"] as String)
+            }
+        }
     }
 
     private fun patchListing(
