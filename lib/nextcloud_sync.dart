@@ -1700,6 +1700,48 @@ bool isTextSyncPath(String path) => const {
   '.csv',
 }.any(path.toLowerCase().endsWith);
 
+/// Coalesced envelopes keep their first revision's filename. Compare the
+/// current revision and its immutable ancestry, never the filename or snapshots.
+SyncConflictResolution? revisionEnvelopeWinner({
+  required List<int> local,
+  required List<int> remote,
+}) {
+  try {
+    Map envelope(List<int> bytes) {
+      final value = jsonDecode(utf8.decode(bytes)) as Map;
+      final revision = value['revision'] as Map;
+      final id = revision['id'];
+      if (id is! String || id.isEmpty) throw const FormatException();
+      final parent = revision['parentRevisionId'];
+      if (parent != null && (parent is! String || parent.isEmpty)) {
+        throw const FormatException();
+      }
+      for (final row in (value['history'] as List? ?? const [])) {
+        final id = (row as Map)['id'];
+        if (id is! String || id.isEmpty) throw const FormatException();
+      }
+      return value;
+    }
+
+    final left = envelope(local);
+    final right = envelope(remote);
+    final leftId = left['revision']['id'];
+    final rightId = right['revision']['id'];
+    if (leftId == rightId) return SyncConflictResolution.keepRemote;
+    bool contains(Map value, String id) =>
+        value['revision']['parentRevisionId'] == id ||
+        (value['history'] as List? ?? const []).any((row) => row['id'] == id);
+    final localDescends = contains(left, rightId as String);
+    final remoteDescends = contains(right, leftId as String);
+    if (localDescends == remoteDescends) return null;
+    return localDescends
+        ? SyncConflictResolution.keepLocal
+        : SyncConflictResolution.keepRemote;
+  } catch (_) {
+    return null; // Diverged or invalid envelopes still require review.
+  }
+}
+
 /// Which side to keep when one copy is byte-for-byte the other plus more
 /// appended — an append-only edit, where keeping the longer side is lossless
 /// by definition. Null when neither extends the other.

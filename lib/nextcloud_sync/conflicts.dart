@@ -99,7 +99,9 @@ extension _SyncConflicts on NextcloudSync {
         'remoteExists': remoteExists,
         'localModified': localStat?.modified?.millisecondsSinceEpoch,
         'remoteModified': remoteFile?.modified.millisecondsSinceEpoch,
-        'remoteEtag': NextcloudSync._normEtag(observedRemoteEtag ?? remoteFile?.etag),
+        'remoteEtag': NextcloudSync._normEtag(
+          observedRemoteEtag ?? remoteFile?.etag,
+        ),
         if (localExists) 'localSnapshot': '$base.local',
         if (remoteExists) 'remoteSnapshot': '$base.remote',
       }),
@@ -169,10 +171,16 @@ extension _SyncConflicts on NextcloudSync {
     List<int> localBytes,
     _RemoteFile? remoteFile,
   ) async {
-    if (remoteFile == null) return null;
+    final revision = isMachineRevisionPath(path);
+    if (remoteFile == null && !revision) return null;
     File? captured;
     try {
-      captured = (await _captureRemote(path, remoteFile: remoteFile)).file;
+      // A 412 can mean a peer created the envelope after our listing, or
+      // replaced its checksum. Compare the current GET, not stale metadata.
+      captured = (await _captureRemote(
+        path,
+        remoteFile: revision ? null : remoteFile,
+      )).file;
       final remoteBytes = await captured.readAsBytes();
       if (listEquals(localBytes, remoteBytes)) return 'same-content';
       final winner = fastForwardWinner(

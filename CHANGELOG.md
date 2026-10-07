@@ -3,6 +3,19 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.5+128
+
+### Fixed
+
+- **A sync conflict on a note's revision record no longer sticks forever.**
+  When two devices wrote the same record and one then added a newer
+  revision, the conflict could never clear, and that device ran a full sync
+  every 20 seconds instead of a cheap check. Such conflicts now resolve
+  themselves when one side's revision descends from the other; records that
+  really diverged still wait for review.
+- An upload race on a revision record no longer records a conflict between
+  two identical copies.
+
 ## 0.11.4+127
 
 ### Changed

@@ -342,6 +342,9 @@ extension _PathSync on NextcloudSync {
       unresolvedConflict = null;
     }
 
+    SyncConflictResolution? revisionWinner;
+    Uint8List? revisionRemoteBytes;
+    String? revisionRemoteEtag;
     var adoptRemoteConflict = false;
     if (unresolvedConflict != null && localExists && remoteExists) {
       final captured = await _captureRemote(
@@ -350,7 +353,29 @@ extension _PathSync on NextcloudSync {
         remoteFile: remoteFile,
       );
       try {
+        if (isMachineRevisionPath(path)) {
+          recordedAt = DateTime.now().millisecondsSinceEpoch;
+        }
         final bytes = localBytes ?? await vault.storage.readBytes(path);
+        if (isMachineRevisionPath(path)) {
+          localBytes = bytes;
+          localHash = sha256.convert(bytes).toString();
+          localStat = await vault.storage.stat(path) ?? localStat;
+          revisionRemoteBytes = await captured.file.readAsBytes();
+          // A compressed GET answers ETag "…-gzip", which If-Match on the
+          // PUT never matches (412 on every run on the real server).
+          final getEtag = NextcloudSync._normEtag(captured.etag);
+          revisionRemoteEtag = getEtag == null ? null : '"$getEtag"';
+          revisionWinner = revisionEnvelopeWinner(
+            local: bytes,
+            remote: revisionRemoteBytes,
+          );
+          // Without a GET etag we cannot guard a descendant upload.
+          if (revisionWinner == SyncConflictResolution.keepLocal &&
+              captured.etag == null) {
+            revisionWinner = null;
+          }
+        }
         if (isMachineRevisionPath(path) &&
             sha256.convert(bytes).toString() == await _sha256(captured.file)) {
           await _discardConflictsForPath(vault, path);
@@ -368,8 +393,7 @@ extension _PathSync on NextcloudSync {
                   path,
                   utf8.decode(bytes, allowMalformed: true),
                 ) ||
-                (bytes.isEmpty && emptyDailyTemplate(path) != null) ||
-                path.startsWith('_system/revisions/note-'))) {
+                (bytes.isEmpty && emptyDailyTemplate(path) != null))) {
           if (!isMachineRevisionPath(path)) {
             await _discardConflictsForPath(vault, path);
           }
@@ -402,9 +426,61 @@ extension _PathSync on NextcloudSync {
       repaired++;
     }
 
-    if (unresolvedConflict != null && !resolveJobConflict && !restoreRevision) {
+    if (!verifiedRevision && revisionWinner != null) {
+      try {
+        if (revisionWinner == SyncConflictResolution.keepLocal) {
+          // Upload exactly the live bytes whose ancestry was checked, guarded
+          // by the etag of the remote bytes we compared.
+          uploadedRemoteEtag = await _uploadStorage(
+            path,
+            vault.storage,
+            localHash: localHash!,
+            bytes: localBytes,
+            remote: _RemoteFile(
+              modified: remoteTime!,
+              etag: revisionRemoteEtag,
+            ),
+          );
+          action = SyncAction.upload;
+          uploadedRemoteTime = DateTime.now().toUtc();
+          uploaded++;
+          reason = 'auto-resolved-local-extends-remote';
+        } else {
+          // Do not fetch again: a peer could have replaced the proven descendant.
+          _requireLocalReplacementAllowed(path);
+          if (await vault.storage.hash(path) != localHash) {
+            throw const SyncDeferred();
+          }
+          await vault.storage.writeBytes(path, revisionRemoteBytes!);
+          _recordLocalContentChange(path);
+          action = SyncAction.download;
+          observedRemoteEtag = revisionRemoteEtag;
+          downloadedHash = sha256.convert(revisionRemoteBytes).toString();
+          downloaded++;
+          reason = 'auto-resolved-remote-extends-local';
+        }
+        await _discardConflictsForPath(vault, path);
+        repaired++;
+      } on _RemoteChanged {
+        // Keep the evidence; the next pass must check the new remote ancestry.
+        skipped++;
+        reason = 'unresolved-conflict';
+      }
+    } else if (unresolvedConflict != null &&
+        !resolveJobConflict &&
+        !restoreRevision) {
       skipped++;
       reason = 'unresolved-conflict';
+      // Why a revision envelope did not resolve itself, for the trace.
+      if (isMachineRevisionPath(path)) {
+        reason += !localExists
+            ? ':no-local'
+            : !remoteExists
+            ? ':no-remote'
+            : revisionRemoteEtag == null
+            ? ':no-etag'
+            : ':diverged';
+      }
       // The stored etag is frozen at record time; the sync loop skips this
       // path forever otherwise, and resolveConflict's own guard throws
       // whenever the remote moves again — permanently, since nothing here
@@ -493,6 +569,9 @@ extension _PathSync on NextcloudSync {
             previous == null ||
             stateRecovered ||
             (localChanged && remoteChanged))) {
+      // A producer can rewrite a coalesced envelope after the scan-time hash.
+      // Compare and upload the same live snapshot, or equal bytes can conflict.
+      if (isMachineRevisionPath(path)) await snapshotForUpload();
       if (remoteFile.sha256 != null && remoteFile.sha256 == localHash) {
         observedRemoteEtag = remoteFile.etag;
         skipped++;
