@@ -3,6 +3,22 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.3+126
+
+### Changed
+
+- **Much faster indexing on Android.** After a change, TyLog re-reads only
+  the folders it wrote to instead of the whole vault (index pass: 13 s down
+  to 3.5 s on a Huawei P30, 39-64 s down to 10 s on a Samsung A24). A file
+  changed by another app while TyLog stays in the foreground is noticed
+  within five minutes; changes made while TyLog is in the background are
+  noticed when it is opened.
+
+### Fixed
+
+- Closing a vault no longer reports an error when the search cache cannot be
+  written.
+
 ## 0.11.2+125
 
 ### Changed
