@@ -3,6 +3,16 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.1+124
+
+### Changed
+
+- **Faster indexing after a change.** The search index is no longer rewritten
+  to disk after every changed note (about 7 s per change on a Huawei P30). It
+  is kept in memory and saved at most every five minutes, and when the app
+  goes to the background or closes.
+- The sync trace records how long each index stage took.
+
 ## 0.11.0+123
 
 ### Added

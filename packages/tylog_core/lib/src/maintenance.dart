@@ -73,9 +73,7 @@ class MaintenanceSearchBuilt extends VaultMaintenanceEvent {
 
   final PkmsSearchIndex search;
 
-  /// False when the build returned the previous instance unchanged, so nothing
-  /// was written. Reported because "we skipped a 12 MB rewrite" and "we failed
-  /// to write" look identical from outside otherwise.
+  /// Whether this stage wrote the cache, rather than deferring or skipping it.
   final bool written;
 }
 
@@ -110,6 +108,78 @@ class VaultMaintenance {
   /// The search index this instance built last, so a warm pass skips the
   /// gzip-decode/jsonDecode round trip through disk.
   PkmsSearchIndex? _lastSearch;
+
+  bool _searchDirty = false;
+  bool _searchWritten = false;
+  DateTime? _lastSearchWrite;
+  Future<void>? _searchFlush;
+  final Map<String, int> stageMillis = {};
+
+  Future<PkmsSearchIndex> loadSearch() async {
+    if (_lastSearch != null) return _lastSearch!;
+    _lastSearchWrite =
+        (await storage.stat(TylogVaultPaths.searchIndex))?.modified ??
+        DateTime.now();
+    return _lastSearch = await PkmsSearchIndex.loadStorage(
+      storage,
+      TylogVaultPaths.searchIndex,
+    );
+  }
+
+  Future<PkmsSearchIndex> buildSearch(
+    VaultIndex index, {
+    bool rebuildSearch = false,
+    bool Function()? isCancelled,
+  }) async {
+    _searchWritten = false;
+    final timer = Stopwatch()..start();
+    final cached = rebuildSearch ? _lastSearch : await loadSearch();
+    stageMillis['load-search'] = timer.elapsedMilliseconds;
+    timer.reset();
+    final search = await PkmsSearchIndex.buildStorage(
+      storage,
+      index,
+      previous: rebuildSearch ? null : cached,
+      isCancelled: isCancelled,
+    );
+    stageMillis['build-search'] = timer.elapsedMilliseconds;
+    if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
+    _lastSearch = search;
+    timer.reset();
+    final missing = !await storage.exists(TylogVaultPaths.searchIndex);
+    _searchDirty |= !identical(search, cached) || missing;
+    if (rebuildSearch ||
+        missing ||
+        DateTime.now().difference(_lastSearchWrite!) >=
+            const Duration(minutes: 5)) {
+      await flushSearch();
+    }
+    stageMillis['write-search'] = timer.elapsedMilliseconds;
+    if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
+    return search;
+  }
+
+  /// The file is a cache: stale/missing documents are re-derived on launch.
+  /// Keep dirty state on failure, and serialize lifecycle flushes.
+  Future<void> flushSearch() async {
+    final pending = _searchFlush;
+    if (pending != null) {
+      await pending;
+      return flushSearch();
+    }
+    if (!_searchDirty) return;
+    final search = _lastSearch!;
+    final write = search.saveStorage(storage, TylogVaultPaths.searchIndex);
+    _searchFlush = write;
+    try {
+      await write;
+      _searchWritten = true;
+      _lastSearchWrite = DateTime.now();
+      if (identical(search, _lastSearch)) _searchDirty = false;
+    } finally {
+      _searchFlush = null;
+    }
+  }
 
   /// When this instance last swept, so a long-lived process does not walk the
   /// whole vault on every incremental refresh.
@@ -250,12 +320,23 @@ class VaultMaintenance {
     bool Function()? isCancelled,
     bool validate = true,
     bool buildSearch = true,
+    bool flushSearchOnFinish = false,
     bool sweep = true,
     List<PkmsProblem> Function(VaultIndex index)? extraProblems,
   }) {
     final out = StreamController<VaultMaintenanceEvent>();
     out.onListen = () async {
+      Object? failure;
+      StackTrace? failureStack;
       try {
+        stageMillis
+          ..clear()
+          ..addAll({
+            'validate': 0,
+            'load-search': 0,
+            'build-search': 0,
+            'write-search': 0,
+          });
         final scanStarted = DateTime.now().microsecondsSinceEpoch;
         final timer = Stopwatch()..start();
         final entries = List<VaultStorageEntry>.unmodifiable(
@@ -286,6 +367,7 @@ class VaultMaintenance {
         if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
 
         if (validate) {
+          final validateTimer = Stopwatch()..start();
           final report = await validatePkmsStorage(
             storage,
             index,
@@ -295,35 +377,17 @@ class VaultMaintenance {
           if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
           report.problems.addAll(extraProblems?.call(index) ?? const []);
           report.problems.addAll(donorProblems(index));
+          stageMillis['validate'] = validateTimer.elapsedMilliseconds;
           out.add(MaintenanceValidated(report));
         }
 
         if (buildSearch) {
-          final cached =
-              _lastSearch ??
-              await PkmsSearchIndex.loadStorage(
-                storage,
-                TylogVaultPaths.searchIndex,
-              );
-          final search = await PkmsSearchIndex.buildStorage(
-            storage,
+          final search = await this.buildSearch(
             index,
-            previous: cached,
+            rebuildSearch: force,
             isCancelled: isCancelled,
           );
-          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
-          // buildStorage returns the *same instance* when every note hit the
-          // cache and the key set is unchanged, so identity is an exact
-          // "nothing to write" test. Without it a no-op pass re-encoded ~43 MB
-          // of JSON and rewrote ~12 MB of gzip for a file byte-identical to the
-          // one already there.
-          final written = !identical(search, cached);
-          if (written) {
-            await search.saveStorage(storage, TylogVaultPaths.searchIndex);
-          }
-          if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
-          _lastSearch = search;
-          out.add(MaintenanceSearchBuilt(search, written: written));
+          out.add(MaintenanceSearchBuilt(search, written: _searchWritten));
         }
 
         if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
@@ -340,8 +404,22 @@ class VaultMaintenance {
           if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
         }
       } catch (error, stack) {
-        out.addError(error, stack);
+        failure = error;
+        failureStack = stack;
       } finally {
+        try {
+          if (flushSearchOnFinish) {
+            final timer = Stopwatch()..start();
+            await flushSearch();
+            stageMillis['write-search'] =
+                (stageMillis['write-search'] ?? 0) + timer.elapsedMilliseconds;
+          }
+        } catch (error, stack) {
+          failure ??= error;
+          failureStack ??= stack;
+        }
+        // Short-lived consumers may exit as soon as the stream reports an error.
+        if (failure != null) out.addError(failure, failureStack);
         await out.close();
       }
     };

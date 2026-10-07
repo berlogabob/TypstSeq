@@ -2088,12 +2088,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _semantic?.pause();
+      unawaited(workspace.flushSearch());
       // Android may kill the app inside the 400 ms autosave debounce; flush
       // pending edits now so backgrounding never loses keystrokes.
       if (cloud?.isReady ?? false) {
-        unawaited(_syncNow(trigger: 'background'));
+        unawaited(
+          _syncNow(trigger: 'background').whenComplete(workspace.flushSearch),
+        );
       } else if (dirty) {
-        unawaited(_save(syncAfter: false));
+        unawaited(_save(syncAfter: false).whenComplete(workspace.flushSearch));
       }
       _stopCloudPolling();
       // Hand off to the background worker: one catch-up run in ~1 min, then

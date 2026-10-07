@@ -73,6 +73,7 @@ Future<int> _index(List<String> args) async {
     // Nothing here renders a problems report; `tylog doctor` is the command
     // that does, and it prints them.
     validate: false,
+    flushSearchOnFinish: true,
   )) {
     switch (event) {
       case MaintenanceIndexed(index: final built):

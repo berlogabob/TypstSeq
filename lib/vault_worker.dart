@@ -110,6 +110,11 @@ class SearchCommand extends VaultWorkerCommand {
   final SendPort replyTo;
 }
 
+class FlushSearchCommand extends VaultWorkerCommand {
+  const FlushSearchCommand(this.replyTo);
+  final SendPort replyTo;
+}
+
 class ShutdownCommand extends VaultWorkerCommand {
   const ShutdownCommand();
 }
@@ -178,7 +183,8 @@ class SearchReadyEvent extends VaultWorkerEvent {
 }
 
 class WorkDoneEvent extends VaultWorkerEvent {
-  const WorkDoneEvent();
+  const WorkDoneEvent({this.stageMillis = const {}});
+  final Map<String, int> stageMillis;
 }
 
 class WorkFailedEvent extends VaultWorkerEvent {
@@ -224,6 +230,23 @@ class _VaultWorker {
   // Monotonic successful-build generation for this worker lifetime.
   int _searchRevision = 0;
 
+  final List<SendPort> _flushReplies = [];
+
+  Future<void> _flushSearch() async {
+    final replies = _flushReplies.toList();
+    _flushReplies.clear();
+    try {
+      await _vault.maintenance.flushSearch();
+      for (final reply in replies) {
+        reply.send(null);
+      }
+    } catch (error) {
+      for (final reply in replies) {
+        reply.send(error.toString());
+      }
+    }
+  }
+
   bool _cancelled = false;
   bool _busy = false;
   bool _shutdownRequested = false;
@@ -237,6 +260,9 @@ class _VaultWorker {
       switch (message) {
         case CancelWorkCommand():
           _cancelled = true;
+        case FlushSearchCommand(:final replyTo):
+          _flushReplies.add(replyTo);
+          if (!_busy) unawaited(_flushSearch());
         case ShutdownCommand():
           _cancelled = true;
           _shutdownRequested = true;
@@ -265,6 +291,7 @@ class _VaultWorker {
       }
     });
     await _stopped.future;
+    await _vault.maintenance.flushSearch();
     _commands.close();
     _inspector?.dispose();
   }
@@ -275,13 +302,14 @@ class _VaultWorker {
     _busy = true;
     _cancelled = false;
     PkmsSearchIndex? pendingSearch;
+    var preloadMillis = 0;
+    VaultWorkerEvent terminal = const WorkDoneEvent();
     try {
       if (_searchRevision == 0 &&
           await _vault.storage.exists(Vault.searchIndexPath)) {
-        final cached = await PkmsSearchIndex.loadStorage(
-          _vault.storage,
-          Vault.searchIndexPath,
-        );
+        final timer = Stopwatch()..start();
+        final cached = await _vault.maintenance.loadSearch();
+        preloadMillis = timer.elapsedMilliseconds;
         _search = cached;
         _send(SearchReadyEvent(++_searchRevision));
       }
@@ -354,13 +382,26 @@ class _VaultWorker {
         _searchRevision++;
         _send(SearchReadyEvent(_searchRevision));
       }
-      _send(const WorkDoneEvent());
+      _vault.maintenance.stageMillis['load-search'] =
+          (_vault.maintenance.stageMillis['load-search'] ?? 0) + preloadMillis;
     } on IndexBuildCancelled {
-      _send(const WorkFailedEvent('cancelled', cancelled: true));
+      terminal = const WorkFailedEvent('cancelled', cancelled: true);
     } catch (error) {
-      _send(WorkFailedEvent('$error'));
+      terminal = WorkFailedEvent('$error');
     } finally {
+      final timer = Stopwatch()..start();
+      while (_flushReplies.isNotEmpty) {
+        await _flushSearch();
+      }
+      _vault.maintenance.stageMillis['write-search'] =
+          (_vault.maintenance.stageMillis['write-search'] ?? 0) +
+          timer.elapsedMilliseconds;
       _busy = false;
+      _send(
+        terminal is WorkDoneEvent
+            ? WorkDoneEvent(stageMillis: Map.of(_vault.maintenance.stageMillis))
+            : terminal,
+      );
       if (_shutdownRequested && !_stopped.isCompleted) {
         _stopped.complete();
       }
@@ -555,6 +596,18 @@ class VaultWorkerClient {
         onTimeout: () => const <PkmsSearchResult>[],
       );
       return results is List<PkmsSearchResult> ? results : const [];
+    } finally {
+      reply.close();
+    }
+  }
+
+  Future<void> flushSearch() async {
+    if (_disposed) return;
+    final reply = ReceivePort();
+    try {
+      _commands.send(FlushSearchCommand(reply.sendPort));
+      final error = await reply.first;
+      if (error != null) throw StateError('$error');
     } finally {
       reply.close();
     }

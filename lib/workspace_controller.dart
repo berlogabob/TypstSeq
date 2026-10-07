@@ -310,7 +310,19 @@ class WorkspaceController extends ChangeNotifier {
         _now().difference(edited) < const Duration(seconds: 10);
   }
 
+  Future<void> flushSearch() async {
+    final opened = vault;
+    final worker = _worker;
+    if (worker != null) {
+      await worker.flushSearch();
+    } else if (opened != null) {
+      await _activeScan;
+      await opened.maintenance.flushSearch();
+    }
+  }
+
   void close(String message, {NextcloudConfig? nextCloud}) {
+    _workerShutdowns.add(flushSearch());
     _vaultGeneration++;
     _feedFlight = null;
     _eventCreates.clear();
@@ -1239,6 +1251,7 @@ class WorkspaceController extends ChangeNotifier {
     // calls, so the pending set travels with the command and is cleared only
     // once the scan reports back covering it.
     final stale = opened.staleNotes;
+    IndexBuiltEvent? indexedEvent;
     await for (final event in worker.run(
       RebuildIndexCommand(
         force: force,
@@ -1258,6 +1271,7 @@ class WorkspaceController extends ChangeNotifier {
             notifyListeners();
           }
         case IndexBuiltEvent(:final index):
+          indexedEvent = event;
           // Publish notes and tasks now, before the much slower validation +
           // search-index build — on SAF vaults that build reads many files and
           // must never gate the notes the UI needs (Journal, Library, Today).
@@ -1265,26 +1279,6 @@ class WorkspaceController extends ChangeNotifier {
           this.index = _retainIndex(index);
           indexedRevision = revision;
           opened.clearStaleNotes(stale);
-          // Every pass records parsing cost, including a zero-reuse fallback.
-          final reuseNow = event.donorReuse;
-          unawaited(
-            appendVaultTrace(opened, [
-              {
-                'timestamp': DateTime.now().toUtc().toIso8601String(),
-                'event': 'indexed',
-                'trigger': showProgress ? 'manual' : 'auto',
-                'notes': index.notes.length,
-                'parsedNotes': event.parsedNotes,
-                'durationMs': event.durationMs,
-                'tasks': index.tasks.length,
-                'reusedNotes': reuseNow?.notes ?? 0,
-                'reusedDevices': reuseNow?.devices ?? 0,
-                'skippedDonors': reuseNow?.skipped ?? 0,
-                if (event.donorPublishError != null)
-                  'errorMessage': event.donorPublishError,
-              },
-            ]).catchError((_) {}),
-          );
 
           if (showProgress) {
             final reuse = event.donorReuse;
@@ -1322,6 +1316,31 @@ class WorkspaceController extends ChangeNotifier {
             notifyListeners();
           }
         case WorkDoneEvent():
+          final indexed = indexedEvent;
+          if (indexed != null) {
+            // Every pass records parsing cost, including a zero-reuse fallback.
+            final reuseNow = indexed.donorReuse;
+            final index = indexed.index;
+            unawaited(
+              appendVaultTrace(opened, [
+                {
+                  'timestamp': DateTime.now().toUtc().toIso8601String(),
+                  'event': 'indexed',
+                  'trigger': showProgress ? 'manual' : 'auto',
+                  'notes': index.notes.length,
+                  'parsedNotes': indexed.parsedNotes,
+                  'durationMs': indexed.durationMs,
+                  'stageMillis': event.stageMillis,
+                  'tasks': index.tasks.length,
+                  'reusedNotes': reuseNow?.notes ?? 0,
+                  'reusedDevices': reuseNow?.devices ?? 0,
+                  'skippedDonors': reuseNow?.skipped ?? 0,
+                  if (indexed.donorPublishError != null)
+                    'errorMessage': indexed.donorPublishError,
+                },
+              ]).catchError((_) {}),
+            );
+          }
           break;
       }
     }
@@ -1371,9 +1390,11 @@ class WorkspaceController extends ChangeNotifier {
         final pkms = await _readPkms(
           opened,
           built,
+          rebuildSearch: force,
           isCancelled: () => !_owns(opened, generation),
         );
         if (!_owns(opened, generation)) return;
+        unawaited(_traceInProcessIndex(opened, built));
         validation = _retainValidation(pkms.report);
         searchIndex.replaceWith(pkms.search);
         searchReady = true;
@@ -1385,9 +1406,11 @@ class WorkspaceController extends ChangeNotifier {
       final pkms = await _readPkms(
         opened,
         built,
+        rebuildSearch: force,
         isCancelled: () => !_owns(opened, generation),
       );
       if (!_owns(opened, generation)) return;
+      unawaited(_traceInProcessIndex(opened, built));
       index = _retainIndex(built);
       unawaited(refreshDerived());
       validation = _retainValidation(pkms.report);
@@ -2206,8 +2229,10 @@ class WorkspaceController extends ChangeNotifier {
   Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(
     Vault opened,
     VaultIndex built, {
+    bool rebuildSearch = false,
     bool Function()? isCancelled,
   }) async {
+    final timer = Stopwatch()..start();
     final report = await validatePkmsStorage(
       opened.storage,
       built,
@@ -2216,30 +2241,28 @@ class WorkspaceController extends ChangeNotifier {
     // Surface unparseable task recurrence rules (rrule lives in the app layer,
     // not tylog_core) into the same Problems report the UI already shows.
     report.problems.addAll(validateTaskRecurrences(built.tasks));
-    final cached = await PkmsSearchIndex.loadStorage(
-      opened.storage,
-      Vault.searchIndexPath,
-    );
-    final search = await PkmsSearchIndex.buildStorage(
-      opened.storage,
+    opened.maintenance.stageMillis['validate'] = timer.elapsedMilliseconds;
+    final search = await opened.maintenance.buildSearch(
       built,
-      previous: cached,
+      rebuildSearch: rebuildSearch,
       isCancelled: isCancelled,
     );
-    // buildStorage returns the *same instance* when every note hit the
-    // cache and the key set is unchanged, so identity is an exact "nothing
-    // to write" test. Without it a no-op scan re-encoded ~43 MB of JSON and
-    // rewrote ~12 MB of gzip for a file byte-identical to the one already
-    // there. vault_worker.dart has always had this guard; these two paths
-    // did not.
-    if (!identical(search, cached)) {
-      if (isCancelled?.call() ?? false) {
-        return (report: report, search: search);
-      }
-      await search.saveStorage(opened.storage, Vault.searchIndexPath);
-    }
     return (report: report, search: search);
   }
+
+  Future<void> _traceInProcessIndex(Vault opened, VaultIndex built) =>
+      appendVaultTrace(opened, [
+        {
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'event': 'indexed',
+          'trigger': 'auto',
+          'notes': built.notes.length,
+          'tasks': built.tasks.length,
+          'parsedNotes': opened.maintenance.parsedNotes,
+          'durationMs': opened.maintenance.durationMs,
+          'stageMillis': Map.of(opened.maintenance.stageMillis),
+        },
+      ]).catchError((_) {});
 
   PkmsValidationReport _retainValidation(PkmsValidationReport next) {
     final current = validation;
@@ -2381,6 +2404,7 @@ class WorkspaceController extends ChangeNotifier {
       ?_mutationRefreshFuture,
       for (final sync in _syncFlights) sync.then((_) {}),
     ]);
+    await vault?.maintenance.flushSearch();
   }
 
   @override
@@ -2393,6 +2417,7 @@ class WorkspaceController extends ChangeNotifier {
     dirtyNotifier.dispose();
     syncProgressTick.dispose();
     _cancelTimers();
+    _workerShutdowns.add(flushSearch());
     _shutdownWorker();
     super.dispose();
   }

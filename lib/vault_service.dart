@@ -109,44 +109,46 @@ Future<void> _runOnce() async {
       // step this context drops, and deliberately: nothing here renders
       // PkmsProblems, so building the report would be work no one reads. The
       // trace below is this process's only channel.
+      MaintenanceIndexed? indexed;
       await for (final event in vault.maintenance.run(
         inspector: inspector,
         deviceId: registry.deviceId,
         validate: false,
+        flushSearchOnFinish: true,
         // Stop cooperatively before the platform stops us mid-write. The
         // scanner already honours this hook; the service was the one caller
         // that passed nothing, so a cold rebuild was guaranteed to be killed
         // partway on a large vault.
         isCancelled: () => DateTime.now().isAfter(deadline),
       )) {
-        if (event case MaintenanceIndexed(
-          :final index,
-          :final donorReuse,
-          :final donorPublishError,
-          :final parsedNotes,
-          :final durationMs,
-        )) {
-          unawaited(
-            appendVaultTrace(vault, [
-              {
-                'timestamp': DateTime.now().toUtc().toIso8601String(),
-                'event': 'indexed',
-                'trigger': 'background',
-                'notes': index.notes.length,
-                'parsedNotes': parsedNotes,
-                'durationMs': durationMs,
-                'tasks': index.tasks.length,
-                'reusedNotes': donorReuse.notes,
-                'reusedDevices': donorReuse.devices,
-                'skippedDonors': donorReuse.skipped,
-                if (inspectorError != null)
-                  'errorMessage': 'Native Typst did not start: $inspectorError',
-                if (donorPublishError != null)
-                  'donorPublishError': '$donorPublishError',
-              },
-            ]).catchError((_) {}),
-          );
-        }
+        if (event is MaintenanceIndexed) indexed = event;
+      }
+      if (indexed case MaintenanceIndexed(
+        :final index,
+        :final donorReuse,
+        :final donorPublishError,
+        :final parsedNotes,
+        :final durationMs,
+      )) {
+        await appendVaultTrace(vault, [
+          {
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'event': 'indexed',
+            'trigger': 'background',
+            'notes': index.notes.length,
+            'parsedNotes': parsedNotes,
+            'durationMs': durationMs,
+            'stageMillis': Map.of(vault.maintenance.stageMillis),
+            'tasks': index.tasks.length,
+            'reusedNotes': donorReuse.notes,
+            'reusedDevices': donorReuse.devices,
+            'skippedDonors': donorReuse.skipped,
+            if (inspectorError != null)
+              'errorMessage': 'Native Typst did not start: $inspectorError',
+            if (donorPublishError != null)
+              'donorPublishError': '$donorPublishError',
+          },
+        ]).catchError((_) {});
       }
     } finally {
       inspector?.dispose();

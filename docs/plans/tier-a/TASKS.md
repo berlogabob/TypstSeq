@@ -57,7 +57,7 @@ Small tasks, one run each. Update the status column when a task changes state.
 
 | # | Task | Who | Status |
 |---|------|-----|--------|
-| E1 | Search index load/write dominates the phone index pass (P30: load-search 6.3 s, write-search 6.7 s, worker-load-search 5.0 s, list-stat 4.9 s, build-search 2.8 s; note scan 2 s) — make it incremental or skip when no note text changed | codex | todo |
+| E1 | Search index load/write per pass — 0.11.1: loaded once, write deferred (5 min / background / close). P30 per changed note: write-search 6.7 s → 0.01 s, load-search 0. Left: `durationMs` 12 s for one parsed note (list-stat, support files, index write) and build-search 3 s (rebuilds all task/attachment documents and postings) | codex | done; remainder todo |
 | E2 | Incremental note index (branch `wip/incremental-index`): spins at 90% CPU on the P30 and stops syncing; 4 stale-index cases from review (NFC receipts, service vs worker cache, same-content, both-missing) | codex | parked |
 | E3 | Sync `list-remote` costs 8–10 s per run; use notify_push file ids to fetch only the changed files | codex | todo |
 | E4 | Background delivery when the app is suspended | — | not started |
