@@ -743,7 +743,7 @@ void main() {
 
   // The real server compresses GETs and answers ETag "…-gzip"; sent back
   // verbatim as If-Match it 412'd this upload on every run on a phone.
-  for (final gzipGets in [false, true])
+  for (final gzipGets in [false, true]) {
     test(
       'pending coalesced revision uploads live descendant and restores cheap poll'
       '${gzipGets ? ' (gzip ETag)' : ''}',
@@ -814,6 +814,7 @@ void main() {
         expect(poll.uploaded, 0);
       },
     );
+  }
 
   test(
     'revision rewrite between hash and comparison does not record identical snapshots',
