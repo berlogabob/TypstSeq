@@ -43,6 +43,11 @@ class MainActivity : FlutterActivity() {
         super.onActivityResult(requestCode, resultCode, data)
     }
 
+    override fun onResume() {
+        super.onResume()
+        SafBridge.forgetListings()
+    }
+
     override fun onDestroy() {
         if (::safBridge.isInitialized) safBridge.dispose()
         super.onDestroy()

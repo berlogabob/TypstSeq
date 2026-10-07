@@ -36,6 +36,9 @@ class DedupingDocumentsProvider : DocumentsProvider() {
         /** Counts renames that were de-duplicated, so a test can assert on it. */
         @Volatile
         var deduplications = 0
+
+        val childQueries = java.util.Collections.synchronizedList(mutableListOf<String>())
+        @Volatile var failNextChildQuery = false
     }
 
     private val root: File
@@ -101,8 +104,15 @@ class DedupingDocumentsProvider : DocumentsProvider() {
         parentDocumentId: String,
         projection: Array<out String>?,
         sortOrder: String?,
-    ): Cursor = MatrixCursor(columns()).apply {
-        fileFor(parentDocumentId).listFiles()?.sortedBy { it.name }?.forEach { addFile(it) }
+    ): Cursor {
+        childQueries.add(parentDocumentId)
+        if (failNextChildQuery) {
+            failNextChildQuery = false
+            throw FileNotFoundException("Injected child-query failure")
+        }
+        return MatrixCursor(columns()).apply {
+            fileFor(parentDocumentId).listFiles()?.sortedBy { it.name }?.forEach { addFile(it) }
+        }
     }
 
     override fun openDocument(

@@ -66,29 +66,57 @@ class SafBridgeWriteTest {
      * `writeAtomic` directly would bypass the lock and test something that
      * never happens.
      */
-    private fun SafBridge.write(path: String, content: String) {
+    private fun SafBridge.call(method: String, path: String = "", values: Map<String, Any?> = emptyMap()): Any? {
         val done = java.util.concurrent.CountDownLatch(1)
-        val error = arrayOfNulls<String>(1)
+        var value: Any? = null
+        var failure: String? = null
         onMethodCall(
-            MethodCall(
-                "write",
-                mapOf(
-                    "uri" to tree.toString(),
-                    "path" to path,
-                    "bytes" to content.toByteArray(),
-                ),
-            ),
+            MethodCall(method, mapOf("uri" to tree.toString(), "path" to path) + values),
             object : MethodChannel.Result {
-                override fun success(result: Any?) = done.countDown()
-                override fun error(code: String, message: String?, details: Any?) {
-                    error[0] = "$code: $message"
+                override fun success(result: Any?) {
+                    value = result
                     done.countDown()
                 }
-                override fun notImplemented() = done.countDown()
+                override fun error(code: String, message: String?, details: Any?) {
+                    failure = "$code: $message"
+                    done.countDown()
+                }
+                override fun notImplemented() {
+                    failure = "Not implemented: $method"
+                    done.countDown()
+                }
             },
         )
-        check(done.await(30, TimeUnit.SECONDS)) { "write timed out: $path" }
-        error[0]?.let { throw IllegalStateException(it) }
+        check(done.await(30, TimeUnit.SECONDS)) { "$method timed out: $path" }
+        failure?.let { throw IllegalStateException(it) }
+        return value
+    }
+
+    private fun SafBridge.write(path: String, content: String) {
+        call("write", path, mapOf("bytes" to content.toByteArray()))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun SafBridge.listing(): List<Map<String, Any?>> =
+        call("list", values = mapOf("recursive" to true)) as List<Map<String, Any?>>
+
+    private fun SafBridge.assertPatchedMatchesFull() {
+        val patched = listing()
+        SafBridge.clearUriCache()
+        val full = listing()
+        assertEquals(full.toSet(), patched.toSet())
+        // Dart preserves native order, so also pin provider-order depth first.
+        assertEquals(full, patched)
+    }
+
+    private fun listingFixture(): SafBridge {
+        File(root, "notes/sub").mkdirs()
+        File(root, "notes/a.typ").writeText("old")
+        File(root, "notes/a.typ").setLastModified(1_000L)
+        File(root, "notes/sub/child.typ").writeText("child")
+        File(root, "other").mkdirs()
+        File(root, "other/z.typ").writeText("untouched")
+        return newBridge().also { it.listing() }
     }
 
     private fun childNames(relative: String): List<String> =
@@ -101,6 +129,8 @@ class SafBridgeWriteTest {
         }
         DedupingDocumentsProvider.rootDirectory = root
         DedupingDocumentsProvider.deduplications = 0
+        DedupingDocumentsProvider.childQueries.clear()
+        DedupingDocumentsProvider.failNextChildQuery = false
         // The uri cache is process-wide, and every case reuses the same tree
         // authority over a fresh directory — without this, entries from the
         // previous case resolve to documents that no longer exist.
@@ -232,4 +262,159 @@ class SafBridgeWriteTest {
         val text = File(root, "notes/a.typ").readText()
         assertTrue("one writer must win cleanly, got: $text", text.startsWith("from "))
     }
+    @Test
+    fun listingPatchesFileCreationInExistingDirectory() {
+        val bridge = listingFixture()
+        bridge.write("notes/b.typ", "new")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesFileCreationInNewNestedDirectories() {
+        val bridge = listingFixture()
+        bridge.write("new/deep/nested/b.typ", "new")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesOverwriteSizeAndModifiedTime() {
+        val bridge = listingFixture()
+        bridge.write("notes/a.typ", "a much longer replacement")
+        val entry = bridge.listing().single { it["path"] == "notes/a.typ" }
+        assertEquals(25L, entry["size"])
+        assertTrue(entry["modified"] != 1_000L)
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesFileDeletion() {
+        val bridge = listingFixture()
+        bridge.call("delete", "notes/a.typ")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesDirectoryDeletionWithChildren() {
+        val bridge = listingFixture()
+        bridge.call("delete", "notes/sub")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesRenameAcrossDirectories() {
+        val bridge = listingFixture()
+        // VaultStorage has no native move operation: moves write the target
+        // then delete the source, through the same two channel calls.
+        bridge.write("other/moved.typ", File(root, "notes/a.typ").readText())
+        bridge.call("delete", "notes/a.typ")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun listingPatchesDirectoryCreationAndRecreation() {
+        val bridge = listingFixture()
+        bridge.call("createDirectory", "new/deep")
+        bridge.call("delete", "notes/sub")
+        bridge.call("createDirectory", "notes/sub")
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun singleWriteQueriesOnlyItsDirectoryAndKeepsTimestamp() {
+        val bridge = listingFixture()
+        val field = SafBridge::class.java.getDeclaredField("listingCache").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val cache = field.get(null) as Map<String, Pair<Long, List<Map<String, Any?>>>>
+        val at = cache[tree.toString()]!!.first
+        bridge.write("notes/a.typ", "new")
+        DedupingDocumentsProvider.childQueries.clear()
+        bridge.listing()
+        assertEquals(listOf("notes"), DedupingDocumentsProvider.childQueries.toList())
+        assertEquals(at, cache[tree.toString()]!!.first)
+        bridge.listing()
+        assertEquals(listOf("notes"), DedupingDocumentsProvider.childQueries.toList())
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun concurrentListsPatchOnceAcrossEnginesAndRetainLaterWrite() {
+        val a = listingFixture()
+        val b = newBridge()
+        a.write("notes/a.typ", "first")
+        DedupingDocumentsProvider.childQueries.clear()
+        val barrier = CyclicBarrier(2)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val lists = listOf(a, b).map { bridge ->
+                pool.submit<List<Map<String, Any?>>> {
+                    barrier.await(10, TimeUnit.SECONDS)
+                    bridge.listing()
+                }
+            }
+            assertEquals(lists[0].get(30, TimeUnit.SECONDS), lists[1].get(30, TimeUnit.SECONDS))
+            assertEquals(listOf("notes"), DedupingDocumentsProvider.childQueries.toList())
+            b.write("notes/a.typ", "second, longer")
+            a.assertPatchedMatchesFull()
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun patchFailureFallsBackToFullWalk() {
+        val bridge = listingFixture()
+        bridge.write("notes/a.typ", "new")
+        DedupingDocumentsProvider.childQueries.clear()
+        DedupingDocumentsProvider.failNextChildQuery = true
+        bridge.listing()
+        assertTrue(DedupingDocumentsProvider.ROOT_ID in DedupingDocumentsProvider.childQueries)
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun missingDirtyDirectoryWalksUpToRoot() {
+        val bridge = listingFixture()
+        bridge.write("notes/sub/child.typ", "new")
+        File(root, "notes").deleteRecursively()
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun moreThan64DirtyDirectoriesForcesFullWalk() {
+        val bridge = listingFixture()
+        repeat(65) { File(root, "dir$it").mkdirs() }
+        SafBridge.clearUriCache()
+        bridge.listing()
+        repeat(65) { bridge.write("dir$it/a.typ", "new") }
+        DedupingDocumentsProvider.childQueries.clear()
+        bridge.listing()
+        assertEquals(DedupingDocumentsProvider.ROOT_ID, DedupingDocumentsProvider.childQueries.first())
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun expiredPatchedListingSeesExternalWriter() {
+        val bridge = listingFixture()
+        bridge.write("notes/a.typ", "new")
+        bridge.listing()
+        val field = SafBridge::class.java.getDeclaredField("listingCache").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val cache = field.get(null) as MutableMap<String, Pair<Long, List<Map<String, Any?>>>>
+        cache[tree.toString()] = -300_000L to cache[tree.toString()]!!.second
+        File(root, "external.typ").writeText("external")
+        assertTrue(bridge.listing().any { it["path"] == "external.typ" })
+        bridge.assertPatchedMatchesFull()
+    }
+
+    @Test
+    fun bookkeepingWritesRemainExempt() {
+        val bridge = listingFixture()
+        val cached = bridge.listing()
+        bridge.write(".tylog/state.json", "state")
+        bridge.write("_index/index.json", "index")
+        DedupingDocumentsProvider.childQueries.clear()
+        assertEquals(cached, bridge.listing())
+        assertTrue(DedupingDocumentsProvider.childQueries.isEmpty())
+    }
+
 }

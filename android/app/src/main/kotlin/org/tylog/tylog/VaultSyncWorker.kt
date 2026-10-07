@@ -33,6 +33,7 @@ class VaultSyncWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
+        SafBridge.forgetListings()
         val loader = FlutterInjector.instance().flutterLoader()
         if (!loader.initialized()) loader.startInitialization(applicationContext)
         loader.ensureInitializationComplete(applicationContext, null)
