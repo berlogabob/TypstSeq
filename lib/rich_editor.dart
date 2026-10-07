@@ -8,6 +8,7 @@ import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/values.dart';
 
 import 'controlled_editor.dart';
+import 'image_crop.dart';
 import 'widgets/constants.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';

@@ -8,6 +8,7 @@ class TyLogEditingController extends TextEditingController {
     required ValueChanged<String> onProtectedTap,
     Future<Uint8List?> Function(String path)? imageResolver,
     String? Function(String target)? resolveKind,
+    Future<String> Function(String path, Uint8List bytes)? imageWriter,
   }) : this._(
          TyLogDocument.parse(source),
          onSourceChanged,
@@ -15,6 +16,7 @@ class TyLogEditingController extends TextEditingController {
          onProtectedTap,
          imageResolver,
          resolveKind,
+         imageWriter,
        );
 
   TyLogEditingController._(
@@ -24,6 +26,7 @@ class TyLogEditingController extends TextEditingController {
     this.onProtectedTap,
     this.imageResolver,
     this.resolveKind,
+    this.imageWriter,
   ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
@@ -43,6 +46,7 @@ class TyLogEditingController extends TextEditingController {
   /// render as real pictures. Null (e.g. read-only previews without a vault)
   /// keeps the old path chip.
   final Future<Uint8List?> Function(String path)? imageResolver;
+  final Future<String> Function(String path, Uint8List bytes)? imageWriter;
   final Map<String, Future<Uint8List?>> _imageCache = {};
   double? imageContentWidth;
 
@@ -728,6 +732,7 @@ class TyLogEditingController extends TextEditingController {
 
   void editImage(
     String id, {
+    String? path,
     int? width,
     String? align,
     int move = 0,
@@ -735,6 +740,7 @@ class TyLogEditingController extends TextEditingController {
   }) => _format(
     () => document.editImage(
       id,
+      path: path,
       width: width,
       align: align,
       move: move,

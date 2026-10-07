@@ -37,6 +37,7 @@ import 'retrieval/graph_svg.dart';
 import 'retrieval/hybrid_search.dart';
 import 'retrieval/semantic_search_controller.dart';
 import 'rich_editor.dart';
+import 'image_crop.dart';
 import 'scanner.dart';
 import 'package:tylog_core/search_index.dart';
 import 'task_scheduler.dart';
@@ -483,6 +484,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onError: _richEditorError,
       onProtectedTap: (id) => unawaited(_tapProtected(id)),
       imageResolver: _readAsset,
+      imageWriter: (path, bytes) => saveImageCrop(vault!.storage, path, bytes),
       resolveKind: _resolveKind,
     );
     workspace = WorkspaceController(

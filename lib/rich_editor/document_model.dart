@@ -873,6 +873,7 @@ class TyLogDocument {
 
   void editImage(
     String id, {
+    String? path,
     int? width,
     String? align,
     int move = 0,
@@ -884,8 +885,8 @@ class TyLogDocument {
     if (index < 0) return;
     final block = blocks[index];
     final part = block.parts.firstWhere((part) => part.id == id);
-    final path = _imageAtomPath(part.source!);
-    if (path == null) return;
+    final oldPath = _imageAtomPath(part.source!);
+    if (oldPath == null) return;
     final alone =
         block.style == TyLogBlockStyle.paragraph &&
         block.parts.where((part) => part.text.trim().isNotEmpty).length == 1;
@@ -930,8 +931,15 @@ class TyLogDocument {
     final layout = _imageLayout(part.source!);
     final replacement = delete
         ? ''
+        : path != null
+        ? part.source!.replaceAllMapped(
+            RegExp(
+              r'((?:#tylog\.attachment|#?[iI]mage)\(\s*)"((?:\\.|[^"])*)"',
+            ),
+            (match) => '${match.group(1)}${typstString(path)}',
+          )
         : imageAttachmentSource(
-            path,
+            oldPath,
             width: width ?? layout?.$1 ?? 60,
             align: align ?? layout?.$2 ?? 'center',
           );

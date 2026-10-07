@@ -1111,6 +1111,7 @@ class _InlineImageState extends State<_InlineImage> {
   final GlobalKey _targetKey = GlobalKey();
   OverlayEntry? _toolbar;
   bool _editing = false;
+  Uint8List? _decodedData;
 
   @override
   void initState() {
@@ -1121,6 +1122,7 @@ class _InlineImageState extends State<_InlineImage> {
   @override
   void didUpdateWidget(_InlineImage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.bytes != widget.bytes) _decodedData = null;
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_changed);
       widget.controller?.addListener(_changed);
@@ -1167,6 +1169,38 @@ class _InlineImageState extends State<_InlineImage> {
         _select();
       });
     }
+  }
+
+  Future<void> _crop() async {
+    final controller = widget.controller!;
+    final document = controller.document;
+    final source = controller.protectedSource(widget.id);
+    final path = _imageAtomPath(source)!;
+    final bytes = _decodedData!;
+    _dismiss();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => ImageCropPage(
+          bytes: bytes,
+          onError: controller.onError,
+          onDone: (bytes) async {
+            if (!mounted ||
+                !identical(controller.document, document) ||
+                controller.protectedSource(widget.id) != source) {
+              throw StateError('Image changed while cropping');
+            }
+            final next = await controller.imageWriter!(path, bytes);
+            if (!mounted ||
+                !identical(controller.document, document) ||
+                controller.protectedSource(widget.id) != source) {
+              throw StateError('Image changed while cropping');
+            }
+            controller.editImage(widget.id, path: next);
+          },
+        ),
+      ),
+    );
   }
 
   void _select() {
@@ -1222,6 +1256,13 @@ class _InlineImageState extends State<_InlineImage> {
                 borderRadius: BorderRadius.circular(kRadiusSmall),
                 child: Wrap(
                   children: [
+                    if (_decodedData != null &&
+                        widget.controller!.imageWriter != null)
+                      IconButton(
+                        tooltip: 'Crop',
+                        onPressed: _crop,
+                        icon: const Icon(Icons.crop),
+                      ),
                     for (final (label, width) in [
                       ('S', 33),
                       ('M', 60),
@@ -1322,6 +1363,10 @@ class _InlineImageState extends State<_InlineImage> {
               width: width,
               fit: BoxFit.contain,
               semanticLabel: 'Image',
+              frameBuilder: (context, child, frame, synchronous) {
+                if (frame != null || synchronous) _decodedData = data;
+                return child;
+              },
               // Bound decoding to the display width, including for large originals.
               cacheWidth:
                   ((layout == null
@@ -1329,7 +1374,10 @@ class _InlineImageState extends State<_InlineImage> {
                               : contentWidth) *
                           MediaQuery.devicePixelRatioOf(context))
                       .round(),
-              errorBuilder: (context, _, _) => widget.fallback,
+              errorBuilder: (context, _, _) {
+                _decodedData = null;
+                return widget.fallback;
+              },
             ),
           ),
         );
