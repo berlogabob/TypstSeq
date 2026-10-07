@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tylog_core/maintenance.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 class _CountingStorage extends LocalVaultStorage {
