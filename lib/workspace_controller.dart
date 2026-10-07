@@ -322,7 +322,8 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void close(String message, {NextcloudConfig? nextCloud}) {
-    _workerShutdowns.add(flushSearch());
+    // The search file is a cache; a vault that vanished mid-close just loses it.
+    _workerShutdowns.add(flushSearch().catchError((_) {}));
     _vaultGeneration++;
     _feedFlight = null;
     _eventCreates.clear();
@@ -2417,7 +2418,8 @@ class WorkspaceController extends ChangeNotifier {
     dirtyNotifier.dispose();
     syncProgressTick.dispose();
     _cancelTimers();
-    _workerShutdowns.add(flushSearch());
+    // The search file is a cache; a vault that vanished mid-close just loses it.
+    _workerShutdowns.add(flushSearch().catchError((_) {}));
     _shutdownWorker();
     super.dispose();
   }
