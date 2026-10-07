@@ -44,6 +44,7 @@ class TyLogEditingController extends TextEditingController {
   /// keeps the old path chip.
   final Future<Uint8List?> Function(String path)? imageResolver;
   final Map<String, Future<Uint8List?>> _imageCache = {};
+  double? imageContentWidth;
 
   /// Cached bytes for [path] — loaded at most once per note so a rebuild on
   /// every keystroke doesn't re-hit SAF/disk.
@@ -245,6 +246,50 @@ class TyLogEditingController extends TextEditingController {
           _redo.clear();
           onSourceChanged(source);
           return;
+        }
+      }
+      if (change.start == change.oldEnd && change.replacement.isNotEmpty) {
+        final hit = document._blockAt(change.start, preferPrevious: true);
+        if (hit != null) {
+          final block = document.blocks[hit.index];
+          if (block.style == TyLogBlockStyle.paragraph &&
+              block.parts.length == 1 &&
+              block.parts.single.isAtom &&
+              _imageLayout(block.parts.single.source!) != null &&
+              (change.start == hit.start || change.start == hit.end)) {
+            snapshotBefore();
+            final leading = change.start == hit.start;
+            final paragraph = _newParagraph(
+              '',
+              DateTime.now().microsecondsSinceEpoch,
+              separator: leading ? '\n\n' : block.separator,
+            );
+            document.blocks.insert(hit.index + (leading ? 0 : 1), paragraph);
+            if (!leading) block.separator = '\n\n';
+            final start =
+                document.blockRanges[hit.index + (leading ? 0 : 1)].start;
+            document.replace(
+              start,
+              start,
+              change.replacement,
+              insertionStyle: _typingStyle,
+            );
+            _updating = true;
+            value = TextEditingValue(
+              text: document.visibleText,
+              selection: TextSelection.collapsed(
+                offset: start + change.replacement.length,
+              ),
+            );
+            _lastValue = value;
+            _updating = false;
+            final source = document.toSource();
+            _addUndo(_compositionStart ?? before!);
+            _compositionStart = null;
+            _redo.clear();
+            onSourceChanged(source);
+            return;
+          }
         }
       }
       snapshotBefore();
@@ -655,7 +700,11 @@ class TyLogEditingController extends TextEditingController {
             MagicAction.table,
             MagicAction.equation,
           }.contains(request.action);
-          final offset = isBlock
+          final offset =
+              request.action == MagicAction.attachment &&
+                  request.kind == 'image'
+              ? document.insertImage(selection, edit.text)
+              : isBlock
               ? document.insertBlock(selection, edit.text)
               : document.insertSource(selection, edit.text, label: label);
           final nextText = document.visibleText;
@@ -676,6 +725,22 @@ class TyLogEditingController extends TextEditingController {
         }
     }
   }
+
+  void editImage(
+    String id, {
+    int? width,
+    String? align,
+    int move = 0,
+    bool delete = false,
+  }) => _format(
+    () => document.editImage(
+      id,
+      width: width,
+      align: align,
+      move: move,
+      delete: delete,
+    ),
+  );
 
   void replaceProtected(String id, String source) => _format(() {
     document.replaceProtected(id, source);
@@ -983,10 +1048,13 @@ class TyLogEditingController extends TextEditingController {
                 ? () => onProtectedTap(part.id!)
                 : null;
             final resolvedKind = _refNoteKind(part.source!, resolveKind);
+            final isImage =
+                imagePath != null &&
+                (imageResolver != null || _imageLayout(part.source!) != null);
             final chip = _ProtectedChip(
               label: part.label!,
               block: false,
-              onTap: onTap,
+              onTap: isImage ? null : onTap,
               unresolved: resolvedKind == 'unresolved',
               icon: _atomIcon(part.source!, resolvedKind: resolvedKind),
               textStyle: _styleFor(
@@ -997,7 +1065,6 @@ class TyLogEditingController extends TextEditingController {
                 part.style,
               ),
             );
-            final isImage = imagePath != null && imageResolver != null;
             children.add(
               WidgetSpan(
                 // A chip sits on the text baseline like a word; an inline
@@ -1008,6 +1075,20 @@ class TyLogEditingController extends TextEditingController {
                 baseline: TextBaseline.alphabetic,
                 child: isImage
                     ? _InlineImage(
+                        key: ValueKey(part.id),
+                        controller: interactive ? this : null,
+                        id: part.id!,
+                        layout:
+                            block.style == TyLogBlockStyle.paragraph &&
+                                block.parts
+                                        .where(
+                                          (part) => part.text.trim().isNotEmpty,
+                                        )
+                                        .length ==
+                                    1
+                            ? _imageLayout(part.source!)
+                            : null,
+                        contentWidth: imageContentWidth,
                         bytes: imageBytes(imagePath),
                         fallback: chip,
                         onTap: onTap,

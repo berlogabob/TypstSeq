@@ -432,6 +432,13 @@ class SourceEdit {
   final TextSelection selection;
 }
 
+String imageAttachmentSource(
+  String path, {
+  int width = 60,
+  String align = 'center',
+}) =>
+    '#tylog.attachment(${typstString(path)}, kind: "image")[#align($align, image(${typstString(path)}, width: $width%))]';
+
 SourceEdit applyMagicEdit(
   String source,
   TextSelection selection,
@@ -463,8 +470,10 @@ SourceEdit applyMagicEdit(
       '#tylog.date-ref(${typstString(value ?? selected)})[${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}]',
     MagicAction.time => value ?? localTime(DateTime.now()),
     MagicAction.citation => '@${_citationKey(value ?? selected)}',
+    MagicAction.attachment when request.kind == 'image' =>
+      imageAttachmentSource(value ?? ''),
     MagicAction.attachment =>
-      '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${request.kind == 'image' ? '#image(${typstString(value ?? '')})' : escapeMarkup(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
+      '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${escapeMarkup(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
     MagicAction.heading =>
       '= ${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}',
     MagicAction.bold => '#strong[${escapeMarkup(selected)}]',
@@ -484,6 +493,34 @@ SourceEdit applyMagicEdit(
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
   };
+  if (request.action == MagicAction.attachment && request.kind == 'image') {
+    final inList = parseControlledTypst(source).blocks.any(
+      (block) =>
+          block.kind == ControlledBlockKind.list &&
+          start >= block.start &&
+          start <= block.end,
+    );
+    if (!inList) {
+      final before = source.substring(0, start);
+      final after = source.substring(end);
+      final leading = before.isEmpty || before.endsWith('\n\n')
+          ? ''
+          : before.endsWith('\n')
+          ? '\n'
+          : '\n\n';
+      final trailing = after.isEmpty || after.startsWith('\n\n')
+          ? ''
+          : after.startsWith('\n')
+          ? '\n'
+          : '\n\n';
+      return SourceEdit(
+        text: '$before$leading$replacement$trailing$after',
+        selection: TextSelection.collapsed(
+          offset: start + leading.length + replacement.length + trailing.length,
+        ),
+      );
+    }
+  }
   if (const {
     MagicAction.task,
     MagicAction.table,

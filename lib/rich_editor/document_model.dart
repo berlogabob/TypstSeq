@@ -822,6 +822,160 @@ class TyLogDocument {
     return selection.start + 1;
   }
 
+  int insertImage(TextRange selection, String source) {
+    final hit = _blockAt(selection.start, preferPrevious: true);
+    if (hit != null && blocks[hit.index].style != TyLogBlockStyle.paragraph) {
+      return insertSource(selection, source, label: _atomLabel(source));
+    }
+    replace(selection.start, selection.end, '');
+    final currentHit = _blockAt(selection.start, preferPrevious: true);
+    final image = _parseBlock(
+      parseControlledTypst(source).blocks.single,
+      '',
+      blocks.length,
+    );
+    image.parts = image.parts
+        .map(
+          (part) => part.isAtom
+              ? TyLogInline.atom(
+                  source: part.source,
+                  label: part.label,
+                  id: 'image-${DateTime.now().microsecondsSinceEpoch}',
+                )
+              : part,
+        )
+        .toList();
+    if (currentHit == null) {
+      blocks.add(image);
+      return _ranges.last.end;
+    }
+    final current = blocks[currentHit.index];
+    final units = _units(current.parts);
+    final local = (selection.start - currentHit.start).clamp(0, units.length);
+    final before = _parts(units.sublist(0, local));
+    final after = _parts(units.sublist(local));
+    final replacements = <TyLogBlock>[
+      if (before.isNotEmpty)
+        _newParagraph('', 0, separator: '\n\n')..parts = before,
+      image,
+      if (after.isNotEmpty) _newParagraph('', 1, separator: '')..parts = after,
+    ];
+    for (final block in replacements.take(replacements.length - 1)) {
+      block.separator = '\n\n';
+    }
+    replacements.last.separator = current.separator;
+    blocks.replaceRange(currentHit.index, currentHit.index + 1, replacements);
+    final index = currentHit.index + (before.isEmpty ? 0 : 1);
+    return index + 1 < blocks.length
+        ? _ranges[index + 1].start
+        : _ranges[index].end;
+  }
+
+  void editImage(
+    String id, {
+    int? width,
+    String? align,
+    int move = 0,
+    bool delete = false,
+  }) {
+    final index = blocks.indexWhere(
+      (block) => block.parts.any((part) => part.id == id),
+    );
+    if (index < 0) return;
+    final block = blocks[index];
+    final part = block.parts.firstWhere((part) => part.id == id);
+    final path = _imageAtomPath(part.source!);
+    if (path == null) return;
+    final alone =
+        block.style == TyLogBlockStyle.paragraph &&
+        block.parts.where((part) => part.text.trim().isNotEmpty).length == 1;
+    if (move != 0) {
+      final next = index + move;
+      if (!alone || next < 0 || next >= blocks.length) return;
+      // The parser keeps a final paragraph's trailing newlines in its body.
+      // Move those into the separator before swapping, so EOF whitespace stays at EOF.
+      for (final position in [index, next]) {
+        final current = blocks[position];
+        if (current.style != TyLogBlockStyle.paragraph) continue;
+        final raw = current.dirty
+            ? _serializeBlock(current)
+            : current.originalSource;
+        final tail = RegExp(r'\n[ \t\r\n]*$').firstMatch(raw);
+        if (tail == null) continue;
+        final units = _units(current.parts);
+        units.removeRange(units.length - tail.group(0)!.length, units.length);
+        blocks[position] = TyLogBlock(
+          id: current.id,
+          style: current.style,
+          parts: _parts(units),
+          originalSource: raw.substring(0, tail.start),
+          separator: '${tail.group(0)}${current.separator}',
+        );
+      }
+      final moving = blocks[index];
+      final separator = blocks[next].separator;
+      blocks[next].separator = moving.separator;
+      moving.separator = separator;
+      blocks[index] = blocks[next];
+      blocks[next] = moving;
+      return;
+    }
+    if (delete && alone) {
+      if (index == blocks.length - 1 && index > 0) {
+        blocks[index - 1].separator = block.separator;
+      }
+      blocks.removeAt(index);
+      return;
+    }
+    final layout = _imageLayout(part.source!);
+    final replacement = delete
+        ? ''
+        : imageAttachmentSource(
+            path,
+            width: width ?? layout?.$1 ?? 60,
+            align: align ?? layout?.$2 ?? 'center',
+          );
+    final raw = block.dirty ? _serializeBlock(block) : block.originalSource;
+    var offset = 0;
+    for (final atom in block.parts.where((part) => part.isAtom)) {
+      final start = raw.indexOf(atom.source!, offset);
+      if (start < 0) {
+        throw const FormatException('Image span no longer exists.');
+      }
+      if (atom.id != id) {
+        offset = start + atom.source!.length;
+        continue;
+      }
+      final rewritten = raw.replaceRange(
+        start,
+        start + atom.source!.length,
+        replacement,
+      );
+      final rebuilt = _parseBlock(
+        parseControlledTypst(rewritten).blocks.single,
+        block.separator,
+        index,
+      );
+      // Keep atom identities stable while replacing only the selected source span.
+      var oldIndex = 0;
+      final oldAtoms = block.parts.where((part) => part.isAtom).toList();
+      for (var i = 0; i < rebuilt.parts.length; i++) {
+        final item = rebuilt.parts[i];
+        if (!item.isAtom) continue;
+        if (delete && oldAtoms[oldIndex].id == id) {
+          oldIndex++;
+        }
+        rebuilt.parts[i] = TyLogInline.atom(
+          source: item.source,
+          label: item.label,
+          id: oldAtoms[oldIndex++].id,
+        );
+      }
+      blocks[index] = rebuilt;
+      return;
+    }
+  }
+
   int insertBlock(TextRange selection, String source) {
     final parsed = parseControlledTypst(source);
     final replacements = [

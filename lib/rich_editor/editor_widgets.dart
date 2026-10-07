@@ -89,14 +89,21 @@ class _TyLogReadViewState extends State<TyLogReadView> {
   // Text.rich (RenderParagraph), not SelectableText.rich (RenderEditable):
   // RenderEditable mispositions WidgetSpans whose size changes after first
   // layout (async inline images), painting chips over the surrounding text.
-  Widget build(BuildContext context) => SelectionArea(
-    child: Text.rich(
-      controller.readTextSpan(
-        context,
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
-        tappable: widget.onAtomTap != null,
-      ),
-    ),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      controller.imageContentWidth = constraints.maxWidth;
+      return SelectionArea(
+        child: Text.rich(
+          controller.readTextSpan(
+            context,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.55),
+            tappable: widget.onAtomTap != null,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -919,11 +926,17 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               _overlayEntry?.markNeedsBuild();
               return false;
             },
-            child: SizedBox(
-              key: _editorKey,
-              child: _window == null
-                  ? _field(widget.controller, textStyle, expands: true)
-                  : _windowedField(textStyle),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                widget.controller.imageContentWidth =
+                    constraints.maxWidth - (_window == null ? 36 : 0);
+                return SizedBox(
+                  key: _editorKey,
+                  child: _window == null
+                      ? _field(widget.controller, textStyle, expands: true)
+                      : _windowedField(textStyle),
+                );
+              },
             ),
           ),
         ),
@@ -1069,63 +1082,300 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
 /// the vault via the controller's cached [bytes] future. While loading it shows
 /// a compact placeholder; on a missing file / decode error it falls back to
 /// [fallback] (the original path chip) so a dead reference is still visible.
-class _InlineImage extends StatelessWidget {
+class _InlineImage extends StatefulWidget {
   const _InlineImage({
+    super.key,
     required this.bytes,
     required this.fallback,
     required this.onTap,
+    required this.id,
+    this.controller,
+    this.layout,
+    this.contentWidth,
   });
 
+  final String id;
+  final TyLogEditingController? controller;
+  final (int, String)? layout;
+  final double? contentWidth;
   final Future<Uint8List?> bytes;
   final Widget fallback;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
-    future: bytes,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: SizedBox(
+  State<_InlineImage> createState() => _InlineImageState();
+}
+
+class _InlineImageState extends State<_InlineImage> {
+  final LayerLink _link = LayerLink();
+  final GlobalKey _targetKey = GlobalKey();
+  OverlayEntry? _toolbar;
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller?.addListener(_changed);
+  }
+
+  @override
+  void didUpdateWidget(_InlineImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_changed);
+      widget.controller?.addListener(_changed);
+      _dismiss();
+    }
+  }
+
+  void _changed() {
+    if (!_editing) _dismiss();
+  }
+
+  void _dismiss() {
+    if (_toolbar == null) return;
+    _toolbar!.remove();
+    _toolbar!.dispose();
+    _toolbar = null;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_changed);
+    _toolbar?.remove();
+    _toolbar?.dispose();
+    super.dispose();
+  }
+
+  void _edit({int? width, String? align, int move = 0, bool delete = false}) {
+    _editing = true;
+    widget.controller!.editImage(
+      widget.id,
+      width: width,
+      align: align,
+      move: move,
+      delete: delete,
+    );
+    _editing = false;
+    if (delete) {
+      _dismiss();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _toolbar == null) return;
+        _dismiss();
+        _select();
+      });
+    }
+  }
+
+  void _select() {
+    if (widget.controller == null) {
+      widget.onTap?.call();
+      return;
+    }
+    if (_toolbar != null) return;
+    final box = _targetKey.currentContext!.findRenderObject()! as RenderBox;
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final origin = box.localToGlobal(
+      Offset(0, box.size.height),
+      ancestor: overlayBox,
+    );
+    final toolbarWidth = math.min(MediaQuery.sizeOf(context).width - 16, 360.0);
+    final dx =
+        origin.dx.clamp(
+          8.0,
+          math.max(8.0, overlayBox.size.width - toolbarWidth - 8),
+        ) -
+        origin.dx;
+    final dy =
+        origin.dy + 148 >
+            overlayBox.size.height - MediaQuery.viewInsetsOf(context).bottom
+        ? -box.size.height - 148.0
+        : 4.0;
+    final blocks = widget.controller!.document.blocks;
+    final index = blocks.indexWhere(
+      (block) => block.parts.any((part) => part.id == widget.id),
+    );
+    final alone =
+        index >= 0 &&
+        blocks[index].style == TyLogBlockStyle.paragraph &&
+        blocks[index].parts
+                .where((part) => part.text.trim().isNotEmpty)
+                .length ==
+            1;
+    _toolbar = OverlayEntry(
+      builder: (context) => Positioned(
+        width: math.min(MediaQuery.sizeOf(context).width - 16, 360),
+        child: CompositedTransformFollower(
+          link: _link,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: Offset(dx, dy),
+          child: TextFieldTapRegion(
+            child: TapRegion(
+              groupId: this,
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(kRadiusSmall),
+                child: Wrap(
+                  children: [
+                    for (final (label, width) in [
+                      ('S', 33),
+                      ('M', 60),
+                      ('Full', 100),
+                    ])
+                      TextButton(
+                        onPressed: () => _edit(width: width),
+                        child: Text(label),
+                      ),
+                    for (final (align, icon) in [
+                      ('left', Icons.format_align_left),
+                      ('center', Icons.format_align_center),
+                      ('right', Icons.format_align_right),
+                    ])
+                      IconButton(
+                        tooltip: 'Align $align',
+                        onPressed: () => _edit(align: align),
+                        icon: Icon(icon),
+                      ),
+                    for (final (label, icon, action)
+                        in <(String, IconData, VoidCallback)>[
+                          (
+                            'Move image up',
+                            Icons.arrow_upward,
+                            () => _edit(move: -1),
+                          ),
+                          (
+                            'Move image down',
+                            Icons.arrow_downward,
+                            () => _edit(move: 1),
+                          ),
+                          (
+                            'Delete image',
+                            Icons.delete_outline,
+                            () => _edit(delete: true),
+                          ),
+                          (
+                            'Open image',
+                            Icons.open_in_new,
+                            () {
+                              _dismiss();
+                              widget.onTap?.call();
+                            },
+                          ),
+                        ])
+                      IconButton(
+                        tooltip: label,
+                        onPressed:
+                            label == 'Move image up' &&
+                                    (!alone || index == 0) ||
+                                label == 'Move image down' &&
+                                    (!alone || index == blocks.length - 1)
+                            ? null
+                            : action,
+                        icon: Icon(icon),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_toolbar!);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = widget.layout;
+    final contentWidth =
+        widget.contentWidth ?? MediaQuery.sizeOf(context).width;
+    final width = layout == null ? null : contentWidth * layout.$1 / 100;
+    final maxHeight =
+        MediaQuery.sizeOf(context).height * (layout == null ? 0.4 : 0.6);
+    final picture = FutureBuilder<Uint8List?>(
+      future: widget.bytes,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const SizedBox(
             height: 18,
             width: 18,
             child: CircularProgressIndicator(strokeWidth: 2),
+          );
+        }
+        final data = snapshot.data;
+        if (data == null || data.isEmpty) return widget.fallback;
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: width ?? MediaQuery.sizeOf(context).width * 0.7,
+            maxHeight: maxHeight,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(kRadiusSmall),
+            child: Image.memory(
+              data,
+              width: width,
+              fit: BoxFit.contain,
+              semanticLabel: 'Image',
+              // Bound decoding to the display width, including for large originals.
+              cacheWidth:
+                  ((layout == null
+                              ? MediaQuery.sizeOf(context).width
+                              : contentWidth) *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+              errorBuilder: (context, _, _) => widget.fallback,
+            ),
           ),
         );
-      }
-      final data = snapshot.data;
-      if (data == null || data.isEmpty) return fallback;
-      final image = ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.7,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.4,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(kRadiusSmall),
-          child: Image.memory(
-            data,
-            fit: BoxFit.contain,
-            // Decode to roughly the width it is drawn at, not the file's own.
-            // A 4000x3000 photo otherwise decodes to a ~48 MB RGBA bitmap and
-            // sits in the image cache at that size; the box above never shows
-            // more than the screen's width.
-            cacheWidth:
-                (MediaQuery.sizeOf(context).width *
-                        MediaQuery.devicePixelRatioOf(context))
-                    .round(),
-            errorBuilder: (context, _, _) => fallback,
+      },
+    );
+    final selectable = TapRegion(
+      groupId: this,
+      onTapOutside: (_) => _dismiss(),
+      child: CompositedTransformTarget(
+        key: _targetKey,
+        link: _link,
+        child: GestureDetector(
+          onTap: widget.controller != null || widget.onTap != null
+              ? _select
+              : null,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: _toolbar == null
+                    ? Colors.transparent
+                    : Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            child: picture,
           ),
         ),
-      );
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: onTap == null
-            ? image
-            : GestureDetector(onTap: onTap, child: image),
-      );
-    },
-  );
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: layout == null
+          ? selectable
+          : SizedBox(
+              width: contentWidth,
+              child: Align(
+                alignment: switch (layout.$2) {
+                  'left' => Alignment.centerLeft,
+                  'right' => Alignment.centerRight,
+                  _ => Alignment.center,
+                },
+                child: selectable,
+              ),
+            ),
+    );
+  }
 }
 
 class _ProtectedChip extends StatelessWidget {
@@ -1320,6 +1570,16 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
       separator: separator,
       protectedLabel: 'Custom Typst',
     );
+  }
+  for (var i = 0; i < parts.length; i++) {
+    final part = parts[i];
+    if (part.isAtom && _imageAtomPath(part.source!) != null) {
+      parts[i] = TyLogInline.atom(
+        source: part.source,
+        label: part.label,
+        id: '$id-${part.id}',
+      );
+    }
   }
   return TyLogBlock(
     id: id,
@@ -1539,9 +1799,14 @@ bool _isReferenceAtom(String source) =>
     source.startsWith('#image(') ||
     source.startsWith('#Image(');
 
-/// The vault asset path an atom points at when it is an image — a bare
-/// `#image("path")` or a `#tylog.attachment("path", kind: "image")[...]` — else
-/// null. Used to draw the atom as a real picture instead of a link chip.
+(int, String)? _imageLayout(String source) {
+  final match = RegExp(
+    r'#align\((left|center|right),\s*image\("(?:\\.|[^"])*",\s*width:\s*(33|60|100)%\)\)',
+  ).firstMatch(source);
+  return match == null ? null : (int.parse(match.group(2)!), match.group(1)!);
+}
+
+/// Asset path for a bare image or an image attachment; null for other atoms.
 String? _imageAtomPath(String source) {
   final image = RegExp(r'^#[iI]mage\("((?:\\.|[^"])*)"').firstMatch(source);
   if (image != null) return unescapeTypstString(image.group(1)!);
