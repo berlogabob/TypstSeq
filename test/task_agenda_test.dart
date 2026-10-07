@@ -45,6 +45,26 @@ void main() {
     ),
   };
 
+  test('agenda cache follows in-place index task and note updates', () {
+    final tasks = [task('a', due: today)];
+    final noteMap = Map<String, NoteRef>.of(notes);
+    final cache = TaskAgendaCache();
+    final first = cache.resolve(tasks, noteMap, today);
+    tasks[0] = TaskRef(
+      id: 'a',
+      notePath: 'notes/a.typ',
+      text: 'Task a',
+      due: today,
+      clocked: const [ClockEntry(start: '2026-10-05T09:00:00Z')],
+    );
+    final next = cache.resolve(tasks, noteMap, today);
+    expect(next.single.tasks.single.runningClock, isNotNull);
+    expect(identical(next, first), isFalse);
+    expect(cache.resolve(tasks, noteMap, today), same(next));
+    noteMap.clear();
+    expect(identical(cache.resolve(tasks, noteMap, today), next), isFalse);
+  });
+
   test(
     'agenda precedence, date boundaries, note/project groups and recent done',
     () {
@@ -148,14 +168,14 @@ void main() {
     },
   );
 
-  test('cache reuses grouping and sorting until identity or day changes', () {
+  test('cache reuses grouping and sorting until contents or day changes', () {
     final cache = TaskAgendaCache();
     final tasks = [task('a', due: today)];
     final first = cache.resolve(tasks, notes, today);
     expect(identical(first, cache.resolve(tasks, notes, today)), isTrue);
     expect(
       identical(first, cache.resolve(tasks.toList(), notes, today)),
-      isFalse,
+      isTrue,
     );
     expect(cache.resolve(tasks, notes, '2026-10-06').single.key, 'overdue');
   });

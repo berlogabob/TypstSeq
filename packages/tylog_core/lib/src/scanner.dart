@@ -1803,6 +1803,10 @@ String _stripDictEntry(String dict, _DictEntry entry) {
   return cleaned.trim() == '()' ? '(:)' : cleaned;
 }
 
+/// Reads a task's sessions from the current source, including unsaved edits.
+List<ClockEntry> taskClocked(String source, String id) =>
+    parseClockedField(_locateTaskCall(source, id).source);
+
 /// Opens a new tracked session on [id].
 ///
 /// Closes the session currently running on this task first, so a task can
@@ -1829,7 +1833,8 @@ String startTaskClock(String source, String id, String startIso) {
 String stopTaskClock(String source, String id, String endIso) {
   final call = _locateTaskCall(source, id);
   final entries = parseClockedField(call.source);
-  final index = entries.lastIndexWhere((entry) => entry.isRunning);
+  final running = ClockEntry.latestRunning(entries);
+  final index = running == null ? -1 : entries.lastIndexOf(running);
   if (index < 0) return source;
   final next = [...entries];
   next[index] = ClockEntry(start: next[index].start, end: endIso);

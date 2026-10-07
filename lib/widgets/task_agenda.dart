@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models.dart';
 import 'date_format.dart';
 
@@ -44,7 +46,7 @@ class TaskAgendaGroup {
   final bool collapsed;
 }
 
-/// Identity-keyed cache: indexing must publish a new task list or note map.
+/// Snapshot the collections: the workspace updates its index in place.
 /// Day is also a key so an agenda never retains yesterday's buckets.
 class TaskAgendaCache {
   List<TaskRef>? _tasks;
@@ -58,11 +60,13 @@ class TaskAgendaCache {
     Map<String, NoteRef> notes,
     String today,
   ) {
-    if (identical(tasks, _tasks) && identical(notes, _notes) && today == _day) {
+    if (listEquals(tasks, _tasks) &&
+        mapEquals(notes, _notes) &&
+        today == _day) {
       return _groups;
     }
-    _tasks = tasks;
-    _notes = notes;
+    _tasks = List.of(tasks);
+    _notes = Map.of(notes);
     _day = today;
     projects = tasks.map((t) => t.project).whereType<String>().toSet().toList()
       ..sort();

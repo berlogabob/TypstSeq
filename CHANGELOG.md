@@ -3,6 +3,24 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.7+130
+
+### Added
+
+- **Images are blocks you can size and place.** An attached image now splits
+  the paragraph at the cursor and sits on its own line. Tap it for a toolbar:
+  size (S / M / full width), alignment (left / centre / right), move up or
+  down, delete. Size and alignment are stored in the note as plain Typst, so
+  the PDF matches. Images already in notes are left as they are until you
+  change them; an image inside a list item stays inline.
+- **Crop.** The same toolbar opens a crop screen (free, 1:1, 4:3, 16:9). The
+  result is saved as a new file beside the original, which is kept.
+- **Task timer.** Tasks in Library > Tasks and the Today agenda have a
+  start/stop button, the running task shows in a floating pill with its
+  elapsed time, and a task's total tracked time appears on its row. One timer
+  runs at a time. A session under 30 seconds is dropped (with Undo); stopping
+  a timer left running for too long asks whether to stop now or discard it.
+
 ## 0.11.6+129
 
 ### Fixed

@@ -369,6 +369,60 @@ void main() {
   });
 
   group('clocked time tracking', () {
+    test(
+      'total includes 30 seconds but excludes 24 hours and an open session',
+      () {
+        const task = TaskRef(
+          id: 't1',
+          notePath: 'a.typ',
+          text: 'Work',
+          clocked: [
+            ClockEntry(
+              start: '2026-10-07T09:00:00Z',
+              end: '2026-10-07T09:00:29Z',
+            ),
+            ClockEntry(
+              start: '2026-10-07T10:00:00Z',
+              end: '2026-10-07T10:00:30Z',
+            ),
+            ClockEntry(
+              start: '2026-10-07T11:00:00Z',
+              end: '2026-10-08T11:00:00Z',
+            ),
+            ClockEntry(start: '2026-10-07T12:00:00Z'),
+          ],
+        );
+        expect(task.clockedTotal, const Duration(seconds: 30));
+      },
+    );
+
+    test('stop selects the latest start in out-of-order legacy sessions', () {
+      const entries = [
+        ClockEntry(start: '2026-10-07T10:00:00Z'),
+        ClockEntry(start: '2026-10-07T09:00:00Z'),
+      ];
+      const task = TaskRef(
+        id: 't1',
+        notePath: 'a.typ',
+        text: 'Work',
+        clocked: entries,
+      );
+      expect(task.runningClock, entries.first);
+      final source = setTaskClocked(
+        '#tylog.task(id: "t1", text: "Work")',
+        't1',
+        entries,
+      );
+      final stopped = stopTaskClock(source, 't1', '2026-10-07T11:00:00.000Z');
+      expect(taskClocked(stopped, 't1'), [
+        const ClockEntry(
+          start: '2026-10-07T10:00:00Z',
+          end: '2026-10-07T11:00:00.000Z',
+        ),
+        entries.last,
+      ]);
+    });
+
     const multi =
         '#tylog.task(\n'
         '  id: "t1",\n'

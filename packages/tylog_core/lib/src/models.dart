@@ -278,6 +278,14 @@ class ClockEntry {
 
   bool get isRunning => end == null;
 
+  static ClockEntry? latestRunning(Iterable<ClockEntry> entries) =>
+      (entries.where((entry) => entry.isRunning).toList()..sort(
+            (a, b) => (DateTime.tryParse(a.start) ?? DateTime(0)).compareTo(
+              DateTime.tryParse(b.start) ?? DateTime(0),
+            ),
+          ))
+          .lastOrNull;
+
   /// A session long enough to be real work. Logseq's own data is 41% start/stop
   /// misfires of five seconds or less, which would otherwise pad every total.
   static const minimumMeaningful = Duration(seconds: 30);
@@ -437,9 +445,8 @@ class TaskRef {
       .where((entry) => entry.isCountable)
       .fold(Duration.zero, (sum, entry) => sum + entry.elapsed!);
 
-  /// The session currently running on this task, if any.
-  ClockEntry? get runningClock =>
-      clocked.where((entry) => entry.isRunning).lastOrNull;
+  /// The most recent open session, including out-of-order imported data.
+  ClockEntry? get runningClock => ClockEntry.latestRunning(clocked);
 
   /// Countable time whose session *started* on [day] (an ISO `yyyy-MM-dd`).
   Duration clockedOn(String day) => clocked

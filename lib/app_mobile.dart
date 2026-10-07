@@ -69,6 +69,7 @@ import 'widgets/sync_status.dart';
 import 'widgets/idea_hub.dart';
 import 'widgets/vaults_sheet.dart';
 import 'widgets/work_surface.dart';
+import 'widgets/task_clock.dart';
 import 'widgets/virtual_plain_editor.dart';
 import 'workspace_controller.dart';
 
@@ -1763,6 +1764,126 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Navigator.pop(context); // leave the Problems screen
     await _openPath(choice);
   }
+
+  Future<void> _clockMutation = Future<void>.value();
+
+  TaskRef? get _runningTask {
+    final tasks =
+        (index?.tasks ?? const <TaskRef>[])
+            .where((task) => task.runningClock != null)
+            .toList()
+          ..sort(
+            (a, b) => (DateTime.tryParse(a.runningClock!.start) ?? DateTime(0))
+                .compareTo(
+                  DateTime.tryParse(b.runningClock!.start) ?? DateTime(0),
+                ),
+          );
+    return tasks.lastOrNull;
+  }
+
+  Future<void> _queueClockMutation(Future<void> Function() action) {
+    final opened = vault;
+    _clockMutation = _clockMutation.then((_) async {
+      try {
+        await workspace.waitForMutationRefresh();
+        if (!mounted || opened == null || !identical(vault, opened)) return;
+        await action();
+        await workspace.waitForMutationRefresh();
+      } catch (error) {
+        if (mounted) showSnack(context, 'Could not update that timer: $error');
+      }
+    });
+    return _clockMutation;
+  }
+
+  Future<void> _toggleTaskClock(TaskRef task) => _queueClockMutation(() async {
+    final current = index?.tasks
+        .where((t) => t.id == task.id && t.notePath == task.notePath)
+        .firstOrNull;
+    if (current == null) throw StateError('Task ${task.id} not found');
+    final running = current.runningClock != null ? current : _runningTask;
+    var discard = false;
+    final opened = vault;
+    if (running != null) {
+      final start = DateTime.tryParse(running.runningClock!.start);
+      final elapsed = start == null
+          ? Duration.zero
+          : DateTime.now().difference(start);
+      if (elapsed >= ClockEntry.runawayThreshold) {
+        final choice = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(
+              'This timer has been running for ${trackedTime(elapsed)}.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Stop now'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Discard session'),
+              ),
+            ],
+          ),
+        );
+        if (choice == null || !mounted || !identical(vault, opened)) return;
+        discard = choice;
+      }
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    if (running != null) {
+      final entry = running.runningClock!;
+      final closed = ClockEntry(start: entry.start, end: now);
+      final elapsed = closed.elapsed;
+      final misfire = elapsed != null && elapsed < ClockEntry.minimumMeaningful;
+      final updated = await workspace.mutateNote(running.notePath, (source) {
+        final entries = taskClocked(source, running.id);
+        if (ClockEntry.latestRunning(entries) != entry) {
+          throw StateError('The running session changed');
+        }
+        return discard || misfire
+            ? setTaskClocked(
+                source,
+                running.id,
+                entries.where((e) => e != entry).toList(),
+              )
+            : stopTaskClock(source, running.id, now);
+      });
+      if (!updated) throw StateError('The vault changed');
+      await workspace.waitForMutationRefresh();
+      if (misfire && !discard && mounted) {
+        showSnack(
+          context,
+          'Short timer session removed',
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => unawaited(
+              _queueClockMutation(() async {
+                if (!identical(vault, opened)) return;
+                final restored = await workspace.mutateNote(
+                  running.notePath,
+                  (source) => setTaskClocked(source, running.id, [
+                    ...taskClocked(source, running.id),
+                    closed,
+                  ]),
+                );
+                if (!restored) throw StateError('The vault changed');
+              }),
+            ),
+          ),
+        );
+      }
+      if (current.runningClock != null) return;
+    }
+    if (!mounted || !identical(vault, opened)) return;
+    final updated = await workspace.mutateNote(
+      current.notePath,
+      (source) => startTaskClock(source, current.id, now),
+    );
+    if (!updated) throw StateError('The vault changed');
+  });
 
   Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
     if (vault == null) return;
@@ -4174,6 +4295,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           unawaited(_openDay(day));
         },
         onSetTaskStatus: _setTaskStatus,
+        onToggleTaskClock: _toggleTaskClock,
         imageResolver: _readAsset,
         onSetReadStatus: _setReadStatus,
         onSetRelevance: _setRelevance,
@@ -4216,6 +4338,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   },
                   onOpenDay: (day) => unawaited(_openDay(day)),
                   onSetTaskStatus: _setTaskStatus,
+                  onToggleTaskClock: _toggleTaskClock,
                   onSetReadStatus: _setReadStatus,
                   onSetRelevance: _setRelevance,
                   onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
@@ -4602,6 +4725,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               editor: documentContent,
               onOpenPath: _openPath,
               onSetStatus: _setTaskStatus,
+              onToggleClock: _toggleTaskClock,
               onReadPath: _readPath,
             ),
           )
@@ -4612,7 +4736,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Bottom-anchored: the top of the body is where the Library's tab bar
     // (Notes/Projects/Articles/…) lives, and a pill parked there hides the
     // tabs for the whole of an index run.
-    Widget statusPill({required Widget child, Key? key}) => IgnorePointer(
+    final runningTask = _runningTask;
+    Widget statusPill({
+      required Widget child,
+      Key? key,
+      bool interactive = false,
+    }) => IgnorePointer(
+      ignoring: !interactive,
       key: key,
       child: Align(
         alignment: Alignment.bottomCenter,
@@ -4700,11 +4830,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: statusBanner(error: true),
           ),
           Positioned(
-            bottom: 0,
+            bottom: runningTask == null ? 0 : 60,
             left: 0,
             right: 0,
             child: statusBanner(error: false),
           ),
+          if (runningTask != null)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: statusPill(
+                key: const ValueKey('task-clock-pill'),
+                interactive: true,
+                child: TaskClock(
+                  task: runningTask,
+                  pill: true,
+                  onToggle: _toggleTaskClock,
+                  onOpen: () => unawaited(_openPath(runningTask.notePath)),
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -14,6 +14,7 @@ import 'loading.dart';
 import 'property_select_chip.dart';
 import 'task_checkbox.dart';
 import 'task_agenda.dart';
+import 'task_clock.dart';
 export 'task_agenda.dart' show isTaskInTodayAgenda, isTaskOverdue;
 
 class WorkSurface extends StatelessWidget {
@@ -47,6 +48,7 @@ class TodayPage extends StatelessWidget {
     required this.editor,
     required this.onOpenPath,
     required this.onSetStatus,
+    this.onToggleClock,
     this.onReadPath,
     this.onAllTasks,
     this.notes = const {},
@@ -62,6 +64,7 @@ class TodayPage extends StatelessWidget {
   final Widget editor;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
+  final Future<void> Function(TaskRef task)? onToggleClock;
   final ValueChanged<String>? onReadPath;
 
   @override
@@ -118,10 +121,10 @@ class TodayPage extends StatelessWidget {
             : null,
       ),
       onTap: () => onOpenPath(task.notePath),
-      trailing: IconButton(
-        tooltip: 'Open source note',
-        onPressed: () => onOpenPath(task.notePath),
-        icon: const Icon(Icons.open_in_new),
+      trailing: TaskClock(
+        task: task,
+        onToggle: onToggleClock,
+        onOpen: () => onOpenPath(task.notePath),
       ),
     );
     return LayoutBuilder(
@@ -235,6 +238,7 @@ class _PrimaryTasksView extends StatefulWidget {
     required this.indexing,
     required this.onOpenPath,
     required this.onSetStatus,
+    this.onToggleClock,
   });
 
   final List<TaskRef> tasks;
@@ -242,6 +246,7 @@ class _PrimaryTasksView extends StatefulWidget {
   final bool indexing;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
+  final Future<void> Function(TaskRef task)? onToggleClock;
 
   @override
   State<_PrimaryTasksView> createState() => _PrimaryTasksViewState();
@@ -316,10 +321,10 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
             : null,
       ),
       onTap: () => widget.onOpenPath(task.notePath),
-      trailing: IconButton(
-        tooltip: 'Open source note',
-        icon: const Icon(Icons.open_in_new),
-        onPressed: () => widget.onOpenPath(task.notePath),
+      trailing: TaskClock(
+        task: task,
+        onToggle: widget.onToggleClock,
+        onOpen: () => widget.onOpenPath(task.notePath),
       ),
     );
   }
@@ -468,6 +473,7 @@ class LibraryView extends StatelessWidget {
     required this.onOpenPath,
     required this.onOpenDay,
     required this.onSetTaskStatus,
+    this.onToggleTaskClock,
     required this.onSetReadStatus,
     required this.onSetRelevance,
     required this.onCreateNote,
@@ -498,6 +504,7 @@ class LibraryView extends StatelessWidget {
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
+  final Future<void> Function(TaskRef task)? onToggleTaskClock;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
   final Future<void> Function(NoteRef note, String relevance) onSetRelevance;
   final ValueChanged<String> onCreateNote;
@@ -570,6 +577,7 @@ class LibraryView extends StatelessWidget {
                 notes: index?.notesByPath ?? const <String, NoteRef>{},
                 indexing: indexing,
                 onSetStatus: onSetTaskStatus,
+                onToggleClock: onToggleTaskClock,
                 onOpenPath: onOpenPath,
               ),
               CalendarTab(

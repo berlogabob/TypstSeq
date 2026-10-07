@@ -397,14 +397,14 @@ class _ImageCropPageState extends State<ImageCropPage> {
                     },
                   ),
                   if (_busy)
-                    const Positioned.fill(
+                    Positioned.fill(
                       child: Stack(
                         children: [
                           ModalBarrier(
                             dismissible: false,
-                            color: Colors.black54,
+                            color: Colors.black.withValues(alpha: 0.54),
                           ),
-                          Center(child: CircularProgressIndicator()),
+                          const Center(child: CircularProgressIndicator()),
                         ],
                       ),
                     ),
@@ -434,7 +434,7 @@ class _CropPainter extends CustomPainter {
         ..fillType = PathFillType.evenOdd
         ..addRect(bounds)
         ..addRect(rect),
-      Paint()..color = Colors.black54,
+      Paint()..color = Colors.black.withValues(alpha: 0.54),
     );
     canvas.drawRect(
       rect,

@@ -27,6 +27,7 @@ import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/work_surface.dart';
+import 'package:tylog/widgets/task_clock.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
@@ -71,8 +72,416 @@ Future<void> openMagicAction(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+Future<(_FailingStorage, dynamic)> _mountTaskTimers(
+  WidgetTester tester, {
+  List<ClockEntry> clocked = const [],
+  _FailingStorage? existing,
+  bool wide = false,
+}) async {
+  if (wide) {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
+  final storage = existing ?? _FailingStorage();
+  final vault = Vault.withStorage(storage);
+  await tester.runAsync(() => vault.ensureCreated());
+  if (existing == null) {
+    final day = DateTime.now().toIso8601String().split('T').first;
+    for (final id in ['a', 'b', 'c']) {
+      var source =
+          '#import "/_system/tylog.typ" as tylog\n\n#tylog.task(id: "$id", text: "Task $id", due: "$day", '
+          'recurrence: "RRULE:FREQ=WEEKLY;COUNT=1", completed: ("2026-10-01T09:00:00Z",), '
+          'properties: (other: "Кириллица",))\n';
+      if (id == 'a') source = setTaskClocked(source, id, clocked);
+      await storage.writeText('notes/$id.typ', source);
+    }
+  }
+  final index = await tester.runAsync(() => scanVaultStorage(storage));
+  await tester.pumpWidget(
+    const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+  );
+  await tester.pumpAndSettle();
+  final dynamic home = tester.state(find.byType(HomeScreen));
+  home.workspace.vault = vault;
+  home.workspace.index = index;
+  final source = await storage.readText('notes/a.typ');
+  home.workspace.replaceNote('notes/a.typ', source);
+  home.sourceController.text = source;
+  home.richController.loadSource(source);
+  home.mode = 'library';
+  home.primaryDestination = 2;
+  home.workspace.notifyListeners();
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Tasks').first);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tasks').first);
+  await tester.pumpAndSettle();
+  return (storage, home);
+}
+
+Future<void> _tapTaskTimer(
+  WidgetTester tester,
+  String id,
+  String tooltip,
+) async {
+  await tester.pumpAndSettle();
+  final row = find.ancestor(
+    of: find.text('Task $id').first,
+    matching: find.byType(ListTile),
+  );
+  await tester.tap(find.descendant(of: row, matching: find.byTooltip(tooltip)));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets(
+    'task clock start writes an open UTC session and shows the floating pill',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (storage, home) = await _mountTaskTimers(tester);
+      home.workspace.edit('${home.workspace.source}Unsaved Кириллица\n');
+      await tester.pumpAndSettle();
+      await _tapTaskTimer(tester, 'a', 'Start timer');
+      final source = await storage.readText('notes/a.typ');
+      final entry = taskClocked(source, 'a').single;
+      expect(entry.isRunning, isTrue);
+      expect(entry.start, matches(r'^\d{4}-\d{2}-\d{2}T.*Z$'));
+      expect(source, contains('Unsaved Кириллица'));
+      expect(
+        source,
+        contains(
+          'recurrence: "RRULE:FREQ=WEEKLY;COUNT=1", completed: ("2026-10-01T09:00:00Z",)',
+        ),
+      );
+      expect(source, contains('other: "Кириллица"'));
+      expect(find.byKey(const ValueKey('task-clock-pill')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'task clock stop closes the session and the row shows its total',
+    (tester) async {
+      final (storage, _) = await _mountTaskTimers(
+        tester,
+        clocked: [
+          ClockEntry(
+            start: DateTime.now()
+                .toUtc()
+                .subtract(const Duration(minutes: 80))
+                .toIso8601String(),
+          ),
+        ],
+        wide: true,
+      );
+      await _tapTaskTimer(tester, 'a', 'Stop timer');
+      final entry = taskClocked(
+        await storage.readText('notes/a.typ'),
+        'a',
+      ).single;
+      expect(entry.end, endsWith('Z'));
+      expect(find.byKey(const ValueKey('task-clock-pill')), findsNothing);
+      expect(find.text('1h 20m'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'task clock starting B closes only the newest legacy A at the same instant',
+    (tester) async {
+      final now = DateTime.now().toUtc();
+      final recent = now.subtract(const Duration(minutes: 2)).toIso8601String();
+      final old = now.subtract(const Duration(minutes: 10)).toIso8601String();
+      final (storage, _) = await _mountTaskTimers(
+        tester,
+        clocked: [
+          ClockEntry(start: recent),
+          ClockEntry(start: old),
+        ],
+      );
+      await _tapTaskTimer(tester, 'b', 'Start timer');
+      final a = taskClocked(await storage.readText('notes/a.typ'), 'a');
+      final b = taskClocked(await storage.readText('notes/b.typ'), 'b').single;
+      expect(a.first.end, b.start);
+      expect(a.last, ClockEntry(start: old));
+      expect(b.isRunning, isTrue);
+      final pill = find.byKey(const ValueKey('task-clock-pill'));
+      expect(
+        find.descendant(of: pill, matching: find.text('Task b')),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'task clock starting C closes the most recent task across the vault',
+    (tester) async {
+      final now = DateTime.now().toUtc();
+      final (storage, home) = await _mountTaskTimers(
+        tester,
+        clocked: [
+          ClockEntry(
+            start: now.subtract(const Duration(minutes: 10)).toIso8601String(),
+          ),
+        ],
+      );
+      final a = await storage.readText('notes/a.typ');
+      final b = startTaskClock(
+        await storage.readText('notes/b.typ'),
+        'b',
+        now.subtract(const Duration(minutes: 2)).toIso8601String(),
+      );
+      await storage.writeText('notes/b.typ', b);
+      home.workspace.index = await tester.runAsync(
+        () => scanVaultStorage(storage),
+      );
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      await _tapTaskTimer(tester, 'c', 'Start timer');
+      expect(await storage.readText('notes/a.typ'), a);
+      final closed = taskClocked(
+        await storage.readText('notes/b.typ'),
+        'b',
+      ).single;
+      final opened = taskClocked(
+        await storage.readText('notes/c.typ'),
+        'c',
+      ).single;
+      expect(closed.end, opened.start);
+      final pill = find.byKey(const ValueKey('task-clock-pill'));
+      expect(
+        find.descendant(of: pill, matching: find.text('Task c')),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'task clock switch in the same note preserves calls and refreshes both rows',
+    (tester) async {
+      final (storage, home) = await _mountTaskTimers(
+        tester,
+        clocked: [
+          ClockEntry(
+            start: DateTime.now()
+                .toUtc()
+                .subtract(const Duration(minutes: 2))
+                .toIso8601String(),
+          ),
+        ],
+      );
+      final before =
+          '${await storage.readText('notes/a.typ')}${await storage.readText('notes/b.typ')}';
+      await storage.writeText('notes/a.typ', before);
+      await storage.delete('notes/b.typ');
+      home.workspace.replaceNote('notes/a.typ', before);
+      home.sourceController.text = before;
+      home.richController.loadSource(before);
+      home.workspace.index = await tester.runAsync(
+        () => scanVaultStorage(storage),
+      );
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      await _tapTaskTimer(tester, 'b', 'Start timer');
+      final source = await storage.readText('notes/a.typ');
+      final b = taskClocked(source, 'b').single;
+      expect(
+        source,
+        startTaskClock(stopTaskClock(before, 'a', b.start), 'b', b.start),
+      );
+      expect(taskClocked(source, 'a').single.end, b.start);
+      final clocks = tester.widgetList<TaskClock>(find.byType(TaskClock));
+      expect(
+        clocks
+            .where((w) => !w.pill && w.task.id == 'a')
+            .single
+            .task
+            .runningClock,
+        isNull,
+      );
+      expect(
+        clocks
+            .where((w) => !w.pill && w.task.id == 'b')
+            .single
+            .task
+            .runningClock,
+        b,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('task clock rebuild from persisted index restores the pill', (
+    tester,
+  ) async {
+    final (storage, _) = await _mountTaskTimers(tester);
+    await _tapTaskTimer(tester, 'a', 'Start timer');
+    final entry = taskClocked(
+      await storage.readText('notes/a.typ'),
+      'a',
+    ).single;
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await _mountTaskTimers(tester, existing: storage);
+    expect(find.byKey(const ValueKey('task-clock-pill')), findsOneWidget);
+    expect(
+      taskClocked(await storage.readText('notes/a.typ'), 'a').single,
+      entry,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'task clock misfire stop removes the session and Undo restores it without losing edits',
+    (tester) async {
+      final (storage, home) = await _mountTaskTimers(tester);
+      await _tapTaskTimer(tester, 'a', 'Start timer');
+      await _tapTaskTimer(tester, 'a', 'Stop timer');
+      expect(taskClocked(await storage.readText('notes/a.typ'), 'a'), isEmpty);
+      expect(find.text('Short timer session removed'), findsOneWidget);
+      home.workspace.edit('${home.workspace.source}Later edit\n');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      final source = await storage.readText('notes/a.typ');
+      expect(taskClocked(source, 'a').single.isRunning, isFalse);
+      expect(source, contains('Later edit'));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final choice in ['Stop now', 'Discard session']) {
+    testWidgets('task clock runaway stop asks once: $choice', (tester) async {
+      final (storage, _) = await _mountTaskTimers(
+        tester,
+        clocked: [
+          ClockEntry(
+            start: DateTime.now()
+                .toUtc()
+                .subtract(const Duration(hours: 25))
+                .toIso8601String(),
+          ),
+        ],
+      );
+      await _tapTaskTimer(tester, 'a', 'Stop timer');
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        find.textContaining('This timer has been running for 25h'),
+        findsOneWidget,
+      );
+      expect(
+        taskClocked(
+          await storage.readText('notes/a.typ'),
+          'a',
+        ).single.isRunning,
+        isTrue,
+      );
+      await tester.tap(find.text(choice));
+      await tester.pumpAndSettle();
+      final entries = taskClocked(await storage.readText('notes/a.typ'), 'a');
+      if (choice == 'Discard session') {
+        expect(entries, isEmpty);
+      } else {
+        expect(entries.single.isRunning, isFalse);
+        expect(entries.single.isCountable, isFalse);
+      }
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('task-clock-pill')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets(
+    'task clock ticker only rebuilds its widget and pauses in the background',
+    (tester) async {
+      var parentBuilds = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              parentBuilds++;
+              return Scaffold(
+                body: TaskClock(
+                  task: TaskRef(
+                    id: 'a',
+                    notePath: 'a.typ',
+                    text: 'Task a',
+                    clocked: [
+                      ClockEntry(
+                        start: DateTime.now().toUtc().toIso8601String(),
+                      ),
+                    ],
+                  ),
+                  pill: true,
+                  onOpen: () {},
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      Text timeWidget() => tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byType(TaskClock),
+              matching: find.byType(Text),
+            ),
+          )
+          .last;
+      final firstTime = timeWidget();
+      final builds = parentBuilds;
+      await tester.pump(const Duration(seconds: 2));
+      expect(parentBuilds, builds);
+      expect(identical(timeWidget(), firstTime), isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      final pausedTime = timeWidget();
+      await tester.pump(const Duration(seconds: 5));
+      expect(timeWidget(), same(pausedTime));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(identical(timeWidget(), pausedTime), isFalse);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  test(
+    'task clock formats minutes and hours without adding running time to totals',
+    () {
+      expect(timerTime(const Duration(seconds: -1)), '00:00');
+      expect(timerTime(const Duration(seconds: 3599)), '59:59');
+      expect(timerTime(const Duration(seconds: 3601)), '1:00:01');
+      expect(trackedTime(const Duration(seconds: 30)), '30s');
+      expect(trackedTime(const Duration(minutes: 12)), '12m');
+      expect(trackedTime(const Duration(minutes: 80)), '1h 20m');
+    },
+  );
+
+  testWidgets('task clock pill title opens the source note', (tester) async {
+    final (_, home) = await _mountTaskTimers(
+      tester,
+      clocked: [ClockEntry(start: DateTime.now().toUtc().toIso8601String())],
+    );
+    home.workspace.replaceNote(
+      'notes/b.typ',
+      '#tylog.task(id: "b", text: "Task b")',
+    );
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    final pill = find.byKey(const ValueKey('task-clock-pill'));
+    await tester.tap(find.descendant(of: pill, matching: find.text('Task a')));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, 'notes/a.typ');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test('humanDate formats the day and hides the current year', () {
     expect(
       humanDate(DateTime(2026, 7, 6), now: DateTime(2026, 7, 13)),

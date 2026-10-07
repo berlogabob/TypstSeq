@@ -92,4 +92,29 @@ void main() {
       );
     });
   });
+  test(
+    'UTC clock writers preserve Cyrillic and unmodeled fields byte-exactly and compile',
+    () {
+      const source = '''#tylog.task(
+  id: "t1", text: "Закончить работу", recurrence: "weekly",
+  completed: ("2026-10-01T09:00:00Z",),
+  properties: ("clocked": (), "other": "Журнал", nested: (key: "value")),
+)
+''';
+      const from = '2026-10-07T09:00:00.000Z';
+      const to = '2026-10-07T10:20:00.000Z';
+      final started = startTaskClock(source, 't1', from);
+      expect(
+        started,
+        source.replaceFirst('"clocked": ()', '"clocked": (("$from", none),)'),
+      );
+      expectCompiles('Cyrillic-clock-start', started);
+      final stopped = stopTaskClock(started, 't1', to);
+      expect(
+        stopped,
+        source.replaceFirst('"clocked": ()', '"clocked": (("$from", "$to"),)'),
+      );
+      expectCompiles('Cyrillic-clock-stop', stopped);
+    },
+  );
 }
