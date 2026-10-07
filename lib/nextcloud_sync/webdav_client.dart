@@ -14,19 +14,29 @@ extension _WebDavClient on NextcloudSync {
     String folder = '',
     String depth = 'infinity',
   }) async {
+    final timer = Stopwatch()..start();
+    void lap(String stage) {
+      _propfindMillis[stage] =
+          (_propfindMillis[stage] ?? 0) + timer.elapsedMilliseconds;
+      timer.reset();
+    }
+
     final request = await _open(
       'PROPFIND',
       folder.isEmpty ? config.rootUri : _remoteUri(folder),
     );
+    lap('open');
     request.headers.set('Depth', depth);
     request.write(
       '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getlastmodified/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
+    lap('wait');
     final body = await response
         .transform(utf8.decoder)
         .join()
         .timeout(NextcloudSync.propfindBodyTimeout);
+    lap('body');
     if (allowMissing && response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
       throw WebDavStatusException(
@@ -46,6 +56,7 @@ extension _WebDavClient on NextcloudSync {
       rootPath: config.rootUri.path,
       includeNonSyncable: includeNonSyncable,
     ));
+    lap('parse');
     _listedFolders += depth == '1' ? 1 : listed.folders.length;
     _listedEntries += RegExp(r'<[^:>]*:?response\b').allMatches(body).length;
     return listed;

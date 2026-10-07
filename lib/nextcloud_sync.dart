@@ -267,6 +267,9 @@ class NextcloudSync {
   final _remoteWrites = <String>{};
   var _listedFolders = 0;
   var _listedEntries = 0;
+  // Where PROPFIND time goes (connect, server wait, body, parse), summed per
+  // run. It separates a slow server from a lossy phone link.
+  final _propfindMillis = <String, int>{};
   // Concurrent uploads into a new folder wait for the same MKCOL.
   final _ensuredParents = <String, Future<void>>{};
 
@@ -603,6 +606,7 @@ class NextcloudSync {
             'stageMillis': stageProfile(),
             'listedFolders': _listedFolders,
             'listedEntries': _listedEntries,
+            'propfindMillis': Map.of(_propfindMillis),
             'uploaded': up,
             'downloaded': 0,
             'remoteCount': syncState.length,
@@ -677,6 +681,7 @@ class NextcloudSync {
                 'stageMillis': stageProfile(),
                 'listedFolders': _listedFolders,
                 'listedEntries': _listedEntries,
+                'propfindMillis': Map.of(_propfindMillis),
                 'trigger': trigger,
                 'uploaded': 0,
                 'downloaded': 0,
@@ -1048,6 +1053,7 @@ class NextcloudSync {
         'stageMillis': stageProfile(),
         'listedFolders': _listedFolders,
         'listedEntries': _listedEntries,
+        'propfindMillis': Map.of(_propfindMillis),
         'trigger': trigger,
         'uploaded': up,
         'downloaded': down,
@@ -1098,6 +1104,7 @@ class NextcloudSync {
         'stageMillis': stageProfile(),
         'listedFolders': _listedFolders,
         'listedEntries': _listedEntries,
+        'propfindMillis': Map.of(_propfindMillis),
         'trigger': trigger,
         'stage': stage,
         'path': ?currentPath,
