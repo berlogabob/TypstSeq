@@ -889,6 +889,10 @@ Future<Map<String, Uint8List>> _inspectionFiles(
         // megabytes each. Held twice in this map, they are the same
         // whole-vault-in-RAM stall the note filter below exists to prevent.
         entry.path.startsWith('_system/index/') ||
+        // Revision envelopes: sync bookkeeping no note can name (the file is
+        // a content hash). 352 of the 390 files read here on the real vault,
+        // 6-8 s of every changed pass on an A24.
+        entry.path.startsWith('_system/revisions/') ||
         entry.path.startsWith('.tylog/')) {
       continue;
     }

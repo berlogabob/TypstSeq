@@ -75,6 +75,18 @@ void main() {
 
   tearDown(() => root.delete(recursive: true));
 
+  test('revision envelopes are not compile inputs', () async {
+    await storage.writeText('_system/revisions/note-abc.json', '{}');
+    await storage.writeText('_system/tylog.typ', '');
+    final inspector = _BaseAwareInspector();
+    await scanVaultStorage(storage, inspector: inspector);
+    expect(inspector.baseCalls.single.keys, contains('_system/tylog.typ'));
+    expect(
+      inspector.baseCalls.single.keys,
+      isNot(contains('_system/revisions/note-abc.json')),
+    );
+  });
+
   test('base-aware inspector gets the file set once, empty maps per note',
       () async {
     final inspector = _BaseAwareInspector();
