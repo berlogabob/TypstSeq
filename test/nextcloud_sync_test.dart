@@ -741,72 +741,79 @@ void main() {
     });
   });
 
-  test(
-    'pending coalesced revision uploads live descendant and restores cheap poll',
-    () async {
-      final root = await Directory.systemTemp.createTemp('revision_ancestry_');
-      final path = '_system/revisions/note-${'a' * 64}.json';
-      final r1 = jsonEncode({
-        'revision': {'id': 'R1', 'parentRevisionId': null},
-      });
-      final r2 = jsonEncode({
-        'revision': {'id': 'R2', 'parentRevisionId': 'R1'},
-        'history': [
-          {'id': 'R1'},
-        ],
-        'node': {'content': 'later edit'},
-      });
-      final remote = {path: _remoteText(r1)};
-      final uploads = <Map<String, Object?>>[];
-      final metrics = _WebDavMetrics();
-      final server = await _mutableWebDavServer(
-        remote,
-        uploads: uploads,
-        metrics: metrics,
-      );
-      addTearDown(() async {
-        await server.close(force: true);
-        await root.delete(recursive: true);
-      });
-      final vault = Vault(root);
-      await vault.ensureCreated();
-      await vault.storage.writeText(path, r1);
-      await NextcloudSync(_config(server)).sync(vault);
-      await createSyncConflict(
-        vault,
-        path,
-        localBytes: utf8.encode(r1),
-        remoteBytes: utf8.encode(r1),
-      );
-      await vault.storage.writeText(path, r2);
-      final result = await NextcloudSync(_config(server)).sync(vault);
-      expect(result.uploaded, greaterThan(0));
-      expect(utf8.decode(remote[path]!.bytes), r2);
-      expect(await vault.readText(path), r2);
-      expect(await loadSyncConflicts(vault), isEmpty);
-      expect(await vault.storage.list(path: '.tylog/conflicts'), isEmpty);
-      expect(
-        ((await _traceEvents(vault)).last['decisions'] as List)
-            .cast<Map>()
-            .singleWhere((d) => d['path'] == path)['action'],
-        'upload',
-      );
-      expect(uploads.last['ifMatch'], isNotNull);
-      final stages = <String>[];
-      metrics.individualGets = 0;
-      metrics.depthZeroPropfinds = 0;
-      final poll = await NextcloudSync(
-        _config(server),
-        onProgress: (stage, _) => stages.add(stage),
-      ).sync(vault, trigger: 'poll');
-      expect(stages, contains('probe-root'));
-      expect(stages, contains('scan-local-shortcut'));
-      expect(stages, isNot(contains('list-remote')));
-      expect(metrics.depthZeroPropfinds, 1);
-      expect(metrics.individualGets, 0);
-      expect(poll.uploaded, 0);
-    },
-  );
+  // The real server compresses GETs and answers ETag "…-gzip"; sent back
+  // verbatim as If-Match it 412'd this upload on every run on a phone.
+  for (final gzipGets in [false, true])
+    test(
+      'pending coalesced revision uploads live descendant and restores cheap poll'
+      '${gzipGets ? ' (gzip ETag)' : ''}',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'revision_ancestry_',
+        );
+        final path = '_system/revisions/note-${'a' * 64}.json';
+        final r1 = jsonEncode({
+          'revision': {'id': 'R1', 'parentRevisionId': null},
+        });
+        final r2 = jsonEncode({
+          'revision': {'id': 'R2', 'parentRevisionId': 'R1'},
+          'history': [
+            {'id': 'R1'},
+          ],
+          'node': {'content': 'later edit'},
+        });
+        final remote = {path: _remoteText(r1)};
+        final uploads = <Map<String, Object?>>[];
+        final metrics = _WebDavMetrics();
+        final server = await _mutableWebDavServer(
+          remote,
+          uploads: uploads,
+          metrics: metrics,
+          gzipGets: gzipGets,
+        );
+        addTearDown(() async {
+          await server.close(force: true);
+          await root.delete(recursive: true);
+        });
+        final vault = Vault(root);
+        await vault.ensureCreated();
+        await vault.storage.writeText(path, r1);
+        await NextcloudSync(_config(server)).sync(vault);
+        await createSyncConflict(
+          vault,
+          path,
+          localBytes: utf8.encode(r1),
+          remoteBytes: utf8.encode(r1),
+        );
+        await vault.storage.writeText(path, r2);
+        final result = await NextcloudSync(_config(server)).sync(vault);
+        expect(result.uploaded, greaterThan(0));
+        expect(utf8.decode(remote[path]!.bytes), r2);
+        expect(await vault.readText(path), r2);
+        expect(await loadSyncConflicts(vault), isEmpty);
+        expect(await vault.storage.list(path: '.tylog/conflicts'), isEmpty);
+        expect(
+          ((await _traceEvents(vault)).last['decisions'] as List)
+              .cast<Map>()
+              .singleWhere((d) => d['path'] == path)['action'],
+          'upload',
+        );
+        expect(uploads.last['ifMatch'], isNotNull);
+        final stages = <String>[];
+        metrics.individualGets = 0;
+        metrics.depthZeroPropfinds = 0;
+        final poll = await NextcloudSync(
+          _config(server),
+          onProgress: (stage, _) => stages.add(stage),
+        ).sync(vault, trigger: 'poll');
+        expect(stages, contains('probe-root'));
+        expect(stages, contains('scan-local-shortcut'));
+        expect(stages, isNot(contains('list-remote')));
+        expect(metrics.depthZeroPropfinds, 1);
+        expect(metrics.individualGets, 0);
+        expect(poll.uploaded, 0);
+      },
+    );
 
   test(
     'revision rewrite between hash and comparison does not record identical snapshots',
