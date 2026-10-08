@@ -218,6 +218,7 @@ extension _WebDavClient on NextcloudSync {
             localMillis: cursor.localMillis,
             localSize: cursor.localSize,
             localSha256: cursor.localSha256,
+            uploadedSha256: cursor.uploadedSha256,
             remoteMillis: entry.value.modified.millisecondsSinceEpoch,
             remoteEtag: NextcloudSync._normEtag(entry.value.etag),
           );

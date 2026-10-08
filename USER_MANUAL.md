@@ -66,7 +66,7 @@ Search supports saved presets: run a query, press the Save chip, and it appears 
 
 ## Tasks
 
-At the start of a line, type `TODO `, `[] ` or `[ ] `, or choose `/todo`, to turn it into a task without a dialog. Enter starts the next task. Enter on an empty task returns to plain text. Backspace at the checkbox turns the task into plain text; one Undo restores its fields.
+At the start of a line, type `TODO `, `[] ` or `[ ] `, or choose `/todo`, to turn it into a task without a dialog. Enter starts the next task. Enter on an empty task returns to plain text. Backspace at the checkbox, including on an empty task (0.12.2), turns the task into plain text; one Undo restores its fields.
 
 On a task line, use `/todo`, `/doing`, `/done` or `/cancel` to set its status. Ctrl/Cmd+Enter cycles Todo → Doing → Done → Todo. Tap the checkbox to toggle Done; long-press it to choose any of the four statuses. The glyphs are ☐ Todo, ◐ Doing, ☑ Done and ☒ Cancelled. Completing a repeating task records an occurrence and keeps the repeat active.
 
@@ -105,7 +105,7 @@ Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configure
 
 On first launch, Android requires a user-selected device folder and retains access through Android's Storage Access Framework. The selected folder is the authoritative vault and remains outside TyLog's private app container. Existing private vaults are copied and hash-verified before switching; the original is retained as a recovery backup. Nextcloud setup also asks for the remote folder, and nested paths such as `Research/TyLog` are created one segment at a time. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
 
-TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system` (which includes saved searches in `_system/saved-searches.json`). It excludes `_index`, `.tylog` operational state, temporary files, and conflict snapshots. Autosave completes before sync. Checksums, conditional uploads/deletions, atomic transfers, polling, and repair are retained.
+TyLog syncs durable v5 roots: `daily`, `notes`, `projects`, `articles`, `assets`, `outputs`, and `_system` (which includes saved searches in `_system/saved-searches.json`). It excludes `_index`, `.tylog` operational state, temporary files, and conflict snapshots. Autosave completes before sync. Since 0.12.1, typing during an upload does not create a conflict against this device's own earlier revision. Checksums, conditional uploads/deletions, atomic transfers, polling, and repair are retained.
 
 Uploads count as confirmed only after the server lists the file again. A missing unconfirmed upload is retried, and incomplete folder listings are rejected. Before sync replaces or deletes unconfirmed local content, it keeps a local copy under `.tylog/undo/sync-…`, except system files and revision records. Sync copies are kept for 30 days and are not synced.
 
@@ -117,7 +117,7 @@ Back up the complete vault. The authoritative data is the Typst content, assets,
 
 If text looks lost, back up the vault and `.tylog/undo` before further edits or sync. Check the note in Source, then inspect the local undo copies and Sync dashboard conflicts. Sync copies keep the original vault path under `.tylog/undo/sync-…`; copy recovered text into the note after reviewing it. Headerless journal pages are repaired with their text kept and an undo copy taken first. These copies are a safety net, not a complete version history.
 
-If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If folder permission is revoked, reselect the vault when prompted. If sync fails, open the Sync dashboard, inspect the failed stage, and verify HTTPS, credentials, and remote folder permissions.
+A failed database/index save leaves your note file on disk and reports an error; retry the save or rebuild the index. If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If folder permission is revoked, reselect the vault when prompted. If sync fails, open the Sync dashboard, inspect the failed stage, and verify HTTPS, credentials, and remote folder permissions.
 
 If an iPad run reports that no development certificates are available, open `ios/Runner.xcworkspace`, select Runner > Signing & Capabilities, sign in to Xcode, and choose a team. Then rerun `flutter run -d <device-id>`. This is host signing configuration, not a vault or application-data error.
 

@@ -100,11 +100,12 @@ void main() {
         if (legacy) {
           final db = TyLogDatabase(NativeDatabase.memory());
           addTearDown(db.close);
-          for (final text in ['z', 'zz', 'zzprobe']) {
+          for (final (index, text) in ['z', 'zz', 'zzprobe'].indexed) {
             await persistNoteSource(
               database: db,
               path: path,
               source: source(text),
+              updatedAtMs: 1 + index * 60000,
             );
           }
           await RevisionPublisher(
@@ -142,6 +143,56 @@ void main() {
     final result = await NextcloudSync(_config(server)).sync(Vault(root));
     expect(result.conflicts, 0);
     expect(utf8.decode(remote[path]!.bytes), 'continued typing');
+  });
+
+  test('sync drops orphan receipts but retains missing cursor paths', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final root = await Directory.systemTemp.createTemp(
+      'tylog-receipt-cleanup-',
+    );
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.saveNote('notes/kept.typ', 'kept');
+    await NextcloudSync(_config(server)).sync(vault);
+    await vault.deleteNote('notes/kept.typ');
+    await vault.rememberLocalRevision('notes/kept.typ', 'a' * 64);
+    await vault.rememberLocalRevision('notes/gone.typ', 'b' * 64);
+    await NextcloudSync(_config(server)).sync(vault, pushOnly: true);
+    expect(await vault.hasLocalRevision('notes/gone.typ', 'b' * 64), isFalse);
+    expect(await vault.hasLocalRevision('notes/kept.typ', 'a' * 64), isTrue);
+  });
+
+  test('confirmed upload remains safe after 32 newer local hashes', () async {
+    const path = 'notes/receipt.typ';
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote);
+    final root = await Directory.systemTemp.createTemp('tylog-receipt-upload-');
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.saveNote(path, 'uploaded text');
+    await NextcloudSync(_config(server)).sync(vault);
+    final uploaded = remote[path]!;
+    final state =
+        jsonDecode(await vault.storage.readText('.tylog/sync_state.json'))
+            as Map;
+    (state['cursors'][path] as Map).remove('uploadedSha256');
+    await vault.storage.writeText('.tylog/sync_state.json', jsonEncode(state));
+    for (var i = 0; i < 34; i++) {
+      await vault.saveNote(path, 'local version $i');
+    }
+    remote[path] = _MutableRemoteFile(
+      bytes: uploaded.bytes,
+      etag: 'new-etag',
+      modified: DateTime.now().toUtc().add(const Duration(days: 1)),
+    );
+    final result = await NextcloudSync(_config(server)).sync(Vault(root));
+    expect(result.conflicts, 0);
+    expect(utf8.decode(remote[path]!.bytes), contains('local version 33'));
   });
 
   group('soak', () {
@@ -6263,6 +6314,27 @@ void main() {
       final result = await NextcloudSync(_config(s.server)).sync(s.vault);
       expect(result.uploaded, 1);
     });
+    test(
+      'fresh background vault scans a headerless daily despite unchanged remote',
+      () async {
+        final s = await synced();
+        const path = 'daily/2026/10/2026-10-08.typ';
+        const body = '\\- 08:06 \n';
+        await s.vault.storage.writeText(path, body);
+        final fresh = Vault.withStorage(s.vault.storage);
+        expect(
+          await NextcloudSync(
+            _config(s.server),
+          ).pollIsUnchanged(fresh, dirty: false),
+          isFalse,
+        );
+        final result = await NextcloudSync(
+          _config(s.server),
+        ).sync(fresh, trigger: 'background');
+        expect(result.uploadedContent, 1);
+        expect(utf8.decode(s.remote[path]!.bytes), body);
+      },
+    );
   });
 }
 

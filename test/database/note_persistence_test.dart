@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/note_persistence.dart';
+import 'package:tylog/database/revision_publisher.dart';
 import 'package:tylog/database/tylog_database.dart';
 
 void main() {
@@ -57,6 +58,7 @@ Body''';
       source: '#show: tylog.note.with(id: "a", title: "A")\nfirst',
       updatedAtMs: 100,
     );
+    await RevisionPublisher(database).materialize(write: (_, _) async {});
     final second = await persistNoteSource(
       database: database,
       path: 'notes/a.typ',

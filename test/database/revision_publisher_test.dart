@@ -39,7 +39,7 @@ void main() {
         throwsStateError,
       );
       expect(attempts, 1);
-      expect(await database.pendingRevisionUploads(), hasLength(20));
+      expect(await database.pendingRevisionUploads(), hasLength(1));
       final files = <String, List<int>>{};
       await RevisionPublisher(
         database,
@@ -47,7 +47,11 @@ void main() {
       expect(files, hasLength(1));
       expect(
         RevisionPublisher.decodeEnvelopes(files.values.single),
-        hasLength(20),
+        hasLength(1),
+      );
+      expect(
+        RevisionPublisher.decodeEnvelope(files.values.single).node!.content,
+        endsWith('19'),
       );
       expect(await database.pendingRevisionUploads(), isEmpty);
     },
@@ -71,6 +75,7 @@ void main() {
         updatedAtMs: time,
       );
       final first = await save(database, 'first', 1);
+      await RevisionPublisher(database).materialize(write: (_, _) async {});
       await save(database, 'second', 2);
       final files = <String, List<int>>{};
       await RevisionPublisher(

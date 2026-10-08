@@ -76,31 +76,45 @@ class RevisionPublisher {
     required RevisionFileUpload write,
     int limit = 100,
   }) async {
-    final ids = <String>[];
-    final pending = await database.pendingRevisionUploads(limit: limit);
-    final written = <String>{};
-    for (final item in pending) {
-      ids.add(item.revision.id);
-      final session = await noteRevisionEnvelope(database, item.revision);
-      final envelopeId = session.first.id;
-      if (!written.add(envelopeId)) continue;
-      final latest = session.last;
-      final path = '_system/revisions/$envelopeId.json';
-      final bytes = utf8.encode(
-        jsonEncode({
-          'revision': latest.toJson(),
-          if (session.length > 1)
-            'history': session
-                .take(session.length - 1)
-                .map((r) => r.toJson())
-                .toList(),
-          if (item.node case final node?)
-            'node': _nodeAtRevision(node, latest)!.toJson(),
-          if (item.annotation case final annotation?)
-            'annotation': annotation.toJson(),
-        }),
-      );
-      await write(path, bytes);
+    final files = <String, List<int>>{};
+    final ids = await database.transaction(() async {
+      final ids = <String>[];
+      final pending = await database.pendingRevisionUploads(limit: limit);
+      final written = <String>{};
+      for (final item in pending) {
+        ids.add(item.revision.id);
+        final session = await noteRevisionEnvelope(database, item.revision);
+        final envelopeId = session.first.id;
+        if (!written.add(envelopeId)) continue;
+        final latest = session.last;
+        final path = '_system/revisions/$envelopeId.json';
+        final bytes = utf8.encode(
+          jsonEncode({
+            'revision': latest.toJson(),
+            if (session.length > 1)
+              'history': session
+                  .take(session.length - 1)
+                  .map((r) => r.toJson())
+                  .toList(),
+            if (item.node case final node?)
+              'node': _nodeAtRevision(node, latest)!.toJson(),
+            if (item.annotation case final annotation?)
+              'annotation': annotation.toJson(),
+          }),
+        );
+        // Seal before bytes escape: a failed write may still have reached a peer.
+        await (database.delete(database.databaseMetadata)..where(
+              (t) => t.key.isIn([
+                for (final revision in session) 'note-draft:${revision.id}',
+              ]),
+            ))
+            .go();
+        files[path] = bytes;
+      }
+      return ids;
+    });
+    for (final file in files.entries) {
+      await write(file.key, file.value);
     }
     return ids;
   }

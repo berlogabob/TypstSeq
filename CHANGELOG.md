@@ -3,6 +3,20 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.12.3+136
+
+### Fixed
+
+- **A database error no longer deletes a new note.** If saving to the index
+  fails, the file on disk is kept, marked for re-indexing, and the error is
+  shown.
+- **Revision history grows about sixty times slower while typing.** A
+  revision less than a minute old that has not been uploaded yet is updated
+  in place instead of adding one per autosave. Existing histories are not
+  shrunk.
+- The record of this device's own uploads is bounded to the newest 32
+  versions per file.
+
 ## 0.12.2+135
 
 ### Fixed

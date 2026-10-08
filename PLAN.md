@@ -1,6 +1,6 @@
 # TyLog v5 implementation status
 
-Current release: 0.12.0+133. Last reviewed: 2026-10-08.
+Current release: 0.12.2+135. Last reviewed: 2026-10-08.
 
 ## Implemented
 
@@ -42,11 +42,8 @@ Earlier v5 verification: automated analysis, 66 tests, native macOS integration,
 
 - Phone verification of 0.11.6–0.12.0: sync loss fixes, mention lookup, image blocks, crop, task typing with a phone keyboard, and headerless-daily repair.
 - Android autocomplete jumping/revert remains undiagnosed. Suspects: a late IME full-text update or a post-sync reload.
-- A headerless daily went three hours without syncing on the A24; cause unknown.
-- Cap the revision envelope, which grows without bound.
-- Database-error rollback in `lib/workspace_controller.dart` can delete a newly created note.
+- A headerless daily went three hours without syncing on the A24; still needs device evidence. Automated checks cover SAF repair snapshots, timestamp change signals, and fresh-background/10-minute full scans.
+- New unpublished local note heads coalesce within fixed 60-second windows; materialized/uploaded revisions and conflict bases remain immutable. Existing large histories are not shrunk, so their envelopes remain large.
 - EmbeddingGemma phone trial at 256 dimensions before switching models.
 - Deferred: image captions/figure, text wrap and anchors; task session-history view; converting imported checklists to tasks; quick-add date parsing.
 - `wip/incremental-index` is parked; the macOS app is still on an old build.
-
-- Sync upload-hash receipts added in 0.12.1 grow without bound; prune them.

@@ -608,6 +608,7 @@ class NextcloudSync {
                 localMillis: stat.modified?.millisecondsSinceEpoch,
                 localSize: bytes?.length ?? stat.size,
                 localSha256: hash,
+                uploadedSha256: hash,
                 remoteMillis: DateTime.now().millisecondsSinceEpoch,
                 // A later probe may describe a peer edit, not these bytes.
                 remoteEtag: _normEtag(etag),
@@ -652,6 +653,12 @@ class NextcloudSync {
             'remoteCount': syncState.length,
           });
           await _pruneSyncSnapshots(vault.storage);
+          if (!loadedState.recovered) {
+            await vault.pruneLocalRevisions(
+              syncState.keys,
+              knownPaths: loadedState.cursors.keys,
+            );
+          }
           return SyncResult(
             trigger: trigger,
             uploaded: up,
@@ -1086,6 +1093,7 @@ class NextcloudSync {
         rootEtag: freshRootEtag,
         folders: freshFolders,
       );
+      await vault.pruneLocalRevisions(syncState.keys, knownPaths: allPaths);
       // Only what this pass actually looked at. A save landing mid-pass stays
       // queued for the next one — the same contract the scan cache uses for
       // its own stale set, and the reason both take a snapshot up front rather
@@ -1297,6 +1305,9 @@ class NextcloudSync {
           remoteMillis: currentRemote?.modified.millisecondsSinceEpoch,
           // Certify the transferred version, even if autosave has since landed.
           localSha256: resolvedHash,
+          uploadedSha256: resolution == SyncConflictResolution.keepRemote
+              ? previous?.uploadedSha256
+              : resolvedHash,
           remoteEtag: NextcloudSync._normEtag(
             remoteEtag ?? currentRemote?.etag,
           ),
@@ -1325,6 +1336,7 @@ bool _validSyncCursor(Map<String, Object?> json) =>
     (json['localSize'] == null || json['localSize'] is num) &&
     (json['remoteMillis'] == null || json['remoteMillis'] is num) &&
     (json['localSha256'] == null || json['localSha256'] is String) &&
+    (json['uploadedSha256'] == null || json['uploadedSha256'] is String) &&
     (json['remoteEtag'] == null || json['remoteEtag'] is String);
 
 /// Whether a rebuilt cursor differs from the previous one in a way that
@@ -1342,6 +1354,7 @@ bool _cursorNeedsPersist(SyncCursor? previous, SyncCursor next) =>
     previous.localMillis != next.localMillis ||
     previous.localSize != next.localSize ||
     previous.localSha256 != next.localSha256 ||
+    previous.uploadedSha256 != next.uploadedSha256 ||
     previous.remoteEtag != next.remoteEtag ||
     previous.remoteConfirmed != next.remoteConfirmed;
 
@@ -2112,6 +2125,7 @@ class SyncCursor {
     this.localSize,
     this.remoteMillis,
     this.localSha256,
+    this.uploadedSha256,
     this.remoteEtag,
   });
 
@@ -2122,6 +2136,7 @@ class SyncCursor {
   final int? localSize;
   final int? remoteMillis;
   final String? localSha256;
+  final String? uploadedSha256;
   final String? remoteEtag;
 
   factory SyncCursor.fromJson(Map<String, Object?> json) => SyncCursor(
@@ -2131,6 +2146,8 @@ class SyncCursor {
     localSize: (json['localSize'] as num?)?.toInt(),
     remoteMillis: (json['remoteMillis'] as num?)?.toInt(),
     localSha256: json['localSha256'] as String?,
+    uploadedSha256:
+        json['uploadedSha256'] as String? ?? json['localSha256'] as String?,
     remoteEtag: json['remoteEtag'] as String?,
   );
 
@@ -2141,6 +2158,7 @@ class SyncCursor {
     if (localSize != null) 'localSize': localSize,
     'remoteMillis': remoteMillis,
     if (localSha256 != null) 'localSha256': localSha256,
+    if (uploadedSha256 != null) 'uploadedSha256': uploadedSha256,
     if (remoteEtag != null) 'remoteEtag': remoteEtag,
   };
 }

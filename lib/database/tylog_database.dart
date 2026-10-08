@@ -306,6 +306,14 @@ class TyLogDatabase extends _$TyLogDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    beforeOpen: (_) async {
+      final guard = await customSelect(
+        "SELECT sql FROM sqlite_master WHERE name = 'revisions_no_delete'",
+      ).getSingleOrNull();
+      if (!(guard?.read<String>('sql').contains('note-draft:') ?? false)) {
+        await transaction(() => _createRevisionGuards(Migrator(this)));
+      }
+    },
     onCreate: (Migrator m) async {
       await m.createAll();
       await _createIndexes(m);
@@ -710,9 +718,17 @@ class TyLogDatabase extends _$TyLogDatabase {
       BEFORE UPDATE ON revisions
       BEGIN SELECT RAISE(ABORT, 'revisions are immutable'); END
     ''');
+    await m.database.customStatement(
+      'DROP TRIGGER IF EXISTS revisions_no_delete',
+    );
     await m.database.customStatement('''
-      CREATE TRIGGER IF NOT EXISTS revisions_no_delete
+      CREATE TRIGGER revisions_no_delete
       BEFORE DELETE ON revisions
+      WHEN NOT EXISTS (
+        SELECT 1 FROM database_metadata WHERE key = 'note-draft:' || OLD.id
+      ) OR EXISTS (
+        SELECT 1 FROM revisions WHERE parent_revision_id = OLD.id
+      )
       BEGIN SELECT RAISE(ABORT, 'revisions are immutable'); END
     ''');
   }
@@ -928,6 +944,14 @@ class TyLogDatabase extends _$TyLogDatabase {
       throw ArgumentError('Revision must describe the edited node');
     }
     return transaction(() async {
+      // A peer has observed this revision/base, even if its branch conflicts.
+      await (delete(databaseMetadata)..where(
+            (t) => t.key.isIn([
+              'note-draft:${revision.id}',
+              'note-draft:${revision.parentRevisionId}',
+            ]),
+          ))
+          .go();
       final duplicate = await (select(
         revisions,
       )..where((table) => table.id.equals(revision.id))).getSingleOrNull();
@@ -946,6 +970,11 @@ class TyLogDatabase extends _$TyLogDatabase {
                 ..limit(1))
               .getSingleOrNull();
       if (head?.id != revision.parentRevisionId) {
+        if (head != null) {
+          await (delete(
+            databaseMetadata,
+          )..where((t) => t.key.equals('note-draft:${head.id}'))).go();
+        }
         return RevisionReceiveResult.conflict;
       }
       await _commitNodeRows(

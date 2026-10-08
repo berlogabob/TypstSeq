@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:drift/drift.dart';
 import 'package:tylog_core/storage.dart';
 
 import 'tylog_database.dart';
@@ -73,6 +73,10 @@ Future<Uint8List> exportPortableSnapshot({
   // ponytail: archives are assembled in memory; switch to archive streams when
   // measured export memory exceeds the mobile acceptance budget.
   final data = await database.transaction(() async {
+    // Exported revisions may become another device's conflict bases.
+    await (database.delete(
+      database.databaseMetadata,
+    )..where((t) => t.key.like('note-draft:%'))).go();
     final rows = <String, List<int>>{};
     rows['records/sources.jsonl'] = _encodeRows(
       (await database.select(database.sources).get()).map(_sourceRow),

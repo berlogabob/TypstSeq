@@ -124,3 +124,10 @@ synced; it is not a complete revision history.
 Headerless daily repair and bulk rewrites also use `.tylog/undo/<stamp>/`
 with the original paths. The 30-day pruning rule above applies to `sync-*`
 directories.
+
+Local hash receipts under `.tylog/local-history` retain the newest 32 distinct
+hashes per note path, without age-based expiry; markers contain no note bytes.
+The sync cursor separately retains this device's last uploaded hash. A remote
+version equal to that upload or any of the retained local versions is never a
+conflict. Receipts for paths absent locally and absent from the sync cursor are
+removed after sync; older revisions may still supply additional ancestry proof.

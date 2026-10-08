@@ -19,7 +19,7 @@ Mac index donor: `tool/launchd/org.tylog.indexer.plist` runs the existing CLI on
 - Journal lists pages only, with events behind a collapsed Agenda line.
 - Nextcloud upload confirmation and complete-listing checks; local sync safety copies in `.tylog/undo`, kept 30 days and excluded from sync.
 
-Current release: 0.12.0+133. Phone verification of the recent changes remains open.
+Current release: 0.12.2+135. Recent behavior changes (0.12.1–0.12.2): Backspace on an empty task returns to plain text; typing during an upload no longer creates a conflict against this device's own earlier upload. Phone verification remains open.
 
 ## View modes and PDF export
 

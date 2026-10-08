@@ -90,9 +90,10 @@ void main() {
   test(
     'timestamp capture keeps unsaved rich content and ends at the new line',
     () {
+      final changes = <String>[];
       final controller = TyLogEditingController(
         source: '#show: tylog.note.with(id: "today", kind: "daily")\nOriginal',
-        onSourceChanged: (_) {},
+        onSourceChanged: changes.add,
         onError: (error) => fail('$error'),
         onProtectedTap: (_) {},
       );
@@ -101,7 +102,11 @@ void main() {
         text: 'Unsaved',
         selection: TextSelection.collapsed(offset: 7),
       );
+      changes.clear();
       controller.appendTimestamp(DateTime(2026, 10, 5, 9, 7));
+      expect(changes, hasLength(1));
+      expect(changes.single, contains('09:07'));
+      expect(changes.single, contains('id: "today"'));
       expect(controller.text, 'Unsaved\n- 09:07 ');
       expect(controller.selection.baseOffset, controller.text.length);
       expect(controller.document.toSource(), contains('id: "today"'));

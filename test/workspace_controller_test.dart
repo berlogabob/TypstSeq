@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
-import 'package:tylog_core/storage.dart';
 import 'package:tylog_core/vault.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/nextcloud_sync.dart';
@@ -1213,7 +1212,125 @@ void main() {
   );
 
   test(
-    'failed daily repair restores captured bytes and keeps its undo snapshot',
+    'SAF editor open repairs a headerless daily with an undo copy',
+    () async {
+      final backing = _MemoryStorage();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        final args = (call.arguments as Map).cast<String, Object?>();
+        final path = args['path'] as String? ?? '';
+        switch (call.method) {
+          case 'exists':
+            return backing.exists(path);
+          case 'createDirectory':
+            await backing.createDirectory(path);
+            return null;
+          case 'read':
+            return backing.readBytes(path);
+          case 'write':
+            await backing.writeBytes(path, (args['bytes'] as Uint8List));
+            return null;
+          case 'hash':
+            return backing.hash(path);
+          case 'delete':
+            await backing.delete(path);
+            return null;
+          case 'stat':
+            final entry = await backing.stat(path);
+            return entry == null
+                ? null
+                : {
+                    'path': entry.path,
+                    'isDirectory': entry.isDirectory,
+                    'size': entry.size,
+                    'modified': entry.modified?.millisecondsSinceEpoch,
+                  };
+          case 'list':
+            return (await backing.list(
+                  path: path,
+                  recursive: args['recursive'] == true,
+                ))
+                .map(
+                  (entry) => {
+                    'path': entry.path,
+                    'isDirectory': entry.isDirectory,
+                    'size': entry.size,
+                    'modified': entry.modified?.millisecondsSinceEpoch,
+                  },
+                )
+                .toList();
+          default:
+            throw StateError('Unexpected SAF call: ${call.method}');
+        }
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final storage = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+        now: () => DateTime(2026, 10, 8, 8, 6),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      const path = 'daily/2026/10/2026-10-08.typ';
+      const body =
+          r'\- 08:06 '
+          '\n';
+      expect(utf8.encode(body), hasLength(10));
+      await Vault.withStorage(storage).ensureCreated();
+      await storage.writeText(path, body);
+      await controller.openVault(
+        const VaultEntry(id: 'repair-daily', name: 'Daily', path: '/db'),
+        storage: storage,
+      );
+      expect(
+        controller.source,
+        '${emptyDailyTemplate(path)}$body',
+        reason: controller.status,
+      );
+      expect(await storage.readText(path), controller.source);
+      final snapshots = (await storage.list(recursive: true)).where(
+        (file) =>
+            file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
+      );
+      expect(snapshots, hasLength(1));
+      expect(await backing.exists('.tylog/undo'), isTrue);
+      expect(await storage.readText(snapshots.single.path), body);
+      expect(controller.vault!.isPendingSyncWrite(path), isTrue);
+      expect(await database.select(database.revisions).get(), hasLength(1));
+      expect(await database.select(database.outboxEntries).get(), hasLength(1));
+      expect(await controller.readNote(path), controller.source);
+      expect(await database.select(database.revisions).get(), hasLength(1));
+      controller.edit('${controller.source}typed after open');
+      expect(await controller.save(), isTrue);
+      expect(await storage.readText(snapshots.single.path), body);
+      expect(await storage.readText(path), endsWith('typed after open'));
+      expect(
+        (await storage.list(recursive: true)).where(
+          (file) =>
+              file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'failed daily repair preserves repaired bytes and its undo snapshot',
     () async {
       final storage = _MemoryStorage();
       await Vault.withStorage(storage).ensureCreated();
@@ -1241,7 +1358,7 @@ void main() {
         storage: storage,
       );
       expect(controller.status, contains('Open failed'));
-      expect(await storage.readText(path), body);
+      expect(await storage.readText(path), '${emptyDailyTemplate(path)}$body');
       final snapshot = (await storage.list(recursive: true)).singleWhere(
         (file) =>
             file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
@@ -1397,7 +1514,7 @@ void main() {
   });
 
   test(
-    'database save failure restores the file and keeps the editor dirty',
+    'database save failure preserves typed bytes and marks reindex pending',
     () async {
       final storage = _MemoryStorage();
       final database = TyLogDatabase(NativeDatabase.memory());
@@ -1418,8 +1535,7 @@ void main() {
       controller.edit('${controller.source}Existing content');
       expect(await controller.save(syncAfter: false), isTrue);
       await controller.refreshIndex(always: true);
-      final before = await storage.readBytes(path);
-      final pendingBefore = controller.vault!.isPendingSyncWrite(path);
+
       await database.customStatement('''
       CREATE TRIGGER reject_note_insert
       BEFORE INSERT ON nodes
@@ -1431,64 +1547,118 @@ void main() {
         BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
       ''');
 
-      controller.edit('${controller.source}\nMust roll back\n');
+      controller.edit('${controller.source}\nMust survive\n');
       final saved = await controller.save(syncAfter: false);
       expect(saved, isFalse);
 
       expect(controller.dirty, isTrue);
       expect(controller.status, contains('Save failed'));
-      expect(await storage.readBytes(path), before);
-      expect(controller.vault!.isStaleNote(path), isFalse);
-      expect(controller.vault!.isPendingSyncWrite(path), pendingBefore);
+      expect(await storage.readText(path), controller.source);
+      expect(controller.vault!.isStaleNote(path), isTrue);
+      expect(controller.vault!.isPendingSyncWrite(path), isTrue);
     },
   );
 
-  test('created-note database failure rolls back the file and row', () async {
-    final storage = _MemoryStorage();
-    final database = TyLogDatabase(NativeDatabase.memory());
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-      database: Future.value(database),
-    );
-    addTearDown(controller.dispose);
-    addTearDown(database.close);
-    await controller.openVault(
-      const VaultEntry(
-        id: 'database-create-failure',
-        name: 'Database',
-        path: '/db',
-      ),
-      storage: storage,
-    );
-    await _waitUntil(() => controller.index != null);
-    final initialNodes = await database.select(database.nodes).get();
-    final initialRevisions = await database.select(database.revisions).get();
-    await database.customStatement('''
+  test(
+    'first save database failure preserves new note bytes and retry markers',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(id: 'database-failure', name: 'Database', path: '/db'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      controller.edit('${controller.source}Existing content');
+      expect(await storage.exists(path), isFalse);
+
+      await database.customStatement('''
+      CREATE TRIGGER reject_note_insert
+      BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    ''');
+      await database.customStatement('''
+        CREATE TRIGGER reject_note_outbox
+        BEFORE INSERT ON outbox_entries
+        BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+      ''');
+
+      controller.edit('${controller.source}\nMust survive\n');
+      final saved = await controller.save(syncAfter: false);
+      expect(saved, isFalse);
+
+      expect(controller.dirty, isTrue);
+      expect(controller.status, contains('Save failed'));
+      expect(await storage.readText(path), controller.source);
+      expect(controller.vault!.isStaleNote(path), isTrue);
+      expect(controller.vault!.isPendingSyncWrite(path), isTrue);
+    },
+  );
+
+  test(
+    'created-note database failure preserves the file and retry markers',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(
+          id: 'database-create-failure',
+          name: 'Database',
+          path: '/db',
+        ),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final initialNodes = await database.select(database.nodes).get();
+      final initialRevisions = await database.select(database.revisions).get();
+      await database.customStatement('''
       CREATE TRIGGER reject_created_note
       BEFORE INSERT ON nodes
       BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
     ''');
 
-    await expectLater(
-      controller.createPage('No Phantom'),
-      throwsA(isA<Exception>()),
-    );
-    expect(await storage.exists('notes/No Phantom.typ'), isFalse);
-    expect(await database.select(database.nodes).get(), initialNodes);
-    expect(await database.select(database.revisions).get(), initialRevisions);
+      await expectLater(
+        controller.createPage('No Phantom'),
+        throwsA(isA<Exception>()),
+      );
+      expect(await storage.exists('notes/No Phantom.typ'), isTrue);
+      expect(controller.vault!.isStaleNote('notes/No Phantom.typ'), isTrue);
+      expect(
+        controller.vault!.isPendingSyncWrite('notes/No Phantom.typ'),
+        isTrue,
+      );
+      expect(controller.status, contains('Save failed'));
+      expect(await database.select(database.nodes).get(), initialNodes);
+      expect(await database.select(database.revisions).get(), initialRevisions);
 
-    await storage.writeText(
-      'notes/Existing.typ',
-      '#show: tylog.note.with(id: "existing", title: "Existing")\n',
-    );
-    expect(await controller.createPage('Existing'), 'notes/Existing.typ');
-    expect(await storage.exists('notes/Existing.typ'), isTrue);
-  });
+      await storage.writeText(
+        'notes/Existing.typ',
+        '#show: tylog.note.with(id: "existing", title: "Existing")\n',
+      );
+      expect(await controller.createPage('Existing'), 'notes/Existing.typ');
+      expect(await storage.exists('notes/Existing.typ'), isTrue);
+    },
+  );
 
   test(
-    'persistCreatedNote rolls back an externally materialized file',
+    'persistCreatedNote preserves an externally materialized file',
     () async {
       final storage = _MemoryStorage();
       final database = TyLogDatabase(NativeDatabase.memory());
@@ -1525,7 +1695,9 @@ void main() {
         controller.persistCreatedNote(path),
         throwsA(isA<Exception>()),
       );
-      expect(await storage.exists(path), isFalse);
+      expect(await storage.exists(path), isTrue);
+      expect(controller.vault!.isStaleNote(path), isTrue);
+      expect(controller.status, contains('Save failed'));
       expect(await database.select(database.nodes).get(), initialNodes);
     },
   );
@@ -2233,7 +2405,9 @@ void main() {
       server.releaseGate.complete();
       expect(await syncFuture, isTrue);
 
-      expect(await database.select(database.revisions).get(), hasLength(2));
+      final revisions = await database.select(database.revisions).get();
+      expect(revisions, hasLength(1));
+      expect(revisions.single.payloadJson, contains('Kept typing.'));
       expect(controller.vault!.isPendingSyncWrite(path), isTrue);
       expect(controller.syncConflicts, isEmpty);
       expect(controller.status, isNot(contains('attention')));

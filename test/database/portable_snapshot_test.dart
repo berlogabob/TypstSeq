@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/database/note_persistence.dart';
 import 'package:tylog/database/portable_snapshot.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog_core/storage.dart';
@@ -84,6 +85,26 @@ void main() {
     await database.close();
     await directory.delete(recursive: true);
   });
+
+  test(
+    'export seals local drafts before another device can see them',
+    () async {
+      final first = await persistNoteSource(
+        database: database,
+        path: 'notes/draft.typ',
+        source: '#show: tylog.note.with(id: "draft", title: "Draft")\nfirst',
+        updatedAtMs: 100,
+      );
+      await exportPortableSnapshot(database: database, storage: storage);
+      final second = await persistNoteSource(
+        database: database,
+        path: 'notes/draft.typ',
+        source: '#show: tylog.note.with(id: "draft", title: "Draft")\nsecond',
+        updatedAtMs: 101,
+      );
+      expect(second.revision.parentRevisionId, first.revision.id);
+    },
+  );
 
   test('exports deterministic complete rows and portable files', () async {
     final first = await exportPortableSnapshot(

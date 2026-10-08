@@ -11,6 +11,102 @@ import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes, writeNoMedia;
 
 void main() {
   test(
+    'local receipts retain only the newest 32 hashes across reopen',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_receipts_');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      const path = 'notes/receipt.typ';
+      for (var i = 0; i < 34; i++) {
+        await vault.rememberLocalRevision(
+          path,
+          i.toRadixString(16).padLeft(64, '0'),
+        );
+      }
+      final reopened = Vault(dir);
+      expect(
+        await reopened.hasLocalRevision(path, '0'.padLeft(64, '0')),
+        isFalse,
+      );
+      expect(
+        await reopened.hasLocalRevision(path, '1'.padLeft(64, '0')),
+        isFalse,
+      );
+      for (var i = 2; i < 34; i++) {
+        expect(
+          await reopened.hasLocalRevision(
+            path,
+            i.toRadixString(16).padLeft(64, '0'),
+          ),
+          isTrue,
+        );
+      }
+      expect(
+        (await reopened.storage.list(
+          path: '.tylog/local-history',
+          recursive: true,
+        )).where((e) => !e.isDirectory),
+        hasLength(32),
+      );
+    },
+  );
+
+  test('legacy receipts use write order and never expire by age', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_legacy_receipts_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    const path = 'notes/receipt.typ';
+    await vault.storage.writeText(path, 'local');
+    await vault.rememberLocalRevision(path, 'f' * 64);
+    final marker = (await vault.storage.list(
+      path: '.tylog/local-history',
+      recursive: true,
+    )).singleWhere((e) => !e.isDirectory);
+    final directory = marker.path.substring(0, marker.path.lastIndexOf('/'));
+    await vault.storage.delete(marker.path);
+    for (var i = 0; i < 33; i++) {
+      final hash = i.toRadixString(16).padLeft(64, '0');
+      await vault.storage.writeText('$directory/$hash', '');
+      await File('${dir.path}/$directory/$hash').setLastModified(
+        DateTime.utc(2020).add(Duration(minutes: i == 0 ? 34 : i)),
+      );
+    }
+    await Vault(dir).pruneLocalRevisions([]);
+    expect(await vault.hasLocalRevision(path, '0' * 64), isTrue);
+    expect(await vault.hasLocalRevision(path, '1'.padLeft(64, '0')), isFalse);
+    expect(
+      (await vault.storage.list(path: directory)).where((e) => !e.isDirectory),
+      hasLength(32),
+    );
+  });
+
+  test('receipt order survives a clock moving backwards', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_receipt_clock_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    const path = 'notes/receipt.typ';
+    await vault.rememberLocalRevision(path, '0' * 64);
+    final marker = (await vault.storage.list(
+      path: '.tylog/local-history',
+      recursive: true,
+    )).singleWhere((e) => !e.isDirectory);
+    final directory = marker.path.substring(0, marker.path.lastIndexOf('/'));
+    await vault.storage.delete(marker.path);
+    final future = DateTime.now()
+        .add(const Duration(days: 1))
+        .microsecondsSinceEpoch;
+    for (var i = 0; i < 32; i++) {
+      await vault.storage.writeText(
+        '$directory/${i.toRadixString(16).padLeft(64, '0')}-${future + i}',
+        '',
+      );
+    }
+    await vault.rememberLocalRevision(path, 'f' * 64);
+    expect(await vault.hasLocalRevision(path, 'f' * 64), isTrue);
+    expect(await vault.hasLocalRevision(path, '0' * 64), isFalse);
+  });
+
+  test(
     'user index files retain pending-write protection and dirtiness',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_pending_index_');

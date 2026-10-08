@@ -345,15 +345,85 @@ class Vault {
       '.tylog/local-history/${sha256.convert(utf8.encode(path))}';
 
   Future<void> rememberLocalRevision(String path, String hash) async {
-    // Immutable receipts survive simultaneous typing and upload snapshots.
-    // ponytail: retain hashes indefinitely; move to the revision DB when background sync opens it.
-    final marker = '${_historyPath(path)}/$hash';
-    if (!await storage.exists(marker)) await storage.writeText(marker, '');
+    // Equal to our last upload (cursor) or any of the newest 32 local hashes is never a conflict.
+    final directory = _historyPath(path);
+    var stamp = DateTime.now().microsecondsSinceEpoch;
+    for (final receipt in await storage.list(path: directory)) {
+      final previous = _receiptOrder(receipt);
+      if (previous >= stamp) stamp = previous + 1;
+    }
+    await storage.writeText('$directory/$hash-$stamp', '');
+    await _pruneReceiptDirectory(directory);
+  }
+
+  Future<void> _pruneReceiptDirectory(String directory) async {
+    final receipts =
+        (await storage.list(
+          path: directory,
+        )).where((entry) => !entry.isDirectory).toList()..sort((a, b) {
+          final compared = _receiptOrder(b).compareTo(_receiptOrder(a));
+          return compared != 0 ? compared : b.path.compareTo(a.path);
+        });
+    final hashes = <String>{};
+    for (final receipt in receipts) {
+      final hash = receipt.path.split('/').last.split('-').first;
+      if (hashes.contains(hash) || hashes.length == 32) {
+        await storage.delete(receipt.path);
+      } else {
+        hashes.add(hash);
+      }
+    }
+  }
+
+  int _receiptOrder(VaultStorageEntry receipt) =>
+      (receipt.path.split('/').last.contains('-')
+          ? int.tryParse(receipt.path.split('-').last)
+          : null) ??
+      receipt.modified?.microsecondsSinceEpoch ??
+      0;
+
+  Future<void> pruneLocalRevisions(
+    Iterable<String> cursorPaths, {
+    Iterable<String> knownPaths = const [],
+  }) async {
+    final directories = await storage.list(path: '.tylog/local-history');
+    final retained = cursorPaths.map(_historyPath).toSet();
+    final known = {
+      for (final path in {...knownPaths, ...pendingSyncWrites})
+        _historyPath(path): path,
+    };
+    var listed = false;
+    for (final entry in directories) {
+      if (!entry.isDirectory) continue;
+      if (!retained.contains(entry.path)) {
+        final path = known[entry.path];
+        if (path != null) {
+          if (await storage.exists(path)) retained.add(entry.path);
+        } else if (!listed) {
+          for (final local in await storage.list(recursive: true)) {
+            if (!local.isDirectory && local.path.endsWith('.typ')) {
+              retained.add(_historyPath(local.path));
+            }
+          }
+          listed = true;
+        }
+      }
+      if (retained.contains(entry.path)) {
+        await _pruneReceiptDirectory(entry.path);
+      } else {
+        await storage.delete(entry.path);
+      }
+    }
   }
 
   Future<bool> hasLocalRevision(String path, String hash) async {
     if (!path.endsWith('.typ')) return false;
-    if (await storage.exists('${_historyPath(path)}/$hash')) return true;
+    for (final entry in await storage.list(path: _historyPath(path))) {
+      if (!entry.isDirectory &&
+          entry.path.split('/').last.split('-').first == hash) {
+        return true;
+      }
+    }
     // Existing immutable revisions cover edits made before hash receipts existed.
     for (final file in await storage.list(
       path: '_system/revisions',

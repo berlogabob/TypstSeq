@@ -56,9 +56,8 @@ Future<String?> persistedNoteSourceForPath(
 ///
 /// The import table is the durable bridge from a source path to a node id. A
 /// mapped id wins over the id in the note header, which lets an imported file
-/// keep its identity when its header changed. Revisions are immutable and the
-/// revision id is stable for a given node, parent, and source bytes, so a
-/// retry after a failed transaction is safe.
+/// keep its identity when its header changed. Only unpublished local heads may
+/// coalesce; published revisions and their parent chains stay immutable.
 Future<NotePersistenceResult> persistNoteSource({
   required TyLogDatabase database,
   required String path,
@@ -107,11 +106,29 @@ Future<NotePersistenceResult> persistNoteSource({
               ])
               ..limit(1))
             .getSingleOrNull();
-    final parentRevisionId = parent?.id;
     final requestedNow = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
     final now = existing == null || requestedNow > existing.updatedAtMs
         ? requestedNow
         : existing.updatedAtMs + 1;
+    // Only new local saves carry this marker; its stamp anchors the minute.
+    final draft = parent == null
+        ? null
+        : await (database.select(database.databaseMetadata)
+                ..where((t) => t.key.equals('note-draft:${parent.id}')))
+              .getSingleOrNull();
+    final children = parent == null
+        ? null
+        : await (database.select(database.revisions)
+                ..where((t) => t.parentRevisionId.equals(parent.id))
+                ..limit(1))
+              .getSingleOrNull();
+    final replace =
+        !deleted &&
+        draft != null &&
+        now >= draft.updatedAtMs &&
+        now - draft.updatedAtMs < const Duration(seconds: 60).inMilliseconds &&
+        children == null;
+    final parentRevisionId = replace ? parent!.parentRevisionId : parent?.id;
     final revisionId = _noteRevisionId(
       nodeId: nodeId,
       parentRevisionId: parentRevisionId,
@@ -146,12 +163,41 @@ Future<NotePersistenceResult> persistNoteSource({
       }),
       createdAtMs: now,
     );
-    await database.commitNodeEdit(node: node, revision: revision);
     final parentEnvelope = parent == null
         ? null
         : await (database.select(database.databaseMetadata)
                 ..where((t) => t.key.equals('note-envelope:${parent.id}')))
               .getSingleOrNull();
+    if (replace) {
+      await (database.delete(
+        database.outboxEntries,
+      )..where((t) => t.revisionId.equals(parent!.id))).go();
+      await (database.delete(
+        database.derivedInvalidations,
+      )..where((t) => t.revisionId.equals(parent!.id))).go();
+      await (database.delete(
+        database.revisions,
+      )..where((t) => t.id.equals(parent!.id))).go();
+      await (database.delete(database.databaseMetadata)..where(
+            (t) => t.key.isIn([
+              'note-draft:${parent!.id}',
+              'note-envelope:${parent.id}',
+            ]),
+          ))
+          .go();
+    }
+    await database.commitNodeEdit(node: node, revision: revision);
+    if (!deleted) {
+      await database
+          .into(database.databaseMetadata)
+          .insertOnConflictUpdate(
+            DatabaseMetadataData(
+              key: 'note-draft:$revisionId',
+              value: '',
+              updatedAtMs: replace ? draft.updatedAtMs : now,
+            ),
+          );
+    }
     final continues =
         !deleted &&
         parentEnvelope != null &&
@@ -161,7 +207,11 @@ Future<NotePersistenceResult> persistNoteSource({
         .insertOnConflictUpdate(
           DatabaseMetadataData(
             key: 'note-envelope:$revisionId',
-            value: continues ? parentEnvelope.value : revisionId,
+            value: continues
+                ? (replace && parentEnvelope.value == parent.id
+                      ? revisionId
+                      : parentEnvelope.value)
+                : revisionId,
             updatedAtMs: now,
           ),
         );

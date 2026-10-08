@@ -390,7 +390,9 @@ extension _PathSync on NextcloudSync {
         if (!isMachineRevisionPath(path)) {
           final remoteHash = await _sha256(captured.file);
           final latest = (await _loadSyncState(vault)).cursors[unorm.nfc(path)];
-          if ((previous?.remoteConfirmed == false &&
+          if (remoteHash == previous?.uploadedSha256 ||
+              remoteHash == latest?.uploadedSha256 ||
+              (previous?.remoteConfirmed == false &&
                   remoteHash == previous?.localSha256) ||
               (latest?.remoteConfirmed == false &&
                   remoteHash == latest?.localSha256) ||
@@ -621,15 +623,26 @@ extension _PathSync on NextcloudSync {
           skipped++;
           repaired++;
           reason = 'same-content';
-        } else if ((previous?.remoteConfirmed == false &&
-                remoteHash == previous?.localSha256) ||
-            (latest?.remoteConfirmed == false &&
-                remoteHash == latest?.localSha256) ||
-            (latest?.remoteConfirmed == false &&
-                latest?.remoteEtag != null &&
-                NextcloudSync._normEtag(captured.etag) ==
-                    NextcloudSync._normEtag(latest!.remoteEtag)) ||
-            await vault.hasLocalRevision(path, remoteHash)) {
+        } else if ((emptyDailyTemplate(path) == null ||
+                ((localStat?.size ?? 0) > 0 &&
+                    !isPristineStarterNote(
+                      path,
+                      utf8.decode(
+                        localBytes ?? await vault.storage.readBytes(path),
+                        allowMalformed: true,
+                      ),
+                    ))) &&
+            (remoteHash == previous?.uploadedSha256 ||
+                remoteHash == latest?.uploadedSha256 ||
+                (previous?.remoteConfirmed == false &&
+                    remoteHash == previous?.localSha256) ||
+                (latest?.remoteConfirmed == false &&
+                    remoteHash == latest?.localSha256) ||
+                (latest?.remoteConfirmed == false &&
+                    latest?.remoteEtag != null &&
+                    NextcloudSync._normEtag(captured.etag) ==
+                        NextcloudSync._normEtag(latest!.remoteEtag)) ||
+                await vault.hasLocalRevision(path, remoteHash))) {
           await captured.file.delete();
           action = SyncAction.upload;
           await snapshotForUpload();
@@ -1053,6 +1066,9 @@ extension _PathSync on NextcloudSync {
         updateCursor = true;
         cursor = SyncCursor(
           remoteConfirmed: action != SyncAction.upload,
+          uploadedSha256: action == SyncAction.upload
+              ? localHash
+              : previous?.uploadedSha256,
           // Downloads have no receipt: their hash predates the local write.
           recordedAt: wasDownloaded ? null : recordedAt,
           localMillis: nextLocal?.modified?.millisecondsSinceEpoch,
@@ -1169,6 +1185,7 @@ extension _PathSync on NextcloudSync {
         localSize: stat.size,
         remoteMillis: moved.modified.millisecondsSinceEpoch,
         localSha256: group.key,
+        uploadedSha256: old.value.uploadedSha256,
         remoteEtag: NextcloudSync._normEtag(moved.etag),
       );
       remote.remove(old.key);
@@ -1290,6 +1307,7 @@ extension _PathSync on NextcloudSync {
           localSize: nextStat.size,
           remoteMillis: remoteFile.modified.millisecondsSinceEpoch,
           localSha256: group.key,
+          uploadedSha256: old.value.uploadedSha256,
           remoteEtag: NextcloudSync._normEtag(remoteFile.etag),
         );
         await _saveSyncState(vault, state, rootEtag: rootEtag);

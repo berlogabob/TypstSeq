@@ -853,7 +853,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   /// Persists a file materialized by an import whose path was previously
-  /// absent. A failed database write removes that newly-created file.
+  /// absent. A failed database write leaves it pending for re-indexing.
   Future<void> persistCreatedNote(String path) async {
     final opened = vault;
     final generation = _vaultGeneration;
@@ -874,8 +874,11 @@ class WorkspaceController extends ChangeNotifier {
     if (!_owns(opened, generation)) throw StateError('Vault changed');
     try {
       await _persistNote(opened, path, source);
-    } catch (_) {
-      if (_owns(opened, generation)) await opened.storage.delete(path);
+    } catch (error) {
+      if (_owns(opened, generation)) {
+        status = 'Save failed for $path: $error';
+        notifyListeners();
+      }
       rethrow;
     }
     if (!_owns(opened, generation)) throw StateError('Vault changed');
@@ -1070,8 +1073,6 @@ class WorkspaceController extends ChangeNotifier {
     final persistedSource = previous == null && value == null
         ? await persistedNoteSourceForPath(db, path)
         : null;
-    final wasStale = opened.isStaleNote(path);
-    final wasPendingSync = opened.isPendingSyncWrite(path);
     try {
       if (value == null) {
         await opened.deleteNote(path);
@@ -1097,16 +1098,8 @@ class WorkspaceController extends ChangeNotifier {
         );
       }
     } catch (_) {
-      if (previous == null) {
-        await opened.storage.delete(path);
-      } else {
-        await opened.storage.writeBytes(path, previous);
-      }
-      opened.restoreWriteMarkers(
-        path,
-        stale: wasStale,
-        pendingSync: wasPendingSync,
-      );
+      // The file is authoritative; a failed projection must never undo a save.
+      opened.markLocallyWritten(path);
       rethrow;
     }
   }
