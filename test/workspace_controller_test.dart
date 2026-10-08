@@ -1156,6 +1156,112 @@ void main() {
     );
   });
 
+  test(
+    'opening a headerless daily preserves text, snapshots and revisions',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+        now: () => DateTime(2026, 10, 8, 8, 6),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      const path = 'daily/2026/10/2026-10-08.typ';
+      const body =
+          r'\- 08:06 '
+          '\nJournal text to keep\n';
+      await Vault.withStorage(storage).ensureCreated();
+      await storage.writeText(path, body);
+      await controller.openVault(
+        const VaultEntry(id: 'repair-daily', name: 'Daily', path: '/db'),
+        storage: storage,
+      );
+      expect(
+        controller.source,
+        '${emptyDailyTemplate(path)}$body',
+        reason: controller.status,
+      );
+      expect(await storage.readText(path), controller.source);
+      final snapshots = (await storage.list(recursive: true)).where(
+        (file) =>
+            file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
+      );
+      expect(snapshots, hasLength(1));
+      expect(await storage.readText(snapshots.single.path), body);
+      expect(controller.vault!.isPendingSyncWrite(path), isTrue);
+      expect(await database.select(database.revisions).get(), hasLength(1));
+      expect(await database.select(database.outboxEntries).get(), hasLength(1));
+      expect(await controller.readNote(path), controller.source);
+      expect(await database.select(database.revisions).get(), hasLength(1));
+    },
+  );
+
+  test(
+    'failed daily repair restores captured bytes and keeps its undo snapshot',
+    () async {
+      final storage = _MemoryStorage();
+      await Vault.withStorage(storage).ensureCreated();
+      const path = 'daily/2026/10/2026-10-08.typ';
+      const body =
+          r'\- 08:06 '
+          '\n';
+      await storage.writeText(path, body);
+      final database = TyLogDatabase(NativeDatabase.memory());
+      await database.customStatement("""
+      CREATE TRIGGER reject_daily_repair BEFORE INSERT ON nodes
+      BEGIN SELECT RAISE(ABORT, 'forced database failure'); END
+    """);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        database: Future.value(database),
+        now: () => DateTime(2026, 10, 8),
+      );
+      addTearDown(controller.dispose);
+      addTearDown(database.close);
+      await controller.openVault(
+        const VaultEntry(id: 'repair-failure', name: 'Daily', path: '/db'),
+        storage: storage,
+      );
+      expect(controller.status, contains('Open failed'));
+      expect(await storage.readText(path), body);
+      final snapshot = (await storage.list(recursive: true)).singleWhere(
+        (file) =>
+            file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
+      );
+      expect(await storage.readText(snapshot.path), body);
+      expect(await database.select(database.revisions).get(), isEmpty);
+    },
+  );
+
+  test('sync of a missing daily keeps its in-memory template', () async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final server = await _GatedWebDavServer.start();
+    addTearDown(() => server.server.close(force: true));
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'missing-daily', name: 'Daily', path: '/db'),
+      storage: _MemoryStorage(),
+    );
+    final template = controller.source;
+    controller.cloud = server.config;
+    expect(await controller.syncNow(trigger: 'startup'), isTrue);
+    expect(controller.source, template);
+    expect(await controller.vault!.exists(controller.note!), isFalse);
+  });
+
   test('editor save commits the note and durable database queues', () async {
     final storage = _MemoryStorage();
     final database = TyLogDatabase(NativeDatabase.memory());
@@ -1174,9 +1280,18 @@ void main() {
     );
     await _waitUntil(() => controller.index != null);
 
-    controller.edit('${controller.source}\nSaved through SQLite\n');
+    const capture =
+        r'\- 08:06 '
+        '\n';
+    controller.edit(capture);
     expect(await controller.save(syncAfter: false), isTrue);
 
+    expect(
+      controller.source,
+      '${emptyDailyTemplate(controller.note!)}$capture',
+    );
+    expect(await storage.readText(controller.note!), controller.source);
+    expect(controller.vault!.isPendingSyncWrite(controller.note!), isTrue);
     expect(await database.select(database.nodes).get(), hasLength(1));
     expect(await database.select(database.revisions).get(), hasLength(1));
     expect(await database.select(database.outboxEntries).get(), hasLength(1));
@@ -1437,7 +1552,7 @@ void main() {
     expect(await database.select(database.revisions).get(), hasLength(1));
   });
 
-  test('deleting a disposable note records a durable tombstone', () async {
+  test('deleting an untouched starter records a durable tombstone', () async {
     final storage = _MemoryStorage();
     final database = TyLogDatabase(NativeDatabase.memory());
     final controller = WorkspaceController(
@@ -1454,7 +1569,7 @@ void main() {
     );
     await _waitUntil(() => controller.index != null);
     final path = controller.note!;
-    controller.edit('x');
+    controller.edit(controller.source);
     expect(await controller.save(syncAfter: false), isTrue);
 
     controller.edit('');
@@ -2036,7 +2151,10 @@ void main() {
       addTearDown(() => HttpOverrides.global = previousOverrides);
       final server = await _GatedWebDavServer.start();
       addTearDown(() => server.server.close(force: true));
+      final database = TyLogDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
       final controller = WorkspaceController(
+        database: Future.value(database),
         taskScheduler: TaskScheduler(),
         inspector: _FakeInspector(),
         reconcileTasks: (_) async {},
@@ -2069,6 +2187,8 @@ void main() {
       server.releaseGate.complete();
       expect(await syncFuture, isTrue);
 
+      expect(await database.select(database.revisions).get(), hasLength(2));
+      expect(controller.vault!.isPendingSyncWrite(path), isTrue);
       expect(controller.syncConflicts, isEmpty);
       expect(controller.status, isNot(contains('attention')));
       expect(

@@ -530,7 +530,7 @@ class WorkspaceController extends ChangeNotifier {
       indexedRevision = editRevision;
       lastEditAt = null;
       _setDirty(false);
-      source = await opened.readText(today);
+      source = (await readNoteSnapshot(today)).source;
       if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
@@ -617,7 +617,13 @@ class WorkspaceController extends ChangeNotifier {
     }
     if (path == null) return false;
     final revision = editRevision;
-    final value = source;
+    final template = emptyDailyTemplate(path);
+    final value =
+        template != null &&
+            source.trim().isNotEmpty &&
+            !source.contains(noteHeaderMarker)
+        ? '$template$source'
+        : source;
     final generation = _vaultGeneration;
     if (!dirty &&
         isPristineStarterNote(path, value) &&
@@ -630,6 +636,7 @@ class WorkspaceController extends ChangeNotifier {
       _lastSavedSource = value;
       _lastSavedPath = path;
       if (revision == editRevision && path == note) {
+        source = value;
         savedRevision = revision;
         _setDirty(false);
         status = 'Saved $path';
@@ -955,6 +962,22 @@ class WorkspaceController extends ChangeNotifier {
       }
       final value = await opened.readText(path);
       if (!_owns(opened, generation)) throw StateError('Vault changed');
+      if (emptyDailyTemplate(path) != null &&
+          !value.contains(noteHeaderMarker)) {
+        await _queueNoteMutation(path, () async {
+          if (!_owns(opened, generation)) throw StateError('Vault changed');
+          final current = await opened.readText(path);
+          if (!current.contains(noteHeaderMarker)) {
+            await _persistNote(
+              opened,
+              path,
+              '${emptyDailyTemplate(path)}$current',
+            );
+          }
+          return true;
+        });
+        continue;
+      }
       if (version == (_noteMutationVersions[path] ?? 0) &&
           _noteMutations[path] == null) {
         return (source: value, mutationVersion: version);
@@ -1838,9 +1861,10 @@ class WorkspaceController extends ChangeNotifier {
             remoteBytes: diskSource == null ? null : utf8.encode(diskSource),
           );
           if (!_owns(opened, generation)) return false;
-          await opened.saveNote(syncedNote, source);
+          final flushedSource = source;
+          await _persistNote(opened, syncedNote, flushedSource);
           if (!_owns(opened, generation)) return false;
-          _lastSavedSource = source;
+          _lastSavedSource = flushedSource;
           _lastSavedPath = syncedNote;
           concurrentConflict = true;
         } else if (editorChanged && diskSource != sourceBeforeSync) {
@@ -1850,13 +1874,14 @@ class WorkspaceController extends ChangeNotifier {
           // this session's own writes: nothing foreign, no conflict. Flush
           // the buffer if it has moved past the autosave on disk.
           if (diskSource != source) {
-            await opened.saveNote(syncedNote, source);
+            final flushedSource = source;
+            await _persistNote(opened, syncedNote, flushedSource);
             if (!_owns(opened, generation)) return false;
-            _lastSavedSource = source;
+            _lastSavedSource = flushedSource;
             _lastSavedPath = syncedNote;
           }
         } else if (!editorChanged && diskSource != sourceBeforeSync) {
-          source = diskSource ?? '';
+          source = diskSource ?? emptyDailyTemplate(syncedNote) ?? '';
         }
       }
       final conflicts = await loadSyncConflicts(opened);

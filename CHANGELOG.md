@@ -3,6 +3,25 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.8+131
+
+### Fixed
+
+- **A journal page is never saved without its header.** Using the timestamp
+  shortcut on a day that had no page yet could save only the timestamp line,
+  leaving a broken page that later cleanup could treat as empty and delete.
+  The page template is now always loaded and saved first.
+- **A broken journal page is repaired, not replaced.** An existing page with
+  no header gets its header back with the text kept, after an undo copy is
+  taken in `.tylog/undo`.
+- Writes made right after a sync now go through the normal save queue.
+
+### Internal
+
+- Groundwork for the tasks redesign, not yet visible: one writer for task
+  fields, one status transition (Doing runs the timer), and a date-words
+  parser for English, Russian and Portuguese.
+
 ## 0.11.7+130
 
 ### Added

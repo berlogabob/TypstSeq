@@ -1579,19 +1579,86 @@ Object? _parsePropertyValue(String raw) {
   return trimmed;
 }
 
-String replaceTaskStatus(String source, String id, String status) {
+const _keep = Object();
+
+/// Omit nullable fields to keep them; pass null to write Typst `none`, or a string to set them.
+String setTaskFields(
+  String source,
+  String id, {
+  String? status,
+  String? priority,
+  Object? scheduled = _keep,
+  Object? due = _keep,
+  Object? recurrence = _keep,
+}) {
   final call = _locateTaskCall(source, id);
-  final field = _locateTopLevelField(call.source, 'status');
-  final replacement = field == null
-      ? _appendCallField(
-          call.source,
-          'status',
-          '"$status"',
-          allowed: writableTaskFields,
-        )
-      : call.source.replaceRange(field.start, field.end, 'status: "$status"');
+  var replacement = call.source;
+  for (final entry in {
+    'status': status ?? _keep,
+    'priority': priority ?? _keep,
+    'scheduled': scheduled,
+    'due': due,
+    'recurrence': recurrence,
+  }.entries) {
+    if (identical(entry.value, _keep)) continue;
+    final value = entry.value == null
+        ? 'none'
+        : typstString(entry.value as String);
+    final field = _locateTopLevelField(replacement, entry.key);
+    replacement = field == null
+        ? _appendCallField(
+            replacement,
+            entry.key,
+            value,
+            allowed: writableTaskFields,
+          )
+        : replacement.replaceRange(
+            field.start,
+            field.end,
+            '${entry.key}: $value',
+          );
+  }
   return source.replaceRange(call.start, call.end, replacement);
 }
+
+/// Records repeat completions and starts/stops the task clock on status transitions.
+String applyTaskStatus(String source, String id, String next, DateTime now) {
+  final call = _locateTaskCall(source, id);
+  final timestamp = now.toIso8601String();
+  if (next == 'doing') {
+    for (final other in locateTypstCalls(source, names: const {'tylog.task'})) {
+      final otherId = taskField(other.source, 'id');
+      if (otherId == null ||
+          otherId == id ||
+          ClockEntry.latestRunning(parseClockedField(other.source)) == null) {
+        continue;
+      }
+      source = replaceTaskStatus(
+        stopTaskClock(source, otherId, timestamp),
+        otherId,
+        'todo',
+      );
+    }
+    source = replaceTaskStatus(source, id, next);
+    return taskField(call.source, 'status') == 'doing' &&
+            ClockEntry.latestRunning(parseClockedField(call.source)) != null
+        ? source
+        : startTaskClock(source, id, timestamp);
+  }
+  source = stopTaskClock(source, id, timestamp);
+  final recurrence = taskField(call.source, 'recurrence');
+  if (next == 'done' && recurrence != null && recurrence.isNotEmpty) {
+    return completeTaskOccurrence(
+      replaceTaskStatus(source, id, 'todo'),
+      id,
+      timestamp,
+    );
+  }
+  return replaceTaskStatus(source, id, next);
+}
+
+String replaceTaskStatus(String source, String id, String status) =>
+    setTaskFields(source, id, status: status);
 
 String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
@@ -1622,7 +1689,16 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
 ///
 /// Adding a field here without adding it to the package fails the test. Adding
 /// it to neither means the writer cannot emit it at all.
-const writableTaskFields = {'status', 'completed', 'text', 'properties'};
+const writableTaskFields = {
+  'status',
+  'priority',
+  'scheduled',
+  'due',
+  'recurrence',
+  'completed',
+  'text',
+  'properties',
+};
 
 /// Field names TyLog may write into a `tylog.note.with(...)` header.
 /// Same contract as [writableTaskFields].

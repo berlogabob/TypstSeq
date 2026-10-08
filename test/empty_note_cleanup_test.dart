@@ -36,10 +36,23 @@ void main() {
 
   const stray = 'daily/2026/08/2026-08-20.typ';
 
-  test('emptying a note that only ever held a keystroke removes it', () async {
+  test('emptying a headerless daily cannot erase a capture', () async {
     await storage.writeText(stray, 'x');
-    await vault.saveNote(stray, '');
-    expect(await storage.exists(stray), isFalse);
+    await expectLater(vault.saveNote(stray, ''), throwsArgumentError);
+    expect(await storage.readText(stray), 'x');
+  });
+
+  test('failed daily snapshot leaves the original capture untouched', () async {
+    const original =
+        r'\- 08:06 '
+        '\n';
+    await storage.writeText(stray, original);
+    await storage.writeText('.tylog/undo', 'blocks the snapshot directory');
+    await expectLater(
+      vault.saveNote(stray, '${emptyDailyTemplate(stray)}$original'),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await storage.readText(stray), original);
   });
 
   test('emptying an untouched starter daily removes it', () async {
@@ -72,17 +85,19 @@ void main() {
     expect(await storage.exists('daily/2026/08/2026-08-21.typ'), isFalse);
   });
 
-  test('an unreadable note is never deleted on the strength of a bad read',
-      () async {
-    const path = 'notes/unreadable.typ';
-    await storage.writeText(path, 'x');
-    storage.failReadsFor.add(path);
-    await expectLater(
-      () => vault.saveNote(path, ''),
-      throwsA(isA<ArgumentError>()),
-    );
-    expect(await storage.exists(path), isTrue);
-  });
+  test(
+    'an unreadable note is never deleted on the strength of a bad read',
+    () async {
+      const path = 'notes/unreadable.typ';
+      await storage.writeText(path, 'x');
+      storage.failReadsFor.add(path);
+      await expectLater(
+        () => vault.saveNote(path, ''),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(await storage.exists(path), isTrue);
+    },
+  );
 
   test('a tylog call is never saved without the import it needs', () async {
     // The exact file this came from, found on the A24: two lines of Russian and
@@ -111,11 +126,13 @@ void main() {
     expect(await storage.readText(path), once);
   });
 
-  test('plain prose is left exactly as typed', () async {
-    // The guard must not turn every scratch line into a managed note.
+  test('plain daily prose receives its template without losing text', () async {
     const path = 'daily/2026/08/2026-08-21.typ';
     await vault.saveNote(path, 'просто заметка\n');
-    expect(await storage.readText(path), 'просто заметка\n');
+    expect(
+      await storage.readText(path),
+      '${emptyDailyTemplate(path)}просто заметка\n',
+    );
   });
 
   test('a non-.typ file is untouched by the rule', () async {

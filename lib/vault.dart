@@ -358,6 +358,14 @@ class Vault {
       }
       throw ArgumentError('A TyLog note cannot be empty');
     }
+    final template = emptyDailyTemplate(path);
+    if (template != null) {
+      if (await storage.exists(path) &&
+          !(await storage.readText(path)).contains(noteHeaderMarker)) {
+        await snapshotNotes([path]);
+      }
+      if (!text.contains(noteHeaderMarker)) text = '$template$text';
+    }
     await storage.writeText(path, withTylogImport(path, text));
     _staleNotes.add(path);
     _pendingSyncWrites.add(path);
@@ -370,15 +378,16 @@ class Vault {
   }
 
   /// Whether the note at [path] holds nothing worth keeping: absent, blank, an
-  /// untouched starter daily, or a file with no TyLog note header at all (what
-  /// a stray keystroke leaves behind). Unreadable counts as *not* disposable —
+  /// untouched starter daily, or a non-daily with no TyLog note header.
+  /// Headerless dailies may contain lost captures. Unreadable is not disposable —
   /// never delete on the strength of a failed read.
   Future<bool> _isDisposableNote(String path) async {
     try {
       if (!await storage.exists(path)) return true;
       final source = await storage.readText(path);
       return source.trim().isEmpty ||
-          !source.contains(noteHeaderMarker) ||
+          (emptyDailyTemplate(path) == null &&
+              !source.contains(noteHeaderMarker)) ||
           isPristineStarterNote(path, source);
     } catch (_) {
       return false;

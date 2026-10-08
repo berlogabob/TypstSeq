@@ -1971,6 +1971,31 @@ void main() {
     });
   }
 
+  testWidgets('timestamp capture retains the invisible daily template', (
+    tester,
+  ) async {
+    final storage = _FailingStorage();
+    final vault = Vault.withStorage(storage);
+    final path = await vault.todayNote(DateTime.now());
+    final template = await vault.readText(path);
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = vault;
+    home.workspace.replaceNote(path, template);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Timestamped capture'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    final saved = await storage.readText(path);
+    expect(saved, startsWith(template));
+    expect(saved, matches(r'\\- \d{2}:\d{2} '));
+    expect(vault.isPendingSyncWrite(path), isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('day capture appends to the unsaved daily buffer', (
     tester,
   ) async {

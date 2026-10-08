@@ -237,7 +237,10 @@ void main() {
     // Reopening returns the existing file untouched.
     await vault.saveNote(past, 'existing content');
     expect(await vault.dailyNote(DateTime(2025, 1, 9)), past);
-    expect(await vault.readText(past), 'existing content');
+    expect(
+      await vault.readText(past),
+      '${emptyDailyTemplate(past)}existing content',
+    );
   });
 
   test(
