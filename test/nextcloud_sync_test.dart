@@ -18,6 +18,132 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  test('A24 interleaved engines never conflict with their own upload', () async {
+    const path = 'notes/typing.typ';
+    var armed = false;
+    final uploaded = Completer<void>();
+    final release = Completer<void>();
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(
+      remote,
+      omitPutEtag: true,
+      onAfterPut: (p) async {
+        if (armed && p == path) {
+          armed = false;
+          uploaded.complete();
+          await release.future;
+        }
+      },
+    );
+    final root = await Directory.systemTemp.createTemp('a24-sync-');
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.saveNote(
+      path,
+      '#show: tylog.note.with(id: "typing", title: "Typing")\n#tylog.task(id: "t", text: "")',
+    );
+    await NextcloudSync(_config(server)).sync(vault);
+    await NextcloudSync(_config(server)).sync(vault);
+    await vault.saveNote(
+      path,
+      '#show: tylog.note.with(id: "typing", title: "Typing")\n#tylog.task(id: "t", text: "z")',
+    );
+    armed = true;
+    final startup = NextcloudSync(
+      _config(server),
+    ).sync(vault, trigger: 'startup');
+    await uploaded.future;
+    await vault.saveNote(
+      path,
+      '#show: tylog.note.with(id: "typing", title: "Typing")\n#tylog.task(id: "t", text: "zzprobe")',
+    );
+    var pollStarted = false;
+    final poll = NextcloudSync(
+      _config(server),
+      onProgress: (_, _) {
+        pollStarted = true;
+      },
+    ).sync(Vault(root), trigger: 'poll');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final overlapped = pollStarted;
+    release.complete();
+    final results = await Future.wait([startup, poll]);
+    expect(overlapped, isFalse);
+    expect(pollStarted, isTrue);
+    expect(results.map((r) => r.conflicts), everyElement(0));
+    expect(utf8.decode(remote[path]!.bytes), contains('zzprobe'));
+    expect(await loadSyncConflicts(vault), isEmpty);
+  });
+
+  for (final legacy in [false, true]) {
+    test(
+      'A24 earlier local revision is local-newer after cursor advances (legacy: $legacy)',
+      () async {
+        const path = 'notes/history.typ';
+        String source(String text) =>
+            '#import "/_system/tylog.typ" as tylog\n\n#show: tylog.note.with(id: "history", title: "History")\n#tylog.task(id: "t", text: "$text")';
+        final remote = <String, _MutableRemoteFile>{};
+        final server = await _mutableWebDavServer(remote);
+        final root = await Directory.systemTemp.createTemp('a24-history-');
+        addTearDown(() => server.close(force: true));
+        addTearDown(() => root.delete(recursive: true));
+        final vault = Vault(root);
+        await vault.ensureCreated();
+        await vault.saveNote(path, source('z'));
+        await NextcloudSync(_config(server)).sync(vault);
+        final earlier = remote[path]!;
+        await vault.saveNote(path, source('zz'));
+        await NextcloudSync(_config(server)).sync(vault);
+        await vault.saveNote(path, source('zzprobe'));
+        if (legacy) {
+          final db = TyLogDatabase(NativeDatabase.memory());
+          addTearDown(db.close);
+          for (final text in ['z', 'zz', 'zzprobe']) {
+            await persistNoteSource(
+              database: db,
+              path: path,
+              source: source(text),
+            );
+          }
+          await RevisionPublisher(
+            db,
+          ).materialize(write: vault.storage.writeBytes);
+          await vault.storage.delete('.tylog/local-history');
+        }
+        remote[path] = earlier;
+        final result = await NextcloudSync(_config(server)).sync(Vault(root));
+        expect(result.conflicts, 0);
+        expect(
+          ((await _traceEvents(vault)).last['decisions'] as List)
+              .cast<Map>()
+              .singleWhere((d) => d['path'] == path)['reason'],
+          'local-newer',
+        );
+        expect(utf8.decode(remote[path]!.bytes), contains('zzprobe'));
+      },
+    );
+  }
+
+  test('A24 lost push checkpoint recognises the last PUT bytes', () async {
+    const path = 'notes/receipt.typ';
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote, omitPutEtag: true);
+    final root = await Directory.systemTemp.createTemp('a24-receipt-');
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.storage.writeText(path, 'uploaded text');
+    await NextcloudSync(_config(server)).sync(vault, pushOnly: true);
+    await vault.storage.delete('.tylog/sync_state.json');
+    await vault.storage.writeText(path, 'continued typing');
+    final result = await NextcloudSync(_config(server)).sync(Vault(root));
+    expect(result.conflicts, 0);
+    expect(utf8.decode(remote[path]!.bytes), 'continued typing');
+  });
+
   group('soak', () {
     test(
       'three devices converge without losing written content',

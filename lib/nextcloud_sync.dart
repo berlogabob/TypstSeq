@@ -387,7 +387,45 @@ class NextcloudSync {
     }
   }
 
+  static final _vaultRuns = <Object, Future<void>>{};
+
   Future<SyncResult> sync(
+    Vault vault, {
+    String trigger = 'manual',
+    InitialSyncMode? initialMode,
+    bool pushOnly = false,
+    bool remoteChanged = false,
+  }) async {
+    final key = vault.storage.syncIdentity;
+    final previous = _vaultRuns[key] ?? Future<void>.value();
+    final done = Completer<void>();
+    _vaultRuns[key] = done.future;
+    await previous;
+    final storage = vault.storage;
+    var acquired = false;
+    try {
+      if (storage is AndroidTreeVaultStorage) {
+        await storage.acquireSync();
+        acquired = true;
+      }
+      return await _sync(
+        vault,
+        trigger: trigger,
+        initialMode: initialMode,
+        pushOnly: pushOnly,
+        remoteChanged: remoteChanged,
+      );
+    } finally {
+      try {
+        if (acquired) await (storage as AndroidTreeVaultStorage).releaseSync();
+      } finally {
+        done.complete();
+        if (identical(_vaultRuns[key], done.future)) _vaultRuns.remove(key);
+      }
+    }
+  }
+
+  Future<SyncResult> _sync(
     Vault vault, {
     String trigger = 'manual',
     InitialSyncMode? initialMode,

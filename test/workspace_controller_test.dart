@@ -1173,7 +1173,8 @@ void main() {
       const path = 'daily/2026/10/2026-10-08.typ';
       const body =
           r'\- 08:06 '
-          '\nJournal text to keep\n';
+          '\n';
+      expect(utf8.encode(body), hasLength(10));
       await Vault.withStorage(storage).ensureCreated();
       await storage.writeText(path, body);
       await controller.openVault(
@@ -1197,6 +1198,17 @@ void main() {
       expect(await database.select(database.outboxEntries).get(), hasLength(1));
       expect(await controller.readNote(path), controller.source);
       expect(await database.select(database.revisions).get(), hasLength(1));
+      controller.edit('${controller.source}typed after open');
+      expect(await controller.save(), isTrue);
+      expect(await storage.readText(snapshots.single.path), body);
+      expect(await storage.readText(path), endsWith('typed after open'));
+      expect(
+        (await storage.list(recursive: true)).where(
+          (file) =>
+              file.path.startsWith('.tylog/undo/') && file.path.endsWith(path),
+        ),
+        hasLength(1),
+      );
     },
   );
 

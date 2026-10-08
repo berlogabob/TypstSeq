@@ -81,12 +81,14 @@ class TaskFieldList extends StatelessWidget {
         ),
       Flexible(
         child: ListView(
+          padding: EdgeInsets.zero,
           shrinkWrap: true,
           children: [
             if (field == 'priority')
               for (final (i, priority) in taskPriorities.indexed)
                 ListTile(
                   key: Key('autocomplete-task-${taskPriorityCommands[i]}'),
+                  minTileHeight: 48,
                   dense: true,
                   title: Text(priority),
                   selected: highlighted == i,
@@ -95,6 +97,7 @@ class TaskFieldList extends StatelessWidget {
             else if (field == 'repeat')
               for (final (i, repeat) in taskRepeats.indexed)
                 ListTile(
+                  minTileHeight: 48,
                   dense: true,
                   title: Text(repeat),
                   selected: highlighted == i,
@@ -103,6 +106,7 @@ class TaskFieldList extends StatelessWidget {
             else
               for (final (i, date) in dates.indexed)
                 ListTile(
+                  minTileHeight: 48,
                   dense: true,
                   title: Text(isoDay(date)),
                   subtitle: date.hour != 0 || date.minute != 0

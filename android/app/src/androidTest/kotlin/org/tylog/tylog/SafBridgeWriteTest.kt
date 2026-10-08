@@ -92,6 +92,28 @@ class SafBridgeWriteTest {
         return value
     }
 
+    @Test
+    fun syncLeaseSerializesEnginesAndReleasesOnDispose() {
+        val first = newBridge()
+        val second = newBridge()
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            first.call("acquireSync")
+            val waiting = executor.submit { second.call("acquireSync") }
+            Thread.sleep(100)
+            assertTrue("second engine entered an active sync", !waiting.isDone)
+            first.dispose()
+            waiting.get(5, TimeUnit.SECONDS)
+            second.call("releaseSync")
+            first.call("releaseSync") // An old owner cannot release its successor.
+            val third = newBridge()
+            third.call("acquireSync")
+            third.call("releaseSync")
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
     private fun SafBridge.write(path: String, content: String) {
         call("write", path, mapOf("bytes" to content.toByteArray()))
     }

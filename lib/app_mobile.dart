@@ -364,6 +364,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get rebuilding => workspace.rebuilding;
   double? get rebuildProgress => workspace.rebuildProgress;
 
+  final _statusPillBounds = GlobalKey();
+  final _taskClockBounds = GlobalKey();
   final _captureFocus = FocusNode();
   final _todayStorage = PageStorageBucket();
   String? _timestampCapturePath;
@@ -4590,6 +4592,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'normal' => TyLogRichEditor(
+        popupBottomY: () {
+          final bounds = [_statusPillBounds, _taskClockBounds]
+              .map((key) => key.currentContext?.findRenderObject())
+              .whereType<RenderBox>();
+          if (bounds.isEmpty) return null;
+          return bounds
+              .map((box) => box.localToGlobal(Offset.zero).dy)
+              .reduce((a, b) => a < b ? a : b);
+        },
         focusNode: _captureFocus,
         controller: richController,
         onInsert: _showMagicMenu,
@@ -4884,6 +4895,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Material(
+            key: interactive ? _taskClockBounds : null,
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             elevation: 2,
             borderRadius: BorderRadius.circular(kRadiusLarge),
@@ -4945,6 +4957,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               )
             : const SizedBox.shrink(key: ValueKey('status-none'));
         return AnimatedSwitcher(
+          key: error ? null : _statusPillBounds,
           duration: const Duration(milliseconds: 200),
           child: openFailed == error
               ? banner

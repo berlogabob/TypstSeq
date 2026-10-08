@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 import 'package:tylog_core/index_donor.dart';
 import 'package:tylog_core/maintenance.dart';
@@ -338,6 +340,53 @@ class Vault {
     return id;
   }
 
+  String _historyPath(String path) =>
+      '.tylog/local-history/${sha256.convert(utf8.encode(path))}';
+
+  Future<void> rememberLocalRevision(String path, String hash) async {
+    // Immutable receipts survive simultaneous typing and upload snapshots.
+    // ponytail: retain hashes indefinitely; move to the revision DB when background sync opens it.
+    final marker = '${_historyPath(path)}/$hash';
+    if (!await storage.exists(marker)) await storage.writeText(marker, '');
+  }
+
+  Future<bool> hasLocalRevision(String path, String hash) async {
+    if (!path.endsWith('.typ')) return false;
+    if (await storage.exists('${_historyPath(path)}/$hash')) return true;
+    // Existing immutable revisions cover edits made before hash receipts existed.
+    for (final file in await storage.list(
+      path: '_system/revisions',
+      recursive: true,
+    )) {
+      if (file.isDirectory || !file.path.endsWith('.json')) continue;
+      final text = await storage.readText(file.path);
+      try {
+        final envelope = jsonDecode(text) as Map;
+        for (final row in [
+          envelope['revision'],
+          ...?envelope['history'] as List?,
+        ]) {
+          final payload =
+              jsonDecode((row as Map)['payloadJson'] as String) as Map;
+          final attributes =
+              jsonDecode(payload['attributesJson'] as String) as Map;
+          if (attributes['path'] == path &&
+              sha256
+                      .convert(utf8.encode(payload['content'] as String))
+                      .toString() ==
+                  hash) {
+            return true;
+          }
+        }
+      } on FormatException {
+        continue;
+      } on TypeError {
+        continue;
+      }
+    }
+    return false;
+  }
+
   Future<void> saveNote(String path, String text) async {
     if (path.endsWith('.typ') && text.trim().isEmpty) {
       // Refusing the write protects a real note from being blanked. It also
@@ -357,6 +406,9 @@ class Vault {
         return;
       }
       throw ArgumentError('A TyLog note cannot be empty');
+    }
+    if (path.endsWith('.typ') && await storage.exists(path)) {
+      await rememberLocalRevision(path, await storage.hash(path));
     }
     final template = emptyDailyTemplate(path);
     if (template != null) {

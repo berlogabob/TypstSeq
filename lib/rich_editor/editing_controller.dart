@@ -936,6 +936,10 @@ class TyLogEditingController extends TextEditingController {
     }
   }
 
+  final taskStripHeights = <String, double>{};
+
+  void refreshTaskStripLayout() => notifyListeners();
+
   void _updateTaskSources(String source) {
     final calls = {
       for (final call in locateTypstCalls(source, names: const {'tylog.task'}))
@@ -1241,6 +1245,9 @@ class TyLogEditingController extends TextEditingController {
       final block = document.blocks[i];
       final reserveStrip =
           interactive && i > 0 && _taskHasStrip(document.blocks[i - 1]);
+      final stripHeight = reserveStrip
+          ? (taskStripHeights[document.blocks[i - 1].id] ?? 48) + 2
+          : 0.0;
       if (taskBuilder != null && block.style == TyLogBlockStyle.taskLine) {
         children.add(
           WidgetSpan(
@@ -1256,7 +1263,7 @@ class TyLogEditingController extends TextEditingController {
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: Padding(
-              padding: EdgeInsets.only(top: reserveStrip ? 128 : 0),
+              padding: EdgeInsets.only(top: stripHeight),
               child: _ProtectedChip(
                 label: block.protectedLabel ?? 'Custom Typst',
                 block: true,
@@ -1365,9 +1372,7 @@ class TyLogEditingController extends TextEditingController {
                 baseline: TextBaseline.alphabetic,
                 child: Padding(
                   padding: EdgeInsets.only(
-                    top: reserveStrip && identical(part, block.parts.first)
-                        ? 128
-                        : 0,
+                    top: identical(part, block.parts.first) ? stripHeight : 0,
                   ),
                   child: isImage
                       ? _InlineImage(
@@ -1415,12 +1420,16 @@ class TyLogEditingController extends TextEditingController {
                 part.text.isNotEmpty;
             final leading = reserveText ? part.text.characters.first.length : 0;
             if (reserveText) {
-              // Leading above this line makes room even after a single source newline.
+              // Leading splits above and below the baseline, so reserve twice the strip height.
               _addTextSpans(
                 children,
                 part.text.substring(0, leading),
                 global,
-                style: partStyle.copyWith(height: 16),
+                style: partStyle.copyWith(
+                  height:
+                      (partStyle.height ?? 1.55) +
+                      2 * stripHeight / (partStyle.fontSize ?? 16),
+                ),
                 composing: withComposing ? value.composing : TextRange.empty,
               );
             }

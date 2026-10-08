@@ -416,6 +416,9 @@ extension _WebDavClient on NextcloudSync {
     required _RemoteFile? remote,
     List<int>? bytes,
   }) async {
+    if (path.endsWith('.typ')) {
+      await Vault.withStorage(storage).rememberLocalRevision(path, localHash);
+    }
     final length = bytes?.length ?? (await storage.stat(path))?.size ?? 0;
     if (bytes == null && length > 10 * 1024 * 1024) {
       final source = storage.openRead(path);

@@ -387,6 +387,23 @@ extension _PathSync on NextcloudSync {
           unresolvedConflict = null;
           verifiedRevision = true;
         }
+        if (!isMachineRevisionPath(path)) {
+          final remoteHash = await _sha256(captured.file);
+          final latest = (await _loadSyncState(vault)).cursors[unorm.nfc(path)];
+          if ((previous?.remoteConfirmed == false &&
+                  remoteHash == previous?.localSha256) ||
+              (latest?.remoteConfirmed == false &&
+                  remoteHash == latest?.localSha256) ||
+              (latest?.remoteConfirmed == false &&
+                  latest?.remoteEtag != null &&
+                  NextcloudSync._normEtag(captured.etag) ==
+                      NextcloudSync._normEtag(latest!.remoteEtag)) ||
+              await vault.hasLocalRevision(path, remoteHash)) {
+            await _discardConflictsForPath(vault, path);
+            unresolvedConflict = null;
+            adoptRemoteConflict = true;
+          }
+        }
         final winner = fastForwardWinner(
           local: bytes,
           remote: await captured.file.readAsBytes(),
@@ -597,11 +614,35 @@ extension _PathSync on NextcloudSync {
           remoteFile: remoteFile,
         );
         observedRemoteEtag = captured.etag;
-        if (await _sha256(captured.file) == localHash) {
+        final remoteHash = await _sha256(captured.file);
+        final latest = (await _loadSyncState(vault)).cursors[unorm.nfc(path)];
+        if (remoteHash == localHash) {
           await captured.file.delete();
           skipped++;
           repaired++;
           reason = 'same-content';
+        } else if ((previous?.remoteConfirmed == false &&
+                remoteHash == previous?.localSha256) ||
+            (latest?.remoteConfirmed == false &&
+                remoteHash == latest?.localSha256) ||
+            (latest?.remoteConfirmed == false &&
+                latest?.remoteEtag != null &&
+                NextcloudSync._normEtag(captured.etag) ==
+                    NextcloudSync._normEtag(latest!.remoteEtag)) ||
+            await vault.hasLocalRevision(path, remoteHash)) {
+          await captured.file.delete();
+          action = SyncAction.upload;
+          await snapshotForUpload();
+          uploadedRemoteEtag = await _uploadStorage(
+            path,
+            vault.storage,
+            localHash: localHash!,
+            remote: remoteFile,
+            bytes: localBytes,
+          );
+          uploadedRemoteTime = DateTime.now().toUtc();
+          uploaded++;
+          reason = 'local-newer';
         } else if (await _sameImageDifferentMetadata(
           vault,
           path,

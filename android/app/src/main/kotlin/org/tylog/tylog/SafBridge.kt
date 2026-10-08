@@ -22,6 +22,7 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.withLock
 
@@ -53,6 +54,7 @@ class SafBridge(
         // the one path both engines write by design, so it surfaced there first,
         // but the same window applies to any note.
         private val storageLock = ReentrantReadWriteLock(true)
+        private val syncLocks = ConcurrentHashMap<String, Semaphore>()
 
         // Shared for the same reason: a write through one instance mints a new
         // document id, and an unshared cache leaves the other instance holding
@@ -118,6 +120,8 @@ class SafBridge(
     // Reads fan out; mutations stay on one thread.
     private val readExecutor = Executors.newFixedThreadPool(4)
     private val writeExecutor = Executors.newSingleThreadExecutor()
+    private val syncExecutor = Executors.newSingleThreadExecutor()
+    private val heldSyncLocks = mutableMapOf<String, Semaphore>()
 
     // ...but a mutation must still never be *observed* half-done, which is
     // what the old single executor guaranteed for free. writeAtomic renames
@@ -181,6 +185,33 @@ class SafBridge(
                     null,
                 )
             }
+            return
+        }
+
+        if (call.method == "acquireSync") {
+            val uri = call.argument<String>("uri") ?: error("Missing tree URI")
+            val lock = syncLocks.computeIfAbsent(uri) { Semaphore(1, true) }
+            syncExecutor.execute {
+                try {
+                    lock.acquire()
+                    synchronized(heldSyncLocks) {
+                        if (disposed) {
+                            lock.release()
+                        } else {
+                            heldSyncLocks[uri] = lock
+                            postMain { result.success(null) }
+                        }
+                    }
+                } catch (_: InterruptedException) {
+                    postMain { result.error("sync_cancelled", "Sync engine closed", null) }
+                }
+            }
+            return
+        }
+        if (call.method == "releaseSync") {
+            val uri = call.argument<String>("uri") ?: error("Missing tree URI")
+            synchronized(heldSyncLocks) { heldSyncLocks.remove(uri)?.release() }
+            result.success(null)
             return
         }
 
@@ -400,7 +431,12 @@ class SafBridge(
     }
 
     fun dispose() {
-        disposed = true
+        synchronized(heldSyncLocks) {
+            disposed = true
+            heldSyncLocks.values.forEach { it.release() }
+            heldSyncLocks.clear()
+        }
+        syncExecutor.shutdownNow()
         pendingPick = null
         channel.setMethodCallHandler(null)
         mainHandler.removeCallbacksAndMessages(null)

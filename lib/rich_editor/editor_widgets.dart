@@ -10,8 +10,10 @@ class TyLogRichEditor extends StatefulWidget {
     this.onCommandSelected,
     this.onCreateNote,
     this.onSelectMention,
+    this.popupBottomY,
   });
 
+  final double? Function()? popupBottomY;
   final TyLogEditingController controller;
   final FocusNode? focusNode;
   final Future<void> Function() onInsert;
@@ -130,6 +132,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   int _renderedWindowStart = 0;
   String? _taskField;
   String? _taskFieldBlock;
+  int _taskFieldOffset = 0;
   final TextEditingController _dateInput = TextEditingController();
   final FocusNode _dateFocus = FocusNode();
   List<DateTime> get _dateCandidates =>
@@ -445,6 +448,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (field) {
       _taskField = command == 'deadline' ? 'scheduled' : command;
       _taskFieldBlock = blockId;
+      final range = c.document._blockAt(start, preferPrevious: true);
+      _taskFieldOffset = start - (range?.start ?? 0);
       _dateInput.clear();
     } else {
       _cancelAutocomplete();
@@ -511,7 +516,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       return false;
     }
     c.selection = TextSelection.collapsed(
-      offset: c.document._ranges[index].start + 2,
+      offset:
+          c.document._ranges[index].start +
+          _taskFieldOffset.clamp(
+            2,
+            c.document.blocks[index].visibleText.length,
+          ),
     );
     return true;
   }
@@ -621,20 +631,32 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               : (_taskField == 'repeat' || _taskField == 'priority')
               ? 4
               : _taskField != null
-              ? 1 + math.max(1, _dateCandidates.length)
+              ? 1 + _dateCandidates.length
               : math.max(1, state.taskItems.length + state.commandItems.length);
-          final viewport = Size(
-            overlay.size.width,
-            overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
+          final editorBox =
+              _editorKey.currentContext!.findRenderObject()! as RenderBox;
+          final editorBottom = editorBox
+              .localToGlobal(
+                Offset(0, editorBox.size.height),
+                ancestor: overlay,
+              )
+              .dy;
+          final safeTop = MediaQuery.paddingOf(context).top;
+          final bottom = math.min(
+            math.min(
+              overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
+              editorBottom,
+            ),
+            widget.popupBottomY?.call() ?? overlay.size.height,
           );
           final rect = autocompletePopupRect(
-            caret,
-            viewport,
+            caret.shift(Offset(0, -safeTop)),
+            Size(overlay.size.width, math.max(0, bottom - safeTop)),
             Size(
               320,
               _autocompleteRowHeight * math.min(count, _autocompleteMaxVisible),
             ),
-          );
+          ).shift(Offset(0, safeTop));
           return Positioned.fromRect(
             rect: rect,
             child: TextFieldTapRegion(
@@ -669,12 +691,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     }
     return ListView.builder(
       key: const Key('autocomplete-mention-list'),
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       itemCount: state.mentionItems.length,
       itemBuilder: (context, index) {
         final item = state.mentionItems[index];
         return ListTile(
           key: Key('autocomplete-mention-${item.id}'),
+          minTileHeight: 48,
           dense: true,
           tileColor: index == state.highlighted
               ? Theme.of(context).colorScheme.surfaceContainerHighest
@@ -711,6 +735,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     }
     return ListView.builder(
       key: const Key('autocomplete-command-list'),
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       itemCount: state.taskItems.length + state.commandItems.length,
       itemBuilder: (context, index) {
@@ -718,6 +743,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           final command = state.taskItems[index];
           return ListTile(
             key: Key('autocomplete-task-$command'),
+            minTileHeight: 48,
             dense: true,
             selected: state.highlighted == index,
             leading: const Icon(Icons.task_alt),
@@ -729,6 +755,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         final display = kMagicActionDisplay[action];
         return ListTile(
           key: Key('autocomplete-command-${action.name}'),
+          minTileHeight: 48,
           dense: true,
           tileColor: index == state.highlighted
               ? Theme.of(context).colorScheme.surfaceContainerHighest
@@ -877,7 +904,17 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 18,
                 18,
                 18,
-                widget.controller.document.blocks.any(_taskHasStrip) ? 140 : 18,
+                widget.controller.document.blocks.isNotEmpty &&
+                        _taskHasStrip(widget.controller.document.blocks.last)
+                    ? (widget.controller.taskStripHeights[widget
+                                  .controller
+                                  .document
+                                  .blocks
+                                  .last
+                                  .id] ??
+                              48) +
+                          2
+                    : 18,
               ),
             )
           // The windowed field has no decorator: InputDecorator asks for a
@@ -1196,6 +1233,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 return ListenableBuilder(
                   listenable: widget.controller,
                   builder: (context, _) => Stack(
+                    clipBehavior: Clip.hardEdge,
                     children: [
                       Positioned.fill(
                         child: SizedBox(
@@ -1213,6 +1251,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                         child: Flow(
                           delegate: _TaskStripFlow(
                             controller: widget.controller,
+                            window: _window,
                             editable: () =>
                                 _editableIn(_editorKey.currentContext),
                             origin: () =>
@@ -2851,11 +2890,13 @@ bool _taskHasStrip(TyLogBlock block) {
 class _TaskStripFlow extends FlowDelegate {
   _TaskStripFlow({
     required this.controller,
+    required this.window,
     required this.editable,
     required this.origin,
     required super.repaint,
   });
   final TyLogEditingController controller;
+  final TyLogWindowController? window;
   final RenderEditable? Function() editable;
   final RenderBox? Function() origin;
 
@@ -2873,12 +2914,28 @@ class _TaskStripFlow extends FlowDelegate {
     var child = 0;
     for (final range in controller.document._ranges) {
       if (!_taskHasStrip(controller.document.blocks[range.index])) continue;
-      final caret = field.getLocalRectForCaret(TextPosition(offset: range.end));
+      final offset = range.end - (window?.start ?? 0);
+      if (offset < 0 || offset > field.plainText.length) {
+        child++;
+        continue;
+      }
+      final caret = field.getLocalRectForCaret(TextPosition(offset: offset));
       final point = box.globalToLocal(field.localToGlobal(caret.bottomLeft));
       final size = context.getChildSize(child)!;
+      final block = controller.document.blocks[range.index];
+      if (controller.taskStripHeights[block.id] != size.height) {
+        controller.taskStripHeights[block.id] = size.height;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (box.attached) controller.refreshTaskStripLayout();
+        });
+      }
       final beside = point.dx + 8 + size.width <= context.size.width - 18;
+      final current = child++;
+      if (point.dy <= 0 || point.dy - caret.height >= context.size.height) {
+        continue;
+      }
       context.paintChild(
-        child++,
+        current,
         transform: Matrix4.translationValues(
           beside ? point.dx + 8 : 18,
           beside ? point.dy - caret.height : point.dy + 2,

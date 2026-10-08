@@ -58,6 +58,14 @@ class AndroidTreeVaultStorage extends VaultStorage {
   final String uri;
   final String name;
 
+  @override
+  String get syncIdentity => uri;
+
+  Future<void> acquireSync() =>
+      channel.invokeMethod<void>('acquireSync', args());
+  Future<void> releaseSync() =>
+      channel.invokeMethod<void>('releaseSync', args());
+
   Future<bool> hasAccess() async =>
       await channel.invokeMethod<bool>('hasAccess', args()) ?? false;
 

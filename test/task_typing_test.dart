@@ -65,6 +65,140 @@ void main() {
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
+  testWidgets('A24 popups show rows above keyboard and preserve date caret', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 40);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.reset);
+    final c = editor('#tylog.task(id: "t", text: "Call", priority: "high")');
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.only(top: 200),
+            child: TyLogRichEditor(controller: c, onInsert: () async {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('task-chip-t-priority')));
+    await tester.pump();
+    final popup = tester.getRect(find.byKey(const Key('autocomplete-popup')));
+    final first = tester.getRect(
+      find.byKey(const Key('autocomplete-task-urgent')),
+    );
+    final last = tester.getRect(find.byKey(const Key('autocomplete-task-c')));
+    expect(first.top, popup.top);
+    expect(last.bottom, lessThanOrEqualTo(popup.bottom));
+    await tester.tap(find.byKey(const Key('autocomplete-task-c')));
+    await tester.pump();
+    type(c, '${c.text} /due');
+    await tester.pump();
+    final command = tester.getRect(
+      find.byKey(const Key('autocomplete-task-due')),
+    );
+    final commandPopup = tester.getRect(
+      find.byKey(const Key('autocomplete-popup')),
+    );
+    expect(command.top, commandPopup.top);
+    expect(command.bottom, lessThanOrEqualTo(commandPopup.bottom));
+    expect(commandPopup.bottom, lessThanOrEqualTo(500));
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('task-date-input')), 'fri');
+    await tester.pump();
+    final candidate = find.descendant(
+      of: find.byKey(const Key('autocomplete-popup')),
+      matching: find.byType(ListTile),
+    );
+    expect(candidate, findsWidgets);
+    expect(
+      tester.getRect(candidate.first).bottom,
+      lessThanOrEqualTo(
+        tester.getRect(find.byKey(const Key('autocomplete-popup'))).bottom,
+      ),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(c.selection.extentOffset, c.text.length);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('A24 consecutive tasks reserve only chip height', (tester) async {
+    final c = editor(
+      '#tylog.task(id: "a", text: "First", priority: "urgent")\n#tylog.task(id: "b", text: "Second")',
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: c, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    final editable = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    final first = editable.getLocalRectForCaret(const TextPosition(offset: 0));
+    final second = editable.getLocalRectForCaret(
+      TextPosition(offset: c.text.indexOf('Second')),
+    );
+    expect(second.top - first.top, lessThan(100));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('A24 scrolled-out task strip cannot paint below the divider', (
+    tester,
+  ) async {
+    final c = editor(
+      '#tylog.task(id: "a", text: "First", priority: "urgent")\n${List.filled(30, 'paragraph').join('\n')}',
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              const SizedBox(height: 100),
+              const Divider(),
+              Expanded(
+                child: TyLogRichEditor(controller: c, onInsert: () async {}),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final textField = tester.widget<TextField>(
+      find.byKey(const Key('rich-journal-editor')),
+    );
+    final field = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    final end = field.getLocalRectForCaret(
+      TextPosition(offset: c.text.indexOf('First') + 5),
+    );
+    textField.scrollController!.jumpTo(end.bottom + 20);
+    await tester.pump();
+    final chip = find.byKey(const Key('task-chip-a-priority'));
+    final bounds = tester.getRect(chip);
+    final editorTop = tester
+        .getRect(find.byKey(const Key('rich-journal-editor')))
+        .top;
+    final point = Offset(bounds.center.dx, editorTop + 2);
+    final hits = tester.hitTestOnBinding(point).path;
+    final render = tester.renderObject(chip);
+    expect(hits.any((hit) => identical(hit.target, render)), isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   test('all status glyphs edit, demote, undo, round-trip and compile', () {
     for (final (status, glyph) in [
       ('todo', '☐'),
@@ -382,6 +516,7 @@ void main() {
       );
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
+      expect(c.selection.extentOffset, c.text.length);
       check(c);
       await tester.pumpWidget(const SizedBox.shrink());
     });

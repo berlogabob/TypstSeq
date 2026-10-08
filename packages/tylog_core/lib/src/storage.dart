@@ -32,6 +32,8 @@ const indexDirtyPath = '.tylog/index_dirty';
 final _writeMarkerRandom = Random.secure();
 
 abstract class VaultStorage {
+  Object get syncIdentity => this;
+
   /// Persist before writing: unique markers survive crashes and a scanner
   /// only removes writes committed before its scan started.
   Future<String?> markIndexDirty(String path) async {
@@ -84,6 +86,9 @@ class LocalVaultStorage extends VaultStorage {
   LocalVaultStorage(Directory root) : _root = root.absolute;
 
   final Directory _root;
+
+  @override
+  String get syncIdentity => _root.path;
 
   String _path(String path) {
     final relative = validateVaultPath(path, allowEmpty: true);

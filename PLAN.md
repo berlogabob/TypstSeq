@@ -48,3 +48,5 @@ Earlier v5 verification: automated analysis, 66 tests, native macOS integration,
 - EmbeddingGemma phone trial at 256 dimensions before switching models.
 - Deferred: image captions/figure, text wrap and anchors; task session-history view; converting imported checklists to tasks; quick-add date parsing.
 - `wip/incremental-index` is parked; the macOS app is still on an old build.
+
+- Sync upload-hash receipts added in 0.12.1 grow without bound; prune them.

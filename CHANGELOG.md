@@ -3,6 +3,22 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.12.1+134
+
+### Fixed
+
+- **No false sync conflict while typing.** A second sync run could start
+  before the first had saved its state and then report a conflict against
+  this device's own upload, leaving the page unsynced until resolved by hand.
+  Runs for one vault no longer overlap, and a server copy that matches this
+  device's last upload or an earlier local version is never a conflict.
+- **Task popups show their rows.** The command list, date suggestions and
+  priority list were blank or cut off with the keyboard open; the list now
+  sizes to its content and opens above the line when there is no room below.
+- The caret stays at the end of the task text after picking a date.
+- No blank gap between task lines that have chips, and chips of a
+  scrolled-out line no longer paint over the page header.
+
 ## 0.12.0+133
 
 ### Added
