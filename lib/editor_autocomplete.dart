@@ -309,3 +309,19 @@ List<MentionSuggestion> orderMentionSuggestions(
   ...items.where((item) => !item.create),
   ...items.where((item) => item.create),
 ];
+
+const taskCommands = [
+  'todo',
+  'task',
+  'doing',
+  'done',
+  'cancel',
+  'a',
+  'b',
+  'c',
+  'urgent',
+  'due',
+  'scheduled',
+  'deadline',
+  'repeat',
+];

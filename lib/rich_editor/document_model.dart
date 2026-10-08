@@ -1049,6 +1049,52 @@ class TyLogDocument {
     return isTask ? _ranges[hit.index + count].end : _ranges[next].start;
   }
 
+  int convertTaskLine(int offset, String id, {int prefixLength = 0}) {
+    final hit = _blockAt(offset, preferPrevious: true);
+    if (hit == null) return offset;
+    final block = blocks[hit.index];
+    if (block.style != TyLogBlockStyle.paragraph) return offset;
+    final units = _units(block.parts);
+    final local = (offset - hit.start).clamp(0, units.length);
+    var start = local;
+    var end = local;
+    while (start > 0 && units[start - 1].code != 10) {
+      start--;
+    }
+    while (end < units.length && units[end].code != 10) {
+      end++;
+    }
+    final line = units.sublist(start + prefixLength, end);
+    if (line.any((unit) => unit.atom != null)) {
+      throw const FormatException(
+        'Task text cannot contain inline Typst nodes.',
+      );
+    }
+    final before = units.sublist(0, start);
+    final after = units.sublist(end);
+    if (before.isNotEmpty) before.removeLast();
+    if (after.isNotEmpty) after.removeAt(0);
+    final task = TyLogDocument.parse(
+      taskSnippet(
+        id: id,
+        text: String.fromCharCodes(line.map((unit) => unit.code)),
+      ),
+    ).blocks.single;
+    final replacements = [
+      if (before.isNotEmpty) _blockFrom(block, before),
+      task,
+      if (after.isNotEmpty) _blockFrom(block, after),
+    ];
+    for (final replacement in replacements) {
+      replacement.separator = '\n\n';
+    }
+    replacements.last.separator = block.separator;
+    blocks.replaceRange(hit.index, hit.index + 1, replacements);
+    return _ranges[hit.index + (before.isEmpty ? 0 : 1)].start +
+        2 +
+        (local - start - prefixLength).clamp(0, line.length);
+  }
+
   int insertNewline(int offset) {
     final hit = _blockAt(offset, preferPrevious: true);
     if (hit == null) return offset;
@@ -1329,8 +1375,10 @@ class _AutocompleteState {
     required this.commandItems,
     required this.highlighted,
     required this.loading,
+    this.taskItems = const [],
   });
 
+  final List<String> taskItems;
   final AutocompleteTrigger trigger;
   final List<MentionSuggestion> mentionItems;
   final List<MagicAction> commandItems;
@@ -1343,6 +1391,7 @@ class _AutocompleteState {
     commandItems: commandItems,
     highlighted: highlighted ?? this.highlighted,
     loading: loading,
+    taskItems: taskItems,
   );
 }
 

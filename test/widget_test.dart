@@ -28,6 +28,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog/widgets/task_clock.dart';
+import 'package:tylog/widgets/task_checkbox.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
@@ -137,6 +138,69 @@ Future<void> _tapTaskTimer(
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets(
+    'Doing in the editor stops a running task in another vault note',
+    (tester) async {
+      final (storage, home) = await _mountTaskTimers(tester);
+      await storage.writeText(
+        'notes/b.typ',
+        applyTaskStatus(
+          await storage.readText('notes/b.typ'),
+          'b',
+          'doing',
+          DateTime.now().toUtc(),
+        ),
+      );
+      home.workspace.index = await tester.runAsync(
+        () => scanVaultStorage(storage),
+      );
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      unawaited(
+        home.richController.setTaskStatus(
+              home.richController.document.blocks.first.id,
+              'doing',
+            )
+            as Future<void>,
+      );
+      await tester.pumpAndSettle();
+      final a = home.richController.document.toSource() as String;
+      final b = await storage.readText('notes/b.typ');
+      expect(taskField(a, 'status'), 'doing');
+      expect(taskClocked(a, 'a').single.isRunning, isTrue);
+      expect(taskField(b, 'status'), 'todo');
+      expect(taskClocked(b, 'b').single.isRunning, isFalse);
+      expect(b, contains('other: "Кириллица"'));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'list checkbox uses repeat completion and stops the Doing clock',
+    (tester) async {
+      final (storage, home) = await _mountTaskTimers(
+        tester,
+        clocked: [ClockEntry(start: DateTime.now().toUtc().toIso8601String())],
+      );
+      final row = find
+          .ancestor(of: find.text('Task a'), matching: find.byType(ListTile))
+          .first;
+      await tester.tap(
+        find.descendant(of: row, matching: find.byType(TaskCheckbox)),
+      );
+      await tester.pumpAndSettle();
+      final source = await storage.readText('notes/a.typ');
+      expect(taskField(source, 'status'), 'todo');
+      expect(taskClocked(source, 'a').single.isRunning, isFalse);
+      expect(
+        source,
+        matches(RegExp(r'completed: \("2026-10-01T09:00:00Z",\s*"[^"]+",\)')),
+      );
+      expect(home.richController.document.toSource(), source);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets(
     'task clock start writes an open UTC session and shows the floating pill',
     (tester) async {

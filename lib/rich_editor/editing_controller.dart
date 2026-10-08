@@ -6,6 +6,8 @@ class TyLogEditingController extends TextEditingController {
     required ValueChanged<String> onSourceChanged,
     required ValueChanged<Object> onError,
     required ValueChanged<String> onProtectedTap,
+    Future<String> Function(String text)? nextTaskId,
+    Future<void> Function(String taskId)? beforeTaskDoing,
     Future<Uint8List?> Function(String path)? imageResolver,
     String? Function(String target)? resolveKind,
     Future<String> Function(String path, Uint8List bytes)? imageWriter,
@@ -17,6 +19,8 @@ class TyLogEditingController extends TextEditingController {
          imageResolver,
          resolveKind,
          imageWriter,
+         nextTaskId,
+         beforeTaskDoing,
        );
 
   TyLogEditingController._(
@@ -27,10 +31,19 @@ class TyLogEditingController extends TextEditingController {
     this.imageResolver,
     this.resolveKind,
     this.imageWriter,
+    this.nextTaskId,
+    this.beforeTaskDoing,
   ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
   }
+
+  final Future<String> Function(String text)? nextTaskId;
+  final Future<void> Function(String taskId)? beforeTaskDoing;
+  final Set<TyLogBlock> _pendingTasks = {};
+  TextEditingValue Function(TextEditingValue)? _rebaseTaskIme;
+
+  VoidCallback? onAutocompleteEnter;
 
   TyLogDocument document;
   final ValueChanged<String> onSourceChanged;
@@ -70,9 +83,18 @@ class TyLogEditingController extends TextEditingController {
       selection.isValid ? document.plainText(selection) : '';
   String protectedSource(String id) => document.sourceFor(id);
 
+  @override
+  void dispose() {
+    _pendingTasks.clear();
+    onAutocompleteEnter = null;
+    super.dispose();
+  }
+
   void loadSource(String source) {
     _updating = true;
     _imageCache.clear();
+    _pendingTasks.clear();
+    _rebaseTaskIme = null;
     document = TyLogDocument.parse(source);
     value = TextEditingValue(
       text: document.visibleText,
@@ -88,6 +110,12 @@ class TyLogEditingController extends TextEditingController {
 
   void _handleValue() {
     if (_updating) return;
+    final rebased = _rebaseTaskIme?.call(value);
+    if (rebased != null && rebased != value) {
+      _updating = true;
+      value = rebased;
+      _updating = false;
+    }
     final next = value;
     if (next.text == _lastValue.text) {
       if (_compositionStart != null && !_isComposing(next)) {
@@ -95,6 +123,7 @@ class TyLogEditingController extends TextEditingController {
         return;
       }
       _lastValue = next;
+      _convertTypedTask();
       return;
     }
     // Keep the undo snapshot lazy; copying the whole document on every
@@ -107,6 +136,14 @@ class TyLogEditingController extends TextEditingController {
     try {
       final change = _replacement(_lastValue.text, next.text);
       if (change.replacement == '\n' && change.start == change.oldEnd) {
+        final submit = onAutocompleteEnter;
+        if (submit != null) {
+          _updating = true;
+          value = _lastValue.copyWith(composing: TextRange.empty);
+          _updating = false;
+          submit();
+          return;
+        }
         snapshotBefore();
         final previousCaret = _lastValue.selection.extentOffset;
         final enterOffset =
@@ -114,6 +151,11 @@ class TyLogEditingController extends TextEditingController {
                 next.selection.extentOffset == previousCaret + 1
             ? previousCaret
             : change.start;
+        final taskHit = document._blockAt(enterOffset, preferPrevious: true);
+        final continueTask =
+            taskHit != null &&
+            document.blocks[taskHit.index].style == TyLogBlockStyle.taskLine &&
+            document.blocks[taskHit.index].visibleText.substring(2).isNotEmpty;
         final offset = document.insertNewline(enterOffset);
         final delinked = _autolinkEmailAt(enterOffset);
         _updating = true;
@@ -128,6 +170,7 @@ class TyLogEditingController extends TextEditingController {
         _compositionStart = null;
         _redo.clear();
         onSourceChanged(source);
+        if (continueTask) unawaited(createTaskLine());
         return;
       }
       if (change.replacement.isEmpty && change.oldEnd - change.start == 1) {
@@ -140,6 +183,7 @@ class TyLogEditingController extends TextEditingController {
             change.start - hit.start >= 0 &&
             change.oldEnd - hit.start <= 2) {
           snapshotBefore();
+          _rebaseTaskIme = null;
           final offset = document.setBlockStyle(
             hit.start + 2,
             TyLogBlockStyle.paragraph,
@@ -360,6 +404,7 @@ class TyLogEditingController extends TextEditingController {
       _compositionStart = null;
       _redo.clear();
       onSourceChanged(source);
+      _convertTypedTask();
     } on FormatException catch (error) {
       // Accept-and-resync — ONLY for the round-trip validation failure (a benign
       // normalization: a char repositioned relative to a list glyph, a
@@ -417,6 +462,7 @@ class TyLogEditingController extends TextEditingController {
       _addUndo(before);
       _redo.clear();
       onSourceChanged(source);
+      _convertTypedTask();
     } catch (error) {
       _restore(before, emit: false);
       _compositionStart = null;
@@ -756,12 +802,227 @@ class TyLogEditingController extends TextEditingController {
     _updating = false;
   });
 
+  String? get currentTaskBlockId {
+    if (!selection.isValid) return null;
+    final hit = document._blockAt(selection.extentOffset, preferPrevious: true);
+    return hit != null &&
+            document.blocks[hit.index].style == TyLogBlockStyle.taskLine
+        ? document.blocks[hit.index].id
+        : null;
+  }
+
+  void _convertTypedTask() {
+    if (isComposing || !selection.isValid || nextTaskId == null) return;
+    final hit = document._blockAt(selection.extentOffset, preferPrevious: true);
+    if (hit == null ||
+        document.blocks[hit.index].style != TyLogBlockStyle.paragraph) {
+      return;
+    }
+    final local = selection.extentOffset - hit.start;
+    final lineStart =
+        text.lastIndexOf(
+          '\n',
+          (selection.extentOffset - 1).clamp(0, text.length),
+        ) +
+        1;
+    final prefix = RegExp(
+      r'^(?:TODO |\[\] |\[ \] )',
+    ).matchAsPrefix(text.substring(lineStart));
+    if (prefix != null && local >= prefix.end) {
+      unawaited(createTaskLine(prefixLength: prefix.end));
+    }
+  }
+
+  Future<void> createTaskLine({int prefixLength = 0}) async {
+    final allocate = nextTaskId;
+    if (allocate == null || !selection.isValid) return;
+    final hit = document._blockAt(selection.extentOffset, preferPrevious: true);
+    if (hit == null) return;
+    final block = document.blocks[hit.index];
+    if (block.style != TyLogBlockStyle.paragraph || !_pendingTasks.add(block)) {
+      return;
+    }
+    final local = selection.extentOffset - hit.start;
+    final start =
+        block.visibleText.lastIndexOf(
+          '\n',
+          (local - 1).clamp(0, block.visibleText.length),
+        ) +
+        1;
+    try {
+      final id = await allocate(
+        block.visibleText.substring(start + prefixLength).split('\n').first,
+      );
+      final index = document.blocks.indexOf(block);
+      if (index < 0 || !_pendingTasks.contains(block)) return;
+      final range = document._ranges[index];
+      final lineEnd = block.visibleText.indexOf('\n', start);
+      final end = lineEnd < 0 ? block.visibleText.length : lineEnd;
+      if (start + prefixLength > end) return;
+      if (prefixLength > 0 &&
+          !RegExp(
+            r'^(?:TODO |\[\] |\[ \] )',
+          ).hasMatch(block.visibleText.substring(start))) {
+        return;
+      }
+      final oldText = text;
+      final oldStart = range.start + start;
+      final oldEnd = range.start + end;
+      final caret = selection.extentOffset;
+      var offset = caret;
+      _format(() {
+        offset = document.convertTaskLine(
+          range.start + start + prefixLength,
+          id,
+          prefixLength: prefixLength,
+        );
+        final taskRange = document._ranges.firstWhere(
+          (r) => taskField(document.blocks[r.index].originalSource, 'id') == id,
+        );
+        offset = caret >= oldStart && caret <= oldEnd
+            ? taskRange.start +
+                  2 +
+                  (caret - oldStart - prefixLength).clamp(
+                    0,
+                    end - start - prefixLength,
+                  )
+            : caret + document.visibleText.length - oldText.length;
+        final canonical = document.visibleText;
+        // Android can send the pre-conversion full text again; rebase its edit onto the task.
+        _rebaseTaskIme = (incoming) {
+          if (!document.blocks.any(
+            (b) =>
+                b.style == TyLogBlockStyle.taskLine &&
+                taskField(b.originalSource, 'id') == id,
+          )) {
+            return incoming;
+          }
+          if (prefixLength == 0 ||
+              !incoming.text.startsWith(
+                oldText.substring(0, oldStart + prefixLength),
+              )) {
+            return incoming;
+          }
+          final edit = _replacement(oldText, incoming.text);
+          int map(int p) => p <= oldStart
+              ? p
+              : p < oldStart + prefixLength
+              ? taskRange.start + 2
+              : p <= oldEnd
+              ? taskRange.start + 2 + p - oldStart - prefixLength
+              : p + canonical.length - oldText.length;
+          if (edit.start < oldStart + prefixLength && edit.oldEnd > oldStart) {
+            return _lastValue;
+          }
+          return TextEditingValue(
+            text: canonical.replaceRange(
+              map(edit.start),
+              map(edit.oldEnd),
+              edit.replacement,
+            ),
+            selection: TextSelection.collapsed(
+              offset: map(incoming.selection.extentOffset).clamp(
+                0,
+                canonical.length + incoming.text.length - oldText.length,
+              ),
+            ),
+          );
+        };
+      }, selectionOffset: () => offset);
+    } catch (error) {
+      onError(error);
+    } finally {
+      _pendingTasks.remove(block);
+    }
+  }
+
+  void _updateTaskSources(String source) {
+    final calls = {
+      for (final call in locateTypstCalls(source, names: const {'tylog.task'}))
+        taskField(call.source, 'id'): call.source,
+    };
+    for (final block in document.blocks.toList()) {
+      if (block.style != TyLogBlockStyle.taskLine) continue;
+      final base = block.dirty ? _serializeBlock(block) : block.originalSource;
+      final updated = calls[taskField(base, 'id')];
+      if (updated != null && updated != base) {
+        document.replaceProtected(block.id, updated);
+      }
+    }
+  }
+
+  Future<void> setTaskStatus(String blockId, String next) async {
+    try {
+      final block = document.blocks.firstWhere((block) => block.id == blockId);
+      final id = taskField(
+        block.dirty ? _serializeBlock(block) : block.originalSource,
+        'id',
+      )!;
+      final current = document;
+      if (next == 'doing' && beforeTaskDoing != null) {
+        await beforeTaskDoing!(id);
+      }
+      if (!identical(current, document)) return;
+      _format(() {
+        _updateTaskSources(
+          applyTaskStatus(
+            document.toSource(),
+            id,
+            next,
+            DateTime.now().toUtc(),
+          ),
+        );
+      });
+    } catch (error) {
+      onError(error);
+    }
+  }
+
+  void setCurrentTaskFields({
+    String? priority,
+    String? recurrence,
+    String? due,
+    String? scheduled,
+  }) {
+    final blockId = currentTaskBlockId;
+    if (blockId == null) return;
+    final block = document.blocks.firstWhere((b) => b.id == blockId);
+    final id = taskField(block.originalSource, 'id')!;
+    _format(() {
+      var source = document.toSource();
+      if (priority != null) {
+        source = setTaskFields(source, id, priority: priority);
+      }
+      if (recurrence != null) {
+        source = setTaskFields(source, id, recurrence: recurrence);
+      }
+      if (due != null) source = setTaskFields(source, id, due: due);
+      if (scheduled != null) {
+        source = setTaskFields(source, id, scheduled: scheduled);
+      }
+      _updateTaskSources(source);
+    });
+  }
+
+  void cycleTaskStatus() {
+    final id = currentTaskBlockId;
+    if (id == null) return;
+    final status = taskField(document.sourceFor(id), 'status');
+    unawaited(
+      setTaskStatus(id, switch (status) {
+        'doing' => 'done',
+        'done' => 'todo',
+        _ => 'doing',
+      }),
+    );
+  }
+
   void toggleTask(String id) {
     final block = document.blocks.firstWhere((block) => block.id == id);
     final base = block.dirty ? _serializeBlock(block) : block.originalSource;
-    final taskId = taskField(base, 'id')!;
-    final next = taskField(base, 'status') == 'done' ? 'todo' : 'done';
-    replaceProtected(id, replaceTaskStatus(base, taskId, next));
+    unawaited(
+      setTaskStatus(id, taskField(base, 'status') == 'done' ? 'todo' : 'done'),
+    );
   }
 
   /// If the caret sits on a taskLine's checkbox glyph (its first two
@@ -781,12 +1042,16 @@ class TyLogEditingController extends TextEditingController {
   }
 
   void undo() {
+    _rebaseTaskIme = null;
+    _pendingTasks.clear();
     if (_undo.isEmpty) return;
     _redo.add(_snapshot());
     _restore(_undo.removeLast());
   }
 
   void redo() {
+    _rebaseTaskIme = null;
+    _pendingTasks.clear();
     if (_redo.isEmpty) return;
     _undo.add(_snapshot());
     _restore(_redo.removeLast());

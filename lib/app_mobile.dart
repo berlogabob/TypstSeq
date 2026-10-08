@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:crypto/crypto.dart';
@@ -246,6 +247,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void>? _shutdownFuture;
   Future<void>? _databaseCloseFuture;
   final _mentionQueryCache = MentionQueryCache();
+  final Set<String> _reservedTaskIds = {};
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   late final TyLogEditingController richController;
@@ -487,6 +489,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       imageResolver: _readAsset,
       imageWriter: (path, bytes) => saveImageCrop(vault!.storage, path, bytes),
       resolveKind: _resolveKind,
+      nextTaskId: (text) async {
+        final opened = vault;
+        final file = note;
+        if (opened == null) throw StateError('No vault is open');
+        final reserved = {
+          ..._reservedTaskIds,
+          for (final call in locateTypstCalls(
+            richController.document.toSource(),
+            names: const {'tylog.task'},
+          ))
+            if (taskField(call.source, 'id') case final String id) id,
+        };
+        _reservedTaskIds.addAll(reserved);
+        final id = await opened.nextTaskId(text, reserved: _reservedTaskIds);
+        _reservedTaskIds.add(id);
+        if (!identical(vault, opened) || note != file) {
+          throw StateError('The vault changed');
+        }
+        return id;
+      },
+      beforeTaskDoing: (id) async {
+        final opened = vault;
+        final file = note!;
+        await _queueClockMutation(() => _stopOtherDoingTasks(file));
+        if (!identical(vault, opened) ||
+            note != file ||
+            (index?.tasks.any(
+                  (t) => t.notePath != file && t.runningClock != null,
+                ) ??
+                false)) {
+          throw StateError('Could not stop the previous task');
+        }
+      },
     );
     workspace = WorkspaceController(
       taskScheduler: taskScheduler,
@@ -623,7 +658,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final current = richController.document;
       final changed =
           incoming.prefix != current.prefix ||
-          incoming.visibleText != current.visibleText;
+          incoming.visibleText != current.visibleText ||
+          !listEquals(
+            locateTypstCalls(
+              workspace.source,
+              names: const {'tylog.task'},
+            ).map((c) => c.source).toList(),
+            locateTypstCalls(
+              current.toSource(validate: false),
+              names: const {'tylog.task'},
+            ).map((c) => c.source).toList(),
+          );
       sourceController.text = workspace.source;
       if (changed) richController.loadSource(workspace.source);
     }
@@ -1887,19 +1932,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!updated) throw StateError('The vault changed');
   });
 
-  Future<void> _setTaskStatus(TaskRef task, String nextStatus) async {
+  Future<void> _stopOtherDoingTasks(String file) async {
+    final now = DateTime.now().toUtc();
+    for (final running
+        in index?.tasks.where((t) => t.runningClock != null).toList() ??
+            <TaskRef>[]) {
+      // Same-note transitions are atomic inside applyTaskStatus.
+      if (running.notePath == file) continue;
+      final updated = await workspace.mutateNote(
+        running.notePath,
+        (source) => applyTaskStatus(source, running.id, 'todo', now),
+      );
+      if (!updated) throw StateError('The vault changed');
+    }
+  }
+
+  Future<void> _setTaskStatus(
+    TaskRef task,
+    String nextStatus,
+  ) => _queueClockMutation(() async {
     if (vault == null) return;
     final file = task.notePath;
     try {
+      if (nextStatus == 'doing') await _stopOtherDoingTasks(file);
       final updated = await workspace.mutateNote(
         file,
-        (source) => task.recurrence != null && nextStatus == 'done'
-            ? completeTaskOccurrence(
-                source,
-                task.id,
-                DateTime.now().toUtc().toIso8601String(),
-              )
-            : replaceTaskStatus(source, task.id, nextStatus),
+        (source) => applyTaskStatus(
+          source,
+          task.id,
+          nextStatus,
+          DateTime.now().toUtc(),
+        ),
       );
       if (!updated && mounted) {
         showSnack(context, 'Could not update that task: the vault changed.');
@@ -1918,7 +1981,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       showSnack(context, 'Could not update that task: $error');
       return;
     }
-  }
+  });
 
   Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
     if (vault == null) return;
@@ -3451,26 +3514,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return;
           }
         }
-        final text = await _askText('Task', initialValue: _selectedText());
-        if (text == null || text.isEmpty) return;
-        if (!mounted) return;
-        final due = await showDatePicker(
-          context: context,
-          firstDate: DateTime(2000),
-          lastDate: DateTime(2100),
-          initialDate: DateTime.now(),
-          helpText: 'Due date (optional)',
-        );
-        final taskId = await vault!.nextTaskId(text);
-        if (!mounted) return;
-        _applyMagic(
-          MagicRequest(
-            action: action,
-            id: taskId,
-            value: text,
-            due: due == null ? null : isoDay(due),
-          ),
-        );
+        if (mode == 'normal') {
+          await richController.createTaskLine();
+        } else {
+          final editor = sourceController;
+          final caret = editor.selection.isValid
+              ? editor.selection.extentOffset
+              : editor.text.length;
+          final start =
+              editor.text.lastIndexOf(
+                '\n',
+                (caret - 1).clamp(0, editor.text.length),
+              ) +
+              1;
+          final lineEnd = editor.text.indexOf('\n', caret);
+          final end = lineEnd < 0 ? editor.text.length : lineEnd;
+          final original = editor.text;
+          final opened = vault!;
+          final text = original.substring(start, end);
+          final taskId = await vault!.nextTaskId(text);
+          if (!mounted ||
+              !identical(vault, opened) ||
+              editor.text != original) {
+            return;
+          }
+          final snippet = taskSnippet(id: taskId, text: text);
+          editor.value = TextEditingValue(
+            text: editor.text.replaceRange(start, end, snippet),
+            selection: TextSelection.collapsed(offset: start + snippet.length),
+          );
+          _queueAutosave();
+        }
         return;
       case MagicAction.time:
         _applyMagic(

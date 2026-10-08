@@ -3,6 +3,30 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.11.9+132
+
+### Added
+
+- **Tasks are typed, not filled in.** `TODO `, `[] ` or `[ ] ` at the start of
+  a line, or `/todo`, turns the line into a task with no dialog. Enter starts
+  the next task; Enter on an empty task returns to plain text.
+- **Commands on a task line:** `/todo` `/doing` `/done` `/cancel`, priority
+  `/a` `/b` `/c` `/urgent`, `/due` and `/scheduled` (`/deadline`), `/repeat`.
+- **Typed dates.** `/due` opens a date field in the popup: type `fri`,
+  `tomorrow`, `завтра`, `15.10` or `+3d` and pick from the list; the calendar
+  icon opens the grid picker.
+- **Ctrl/Cmd+Enter** cycles todo → doing → done. Long-press the checkbox for
+  all four statuses.
+- **Doing runs the timer.** Setting a task to Doing starts its clock; leaving
+  Doing stops it. Starting another task returns the previous one to Todo.
+
+### Fixed
+
+- Ticking a repeating task in the editor records one occurrence instead of
+  ending the repeat.
+- Removing a task's checkbox with Backspace is one undo step that restores
+  the task with all its fields.
+
 ## 0.11.8+131
 
 ### Fixed

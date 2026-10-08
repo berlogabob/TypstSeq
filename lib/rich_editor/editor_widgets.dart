@@ -124,6 +124,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   final ScrollController _windowScroll = ScrollController();
   final GlobalKey _windowFieldKey = GlobalKey();
   int _renderedWindowStart = 0;
+  String? _taskField;
+  String? _taskFieldBlock;
+  final TextEditingController _dateInput = TextEditingController();
+  final FocusNode _dateFocus = FocusNode();
+  List<DateTime> get _dateCandidates =>
+      parseDateWords(_dateInput.text, DateTime.now());
 
   @override
   void initState() {
@@ -131,6 +137,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (debugEnableEditorWindow) _attachWindow();
     focusNode = widget.focusNode ?? FocusNode();
     focusNode.onKeyEvent = _handleKey;
+    _dateFocus.onKeyEvent = _handleKey;
     focusNode.addListener(_focusChanged);
     if (kEnableInlineAutocomplete) {
       widget.controller.addListener(_handleControllerChanged);
@@ -138,11 +145,30 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   void _focusChanged() {
-    if (!focusNode.hasFocus) _cancelAutocomplete();
+    if (!focusNode.hasFocus && _taskField == null) _cancelAutocomplete();
     setState(() {});
   }
 
+  bool _checkboxSelection() {
+    final c = widget.controller;
+    if (!c.selection.isValid) return false;
+    final hit = c.document._blockAt(c.selection.start, preferPrevious: true);
+    return hit != null &&
+        c.document.blocks[hit.index].style == TyLogBlockStyle.taskLine &&
+        c.selection.start < hit.start + 2;
+  }
+
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter) &&
+        (HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed) &&
+        _taskField == null &&
+        widget.controller.currentTaskBlockId != null) {
+      widget.controller.cycleTaskStatus();
+      return KeyEventResult.handled;
+    }
     if (event is KeyDownEvent && _autocomplete.value != null) {
       final key = event.logicalKey;
       if (key == LogicalKeyboardKey.arrowDown) {
@@ -160,6 +186,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       }
       if (key == LogicalKeyboardKey.escape) {
         _cancelAutocomplete();
+        focusNode.requestFocus();
         return KeyEventResult.handled;
       }
     }
@@ -177,6 +204,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   void _handleControllerChanged() {
+    if (_taskField != null) return;
     final selection = widget.controller.selection;
     if (!selection.isValid || !selection.isCollapsed) {
       _cancelAutocomplete();
@@ -193,7 +221,23 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _autocomplete.value = _AutocompleteState(
         trigger: trigger,
         mentionItems: const [],
-        commandItems: _filterCommands(trigger.query),
+        commandItems: _filterCommands(
+          trigger.query,
+        ).where((a) => a != MagicAction.task).toList(),
+        taskItems:
+            [
+              for (final command
+                  in widget.controller.currentTaskBlockId == null
+                      ? const ['todo', 'task']
+                      : taskCommands.where((c) => c != 'task'))
+                if (command.startsWith(trigger.query.toLowerCase())) command,
+            ]..sort(
+              (a, b) => a == trigger.query
+                  ? -1
+                  : b == trigger.query
+                  ? 1
+                  : 0,
+            ),
         highlighted: 0,
         loading: false,
       );
@@ -254,7 +298,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (state == null) return;
     final count = _isMentionLike(state.trigger.kind)
         ? state.mentionItems.length
-        : state.commandItems.length;
+        : _taskField == 'repeat'
+        ? 4
+        : _taskField != null
+        ? _dateCandidates.length
+        : state.taskItems.length + state.commandItems.length;
     if (count == 0) return;
     final next = (state.highlighted + delta) % count;
     _autocomplete.value = state.copyWith(
@@ -265,13 +313,26 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void _activateHighlighted() {
     final state = _autocomplete.value;
     if (state == null) return;
-    if (_isMentionLike(state.trigger.kind)) {
+    if (_taskField != null) {
+      if (_taskField == 'repeat') {
+        _pickRepeat(
+          const ['daily', 'weekly', 'monthly', 'weekdays'][state.highlighted],
+        );
+      } else if (state.highlighted < _dateCandidates.length) {
+        _pickDate(_dateCandidates[state.highlighted]);
+      }
+    } else if (_isMentionLike(state.trigger.kind)) {
       if (state.highlighted < state.mentionItems.length) {
         _selectMention(state.mentionItems[state.highlighted]);
       }
     } else {
-      if (state.highlighted < state.commandItems.length) {
-        _selectCommand(state.commandItems[state.highlighted]);
+      if (state.highlighted < state.taskItems.length) {
+        _selectTaskCommand(state.taskItems[state.highlighted]);
+      } else if (state.highlighted - state.taskItems.length <
+          state.commandItems.length) {
+        _selectCommand(
+          state.commandItems[state.highlighted - state.taskItems.length],
+        );
       }
     }
   }
@@ -351,7 +412,180 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (mounted) focusNode.requestFocus();
   }
 
+  Future<void> _selectTaskCommand(String command) async {
+    final state = _autocomplete.value;
+    if (state == null) return;
+    final c = widget.controller;
+    final caret = c.selection.extentOffset;
+    final trigger = state.trigger.start;
+    final start =
+        trigger > 0 &&
+            c.text[trigger - 1] == ' ' &&
+            (c.currentTaskBlockId == null ||
+                trigger - 1 >
+                    c.document._blockAt(trigger, preferPrevious: true)!.start +
+                        1)
+        ? trigger - 1
+        : trigger;
+    final blockId = c.currentTaskBlockId;
+    final field = const [
+      'due',
+      'scheduled',
+      'deadline',
+      'repeat',
+    ].contains(command);
+    if (field) {
+      _taskField = command == 'deadline' ? 'scheduled' : command;
+      _taskFieldBlock = blockId;
+      _dateInput.clear();
+    } else {
+      _cancelAutocomplete();
+    }
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(start, caret, ''),
+      selection: TextSelection.collapsed(offset: start),
+    );
+    if (field) {
+      _autocomplete.value = state.copyWith(highlighted: 0);
+      _ensureOverlay();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _taskField != 'repeat') _dateFocus.requestFocus();
+      });
+      return;
+    }
+    if (blockId == null) {
+      await c.createTaskLine();
+    } else if (const ['todo', 'doing', 'done', 'cancel'].contains(command)) {
+      await c.setTaskStatus(
+        blockId,
+        command == 'cancel' ? 'cancelled' : command,
+      );
+    } else {
+      c.setCurrentTaskFields(
+        priority: const {
+          'a': 'high',
+          'b': 'normal',
+          'c': 'low',
+          'urgent': 'urgent',
+        }[command],
+      );
+    }
+    if (mounted) focusNode.requestFocus();
+  }
+
+  bool _restoreTaskFieldCaret() {
+    final c = widget.controller;
+    final index = c.document.blocks.indexWhere((b) => b.id == _taskFieldBlock);
+    if (index < 0) {
+      _cancelAutocomplete();
+      return false;
+    }
+    c.selection = TextSelection.collapsed(
+      offset: c.document._ranges[index].start + 2,
+    );
+    return true;
+  }
+
+  void _pickRepeat(String repeat) {
+    if (!_restoreTaskFieldCaret()) return;
+    widget.controller.setCurrentTaskFields(
+      recurrence: switch (repeat) {
+        'daily' => 'RRULE:FREQ=DAILY',
+        'weekly' => 'RRULE:FREQ=WEEKLY',
+        'monthly' => 'RRULE:FREQ=MONTHLY',
+        _ => 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',
+      },
+    );
+    _cancelAutocomplete();
+    focusNode.requestFocus();
+  }
+
+  void _pickDate(DateTime date) {
+    if (!_restoreTaskFieldCaret()) return;
+    final value = date.hour == 0 && date.minute == 0
+        ? isoDay(date)
+        : '${isoDay(date)}T${localTime(date)}';
+    widget.controller.setCurrentTaskFields(
+      due: _taskField == 'due' ? value : null,
+      scheduled: _taskField == 'scheduled' ? value : null,
+    );
+    _cancelAutocomplete();
+    focusNode.requestFocus();
+  }
+
+  Future<void> _calendarTaskDate() async {
+    final date = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDate: _dateCandidates.firstOrNull ?? DateTime.now(),
+    );
+    if (!mounted || _taskField == null) return;
+    if (date != null) {
+      _pickDate(date);
+    } else {
+      _dateFocus.requestFocus();
+    }
+  }
+
+  Widget _taskFieldList(_AutocompleteState state) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (_taskField != 'repeat')
+        TextField(
+          key: const Key('task-date-input'),
+          controller: _dateInput,
+          focusNode: _dateFocus,
+          decoration: InputDecoration(
+            hintText: 'today / завтра / +3d',
+            suffixIcon: IconButton(
+              tooltip: 'Calendar',
+              onPressed: _calendarTaskDate,
+              icon: const Icon(Icons.calendar_month),
+            ),
+          ),
+          onChanged: (_) =>
+              _autocomplete.value = state.copyWith(highlighted: 0),
+          onSubmitted: (_) => _activateHighlighted(),
+        ),
+      Flexible(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            if (_taskField == 'repeat')
+              for (final (i, repeat) in const [
+                'daily',
+                'weekly',
+                'monthly',
+                'weekdays',
+              ].indexed)
+                ListTile(
+                  dense: true,
+                  title: Text(repeat),
+                  selected: state.highlighted == i,
+                  onTap: () => _pickRepeat(repeat),
+                )
+            else
+              for (final (i, date) in _dateCandidates.indexed)
+                ListTile(
+                  dense: true,
+                  title: Text(isoDay(date)),
+                  subtitle: date.hour != 0 || date.minute != 0
+                      ? Text(localTime(date))
+                      : null,
+                  selected: state.highlighted == i,
+                  onTap: () => _pickDate(date),
+                ),
+          ],
+        ),
+      ),
+    ],
+  );
+
   void _cancelAutocomplete() {
+    widget.controller.onAutocompleteEnter = null;
+    _taskField = null;
+    _taskFieldBlock = null;
     _debounce?.cancel();
     _debounce = null;
     _mentionQueryToken++;
@@ -360,6 +594,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   void _ensureOverlay() {
+    widget.controller.onAutocompleteEnter = _activateHighlighted;
     if (_overlayEntry != null) return;
     final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
@@ -393,7 +628,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           );
           final count = _isMentionLike(state.trigger.kind)
               ? math.max(1, state.mentionItems.length)
-              : math.max(1, state.commandItems.length);
+              : _taskField == 'repeat'
+              ? 4
+              : _taskField != null
+              ? 1 + math.max(1, _dateCandidates.length)
+              : math.max(1, state.taskItems.length + state.commandItems.length);
           final viewport = Size(
             overlay.size.width,
             overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
@@ -414,7 +653,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 elevation: 6,
                 borderRadius: BorderRadius.circular(kRadiusMedium),
                 clipBehavior: Clip.antiAlias,
-                child: _isMentionLike(state.trigger.kind)
+                child: _taskField != null
+                    ? _taskFieldList(state)
+                    : _isMentionLike(state.trigger.kind)
                     ? _mentionList(state)
                     : _commandList(state),
               ),
@@ -472,7 +713,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   Widget _commandList(_AutocompleteState state) {
-    if (state.commandItems.isEmpty) {
+    if (state.commandItems.isEmpty && state.taskItems.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Text('No matching commands'),
@@ -481,9 +722,20 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return ListView.builder(
       key: const Key('autocomplete-command-list'),
       shrinkWrap: true,
-      itemCount: state.commandItems.length,
+      itemCount: state.taskItems.length + state.commandItems.length,
       itemBuilder: (context, index) {
-        final action = state.commandItems[index];
+        if (index < state.taskItems.length) {
+          final command = state.taskItems[index];
+          return ListTile(
+            key: Key('autocomplete-task-$command'),
+            dense: true,
+            selected: state.highlighted == index,
+            leading: const Icon(Icons.task_alt),
+            title: Text('/$command'),
+            onTap: () => _selectTaskCommand(command),
+          );
+        }
+        final action = state.commandItems[index - state.taskItems.length];
         final display = kMagicActionDisplay[action];
         return ListTile(
           key: Key('autocomplete-command-${action.name}'),
@@ -585,6 +837,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       widget.controller.removeListener(_handleControllerChanged);
     }
     focusNode.removeListener(_focusChanged);
+    widget.controller.onAutocompleteEnter = null;
+    _dateInput.dispose();
+    _dateFocus.dispose();
     focusNode.onKeyEvent = null;
     if (widget.focusNode == null) focusNode.dispose();
     super.dispose();
@@ -644,35 +899,49 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         child: AdaptiveTextSelectionToolbar.buttonItems(
           anchors: state.contextMenuAnchors,
           buttonItems: [
-            if (!widget.controller.selection.isCollapsed)
+            if (_checkboxSelection())
+              for (final status in const ['todo', 'doing', 'done', 'cancelled'])
+                ContextMenuButtonItem(
+                  label: status,
+                  onPressed: () {
+                    final id = widget.controller.currentTaskBlockId;
+                    state.hideToolbar();
+                    if (id != null) {
+                      unawaited(widget.controller.setTaskStatus(id, status));
+                    }
+                  },
+                )
+            else ...[
+              if (!widget.controller.selection.isCollapsed)
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.copy,
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.copySelection();
+                  },
+                ),
+              if (!widget.controller.selection.isCollapsed)
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.cut,
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.cutSelection();
+                  },
+                ),
               ContextMenuButtonItem(
-                type: ContextMenuButtonType.copy,
+                type: ContextMenuButtonType.paste,
                 onPressed: () {
                   state.hideToolbar();
-                  widget.controller.copySelection();
+                  widget.controller.paste();
                 },
               ),
-            if (!widget.controller.selection.isCollapsed)
               ContextMenuButtonItem(
-                type: ContextMenuButtonType.cut,
+                type: ContextMenuButtonType.selectAll,
                 onPressed: () {
-                  state.hideToolbar();
-                  widget.controller.cutSelection();
+                  _selectAll(state);
                 },
               ),
-            ContextMenuButtonItem(
-              type: ContextMenuButtonType.paste,
-              onPressed: () {
-                state.hideToolbar();
-                widget.controller.paste();
-              },
-            ),
-            ContextMenuButtonItem(
-              type: ContextMenuButtonType.selectAll,
-              onPressed: () {
-                _selectAll(state);
-              },
-            ),
+            ],
           ],
         ),
       ),
