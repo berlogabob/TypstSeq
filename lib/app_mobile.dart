@@ -1544,6 +1544,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final ix =
                 index ?? VaultIndex(notesByPath: {}, backlinksByTarget: {});
             return KnowledgeScreen(
+              onSetTaskStatus: _setTaskStatus,
+              onSetTaskField: _setTaskField,
               initialView: initialView,
               index: ix,
               search: (query, tag, status) =>
@@ -1843,94 +1845,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return _clockMutation;
   }
 
-  Future<void> _toggleTaskClock(TaskRef task) => _queueClockMutation(() async {
-    final current = index?.tasks
-        .where((t) => t.id == task.id && t.notePath == task.notePath)
-        .firstOrNull;
-    if (current == null) throw StateError('Task ${task.id} not found');
-    final running = current.runningClock != null ? current : _runningTask;
+  Future<void> _leaveRunningTask(TaskRef running, String nextStatus) async {
     var discard = false;
     final opened = vault;
-    if (running != null) {
-      final start = DateTime.tryParse(running.runningClock!.start);
-      final elapsed = start == null
-          ? Duration.zero
-          : DateTime.now().difference(start);
-      if (elapsed >= ClockEntry.runawayThreshold) {
-        final choice = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(
-              'This timer has been running for ${trackedTime(elapsed)}.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Stop now'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Discard session'),
-              ),
-            ],
+    final start = DateTime.tryParse(running.runningClock!.start);
+    final elapsed = start == null
+        ? Duration.zero
+        : DateTime.now().difference(start);
+    if (elapsed >= ClockEntry.runawayThreshold) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'This timer has been running for ${trackedTime(elapsed)}.',
           ),
-        );
-        if (choice == null || !mounted || !identical(vault, opened)) return;
-        discard = choice;
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Stop now'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Discard session'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted || !identical(vault, opened)) {
+        return;
       }
+      discard = choice;
     }
     final now = DateTime.now().toUtc().toIso8601String();
-    if (running != null) {
-      final entry = running.runningClock!;
-      final closed = ClockEntry(start: entry.start, end: now);
-      final elapsed = closed.elapsed;
-      final misfire = elapsed != null && elapsed < ClockEntry.minimumMeaningful;
-      final updated = await workspace.mutateNote(running.notePath, (source) {
-        final entries = taskClocked(source, running.id);
-        if (ClockEntry.latestRunning(entries) != entry) {
-          throw StateError('The running session changed');
-        }
-        return discard || misfire
-            ? setTaskClocked(
-                source,
-                running.id,
-                entries.where((e) => e != entry).toList(),
-              )
-            : stopTaskClock(source, running.id, now);
-      });
-      if (!updated) throw StateError('The vault changed');
-      await workspace.waitForMutationRefresh();
-      if (misfire && !discard && mounted) {
-        showSnack(
-          context,
-          'Short timer session removed',
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () => unawaited(
-              _queueClockMutation(() async {
-                if (!identical(vault, opened)) return;
-                final restored = await workspace.mutateNote(
-                  running.notePath,
-                  (source) => setTaskClocked(source, running.id, [
-                    ...taskClocked(source, running.id),
-                    closed,
-                  ]),
-                );
-                if (!restored) throw StateError('The vault changed');
-              }),
-            ),
-          ),
-        );
+    final entry = running.runningClock!;
+    final closed = ClockEntry(start: entry.start, end: now);
+    final duration = closed.elapsed;
+    final misfire = duration != null && duration < ClockEntry.minimumMeaningful;
+    final updated = await workspace.mutateNote(running.notePath, (source) {
+      final entries = taskClocked(source, running.id);
+      if (ClockEntry.latestRunning(entries) != entry) {
+        throw StateError('The running session changed');
       }
-      if (current.runningClock != null) return;
-    }
-    if (!mounted || !identical(vault, opened)) return;
-    final updated = await workspace.mutateNote(
-      current.notePath,
-      (source) => startTaskClock(source, current.id, now),
-    );
+      final stopped = discard || misfire
+          ? setTaskClocked(
+              source,
+              running.id,
+              entries.where((e) => e != entry).toList(),
+            )
+          : source;
+      return applyTaskStatus(
+        stopped,
+        running.id,
+        nextStatus,
+        DateTime.parse(now),
+      );
+    });
     if (!updated) throw StateError('The vault changed');
-  });
+    await workspace.waitForMutationRefresh();
+    if (misfire && !discard && mounted) {
+      showSnack(
+        context,
+        'Short timer session removed',
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => unawaited(
+            _queueClockMutation(() async {
+              if (!identical(vault, opened)) return;
+              final restored = await workspace.mutateNote(
+                running.notePath,
+                (source) => setTaskClocked(source, running.id, [
+                  ...taskClocked(source, running.id),
+                  closed,
+                ]),
+              );
+              if (!restored) throw StateError('The vault changed');
+            }),
+          ),
+        ),
+      );
+    }
+  }
 
   Future<void> _stopOtherDoingTasks(String file) async {
     final now = DateTime.now().toUtc();
@@ -1955,6 +1949,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final file = task.notePath;
     try {
       if (nextStatus == 'doing') await _stopOtherDoingTasks(file);
+      final current = index?.tasks
+          .where((t) => t.id == task.id && t.notePath == file)
+          .firstOrNull;
+      if (nextStatus == 'todo' && current?.runningClock != null) {
+        await _leaveRunningTask(current!, nextStatus);
+        return;
+      }
       final updated = await workspace.mutateNote(
         file,
         (source) => applyTaskStatus(
@@ -1982,6 +1983,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
   });
+
+  Future<void> _quickAddTask(String text) async {
+    try {
+      final opened = vault;
+      if (opened == null) throw StateError('No vault is open');
+      final id = await richController.nextTaskId!(text);
+      final path = await opened.todayNote();
+      if (!identical(vault, opened)) throw StateError('The vault changed');
+      final updated = await workspace.mutateNote(
+        path,
+        (source) => '$source\n${taskSnippet(id: id, text: text)}\n',
+      );
+      if (!updated) throw StateError('The vault changed');
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not add that task: $error');
+      rethrow;
+    }
+  }
+
+  Future<void> _setTaskField(TaskRef task, String field, String value) async {
+    try {
+      final updated = await workspace.mutateNote(
+        task.notePath,
+        (source) => setTaskFields(
+          source,
+          task.id,
+          priority: field == 'priority' ? value : null,
+          due: field == 'due' ? value : null,
+          scheduled: field == 'scheduled' ? value : null,
+          recurrence: field == 'repeat' ? value : null,
+        ),
+      );
+      if (!updated) throw StateError('The vault changed');
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not update that task: $error');
+    }
+  }
 
   Future<void> _setNoteProperty(NoteRef note, String name, String value) async {
     if (vault == null) return;
@@ -2524,14 +2562,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'Note link': '#tylog.ref-note("note-id")[Title]',
                       'Tag': '#tylog.tag("topic")',
                       'Date': '#tylog.date-ref("2026-07-05")[5 July]',
-                      'Task':
-                          '#tylog.task(id: "task-id", text: "Task", due: none, project: none)',
+                      'Task': 'Task',
                     }.entries)
                       ActionChip(
                         label: Text(entry.key),
-                        onPressed: () {
+                        onPressed: () async {
+                          final opened = vault;
+                          if (opened == null) return;
+                          final snippet = entry.key == 'Task'
+                              ? taskSnippet(
+                                  id: await opened.nextTaskId(
+                                    'Task',
+                                    reserved: _reservedTaskIds,
+                                  ),
+                                  text: 'Task',
+                                )
+                              : entry.value;
+                          if (!context.mounted || !identical(vault, opened)) {
+                            return;
+                          }
+                          if (entry.key == 'Task') {
+                            _reservedTaskIds.add(taskField(snippet, 'id')!);
+                          }
                           Navigator.pop(context);
-                          _insertTypstSnippet(entry.value);
+                          _insertTypstSnippet(snippet);
                         },
                       ),
                   ],
@@ -4338,6 +4392,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     };
     final content = switch (mode) {
       'journal' => JournalFeed(
+        onSetStatus: _setTaskStatus,
+        onSetField: _setTaskField,
         events: workspace.calendar
             .where((e) => e.kind != CalendarItemKind.daily)
             .toList(),
@@ -4371,7 +4427,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           unawaited(_openDay(day));
         },
         onSetTaskStatus: _setTaskStatus,
-        onToggleTaskClock: _toggleTaskClock,
+        onSetTaskField: _setTaskField,
+        onAddTask: _quickAddTask,
         imageResolver: _readAsset,
         onSetReadStatus: _setReadStatus,
         onSetRelevance: _setRelevance,
@@ -4414,7 +4471,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   },
                   onOpenDay: (day) => unawaited(_openDay(day)),
                   onSetTaskStatus: _setTaskStatus,
-                  onToggleTaskClock: _toggleTaskClock,
+                  onSetTaskField: _setTaskField,
+                  onAddTask: _quickAddTask,
                   onSetReadStatus: _setReadStatus,
                   onSetRelevance: _setRelevance,
                   onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
@@ -4801,7 +4859,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               editor: documentContent,
               onOpenPath: _openPath,
               onSetStatus: _setTaskStatus,
-              onToggleClock: _toggleTaskClock,
+              onSetField: _setTaskField,
+              onAddTask: _quickAddTask,
               onReadPath: _readPath,
             ),
           )
@@ -4921,8 +4980,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 interactive: true,
                 child: TaskClock(
                   task: runningTask,
-                  pill: true,
-                  onToggle: _toggleTaskClock,
+                  onStop: (task) => _setTaskStatus(task, 'todo'),
                   onOpen: () => unawaited(_openPath(runningTask.notePath)),
                 ),
               ),

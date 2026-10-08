@@ -3,6 +3,31 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.12.0+133
+
+### Added
+
+- **A task line shows its state.** Status glyph (☐ todo, ◐ doing, ☑ done,
+  ☒ cancelled) and, beside the line, priority, due or scheduled date, repeat
+  and time spent. Tap one to change it in the same popup the commands use.
+- **One task row everywhere.** Today, Tasks, Journal, Calendar, Search and
+  saved queries show the same row: tap to complete, long-press for all four
+  statuses, the same chips. Journal, Calendar and Search rows were read-only.
+- **Quick add** on Today and Tasks: type a line, it becomes a task on today's
+  journal page.
+
+### Changed
+
+- The play/stop button is gone from task rows: Doing runs the timer. Stop on
+  the running pill returns the task to Todo.
+- The "All" filter shows everything, including cancelled and older done
+  tasks.
+
+### Fixed
+
+- A task changed from a list or by sync now updates in the open editor.
+- The Typst-help Task chip inserts a unique id each time.
+
 ## 0.11.9+132
 
 ### Added

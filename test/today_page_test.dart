@@ -21,56 +21,6 @@ TaskRef _task(String id, {String? due}) => TaskRef(
 );
 
 void main() {
-  testWidgets(
-    'Agenda task row starts and stops its timer and shows tracked time',
-    (tester) async {
-      final changes = <String>[];
-      Widget page(TaskRef task) => MaterialApp(
-        home: Scaffold(
-          body: TodayPage(
-            shownDay: DateTime(2001, 1, 2),
-            tasks: [task],
-            recent: const [],
-            editor: const SizedBox(),
-            onOpenPath: (_) {},
-            onSetStatus: (_, _) async {},
-            onToggleClock: (task) async => changes.add(task.id),
-          ),
-        ),
-      );
-      await tester.pumpWidget(page(_task('a', due: '2001-01-02')));
-      await tester.tap(find.text('Agenda · 1'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Start timer'));
-      await tester.pumpAndSettle();
-      expect(changes, ['a']);
-      await tester.pumpWidget(
-        page(
-          TaskRef(
-            id: 'a',
-            notePath: 'notes/a.typ',
-            text: 'Task a',
-            due: '2001-01-02',
-            clocked: [
-              const ClockEntry(
-                start: '2001-01-01T09:00:00Z',
-                end: '2001-01-01T09:12:00Z',
-              ),
-              ClockEntry(start: DateTime.now().toUtc().toIso8601String()),
-            ],
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('12m'), findsOneWidget);
-      expect(find.text('00:00'), findsOneWidget);
-      await tester.tap(find.byTooltip('Stop timer'));
-      await tester.pumpAndSettle();
-      expect(changes, ['a', 'a']);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-
   testWidgets('Agenda lists events and due tasks for the shown day', (
     tester,
   ) async {

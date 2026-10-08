@@ -85,8 +85,9 @@ class TaskAgendaCache {
       });
     for (final task in sorted) {
       String key;
-      if (task.status == 'cancelled') continue;
-      if (task.status == 'done') {
+      if (task.status == 'cancelled') {
+        key = 'cancelled';
+      } else if (task.status == 'done') {
         final completed =
             task.completed
                 .map((s) => s.split('T').first)
@@ -96,9 +97,10 @@ class TaskAgendaCache {
         if (completed.isEmpty ||
             completed.last.compareTo(cutoff) < 0 ||
             completed.last.compareTo(today) > 0) {
-          continue;
+          key = 'older-done';
+        } else {
+          key = 'done';
         }
-        key = 'done';
       } else if (isTaskOverdue(task, today)) {
         key = 'overdue';
       } else if (isTaskInTodayAgenda(task, today) ||
@@ -149,6 +151,8 @@ class TaskAgendaCache {
         ..sort((a, b) => b.compareTo(a))),
       'journal:unknown',
       'done',
+      'older-done',
+      'cancelled',
     ];
     _groups = [
       for (final key in keys)
@@ -160,11 +164,15 @@ class TaskAgendaCache {
               'today' => 'Today',
               'later' => 'Later',
               'done' => 'Done',
+              'older-done' => 'Older done',
+              'cancelled' => 'Cancelled',
               _ => titles[key] ?? journalTitles[key] ?? key.substring(9),
             },
             List.unmodifiable(buckets[key]!),
             collapsed:
                 key == 'done' ||
+                key == 'older-done' ||
+                key == 'cancelled' ||
                 titles.containsKey(key) ||
                 journalTitles.containsKey(key),
           ),
@@ -182,7 +190,9 @@ List<TaskAgendaGroup> filterTaskAgenda(
   final search = query.trim().toLowerCase();
   final result = <TaskAgendaGroup>[];
   for (final group in groups) {
-    if (filter == TaskAgendaFilter.open && group.key == 'done' ||
+    if (filter != TaskAgendaFilter.all &&
+            (group.key == 'cancelled' || group.key == 'older-done') ||
+        filter == TaskAgendaFilter.open && group.key == 'done' ||
         filter == TaskAgendaFilter.done && group.key != 'done') {
       continue;
     }

@@ -11,6 +11,7 @@ import 'package:tylog_core/search_index.dart';
 import 'widgets/constants.dart';
 import 'widgets/property_select_chip.dart';
 import 'widgets/snack.dart';
+import 'widgets/task_row.dart';
 
 enum KnowledgeView { search, problems }
 
@@ -34,8 +35,12 @@ class KnowledgeScreen extends StatefulWidget {
     this.savedSearches = const <SavedSearch>[],
     this.onSaveSearch,
     this.onDeleteSearch,
+    this.onSetTaskStatus,
+    this.onSetTaskField,
   });
 
+  final Future<void> Function(TaskRef, String)? onSetTaskStatus;
+  final Future<void> Function(TaskRef, String, String)? onSetTaskField;
   final KnowledgeView initialView;
   final VaultIndex index;
 
@@ -533,9 +538,9 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                     // A note opens in the main editor, so leave search like a
                     // keyword result does.
                     'note' => () {
-                        widget.onOpenCitation!(citation);
-                        Navigator.pop(context);
-                      },
+                      widget.onOpenCitation!(citation);
+                      Navigator.pop(context);
+                    },
                     _ => null,
                   },
           );
@@ -550,6 +555,22 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           );
         }
         final result = results[resultIndex];
+        final task = result.kind == 'task'
+            ? widget.index.tasks
+                  .where((t) => t.id == result.id && t.notePath == result.path)
+                  .firstOrNull
+            : null;
+        if (task != null) {
+          return TaskRow(
+            task: task,
+            onSetStatus: widget.onSetTaskStatus,
+            onSetField: widget.onSetTaskField,
+            onOpenPath: (path) {
+              widget.onOpenNote(path);
+              Navigator.pop(context);
+            },
+          );
+        }
         return ListTile(
           leading: Icon(switch (result.kind) {
             'task' => Icons.task_alt,

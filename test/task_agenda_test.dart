@@ -45,6 +45,43 @@ void main() {
     ),
   };
 
+  test(
+    'All includes cancelled and older or untimestamped done; Open and Done stay unchanged',
+    () {
+      final groups = TaskAgendaCache().resolve(
+        [
+          task('todo'),
+          task('doing', status: 'doing'),
+          task('recent', status: 'done', completed: [today]),
+          task('old', status: 'done', completed: ['2000-01-01']),
+          task('untimestamped', status: 'done'),
+          task('cancelled', status: 'cancelled'),
+        ],
+        notes,
+        today,
+      );
+      List<String> ids(TaskAgendaFilter filter) => filterTaskAgenda(
+        groups,
+        filter,
+        null,
+        '',
+      ).expand((g) => g.tasks).map((t) => t.id).toList();
+      expect(
+        ids(TaskAgendaFilter.all),
+        unorderedEquals([
+          'todo',
+          'doing',
+          'recent',
+          'old',
+          'untimestamped',
+          'cancelled',
+        ]),
+      );
+      expect(ids(TaskAgendaFilter.open), unorderedEquals(['todo', 'doing']));
+      expect(ids(TaskAgendaFilter.done), ['recent']);
+    },
+  );
+
   test('agenda cache follows in-place index task and note updates', () {
     final tasks = [task('a', due: today)];
     final noteMap = Map<String, NoteRef>.of(notes);
@@ -97,6 +134,8 @@ void main() {
         'note:notes/a.typ',
         'project:Work',
         'done',
+        'older-done',
+        'cancelled',
       ]);
       expect(groups[0].tasks.single.id, 'overdue');
       expect(
@@ -104,8 +143,26 @@ void main() {
         containsAll(['due', 'daily', 'scheduled']),
       );
       expect(groups[5].title, 'Alpha');
-      expect(groups.last.tasks.single.id, 'done');
-      expect(groups.where((g) => g.collapsed).length, 3);
+      expect(groups.firstWhere((g) => g.key == 'done').tasks.single.id, 'done');
+      expect(
+        filterTaskAgenda(
+          groups,
+          TaskAgendaFilter.all,
+          null,
+          '',
+        ).expand((g) => g.tasks).length,
+        14,
+      );
+      expect(
+        filterTaskAgenda(
+          groups,
+          TaskAgendaFilter.done,
+          null,
+          '',
+        ).single.tasks.single.id,
+        'done',
+      );
+      expect(groups.where((g) => g.collapsed).length, 5);
     },
   );
 
@@ -279,7 +336,7 @@ void main() {
       expect(find.text('Task hidden'), findsOneWidget);
       await tester.tap(find.text('Task hidden'));
       expect(opened, 'notes/a.typ');
-      await tester.tap(find.byType(Checkbox));
+      await tester.tap(find.byTooltip('Task status'));
       expect(status, 'done');
       await tester.tap(find.text('Work · 1'));
       await tester.pumpAndSettle();

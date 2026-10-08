@@ -12,9 +12,8 @@ import 'constants.dart';
 import 'date_format.dart';
 import 'loading.dart';
 import 'property_select_chip.dart';
-import 'task_checkbox.dart';
+import 'task_row.dart';
 import 'task_agenda.dart';
-import 'task_clock.dart';
 export 'task_agenda.dart' show isTaskInTodayAgenda, isTaskOverdue;
 
 class WorkSurface extends StatelessWidget {
@@ -48,7 +47,8 @@ class TodayPage extends StatelessWidget {
     required this.editor,
     required this.onOpenPath,
     required this.onSetStatus,
-    this.onToggleClock,
+    this.onSetField,
+    this.onAddTask,
     this.onReadPath,
     this.onAllTasks,
     this.notes = const {},
@@ -64,7 +64,8 @@ class TodayPage extends StatelessWidget {
   final Widget editor;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
-  final Future<void> Function(TaskRef task)? onToggleClock;
+  final Future<void> Function(TaskRef, String, String)? onSetField;
+  final Future<void> Function(String)? onAddTask;
   final ValueChanged<String>? onReadPath;
 
   @override
@@ -106,30 +107,16 @@ class TodayPage extends StatelessWidget {
         overdue.isNotEmpty ||
         onAllTasks != null ||
         recent.isNotEmpty;
-    Widget taskRow(TaskRef task) => ListTile(
-      leading: TaskCheckbox(
-        value: false,
-        onChanged: (done) {
-          if (done == true) unawaited(onSetStatus(task, 'done'));
-        },
-      ),
-      title: Text(task.text),
-      subtitle: Text(
-        task.due == null ? 'Scheduled today' : 'Due ${task.due}',
-        style: isTaskOverdue(task, today)
-            ? TextStyle(color: Theme.of(context).colorScheme.error)
-            : null,
-      ),
-      onTap: () => onOpenPath(task.notePath),
-      trailing: TaskClock(
-        task: task,
-        onToggle: onToggleClock,
-        onOpen: () => onOpenPath(task.notePath),
-      ),
+    Widget taskRow(TaskRef task) => TaskRow(
+      task: task,
+      onSetStatus: onSetStatus,
+      onSetField: onSetField,
+      onOpenPath: onOpenPath,
     );
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
+          if (onAddTask != null) TaskQuickAdd(onAdd: onAddTask!),
           // Today is capture-first: quick capture is the editor's job, so it
           // must keep the majority of the viewport even when the agenda and
           // reading shelf both have content. Agenda + Continue reading share
@@ -238,7 +225,8 @@ class _PrimaryTasksView extends StatefulWidget {
     required this.indexing,
     required this.onOpenPath,
     required this.onSetStatus,
-    this.onToggleClock,
+    this.onSetField,
+    this.onAddTask,
   });
 
   final List<TaskRef> tasks;
@@ -246,7 +234,8 @@ class _PrimaryTasksView extends StatefulWidget {
   final bool indexing;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
-  final Future<void> Function(TaskRef task)? onToggleClock;
+  final Future<void> Function(TaskRef, String, String)? onSetField;
+  final Future<void> Function(String)? onAddTask;
 
   @override
   State<_PrimaryTasksView> createState() => _PrimaryTasksViewState();
@@ -300,38 +289,10 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
     super.dispose();
   }
 
-  Widget _row(TaskRef task, {bool journal = false}) {
-    final day = journal ? journalTaskDay(task, widget.notes) : null;
-    final overdue = isTaskOverdue(task, _today);
-    return ListTile(
-      leading: TaskCheckbox(
-        value: task.status == 'done',
-        onChanged: (done) =>
-            widget.onSetStatus(task, done == true ? 'done' : 'todo'),
-      ),
-      title: Text(task.text),
-      subtitle: Text(
-        [
-          if (day != null) monthDay(day),
-          if (task.project != null) task.project!,
-          if (task.due != null) 'due ${task.due}${overdue ? ' · overdue' : ''}',
-        ].join(' · '),
-        style: overdue
-            ? TextStyle(color: Theme.of(context).colorScheme.error)
-            : null,
-      ),
-      onTap: () => widget.onOpenPath(task.notePath),
-      trailing: TaskClock(
-        task: task,
-        onToggle: widget.onToggleClock,
-        onOpen: () => widget.onOpenPath(task.notePath),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      if (widget.onAddTask != null) TaskQuickAdd(onAdd: widget.onAddTask!),
       Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -444,9 +405,19 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
               if (!group.collapsed || _expanded.contains(group.key))
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) => _row(
-                      group.tasks[i],
-                      journal: group.key.startsWith('journal:'),
+                    (context, i) => TaskRow(
+                      task: group.tasks[i],
+                      onSetStatus: widget.onSetStatus,
+                      onSetField: widget.onSetField,
+                      onOpenPath: widget.onOpenPath,
+                      subtitle:
+                          group.key.startsWith('journal:') &&
+                              journalTaskDay(group.tasks[i], widget.notes) !=
+                                  null
+                          ? monthDay(
+                              journalTaskDay(group.tasks[i], widget.notes)!,
+                            )
+                          : group.tasks[i].project,
                     ),
                     childCount: group.tasks.length,
                   ),
@@ -473,7 +444,8 @@ class LibraryView extends StatelessWidget {
     required this.onOpenPath,
     required this.onOpenDay,
     required this.onSetTaskStatus,
-    this.onToggleTaskClock,
+    this.onSetTaskField,
+    this.onAddTask,
     required this.onSetReadStatus,
     required this.onSetRelevance,
     required this.onCreateNote,
@@ -504,7 +476,8 @@ class LibraryView extends StatelessWidget {
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
-  final Future<void> Function(TaskRef task)? onToggleTaskClock;
+  final Future<void> Function(TaskRef, String, String)? onSetTaskField;
+  final Future<void> Function(String)? onAddTask;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
   final Future<void> Function(NoteRef note, String relevance) onSetRelevance;
   final ValueChanged<String> onCreateNote;
@@ -577,10 +550,13 @@ class LibraryView extends StatelessWidget {
                 notes: index?.notesByPath ?? const <String, NoteRef>{},
                 indexing: indexing,
                 onSetStatus: onSetTaskStatus,
-                onToggleClock: onToggleTaskClock,
+                onSetField: onSetTaskField,
+                onAddTask: onAddTask,
                 onOpenPath: onOpenPath,
               ),
               CalendarTab(
+                onSetStatus: onSetTaskStatus,
+                onSetField: onSetTaskField,
                 imageResolver: imageResolver,
                 index: index,
                 calendar: calendar,

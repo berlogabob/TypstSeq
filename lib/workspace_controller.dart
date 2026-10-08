@@ -1011,7 +1011,7 @@ class WorkspaceController extends ChangeNotifier {
       if (saved) _queueMutationRefresh();
       return saved;
     }
-    final current = await opened.storage.readText(path);
+    final current = await opened.readText(path);
     if (!_owns(opened, generation)) return false;
     await _persistNote(opened, path, transform(current));
     if (!_owns(opened, generation)) return false;

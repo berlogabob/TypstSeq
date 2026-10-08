@@ -28,7 +28,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog/widgets/task_clock.dart';
-import 'package:tylog/widgets/task_checkbox.dart';
+import 'package:tylog/widgets/task_row.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
@@ -128,16 +128,131 @@ Future<void> _tapTaskTimer(
   String tooltip,
 ) async {
   await tester.pumpAndSettle();
-  final row = find.ancestor(
-    of: find.text('Task $id').first,
-    matching: find.byType(ListTile),
-  );
-  await tester.tap(find.descendant(of: row, matching: find.byTooltip(tooltip)));
+  if (tooltip == 'Stop timer') {
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('task-clock-pill')),
+        matching: find.byTooltip('Stop timer'),
+      ),
+    );
+  } else {
+    if (find.text('Task $id').evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        find.text('Task $id'),
+        80,
+        scrollable: find
+            .descendant(
+              of: find.byType(CustomScrollView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+    }
+    final row = find.ancestor(
+      of: find.text('Task $id').first,
+      matching: find.byType(TaskRow),
+    );
+    await tester.ensureVisible(
+      find.descendant(of: row, matching: find.byTooltip('Task status')),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(
+      find.descendant(of: row, matching: find.byTooltip('Task status')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('doing'));
+  }
   await tester.pumpAndSettle();
 }
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  for (final surface in ['Today', 'Tasks']) {
+    testWidgets(
+      '$surface quick add persists a compiling templated new daily with literal date words',
+      (tester) async {
+        final (storage, home) = await _mountTaskTimers(tester);
+        final vault = home.workspace.vault as Vault;
+        final path = await vault.todayNote();
+        expect(await storage.exists(path), isFalse);
+        if (surface == 'Today') {
+          await tester.tap(find.text('Today').last);
+          await tester.pumpAndSettle();
+        }
+        expect(find.byType(TaskQuickAdd), findsOneWidget);
+        const text = 'Call "bank" #1 tomorrow';
+        await tester.enterText(find.byKey(const Key('task-quick-add')), text);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        final source = await storage.readText(path);
+        expect(source, contains(noteHeaderMarker));
+        expect(source, startsWith('#import "/_system/tylog.typ" as tylog'));
+        final call = locateTypstCalls(
+          source,
+          names: const {'tylog.task'},
+        ).single;
+        expect(taskField(call.source, 'text'), text);
+        expect(taskField(call.source, 'due'), isNull);
+        expect(taskField(call.source, 'scheduled'), isNull);
+        expect(home.workspace.vault.pendingSyncWrites, contains(path));
+        await tester.runAsync(() async {
+          final dir = await Directory.systemTemp.createTemp(
+            'quick-add-compile',
+          );
+          try {
+            for (final entry in storage._files.entries) {
+              final file = File('${dir.path}/${entry.key}');
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(entry.value);
+            }
+            final compiled = Process.runSync('typst', [
+              'compile',
+              '--root',
+              dir.path,
+              '${dir.path}/$path',
+              '${dir.path}/task.pdf',
+            ]);
+            expect(compiled.exitCode, 0, reason: '${compiled.stderr}\n$source');
+          } finally {
+            await dir.delete(recursive: true);
+          }
+        });
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets(
+    'Typst help Task chip allocates unique IDs across unsaved insertions',
+    (tester) async {
+      final (_, home) = await _mountTaskTimers(tester);
+      for (var i = 0; i < 2; i++) {
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('More').last);
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Typst help'),
+          150,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Typst help'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ActionChip, 'Task'));
+        await tester.pumpAndSettle();
+      }
+      final calls = locateTypstCalls(
+        home.sourceController.text as String,
+        names: const {'tylog.task'},
+      ).where((call) => taskField(call.source, 'text') == 'Task').toList();
+      expect(calls.length, 2);
+      final ids = calls.map((call) => taskField(call.source, 'id')).toSet();
+      expect(ids.length, 2);
+      expect(ids, isNot(contains('task-id')));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('metadata-only external change updates the open task line', (
     tester,
   ) async {
@@ -220,7 +335,7 @@ void main() {
           .ancestor(of: find.text('Task a'), matching: find.byType(ListTile))
           .first;
       await tester.tap(
-        find.descendant(of: row, matching: find.byType(TaskCheckbox)),
+        find.descendant(of: row, matching: find.byTooltip('Task status')),
       );
       await tester.pumpAndSettle();
       final source = await storage.readText('notes/a.typ');
@@ -285,7 +400,11 @@ void main() {
       ).single;
       expect(entry.end, endsWith('Z'));
       expect(find.byKey(const ValueKey('task-clock-pill')), findsNothing);
-      expect(find.text('1h 20m'), findsOneWidget);
+      expect(find.text('1:20:00'), findsOneWidget);
+      expect(
+        taskField(await storage.readText('notes/a.typ'), 'status'),
+        'todo',
+      );
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -306,7 +425,11 @@ void main() {
       await _tapTaskTimer(tester, 'b', 'Start timer');
       final a = taskClocked(await storage.readText('notes/a.typ'), 'a');
       final b = taskClocked(await storage.readText('notes/b.typ'), 'b').single;
-      expect(a.first.end, b.start);
+      expect(a.first.end, isNotNull);
+      expect(
+        taskField(await storage.readText('notes/a.typ'), 'status'),
+        'todo',
+      );
       expect(a.last, ClockEntry(start: old));
       expect(b.isRunning, isTrue);
       final pill = find.byKey(const ValueKey('task-clock-pill'));
@@ -343,16 +466,19 @@ void main() {
       home.workspace.notifyListeners();
       await tester.pumpAndSettle();
       await _tapTaskTimer(tester, 'c', 'Start timer');
-      expect(await storage.readText('notes/a.typ'), a);
+      expect(await storage.readText('notes/a.typ'), isNot(a));
       final closed = taskClocked(
         await storage.readText('notes/b.typ'),
         'b',
       ).single;
-      final opened = taskClocked(
-        await storage.readText('notes/c.typ'),
-        'c',
-      ).single;
-      expect(closed.end, opened.start);
+      expect(
+        taskClocked(
+          await storage.readText('notes/c.typ'),
+          'c',
+        ).single.isRunning,
+        isTrue,
+      );
+      expect(closed.end, isNotNull);
       final pill = find.byKey(const ValueKey('task-clock-pill'));
       expect(
         find.descendant(of: pill, matching: find.text('Task c')),
@@ -393,26 +519,15 @@ void main() {
       final b = taskClocked(source, 'b').single;
       expect(
         source,
-        startTaskClock(stopTaskClock(before, 'a', b.start), 'b', b.start),
+        applyTaskStatus(before, 'b', 'doing', DateTime.parse(b.start)),
       );
       expect(taskClocked(source, 'a').single.end, b.start);
-      final clocks = tester.widgetList<TaskClock>(find.byType(TaskClock));
+      final rows = tester.widgetList<TaskRow>(find.byType(TaskRow));
       expect(
-        clocks
-            .where((w) => !w.pill && w.task.id == 'a')
-            .single
-            .task
-            .runningClock,
+        rows.where((w) => w.task.id == 'a').single.task.runningClock,
         isNull,
       );
-      expect(
-        clocks
-            .where((w) => !w.pill && w.task.id == 'b')
-            .single
-            .task
-            .runningClock,
-        b,
-      );
+      expect(rows.where((w) => w.task.id == 'b').single.task.runningClock, b);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -518,7 +633,6 @@ void main() {
                       ),
                     ],
                   ),
-                  pill: true,
                   onOpen: () {},
                 ),
               );

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderEditable, RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:tylog_core/scanner.dart';
-import 'package:tylog_core/tylog_core.dart' show parseDateWords, TaskRef;
+import 'package:tylog_core/tylog_core.dart' show parseDateWords;
 import 'package:tylog_core/values.dart';
 
 import 'controlled_editor.dart';
@@ -15,7 +15,8 @@ import 'widgets/date_format.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
-import 'widgets/task_clock.dart' show timerTime;
+import 'widgets/task_chip_strip.dart';
+import 'widgets/task_fields.dart';
 
 export 'editor_autocomplete.dart'
     show

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/article_jobs.dart';
 import 'package:tylog/widgets/property_select_chip.dart';
-import 'package:tylog/widgets/task_checkbox.dart';
 import 'package:tylog/widgets/work_surface.dart';
 
 void main() {
@@ -196,8 +195,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: LibraryView(
-            calendar: const [],
-            dayMarks: (daily: <String>{}, refs: <String>{}),
+              calendar: const [],
+              dayMarks: (daily: <String>{}, refs: <String>{}),
               index: VaultIndex(
                 notesByPath: const {},
                 backlinksByTarget: const {},
@@ -229,7 +228,7 @@ void main() {
       expect(statuses, isEmpty);
 
       // Only the checkbox flips status.
-      await tester.tap(find.byType(TaskCheckbox));
+      await tester.tap(find.byTooltip('Task status'));
       await tester.pumpAndSettle();
       expect(statuses, ['done']);
     },

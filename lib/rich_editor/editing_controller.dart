@@ -1176,12 +1176,14 @@ class TyLogEditingController extends TextEditingController {
     BuildContext context, {
     TextStyle? style,
     bool tappable = false,
+    Widget Function(String source)? taskBuilder,
   }) => _textSpan(
     context,
     style,
     withComposing: false,
     interactive: false,
     tappable: tappable,
+    taskBuilder: taskBuilder,
   );
 
   /// Spans for visible-text range [start, end): the blocks overlapping it,
@@ -1223,6 +1225,7 @@ class TyLogEditingController extends TextEditingController {
     required bool withComposing,
     bool interactive = true,
     bool tappable = false,
+    Widget Function(String source)? taskBuilder,
     int firstBlock = 0,
     int? lastBlock,
     bool trailingGap = false,
@@ -1238,7 +1241,17 @@ class TyLogEditingController extends TextEditingController {
       final block = document.blocks[i];
       final reserveStrip =
           interactive && i > 0 && _taskHasStrip(document.blocks[i - 1]);
-      if (block.isProtected) {
+      if (taskBuilder != null && block.style == TyLogBlockStyle.taskLine) {
+        children.add(
+          WidgetSpan(
+            child: SizedBox(
+              width: imageContentWidth,
+              child: taskBuilder(block.originalSource),
+            ),
+          ),
+        );
+        global += block.visibleText.length;
+      } else if (block.isProtected) {
         children.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,

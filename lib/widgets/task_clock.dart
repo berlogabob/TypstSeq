@@ -27,14 +27,12 @@ class TaskClock extends StatefulWidget {
     super.key,
     required this.task,
     required this.onOpen,
-    this.onToggle,
-    this.pill = false,
+    this.onStop,
   });
 
   final TaskRef task;
   final VoidCallback onOpen;
-  final Future<void> Function(TaskRef)? onToggle;
-  final bool pill;
+  final Future<void> Function(TaskRef)? onStop;
 
   @override
   State<TaskClock> createState() => _TaskClockState();
@@ -89,41 +87,28 @@ class _TaskClockState extends State<TaskClock> with WidgetsBindingObserver {
     final elapsed = start == null
         ? Duration.zero
         : DateTime.now().difference(start);
-    final total = widget.task.clockedTotal;
     return Row(
-      mainAxisSize: widget.pill ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: [
-        if (widget.pill)
-          Expanded(
-            child: InkWell(
-              onTap: widget.onOpen,
-              child: Text(
-                widget.task.text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+        Expanded(
+          child: InkWell(
+            onTap: widget.onOpen,
+            child: Text(
+              widget.task.text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-        if (!widget.pill && total > Duration.zero)
-          Text(
-            trackedTime(total),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+        ),
         if (running != null) ...[
           const SizedBox(width: 8),
           Text(timerTime(elapsed)),
         ],
-        if (widget.onToggle != null)
+        if (widget.onStop != null)
           IconButton(
-            tooltip: running == null ? 'Start timer' : 'Stop timer',
-            icon: Icon(running == null ? Icons.play_arrow : Icons.stop),
-            onPressed: () => unawaited(widget.onToggle!(widget.task)),
-          ),
-        if (!widget.pill)
-          IconButton(
-            tooltip: 'Open source note',
-            icon: const Icon(Icons.open_in_new),
-            onPressed: widget.onOpen,
+            tooltip: 'Stop timer',
+            icon: const Icon(Icons.stop),
+            onPressed: () => unawaited(widget.onStop!(widget.task)),
           ),
       ],
     );

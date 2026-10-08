@@ -6,6 +6,7 @@ import '../models.dart';
 import '../month_calendar.dart';
 import 'date_format.dart';
 import 'loading.dart';
+import 'task_row.dart';
 
 class CalendarTab extends StatefulWidget {
   const CalendarTab({
@@ -15,6 +16,8 @@ class CalendarTab extends StatefulWidget {
     required this.calendar,
     required this.dayMarks,
     this.indexing = false,
+    this.onSetStatus,
+    this.onSetField,
     required this.onOpenPath,
     required this.onOpenDay,
   });
@@ -27,6 +30,8 @@ class CalendarTab extends StatefulWidget {
   final List<CalendarItem> calendar;
   final ({Set<String> daily, Set<String> refs}) dayMarks;
   final bool indexing;
+  final Future<void> Function(TaskRef, String)? onSetStatus;
+  final Future<void> Function(TaskRef, String, String)? onSetField;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<DateTime> onOpenDay;
 
@@ -41,8 +46,20 @@ class _CalendarTabState extends State<CalendarTab> {
   Widget build(BuildContext context) {
     final iso = isoDay(selected);
     final items = widget.calendar.where((item) => item.date == iso).toList();
+    final tasks =
+        widget.index?.tasks
+            .where(
+              (t) =>
+                  t.due?.split('T').first == iso ||
+                  t.scheduled?.split('T').first == iso,
+            )
+            .toList() ??
+        <TaskRef>[];
+    items.removeWhere((item) => item.kind == CalendarItemKind.task);
     const headerCount = 4;
-    final itemCount = headerCount + (items.isEmpty ? 1 : items.length);
+    final itemCount =
+        headerCount +
+        (items.isEmpty && tasks.isEmpty ? 1 : items.length + tasks.length);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       itemCount: itemCount,
@@ -75,7 +92,7 @@ class _CalendarTabState extends State<CalendarTab> {
               imageResolver: widget.imageResolver,
             );
           default:
-            if (items.isEmpty) {
+            if (items.isEmpty && tasks.isEmpty) {
               return ListTile(
                 leading: widget.indexing
                     ? const LoadingIndicator(size: 20, strokeWidth: 2)
@@ -83,6 +100,14 @@ class _CalendarTabState extends State<CalendarTab> {
                 title: Text(
                   widget.indexing ? 'Indexing…' : 'Nothing on this day yet',
                 ),
+              );
+            }
+            if (i - headerCount >= items.length) {
+              return TaskRow(
+                task: tasks[i - headerCount - items.length],
+                onOpenPath: widget.onOpenPath,
+                onSetStatus: widget.onSetStatus,
+                onSetField: widget.onSetField,
               );
             }
             final item = items[i - headerCount];

@@ -8,6 +8,8 @@ import '../rich_editor.dart';
 import '../vault.dart';
 import 'date_format.dart';
 import 'loading.dart';
+import 'task_row.dart';
+import 'task_fields.dart';
 
 class JournalFeed extends StatefulWidget {
   const JournalFeed({
@@ -18,8 +20,12 @@ class JournalFeed extends StatefulWidget {
     required this.onOpenPath,
     this.resolveKind,
     this.onAtomTap,
+    this.onSetStatus,
+    this.onSetField,
   });
 
+  final Future<void> Function(TaskRef, String)? onSetStatus;
+  final Future<void> Function(TaskRef, String, String)? onSetField;
   final List<CalendarItem> events;
   final Vault? vault;
   final VaultIndex? index;
@@ -262,6 +268,27 @@ class _JournalFeedState extends State<JournalFeed> {
                       }
                       return TyLogReadView(
                         source: snapshot.data!,
+                        taskBuilder: (source) {
+                          final parsed = taskFromSource(
+                            source,
+                            notePath: day.path,
+                          );
+                          final task =
+                              widget.index?.tasks
+                                  .where(
+                                    (t) =>
+                                        t.id == parsed.id &&
+                                        t.notePath == day.path,
+                                  )
+                                  .firstOrNull ??
+                              parsed;
+                          return TaskRow(
+                            task: task,
+                            onOpenPath: widget.onOpenPath,
+                            onSetStatus: widget.onSetStatus,
+                            onSetField: widget.onSetField,
+                          );
+                        },
                         imageResolver: _readAsset,
                         resolveKind: widget.resolveKind,
                         onAtomTap: widget.onAtomTap,

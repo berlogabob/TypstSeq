@@ -1,26 +1,4 @@
-import 'package:flutter/material.dart';
-
-import 'constants.dart';
-
 const taskCheckedGlyph = '☑';
 const taskUncheckedGlyph = '☐';
 const taskDoingGlyph = '◐';
 const taskCancelledGlyph = '☒';
-
-class TaskCheckbox extends StatelessWidget {
-  const TaskCheckbox({super.key, required this.value, required this.onChanged});
-
-  final bool value;
-  final ValueChanged<bool?> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Checkbox(
-    value: value,
-    onChanged: onChanged,
-    activeColor: Theme.of(context).colorScheme.primary,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(kRadiusSmall),
-    ),
-    visualDensity: VisualDensity.standard,
-  );
-}

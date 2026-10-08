@@ -41,9 +41,11 @@ data ownership, plaintext storage, and depth over breadth.
 | Due + scheduled dates | ISO 8601, separate fields | TaskRef.due/.scheduled | Shipped |
 | Reminders | Local notifications | task_scheduler.dart | Shipped |
 | Recurrence | RRULE via rrule package | TaskRef.recurrence | Shipped |
-| Time tracking | Clocked sessions with runaway filtering | TaskRef.clocked, ClockEntry | Shipped |
+| Time tracking | Doing starts the clock; leaving Doing stops it; floating pill Stop returns to Todo; clocked sessions with runaway filtering | TaskRef.clocked, ClockEntry | Shipped |
 | Tags, project, assignees, dependencies, completion history, custom properties | Full task data model | TaskRef | Shipped |
-| Task views | Library > Tasks, Today agenda, status/priority filters | work_surface.dart | Shipped |
+| Task creation | Type TODO / [] / [ ] or /todo; Enter continues; single-line quick add on Today and Tasks appends literal text to today’s templated journal | rich_editor/, work_surface.dart | Shipped |
+| Task rows | Shared four-state glyph, tap toggles Done, long-press status menu, priority/date/repeat/time chips; text opens source in Today, Tasks, Journal, Calendar, Search and saved queries | task_row.dart, task_chip_strip.dart | Shipped |
+| Task filters | Open; recent Done; All includes cancelled and all completed tasks; project and text filters | task_agenda.dart | Shipped |
 
 ## Knowledge graph / linking
 

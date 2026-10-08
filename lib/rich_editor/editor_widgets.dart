@@ -51,8 +51,10 @@ class TyLogReadView extends StatefulWidget {
     this.imageResolver,
     this.resolveKind,
     this.onAtomTap,
+    this.taskBuilder,
   });
 
+  final Widget Function(String source)? taskBuilder;
   final String source;
   final Future<Uint8List?> Function(String path)? imageResolver;
   final String? Function(String target)? resolveKind;
@@ -100,6 +102,7 @@ class _TyLogReadViewState extends State<TyLogReadView> {
               context,
             ).textTheme.bodyLarge?.copyWith(height: 1.55),
             tappable: widget.onAtomTap != null,
+            taskBuilder: widget.taskBuilder,
           ),
         ),
       );
@@ -299,7 +302,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (state == null) return;
     final count = _isMentionLike(state.trigger.kind)
         ? state.mentionItems.length
-        : _taskField == 'repeat'
+        : (_taskField == 'repeat' || _taskField == 'priority')
         ? 4
         : _taskField != null
         ? _dateCandidates.length
@@ -315,7 +318,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final state = _autocomplete.value;
     if (state == null) return;
     if (_taskField != null) {
-      if (_taskField == 'repeat') {
+      if (_taskField == 'priority') {
+        _pickPriority(taskPriorities[state.highlighted]);
+      } else if (_taskField == 'repeat') {
         _pickRepeat(
           const ['daily', 'weekly', 'monthly', 'weekdays'][state.highlighted],
         );
@@ -435,6 +440,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       'scheduled',
       'deadline',
       'repeat',
+      'priority',
     ].contains(command);
     if (field) {
       _taskField = command == 'deadline' ? 'scheduled' : command;
@@ -451,7 +457,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _autocomplete.value = state.copyWith(highlighted: 0);
       _ensureOverlay();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _taskField != 'repeat') _dateFocus.requestFocus();
+        if (mounted && _taskField != 'repeat' && _taskField != 'priority') {
+          _dateFocus.requestFocus();
+        }
       });
       return;
     }
@@ -488,17 +496,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       ),
       mentionItems: const [],
       commandItems: const [],
-      taskItems: command == 'priority'
-          ? const ['urgent', 'a', 'b', 'c']
-          : const [],
+      taskItems: const [],
       highlighted: 0,
       loading: false,
     );
-    if (command == 'priority') {
-      _ensureOverlay();
-    } else {
-      unawaited(_selectTaskCommand(command));
-    }
+    unawaited(_selectTaskCommand(command));
   }
 
   bool _restoreTaskFieldCaret() {
@@ -514,16 +516,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return true;
   }
 
+  void _pickPriority(String priority) {
+    if (!_restoreTaskFieldCaret()) return;
+    widget.controller.setCurrentTaskFields(priority: priority);
+    _cancelAutocomplete();
+    focusNode.requestFocus();
+  }
+
   void _pickRepeat(String repeat) {
     if (!_restoreTaskFieldCaret()) return;
-    widget.controller.setCurrentTaskFields(
-      recurrence: switch (repeat) {
-        'daily' => 'RRULE:FREQ=DAILY',
-        'weekly' => 'RRULE:FREQ=WEEKLY',
-        'monthly' => 'RRULE:FREQ=MONTHLY',
-        _ => 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',
-      },
-    );
+    widget.controller.setCurrentTaskFields(recurrence: taskRepeatRule(repeat));
     _cancelAutocomplete();
     focusNode.requestFocus();
   }
@@ -556,58 +558,18 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     }
   }
 
-  Widget _taskFieldList(_AutocompleteState state) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      if (_taskField != 'repeat')
-        TextField(
-          key: const Key('task-date-input'),
-          controller: _dateInput,
-          focusNode: _dateFocus,
-          decoration: InputDecoration(
-            hintText: 'today / завтра / +3d',
-            suffixIcon: IconButton(
-              tooltip: 'Calendar',
-              onPressed: _calendarTaskDate,
-              icon: const Icon(Icons.calendar_month),
-            ),
-          ),
-          onChanged: (_) =>
-              _autocomplete.value = state.copyWith(highlighted: 0),
-          onSubmitted: (_) => _activateHighlighted(),
-        ),
-      Flexible(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            if (_taskField == 'repeat')
-              for (final (i, repeat) in const [
-                'daily',
-                'weekly',
-                'monthly',
-                'weekdays',
-              ].indexed)
-                ListTile(
-                  dense: true,
-                  title: Text(repeat),
-                  selected: state.highlighted == i,
-                  onTap: () => _pickRepeat(repeat),
-                )
-            else
-              for (final (i, date) in _dateCandidates.indexed)
-                ListTile(
-                  dense: true,
-                  title: Text(isoDay(date)),
-                  subtitle: date.hour != 0 || date.minute != 0
-                      ? Text(localTime(date))
-                      : null,
-                  selected: state.highlighted == i,
-                  onTap: () => _pickDate(date),
-                ),
-          ],
-        ),
-      ),
-    ],
+  Widget _taskFieldList(_AutocompleteState state) => TaskFieldList(
+    field: _taskField!,
+    input: _dateInput,
+    focus: _dateFocus,
+    dates: _dateCandidates,
+    highlighted: state.highlighted,
+    onChanged: (_) => _autocomplete.value = state.copyWith(highlighted: 0),
+    onSubmitted: (_) => _activateHighlighted(),
+    onCalendar: _calendarTaskDate,
+    onRepeat: _pickRepeat,
+    onPriority: _pickPriority,
+    onDate: _pickDate,
   );
 
   void _cancelAutocomplete() {
@@ -656,7 +618,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           );
           final count = _isMentionLike(state.trigger.kind)
               ? math.max(1, state.mentionItems.length)
-              : _taskField == 'repeat'
+              : (_taskField == 'repeat' || _taskField == 'priority')
               ? 4
               : _taskField != null
               ? 1 + math.max(1, _dateCandidates.length)
@@ -931,54 +893,51 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       onTap: () => widget.controller.handleEditorTap(),
       onTapOutside: (_) => focusNode.unfocus(),
       contextMenuBuilder: (context, state) => TextFieldTapRegion(
-        child: AdaptiveTextSelectionToolbar.buttonItems(
-          anchors: state.contextMenuAnchors,
-          buttonItems: [
-            if (_checkboxSelection())
-              for (final status in const ['todo', 'doing', 'done', 'cancelled'])
-                ContextMenuButtonItem(
-                  label: status,
-                  onPressed: () {
-                    final id = widget.controller.currentTaskBlockId;
-                    state.hideToolbar();
-                    if (id != null) {
-                      unawaited(widget.controller.setTaskStatus(id, status));
-                    }
-                  },
-                )
-            else ...[
-              if (!widget.controller.selection.isCollapsed)
-                ContextMenuButtonItem(
-                  type: ContextMenuButtonType.copy,
-                  onPressed: () {
-                    state.hideToolbar();
-                    widget.controller.copySelection();
-                  },
-                ),
-              if (!widget.controller.selection.isCollapsed)
-                ContextMenuButtonItem(
-                  type: ContextMenuButtonType.cut,
-                  onPressed: () {
-                    state.hideToolbar();
-                    widget.controller.cutSelection();
-                  },
-                ),
-              ContextMenuButtonItem(
-                type: ContextMenuButtonType.paste,
-                onPressed: () {
+        child: _checkboxSelection()
+            ? TaskStatusMenu(
+                anchors: state.contextMenuAnchors,
+                onStatus: (status) {
+                  final id = widget.controller.currentTaskBlockId;
                   state.hideToolbar();
-                  widget.controller.paste();
+                  if (id != null) {
+                    unawaited(widget.controller.setTaskStatus(id, status));
+                  }
                 },
+              )
+            : AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: state.contextMenuAnchors,
+                buttonItems: [
+                  if (!widget.controller.selection.isCollapsed)
+                    ContextMenuButtonItem(
+                      type: ContextMenuButtonType.copy,
+                      onPressed: () {
+                        state.hideToolbar();
+                        widget.controller.copySelection();
+                      },
+                    ),
+                  if (!widget.controller.selection.isCollapsed)
+                    ContextMenuButtonItem(
+                      type: ContextMenuButtonType.cut,
+                      onPressed: () {
+                        state.hideToolbar();
+                        widget.controller.cutSelection();
+                      },
+                    ),
+                  ContextMenuButtonItem(
+                    type: ContextMenuButtonType.paste,
+                    onPressed: () {
+                      state.hideToolbar();
+                      widget.controller.paste();
+                    },
+                  ),
+                  ContextMenuButtonItem(
+                    type: ContextMenuButtonType.selectAll,
+                    onPressed: () {
+                      _selectAll(state);
+                    },
+                  ),
+                ],
               ),
-              ContextMenuButtonItem(
-                type: ContextMenuButtonType.selectAll,
-                onPressed: () {
-                  _selectAll(state);
-                },
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }
@@ -1270,13 +1229,15 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                               if (_taskHasStrip(
                                 widget.controller.document.blocks[range.index],
                               ))
-                                _EditorTaskStrip(
-                                  source: widget.controller.document.sourceFor(
-                                    widget
-                                        .controller
-                                        .document
-                                        .blocks[range.index]
-                                        .id,
+                                TaskChipStrip(
+                                  task: taskFromSource(
+                                    widget.controller.document.sourceFor(
+                                      widget
+                                          .controller
+                                          .document
+                                          .blocks[range.index]
+                                          .id,
+                                    ),
                                   ),
                                   onCommand: (command) =>
                                       _openTaskChip(range.index, command),
@@ -2929,151 +2890,4 @@ class _TaskStripFlow extends FlowDelegate {
 
   @override
   bool shouldRepaint(_TaskStripFlow oldDelegate) => true;
-}
-
-class _EditorTaskStrip extends StatefulWidget {
-  const _EditorTaskStrip({required this.source, required this.onCommand});
-  final String source;
-  final ValueChanged<String> onCommand;
-  @override
-  State<_EditorTaskStrip> createState() => _EditorTaskStripState();
-}
-
-class _EditorTaskStripState extends State<_EditorTaskStrip> {
-  Timer? _ticker;
-  late TaskRef _task;
-
-  void _updateTask() {
-    final source = widget.source;
-    final id = taskField(source, 'id')!;
-    _task = TaskRef(
-      id: id,
-      notePath: '',
-      text: taskField(source, 'text')!,
-      status: taskField(source, 'status') ?? 'todo',
-      priority: taskField(source, 'priority') ?? 'normal',
-      due: taskField(source, 'due'),
-      scheduled: taskField(source, 'scheduled'),
-      recurrence: taskField(source, 'recurrence'),
-      clocked: taskClocked(source, id),
-    );
-    _ticker?.cancel();
-    if (_task.status == 'doing' && _task.runningClock != null) {
-      _ticker = Timer.periodic(
-        const Duration(seconds: 1),
-        (_) => setState(() {}),
-      );
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _updateTask();
-  }
-
-  @override
-  void didUpdateWidget(_EditorTaskStrip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.source != widget.source) _updateTask();
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  String _date(String value, DateTime now) {
-    final date = DateTime.tryParse(value);
-    if (date == null) return value;
-    final day = DateTime(date.year, date.month, date.day);
-    final today = DateTime(now.year, now.month, now.day);
-    if (day == today) return 'Today';
-    if (day == DateTime(now.year, now.month, now.day + 1)) return 'Tomorrow';
-    if (day.isAfter(today) &&
-        day.isBefore(DateTime(now.year, now.month, now.day + 7))) {
-      return const [
-        'Mon',
-        'Tue',
-        'Wed',
-        'Thu',
-        'Fri',
-        'Sat',
-        'Sun',
-      ][day.weekday - 1];
-    }
-    return '${day.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][day.month - 1]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final scheme = Theme.of(context).colorScheme;
-    Widget chip(String field, String label, {bool overdue = false}) =>
-        TextFieldTapRegion(
-          child: InkWell(
-            key: Key('task-chip-${_task.id}-$field'),
-            onTap: () => widget.onCommand(field),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Center(
-                  widthFactor: 1,
-                  heightFactor: 1,
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: overdue ? scheme.error : scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-
-    final start = DateTime.tryParse(_task.runningClock?.start ?? '');
-    final elapsed = _task.status == 'doing' && start != null
-        ? now.difference(start)
-        : Duration.zero;
-    final total =
-        _task.clockedTotal + (elapsed.isNegative ? Duration.zero : elapsed);
-    return Wrap(
-      spacing: 4,
-      runSpacing: 2,
-      children: [
-        if (_task.priority != 'normal') chip('priority', _task.priority),
-        for (final (field, date) in [
-          ('due', _task.due),
-          ('scheduled', _task.scheduled),
-        ])
-          if (date != null)
-            chip(
-              field,
-              '${field == 'due' ? 'Due' : 'Scheduled'} ${_date(date, now)}',
-              overdue:
-                  field == 'due' &&
-                  (DateTime.tryParse(
-                        date,
-                      )?.isBefore(DateTime(now.year, now.month, now.day)) ??
-                      false),
-            ),
-        if (_task.recurrence != null) chip('repeat', '↻'),
-        if (total > Duration.zero || _task.status == 'doing' && start != null)
-          SizedBox(
-            key: Key('task-chip-${_task.id}-time'),
-            width: 88,
-            child: Text(
-              timerTime(total),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 }
