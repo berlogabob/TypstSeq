@@ -138,6 +138,40 @@ Future<void> _tapTaskTimer(
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets('metadata-only external change updates the open task line', (
+    tester,
+  ) async {
+    final (_, home) = await _mountTaskTimers(tester);
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    final originalText = home.richController.text;
+    final metadata = setTaskFields(
+      home.workspace.source as String,
+      'a',
+      priority: 'high',
+      scheduled: '2026-10-09',
+    );
+    home.workspace.replaceNote('notes/a.typ', metadata);
+    await tester.pumpAndSettle();
+    expect(home.richController.text, originalText);
+    expect(find.byKey(const Key('task-chip-a-priority')), findsOneWidget);
+    expect(find.byKey(const Key('task-chip-a-scheduled')), findsOneWidget);
+    final updated = setTaskFields(
+      metadata,
+      'a',
+      status: 'cancelled',
+      priority: 'high',
+      scheduled: '2026-10-09',
+    );
+    home.workspace.replaceNote('notes/a.typ', updated);
+    await tester.pumpAndSettle();
+    expect(home.richController.text, contains('☒ Task a'));
+    expect(home.richController.document.toSource(), updated);
+    expect(find.byKey(const Key('task-chip-a-priority')), findsOneWidget);
+    expect(find.byKey(const Key('task-chip-a-scheduled')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'Doing in the editor stops a running task in another vault note',
     (tester) async {

@@ -114,6 +114,7 @@ const _autocompleteMaxVisible = 6;
 class _TyLogRichEditorState extends State<TyLogRichEditor> {
   late final FocusNode focusNode;
   final GlobalKey _editorKey = GlobalKey();
+  final ScrollController _taskScroll = ScrollController();
   final ValueNotifier<_AutocompleteState?> _autocomplete = ValueNotifier(null);
   OverlayEntry? _overlayEntry;
   Timer? _debounce;
@@ -419,7 +420,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final caret = c.selection.extentOffset;
     final trigger = state.trigger.start;
     final start =
-        trigger > 0 &&
+        caret > trigger &&
+            trigger > 0 &&
             c.text[trigger - 1] == ' ' &&
             (c.currentTaskBlockId == null ||
                 trigger - 1 >
@@ -471,6 +473,32 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       );
     }
     if (mounted) focusNode.requestFocus();
+  }
+
+  void _openTaskChip(int index, String command) {
+    _cancelAutocomplete();
+    final c = widget.controller;
+    final end = c.document.blockRanges[index].end;
+    c.selection = TextSelection.collapsed(offset: end);
+    _autocomplete.value = _AutocompleteState(
+      trigger: AutocompleteTrigger(
+        kind: AutocompleteTriggerKind.command,
+        query: '',
+        start: end,
+      ),
+      mentionItems: const [],
+      commandItems: const [],
+      taskItems: command == 'priority'
+          ? const ['urgent', 'a', 'b', 'c']
+          : const [],
+      highlighted: 0,
+      loading: false,
+    );
+    if (command == 'priority') {
+      _ensureOverlay();
+    } else {
+      unawaited(_selectTaskCommand(command));
+    }
   }
 
   bool _restoreTaskFieldCaret() {
@@ -829,6 +857,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
 
   @override
   void dispose() {
+    _taskScroll.dispose();
     _windowScroll.dispose();
     _window?.dispose();
     _debounce?.cancel();
@@ -866,6 +895,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return TextField(
       key: const Key('rich-journal-editor'),
       controller: controller,
+      scrollController: _taskScroll,
       focusNode: focusNode,
       expands: expands,
       minLines: null,
@@ -879,9 +909,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           ? null
           : StrutStyle.fromTextStyle(textStyle, forceStrutHeight: false),
       decoration: expands
-          ? const InputDecoration(
+          ? InputDecoration(
               hintText: 'Start writing…',
-              contentPadding: EdgeInsets.all(18),
+              contentPadding: EdgeInsets.fromLTRB(
+                18,
+                18,
+                18,
+                widget.controller.document.blocks.any(_taskHasStrip) ? 140 : 18,
+              ),
             )
           // The windowed field has no decorator: InputDecorator asks for a
           // dry baseline, a second full text layout on every keystroke
@@ -1199,11 +1234,58 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               builder: (context, constraints) {
                 widget.controller.imageContentWidth =
                     constraints.maxWidth - (_window == null ? 36 : 0);
-                return SizedBox(
-                  key: _editorKey,
-                  child: _window == null
-                      ? _field(widget.controller, textStyle, expands: true)
-                      : _windowedField(textStyle),
+                return ListenableBuilder(
+                  listenable: widget.controller,
+                  builder: (context, _) => Stack(
+                    children: [
+                      Positioned.fill(
+                        child: SizedBox(
+                          key: _editorKey,
+                          child: _window == null
+                              ? _field(
+                                  widget.controller,
+                                  textStyle,
+                                  expands: true,
+                                )
+                              : _windowedField(textStyle),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Flow(
+                          delegate: _TaskStripFlow(
+                            controller: widget.controller,
+                            editable: () =>
+                                _editableIn(_editorKey.currentContext),
+                            origin: () =>
+                                _editorKey.currentContext?.findRenderObject()
+                                    as RenderBox?,
+                            repaint: Listenable.merge([
+                              widget.controller,
+                              _taskScroll,
+                            ]),
+                          ),
+                          children: [
+                            for (final range
+                                in widget.controller.document._ranges)
+                              if (_taskHasStrip(
+                                widget.controller.document.blocks[range.index],
+                              ))
+                                _EditorTaskStrip(
+                                  source: widget.controller.document.sourceFor(
+                                    widget
+                                        .controller
+                                        .document
+                                        .blocks[range.index]
+                                        .id,
+                                  ),
+                                  onCommand: (command) =>
+                                      _openTaskChip(range.index, command),
+                                ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -1800,9 +1882,12 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
     final taskId = taskField(source, 'id');
     final taskText = taskField(source, 'text');
     if (taskId != null && taskText != null) {
-      final glyph = taskField(source, 'status') == 'done'
-          ? taskCheckedGlyph
-          : taskUncheckedGlyph;
+      final glyph = switch (taskField(source, 'status')) {
+        'doing' => taskDoingGlyph,
+        'done' => taskCheckedGlyph,
+        'cancelled' => taskCancelledGlyph,
+        _ => taskUncheckedGlyph,
+      };
       return TyLogBlock(
         id: id,
         style: TyLogBlockStyle.taskLine,
@@ -2543,7 +2628,9 @@ String _serializeBlock(TyLogBlock block) {
       block.originalSource,
       taskField(block.originalSource, 'id')!,
       block.visibleText.replaceFirst(
-        RegExp('^[$taskUncheckedGlyph$taskCheckedGlyph] '),
+        RegExp(
+          '^[$taskUncheckedGlyph$taskDoingGlyph$taskCheckedGlyph$taskCancelledGlyph] ',
+        ),
         '',
       ),
     ),
@@ -2786,4 +2873,207 @@ class _StaticChunkState extends State<_StaticChunk> {
       strutStyle: widget.strutStyle,
     ),
   );
+}
+
+bool _taskHasStrip(TyLogBlock block) {
+  if (block.style != TyLogBlockStyle.taskLine) return false;
+  final source = block.originalSource;
+  final priority = taskField(source, 'priority') ?? 'normal';
+  return priority != 'normal' ||
+      taskField(source, 'due') != null ||
+      taskField(source, 'scheduled') != null ||
+      taskField(source, 'recurrence') != null ||
+      taskClocked(source, taskField(source, 'id')!).isNotEmpty;
+}
+
+/// Paint after EditableText, using its actual wrapping and scroll geometry.
+class _TaskStripFlow extends FlowDelegate {
+  _TaskStripFlow({
+    required this.controller,
+    required this.editable,
+    required this.origin,
+    required super.repaint,
+  });
+  final TyLogEditingController controller;
+  final RenderEditable? Function() editable;
+  final RenderBox? Function() origin;
+
+  @override
+  BoxConstraints getConstraintsForChild(int i, BoxConstraints constraints) =>
+      BoxConstraints(
+        maxWidth: math.min(360, math.max(0, constraints.maxWidth - 36)),
+      );
+
+  @override
+  void paintChildren(FlowPaintingContext context) {
+    final field = editable();
+    final box = origin();
+    if (field == null || box == null || !field.hasSize) return;
+    var child = 0;
+    for (final range in controller.document._ranges) {
+      if (!_taskHasStrip(controller.document.blocks[range.index])) continue;
+      final caret = field.getLocalRectForCaret(TextPosition(offset: range.end));
+      final point = box.globalToLocal(field.localToGlobal(caret.bottomLeft));
+      final size = context.getChildSize(child)!;
+      final beside = point.dx + 8 + size.width <= context.size.width - 18;
+      context.paintChild(
+        child++,
+        transform: Matrix4.translationValues(
+          beside ? point.dx + 8 : 18,
+          beside ? point.dy - caret.height : point.dy + 2,
+          0,
+        ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TaskStripFlow oldDelegate) => true;
+}
+
+class _EditorTaskStrip extends StatefulWidget {
+  const _EditorTaskStrip({required this.source, required this.onCommand});
+  final String source;
+  final ValueChanged<String> onCommand;
+  @override
+  State<_EditorTaskStrip> createState() => _EditorTaskStripState();
+}
+
+class _EditorTaskStripState extends State<_EditorTaskStrip> {
+  Timer? _ticker;
+  late TaskRef _task;
+
+  void _updateTask() {
+    final source = widget.source;
+    final id = taskField(source, 'id')!;
+    _task = TaskRef(
+      id: id,
+      notePath: '',
+      text: taskField(source, 'text')!,
+      status: taskField(source, 'status') ?? 'todo',
+      priority: taskField(source, 'priority') ?? 'normal',
+      due: taskField(source, 'due'),
+      scheduled: taskField(source, 'scheduled'),
+      recurrence: taskField(source, 'recurrence'),
+      clocked: taskClocked(source, id),
+    );
+    _ticker?.cancel();
+    if (_task.status == 'doing' && _task.runningClock != null) {
+      _ticker = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => setState(() {}),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTask();
+  }
+
+  @override
+  void didUpdateWidget(_EditorTaskStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) _updateTask();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String _date(String value, DateTime now) {
+    final date = DateTime.tryParse(value);
+    if (date == null) return value;
+    final day = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+    if (day == today) return 'Today';
+    if (day == DateTime(now.year, now.month, now.day + 1)) return 'Tomorrow';
+    if (day.isAfter(today) &&
+        day.isBefore(DateTime(now.year, now.month, now.day + 7))) {
+      return const [
+        'Mon',
+        'Tue',
+        'Wed',
+        'Thu',
+        'Fri',
+        'Sat',
+        'Sun',
+      ][day.weekday - 1];
+    }
+    return '${day.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][day.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final scheme = Theme.of(context).colorScheme;
+    Widget chip(String field, String label, {bool overdue = false}) =>
+        TextFieldTapRegion(
+          child: InkWell(
+            key: Key('task-chip-${_task.id}-$field'),
+            onTap: () => widget.onCommand(field),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: overdue ? scheme.error : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    final start = DateTime.tryParse(_task.runningClock?.start ?? '');
+    final elapsed = _task.status == 'doing' && start != null
+        ? now.difference(start)
+        : Duration.zero;
+    final total =
+        _task.clockedTotal + (elapsed.isNegative ? Duration.zero : elapsed);
+    return Wrap(
+      spacing: 4,
+      runSpacing: 2,
+      children: [
+        if (_task.priority != 'normal') chip('priority', _task.priority),
+        for (final (field, date) in [
+          ('due', _task.due),
+          ('scheduled', _task.scheduled),
+        ])
+          if (date != null)
+            chip(
+              field,
+              '${field == 'due' ? 'Due' : 'Scheduled'} ${_date(date, now)}',
+              overdue:
+                  field == 'due' &&
+                  (DateTime.tryParse(
+                        date,
+                      )?.isBefore(DateTime(now.year, now.month, now.day)) ??
+                      false),
+            ),
+        if (_task.recurrence != null) chip('repeat', '↻'),
+        if (total > Duration.zero || _task.status == 'doing' && start != null)
+          SizedBox(
+            key: Key('task-chip-${_task.id}-time'),
+            width: 88,
+            child: Text(
+              timerTime(total),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

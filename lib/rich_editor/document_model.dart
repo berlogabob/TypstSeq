@@ -596,7 +596,7 @@ class TyLogDocument {
     }
     if (block.style == TyLogBlockStyle.taskLine &&
         line.length >= 2 &&
-        (line[0].code == 0x2610 || line[0].code == 0x2611) &&
+        const {0x2610, 0x25D0, 0x2611, 0x2612}.contains(line[0].code) &&
         line[1].code == 32) {
       line.removeRange(0, 2);
       removedPrefix = 2;
@@ -751,7 +751,7 @@ class TyLogDocument {
         if (match != null) line.removeRange(0, match.end);
       } else if (from == TyLogBlockStyle.taskLine &&
           line.length >= 2 &&
-          (line[0].code == 0x2610 || line[0].code == 0x2611) &&
+          const {0x2610, 0x25D0, 0x2611, 0x2612}.contains(line[0].code) &&
           line[1].code == 32) {
         line.removeRange(0, 2);
       }

@@ -60,10 +60,182 @@ void main() {
     expect(compiled.exitCode, 0, reason: '${compiled.stderr}\n$source');
   }
 
-  tearDownAll(
-    () => Directory('.dart_tool/task_typing_test').deleteSync(recursive: true),
-  );
+  tearDownAll(() {
+    final dir = Directory('.dart_tool/task_typing_test');
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  });
 
+  test('all status glyphs edit, demote, undo, round-trip and compile', () {
+    for (final (status, glyph) in [
+      ('todo', '☐'),
+      ('doing', '◐'),
+      ('done', '☑'),
+      ('cancelled', '☒'),
+    ]) {
+      final c = editor('#tylog.task(id: "t", text: "Call", status: "$status")');
+      addTearDown(c.dispose);
+      expect(c.text, '$glyph Call');
+      type(c, '${c.text}!');
+      expect(taskField(c.document.toSource(), 'text'), 'Call!');
+      check(c);
+      c.value = TextEditingValue(
+        text: '${glyph}Call!',
+        selection: const TextSelection.collapsed(offset: 1),
+      );
+      expect(c.text, 'Call!');
+      c.undo();
+      expect(c.text, '$glyph Call!');
+      check(c);
+    }
+  });
+  testWidgets('task strip chips open the inline fields at 320px without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final c = editor(
+      '#tylog.task(id: "t", text: "Call bank with a long task line", priority: "high", due: "${isoDay(DateTime.now())}", scheduled: "${isoDay(DateTime.now().add(const Duration(days: 1)))}", recurrence: "RRULE:FREQ=WEEKLY")\nNext paragraph',
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: c, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    final field = find.byKey(const Key('rich-journal-editor'));
+    final editable = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    final next = editable.getLocalRectForCaret(
+      TextPosition(offset: c.text.indexOf('Next paragraph')),
+    );
+    final nextTop = editable.localToGlobal(next.topLeft).dy;
+    final stripBottom = tester
+        .getRect(find.byKey(const Key('task-chip-t-repeat')))
+        .bottom;
+    expect(stripBottom, lessThanOrEqualTo(nextTop));
+    for (final command in ['priority', 'due', 'scheduled', 'repeat']) {
+      final chip = find.byKey(Key('task-chip-t-$command'));
+      expect(chip, findsOneWidget);
+      await tester.tap(chip);
+      await tester.pump();
+      expect(find.byKey(const Key('autocomplete-popup')), findsOneWidget);
+      if (command == 'priority') {
+        await tester.tap(find.byKey(const Key('autocomplete-task-c')));
+      } else if (command == 'repeat') {
+        await tester.tap(find.text('daily'));
+      } else {
+        expect(find.byKey(const Key('task-date-input')), findsOneWidget);
+        await tester.enterText(
+          find.byKey(const Key('task-date-input')),
+          'tomorrow',
+        );
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      }
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      check(c);
+    }
+    c.loadSource(
+      '#tylog.task(id: "t", text: "Call", status: "cancelled", due: "2020-10-15")',
+    );
+    await tester.pump();
+    final dueLabel = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('task-chip-t-due')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(dueLabel.data, 'Due 15 Oct');
+    expect(
+      dueLabel.style!.color,
+      Theme.of(tester.element(field)).colorScheme.error,
+    );
+    final span = c.buildTextSpan(
+      context: tester.element(field),
+      style: Theme.of(tester.element(field)).textTheme.bodyLarge,
+      withComposing: false,
+    );
+    expect(
+      (span.children!.first as TextSpan).style!.decoration,
+      TextDecoration.lineThrough,
+    );
+    c.loadSource('#tylog.task(id: "t", text: "Call")');
+    await tester.pump();
+    for (final field in ['priority', 'due', 'scheduled', 'repeat', 'time']) {
+      expect(find.byKey(Key('task-chip-t-$field')), findsNothing);
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+  testWidgets('Doing strip ticks total time without moving text or timer', (
+    tester,
+  ) async {
+    final start = DateTime.now()
+        .toUtc()
+        .subtract(const Duration(seconds: 5))
+        .toIso8601String();
+    final c = editor(
+      '#tylog.task(id: "t", text: "Call", status: "doing", clocked: ((start: "$start", end: none),))',
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: c, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    final chip = find.byKey(const Key('task-chip-t-time'));
+    expect(chip, findsOneWidget);
+    final rect = tester.getRect(chip);
+    final text = c.text;
+    final editable = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    final caret = editable.getLocalRectForCaret(
+      TextPosition(offset: c.text.length),
+    );
+    final before = tester
+        .widget<Text>(find.descendant(of: chip, matching: find.byType(Text)))
+        .data;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 1100)),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    expect(
+      tester
+          .widget<Text>(find.descendant(of: chip, matching: find.byType(Text)))
+          .data,
+      isNot(before),
+    );
+    expect(tester.getRect(chip), rect);
+    expect(c.text, text);
+    expect(
+      editable.getLocalRectForCaret(TextPosition(offset: c.text.length)),
+      caret,
+    );
+    c.loadSource(
+      '#tylog.task(id: "t", text: "Call", clocked: ((start: "2026-10-01T10:00:00Z", end: "2026-10-01T10:02:00Z"),))',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<Text>(find.descendant(of: chip, matching: find.byType(Text)))
+          .data,
+      '02:00',
+    );
+    c.loadSource('#tylog.task(id: "t", text: "Call")');
+    await tester.pump();
+    expect(chip, findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   for (final prefix in ['TODO ', '[] ', '[ ] ']) {
     test(
       '$prefix converts a paragraph line and survives late IME text',
@@ -178,7 +350,10 @@ void main() {
             {'task': 'todo', 'cancel': 'cancelled'}[command] ?? command;
         expect(taskField(c.document.toSource(), 'status') ?? 'todo', status);
       }
-      expect(c.text, '${command == 'done' ? '☑' : '☐'} Call bank');
+      expect(
+        c.text,
+        '${const {'done': '☑', 'doing': '◐', 'cancel': '☒'}[command] ?? '☐'} Call bank',
+      );
       check(c);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -362,7 +537,7 @@ void main() {
       await tester.pump();
       type(c, '${c.text}\n');
       await tester.pump();
-      expect(c.text, '☐ Call');
+      expect(c.text, '◐ Call');
       expect(taskField(c.document.toSource(), 'status'), 'doing');
       check(c);
       await tester.pumpWidget(const SizedBox.shrink());

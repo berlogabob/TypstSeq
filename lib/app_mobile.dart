@@ -653,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // semantically identical source — e.g. trailing blank lines left by an
       // exited list. Reloading the rich editor then would clobber its live
       // state, wiping the empty line the user just opened to type on. Only
-      // reload when visible content or the hidden note header changes.
+      // reload when visible content, task metadata or the hidden note header changes.
       final incoming = TyLogDocument.parse(workspace.source);
       final current = richController.document;
       final changed =

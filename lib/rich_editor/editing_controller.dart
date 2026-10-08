@@ -175,7 +175,7 @@ class TyLogEditingController extends TextEditingController {
       }
       if (change.replacement.isEmpty && change.oldEnd - change.start == 1) {
         // Backspace at the start of a task's text (deleting inside its 2-char
-        // "☐ "/"☑ " prefix) demotes the whole line to a plain paragraph
+        // status glyph + space prefix) demotes the whole line to a plain paragraph
         // rather than mangling the checkbox glyph.
         final hit = document._blockAt(change.start, preferPrevious: true);
         if (hit != null &&
@@ -1236,17 +1236,22 @@ class TyLogEditingController extends TextEditingController {
     var global = firstBlock == 0 ? 0 : document.blockRanges[firstBlock].start;
     for (var i = firstBlock; i <= last; i++) {
       final block = document.blocks[i];
+      final reserveStrip =
+          interactive && i > 0 && _taskHasStrip(document.blocks[i - 1]);
       if (block.isProtected) {
         children.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: _ProtectedChip(
-              label: block.protectedLabel ?? 'Custom Typst',
-              block: true,
-              onTap: interactive || tappable
-                  ? () => onProtectedTap(block.id)
-                  : null,
-              icon: Icons.code,
+            child: Padding(
+              padding: EdgeInsets.only(top: reserveStrip ? 128 : 0),
+              child: _ProtectedChip(
+                label: block.protectedLabel ?? 'Custom Typst',
+                block: true,
+                onTap: interactive || tappable
+                    ? () => onProtectedTap(block.id)
+                    : null,
+                icon: Icons.code,
+              ),
             ),
           ),
         );
@@ -1254,7 +1259,8 @@ class TyLogEditingController extends TextEditingController {
       } else {
         final taskDone =
             block.style == TyLogBlockStyle.taskLine &&
-            block.visibleText.startsWith(taskCheckedGlyph);
+            (block.visibleText.startsWith(taskCheckedGlyph) ||
+                block.visibleText.startsWith(taskCancelledGlyph));
         for (final part in block.parts) {
           if (part.isAtom) {
             // Read mode never writes back to source, so an unknown wrapper
@@ -1344,27 +1350,35 @@ class TyLogEditingController extends TextEditingController {
                     ? PlaceholderAlignment.middle
                     : PlaceholderAlignment.baseline,
                 baseline: TextBaseline.alphabetic,
-                child: isImage
-                    ? _InlineImage(
-                        key: ValueKey(part.id),
-                        controller: interactive ? this : null,
-                        id: part.id!,
-                        layout:
-                            block.style == TyLogBlockStyle.paragraph &&
-                                block.parts
-                                        .where(
-                                          (part) => part.text.trim().isNotEmpty,
-                                        )
-                                        .length ==
-                                    1
-                            ? _imageLayout(part.source!)
-                            : null,
-                        contentWidth: imageContentWidth,
-                        bytes: imageBytes(imagePath),
-                        fallback: chip,
-                        onTap: onTap,
-                      )
-                    : chip,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    top: reserveStrip && identical(part, block.parts.first)
+                        ? 128
+                        : 0,
+                  ),
+                  child: isImage
+                      ? _InlineImage(
+                          key: ValueKey(part.id),
+                          controller: interactive ? this : null,
+                          id: part.id!,
+                          layout:
+                              block.style == TyLogBlockStyle.paragraph &&
+                                  block.parts
+                                          .where(
+                                            (part) =>
+                                                part.text.trim().isNotEmpty,
+                                          )
+                                          .length ==
+                                      1
+                              ? _imageLayout(part.source!)
+                              : null,
+                          contentWidth: imageContentWidth,
+                          bytes: imageBytes(imagePath),
+                          fallback: chip,
+                          onTap: onTap,
+                        )
+                      : chip,
+                ),
               ),
             );
             global++;
@@ -1382,10 +1396,25 @@ class TyLogEditingController extends TextEditingController {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               );
             }
+            final reserveText =
+                reserveStrip &&
+                identical(part, block.parts.first) &&
+                part.text.isNotEmpty;
+            final leading = reserveText ? part.text.characters.first.length : 0;
+            if (reserveText) {
+              // Leading above this line makes room even after a single source newline.
+              _addTextSpans(
+                children,
+                part.text.substring(0, leading),
+                global,
+                style: partStyle.copyWith(height: 16),
+                composing: withComposing ? value.composing : TextRange.empty,
+              );
+            }
             _addTextSpans(
               children,
-              part.text,
-              global,
+              part.text.substring(leading),
+              global + leading,
               style: partStyle,
               composing: withComposing ? value.composing : TextRange.empty,
             );

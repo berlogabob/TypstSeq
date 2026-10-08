@@ -4,6 +4,8 @@ import 'constants.dart';
 
 const taskCheckedGlyph = '☑';
 const taskUncheckedGlyph = '☐';
+const taskDoingGlyph = '◐';
+const taskCancelledGlyph = '☒';
 
 class TaskCheckbox extends StatelessWidget {
   const TaskCheckbox({super.key, required this.value, required this.onChanged});
