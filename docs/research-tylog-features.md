@@ -1,7 +1,8 @@
-# TyLog feature inventory (v0.3.0+92, 2026-08-20)
+# TyLog feature inventory (v0.12.0+133, 2026-10-08)
 
 Ground truth for the PKMS competitive audit (`docs/audit-pkms-comparison.md`).
 Gathered by codebase exploration over `lib/`, `packages/`, `docs/`, `spec/`.
+Tasks, images, Journal and Sync checked against 0.11.6–0.12.0 and the implementation on 2026-10-08.
 Preview and PDF export entries updated 2026-10-04 (3221ad6).
 TyLog is a deliberately scoped Typst-first workspace prioritizing local-first
 data ownership, plaintext storage, and depth over breadth.
@@ -15,7 +16,7 @@ data ownership, plaintext storage, and depth over breadth.
 | Tags | Freeform tags + synonym normalization (_system/tag-synonyms.json) | packages/tylog_core/src/scanner.dart | Shipped |
 | Aliases | Alternative display names | NoteRef.aliases | Shipped |
 | Properties | Custom key-value metadata | NoteRef.properties, property_select_chip.dart | Shipped |
-| Daily/journal notes | daily/YYYY/MM/YYYY-MM-DD.typ | journal_feed.dart, month_calendar.dart | Shipped |
+| Daily/journal notes | daily/YYYY/MM/YYYY-MM-DD.typ; Journal lists pages only, with events behind a collapsed Agenda line; headerless repair preserves text and takes an undo copy | journal_feed.dart, vault.dart | Shipped |
 | Note dates, project refs | Temporal + project context fields | NoteRef.date, NoteRef.project | Shipped |
 
 ## Editor
@@ -30,6 +31,7 @@ data ownership, plaintext storage, and depth over breadth.
 | Wikilinks + autocomplete | [[Note\|Display]] → #tylog.ref-note(); note/project/person suggestions | editor_autocomplete.dart | Shipped |
 | Autosave + history | Atomic per-note saves; 100-entry session undo/redo | controlled_editor.dart | Shipped |
 | Citations | From _system/bibliography.yml (BibTeX/BibLaTeX) | bibliography.dart | Shipped |
+| Image blocks and crop | S/M/Full widths (33/60/100%), left/centre/right, move up/down and delete; crop writes a new PNG beside the original; existing inline source stays until changed | rich_editor/, image_crop.dart | Shipped |
 | Attachments, reports | File/image refs; filtered note reports (date/status/tag/kind) | MagicAction.attachment, report.dart | Shipped |
 | ABSENT: markdown storage, arbitrary WYSIWYG, vault-level undo | Intentional (bulk changes snapshot to .tylog/undo/) | — | N/A |
 
@@ -37,13 +39,13 @@ data ownership, plaintext storage, and depth over breadth.
 
 | Feature | Description | Where | Maturity |
 |---|---|---|---|
-| Statuses, priorities | todo/doing/done/cancelled; low/normal/high/urgent | TaskRef, scanner.dart | Shipped |
-| Due + scheduled dates | ISO 8601, separate fields | TaskRef.due/.scheduled | Shipped |
+| Statuses, priorities | /todo /doing /done /cancel; /a /b /c /urgent map to high/normal/low/urgent; Ctrl/Cmd+Enter cycles todo → doing → done → todo | rich_editor/, scanner.dart | Shipped |
+| Due + scheduled dates | /due and /scheduled (/deadline); English/Russian/Portuguese date words, numeric dates and offsets in a suggestion popup, with calendar fallback; stored as separate ISO fields | task_fields.dart, date_words.dart | Shipped |
 | Reminders | Local notifications | task_scheduler.dart | Shipped |
-| Recurrence | RRULE via rrule package | TaskRef.recurrence | Shipped |
+| Recurrence | /repeat offers daily, weekly, monthly and weekdays; completing a repeat records an occurrence | task_fields.dart, scanner.dart | Shipped |
 | Time tracking | Doing starts the clock; leaving Doing stops it; floating pill Stop returns to Todo; clocked sessions with runaway filtering | TaskRef.clocked, ClockEntry | Shipped |
 | Tags, project, assignees, dependencies, completion history, custom properties | Full task data model | TaskRef | Shipped |
-| Task creation | Type TODO / [] / [ ] or /todo; Enter continues; single-line quick add on Today and Tasks appends literal text to today’s templated journal | rich_editor/, work_surface.dart | Shipped |
+| Task creation | Type TODO / [] / [ ] or /todo; Enter continues, empty Enter returns to text, Backspace removes the checkbox in one undo step; single-line quick add on Today and Tasks appends literal text to today’s templated journal | rich_editor/, work_surface.dart | Shipped |
 | Task rows | Shared four-state glyph, tap toggles Done, long-press status menu, priority/date/repeat/time chips; text opens source in Today, Tasks, Journal, Calendar, Search and saved queries | task_row.dart, task_chip_strip.dart | Shipped |
 | Task filters | Open; recent Done; All includes cancelled and all completed tasks; project and text filters | task_agenda.dart | Shipped |
 
@@ -73,9 +75,11 @@ data ownership, plaintext storage, and depth over breadth.
 
 | Feature | Description | Where | Maturity |
 |---|---|---|---|
-| Nextcloud WebDAV sync | Polling, conditional transfers, SHA-256 change detection | nextcloud_sync.dart, path_sync.dart | Shipped |
+| Nextcloud WebDAV sync | Polling, conditional transfers, SHA-256 change detection; upload confirmed only when listed again, missing unconfirmed uploads retried | nextcloud_sync.dart, path_sync.dart | Shipped |
 | Conflict resolution | Manual: text edit, binary choice, delete-vs-edit; snapshots; pending conflict suspends auto-sync | nextcloud_sync/conflicts.dart | Shipped |
 | ETag safety, atomic writes | Never overwrite on remote change; temp/flush/rename | nextcloud_sync.dart, vault_storage.dart | Shipped |
+| Local sync safety copies | Before unconfirmed local content is replaced/deleted, copy to .tylog/undo/sync-<stamp>/<path>; system/revision files excluded; sync copies kept 30 days and not synced | nextcloud_sync/conflicts.dart | Shipped |
+| Complete folder listings | Reject truncated PROPFIND multistatus responses before inferring deletion | nextcloud_sync/webdav_client.dart | Shipped |
 | Sync dashboard | Diagnostics, transfer totals | sync_dashboard.dart | Shipped |
 | Android SAF | Persistent folder access | vault_registry.dart | Shipped |
 | ABSENT: 3-way merge, E2EE sync, version history, multi-user | Manual resolution; plaintext over HTTPS | — | N/A |

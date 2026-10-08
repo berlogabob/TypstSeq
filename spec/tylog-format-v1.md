@@ -31,10 +31,24 @@ unchanged so existing Typst queries continue to work.
 | `<tylog-task>` | `task` | `id`, `text`, `status`, `priority` | `project`, `scheduled`, `due`, `remind`, `timezone`, `recurrence`, `dependencies`, `assignees`, `tags`, `completed`, `properties` |
 
 Task time tracking is carried in `properties` under the `clocked` key: a list
-of `(start, end)` ISO-8601 pairs, with `end` absent while a session is still
-running. It lives there rather than in its own field because `properties` is
+of `(start, end)` ISO-8601 pairs, with `end` encoded as Typst `none` while a
+session is still running. It lives there rather than in its own field because `properties` is
 the extension slot — a reader on an older package ignores an unknown key, while
 an unknown named argument is a hard compile error.
+
+The app writes session pairs inside the existing task properties dictionary:
+
+```typst
+properties: ("clocked": (
+  ("2026-10-08T09:00:00.000Z", "2026-10-08T09:30:00.000Z"),
+  ("2026-10-08T10:00:00.000Z", none),
+),)
+```
+
+This adds no task field or format version. The writer preserves other
+properties, removes the clocked key when no sessions remain, and collapses
+exact duplicate pairs. Readers also accept the older top-level `clocked`
+argument; the writer moves it into properties when edited.
 
 The standard note kinds are `note`, `daily`, `project`, `article`, and
 `research`. Other non-empty values are extensions and produce validation
@@ -78,3 +92,35 @@ source parser so broken notes do not remove backlinks from the vault index.
   plain string. Task and tag visuals may be configured without changing their
   metadata values.
 
+## Image attachment blocks
+
+The app writes a standalone image as an attachment containing ordinary Typst
+alignment and width, rather than extra metadata fields:
+
+```typst
+#tylog.attachment("/assets/example.png", kind: "image")[#align(center, image("/assets/example.png", width: 60%))]
+```
+
+The leading slash in this source example selects Typst vault-root lookup.
+The attachment helper emits the path as passed. Width presets are 33%, 60% and 100%;
+alignment is `left`, `center` or `right`. New blocks default to 60% and centre.
+Older inline forms remain readable and are not rewritten until changed.
+
+Crop writes `<original-stem>-crop-<hash8>.png` beside the original, where
+`hash8` is the first eight hexadecimal characters of the cropped PNG's SHA-256.
+The image reference changes to the new asset; the original remains. An existing
+crop path is reused only if its bytes match; different bytes at that path cause
+an error.
+
+## Local sync safety copies
+
+Before replacing or deleting unconfirmed local content, sync writes its bytes
+under `.tylog/undo/sync-<microseconds-since-epoch>/<vault-relative-path>`.
+System files and machine revision records are excluded. Content matching a
+previously confirmed local hash does not need a copy. Sync directories older
+than 30 days are pruned. `.tylog/undo` is local operational state and is not
+synced; it is not a complete revision history.
+
+Headerless daily repair and bulk rewrites also use `.tylog/undo/<stamp>/`
+with the original paths. The 30-day pruning rule above applies to `sync-*`
+directories.

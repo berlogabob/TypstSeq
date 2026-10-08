@@ -1,6 +1,6 @@
 # TyLog v5 implementation status
 
-Last reviewed: 2026-08-04
+Current release: 0.12.0+133. Last reviewed: 2026-10-08.
 
 ## Implemented
 
@@ -14,6 +14,10 @@ Last reviewed: 2026-08-04
 - Existing atomic saves and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists
 - Focused local `typst_flutter` fork with explicit setup, CocoaPods/SwiftPM packaging, and no build-time downloads
 - Standard iOS host for iPad validation while Android and macOS remain the release platforms
+- Typed task creation and commands, three-language date suggestions, status glyphs and chips, shared rows, literal quick add, and Doing-controlled time tracking (0.11.9–0.12.0)
+- Image blocks with size/alignment/move controls and crop preserving the original (0.11.7)
+- Journal pages only, collapsed Agenda, upload-confirmation and complete-listing checks, and local sync safety copies (0.11.6)
+- Headerless daily repair preserves text and takes an undo copy (0.11.8)
 
 ## Deliberate limits
 
@@ -32,11 +36,15 @@ flutter build macos --release
 flutter build linux
 ```
 
-Automated analysis, 66 tests, native macOS integration, Android release, macOS release, an iPad simulator launch, and Linux compilation have passed. The simulator check found and fixed a `ListTile`/`Material` assertion before release. Linux evidence is in [GitHub Actions run 28754170425](https://github.com/berlogabob/TypstSeq/actions/runs/28754170425). The implementation and remaining checks are tracked in [issue #42](https://github.com/berlogabob/TypstSeq/issues/42) under `status:check-needed`.
+Earlier v5 verification: automated analysis, 66 tests, native macOS integration, Android release, macOS release, an iPad simulator launch, and Linux compilation have passed. The simulator check found and fixed a `ListTile`/`Material` assertion before release. Linux evidence is in [GitHub Actions run 28754170425](https://github.com/berlogabob/TypstSeq/actions/runs/28754170425). The implementation and remaining checks are tracked in [issue #42](https://github.com/berlogabob/TypstSeq/issues/42) under `status:check-needed`.
 
 ## Check needed
 
-- Run on the connected physical iPad after an Apple development certificate, team, device registration, and provisioning profile are configured. Simulator launch is the unsigned fallback.
-- Exercise a real v5 Nextcloud folder from two devices, including conflict resolution and interrupted transfers.
-- Review the Android Kotlin plugin deprecation warnings emitted by transitive plugins before the next Flutter toolchain makes them errors.
-- Recheck Xcode device-service and `objective_c` code-asset warnings on the next macOS/Xcode toolchain update.
+- Phone verification of 0.11.6–0.12.0: sync loss fixes, mention lookup, image blocks, crop, task typing with a phone keyboard, and headerless-daily repair.
+- Android autocomplete jumping/revert remains undiagnosed. Suspects: a late IME full-text update or a post-sync reload.
+- A headerless daily went three hours without syncing on the A24; cause unknown.
+- Cap the revision envelope, which grows without bound.
+- Database-error rollback in `lib/workspace_controller.dart` can delete a newly created note.
+- EmbeddingGemma phone trial at 256 dimensions before switching models.
+- Deferred: image captions/figure, text wrap and anchors; task session-history view; converting imported checklists to tasks; quick-add date parsing.
+- `wip/incremental-index` is parked; the macOS app is still on an old build.

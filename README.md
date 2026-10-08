@@ -11,6 +11,16 @@ compatibility guide is [TyLog ecosystem](docs/tylog-ecosystem.md).
 
 Mac index donor: `tool/launchd/org.tylog.indexer.plist` runs the existing CLI on `~/Nextcloud/TyLogVault`, watches daily/notes/articles/screenshots, and checks every 15 minutes (120-second throttle).
 
+## Features
+
+- Typed tasks: TODO / [] / /todo, status and priority commands, typed dates in English, Russian and Portuguese, repeats and editable chips.
+- Doing runs the timer; Today, Tasks, Journal, Calendar, Search and saved queries share one task row. Quick add keeps text literal.
+- Image blocks with size, alignment and move controls; crop saves a new asset and keeps the original.
+- Journal lists pages only, with events behind a collapsed Agenda line.
+- Nextcloud upload confirmation and complete-listing checks; local sync safety copies in `.tylog/undo`, kept 30 days and excluded from sync.
+
+Current release: 0.12.0+133. Phone verification of the recent changes remains open.
+
 ## View modes and PDF export
 
 - **Edit:** rich block editing.
