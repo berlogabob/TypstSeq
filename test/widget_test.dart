@@ -167,61 +167,6 @@ Future<void> _tapTaskTimer(
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
-  for (final surface in ['Today', 'Tasks']) {
-    testWidgets(
-      '$surface quick add persists a compiling templated new daily with literal date words',
-      (tester) async {
-        final (storage, home) = await _mountTaskTimers(tester);
-        final vault = home.workspace.vault as Vault;
-        final path = await vault.todayNote();
-        expect(await storage.exists(path), isFalse);
-        if (surface == 'Today') {
-          await tester.tap(find.text('Today').last);
-          await tester.pumpAndSettle();
-        }
-        expect(find.byType(TaskQuickAdd), findsOneWidget);
-        const text = 'Call "bank" #1 tomorrow';
-        await tester.enterText(find.byKey(const Key('task-quick-add')), text);
-        await tester.testTextInput.receiveAction(TextInputAction.done);
-        await tester.pumpAndSettle();
-        final source = await storage.readText(path);
-        expect(source, contains(noteHeaderMarker));
-        expect(source, startsWith('#import "/_system/tylog.typ" as tylog'));
-        final call = locateTypstCalls(
-          source,
-          names: const {'tylog.task'},
-        ).single;
-        expect(taskField(call.source, 'text'), text);
-        expect(taskField(call.source, 'due'), isNull);
-        expect(taskField(call.source, 'scheduled'), isNull);
-        expect(home.workspace.vault.pendingSyncWrites, contains(path));
-        await tester.runAsync(() async {
-          final dir = await Directory.systemTemp.createTemp(
-            'quick-add-compile',
-          );
-          try {
-            for (final entry in storage._files.entries) {
-              final file = File('${dir.path}/${entry.key}');
-              await file.parent.create(recursive: true);
-              await file.writeAsBytes(entry.value);
-            }
-            final compiled = Process.runSync('typst', [
-              'compile',
-              '--root',
-              dir.path,
-              '${dir.path}/$path',
-              '${dir.path}/task.pdf',
-            ]);
-            expect(compiled.exitCode, 0, reason: '${compiled.stderr}\n$source');
-          } finally {
-            await dir.delete(recursive: true);
-          }
-        });
-        await tester.pumpWidget(const SizedBox());
-      },
-    );
-  }
-
   testWidgets(
     'Typst help Task chip allocates unique IDs across unsaved insertions',
     (tester) async {

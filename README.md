@@ -14,7 +14,7 @@ Mac index donor: `tool/launchd/org.tylog.indexer.plist` runs the existing CLI on
 ## Features
 
 - Typed tasks: TODO / [] / /todo, status and priority commands, typed dates in English, Russian and Portuguese, repeats and editable chips.
-- Doing runs the timer; Today, Tasks, Journal, Calendar, Search and saved queries share one task row. Quick add keeps text literal.
+- Doing runs the timer; Today, Tasks, Journal, Calendar, Search and saved queries share one task row.
 - Image blocks with size, alignment and move controls; crop saves a new asset and keeps the original.
 - Journal lists pages only, with events behind a collapsed Agenda line.
 - Nextcloud upload confirmation and complete-listing checks; local sync safety copies in `.tylog/undo`, kept 30 days and excluded from sync.

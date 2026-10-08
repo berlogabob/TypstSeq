@@ -74,7 +74,7 @@ Use `/a` for high priority, `/b` for normal, `/c` for low, or `/urgent`. `/due` 
 
 Priority, due and scheduled dates, repeat and tracked time appear beside the task. Tap a priority, date or repeat chip to change it in the same popup. Doing starts the timer; leaving Doing stops it. Starting another task returns the previous one to Todo. The running pill shows the task and elapsed time; its Stop button returns the task to Todo.
 
-Today, Tasks, Journal, Calendar, Search and saved queries use the same task row, with checkbox, long-press status menu and chips. Tap its text to open the note. Quick add on Today and Tasks appends a task to today's journal page. It takes text literally: date words there do not set dates. The All filter includes cancelled tasks and older completed tasks.
+Today, Tasks, Journal, Calendar, Search and saved queries use the same task row, with checkbox, long-press status menu and chips. Tap its text to open the note. The All filter includes cancelled tasks and older completed tasks.
 
 ## Images
 

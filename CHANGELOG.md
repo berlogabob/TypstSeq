@@ -17,6 +17,11 @@ their history is in the commit log and the GitHub release notes.
 - The record of this device's own uploads is bounded to the newest 32
   versions per file.
 
+### Removed
+
+- **The "Add task…" field above Today and Tasks.** It took a row of space;
+  type `TODO ` on any page instead.
+
 ## 0.12.2+135
 
 ### Fixed

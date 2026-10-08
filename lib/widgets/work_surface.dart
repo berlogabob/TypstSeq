@@ -48,7 +48,6 @@ class TodayPage extends StatelessWidget {
     required this.onOpenPath,
     required this.onSetStatus,
     this.onSetField,
-    this.onAddTask,
     this.onReadPath,
     this.onAllTasks,
     this.notes = const {},
@@ -65,7 +64,6 @@ class TodayPage extends StatelessWidget {
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
   final Future<void> Function(TaskRef, String, String)? onSetField;
-  final Future<void> Function(String)? onAddTask;
   final ValueChanged<String>? onReadPath;
 
   @override
@@ -116,7 +114,6 @@ class TodayPage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
-          if (onAddTask != null) TaskQuickAdd(onAdd: onAddTask!),
           // Today is capture-first: quick capture is the editor's job, so it
           // must keep the majority of the viewport even when the agenda and
           // reading shelf both have content. Agenda + Continue reading share
@@ -226,7 +223,6 @@ class _PrimaryTasksView extends StatefulWidget {
     required this.onOpenPath,
     required this.onSetStatus,
     this.onSetField,
-    this.onAddTask,
   });
 
   final List<TaskRef> tasks;
@@ -235,7 +231,6 @@ class _PrimaryTasksView extends StatefulWidget {
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef task, String status) onSetStatus;
   final Future<void> Function(TaskRef, String, String)? onSetField;
-  final Future<void> Function(String)? onAddTask;
 
   @override
   State<_PrimaryTasksView> createState() => _PrimaryTasksViewState();
@@ -292,7 +287,6 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      if (widget.onAddTask != null) TaskQuickAdd(onAdd: widget.onAddTask!),
       Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -445,7 +439,6 @@ class LibraryView extends StatelessWidget {
     required this.onOpenDay,
     required this.onSetTaskStatus,
     this.onSetTaskField,
-    this.onAddTask,
     required this.onSetReadStatus,
     required this.onSetRelevance,
     required this.onCreateNote,
@@ -477,7 +470,6 @@ class LibraryView extends StatelessWidget {
   final ValueChanged<DateTime> onOpenDay;
   final Future<void> Function(TaskRef task, String status) onSetTaskStatus;
   final Future<void> Function(TaskRef, String, String)? onSetTaskField;
-  final Future<void> Function(String)? onAddTask;
   final Future<void> Function(NoteRef note, String status) onSetReadStatus;
   final Future<void> Function(NoteRef note, String relevance) onSetRelevance;
   final ValueChanged<String> onCreateNote;
@@ -551,7 +543,6 @@ class LibraryView extends StatelessWidget {
                 indexing: indexing,
                 onSetStatus: onSetTaskStatus,
                 onSetField: onSetTaskField,
-                onAddTask: onAddTask,
                 onOpenPath: onOpenPath,
               ),
               CalendarTab(

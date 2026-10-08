@@ -1992,24 +1992,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   });
 
-  Future<void> _quickAddTask(String text) async {
-    try {
-      final opened = vault;
-      if (opened == null) throw StateError('No vault is open');
-      final id = await richController.nextTaskId!(text);
-      final path = await opened.todayNote();
-      if (!identical(vault, opened)) throw StateError('The vault changed');
-      final updated = await workspace.mutateNote(
-        path,
-        (source) => '$source\n${taskSnippet(id: id, text: text)}\n',
-      );
-      if (!updated) throw StateError('The vault changed');
-    } catch (error) {
-      if (mounted) showSnack(context, 'Could not add that task: $error');
-      rethrow;
-    }
-  }
-
   Future<void> _setTaskField(TaskRef task, String field, String value) async {
     try {
       final updated = await workspace.mutateNote(
@@ -4436,7 +4418,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
         onSetTaskStatus: _setTaskStatus,
         onSetTaskField: _setTaskField,
-        onAddTask: _quickAddTask,
         imageResolver: _readAsset,
         onSetReadStatus: _setReadStatus,
         onSetRelevance: _setRelevance,
@@ -4480,7 +4461,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onOpenDay: (day) => unawaited(_openDay(day)),
                   onSetTaskStatus: _setTaskStatus,
                   onSetTaskField: _setTaskField,
-                  onAddTask: _quickAddTask,
                   onSetReadStatus: _setReadStatus,
                   onSetRelevance: _setRelevance,
                   onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
@@ -4877,7 +4857,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onOpenPath: _openPath,
               onSetStatus: _setTaskStatus,
               onSetField: _setTaskField,
-              onAddTask: _quickAddTask,
               onReadPath: _readPath,
             ),
           )

@@ -14,7 +14,7 @@ Current release: 0.12.2+135. Last reviewed: 2026-10-08.
 - Existing atomic saves and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists
 - Focused local `typst_flutter` fork with explicit setup, CocoaPods/SwiftPM packaging, and no build-time downloads
 - Standard iOS host for iPad validation while Android and macOS remain the release platforms
-- Typed task creation and commands, three-language date suggestions, status glyphs and chips, shared rows, literal quick add, and Doing-controlled time tracking (0.11.9–0.12.0)
+- Typed task creation and commands, three-language date suggestions, status glyphs and chips, shared rows, and Doing-controlled time tracking (0.11.9–0.12.0)
 - Image blocks with size/alignment/move controls and crop preserving the original (0.11.7)
 - Journal pages only, collapsed Agenda, upload-confirmation and complete-listing checks, and local sync safety copies (0.11.6)
 - Headerless daily repair preserves text and takes an undo copy (0.11.8)
