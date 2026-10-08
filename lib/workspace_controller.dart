@@ -530,7 +530,8 @@ class WorkspaceController extends ChangeNotifier {
       indexedRevision = editRevision;
       lastEditAt = null;
       _setDirty(false);
-      source = (await readNoteSnapshot(today)).source;
+      final initialRead = await readNoteSnapshot(today);
+      if (initialRead.editRevision == editRevision) source = initialRead.source;
       if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
@@ -942,12 +943,12 @@ class WorkspaceController extends ChangeNotifier {
   Future<String> readNote(String path) async =>
       (await readNoteSnapshot(path)).source;
 
-  Future<({String source, int mutationVersion})> readNoteSnapshot(
-    String path,
-  ) async {
+  Future<({String source, int mutationVersion, int editRevision})>
+  readNoteSnapshot(String path) async {
     final opened = vault;
     final generation = _vaultGeneration;
     if (opened == null) throw StateError('No vault is open');
+    final requestedRevision = editRevision;
     while (true) {
       final version = _noteMutationVersions[path] ?? 0;
       final pending = _noteMutations[path];
@@ -980,16 +981,22 @@ class WorkspaceController extends ChangeNotifier {
       }
       if (version == (_noteMutationVersions[path] ?? 0) &&
           _noteMutations[path] == null) {
-        return (source: value, mutationVersion: version);
+        return (
+          source: value,
+          mutationVersion: version,
+          editRevision: requestedRevision,
+        );
       }
     }
   }
 
   bool adoptNoteRead(
     String path,
-    ({String source, int mutationVersion}) snapshot,
+    ({String source, int mutationVersion, int editRevision}) snapshot,
   ) {
-    if (snapshot.mutationVersion != (_noteMutationVersions[path] ?? 0) ||
+    // Even an autosaved edit must survive a read requested before that edit.
+    if (snapshot.editRevision != editRevision ||
+        snapshot.mutationVersion != (_noteMutationVersions[path] ?? 0) ||
         _noteMutations[path] != null) {
       return false;
     }

@@ -3,6 +3,23 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.12.2+135
+
+### Fixed
+
+- **A line typed right after the app starts keeps its state.** In the first
+  minute after a cold start, a page reload that finished while you were
+  typing could replace the line you had just created: a new task lost its
+  checkbox and commands until the next save. A reload now never replaces
+  text edited while it was in flight, and creating a task no longer waits
+  for indexing.
+- **`/due` works on a freshly typed task** and the date field shows its
+  suggestions.
+- **Backspace removes an empty task again,** with or without a due date.
+- A task with chips is followed by normal line spacing.
+- Saved pages end with exactly one newline; adding and removing tasks no
+  longer leaves blank lines behind.
+
 ## 0.12.1+134
 
 ### Fixed

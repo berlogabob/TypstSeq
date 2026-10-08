@@ -1634,6 +1634,40 @@ void main() {
     },
   );
 
+  test(
+    'a note read requested before an edit cannot replace even a saved edit',
+    () async {
+      final storage = _SnapshotReadStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(
+          id: 'read-edit',
+          name: 'Read edit',
+          path: '/read-edit',
+        ),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      final path = controller.note!;
+      await storage.writeText(path, controller.source);
+      storage.arm(path);
+      final reading = controller.readNoteSnapshot(path);
+      await storage.reached.future;
+      final edited = '${controller.source}\nzzprobe\n';
+      controller.edit(edited);
+      await controller.save(syncAfter: false);
+      storage.release();
+      final snapshot = await reading;
+      expect(controller.adoptNoteRead(path, snapshot), isFalse);
+      expect(controller.source, edited);
+    },
+  );
+
   test('note reads retry when a closed-note mutation overlaps', () async {
     final storage = _SnapshotReadStorage();
     final controller = WorkspaceController(

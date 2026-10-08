@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
+import 'package:tylog/vault.dart';
+import 'package:tylog/workspace_controller.dart';
+import 'package:tylog/task_scheduler.dart' show TaskScheduler;
 import 'package:tylog/task_scheduler.dart' show validateTaskRecurrences;
 import 'package:tylog/widgets/date_format.dart';
 import 'package:tylog_core/tylog_core.dart';
@@ -63,6 +66,316 @@ void main() {
   tearDownAll(() {
     final dir = Directory('.dart_tool/task_typing_test');
     if (dir.existsSync()) dir.deleteSync(recursive: true);
+  });
+
+  for (final rawEnter in [false, true]) {
+    testWidgets(
+      'A24 stale reload between Enter and typing (${rawEnter ? "keys" : "IME"})',
+      (tester) async {
+        const source = '#tylog.task(id: "t", text: "confirm")\n';
+        final workspace = WorkspaceController(taskScheduler: TaskScheduler());
+        addTearDown(workspace.dispose);
+        final dir = await tester.runAsync(
+          () => Directory.systemTemp.createTemp('a24_reload_'),
+        );
+        addTearDown(() => dir!.deleteSync(recursive: true));
+        workspace.vault = Vault(dir!);
+        await tester.runAsync(
+          () => workspace.vault!.storage.writeText('probe.typ', source),
+        );
+        workspace.replaceNote('probe.typ', source);
+        final c = TyLogEditingController(
+          source: source,
+          onSourceChanged: workspace.edit,
+          onError: (e) => fail('$e'),
+          onProtectedTap: (_) {},
+          nextTaskId: (_) async => 'new-task',
+        );
+        addTearDown(c.dispose);
+        // Hold delivery of an external read until the user has pressed Enter.
+        final snapshot = await tester.runAsync(
+          () => workspace.readNoteSnapshot('probe.typ'),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: TyLogRichEditor(controller: c, onInsert: () async {}),
+            ),
+          ),
+        );
+        await tester.tap(find.byKey(const Key('rich-journal-editor')));
+        c.selection = TextSelection.collapsed(offset: c.text.length);
+        final before = c.value;
+        if (rawEnter) await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        if (c.text == before.text) {
+          tester.testTextInput.updateEditingValue(
+            TextEditingDeltaInsertion(
+              oldText: before.text,
+              textInserted: '\n',
+              insertionOffset: before.selection.extentOffset,
+              selection: TextSelection.collapsed(
+                offset: before.selection.extentOffset + 1,
+              ),
+              composing: TextRange.empty,
+            ).apply(before),
+          );
+        }
+        await tester.pump();
+        if (workspace.adoptNoteRead('probe.typ', snapshot!)) {
+          c.loadSource(snapshot.source);
+        }
+        final v = c.value;
+        tester.testTextInput.updateEditingValue(
+          TextEditingDeltaInsertion(
+            oldText: v.text,
+            textInserted: 'zzprobe',
+            insertionOffset: v.selection.extentOffset,
+            selection: TextSelection.collapsed(
+              offset: v.selection.extentOffset + 7,
+            ),
+            composing: TextRange.empty,
+          ).apply(v),
+        );
+        await tester.pump();
+        expect(c.text, endsWith('☐ zzprobe'));
+        expect(c.currentTaskBlockId, isNotNull);
+        expect(workspace.source, contains('text: "zzprobe"'));
+        workspace.cancelPendingWork();
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  for (final rawKeys in [false, true]) {
+    for (final due in ['', ', due: "2026-10-09"']) {
+      testWidgets(
+        'A24 empty task demotes and removes (${rawKeys ? "keys" : "IME"}$due)',
+        (tester) async {
+          final c = editor('#tylog.task(id: "t", text: "confirm")\n');
+          addTearDown(c.dispose);
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: TyLogRichEditor(controller: c, onInsert: () async {}),
+              ),
+            ),
+          );
+          await tester.tap(find.byKey(const Key('rich-journal-editor')));
+          c.selection = TextSelection.collapsed(offset: c.text.length);
+          final beforeEnter = c.value;
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          if (c.text == beforeEnter.text) {
+            tester.testTextInput.updateEditingValue(
+              TextEditingDeltaInsertion(
+                oldText: beforeEnter.text,
+                textInserted: '\n',
+                insertionOffset: beforeEnter.selection.extentOffset,
+                selection: TextSelection.collapsed(
+                  offset: beforeEnter.selection.extentOffset + 1,
+                ),
+                composing: TextRange.empty,
+              ).apply(beforeEnter),
+            );
+          }
+          await tester.pump();
+          final old = c.value;
+          final insertion = TextEditingDeltaInsertion(
+            oldText: old.text,
+            textInserted: 'zzprobe',
+            insertionOffset: old.selection.extentOffset,
+            selection: TextSelection.collapsed(
+              offset: old.selection.extentOffset + 7,
+            ),
+            composing: TextRange.empty,
+          );
+          // EditableText uses full-state TextInput messages; apply the IME delta to that state.
+          tester.testTextInput.updateEditingValue(insertion.apply(old));
+          await tester.pump();
+          if (due.isNotEmpty) c.setCurrentTaskFields(due: '2026-10-09');
+          Future<void> backspace() async {
+            final v = c.value;
+            if (rawKeys) {
+              await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+            }
+            if (!rawKeys || c.text == v.text) {
+              final end = v.selection.extentOffset;
+              tester.testTextInput.updateEditingValue(
+                TextEditingDeltaDeletion(
+                  oldText: v.text,
+                  deletedRange: TextRange(start: end - 1, end: end),
+                  selection: TextSelection.collapsed(offset: end - 1),
+                  composing: TextRange.empty,
+                ).apply(v),
+              );
+            }
+            await tester.pump();
+          }
+
+          for (var i = 0; i < 7; i++) {
+            await backspace();
+          }
+          expect(c.text, endsWith('☐ '));
+          final emptySource = c.document.toSource();
+          await backspace();
+          expect(c.currentTaskBlockId, isNull);
+          expect(c.text, endsWith('\n\n'));
+          c.undo();
+          expect(c.document.toSource(), emptySource);
+          c.redo();
+          await backspace();
+          expect(
+            c.document.toSource(),
+            '#tylog.task(id: "t", text: "confirm")\n',
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
+  testWidgets('A24 Enter text due fri keeps the new task glyph', (
+    tester,
+  ) async {
+    final c = editor(
+      '#tylog.task(id: "t", text: "confirm", priority: "high")\n',
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: c, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    c.selection = TextSelection.collapsed(offset: c.text.length);
+    final imeText = '${c.text}\n';
+    type(c, imeText);
+    await tester.pump(const Duration(seconds: 1));
+    tester.testTextInput.updateEditingValue(
+      TextEditingValue(
+        text: '${imeText}zzprobe',
+        selection: TextSelection.collapsed(offset: imeText.length + 7),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 6));
+    expect(c.text, endsWith('☐ zzprobe'));
+    expect(c.currentTaskBlockId, isNotNull);
+    type(c, '${c.text} /d');
+    await tester.pump();
+    expect(find.byKey(const Key('autocomplete-task-due')), findsOneWidget);
+    type(c, '${c.text}ue');
+    await tester.pump();
+    type(c, '${c.text}\n');
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('task-date-input')), 'fri');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    final call = locateTypstCalls(
+      c.document.toSource(),
+      names: const {'tylog.task'},
+    ).last.source;
+    expect(taskField(call, 'text'), 'zzprobe');
+    final now = DateTime.now();
+    final days = (DateTime.friday - now.weekday + 7) % 7;
+    final friday = DateTime(
+      now.year,
+      now.month,
+      now.day + (days == 0 ? 7 : days),
+    );
+    expect(taskField(call, 'due'), isoDay(friday));
+    expect(c.text, endsWith('☐ zzprobe'));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('A24 task add delete cycles keep one EOF newline', () async {
+    final c = editor('#tylog.task(id: "t", text: "confirm")\n');
+    addTearDown(c.dispose);
+    void insert(String text) {
+      final caret = c.selection.extentOffset;
+      c.value = TextEditingValue(
+        text: c.text.replaceRange(caret, caret, text),
+        selection: TextSelection.collapsed(offset: caret + text.length),
+      );
+    }
+
+    for (var i = 0; i < 3; i++) {
+      c.selection = TextSelection.collapsed(
+        offset: c.document.blockRanges.first.end,
+      );
+      insert('\n');
+      await Future<void>.delayed(Duration.zero);
+      insert('zzprobe');
+      expect(c.document.toSource(), endsWith(')\n'));
+      expect(c.document.toSource(), isNot(contains('\n\n\n')));
+      final caret = c.selection.extentOffset;
+      c.value = TextEditingValue(
+        text: c.text.replaceRange(caret - 7, caret, ''),
+        selection: TextSelection.collapsed(offset: caret - 7),
+      );
+      insert('\n'); // Enter on an empty task demotes it.
+      expect(c.document.toSource(), '#tylog.task(id: "t", text: "confirm")\n');
+    }
+  });
+
+  testWidgets('A24 real font task spacing equals paragraphs at 420px', (
+    tester,
+  ) async {
+    final loader = FontLoader('A24Real')
+      ..addFont(
+        Future.value(
+          ByteData.sublistView(
+            File('docs/fonts/InterVariable.ttf').readAsBytesSync(),
+          ),
+        ),
+      );
+    await loader.load();
+    tester.view.physicalSize = const Size(420, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<double> spacing(String source) async {
+      final c = editor(source);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(fontFamily: 'A24Real'),
+          home: Scaffold(
+            body: TyLogRichEditor(controller: c, onInsert: () async {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final render = tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable;
+      final first = render.getLocalRectForCaret(
+        TextPosition(offset: c.text.indexOf('First')),
+      );
+      final second = render.getLocalRectForCaret(
+        TextPosition(offset: c.text.indexOf('Second')),
+      );
+      final distance = second.top - first.top;
+      await tester.pumpWidget(const SizedBox.shrink());
+      c.dispose();
+      return distance;
+    }
+
+    final normal = await spacing('First\n\nSecond');
+    for (final fields in ['', ', priority: "high"']) {
+      expect(
+        await spacing(
+          '#tylog.task(id: "a", text: "First"$fields)\n\n#tylog.task(id: "b", text: "Second")',
+        ),
+        closeTo(normal, .1),
+        reason: fields,
+      );
+    }
+    expect(
+      await spacing(
+        '#tylog.task(id: "a", text: "First call bank tomorrow", priority: "high", due: "2026-10-09", scheduled: "2026-10-10", recurrence: "RRULE:FREQ=WEEKLY")\n\n#tylog.task(id: "b", text: "Second")',
+      ),
+      greaterThan(normal),
+    );
   });
 
   testWidgets('A24 popups show rows above keyboard and preserve date caret', (

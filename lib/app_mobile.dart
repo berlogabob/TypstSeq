@@ -504,7 +504,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (taskField(call.source, 'id') case final String id) id,
         };
         _reservedTaskIds.addAll(reserved);
-        final id = await opened.nextTaskId(text, reserved: _reservedTaskIds);
+        final id = await opened.nextTaskId(
+          text,
+          reserved: _reservedTaskIds,
+          // The open note covers today's IDs even while the startup index is absent.
+          knownIds: {for (final task in index?.tasks ?? <TaskRef>[]) task.id},
+        );
         _reservedTaskIds.add(id);
         if (!identical(vault, opened) || note != file) {
           throw StateError('The vault changed');
@@ -1143,7 +1148,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return false;
     if (dirty && !await _save()) return false;
     if (!mounted || request != _openGeneration || vault != v) return false;
-    late final ({String source, int mutationVersion}) snapshot;
+    late final ({String source, int mutationVersion, int editRevision})
+    snapshot;
     try {
       snapshot = await workspace.readNoteSnapshot(path);
     } on StateError {

@@ -326,10 +326,11 @@ class Vault {
     String text, {
     DateTime? now,
     Set<String> reserved = const {},
+    Set<String>? knownIds,
   }) async {
     final base = _idPrefix(text, now ?? DateTime.now());
     final ids = {
-      ...?(await loadIndex())?.tasks.map((task) => task.id),
+      ...?knownIds ?? (await loadIndex())?.tasks.map((task) => task.id),
       ...reserved,
     };
     var id = base;

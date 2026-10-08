@@ -771,6 +771,19 @@ void main() {
     });
   });
 
+  test('nextTaskId uses known IDs without reading the startup index', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_known_id_');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    final id = await vault.nextTaskId(
+      'milk',
+      now: DateTime(2026, 8, 3, 14, 22),
+      knownIds: {'20260803-142200-milk'},
+      reserved: {'20260803-142200-milk-2'},
+    );
+    expect(id, '20260803-142200-milk-3');
+  });
+
   test('nextTaskId avoids reserved ids', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_reserved_id_');
     addTearDown(() => dir.delete(recursive: true));

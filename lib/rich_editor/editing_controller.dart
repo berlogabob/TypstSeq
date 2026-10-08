@@ -170,7 +170,7 @@ class TyLogEditingController extends TextEditingController {
         _compositionStart = null;
         _redo.clear();
         onSourceChanged(source);
-        if (continueTask) unawaited(createTaskLine());
+        if (continueTask) unawaited(createTaskLine(imeValue: next));
         return;
       }
       if (change.replacement.isEmpty && change.oldEnd - change.start == 1) {
@@ -227,6 +227,23 @@ class TyLogEditingController extends TextEditingController {
             continue;
           }
           final prev = document.blocks[i - 1];
+          if (prev.style == TyLogBlockStyle.taskLine &&
+              document.blocks[i].style == TyLogBlockStyle.paragraph &&
+              document.blocks[i].visibleText.isEmpty) {
+            snapshotBefore();
+            prev.separator = document.blocks.removeAt(i).separator;
+            _updating = true;
+            value = TextEditingValue(
+              text: document.visibleText,
+              selection: TextSelection.collapsed(offset: gapStart),
+            );
+            _lastValue = value;
+            _updating = false;
+            _addUndo(before!);
+            _redo.clear();
+            onSourceChanged(document.toSource());
+            return;
+          }
           if (prev.isProtected ||
               document.blocks[i].isProtected ||
               !mergeable.contains(prev.style)) {
@@ -833,7 +850,10 @@ class TyLogEditingController extends TextEditingController {
     }
   }
 
-  Future<void> createTaskLine({int prefixLength = 0}) async {
+  Future<void> createTaskLine({
+    int prefixLength = 0,
+    TextEditingValue? imeValue,
+  }) async {
     final allocate = nextTaskId;
     if (allocate == null || !selection.isValid) return;
     final hit = document._blockAt(selection.extentOffset, preferPrevious: true);
@@ -888,6 +908,9 @@ class TyLogEditingController extends TextEditingController {
                   )
             : caret + document.visibleText.length - oldText.length;
         final canonical = document.visibleText;
+        final imeBase = imeValue?.text ?? oldText;
+        final imeStart = imeValue?.selection.extentOffset ?? oldStart;
+        final imeEnd = imeValue?.selection.extentOffset ?? oldEnd;
         // Android can send the pre-conversion full text again; rebase its edit onto the task.
         _rebaseTaskIme = (incoming) {
           if (!document.blocks.any(
@@ -897,21 +920,33 @@ class TyLogEditingController extends TextEditingController {
           )) {
             return incoming;
           }
-          if (prefixLength == 0 ||
-              !incoming.text.startsWith(
-                oldText.substring(0, oldStart + prefixLength),
-              )) {
+          if (incoming.text.startsWith(
+            canonical.substring(0, taskRange.start + 2),
+          )) {
+            // Once Android acknowledges the glyph, later deletions use canonical offsets.
+            if (incoming.text != _lastValue.text) _rebaseTaskIme = null;
             return incoming;
           }
-          final edit = _replacement(oldText, incoming.text);
-          int map(int p) => p <= oldStart
+          final deletion = _replacement(_lastValue.text, incoming.text);
+          if (deletion.replacement.isEmpty &&
+              deletion.oldEnd - deletion.start == 1) {
+            _rebaseTaskIme = null;
+            return incoming;
+          }
+          if (!incoming.text.startsWith(
+            imeBase.substring(0, imeStart + prefixLength),
+          )) {
+            return incoming;
+          }
+          final edit = _replacement(imeBase, incoming.text);
+          int map(int p) => p < imeStart
               ? p
-              : p < oldStart + prefixLength
+              : p < imeStart + prefixLength
               ? taskRange.start + 2
-              : p <= oldEnd
-              ? taskRange.start + 2 + p - oldStart - prefixLength
-              : p + canonical.length - oldText.length;
-          if (edit.start < oldStart + prefixLength && edit.oldEnd > oldStart) {
+              : p <= imeEnd
+              ? taskRange.start + 2 + p - imeStart - prefixLength
+              : p + canonical.length - imeBase.length;
+          if (edit.start < imeStart + prefixLength && edit.oldEnd > imeStart) {
             return _lastValue;
           }
           return TextEditingValue(
@@ -923,7 +958,7 @@ class TyLogEditingController extends TextEditingController {
             selection: TextSelection.collapsed(
               offset: map(incoming.selection.extentOffset).clamp(
                 0,
-                canonical.length + incoming.text.length - oldText.length,
+                canonical.length + incoming.text.length - imeBase.length,
               ),
             ),
           );
@@ -1243,11 +1278,11 @@ class TyLogEditingController extends TextEditingController {
     var global = firstBlock == 0 ? 0 : document.blockRanges[firstBlock].start;
     for (var i = firstBlock; i <= last; i++) {
       final block = document.blocks[i];
-      final reserveStrip =
-          interactive && i > 0 && _taskHasStrip(document.blocks[i - 1]);
-      final stripHeight = reserveStrip
-          ? (taskStripHeights[document.blocks[i - 1].id] ?? 48) + 2
+      final stripHeight =
+          interactive && i > 0 && _taskHasStrip(document.blocks[i - 1])
+          ? (taskStripHeights[document.blocks[i - 1].id] ?? 0)
           : 0.0;
+      final reserveStrip = stripHeight > 0;
       if (taskBuilder != null && block.style == TyLogBlockStyle.taskLine) {
         children.add(
           WidgetSpan(

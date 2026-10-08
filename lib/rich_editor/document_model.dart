@@ -1338,7 +1338,18 @@ class TyLogDocument {
         buffer.write('\n\n');
       }
     }
-    final source = buffer.toString();
+    var source = buffer.toString();
+    final lastContent = blocks.isEmpty
+        ? null
+        : blocks.lastWhere(
+            (block) => block.visibleText.trim().isNotEmpty,
+            orElse: () => blocks.last,
+          );
+    // Empty task continuations stay editable, but their gaps must not accumulate at EOF.
+    if (lastContent?.style == TyLogBlockStyle.taskLine &&
+        source.endsWith('\n')) {
+      source = '${source.trimRight()}\n';
+    }
     if (validate) {
       final reparsed = TyLogDocument.parse(source);
       // Accept-and-tolerate: a reparse that differs from the live model ONLY in

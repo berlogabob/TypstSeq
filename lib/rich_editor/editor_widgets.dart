@@ -906,14 +906,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 18,
                 widget.controller.document.blocks.isNotEmpty &&
                         _taskHasStrip(widget.controller.document.blocks.last)
-                    ? (widget.controller.taskStripHeights[widget
-                                  .controller
-                                  .document
-                                  .blocks
-                                  .last
-                                  .id] ??
-                              48) +
-                          2
+                    ? math.max(
+                        18.0,
+                        widget.controller.taskStripHeights[widget
+                                .controller
+                                .document
+                                .blocks
+                                .last
+                                .id] ??
+                            0,
+                      )
                     : 18,
               ),
             )
@@ -2923,13 +2925,14 @@ class _TaskStripFlow extends FlowDelegate {
       final point = box.globalToLocal(field.localToGlobal(caret.bottomLeft));
       final size = context.getChildSize(child)!;
       final block = controller.document.blocks[range.index];
-      if (controller.taskStripHeights[block.id] != size.height) {
-        controller.taskStripHeights[block.id] = size.height;
+      final beside = point.dx + 8 + size.width <= context.size.width - 18;
+      final reservedHeight = beside ? 0.0 : size.height + 2;
+      if (controller.taskStripHeights[block.id] != reservedHeight) {
+        controller.taskStripHeights[block.id] = reservedHeight;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (box.attached) controller.refreshTaskStripLayout();
         });
       }
-      final beside = point.dx + 8 + size.width <= context.size.width - 18;
       final current = child++;
       if (point.dy <= 0 || point.dy - caret.height >= context.size.height) {
         continue;
