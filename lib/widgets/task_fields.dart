@@ -196,3 +196,13 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
     );
   }
 }
+
+/// Sets only [field]; every other task field keeps its bytes.
+String setOneTaskField(String source, String id, String field, String value) =>
+    switch (field) {
+      'priority' => setTaskFields(source, id, priority: value),
+      'due' => setTaskFields(source, id, due: value),
+      'scheduled' => setTaskFields(source, id, scheduled: value),
+      'repeat' => setTaskFields(source, id, recurrence: value),
+      _ => throw ArgumentError.value(field, 'field'),
+    };

@@ -71,6 +71,7 @@ import 'widgets/idea_hub.dart';
 import 'widgets/vaults_sheet.dart';
 import 'widgets/work_surface.dart';
 import 'widgets/task_clock.dart';
+import 'widgets/task_fields.dart' show setOneTaskField;
 import 'widgets/virtual_plain_editor.dart';
 import 'workspace_controller.dart';
 
@@ -1996,14 +1997,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final updated = await workspace.mutateNote(
         task.notePath,
-        (source) => setTaskFields(
-          source,
-          task.id,
-          priority: field == 'priority' ? value : null,
-          due: field == 'due' ? value : null,
-          scheduled: field == 'scheduled' ? value : null,
-          recurrence: field == 'repeat' ? value : null,
-        ),
+        (source) => setOneTaskField(source, task.id, field, value),
       );
       if (!updated) throw StateError('The vault changed');
     } catch (error) {

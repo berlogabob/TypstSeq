@@ -16,6 +16,11 @@ their history is in the commit log and the GitHub release notes.
   shrunk.
 - The record of this device's own uploads is bounded to the newest 32
   versions per file.
+- **Changing a chip in a task list no longer clears the task's other
+  fields.** Since 0.12.0, setting the priority from Today, Tasks, Journal,
+  Calendar or Search erased the due date, scheduled date and repeat; setting
+  one date erased the other and the repeat. Editing in the note was not
+  affected.
 
 ### Removed
 
