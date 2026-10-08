@@ -21,6 +21,14 @@ their history is in the commit log and the GitHub release notes.
   Calendar or Search erased the due date, scheduled date and repeat; setting
   one date erased the other and the repeat. Editing in the note was not
   affected.
+- **Leaving the app saves the page even when a sync is busy.** Before, the
+  last keystrokes could be lost if Android closed the app first.
+- **Emptying a plain Typst file without a TyLog header no longer deletes it.**
+- **A sync that changes only formatting is no longer overwritten** by the next
+  edit in the rich editor.
+- **"Keep remote" on an open note** now shows the kept text; the next edit no
+  longer saves the old version back.
+- **Resolving a conflict keeps what you typed** while it waited for the server.
 
 ### Removed
 

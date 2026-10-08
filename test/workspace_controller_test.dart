@@ -2053,6 +2053,103 @@ void main() {
     },
   );
 
+  test(
+    'keep remote adopts resolved source before the next keystroke',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const path = 'notes/a.typ';
+      await storage.writeText(path, 'Losing local prose');
+      controller.replaceNote(path, 'Losing local prose');
+      controller.cloud = const NextcloudConfig(
+        serverUrl: 'https://unused.invalid',
+        username: 'alice',
+        password: 'secret',
+      );
+      await createSyncConflict(
+        controller.vault!,
+        path,
+        localBytes: utf8.encode(controller.source),
+        remoteBytes: utf8.encode('Accepted remote prose'),
+      );
+      final conflict = (await loadSyncConflicts(controller.vault!)).single;
+      final resolved = await HttpOverrides.runZoned(
+        () => controller.resolveConflict(
+          conflict,
+          SyncConflictResolution.keepRemote,
+          reindex: false,
+        ),
+        createHttpClient: (_) => _ResolveHttpClient(),
+      );
+      expect(resolved, isTrue);
+      expect(await storage.readText(path), 'Accepted remote prose');
+      controller.edit('${controller.source}!');
+      await controller.save(syncAfter: false);
+      expect(await storage.readText(path), 'Accepted remote prose!');
+    },
+  );
+
+  test(
+    'resolve preserves typing autosaved while waiting for the lock',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const path = 'notes/a.typ';
+      await storage.writeText(path, 'Losing local prose');
+      controller.replaceNote(path, 'Losing local prose');
+      controller.cloud = const NextcloudConfig(
+        serverUrl: 'https://unused.invalid',
+        username: 'alice',
+        password: 'secret',
+      );
+      await createSyncConflict(
+        controller.vault!,
+        path,
+        localBytes: utf8.encode(controller.source),
+        remoteBytes: utf8.encode('Accepted remote prose'),
+      );
+      final conflict = (await loadSyncConflicts(controller.vault!)).single;
+      await VaultLock.acquire(storage, 'service');
+      await HttpOverrides.runZoned(() async {
+        final resolving = controller.resolveConflict(
+          conflict,
+          SyncConflictResolution.keepRemote,
+          reindex: false,
+        );
+        await _waitUntil(
+          () => controller.status == 'Waiting for the running sync…',
+        );
+        controller.edit('New typing while resolving');
+        await controller.save(syncAfter: false);
+        await VaultLock.release(storage, 'service');
+        expect(await resolving, isFalse);
+      }, createHttpClient: (_) => _ResolveHttpClient());
+      expect(await storage.readText(path), 'New typing while resolving');
+      expect(controller.source, 'New typing while resolving');
+      expect(await loadSyncConflicts(controller.vault!), hasLength(1));
+    },
+  );
+
   test('a resolve refuses while another owner holds the vault lock', () async {
     // The resolve is the one operation that deliberately overwrites a side of a
     // disagreement, and it was the only vault write that took no lock at all.
@@ -3857,6 +3954,51 @@ class _DnsFailureClient implements HttpClient {
     throw const SocketException('Failed host lookup');
   }
 
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+// In-memory DAV probe: no sockets or external account.
+class _ResolveHttpClient implements HttpClient {
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async =>
+      _ResolveRequest(url);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ResolveHeaders implements HttpHeaders {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ResolveRequest implements HttpClientRequest {
+  _ResolveRequest(this.url);
+  final Uri url;
+  @override
+  final headers = _ResolveHeaders();
+  @override
+  Future<HttpClientResponse> close() async => _ResolveResponse(url);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ResolveResponse extends Stream<List<int>> implements HttpClientResponse {
+  _ResolveResponse(this.url);
+  final Uri url;
+  @override
+  int get statusCode => 207;
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => Stream.value(
+    utf8.encode(
+      '<d:multistatus xmlns:d="DAV:"><d:response><d:href>${url.path}</d:href><d:propstat><d:prop><d:getlastmodified>Thu, 08 Oct 2026 12:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response></d:multistatus>',
+    ),
+  ).listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }

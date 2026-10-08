@@ -2087,6 +2087,7 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     final config = cloud;
+    final generation = _vaultGeneration;
     if (opened == null || config == null || !config.isReady) {
       // Never refuse silently — the norm this codebase states at
       // SyncDashboardScreen._run, and the reason a bulk resolve could report
@@ -2099,6 +2100,7 @@ class WorkspaceController extends ChangeNotifier {
     }
     if (dirty && note == conflict.path) {
       final saved = await save(syncAfter: false);
+      if (!_owns(opened, generation)) return false;
       if (!saved || dirty) {
         syncError = 'Save the open note before resolving this conflict.';
         status = 'Needs attention';
@@ -2106,6 +2108,8 @@ class WorkspaceController extends ChangeNotifier {
         return false;
       }
     }
+    final revisionBeforeResolve = editRevision;
+    final resolvingNote = note;
     // Announce the attempt before doing any of it. A resolve is a network
     // write plus an index refresh — seconds to minutes on a busy vault — and
     // this method used to notify exactly once, at the very end, so nothing
@@ -2135,21 +2139,42 @@ class WorkspaceController extends ChangeNotifier {
     }
     while (!acquired && DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!_owns(opened, generation)) return false;
       acquired = await VaultLock.acquire(opened.storage, 'ui-resolve');
     }
     if (!acquired) {
+      if (!_owns(opened, generation)) return false;
       syncError = 'A sync is running. Try again in a moment.';
       status = 'Needs attention';
       notifyListeners();
       return false;
     }
     try {
+      if (!_owns(opened, generation)) return false;
       await NextcloudSync(
         config,
+        canReplaceLocal: (path) =>
+            _owns(opened, generation) &&
+            ((path != resolvingNote && path != note) ||
+                (revisionBeforeResolve == editRevision && !dirty)),
       ).resolveConflict(opened, conflict, resolution, mergedText: mergedText);
+      if (!_owns(opened, generation)) return false;
+      if (resolvingNote == conflict.path && note == resolvingNote) {
+        final resolvedSource = await opened.storage.exists(conflict.path)
+            ? await opened.readText(conflict.path)
+            : emptyDailyTemplate(conflict.path) ?? '';
+        if (!_owns(opened, generation)) return false;
+        if (revisionBeforeResolve == editRevision &&
+            !dirty &&
+            note == resolvingNote) {
+          source = resolvedSource;
+        }
+      }
       // Refresh from disk rather than just filtering out this one id: a
       // resolve can also self-heal other now-matching records.
-      syncConflicts = await loadSyncConflicts(opened);
+      final conflicts = await loadSyncConflicts(opened);
+      if (!_owns(opened, generation)) return false;
+      syncConflicts = conflicts;
       syncError = null;
       status = syncConflicts.isEmpty ? 'Conflict resolved' : 'Needs attention';
       // The resolution is complete once the remote write and the record
@@ -2161,6 +2186,7 @@ class WorkspaceController extends ChangeNotifier {
         unawaited(refreshIndex(updateStatus: false, always: true));
       }
     } catch (error) {
+      if (!_owns(opened, generation)) return false;
       // Keep the conflict in the list rather than silently dropping it —
       // an error here (e.g. the remote moved again) must stay visible, not
       // leave the user thinking it resolved when it didn't.

@@ -501,17 +501,14 @@ class Vault {
   }
 
   /// Whether the note at [path] holds nothing worth keeping: absent, blank, an
-  /// untouched starter daily, or a non-daily with no TyLog note header.
+  /// untouched starter daily.
   /// Headerless dailies may contain lost captures. Unreadable is not disposable —
   /// never delete on the strength of a failed read.
   Future<bool> _isDisposableNote(String path) async {
     try {
       if (!await storage.exists(path)) return true;
       final source = await storage.readText(path);
-      return source.trim().isEmpty ||
-          (emptyDailyTemplate(path) == null &&
-              !source.contains(noteHeaderMarker)) ||
-          isPristineStarterNote(path, source);
+      return source.trim().isEmpty || isPristineStarterNote(path, source);
     } catch (_) {
       return false;
     }

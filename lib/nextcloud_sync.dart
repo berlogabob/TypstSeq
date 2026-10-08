@@ -1261,6 +1261,7 @@ class NextcloudSync {
         if (conflict.remoteExists) {
           final bytes = await vault.storage.readBytes(conflict.remoteSnapshot!);
           resolvedHash = sha256.convert(bytes).toString();
+          _requireLocalReplacementAllowed(conflict.path);
           await vault.storage.writeBytes(conflict.path, bytes);
           remoteEtag = currentRemote?.etag;
         } else {

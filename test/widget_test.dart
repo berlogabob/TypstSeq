@@ -167,6 +167,30 @@ Future<void> _tapTaskTimer(
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets('pause saves dirty text when sync is already running', (
+    tester,
+  ) async {
+    final (storage, home) = await _mountTaskTimers(tester);
+    home.workspace.cloud = const NextcloudConfig(
+      serverUrl: 'https://unused.invalid',
+      username: 'alice',
+      password: 'secret',
+    );
+    home.workspace.syncing = true;
+    home.sourceController.text = '${home.workspace.source}Last keystrokes\n';
+    home.workspace.edit(home.sourceController.text as String);
+    home.didChangeAppLifecycleState(AppLifecycleState.paused);
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(
+        await storage.readText('notes/a.typ'),
+        contains('Last keystrokes'),
+      );
+    });
+    home.workspace.syncing = false;
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'Typst help Task chip allocates unique IDs across unsaved insertions',
     (tester) async {
@@ -197,6 +221,23 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('formatting-only remote update survives rich typing', (
+    tester,
+  ) async {
+    final (_, home) = await _mountTaskTimers(tester);
+    home.workspace.replaceNote('notes/a.typ', 'hello');
+    home.workspace.replaceNote('notes/a.typ', '*hello*');
+    home.richController.value = const TextEditingValue(
+      text: 'hello!',
+      selection: TextSelection.collapsed(offset: 6),
+    );
+    final edited = TyLogDocument.parse(
+      home.richController.document.toSource() as String,
+    );
+    expect(edited.blocks.first.parts.first.style.bold, isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('metadata-only external change updates the open task line', (
     tester,

@@ -661,12 +661,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // semantically identical source — e.g. trailing blank lines left by an
       // exited list. Reloading the rich editor then would clobber its live
       // state, wiping the empty line the user just opened to type on. Only
-      // reload when visible content, task metadata or the hidden note header changes.
+      // reload when content, inline formatting, atoms or the note header changes.
       final incoming = TyLogDocument.parse(workspace.source);
       final current = richController.document;
       final changed =
           incoming.prefix != current.prefix ||
           incoming.visibleText != current.visibleText ||
+          !listEquals(
+            incoming.blocks
+                .expand((b) => b.parts)
+                .expand(
+                  (p) => p.text
+                      .split('')
+                      .where((c) => c != '\n')
+                      .map((c) => (c, p.style, p.source)),
+                )
+                .toList(),
+            current.blocks
+                .expand((b) => b.parts)
+                .expand(
+                  (p) => p.text
+                      .split('')
+                      .where((c) => c != '\n')
+                      .map((c) => (c, p.style, p.source)),
+                )
+                .toList(),
+          ) ||
           !listEquals(
             locateTypstCalls(
               workspace.source,
@@ -2303,13 +2323,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unawaited(workspace.flushSearch());
       // Android may kill the app inside the 400 ms autosave debounce; flush
       // pending edits now so backgrounding never loses keystrokes.
-      if (cloud?.isReady ?? false) {
-        unawaited(
-          _syncNow(trigger: 'background').whenComplete(workspace.flushSearch),
-        );
-      } else if (dirty) {
-        unawaited(_save(syncAfter: false).whenComplete(workspace.flushSearch));
-      }
+      unawaited(
+        (dirty ? _save(syncAfter: false) : Future.value(true))
+            .then((_) async {
+              if (cloud?.isReady ?? false) {
+                await _syncNow(trigger: 'background');
+              }
+            })
+            .whenComplete(workspace.flushSearch),
+      );
       _stopCloudPolling();
       // Hand off to the background worker: one catch-up run in ~1 min, then
       // the 15-min periodic keeps the vault fresh while the app is closed.

@@ -55,6 +55,13 @@ void main() {
     expect(await storage.readText(stray), original);
   });
 
+  test('emptying headerless non-daily prose preserves the file', () async {
+    const path = 'notes/a.typ';
+    await storage.writeText(path, 'Something worth keeping.');
+    await expectLater(vault.saveNote(path, ''), throwsArgumentError);
+    expect(await storage.readText(path), 'Something worth keeping.');
+  });
+
   test('emptying an untouched starter daily removes it', () async {
     final path = await vault.todayNote(DateTime.utc(2026, 8, 20));
     final starter = await vault.readText(path);
