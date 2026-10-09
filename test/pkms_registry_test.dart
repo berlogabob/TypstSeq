@@ -6,6 +6,49 @@ import 'package:tylog_core/validation.dart';
 import 'package:tylog/vault_storage.dart';
 
 void main() {
+  test(
+    'validator rejects unknown task vocabulary and retains extension kinds',
+    () async {
+      final dir = await Directory('.dart_tool').createTemp('vocabulary-');
+      addTearDown(() => dir.delete(recursive: true));
+      final index = VaultIndex(
+        notesByPath: const {
+          'notes/a.typ': NoteRef(
+            id: 'a',
+            path: 'notes/a.typ',
+            title: 'A',
+            kind: 'custom',
+            outgoingLinks: [],
+          ),
+        },
+        backlinksByTarget: const {},
+        tasks: const [
+          TaskRef(
+            id: 't',
+            notePath: 'notes/a.typ',
+            text: 'Call',
+            status: 'unknown',
+            priority: 'unknown',
+          ),
+        ],
+      );
+      final report = await validatePkmsStorage(LocalVaultStorage(dir), index);
+      for (final code in ['invalid-task-status', 'invalid-task-priority']) {
+        expect(
+          report.problems.singleWhere((p) => p.code == code).severity,
+          PkmsSeverity.error,
+        );
+      }
+      expect(
+        report.problems
+            .singleWhere((p) => p.code == 'extension-note-kind')
+            .severity,
+        PkmsSeverity.warning,
+      );
+      expect(index.notes.single.kind, 'custom');
+    },
+  );
+
   test('v5 validator reports missing and unsafe Typst attachments', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_validate_');
     addTearDown(() => dir.delete(recursive: true));

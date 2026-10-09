@@ -25,7 +25,7 @@ class WorkSurface extends StatelessWidget {
   Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: const EdgeInsets.fromLTRB(kSpace16, kSpace8, kSpace16, kSpace16),
       child: child,
     ),
   );
@@ -179,8 +179,8 @@ class TodayPage extends StatelessWidget {
                           for (final (note, progress) in recent)
                             Card(
                               margin: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
+                                horizontal: kSpace12,
+                                vertical: kSpace4,
                               ),
                               clipBehavior: Clip.antiAlias,
                               child: ListTile(
@@ -289,11 +289,11 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
   Widget build(BuildContext context) => Column(
     children: [
       Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kSpace16),
         child: Column(
           children: [
             Wrap(
-              spacing: 8,
+              spacing: kSpace8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 for (final filter in TaskAgendaFilter.values)
@@ -624,11 +624,11 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
             height: 48,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: kSpace12),
               children: [
                 for (final kind in chips)
                   Padding(
-                    padding: const EdgeInsets.only(right: 8, top: 6),
+                    padding: const EdgeInsets.only(right: kSpace8, top: 6),
                     child: FilterChip(
                       avatar: Icon(iconForKind(kind), size: 16),
                       label: Text(kind),
@@ -969,7 +969,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+          padding: const EdgeInsets.fromLTRB(kSpace4, kSpace8, kSpace4, 0),
           child: Row(
             children: [
               Expanded(
@@ -1043,12 +1043,15 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           SingleChildScrollView(
             key: const Key('screenshots-filters'),
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: kSpace4,
+              vertical: 6,
+            ),
             child: Row(
               children: [
                 for (final (value, label) in statusChips)
                   Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.only(right: kSpace8),
                     child: ChoiceChip(
                       label: Text(
                         '$label · ${value == null ? searched.length : counts[value]}',
@@ -1059,7 +1062,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   ),
                 for (final category in categoryChips)
                   Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.only(right: kSpace8),
                     child: FilterChip(
                       key: ValueKey('screenshot-category-$category'),
                       label: Text(
@@ -1076,7 +1079,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   for (final r in relevanceOptions) (r, relevanceLabels[r]!),
                 ])
                   Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.only(right: kSpace8),
                     child: ChoiceChip(
                       label: Text(label),
                       selected: relevanceFilter == value,
@@ -1089,11 +1092,14 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           )
         else ...[
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: kSpace4,
+              vertical: 6,
+            ),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Wrap(
-                spacing: 8,
+                spacing: kSpace8,
                 children: [
                   for (final (value, label) in statusChips)
                     ChoiceChip(
@@ -1111,11 +1117,11 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+            padding: const EdgeInsets.fromLTRB(kSpace4, 0, kSpace4, 6),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Wrap(
-                spacing: 8,
+                spacing: kSpace8,
                 children: [
                   for (final (value, label) in <(String?, String)>[
                     (null, 'Any relevance'),
@@ -1141,7 +1147,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     if (filtered.isEmpty)
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(kSpace24),
                           child: Text(
                             widget.indexing && all.isEmpty
                                 ? 'Indexing…'
@@ -1155,7 +1161,12 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                       if (header.isNotEmpty)
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                            padding: const EdgeInsets.fromLTRB(
+                              kSpace8,
+                              kSpace12,
+                              kSpace8,
+                              kSpace4,
+                            ),
                             child: Text(
                               '$header · ${notes.length}',
                               style: Theme.of(context).textTheme.titleSmall,
@@ -1163,7 +1174,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                           ),
                         ),
                       SliverPadding(
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(kSpace4),
                         sliver: SliverGrid(
                           gridDelegate:
                               const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -1234,7 +1245,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     if (filtered.isEmpty &&
                         (screenshots || widget.articleJobs.isEmpty))
                       Padding(
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.all(kSpace24),
                         child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1244,7 +1255,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                                   size: 20,
                                   strokeWidth: 2,
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: kSpace8),
                               ],
                               Text(
                                 widget.indexing && all.isEmpty
@@ -1262,7 +1273,12 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     for (final (header, notes) in groups) ...[
                       if (header.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          padding: const EdgeInsets.fromLTRB(
+                            kSpace16,
+                            kSpace12,
+                            kSpace16,
+                            kSpace4,
+                          ),
                           child: Text(
                             '$header · ${notes.length}',
                             style: Theme.of(context).textTheme.titleSmall,
@@ -1312,7 +1328,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       builder: (context) => SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(kSpace16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1324,7 +1340,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 Wrap(
-                  spacing: 12,
+                  spacing: kSpace12,
                   children: [
                     PropertySelectChip(
                       value: _bucket(note),
@@ -1443,7 +1459,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                           color: Colors.white,
                           semanticLabel: category,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: kSpace4),
                       ],
                       Expanded(
                         child: Text(
@@ -1469,7 +1485,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   backgroundColor: const Color(0x66000000),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(32, 32),
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(kSpace4),
                   shape: const CircleBorder(),
                 ),
                 icon: const Icon(Icons.more_vert, size: 20),
@@ -1518,9 +1534,9 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             '${(progress * 100).round()}%',
             style: Theme.of(context).textTheme.labelSmall,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: kSpace4),
           SizedBox(width: 40, child: LinearProgressIndicator(value: progress)),
-          const SizedBox(width: 8),
+          const SizedBox(width: kSpace8),
         ],
         PropertySelectChip(
           value: status,

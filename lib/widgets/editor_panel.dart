@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'constants.dart';
 
 class Editor extends StatefulWidget {
   const Editor({
@@ -75,7 +76,9 @@ class EditorState extends State<Editor> {
             height: 1.45,
             fontFamily: widget.monospace ? 'monospace' : null,
           ),
-          decoration: const InputDecoration(contentPadding: EdgeInsets.all(18)),
+          decoration: const InputDecoration(
+            contentPadding: EdgeInsets.all(kEditorInset),
+          ),
           onChanged: (_) => widget.onChanged(),
         ),
       ),
@@ -85,32 +88,36 @@ class EditorState extends State<Editor> {
         // text field by 48px on every focus change. It stays in flow on
         // purpose: overlaying would cover the last line of text.
         builder: (context, _) => AnimatedSize(
-          duration: const Duration(milliseconds: 150),
+          duration: kMotionDock,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
           child: focusNode.hasFocus
               ? SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 48,
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      _DockButton('=', 'Heading', () => _linePrefix('= ')),
-                      _DockButton('*', 'Bold', () => _replace('*', '*')),
-                      _DockButton('_', 'Emphasis', () => _replace('_', '_')),
-                      _DockButton(r'$', 'Math', () => _replace(r'$', r'$')),
-                      _DockButton(
-                        '#',
-                        'Function or tag',
-                        () => _replace('#', ''),
-                      ),
-                      _DockButton('+', 'New block', () => _replace('\n- ', '')),
-                    ],
+                  top: false,
+                  child: SizedBox(
+                    height: 48,
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _DockButton('=', 'Heading', () => _linePrefix('= ')),
+                        _DockButton('*', 'Bold', () => _replace('*', '*')),
+                        _DockButton('_', 'Emphasis', () => _replace('_', '_')),
+                        _DockButton(r'$', 'Math', () => _replace(r'$', r'$')),
+                        _DockButton(
+                          '#',
+                          'Function or tag',
+                          () => _replace('#', ''),
+                        ),
+                        _DockButton(
+                          '+',
+                          'New block',
+                          () => _replace('\n- ', ''),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              )
+                )
               : const SizedBox(width: double.infinity, height: 0),
         ),
       ),

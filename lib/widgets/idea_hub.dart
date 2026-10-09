@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'constants.dart';
 import '../models.dart';
 import '../scanner.dart';
 import 'property_select_chip.dart';
@@ -52,7 +53,7 @@ class IdeaProperties extends StatelessWidget {
   final ValueChanged<String> onStatus;
   @override
   Widget build(BuildContext context) => Wrap(
-    spacing: 8,
+    spacing: kSpace8,
     children: [
       FilterChip(
         label: const Text('Idea'),
@@ -124,7 +125,7 @@ class _IdeaHubStripState extends State<IdeaHubStrip> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(kSpace8),
             child: Text('Idea hub (${rows.length})'),
           ),
           SizedBox(

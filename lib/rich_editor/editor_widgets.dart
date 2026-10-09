@@ -704,13 +704,13 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   Widget _mentionList(_AutocompleteState state) {
     if (state.loading && state.mentionItems.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(kSpace16),
         child: LoadingIndicator(size: 20, strokeWidth: 2),
       );
     }
     if (state.mentionItems.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(kSpace16),
         child: Text('No matches'),
       );
     }
@@ -754,7 +754,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   Widget _commandList(_AutocompleteState state) {
     if (state.commandItems.isEmpty && state.taskItems.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(kSpace16),
         child: Text('No matching commands'),
       );
     }
@@ -924,9 +924,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           ? InputDecoration(
               hintText: 'Start writing…',
               contentPadding: EdgeInsets.fromLTRB(
-                18,
-                18,
-                18,
+                kEditorInset,
+                kEditorInset,
+                kEditorInset,
                 widget.controller.document.blocks.isNotEmpty &&
                         _taskHasStrip(widget.controller.document.blocks.last)
                     ? math.max(
@@ -1068,9 +1068,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             controller: _windowScroll,
             center: const ValueKey('editing-window'),
             slivers: [
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverToBoxAdapter(child: SizedBox(height: kEditorInset)),
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.symmetric(horizontal: kEditorInset),
                 sliver: SliverList.builder(
                   itemCount: before.length,
                   // Built from the window upwards: item 0 is the last chunk.
@@ -1100,7 +1100,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               ),
               SliverPadding(
                 key: const ValueKey('editing-window'),
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.symmetric(horizontal: kEditorInset),
                 sliver: SliverToBoxAdapter(
                   child: KeyedSubtree(
                     key: _windowFieldKey,
@@ -1126,7 +1126,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.symmetric(horizontal: kEditorInset),
                 sliver: SliverList.builder(
                   itemCount: after.length,
                   // Stable keys: reuse the "after" chunks by their negative
@@ -1160,7 +1160,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                     window.placeCaret(widget.controller.text.length);
                     focusNode.requestFocus();
                   },
-                  child: const SizedBox(height: 18),
+                  child: const SizedBox(height: kEditorInset),
                 ),
               ),
             ],
@@ -1222,7 +1222,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: kSpace12),
                 Text(label),
               ],
             ),
@@ -1320,7 +1320,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
         // text field by 48px on every focus change. In flow on purpose:
         // overlaying would cover the last line of text.
         AnimatedSize(
-          duration: const Duration(milliseconds: 150),
+          duration: kMotionDock,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
           child: !focusNode.hasFocus
@@ -1333,7 +1333,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       child: ListenableBuilder(
                         listenable: widget.controller,
                         builder: (context, _) => ListView(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: kSpace8,
+                          ),
                           scrollDirection: Axis.horizontal,
                           children: [
                             IconButton(
@@ -1784,7 +1786,7 @@ class _InlineImageState extends State<_InlineImage> {
       ),
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: kSpace4),
       child: layout == null
           ? selectable
           : SizedBox(
@@ -1849,7 +1851,7 @@ class _ProtectedChip extends StatelessWidget {
             borderRadius: radius,
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: block ? 12 : 4,
+                horizontal: block ? kSpace12 : kSpace4,
                 vertical: block ? 10 : 1,
               ),
               // Bounded (not single-line-ellipsized) so a long extracted

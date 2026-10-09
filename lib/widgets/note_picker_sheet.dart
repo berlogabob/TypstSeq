@@ -58,7 +58,7 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
               subtitle: const Text('Dismiss to use no filter'),
             ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
             child: TextField(
               autofocus: false,
               decoration: const InputDecoration(

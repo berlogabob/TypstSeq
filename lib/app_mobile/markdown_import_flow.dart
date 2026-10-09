@@ -59,7 +59,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const LinearProgressIndicator(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: kSpace16),
                   Text(message),
                 ],
               ),
@@ -371,7 +371,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        insetPadding: const EdgeInsets.all(16),
+        insetPadding: const EdgeInsets.all(kSpace16),
         title: Text('Article changed: $title'),
         content: ConstrainedBox(
           constraints: BoxConstraints(
@@ -393,21 +393,21 @@ extension _MarkdownImportFlow on _HomeScreenState {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(child: panes[0]),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: kSpace12),
                               Expanded(child: panes[1]),
                             ],
                           )
                         : ListView(
                             children: [
                               SizedBox(height: 180, child: panes[0]),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: kSpace12),
                               SizedBox(height: 180, child: panes[1]),
                             ],
                           );
                   },
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kSpace12),
               Row(
                 children: [
                   TextButton(
@@ -492,13 +492,13 @@ extension _MarkdownImportFlow on _HomeScreenState {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(kSpace8),
           child: Text(title, style: Theme.of(context).textTheme.titleSmall),
         ),
         const Divider(height: 1),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(kSpace8),
             child: SelectableText(
               source,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 11),

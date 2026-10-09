@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'constants.dart';
 
 import '../models.dart';
 
@@ -93,15 +94,22 @@ class _TaskClockState extends State<TaskClock> with WidgetsBindingObserver {
         Expanded(
           child: InkWell(
             onTap: widget.onOpen,
-            child: Text(
-              widget.task.text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: kMinTapTarget),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                heightFactor: 1,
+                child: Text(
+                  widget.task.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ),
         ),
         if (running != null) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: kSpace8),
           Text(timerTime(elapsed)),
         ],
         if (widget.onStop != null)

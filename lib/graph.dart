@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'widgets/constants.dart';
 import 'package:flutter/semantics.dart';
 import 'package:tylog_core/graph.dart';
 
@@ -258,13 +259,10 @@ class _GraphViewState extends State<GraphView>
     super.initState();
     _selectedPath = widget.currentPath;
     _transform.addListener(_onTransform);
-    _zoomCtl =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 260),
-        )..addListener(() {
-          if (_zoomAnim case final anim?) _transform.value = anim.value;
-        });
+    _zoomCtl = AnimationController(vsync: this, duration: kMotionGraphZoom)
+      ..addListener(() {
+        if (_zoomAnim case final anim?) _transform.value = anim.value;
+      });
   }
 
   /// Repaints happen per-frame via the painter's `repaint:` listenable; here we

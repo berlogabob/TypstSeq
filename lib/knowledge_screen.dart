@@ -401,7 +401,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final results = _results;
     final citations = _citations;
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(kSpace16),
       itemCount:
           1 +
           citations.length +
@@ -426,10 +426,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               ),
               if (widget.savedSearches.isNotEmpty ||
                   widget.onSaveSearch != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: kSpace8),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: kSpace8,
+                  runSpacing: kSpace8,
                   children: [
                     for (final preset in _savedSearches)
                       GestureDetector(
@@ -530,7 +530,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ),
               ],
               if (tagSuggestions.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: kSpace8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -553,7 +553,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               ],
               if (selectedTag != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: kSpace8),
                   child: InputChip(
                     label: Text('#$selectedTag'),
                     onDeleted: () {
@@ -562,7 +562,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                     },
                   ),
                 ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kSpace8),
             ],
           );
         }
@@ -647,7 +647,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final problems = _problemList;
     if (problems.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(kSpace12),
         children: const [
           ListTile(
             leading: Icon(Icons.check_circle_outline),
@@ -672,7 +672,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       }
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(kSpace12),
       itemCount: items.length,
       itemBuilder: (context, i) {
         final item = items[i];
@@ -715,7 +715,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       if (problem.detail != null)
         ExpansionTile(
           title: const Text('Technical details'),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            kSpace16,
+            0,
+            kSpace16,
+            kSpace16,
+          ),
           children: [SelectableText(problem.detail!)],
         ),
     ],
@@ -929,7 +934,7 @@ class _TriageMissingPagesScreenState extends State<TriageMissingPagesScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: kSpace4),
               PropertySelectChip(
                 value: kind,
                 options: missingPageKinds,
@@ -945,7 +950,7 @@ class _TriageMissingPagesScreenState extends State<TriageMissingPagesScreen> {
     ),
     bottomNavigationBar: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(kSpace12),
         child: FilledButton(
           onPressed: _picked.isEmpty
               ? null

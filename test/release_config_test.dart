@@ -4,6 +4,17 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('macOS stays unsandboxed until persistent bookmarks are supported', () {
+    for (final name in ['Release', 'DebugProfile']) {
+      final plist = File('macos/Runner/$name.entitlements').readAsStringSync();
+      final sandbox = RegExp(
+        r'<key>com\.apple\.security\.app-sandbox</key>\s*<(true|false)\s*/>',
+      ).allMatches(plist).toList();
+      expect(sandbox, hasLength(1), reason: name);
+      expect(sandbox.single.group(1), 'false', reason: name);
+    }
+  });
+
   test('packaged APK must contain the exact source-built ARM64 library', () async {
     final root = await Directory('.dart_tool').createTemp('packaged-native-');
     addTearDown(() => root.delete(recursive: true));

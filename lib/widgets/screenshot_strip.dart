@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'constants.dart';
 import '../models.dart';
 import '../controlled_editor.dart' show localTime;
 
@@ -85,7 +86,7 @@ class ScreenshotStrip extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(kSpace8),
           child: Text('Screenshots (${notes.length})'),
         ),
         SizedBox(

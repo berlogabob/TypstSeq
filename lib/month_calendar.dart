@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'widgets/constants.dart';
 
 import 'widgets/date_format.dart';
 
@@ -93,7 +94,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
               ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: kSpace4),
         GridView.count(
           crossAxisCount: 7,
           shrinkWrap: true,

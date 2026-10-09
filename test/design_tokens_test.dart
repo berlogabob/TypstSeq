@@ -1,6 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:tylog/widgets/constants.dart';
+import 'package:tylog/widgets/task_clock.dart';
+import 'package:tylog/models.dart';
 
 /// Guards the design-token layer introduced in `lib/widgets/constants.dart`.
 ///
@@ -37,6 +41,129 @@ void main() {
       .where((e) => where == null || where(e.key))
       .where((e) => pattern.hasMatch(e.value))
       .map((e) => e.key);
+
+  test('migrated padding, gaps and Wrap spacing use equal-value tokens', () {
+    const migrated = {
+      'lib/app_mobile.dart',
+      'lib/knowledge_screen.dart',
+      'lib/widgets/work_surface.dart',
+      'lib/widgets/entity_header.dart',
+      'lib/widgets/idea_hub.dart',
+      'lib/widgets/screenshot_strip.dart',
+      'lib/widgets/linked_references.dart',
+      'lib/widgets/settings_sheet.dart',
+      'lib/widgets/vaults_sheet.dart',
+      'lib/widgets/note_picker_sheet.dart',
+      'lib/widgets/nextcloud_connect_dialog.dart',
+      'lib/widgets/task_clock.dart',
+      'lib/widgets/task_chip_strip.dart',
+      'lib/widgets/property_select_chip.dart',
+      'lib/widgets/editor_panel.dart',
+      'lib/app_mobile/markdown_import_flow.dart',
+      'lib/rich_editor/editor_widgets.dart',
+      'lib/month_calendar.dart',
+    };
+    for (final path in migrated) {
+      final source = sources[path]!;
+      for (final padding in RegExp(
+        r'EdgeInsets\.(?:all|only|symmetric|fromLTRB)\([^)]*\)',
+      ).allMatches(source)) {
+        expect(
+          RegExp(
+            r'(?<![\w.])(?:4|8|12|16|18|24)(?:\.0)?(?![\w.])',
+          ).hasMatch(padding.group(0)!),
+          isFalse,
+          reason: '$path: ${padding.group(0)}',
+        );
+      }
+      expect(
+        RegExp(
+          r'\b(?:spacing|runSpacing):\s*(?:4|8|12|16|24)(?:\.0)?\s*[,\n]',
+        ).hasMatch(source),
+        isFalse,
+        reason: path,
+      );
+      expect(
+        RegExp(
+          r'SizedBox\((?:width|height):\s*(?:4|8|12|16|18|24)\)',
+        ).hasMatch(source),
+        isFalse,
+        reason: path,
+      );
+    }
+    expect(
+      [kSpace4, kSpace8, kSpace12, kSpace16, kSpace24, kEditorInset],
+      [4, 8, 12, 16, 24, 18],
+    );
+  });
+
+  test('migrated animation durations use motion tokens', () {
+    for (final path in [
+      'lib/widgets/editor_panel.dart',
+      'lib/rich_editor/editor_widgets.dart',
+      'lib/app_mobile.dart',
+      'lib/graph.dart',
+      'lib/voronoi_view.dart',
+    ]) {
+      expect(
+        RegExp(
+          r'duration:\s*const Duration\(milliseconds:\s*(?:150|200|260)\)',
+        ).hasMatch(sources[path]!),
+        isFalse,
+        reason: path,
+      );
+    }
+    expect(
+      [
+        kMotionDock.inMilliseconds,
+        kMotionStatus.inMilliseconds,
+        kMotionGraphZoom.inMilliseconds,
+      ],
+      [150, 200, 260],
+    );
+  });
+
+  testWidgets(
+    'task clock title has a 48dp hit area with keyboard and larger text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var opened = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 600),
+              viewInsets: EdgeInsets.only(bottom: 200),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: Scaffold(
+              body: TaskClock(
+                task: const TaskRef(
+                  id: 't',
+                  notePath: 'notes/a.typ',
+                  text: 'Task title',
+                ),
+                onOpen: () => opened++,
+                onStop: (_) async {},
+              ),
+            ),
+          ),
+        ),
+      );
+      final target = find
+          .ancestor(of: find.text('Task title'), matching: find.byType(InkWell))
+          .first;
+      final bounds = tester.getRect(target);
+      expect(bounds.height, greaterThanOrEqualTo(kMinTapTarget));
+      expect(bounds.width, greaterThanOrEqualTo(kMinTapTarget));
+      await tester.tapAt(Offset(bounds.center.dx, bounds.top + 1));
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('the brand seed lives only in the token file', () {
     expect(

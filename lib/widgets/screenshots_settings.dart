@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../screenshots_ocr.dart';
+import 'snack.dart';
 
 class ScreenshotsSettings extends StatefulWidget {
   const ScreenshotsSettings({
@@ -65,9 +66,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
       await refresh();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        showSnack(context, '$error');
       }
     } finally {
       if (mounted) setState(() => busy = false);

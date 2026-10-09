@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'constants.dart';
 
 import '../vault_registry.dart';
 import 'settings_sheet.dart';
@@ -25,7 +26,7 @@ class VaultsSheet extends StatelessWidget {
   Widget build(BuildContext context) => SafeArea(
     child: ListView(
       shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace24),
       children: [
         Text('Vaults', style: Theme.of(context).textTheme.headlineSmall),
         for (final entry in vaults)

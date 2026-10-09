@@ -44,7 +44,8 @@ String articleStatusStage(String? status) => switch (status ?? 'unread') {
 String laterArticleStatusStage(String? a, String? b) {
   final left = articleStatusStage(a);
   final right = articleStatusStage(b);
-  return articleStatusOptions.indexOf(left) >= articleStatusOptions.indexOf(right)
+  return articleStatusOptions.indexOf(left) >=
+          articleStatusOptions.indexOf(right)
       ? left
       : right;
 }
@@ -91,7 +92,10 @@ class PropertySelectChip extends StatelessWidget {
         final foreground =
             foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
         final pill = Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: kSpace8,
+            vertical: kSpace4,
+          ),
           decoration: BoxDecoration(
             color:
                 backgroundColor ??
@@ -126,7 +130,10 @@ class PropertySelectChip extends StatelessWidget {
 
 const screenshotStatusOptions = ['inbox', 'kept', 'acted', 'archived'];
 const screenshotStatusLabels = {
-  'inbox': 'Inbox', 'kept': 'Kept', 'acted': 'Acted', 'archived': 'Archived',
+  'inbox': 'Inbox',
+  'kept': 'Kept',
+  'acted': 'Acted',
+  'archived': 'Archived',
 };
 String screenshotStatusStage(String? status) =>
     screenshotStatusOptions.contains(status) ? status! : 'inbox';

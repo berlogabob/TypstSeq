@@ -711,6 +711,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _plainEditorKey = GlobalKey<VirtualPlainEditorState>();
       _plainLongEditor = shouldUseVirtualPlainEditor(richController);
     }
+    if (_jobsRevision?.$1 != vault ||
+        _jobsRevision?.$3 != workspace.indexRevision) {
+      _queueSemanticRefresh();
+    }
     final jobsRevision = (vault, syncing, workspace.indexRevision);
     if (_jobsRevision != jobsRevision) {
       _jobsRevision = jobsRevision;
@@ -719,7 +723,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (Platform.isAndroid) unawaited(_handlePendingShares());
     _maybeSnackNewSyncTrouble();
     _refreshPagedLibraryNotes();
-    _queueSemanticRefresh();
     setState(() {});
   }
 
@@ -1330,7 +1333,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(kSpace12),
             child: MonthCalendar(
               screenshotDays: {
                 for (final n in index?.notes ?? const <NoteRef>[])
@@ -2568,12 +2571,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (deterministicTypstFix(error, _currentSource())
                       case final fix?)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: kSpace8),
                       child: Text(fix),
                     ),
                 ],
                 Wrap(
-                  spacing: 8,
+                  spacing: kSpace8,
                   children: [
                     for (final entry in const {
                       'Heading': '= Heading',
@@ -3066,16 +3069,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           body: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(kSpace16),
             children: [
               Text(
                 conflict.path,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kSpace8),
               if (conflictShapeHint(shape) case final hint?) ...[
                 Text(hint, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 8),
+                const SizedBox(height: kSpace8),
               ],
               ValueListenableBuilder<SyncConflictResolution?>(
                 valueListenable: selected,
@@ -3132,12 +3135,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
               ),
               if (localText != null && remoteText != null) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: kSpace16),
                 Text(
                   'Final version',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: kSpace8),
                 TextField(
                   controller: merged,
                   minLines: 12,
@@ -3154,7 +3157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           bottomNavigationBar: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(kSpace12),
               child: ValueListenableBuilder<SyncConflictResolution?>(
                 valueListenable: selected,
                 builder: (context, value, _) => FilledButton.icon(
@@ -3362,11 +3365,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             _dialogField(title, label: 'Name', autofocus: true),
-            const SizedBox(height: 12),
+            const SizedBox(height: kSpace12),
             _dialogField(kind, label: 'Kind', hint: 'person, place, castle…'),
-            const SizedBox(height: 12),
+            const SizedBox(height: kSpace12),
             _dialogField(aliases, label: 'Aliases, comma-separated'),
-            const SizedBox(height: 12),
+            const SizedBox(height: kSpace12),
             _dialogField(
               email,
               label: 'Email (optional)',
@@ -3693,7 +3696,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       keyboardType: TextInputType.number,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: kSpace12),
                   Expanded(
                     child: _dialogField(
                       columns,
@@ -3705,7 +3708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (error != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: kSpace8),
                   child: Text(error!),
                 ),
             ],
@@ -3917,7 +3920,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(
+                        kSpace16,
+                        0,
+                        kSpace16,
+                        kSpace8,
+                      ),
                       child: TextField(
                         key: const Key('citation-search'),
                         autofocus: entries.length > 8,
@@ -4052,7 +4060,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 slivers: [
                   for (final group in kMagicActionGroups.entries) ...[
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(
+                        kSpace16,
+                        kSpace16,
+                        kSpace16,
+                        kSpace8,
+                      ),
                       sliver: SliverToBoxAdapter(
                         child: Text(
                           group.key,
@@ -4175,7 +4188,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             const Divider(),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              padding: const EdgeInsets.fromLTRB(
+                kSpace16,
+                kSpace4,
+                kSpace16,
+                kSpace4,
+              ),
               child: Text(
                 'Maintenance',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -4211,7 +4229,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final installed = state is SemanticReady || state is SemanticIndexing;
           return SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, kSpace8, 20, kSpace24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4220,7 +4238,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     'Semantic search',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: kSpace12),
                   Text(switch (state) {
                     SemanticNotInstalled() => 'Not installed',
                     SemanticDownloading(:final progress) =>
@@ -4230,7 +4248,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     SemanticReady() => 'Ready',
                     SemanticError(:final message) => 'Error: $message',
                   }),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: kSpace12),
                   if (state case SemanticDownloading(:final progress)) ...[
                     LinearProgressIndicator(value: progress),
                     TextButton(
@@ -4417,7 +4435,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Choose a vault folder to continue'),
-            const SizedBox(height: 12),
+            const SizedBox(height: kSpace12),
             FilledButton(
               onPressed: () => unawaited(_open()),
               child: const Text('Choose vault'),
@@ -4553,7 +4571,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           files: _typstFiles(),
           loadingBuilder: (_) => const Center(child: LoadingIndicator()),
           errorBuilder: (_, error) => Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(kSpace16),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -4926,7 +4944,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: kSpace4),
           child: Material(
             key: interactive ? _taskClockBounds : null,
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -4934,7 +4952,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(kRadiusLarge),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 360),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(
+                kSpace16,
+                kSpace8,
+                kSpace16,
+                kSpace8,
+              ),
               child: child,
             ),
           ),
@@ -4980,7 +5003,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       syncing && syncStage != null ? syncStage! : status,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: kSpace4),
                     LinearProgressIndicator(value: rebuildProgress),
                   ],
                 ),
@@ -4996,7 +5019,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : const SizedBox.shrink(key: ValueKey('status-none'));
         return AnimatedSwitcher(
           key: error ? null : _statusPillBounds,
-          duration: const Duration(milliseconds: 200),
+          duration: kMotionStatus,
           child: failed == error
               ? banner
               : const SizedBox.shrink(key: ValueKey('status-none')),
@@ -5181,7 +5204,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Row(
                       children: [
                         Icon(icon),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: kSpace12),
                         Expanded(child: Text(label)),
                         if (mode == value) const Icon(Icons.check),
                       ],

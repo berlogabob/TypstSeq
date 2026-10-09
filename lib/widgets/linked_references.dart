@@ -88,11 +88,14 @@ class _LinkedReferencesState extends State<LinkedReferences> {
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: kSpace16,
+                vertical: kSpace12,
+              ),
               child: Row(
                 children: [
                   const Icon(Icons.hub_outlined, size: 18),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kSpace8),
                   Expanded(
                     child: Text(
                       'Linked references (${widget.backlinks.length})',
@@ -111,7 +114,7 @@ class _LinkedReferencesState extends State<LinkedReferences> {
               ),
               child: ListView.builder(
                 shrinkWrap: true,
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: kSpace8),
                 itemCount: widget.backlinks.length,
                 itemBuilder: (context, i) {
                   final path = widget.backlinks.elementAt(i);
@@ -151,7 +154,10 @@ class _Reference extends StatelessWidget {
     return InkWell(
       onTap: onOpen,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: kSpace16,
+          vertical: kSpace8,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

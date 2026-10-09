@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'constants.dart';
 import '../models.dart';
 import 'task_clock.dart';
 
@@ -82,9 +83,12 @@ class _TaskChipStripState extends State<TaskChipStrip> {
             key: Key('task-chip-${_task.id}-$field'),
             onTap: () => widget.onCommand(field),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+              constraints: const BoxConstraints(
+                minHeight: kMinTapTarget,
+                minWidth: kMinTapTarget,
+              ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: kSpace4),
                 child: Center(
                   widthFactor: 1,
                   heightFactor: 1,
@@ -107,7 +111,7 @@ class _TaskChipStripState extends State<TaskChipStrip> {
     final total =
         _task.clockedTotal + (elapsed.isNegative ? Duration.zero : elapsed);
     return Wrap(
-      spacing: 4,
+      spacing: kSpace4,
       runSpacing: 2,
       children: [
         if (widget.showEmpty || _task.priority != 'normal')

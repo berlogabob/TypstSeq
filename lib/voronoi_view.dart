@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'widgets/constants.dart';
 import 'package:flutter/semantics.dart';
 import 'package:tylog_core/tylog_core.dart';
 
@@ -122,14 +123,11 @@ class _VoronoiViewState extends State<VoronoiView>
   void initState() {
     super.initState();
     _transform.addListener(_scheduleReveal);
-    _zoomCtl =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 260),
-        )..addListener(() {
-          final anim = _zoomAnim;
-          if (anim != null) _transform.value = anim.value;
-        });
+    _zoomCtl = AnimationController(vsync: this, duration: kMotionGraphZoom)
+      ..addListener(() {
+        final anim = _zoomAnim;
+        if (anim != null) _transform.value = anim.value;
+      });
   }
 
   @override

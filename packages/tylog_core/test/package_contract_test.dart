@@ -23,11 +23,34 @@ import 'package:tylog_core/src/scanner.dart';
 /// to exercise. This one cannot be forgotten: it derives the package's side
 /// from the package itself.
 void main() {
+  test('core remains independent of Flutter and dart ui', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    expect(
+      RegExp(r'^\s+flutter\s*:', multiLine: true).hasMatch(pubspec),
+      isFalse,
+    );
+    for (final file
+        in Directory('lib')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.dart'))) {
+      expect(
+        RegExp(
+          r'''(?:import|export)\s+["'](?:package:flutter(?:/|_)|dart:ui)''',
+        ).hasMatch(file.readAsStringSync()),
+        isFalse,
+        reason: file.path,
+      );
+    }
+  });
+
   final packagePath = File('../../typst/tylog/lib.typ');
 
   /// Parameter names declared by `#let <name>(...)` in the Typst package.
   Set<String> declaredParameters(String source, String function) {
-    final start = source.indexOf('#let $function('.replaceAll(r'$function', function));
+    final start = source.indexOf(
+      '#let $function('.replaceAll(r'$function', function),
+    );
     expect(start, isNot(-1), reason: 'no #let $function( in lib.typ');
     final body = source.substring(start, source.indexOf(') = [', start));
     return {

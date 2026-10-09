@@ -165,7 +165,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,12 +174,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 'Settings',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kSpace12),
               _ThemeModeSelector(
                 themeMode: widget.themeMode,
                 onChanged: widget.onThemeModeChanged,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kSpace8),
               ListTile(
                 leading: const Icon(Icons.picture_as_pdf_outlined),
                 title: const Text('PDF page size'),
@@ -351,17 +351,17 @@ class _ThemeModeSelectorState extends State<_ThemeModeSelector> {
     // SegmentedButton: the latter's selection animation does not reliably
     // settle under pumpAndSettle in this app's widget tests.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
       child: Row(
         children: [
           Icon(
             Icons.brightness_6_outlined,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: kSpace12),
           const Expanded(child: Text('Appearance')),
           Wrap(
-            spacing: 8,
+            spacing: kSpace8,
             children: [
               for (final (mode, label) in _options)
                 ChoiceChip(
