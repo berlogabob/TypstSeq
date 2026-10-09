@@ -1325,7 +1325,7 @@ class WorkspaceController extends ChangeNotifier {
           // through [searchNotes].
           validation = _retainValidation(report);
           if (showProgress) {
-            status = 'Index rebuilt · ${report.summary()}';
+            status = 'Index rebuilt';
           } else if (updateStatus) {
             status = 'Indexed · ${report.summary()}';
           }
@@ -1426,7 +1426,7 @@ class WorkspaceController extends ChangeNotifier {
         searchIndex.replaceWith(pkms.search);
         searchReady = true;
         searchRevision++;
-        status = 'Index rebuilt · ${pkms.report.summary()}';
+        status = 'Index rebuilt';
         notifyListeners();
         return;
       }

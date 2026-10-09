@@ -117,6 +117,127 @@ void main() {
     },
   );
 
+  for (final field in ['priority', 'due', 'scheduled', 'repeat']) {
+    testWidgets(
+      '$field popup fits its rows above bottom navigation and keyboard',
+      (tester) async {
+        tester.view.physicalSize = const Size(405, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetViewInsets);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark(),
+            home: Scaffold(
+              bottomNavigationBar: const SizedBox(
+                key: Key('bottom-bar'),
+                height: 80,
+              ),
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: SizedBox(
+                  height: 140,
+                  child: TaskRow(
+                    task: TaskRef(
+                      id: 't',
+                      notePath: 'notes/t.typ',
+                      text: 'Bottom task',
+                    ),
+                    onOpenPath: (_) {},
+                    onSetField: (_, _, _) async {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.byKey(Key('task-chip-t-$field')));
+        await tester.pumpAndSettle();
+        final popup = find
+            .ancestor(
+              of: find.text(
+                field == 'priority'
+                    ? 'urgent'
+                    : field == 'repeat'
+                    ? 'daily'
+                    : 'none',
+              ),
+              matching: find.byType(Material),
+            )
+            .first;
+        final rect = tester.getRect(popup);
+        expect(
+          rect.bottom,
+          lessThanOrEqualTo(
+            tester.getTopLeft(find.byKey(const Key('bottom-bar'))).dy,
+          ),
+        );
+        expect(
+          rect.bottom,
+          lessThanOrEqualTo(
+            tester.getTopLeft(find.byKey(Key('task-chip-t-$field'))).dy,
+          ),
+        );
+        expect(
+          rect.height,
+          closeTo(
+            field == 'priority'
+                ? 192
+                : field == 'repeat'
+                ? 240
+                : 104,
+            1,
+          ),
+        );
+        if (field == 'due' || field == 'scheduled') {
+          tester.view.viewInsets = const FakeViewPadding(bottom: 350);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('task-date-input')),
+            'tomorrow',
+          );
+          await tester.pumpAndSettle();
+          expect(tester.getRect(popup).bottom, lessThanOrEqualTo(550));
+          expect(
+            find.text(
+              DateTime.now()
+                  .add(const Duration(days: 1))
+                  .toIso8601String()
+                  .split('T')
+                  .first,
+            ),
+            findsOneWidget,
+          );
+          await tester.enterText(
+            find.byKey(const Key('task-date-input')),
+            'tomorrow 13:30',
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('13:30'), findsOneWidget);
+          expect(
+            tester.getRect(popup).bottom,
+            closeTo(
+              tester
+                  .getRect(
+                    find
+                        .ancestor(
+                          of: find.text('none'),
+                          matching: find.byType(ListTile),
+                        )
+                        .first,
+                  )
+                  .bottom,
+              1,
+            ),
+          );
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   for (final surface in [
     'Today',
     'Overdue',

@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tylog_core/scanner.dart';
 import '../models.dart';
 import 'package:tylog_core/tylog_core.dart' show parseDateWords;
 import '../controlled_editor.dart' show localTime;
 import 'date_format.dart';
+import 'constants.dart';
 
 TaskRef taskFromSource(String source, {String notePath = ''}) {
   final id = taskField(source, 'id')!;
@@ -65,7 +67,7 @@ class TaskFieldList extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      if (field != 'repeat' && field != 'priority')
+      if (field != 'repeat' && field != 'priority' && field != 'status')
         TextField(
           key: const Key('task-date-input'),
           autofocus: true,
@@ -87,7 +89,15 @@ class TaskFieldList extends StatelessWidget {
           padding: EdgeInsets.zero,
           shrinkWrap: true,
           children: [
-            if (field == 'priority')
+            if (field == 'status')
+              for (final status in taskStatuses)
+                ListTile(
+                  minTileHeight: 48,
+                  dense: true,
+                  title: Text(status),
+                  onTap: () => onPriority(status),
+                )
+            else if (field == 'priority')
               for (final (i, priority) in taskPriorities.indexed)
                 ListTile(
                   key: Key('autocomplete-task-${taskPriorityCommands[i]}'),
@@ -131,31 +141,18 @@ class TaskFieldList extends StatelessWidget {
   );
 }
 
-class TaskStatusMenu extends StatelessWidget {
-  const TaskStatusMenu({
-    super.key,
-    required this.anchors,
-    required this.onStatus,
-  });
-  final TextSelectionToolbarAnchors anchors;
-  final ValueChanged<String> onStatus;
-  @override
-  Widget build(BuildContext context) =>
-      AdaptiveTextSelectionToolbar.buttonItems(
-        anchors: anchors,
-        buttonItems: [
-          for (final status in taskStatuses)
-            ContextMenuButtonItem(
-              label: status,
-              onPressed: () => onStatus(status),
-            ),
-        ],
-      );
-}
-
 class TaskFieldPopup extends StatefulWidget {
-  const TaskFieldPopup({super.key, required this.field});
+  const TaskFieldPopup({
+    super.key,
+    required this.field,
+    this.anchor,
+    this.bounds,
+    this.onPicked,
+  });
   final String field;
+  final Rect? anchor;
+  final Rect? bounds;
+  final ValueChanged<String>? onPicked;
   @override
   State<TaskFieldPopup> createState() => _TaskFieldPopupState();
 }
@@ -171,8 +168,15 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
     super.dispose();
   }
 
-  void _pick(DateTime date) => Navigator.pop(
-    context,
+  void _complete(String value) {
+    if (widget.onPicked != null) {
+      widget.onPicked!(value);
+    } else {
+      Navigator.pop(context, value);
+    }
+  }
+
+  void _pick(DateTime date) => _complete(
     date.hour == 0 && date.minute == 0
         ? isoDay(date)
         : '${isoDay(date)}T${localTime(date)}',
@@ -180,7 +184,7 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
   @override
   Widget build(BuildContext context) {
     final dates = parseDateWords(_input.text, _now);
-    return TaskFieldList(
+    final list = TaskFieldList(
       field: widget.field,
       input: _input,
       focus: _focus,
@@ -190,10 +194,10 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
       onSubmitted: (_) {
         if (dates.isNotEmpty) _pick(dates.first);
       },
-      onPriority: (priority) => Navigator.pop(context, priority),
-      onRepeat: (repeat) => Navigator.pop(context, taskRepeatRule(repeat)),
+      onPriority: _complete,
+      onRepeat: (repeat) => _complete(taskRepeatRule(repeat)),
       onDate: _pick,
-      onClear: () => Navigator.pop(context, 'none'),
+      onClear: () => _complete('none'),
       onCalendar: () async {
         final date = await showDatePicker(
           context: context,
@@ -202,6 +206,64 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
           initialDate: dates.firstOrNull ?? _now,
         );
         if (mounted && date != null) _pick(date);
+      },
+    );
+    if (widget.anchor == null) return list;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final media = MediaQuery.of(context);
+        final bounds = widget.bounds!.intersect(
+          Rect.fromLTRB(
+            media.padding.left,
+            media.padding.top,
+            constraints.maxWidth - media.padding.right,
+            constraints.maxHeight -
+                math.max(media.viewInsets.bottom, media.padding.bottom),
+          ),
+        );
+        final height = switch (widget.field) {
+          'priority' => taskPriorities.length * 48.0,
+          'status' => taskStatuses.length * 48.0,
+          'repeat' => taskRepeats.length * 48.0,
+          _ => math.min(
+            260.0,
+            104.0 +
+                dates.fold<double>(
+                  0,
+                  (sum, date) =>
+                      sum + (date.hour != 0 || date.minute != 0 ? 72 : 48),
+                ),
+          ),
+        };
+        final rect = autocompletePopupRect(
+          widget.anchor!.shift(-bounds.topLeft),
+          bounds.size,
+          Size(280, height),
+        ).shift(bounds.topLeft);
+        return Stack(
+          children: [
+            Positioned(
+              left: rect.left,
+              width: rect.width,
+              top: rect.bottom > widget.anchor!.top ? rect.top : null,
+              bottom: rect.bottom <= widget.anchor!.top
+                  ? constraints.maxHeight - rect.bottom
+                  : null,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: rect.height),
+                child: TextFieldTapRegion(
+                  child: Material(
+                    key: const Key('task-field-popup'),
+                    elevation: 6,
+                    borderRadius: BorderRadius.circular(kRadiusMedium),
+                    clipBehavior: Clip.antiAlias,
+                    child: list,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
       },
     );
   }
@@ -224,3 +286,21 @@ String setOneTaskField(String source, String id, String field, String value) =>
       ),
       _ => throw ArgumentError.value(field, 'field'),
     };
+
+/// Keeps the popup clear of the caret line, including the on-screen keyboard.
+Rect autocompletePopupRect(Rect caret, Size viewport, Size desired) {
+  const gap = 4.0;
+  final top = caret.top.clamp(0.0, viewport.height);
+  final bottom = caret.bottom.clamp(0.0, viewport.height);
+  final below = math.max(0.0, viewport.height - bottom - gap);
+  final above = math.max(0.0, top - gap);
+  final useBelow = below >= desired.height || below >= above;
+  final height = math.min(desired.height, useBelow ? below : above);
+  final width = math.min(desired.width, viewport.width);
+  return Rect.fromLTWH(
+    caret.left.clamp(0.0, math.max(0.0, viewport.width - width)),
+    useBelow ? bottom + gap : top - gap - height,
+    width,
+    height,
+  );
+}

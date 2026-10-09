@@ -155,13 +155,52 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     setState(() {});
   }
 
-  bool _checkboxSelection() {
-    final c = widget.controller;
-    if (!c.selection.isValid) return false;
-    final hit = c.document._blockAt(c.selection.start, preferPrevious: true);
-    return hit != null &&
-        c.document.blocks[hit.index].style == TyLogBlockStyle.taskLine &&
-        c.selection.start < hit.start + 2;
+  final _taskMenu = ContextMenuController();
+
+  void _showTaskStatus(int index) {
+    final editable = _editableIn(_editorKey.currentContext);
+    if (editable == null) return;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final range = widget.controller.document._ranges[index];
+    final local = editable.getLocalRectForCaret(
+      TextPosition(offset: range.start - (_window?.start ?? 0)),
+    );
+    final anchor =
+        editable.localToGlobal(local.topLeft, ancestor: overlay) & local.size;
+    final box = _editorKey.currentContext!.findRenderObject()! as RenderBox;
+    final bounds = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+    final id = widget.controller.document.blocks[index].id;
+    _taskMenu.show(
+      context: context,
+      contextMenuBuilder: (context) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _taskMenu.remove,
+              behavior: HitTestBehavior.opaque,
+            ),
+          ),
+          TaskFieldPopup(
+            field: 'status',
+            anchor: anchor,
+            bounds: Rect.fromLTRB(
+              bounds.left,
+              bounds.top,
+              bounds.right,
+              math.min(
+                bounds.bottom,
+                widget.popupBottomY?.call() ?? bounds.bottom,
+              ),
+            ),
+            onPicked: (status) {
+              _taskMenu.remove();
+              unawaited(widget.controller.setTaskStatus(id, status));
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
@@ -871,6 +910,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
 
   @override
   void dispose() {
+    _taskMenu.remove();
     _taskScroll.dispose();
     _windowScroll.dispose();
     _window?.dispose();
@@ -955,51 +995,40 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       onTap: () => widget.controller.handleEditorTap(),
       onTapOutside: (_) => focusNode.unfocus(),
       contextMenuBuilder: (context, state) => TextFieldTapRegion(
-        child: _checkboxSelection()
-            ? TaskStatusMenu(
-                anchors: state.contextMenuAnchors,
-                onStatus: (status) {
-                  final id = widget.controller.currentTaskBlockId;
+        child: AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: state.contextMenuAnchors,
+          buttonItems: [
+            if (!widget.controller.selection.isCollapsed)
+              ContextMenuButtonItem(
+                type: ContextMenuButtonType.copy,
+                onPressed: () {
                   state.hideToolbar();
-                  if (id != null) {
-                    unawaited(widget.controller.setTaskStatus(id, status));
-                  }
+                  widget.controller.copySelection();
                 },
-              )
-            : AdaptiveTextSelectionToolbar.buttonItems(
-                anchors: state.contextMenuAnchors,
-                buttonItems: [
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.copy,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.copySelection();
-                      },
-                    ),
-                  if (!widget.controller.selection.isCollapsed)
-                    ContextMenuButtonItem(
-                      type: ContextMenuButtonType.cut,
-                      onPressed: () {
-                        state.hideToolbar();
-                        widget.controller.cutSelection();
-                      },
-                    ),
-                  ContextMenuButtonItem(
-                    type: ContextMenuButtonType.paste,
-                    onPressed: () {
-                      state.hideToolbar();
-                      widget.controller.paste();
-                    },
-                  ),
-                  ContextMenuButtonItem(
-                    type: ContextMenuButtonType.selectAll,
-                    onPressed: () {
-                      _selectAll(state);
-                    },
-                  ),
-                ],
               ),
+            if (!widget.controller.selection.isCollapsed)
+              ContextMenuButtonItem(
+                type: ContextMenuButtonType.cut,
+                onPressed: () {
+                  state.hideToolbar();
+                  widget.controller.cutSelection();
+                },
+              ),
+            ContextMenuButtonItem(
+              type: ContextMenuButtonType.paste,
+              onPressed: () {
+                state.hideToolbar();
+                widget.controller.paste();
+              },
+            ),
+            ContextMenuButtonItem(
+              type: ContextMenuButtonType.selectAll,
+              onPressed: () {
+                _selectAll(state);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1290,22 +1319,50 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                           children: [
                             for (final range
                                 in widget.controller.document._ranges)
-                              if (_taskHasStrip(
-                                widget.controller.document.blocks[range.index],
-                              ))
-                                TaskChipStrip(
-                                  task: taskFromSource(
-                                    widget.controller.document.sourceFor(
+                              if (widget
+                                      .controller
+                                      .document
+                                      .blocks[range.index]
+                                      .style ==
+                                  TyLogBlockStyle.taskLine) ...[
+                                Semantics(
+                                  label: 'Task status',
+                                  button: true,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => widget.controller.toggleTask(
                                       widget
                                           .controller
                                           .document
                                           .blocks[range.index]
                                           .id,
                                     ),
+                                    onLongPress: () =>
+                                        _showTaskStatus(range.index),
+                                    child: const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                    ),
                                   ),
-                                  onCommand: (command) =>
-                                      _openTaskChip(range.index, command),
                                 ),
+                                if (_taskHasStrip(
+                                  widget.controller.document.blocks[range
+                                      .index],
+                                ))
+                                  TaskChipStrip(
+                                    task: taskFromSource(
+                                      widget.controller.document.sourceFor(
+                                        widget
+                                            .controller
+                                            .document
+                                            .blocks[range.index]
+                                            .id,
+                                      ),
+                                    ),
+                                    onCommand: (command) =>
+                                        _openTaskChip(range.index, command),
+                                  ),
+                              ],
                           ],
                         ),
                       ),
@@ -2940,7 +2997,30 @@ class _TaskStripFlow extends FlowDelegate {
     if (field == null || box == null || !field.hasSize) return;
     var child = 0;
     for (final range in controller.document._ranges) {
-      if (!_taskHasStrip(controller.document.blocks[range.index])) continue;
+      final block = controller.document.blocks[range.index];
+      if (block.style != TyLogBlockStyle.taskLine) continue;
+      final start = range.start - (window?.start ?? 0);
+      final checkbox = child++;
+      if (start >= 0 && start + 2 <= field.plainText.length) {
+        final caret = field.getLocalRectForCaret(TextPosition(offset: start));
+        final end = field.getLocalRectForCaret(TextPosition(offset: start + 2));
+        final point = box.globalToLocal(field.localToGlobal(caret.topLeft));
+        if (point.dy + caret.height > 0 && point.dy < context.size.height) {
+          final size = context.getChildSize(checkbox)!;
+          context.paintChild(
+            checkbox,
+            transform: Matrix4.translationValues(point.dx, point.dy, 0)
+              ..multiply(
+                Matrix4.diagonal3Values(
+                  (end.left - caret.left) / size.width,
+                  caret.height / size.height,
+                  1,
+                ),
+              ),
+          );
+        }
+      }
+      if (!_taskHasStrip(block)) continue;
       final offset = range.end - (window?.start ?? 0);
       if (offset < 0 || offset > field.plainText.length) {
         child++;
@@ -2949,7 +3029,6 @@ class _TaskStripFlow extends FlowDelegate {
       final caret = field.getLocalRectForCaret(TextPosition(offset: offset));
       final point = box.globalToLocal(field.localToGlobal(caret.bottomLeft));
       final size = context.getChildSize(child)!;
-      final block = controller.document.blocks[range.index];
       final beside = point.dx + 8 + size.width <= context.size.width - 18;
       final reservedHeight = beside ? 0.0 : size.height + 2;
       if (controller.taskStripHeights[block.id] != reservedHeight) {

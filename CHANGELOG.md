@@ -3,6 +3,19 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.12.4+137
+
+### Fixed
+
+- **Task chip popups in lists fit their rows** and stay above the bottom bar
+  and the keyboard.
+- **Long-press on a task checkbox** opens the status menu as a popup beside
+  the line and no longer starts a text selection.
+- The pill after an index rebuild reads "Index rebuilt"; the check counts
+  stay in the vault check.
+- "Continue reading" on Today moved inside Agenda, so Today has one header
+  row.
+
 ## 0.12.3+136
 
 ### Fixed

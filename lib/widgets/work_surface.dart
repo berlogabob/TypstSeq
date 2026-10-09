@@ -137,7 +137,8 @@ class TodayPage extends StatelessWidget {
                         overdue.isNotEmpty ||
                         todayEvents.isNotEmpty ||
                         onAllTasks != null ||
-                        indexing)
+                        indexing ||
+                        recent.isNotEmpty)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
                         leading: const Icon(Icons.event_note),
@@ -174,37 +175,41 @@ class TodayPage extends StatelessWidget {
                               title: const Text('All tasks →'),
                               onTap: onAllTasks,
                             ),
-                        ],
-                      ),
-                    if (recent.isNotEmpty)
-                      ExpansionTile(
-                        key: const PageStorageKey('today-continue-reading'),
-                        leading: const Icon(Icons.history),
-                        title: const Text('Continue reading'),
-                        children: [
-                          for (final (note, progress) in recent)
-                            Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: kSpace12,
-                                vertical: kSpace4,
+                          if (recent.isNotEmpty)
+                            ExpansionTile(
+                              key: const PageStorageKey(
+                                'today-continue-reading',
                               ),
-                              clipBehavior: Clip.antiAlias,
-                              child: ListTile(
-                                leading: const Icon(
-                                  Icons.auto_stories_outlined,
-                                ),
-                                title: Text(
-                                  note.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: LinearProgressIndicator(
-                                  value: progress,
-                                ),
-                                trailing: Text('${(progress * 100).round()}%'),
-                                onTap: () =>
-                                    (onReadPath ?? onOpenPath)(note.path),
-                              ),
+                              leading: const Icon(Icons.history),
+                              title: const Text('Continue reading'),
+                              children: [
+                                for (final (note, progress) in recent)
+                                  Card(
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: kSpace12,
+                                      vertical: kSpace4,
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: ListTile(
+                                      leading: const Icon(
+                                        Icons.auto_stories_outlined,
+                                      ),
+                                      title: Text(
+                                        note.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: LinearProgressIndicator(
+                                        value: progress,
+                                      ),
+                                      trailing: Text(
+                                        '${(progress * 100).round()}%',
+                                      ),
+                                      onTap: () =>
+                                          (onReadPath ?? onOpenPath)(note.path),
+                                    ),
+                                  ),
+                              ],
                             ),
                         ],
                       ),

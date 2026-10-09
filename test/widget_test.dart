@@ -271,6 +271,12 @@ void main() {
     home.workspace.notifyListeners();
     await tester.pumpAndSettle();
     expect(tester.getRect(editor), before);
+    home.workspace.status = 'Index rebuilt';
+    home.workspace.rebuildProgress = 1.0;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text('Index rebuilt'), findsOneWidget);
+    expect(tester.getRect(editor), before);
   });
 
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
@@ -2564,6 +2570,11 @@ void main() {
       release.complete();
       await tester.pumpAndSettle();
       await rebuild;
+      if (cold) {
+        expect(controller.status, 'Index rebuilt');
+        expect(controller.validation, isNotNull);
+        expect(controller.validation.summary(), contains('warnings=1'));
+      }
       expect(
         controller.index.notesByPath.containsKey('notes/current.typ'),
         isTrue,

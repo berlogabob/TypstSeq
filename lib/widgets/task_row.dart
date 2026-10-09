@@ -36,7 +36,21 @@ class _TaskRowState extends State<TaskRow> {
     super.dispose();
   }
 
-  void _statusMenu(BuildContext context, Offset position) {
+  void _statusMenu(BuildContext context, Offset position) =>
+      _field(context, 'status', position & const Size(1, 1));
+
+  void _field(BuildContext context, String field, Rect anchor) {
+    if (field == 'status' ? onSetStatus == null : onSetField == null) return;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    var bounds = Offset.zero & overlay.size;
+    final body = Scaffold.maybeOf(context)?.widget.body;
+    context.visitAncestorElements((element) {
+      if (element.widget != body) return true;
+      final box = element.findRenderObject()! as RenderBox;
+      bounds = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+      return false;
+    });
     _menu.show(
       context: context,
       contextMenuBuilder: (context) => Stack(
@@ -47,44 +61,22 @@ class _TaskRowState extends State<TaskRow> {
               behavior: HitTestBehavior.opaque,
             ),
           ),
-          TaskStatusMenu(
-            anchors: TextSelectionToolbarAnchors(primaryAnchor: position),
-            onStatus: (status) {
+          TaskFieldPopup(
+            field: field,
+            anchor: anchor,
+            bounds: bounds,
+            onPicked: (value) {
               _menu.remove();
-              unawaited(onSetStatus?.call(task, status));
+              unawaited(
+                field == 'status'
+                    ? onSetStatus!(task, value)
+                    : onSetField!(task, field, value),
+              );
             },
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _field(
-    BuildContext context,
-    String field,
-    Offset position,
-  ) async {
-    if (onSetField == null) return;
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final value = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & const Size(1, 1),
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        PopupMenuItem(
-          enabled: false,
-          child: SizedBox(
-            width: 280,
-            height: 260,
-            child: TaskFieldPopup(field: field),
-          ),
-        ),
-      ],
-    );
-    if (mounted && value != null) await onSetField!(task, field, value);
   }
 
   @override
@@ -128,7 +120,7 @@ class _TaskRowState extends State<TaskRow> {
             showEmpty: onSetField != null,
             onCommand: (field) {
               final box = context.findRenderObject()! as RenderBox;
-              unawaited(_field(context, field, box.localToGlobal(Offset.zero)));
+              _field(context, field, box.localToGlobal(Offset.zero) & box.size);
             },
           ),
         ),

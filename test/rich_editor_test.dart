@@ -1778,6 +1778,68 @@ void main() {
     },
   );
 
+  testWidgets(
+    'checkbox long press opens anchored status popup without selection',
+    (tester) async {
+      tester.view.physicalSize = const Size(405, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = TyLogEditingController(
+        source: 'Above\n\n#tylog.task(id: "t1", text: "Ship it")\n',
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: Column(
+              children: [
+                const SizedBox(key: Key('header'), height: 56),
+                Expanded(
+                  child: TyLogRichEditor(
+                    controller: controller,
+                    onInsert: () async {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final editable = tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable;
+      final glyph = editable.getLocalRectForCaret(
+        TextPosition(offset: controller.text.indexOf('☐')),
+      );
+      final point = editable.localToGlobal(glyph.center);
+      final before = controller.selection;
+      await tester.longPressAt(point);
+      await tester.pumpAndSettle();
+      expect(controller.selection, before);
+      expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
+      final todo = tester.getRect(find.text('todo'));
+      final cancelled = tester.getRect(find.text('cancelled'));
+      expect(cancelled.top, greaterThan(todo.bottom));
+      expect(todo.top, greaterThan(point.dy));
+      expect(
+        todo.top,
+        greaterThan(tester.getBottomLeft(find.byKey(const Key('header'))).dy),
+      );
+      await tester.tap(find.text('doing'));
+      await tester.pumpAndSettle();
+      expect(controller.document.toSource(), contains('status: "doing"'));
+      expect(controller.selection.isCollapsed, isTrue);
+      expect(find.text('todo'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('tapping the task checkbox glyph toggles its status', (
     tester,
   ) async {

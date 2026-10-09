@@ -300,6 +300,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Card), findsNothing);
+    expect(find.text('Continue reading'), findsNothing);
+    expect(find.byType(ExpansionTile), findsOneWidget);
+    await tester.tap(find.text('Agenda · 0'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Continue reading'));
     await tester.pumpAndSettle();
     expect(find.byType(Card), findsNWidgets(2));

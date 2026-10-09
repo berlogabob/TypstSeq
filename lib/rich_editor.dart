@@ -17,6 +17,7 @@ import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
 import 'widgets/task_chip_strip.dart';
 import 'widgets/task_fields.dart';
+export 'widgets/task_fields.dart' show autocompletePopupRect;
 
 export 'editor_autocomplete.dart'
     show
@@ -42,20 +43,4 @@ bool shouldUseVirtualPlainEditor(TyLogEditingController controller) {
             block.parts.length == 1 &&
             !block.parts.single.isAtom,
       );
-}
-
-/// Keeps the popup clear of the caret line, including the on-screen keyboard.
-Rect autocompletePopupRect(Rect caret, Size viewport, Size desired) {
-  const gap = 4.0;
-  final below = math.max(0.0, viewport.height - caret.bottom - gap);
-  final above = math.max(0.0, caret.top - gap);
-  final useBelow = below >= desired.height || below >= above;
-  final height = math.min(desired.height, useBelow ? below : above);
-  final width = math.min(desired.width, viewport.width);
-  return Rect.fromLTWH(
-    caret.left.clamp(0.0, math.max(0.0, viewport.width - width)),
-    useBelow ? caret.bottom + gap : caret.top - gap - height,
-    width,
-    height,
-  );
 }
