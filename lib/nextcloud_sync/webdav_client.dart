@@ -32,11 +32,6 @@ extension _WebDavClient on NextcloudSync {
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
     lap('wait');
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(NextcloudSync.propfindBodyTimeout);
-    lap('body');
     if (allowMissing && response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
       throw WebDavStatusException(
@@ -44,6 +39,11 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(NextcloudSync.propfindBodyTimeout);
+    lap('body');
     if (!RegExp(
       r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
     ).hasMatch(body)) {
@@ -272,16 +272,16 @@ extension _WebDavClient on NextcloudSync {
       '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(NextcloudSync.propfindBodyTimeout);
     if (response.statusCode != 207) {
       throw WebDavStatusException(
         'PROPFIND unexpected status ${response.statusCode}',
         response.statusCode,
       );
     }
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(NextcloudSync.propfindBodyTimeout);
     if (!RegExp(
       r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
     ).hasMatch(body)) {
@@ -310,10 +310,6 @@ extension _WebDavClient on NextcloudSync {
       '''<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getetag/></d:prop></d:propfind>''',
     );
     final response = await request.close().timeout(const Duration(seconds: 60));
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(NextcloudSync.propfindBodyTimeout);
     if (response.statusCode == HttpStatus.notFound) return null;
     if (response.statusCode != 207) {
       throw WebDavStatusException(
@@ -321,6 +317,10 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(NextcloudSync.propfindBodyTimeout);
     if (!RegExp(
       r'<[^:>/]*:?multistatus\b[^>]*(?:/\s*>|>[\s\S]*</[^:>]*:?multistatus\s*>)\s*$',
     ).hasMatch(body)) {
@@ -488,11 +488,18 @@ extension _WebDavClient on NextcloudSync {
         );
         _remoteWrites.add(unorm.nfc(path));
         return etag;
-      } on ChunkUploadException catch (error) {
-        if (error.statusCode == HttpStatus.preconditionFailed) {
-          throw const _RemoteChanged();
+      } catch (error) {
+        if (error is ChunkUploadException) {
+          if (error.statusCode == HttpStatus.preconditionFailed) {
+            throw const _RemoteChanged();
+          }
+          if (const {502, 503, 504}.contains(error.statusCode) ||
+              error.statusCode >= 520 && error.statusCode <= 530) {
+            throw WebDavStatusException(error.toString(), error.statusCode);
+          }
+        } else if (error is! IOException && error is! TimeoutException) {
+          rethrow;
         }
-        // Keep this exception outside the generic transient retry loop.
         if (attempt == 1) rethrow;
       }
     }
@@ -659,13 +666,13 @@ extension _WebDavClient on NextcloudSync {
       'MKCOL',
       uri,
     )).close().timeout(const Duration(seconds: 20));
-    await response.drain<void>();
     if (response.statusCode >= 400 && response.statusCode != 405) {
       throw WebDavStatusException(
         'MKCOL ${response.statusCode}',
         response.statusCode,
       );
     }
+    await response.drain<void>().timeout(const Duration(seconds: 20));
   }
 
   Future<_RemoteFile> _moveRemote(
@@ -686,7 +693,6 @@ extension _WebDavClient on NextcloudSync {
         response.headers.value(HttpHeaders.etagHeader) ??
         source.etag;
     final status = response.statusCode;
-    await response.drain<void>();
     if (status == HttpStatus.preconditionFailed ||
         status == HttpStatus.conflict) {
       throw const _RemoteChanged();
@@ -697,6 +703,7 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
+    await response.drain<void>().timeout(const Duration(seconds: 60));
     _remoteWrites.addAll([unorm.nfc(from), unorm.nfc(to)]);
     return _RemoteFile(
       modified: DateTime.now().toUtc(),

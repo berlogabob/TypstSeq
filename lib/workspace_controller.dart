@@ -1734,6 +1734,7 @@ class WorkspaceController extends ChangeNotifier {
           'retry',
           'resume',
           'note-close',
+          'autosave',
         }.contains(trigger);
     syncing = true;
     if (trigger == 'autosave' && !pushOnly) _lastAutosaveSyncAt = _now();
@@ -2032,7 +2033,7 @@ class WorkspaceController extends ChangeNotifier {
         _pollFailures++;
         _pollNextAt = _now().add(delay);
       }
-      status = quiet ? 'Offline — changes saved, will sync' : syncError!;
+      status = quiet ? 'Offline — will sync when connected' : syncError!;
       notifyListeners();
       final conflicts = await loadSyncConflicts(opened);
       if (!_owns(opened, generation)) return false;

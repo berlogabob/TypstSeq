@@ -62,7 +62,9 @@ Future<String?> chunkedUpload({
       await request.addStream(body).timeout(const Duration(minutes: 5));
     }
     final response = await request.close().timeout(const Duration(seconds: 60));
-    await response.drain<void>().timeout(const Duration(seconds: 60));
+    if (response.statusCode < 400 || response.statusCode == 405) {
+      await response.drain<void>().timeout(const Duration(seconds: 60));
+    }
     return response;
   }
 
@@ -77,19 +79,12 @@ Future<String?> chunkedUpload({
     if (alreadyUploaded.contains(n)) continue;
     final start = (n - 1) * chunkSize;
     final end = start + chunkSize < length ? start + chunkSize : length;
-    HttpClientResponse put;
-    try {
-      put = await send(
-        'PUT',
-        '$uploadDir/${n.toString().padLeft(5, '0')}',
-        body: openRange(start, end),
-        bodyLength: end - start,
-      );
-    } on IOException {
-      throw ChunkUploadException(n, 503);
-    } on TimeoutException {
-      throw ChunkUploadException(n, 503);
-    }
+    final put = await send(
+      'PUT',
+      '$uploadDir/${n.toString().padLeft(5, '0')}',
+      body: openRange(start, end),
+      bodyLength: end - start,
+    );
     if (put.statusCode != 201 && put.statusCode != 204) {
       throw ChunkUploadException(n, put.statusCode);
     }

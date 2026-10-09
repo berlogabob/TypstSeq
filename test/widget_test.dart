@@ -4,6 +4,7 @@ import 'dart:io';
 
 // ignore_for_file: depend_on_referenced_packages
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
@@ -582,6 +583,196 @@ void main() {
         await tester.pumpWidget(const SizedBox());
       },
     );
+  }
+
+  for (final state in [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+  ]) {
+    testWidgets('${state.name} saves rich text during blocked push-local', (
+      tester,
+    ) async {
+      final (storage, home) = await _mountTaskTimers(tester);
+      late _GatedProxyHttp http;
+      await tester.runAsync(() async {
+        http = _GatedProxyHttp(blockMethod: 'PUT');
+      });
+      home.workspace.cloud = const NextcloudConfig(
+        serverUrl: 'https://unused.invalid/Vault',
+        username: 'alice',
+        password: 'secret',
+      );
+      await _seedPushState(storage);
+      await home.workspace.vault.saveNote(
+        'notes/a.typ',
+        await storage.readText('notes/a.typ'),
+      );
+      await tester.runAsync(
+        () => HttpOverrides.runZoned(() async {
+          final sync =
+              home.workspace.syncNow(trigger: 'autosave') as Future<bool>;
+          await http.started.future.timeout(const Duration(seconds: 2));
+          try {
+            expect(home.workspace.syncStage, 'push-local');
+            final text = '${home.richController.text}pause-probe';
+            home.richController.value = TextEditingValue(
+              text: text,
+              selection: TextSelection.collapsed(offset: text.length),
+            );
+            home.didChangeAppLifecycleState(state);
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            expect(http.completed, 0);
+            expect(
+              await storage.readText('notes/a.typ'),
+              contains('pause-probe'),
+            );
+            expect(home.workspace.syncing, isTrue);
+          } finally {
+            http.release.complete();
+            await sync;
+          }
+        }, createHttpClient: (_) => http),
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('offline status does not claim a dirty buffer is saved', (
+    tester,
+  ) async {
+    final (storage, home) = await _mountTaskTimers(tester);
+    late _GatedProxyHttp http;
+    await tester.runAsync(() async {
+      http = _GatedProxyHttp(blockMethod: 'PUT');
+    });
+    home.workspace.cloud = const NextcloudConfig(
+      serverUrl: 'https://unused.invalid/Vault',
+      username: 'alice',
+      password: 'secret',
+    );
+    await _seedPushState(storage);
+    await home.workspace.vault.saveNote(
+      'notes/a.typ',
+      await storage.readText('notes/a.typ'),
+    );
+    await tester.runAsync(
+      () => HttpOverrides.runZoned(() async {
+        final sync =
+            home.workspace.syncNow(trigger: 'autosave') as Future<bool>;
+        await http.started.future.timeout(const Duration(seconds: 2));
+        home.workspace.edit('${home.workspace.source}unsaved');
+        http.release.complete();
+        await sync;
+        expect(home.workspace.dirty, isTrue);
+        expect(home.workspace.status, isNot(contains('changes saved')));
+      }, createHttpClient: (_) => http),
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final method in ['MKCOL', 'PROPFIND', 'PUT']) {
+    testWidgets('proxy $method failure does not wait for its error body', (
+      tester,
+    ) async {
+      final (storage, home) = await _mountTaskTimers(tester);
+      late _GatedProxyHttp http;
+      await tester.runAsync(() async {
+        http = _GatedProxyHttp(blockMethod: method, stallFailureBody: true)
+          ..release.complete();
+      });
+      const config = NextcloudConfig(
+        serverUrl: 'https://unused.invalid/Vault',
+        username: 'alice',
+        password: 'secret',
+      );
+      if (method != 'PROPFIND') await _seedPushState(storage);
+      for (var i = 0; i < 20; i++) {
+        if (method != 'PROPFIND') {
+          await home.workspace.vault.saveNote(
+            'assets/$i.bin',
+            method == 'PUT' && i == 0 ? '1' * (11 * 1024 * 1024) : 'pending',
+          );
+        }
+      }
+      await tester.runAsync(
+        () => HttpOverrides.runZoned(() async {
+          final sync = NextcloudSync(
+            config,
+          ).sync(home.workspace.vault, pushOnly: true);
+          try {
+            await expectLater(
+              sync.timeout(const Duration(milliseconds: 200)),
+              throwsA(isA<WebDavStatusException>()),
+            );
+            expect(http.completed, 1);
+            expect(
+              home.workspace.vault.pendingSyncWrites,
+              hasLength(method == 'PROPFIND' ? 0 : 20),
+            );
+          } finally {
+            unawaited(http.body.close());
+            try {
+              await sync;
+            } catch (_) {}
+          }
+        }, createHttpClient: (_) => http),
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+  for (final code in [502, 503, 504, ...List.generate(11, (i) => 520 + i)]) {
+    for (final (large, method) in [
+      (false, 'MKCOL'),
+      (false, 'PUT'),
+      (true, 'PUT'),
+    ]) {
+      testWidgets(
+        'push-local $method $code aborts after one failure; large=$large',
+        (tester) async {
+          final (storage, home) = await _mountTaskTimers(tester);
+          late _GatedProxyHttp http;
+          await tester.runAsync(() async {
+            http = _GatedProxyHttp(status: code, blockMethod: method)
+              ..release.complete();
+          });
+          const config = NextcloudConfig(
+            serverUrl:
+                'https://unused.invalid/remote.php/dav/files/alice/Vault',
+            username: 'alice',
+            password: 'secret',
+          );
+          await _seedPushState(storage, config: config);
+          for (var i = 0; i < 20; i++) {
+            final path = 'assets/$i.bin';
+            await home.workspace.vault.saveNote(
+              path,
+              large && i == 0 ? '1' * (11 * 1024 * 1024) : '1',
+            );
+          }
+          final pending = home.workspace.vault.pendingSyncWrites;
+          await tester.runAsync(
+            () => HttpOverrides.runZoned(() async {
+              await expectLater(
+                NextcloudSync(
+                  config,
+                ).sync(home.workspace.vault, pushOnly: true),
+                throwsA(
+                  isA<WebDavStatusException>().having(
+                    (e) => e.statusCode,
+                    'status',
+                    code,
+                  ),
+                ),
+              );
+              expect(http.completed, 1);
+              expect(home.workspace.vault.pendingSyncWrites, pending);
+            }, createHttpClient: (_) => http),
+          );
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
   }
 
   for (final code in [502, 503, 504, ...List.generate(11, (i) => 520 + i)]) {
@@ -3442,7 +3633,8 @@ class _FailingStorage extends VaultStorage {
   }
 
   @override
-  Future<String> hash(String path) async => base64.encode(_files[path]!);
+  Future<String> hash(String path) async =>
+      sha256.convert(_files[path]!).toString();
 
   @override
   Future<List<VaultStorageEntry>> list({
@@ -3572,14 +3764,21 @@ Future<void> _openEditorVault(WidgetTester tester) async {
 }
 
 class _GatedProxyHttp implements HttpClient {
-  _GatedProxyHttp({this.status = 530});
+  _GatedProxyHttp({
+    this.status = 530,
+    this.blockMethod,
+    this.stallFailureBody = false,
+  });
+  final bool stallFailureBody;
+  final body = StreamController<List<int>>();
+  final String? blockMethod;
   final int status;
   final started = Completer<void>();
   final release = Completer<void>();
   int completed = 0;
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async =>
-      _ProxyRequest(this);
+      _ProxyRequest(this, method);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
@@ -3590,24 +3789,35 @@ class _ProxyHeaders implements HttpHeaders {
 }
 
 class _ProxyRequest implements HttpClientRequest {
-  _ProxyRequest(this.http);
+  _ProxyRequest(this.http, this.method);
+  @override
+  final String method;
   final _GatedProxyHttp http;
   @override
   final headers = _ProxyHeaders();
   @override
   Future<HttpClientResponse> close() async {
+    if (http.blockMethod != null && method != http.blockMethod) {
+      return _ProxyResponse(405);
+    }
     if (!http.started.isCompleted) http.started.complete();
     await http.release.future;
     http.completed++;
-    return _ProxyResponse(http.status);
+    return _ProxyResponse(
+      http.status,
+      http.stallFailureBody ? http.body.stream : null,
+    );
   }
 
+  @override
+  Future<void> addStream(Stream<List<int>> stream) => stream.drain<void>();
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _ProxyResponse extends Stream<List<int>> implements HttpClientResponse {
-  _ProxyResponse(this.statusCode);
+  _ProxyResponse(this.statusCode, [this.body]);
+  final Stream<List<int>>? body;
   @override
   final int statusCode;
   @override
@@ -3618,7 +3828,7 @@ class _ProxyResponse extends Stream<List<int>> implements HttpClientResponse {
     Function? onError,
     void Function()? onDone,
     bool? cancelOnError,
-  }) => const Stream<List<int>>.empty().listen(
+  }) => (body ?? const Stream<List<int>>.empty()).listen(
     onData,
     onError: onError,
     onDone: onDone,
@@ -3627,3 +3837,26 @@ class _ProxyResponse extends Stream<List<int>> implements HttpClientResponse {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+Future<void> _seedPushState(
+  _FailingStorage storage, {
+  NextcloudConfig config = const NextcloudConfig(
+    serverUrl: 'https://unused.invalid/Vault',
+    username: 'alice',
+    password: 'secret',
+  ),
+}) => storage.writeText(
+  '.tylog/sync_state.json',
+  jsonEncode({
+    'schema': 2,
+    'remoteKey': sha256
+        .convert(utf8.encode('${config.rootUri}\nalice'))
+        .toString(),
+    'cursors': {
+      'notes/a.typ': const SyncCursor(
+        remoteEtag: 'old',
+        localSha256: 'old',
+      ).toJson(),
+    },
+  }),
+);

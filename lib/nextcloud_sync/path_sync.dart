@@ -61,7 +61,6 @@ extension _PathSync on NextcloudSync {
         return null;
       }
       if (status >= 400) {
-        await response.drain<void>();
         throw WebDavStatusException('GET archive $status', status);
       }
       final total = response.contentLength;

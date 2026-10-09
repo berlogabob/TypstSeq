@@ -35,6 +35,53 @@ Future<void> _waitUntil(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('autosave sync keeps the engine running offscreen', () async {
+    final storage = _MemoryStorage();
+    final calls = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      calls.add(call.method);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      useForegroundService: true,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'https://example.invalid/remote.php/dav/files/alice/Vault',
+      username: 'alice',
+      password: 'secret',
+    );
+    await HttpOverrides.runZoned(() async {
+      expect(await controller.syncNow(trigger: 'autosave'), isTrue);
+    }, createHttpClient: (_) => _ResolveHttpClient());
+    expect(
+      calls.where((method) => method == 'startSyncForeground'),
+      hasLength(1),
+    );
+    expect(
+      calls.where((method) => method == 'stopSyncForeground'),
+      hasLength(1),
+    );
+  });
+
   test(
     'background sync never requests a foreground service and saves edits',
     () async {
@@ -2921,7 +2968,7 @@ void main() {
           expect(await controller.syncNow(trigger: 'autosave'), isFalse);
           if (attempt < 3) {
             expect(controller.syncError, isNull);
-            expect(controller.status, 'Offline — changes saved, will sync');
+            expect(controller.status, 'Offline — will sync when connected');
           } else {
             expect(controller.syncError, isNotNull);
           }

@@ -11,6 +11,7 @@ their history is in the commit log and the GitHub release notes.
   the app,** and a save no longer waits behind a sync.
 - **An unreachable server fails a sync at once** (was 50 seconds of retries
   inside one run); the next run retries.
+- The status line no longer says "changes saved" while a save is pending.
 - Tasks and the Today agenda show "Indexing…" while the index is rebuilt,
   instead of "No matching tasks".
 - **A failed save is shown** above the editor with a Retry button, instead
