@@ -18,6 +18,8 @@ fi
 for task in "${tasks[@]}"; do
   T="$BENCH/tasks/$task"
   for rep in $(seq 1 "$reps"); do
+    # Resumable: a finished run is never repeated.
+    grep -q "\"model\":\"$model\",\"task\":\"$task\",\"rep\":$rep," "$OUT" 2>/dev/null && continue
     cd "$WT" || exit 1
     git reset -q --hard && git clean -qfd -e .dart_tool -e build && git checkout -q --detach "$BASE" && git clean -qfd -e .dart_tool -e build
     bash "$T/setup.sh" "$REPO" || { echo "setup failed: $task"; continue; }
