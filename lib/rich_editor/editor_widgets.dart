@@ -133,6 +133,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   String? _taskField;
   String? _taskFieldBlock;
   int _taskFieldOffset = 0;
+  String? _taskFieldText;
   final TextEditingController _dateInput = TextEditingController();
   final FocusNode _dateFocus = FocusNode();
   List<DateTime> get _dateCandidates =>
@@ -211,7 +212,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   }
 
   void _handleControllerChanged() {
-    if (_taskField != null) return;
+    if (_taskField != null) {
+      final c = widget.controller;
+      if ((c.selection.isValid &&
+              (!c.selection.isCollapsed ||
+                  c.currentTaskBlockId != _taskFieldBlock)) ||
+          c.text != _taskFieldText) {
+        _cancelAutocomplete();
+      }
+      return;
+    }
     final selection = widget.controller.selection;
     if (!selection.isValid || !selection.isCollapsed) {
       _cancelAutocomplete();
@@ -305,10 +315,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (state == null) return;
     final count = _isMentionLike(state.trigger.kind)
         ? state.mentionItems.length
-        : (_taskField == 'repeat' || _taskField == 'priority')
-        ? 4
+        : _taskField == 'repeat'
+        ? taskRepeats.length
+        : _taskField == 'priority'
+        ? taskPriorities.length
         : _taskField != null
-        ? _dateCandidates.length
+        ? _dateCandidates.length + 1
         : state.taskItems.length + state.commandItems.length;
     if (count == 0) return;
     final next = (state.highlighted + delta) % count;
@@ -324,11 +336,11 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       if (_taskField == 'priority') {
         _pickPriority(taskPriorities[state.highlighted]);
       } else if (_taskField == 'repeat') {
-        _pickRepeat(
-          const ['daily', 'weekly', 'monthly', 'weekdays'][state.highlighted],
-        );
+        _pickRepeat(taskRepeats[state.highlighted]);
       } else if (state.highlighted < _dateCandidates.length) {
         _pickDate(_dateCandidates[state.highlighted]);
+      } else {
+        _clearTaskDate();
       }
     } else if (_isMentionLike(state.trigger.kind)) {
       if (state.highlighted < state.mentionItems.length) {
@@ -450,6 +462,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _taskFieldBlock = blockId;
       final range = c.document._blockAt(start, preferPrevious: true);
       _taskFieldOffset = start - (range?.start ?? 0);
+      _taskFieldText = c.text.replaceRange(start, caret, '');
       _dateInput.clear();
     } else {
       _cancelAutocomplete();
@@ -553,6 +566,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     focusNode.requestFocus();
   }
 
+  void _clearTaskDate() {
+    if (!_restoreTaskFieldCaret()) return;
+    widget.controller.setCurrentTaskFields(
+      due: _taskField == 'due' ? 'none' : null,
+      scheduled: _taskField == 'scheduled' ? 'none' : null,
+    );
+    _cancelAutocomplete();
+    focusNode.requestFocus();
+  }
+
   Future<void> _calendarTaskDate() async {
     final date = await showDatePicker(
       context: context,
@@ -580,12 +603,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     onRepeat: _pickRepeat,
     onPriority: _pickPriority,
     onDate: _pickDate,
+    onClear: _clearTaskDate,
   );
 
   void _cancelAutocomplete() {
     widget.controller.onAutocompleteEnter = null;
     _taskField = null;
     _taskFieldBlock = null;
+    _taskFieldText = null;
     _debounce?.cancel();
     _debounce = null;
     _mentionQueryToken++;
@@ -628,10 +653,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
           );
           final count = _isMentionLike(state.trigger.kind)
               ? math.max(1, state.mentionItems.length)
-              : (_taskField == 'repeat' || _taskField == 'priority')
-              ? 4
+              : _taskField == 'repeat'
+              ? taskRepeats.length
+              : _taskField == 'priority'
+              ? taskPriorities.length
               : _taskField != null
-              ? 1 + _dateCandidates.length
+              ? 2 + _dateCandidates.length
               : math.max(1, state.taskItems.length + state.commandItems.length);
           final editorBox =
               _editorKey.currentContext!.findRenderObject()! as RenderBox;

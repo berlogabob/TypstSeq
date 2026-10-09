@@ -68,6 +68,85 @@ void main() {
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
+  for (final leave in ['caret', 'text']) {
+    testWidgets('repeat popup closes on $leave leaving its task', (
+      tester,
+    ) async {
+      final c = editor(
+        '#tylog.task(id: "a", text: "First")\n\n#tylog.task(id: "b", text: "Second")',
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(controller: c, onInsert: () async {}),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('rich-journal-editor')));
+      final end = c.text.indexOf('First') + 5;
+      c.value = TextEditingValue(
+        text: c.text.replaceRange(end, end, ' /repeat'),
+        selection: TextSelection.collapsed(offset: end + 8),
+      );
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(find.text('daily'), findsOneWidget);
+      if (leave == 'caret') {
+        c.selection = TextSelection.collapsed(offset: c.text.length);
+      } else {
+        final caret = c.selection.extentOffset;
+        c.value = TextEditingValue(
+          text: c.text.replaceRange(caret, caret, ' extra text'),
+          selection: TextSelection.collapsed(offset: caret + 11),
+        );
+      }
+      await tester.pump();
+      expect(find.text('daily'), findsNothing);
+      expect(c.document.toSource(), isNot(contains('recurrence:')));
+      check(c);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  for (final field in ['repeat', 'due', 'scheduled']) {
+    testWidgets('$field popup clears only its field', (tester) async {
+      final c = editor(
+        '#tylog.task(id: "t", text: "Call", due: "2026-10-10", scheduled: "2026-10-09", recurrence: "RRULE:FREQ=DAILY", properties: ("custom": "keep"))',
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(controller: c, onInsert: () async {}),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('rich-journal-editor')));
+      type(c, '${c.text} /$field');
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(find.text('none'), findsOneWidget);
+      await tester.tap(find.text('none'));
+      await tester.pump();
+      final out = c.document.toSource();
+      final key = field == 'repeat' ? 'recurrence' : field;
+      expect(out, contains('$key: none'));
+      for (final entry in {
+        'due': '2026-10-10',
+        'scheduled': '2026-10-09',
+        'recurrence': 'RRULE:FREQ=DAILY',
+      }.entries) {
+        if (entry.key != key) expect(taskField(out, entry.key), entry.value);
+      }
+      expect(out, contains('properties: ("custom": "keep")'));
+      check(c);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   for (final rawEnter in [false, true]) {
     testWidgets(
       'A24 stale reload between Enter and typing (${rawEnter ? "keys" : "IME"})',

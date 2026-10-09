@@ -443,10 +443,8 @@ class TyLogDocument {
     _replaceAcrossBlocks(start, end, replacement, startHit, endHit);
   }
 
-  /// `_replaceAcrossBlocks` rebuilds every block it touches as plain
-  /// paragraphs, which would silently drop a taskLine's `#tylog.task(...)`
-  /// call (recurrence, properties, id, ...) even though the visible text
-  /// still matches. Refuse any multi-block/`\n\n`-containing edit that
+  /// A multi-block splice cannot preserve a taskLine's `#tylog.task(...)`
+  /// call (recurrence, properties, id, ...) merely by retaining visible text. Refuse any multi-block/`\n\n`-containing edit that
   /// touches a task line unless it is a pure deletion that removes the
   /// whole task (the user deliberately deleted the line).
   ///
@@ -486,29 +484,45 @@ class TyLogDocument {
     _BlockRange? startHit,
     _BlockRange? endHit,
   ) {
-    final oldVisible = visibleText;
-    final nextVisible = oldVisible.replaceRange(start, end, replacement);
     final first = startHit?.index ?? 0;
     final last = endHit?.index ?? blocks.length - 1;
     final oldRanges = _ranges;
     final affectedStart = oldRanges[first].start;
     final affectedEnd = oldRanges[last].end;
-    final delta = replacement.length - (end - start);
-    final nextAffectedEnd = (affectedEnd + delta).clamp(
-      affectedStart,
-      nextVisible.length,
+    final units = <_Unit>[
+      for (var i = first; i <= last; i++) ...[
+        ..._units(blocks[i].parts),
+        if (i < last) ..._units([TyLogInline.text(gapAfter(i))]),
+      ],
+    ];
+    units.replaceRange(
+      start - affectedStart,
+      end - affectedStart,
+      _units([TyLogInline.text(replacement)]),
     );
-    final value = nextVisible.substring(affectedStart, nextAffectedEnd);
+    final value = String.fromCharCodes(units.map((u) => u.code));
     final replacements = <TyLogBlock>[];
     final segments = value.isEmpty ? const <String>[] : value.split('\n\n');
+    var offset = 0;
     for (var i = 0; i < segments.length; i++) {
-      replacements.add(
-        _newParagraph(
-          segments[i],
-          DateTime.now().microsecondsSinceEpoch + i,
-          separator: i == segments.length - 1 ? blocks[last].separator : '\n\n',
-        ),
-      );
+      final retained = i == 0 && start > affectedStart
+          ? blocks[first]
+          : i == segments.length - 1 && end < affectedEnd
+          ? blocks[last]
+          : null;
+      final parts = units.sublist(offset, offset + segments[i].length);
+      final block = retained == null
+          ? (_newParagraph(
+              '',
+              DateTime.now().microsecondsSinceEpoch + i,
+              separator: '',
+            )..parts = _parts(parts))
+          : _blockFrom(retained, parts);
+      block.separator = i == segments.length - 1
+          ? blocks[last].separator
+          : '\n\n';
+      replacements.add(block);
+      offset += segments[i].length + 2;
     }
     final removedThroughEnd = replacements.isEmpty && last == blocks.length - 1;
     blocks.replaceRange(first, last + 1, replacements);

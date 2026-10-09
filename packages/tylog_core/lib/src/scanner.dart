@@ -155,6 +155,7 @@ class QueriedMetadata {
     required this.dates,
     required this.attachments,
     required this.tasks,
+    this.problems = const [],
   });
 
   final Map<String, Object?>? note;
@@ -163,6 +164,7 @@ class QueriedMetadata {
   final List<Map<String, Object?>> dates;
   final List<Map<String, Object?>> attachments;
   final List<Map<String, Object?>> tasks;
+  final List<PkmsProblem> problems;
 }
 
 class TypstDocumentInput {
@@ -277,10 +279,58 @@ List<Object?> decodeTypstMetadata(String json) =>
     }).toList();
 
 QueriedMetadata decodeTylogMetadataRecords(
-  Iterable<TypstMetadataRecord> records,
-) {
+  Iterable<TypstMetadataRecord> records, {
+  String path = '',
+}) {
+  records = records.toList();
+  final problems = <PkmsProblem>[];
+  for (final record in records) {
+    final entity = const {
+      '<tylog-note>': 'note',
+      '<tylog-link>': 'link',
+      '<tylog-tag>': 'tag',
+      '<tylog-date>': 'date',
+      '<tylog-attachment>': 'attachment',
+      '<tylog-task>': 'task',
+    }[record.label];
+    final value = record.value;
+    if (entity == null || value is! Map || !value.containsKey('schema')) {
+      continue;
+    }
+    if (value['schema'] != 1 || value['entity'] != entity) {
+      problems.add(
+        PkmsProblem(
+          code: 'invalid-metadata-envelope',
+          severity: PkmsSeverity.error,
+          subject: path,
+          message:
+              'Invalid $entity metadata envelope: schema or entity mismatch.',
+        ),
+      );
+    } else {
+      final required = switch (entity) {
+        'note' => const ['id', 'title', 'kind'],
+        'task' => const ['id', 'text', 'status', 'priority'],
+        _ => const <String>[],
+      };
+      for (final key in required) {
+        if (value[key] is String && (value[key] as String).trim().isNotEmpty) {
+          continue;
+        }
+        problems.add(
+          PkmsProblem(
+            code: 'invalid-metadata-required-field',
+            severity: PkmsSeverity.error,
+            subject: path,
+            message: 'V1 $entity requires a non-empty $key string.',
+          ),
+        );
+      }
+    }
+  }
   final noteValues = _recordValues(records, '<tylog-note>', 'note');
   return QueriedMetadata(
+    problems: problems,
     note: noteValues.whereType<Map>().firstOrNull?.cast<String, Object?>(),
     links: _targets(_recordValues(records, '<tylog-link>', 'link'), 'target'),
     tags: _targets(_recordValues(records, '<tylog-tag>', 'tag'), 'name'),
@@ -300,7 +350,7 @@ List<Object?> _recordValues(
     .where((record) => record.label == label)
     .map((record) {
       final value = record.value;
-      if (value is! Map || value['schema'] == null) return value;
+      if (value is! Map || !value.containsKey('schema')) return value;
       return value['schema'] == 1 && value['entity'] == entity ? value : null;
     })
     .where((value) => value != null)
@@ -597,6 +647,12 @@ Future<VaultIndex> scanVaultStorage(
         synonyms,
       );
       if (rederived != null) {
+        problems.addAll(
+          cachedIndex!.problems.where(
+            (p) =>
+                p.subject == relative && p.code.startsWith('invalid-metadata-'),
+          ),
+        );
         notes[relative] = rederived;
         final reusedTasks = donated
             ? donorTasks[relative] ?? const <TaskRef>[]
@@ -618,7 +674,13 @@ Future<VaultIndex> scanVaultStorage(
       // launder stale facts into this device's own index and out to every peer
       // through the donor. Dropping them only costs that note its
       // re-derivability until it is next inspected.
-      final trustFacts = cachedIndex?.queryVersion == kVaultQueryVersion;
+      problems.addAll(
+        cachedIndex!.problems.where(
+          (p) =>
+              p.subject == relative && p.code.startsWith('invalid-metadata-'),
+        ),
+      );
+      final trustFacts = cachedIndex.queryVersion == kVaultQueryVersion;
       notes[relative] = cached!.fingerprint == fingerprint && trustFacts
           ? cached
           : cached.copyWith(
@@ -696,7 +758,9 @@ Future<VaultIndex> scanVaultStorage(
                 ),
               )
               .timeout(typstInspectTimeout),
+          path: relative,
         );
+        problems.addAll(queried.problems);
       }
       if (activeInspector != null) {
         // A query got through: the worker is healthy, so reset both the

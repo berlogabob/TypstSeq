@@ -34,7 +34,7 @@ class SafBridge(
     private val context: Context,
     messenger: BinaryMessenger,
     private val activity: Activity? = null,
-    private val onBackgroundDone: (() -> Unit)? = null,
+    private val onBackgroundDone: ((Boolean) -> Unit)? = null,
 ) : MethodChannel.MethodCallHandler {
     companion object {
         private const val CHANNEL = "org.tylog.tylog/saf"
@@ -216,7 +216,7 @@ class SafBridge(
         }
 
         if (call.method == "backgroundDone") {
-            onBackgroundDone?.invoke()
+            onBackgroundDone?.invoke(call.arguments == true)
             result.success(null)
             return
         }

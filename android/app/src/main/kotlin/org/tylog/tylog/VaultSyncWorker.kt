@@ -38,12 +38,12 @@ class VaultSyncWorker(
         if (!loader.initialized()) loader.startInitialization(applicationContext)
         loader.ensureInitializationComplete(applicationContext, null)
 
-        val done = CompletableDeferred<Unit>()
+        val done = CompletableDeferred<Boolean>()
         val engine = FlutterEngine(applicationContext)
         val bridge = SafBridge(
             applicationContext,
             engine.dartExecutor.binaryMessenger,
-            onBackgroundDone = { done.complete(Unit) },
+            onBackgroundDone = { success -> done.complete(success) },
         )
         try {
             engine.dartExecutor.executeDartEntrypoint(
@@ -53,8 +53,7 @@ class VaultSyncWorker(
                     "vaultServiceMain",
                 ),
             )
-            withTimeout(TIMEOUT_MILLIS) { done.await() }
-            Result.success()
+            if (withTimeout(TIMEOUT_MILLIS) { done.await() }) Result.success() else Result.retry()
         } catch (_: TimeoutCancellationException) {
             Result.retry()
         } catch (_: Throwable) {

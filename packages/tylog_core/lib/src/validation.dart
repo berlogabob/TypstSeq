@@ -126,6 +126,22 @@ Future<PkmsValidationReport> validatePkmsStorage(
 
   for (final task in index.tasks) {
     if (isCancelled?.call() ?? false) throw const IndexBuildCancelled();
+    for (final field in {
+      'due': task.due,
+      'scheduled': task.scheduled,
+      'remind': task.remind,
+    }.entries) {
+      if (field.value != null && !_validTaskDate(field.value!)) {
+        problems.add(
+          PkmsProblem(
+            code: 'invalid-task-date',
+            severity: PkmsSeverity.error,
+            subject: task.id,
+            message: 'Invalid ${field.key} date: ${field.value}',
+          ),
+        );
+      }
+    }
     if (task.id.trim().isEmpty) {
       problems.add(
         PkmsProblem(
@@ -203,6 +219,20 @@ Future<PkmsValidationReport> validatePkmsStorage(
     return severity != 0 ? severity : a.subject.compareTo(b.subject);
   });
   return PkmsValidationReport(problems: problems);
+}
+
+final _taskDatePattern = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$',
+);
+
+bool _validTaskDate(String value) {
+  final match = _taskDatePattern.firstMatch(value);
+  if (match == null) return false;
+  final year = int.parse(match[1]!);
+  final month = int.parse(match[2]!);
+  final day = int.parse(match[3]!);
+  final date = DateTime.utc(year, month, day);
+  return date.year == year && date.month == month && date.day == day;
 }
 
 bool isSafeVaultPath(String path) {

@@ -1721,7 +1721,6 @@ class WorkspaceController extends ChangeNotifier {
           'manual',
           'retry',
           'resume',
-          'background',
           'note-close',
         }.contains(trigger);
     syncing = true;
@@ -1806,6 +1805,7 @@ class WorkspaceController extends ChangeNotifier {
         remoteChanged: remoteChanged,
       );
       if (!_owns(opened, generation)) return false;
+      final revisionConflicts = <String>{};
       if (revisionDatabase != null) {
         await revisionDatabase.transaction(() async {
           for (final file in await opened.storage.list(
@@ -1818,17 +1818,23 @@ class WorkspaceController extends ChangeNotifier {
               )) {
                 final node = envelope.node;
                 if (node != null) {
-                  await revisionDatabase.receiveRevision(
-                    node: node,
-                    revision: envelope.revision,
-                  );
+                  if (await revisionDatabase.receiveRevision(
+                        node: node,
+                        revision: envelope.revision,
+                      ) ==
+                      RevisionReceiveResult.conflict) {
+                    revisionConflicts.add(envelope.revision.entityId);
+                  }
                 }
                 final annotation = envelope.annotation;
                 if (annotation != null) {
-                  await revisionDatabase.receiveAnnotationRevision(
-                    annotation: annotation,
-                    revision: envelope.revision,
-                  );
+                  if (await revisionDatabase.receiveAnnotationRevision(
+                        annotation: annotation,
+                        revision: envelope.revision,
+                      ) ==
+                      RevisionReceiveResult.conflict) {
+                    revisionConflicts.add(envelope.revision.entityId);
+                  }
                 }
               }
             } catch (_) {
@@ -1948,7 +1954,14 @@ class WorkspaceController extends ChangeNotifier {
           result.deletedRemote +
           result.repaired +
           result.renamed;
-      status = conflicts.isNotEmpty || concurrentConflict
+      if (revisionConflicts.isNotEmpty) {
+        syncError =
+            'Divergent database revisions: ${revisionConflicts.join(', ')}';
+      }
+      status =
+          conflicts.isNotEmpty ||
+              concurrentConflict ||
+              revisionConflicts.isNotEmpty
           ? 'Needs attention'
           : changed == 0
           ? 'Up to date'

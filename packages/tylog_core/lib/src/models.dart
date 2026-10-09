@@ -298,12 +298,13 @@ class ClockEntry {
   /// sessions are kept in the file but excluded from sums.
   bool get isCountable {
     final span = elapsed;
-    return span != null &&
-        span >= minimumMeaningful &&
-        span < runawayThreshold;
+    return span != null && span >= minimumMeaningful && span < runawayThreshold;
   }
 
-  Map<String, Object?> toJson() => {'start': start, if (end != null) 'end': end};
+  Map<String, Object?> toJson() => {
+    'start': start,
+    if (end != null) 'end': end,
+  };
 
   factory ClockEntry.fromJson(Map<String, Object?> json) =>
       ClockEntry(start: json['start'] as String, end: json['end'] as String?);
@@ -502,7 +503,8 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 ///    bump itself is the last one that has to be paid the old way, because
 ///    entries written before it have no facts to re-derive from.
 /// 11: screenshot Description sections are cached for library card titles.
-const kVaultIndexVersion = 11;
+/// 12: queried envelope validation problems are part of the cached index.
+const kVaultIndexVersion = 12;
 
 /// Version of the *Typst query output* a cached entry was built from — the
 /// expensive half.
@@ -521,7 +523,8 @@ const kVaultIndexVersion = 11;
 /// then re-derived in place instead of recompiled.
 ///
 /// 1: the query shape as of index version 6 — unchanged through 10.
-const kVaultQueryVersion = 1;
+/// 2: raw envelopes are checked before applying legacy defaults.
+const kVaultQueryVersion = 2;
 
 class VaultIndex {
   const VaultIndex({

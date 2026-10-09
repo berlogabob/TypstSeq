@@ -23,8 +23,9 @@ TaskRef taskFromSource(String source, {String notePath = ''}) {
 const taskPriorities = ['urgent', 'high', 'normal', 'low'];
 const taskPriorityCommands = ['urgent', 'a', 'b', 'c'];
 const taskStatuses = ['todo', 'doing', 'done', 'cancelled'];
-const taskRepeats = ['daily', 'weekly', 'monthly', 'weekdays'];
+const taskRepeats = ['daily', 'weekly', 'monthly', 'weekdays', 'none'];
 String taskRepeatRule(String repeat) => switch (repeat) {
+  'none' => 'none',
   'daily' => 'RRULE:FREQ=DAILY',
   'weekly' => 'RRULE:FREQ=WEEKLY',
   'monthly' => 'RRULE:FREQ=MONTHLY',
@@ -45,6 +46,7 @@ class TaskFieldList extends StatelessWidget {
     required this.onRepeat,
     required this.onPriority,
     required this.onDate,
+    required this.onClear,
   });
   final String field;
   final TextEditingController input;
@@ -57,6 +59,7 @@ class TaskFieldList extends StatelessWidget {
   final ValueChanged<String> onRepeat;
   final ValueChanged<String> onPriority;
   final ValueChanged<DateTime> onDate;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -115,6 +118,12 @@ class TaskFieldList extends StatelessWidget {
                   selected: highlighted == i,
                   onTap: () => onDate(date),
                 ),
+            if (field == 'due' || field == 'scheduled')
+              ListTile(
+                title: const Text('none'),
+                selected: highlighted == dates.length,
+                onTap: onClear,
+              ),
           ],
         ),
       ),
@@ -184,6 +193,7 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
       onPriority: (priority) => Navigator.pop(context, priority),
       onRepeat: (repeat) => Navigator.pop(context, taskRepeatRule(repeat)),
       onDate: _pick,
+      onClear: () => Navigator.pop(context, 'none'),
       onCalendar: () async {
         final date = await showDatePicker(
           context: context,
@@ -201,8 +211,16 @@ class _TaskFieldPopupState extends State<TaskFieldPopup> {
 String setOneTaskField(String source, String id, String field, String value) =>
     switch (field) {
       'priority' => setTaskFields(source, id, priority: value),
-      'due' => setTaskFields(source, id, due: value),
-      'scheduled' => setTaskFields(source, id, scheduled: value),
-      'repeat' => setTaskFields(source, id, recurrence: value),
+      'due' => setTaskFields(source, id, due: value == 'none' ? null : value),
+      'scheduled' => setTaskFields(
+        source,
+        id,
+        scheduled: value == 'none' ? null : value,
+      ),
+      'repeat' => setTaskFields(
+        source,
+        id,
+        recurrence: value == 'none' ? null : value,
+      ),
       _ => throw ArgumentError.value(field, 'field'),
     };

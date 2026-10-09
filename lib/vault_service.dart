@@ -34,8 +34,10 @@ const backgroundRunBudget = Duration(minutes: 9);
 @pragma('vm:entry-point')
 Future<void> vaultServiceMain() async {
   WidgetsFlutterBinding.ensureInitialized();
+  var success = false;
   try {
     await _runOnce();
+    success = true;
   } catch (error) {
     debugPrint('vaultServiceMain failed: $error');
   } finally {
@@ -44,6 +46,7 @@ Future<void> vaultServiceMain() async {
     try {
       await AndroidTreeVaultStorage.channel.invokeMethod<void>(
         'backgroundDone',
+        success,
       );
     } catch (_) {}
   }

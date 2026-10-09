@@ -1033,11 +1033,21 @@ class TyLogEditingController extends TextEditingController {
         source = setTaskFields(source, id, priority: priority);
       }
       if (recurrence != null) {
-        source = setTaskFields(source, id, recurrence: recurrence);
+        source = setTaskFields(
+          source,
+          id,
+          recurrence: recurrence == 'none' ? null : recurrence,
+        );
       }
-      if (due != null) source = setTaskFields(source, id, due: due);
+      if (due != null) {
+        source = setTaskFields(source, id, due: due == 'none' ? null : due);
+      }
       if (scheduled != null) {
-        source = setTaskFields(source, id, scheduled: scheduled);
+        source = setTaskFields(
+          source,
+          id,
+          scheduled: scheduled == 'none' ? null : scheduled,
+        );
       }
       _updateTaskSources(source);
     });

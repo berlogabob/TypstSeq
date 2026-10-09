@@ -29,6 +29,24 @@ their history is in the commit log and the GitHub release notes.
 - **"Keep remote" on an open note** now shows the kept text; the next edit no
   longer saves the old version back.
 - **Resolving a conflict keeps what you typed** while it waited for the server.
+- **The repeat picker belongs to the task it was opened on.** It closes when
+  the caret leaves that task or you type something else; it can no longer
+  set a repeat on a different task.
+- **Repeat, due and scheduled can be cleared:** each picker has a "none" row,
+  in the note and in task lists.
+- **Editing across two paragraphs keeps the formatting** of the text you did
+  not touch.
+- **A failed background sync is retried by Android** instead of being
+  reported as done.
+- **Background sync never asks for a foreground service** after the app has
+  left the screen.
+- A server file restored to an older date is downloaded (servers without
+  ETags).
+- Database revision conflicts name the affected note instead of being
+  ignored.
+- The vault check reports task records with a wrong envelope, missing
+  required fields, and impossible dates. The first launch after updating
+  rescans note metadata once.
 
 ### Removed
 

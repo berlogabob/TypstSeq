@@ -4,7 +4,7 @@ extension _SyncStatePersistence on NextcloudSync {
   bool _isChanged(DateTime? now, int? previousMillis) {
     if (now == null) return false;
     if (previousMillis == null) return true;
-    return now.millisecondsSinceEpoch > previousMillis;
+    return now.millisecondsSinceEpoch != previousMillis;
   }
 
   bool _isSyncInternal(String path) =>

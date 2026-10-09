@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
 import 'package:tylog_core/vault.dart';
 import 'package:tylog/database/tylog_database.dart';
+import 'package:tylog/database/revision_publisher.dart';
+import 'package:tylog/pdf/pdf_reader_store.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/calendar_feeds.dart';
 import 'package:tylog/scanner.dart';
@@ -33,6 +35,144 @@ Future<void> _waitUntil(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'background sync never requests a foreground service and saves edits',
+    () async {
+      final storage = _MemoryStorage();
+      final calls = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        calls.add(call.method);
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        useForegroundService: true,
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: storage,
+      );
+      await controller.refreshIndex(always: true);
+      controller.edit('${controller.source}\nLast edit');
+      controller.cloud = const NextcloudConfig(
+        serverUrl: 'https://example.invalid/remote.php/dav/files/alice/Vault',
+        username: 'alice',
+        password: 'secret',
+      );
+      await HttpOverrides.runZoned(() async {
+        expect(await controller.syncNow(trigger: 'background'), isTrue);
+      }, createHttpClient: (_) => _ResolveHttpClient());
+      expect(calls, isNot(contains('startSyncForeground')));
+      expect(await storage.readText(controller.note!), contains('Last edit'));
+      expect(controller.dirty, isFalse);
+    },
+  );
+
+  test('no ETag older remote timestamp downloads changed bytes', () async {
+    const path = 'notes/restored.typ';
+    const before =
+        '#show: tylog.note.with(id: "restored", title: "Restored")\nBefore';
+    const after =
+        '#show: tylog.note.with(id: "restored", title: "Restored")\nAfter';
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    await storage.writeText(path, before);
+    await storage.writeText(
+      '.tylog/sync_state.json',
+      jsonEncode({
+        'cursors': {
+          path: {
+            'localSha256': sha256.convert(utf8.encode(before)).toString(),
+            'remoteMillis': DateTime.utc(2030).millisecondsSinceEpoch,
+          },
+        },
+      }),
+    );
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'https://example.invalid/remote.php/dav/files/alice/Vault',
+      username: 'alice',
+      password: 'secret',
+    );
+    await HttpOverrides.runZoned(() async {
+      expect(await controller.syncNow(), isTrue);
+    }, createHttpClient: (_) => _ResolveHttpClient(remoteBody: after));
+    expect(await storage.readText(path), after);
+  });
+
+  test('divergent annotation sync reports its entity for attention', () async {
+    final db = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final pdf = await persistPdfReaderExtraction(
+      database: db,
+      path: 'papers/a.pdf',
+      bytes: const [37, 80, 68, 70, 45, 49],
+      pageTexts: const ['Alpha'],
+    );
+    await savePdfReaderSelection(
+      database: db,
+      extraction: pdf,
+      page: 0,
+      localStart: 0,
+      localEnd: 5,
+    );
+    late List<int> bytes;
+    await RevisionPublisher(
+      db,
+    ).materialize(write: (_, value) async => bytes = value);
+    final json = jsonDecode(utf8.decode(bytes)) as Map;
+    (json['revision'] as Map)['id'] = 'divergent-annotation';
+    final id = (json['annotation'] as Map)['id'] as String;
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      databaseForVault: (_) async => db,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    const path = '_system/revisions/divergent.json';
+    await storage.writeBytes(path, utf8.encode(jsonEncode(json)));
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'https://example.invalid/remote.php/dav/files/alice/Vault',
+      username: 'alice',
+      password: 'secret',
+    );
+    await HttpOverrides.runZoned(() async {
+      expect(await controller.syncNow(), isTrue);
+    }, createHttpClient: (_) => _ResolveHttpClient());
+    expect(controller.status, 'Needs attention');
+    expect(controller.syncError, contains(id));
+    expect(await storage.exists(path), isTrue);
+  });
+
   test(
     'calendar bodies cache offline, refresh after six hours, and materialize once',
     () async {
@@ -3960,9 +4100,11 @@ class _DnsFailureClient implements HttpClient {
 
 // In-memory DAV probe: no sockets or external account.
 class _ResolveHttpClient implements HttpClient {
+  _ResolveHttpClient({this.remoteBody});
+  final String? remoteBody;
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async =>
-      _ResolveRequest(url);
+      _ResolveRequest(url, method, remoteBody);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
@@ -3973,21 +4115,41 @@ class _ResolveHeaders implements HttpHeaders {
 }
 
 class _ResolveRequest implements HttpClientRequest {
-  _ResolveRequest(this.url);
+  _ResolveRequest(this.url, this.method, this.remoteBody);
+  final String? remoteBody;
+  @override
+  final String method;
   final Uri url;
   @override
   final headers = _ResolveHeaders();
   @override
-  Future<HttpClientResponse> close() async => _ResolveResponse(url);
+  Future<HttpClientResponse> close() async =>
+      _ResolveResponse(url, method, remoteBody);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _ResolveResponse extends Stream<List<int>> implements HttpClientResponse {
-  _ResolveResponse(this.url);
+  _ResolveResponse(this.url, this.method, this.remoteBody);
+  final String? remoteBody;
+  final String method;
   final Uri url;
   @override
-  int get statusCode => 207;
+  final headers = _ResolveHeaders();
+  @override
+  int get statusCode => method == 'MKCOL'
+      ? 405
+      : method == 'PUT'
+      ? 201
+      : method == 'GET'
+      ? 200
+      : 207;
+  @override
+  HttpClientResponseCompressionState get compressionState =>
+      HttpClientResponseCompressionState.notCompressed;
+  @override
+  int get contentLength =>
+      remoteBody == null ? 0 : utf8.encode(remoteBody!).length;
   @override
   StreamSubscription<List<int>> listen(
     void Function(List<int>)? onData, {
@@ -3996,7 +4158,11 @@ class _ResolveResponse extends Stream<List<int>> implements HttpClientResponse {
     bool? cancelOnError,
   }) => Stream.value(
     utf8.encode(
-      '<d:multistatus xmlns:d="DAV:"><d:response><d:href>${url.path}</d:href><d:propstat><d:prop><d:getlastmodified>Thu, 08 Oct 2026 12:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response></d:multistatus>',
+      method == 'GET' && remoteBody != null
+          ? remoteBody!
+          : remoteBody != null
+          ? '<d:multistatus xmlns:d="DAV:"><d:response><d:href>/remote.php/dav/files/alice/Vault/notes/restored.typ</d:href><d:propstat><d:prop><d:getlastmodified>Thu, 08 Oct 2026 12:00:00 GMT</d:getlastmodified><d:getcontentlength>${utf8.encode(remoteBody!).length}</d:getcontentlength></d:prop></d:propstat></d:response></d:multistatus>'
+          : '<d:multistatus xmlns:d="DAV:"><d:response><d:href>${url.path}</d:href><d:propstat><d:prop><d:getlastmodified>Thu, 08 Oct 2026 12:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response></d:multistatus>',
     ),
   ).listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
   @override
