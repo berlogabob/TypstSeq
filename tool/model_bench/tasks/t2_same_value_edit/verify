@@ -1,0 +1,1 @@
+flutter analyze --no-pub lib/widgets/editor_panel.dart

@@ -1,0 +1,1 @@
+cd packages/tylog_core && dart test test/scanner_cache_test.dart

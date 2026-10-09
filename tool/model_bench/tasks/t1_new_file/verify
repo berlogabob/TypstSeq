@@ -1,0 +1,1 @@
+flutter analyze --no-pub lib/sync_stage_text.dart
