@@ -146,9 +146,6 @@ class Vault {
     return '$month/$day.typ';
   }
 
-  /// Returns the journal path without materializing an untouched daily.
-  Future<String> dailyNote(DateTime day) => todayNote(day);
-
   Future<String> page(
     String title, {
     String kind = 'note',
@@ -212,12 +209,6 @@ class Vault {
     }
     return directory;
   }
-
-  Future<String> project(String title, {DateTime? now}) =>
-      page(title, kind: 'project', now: now);
-
-  Future<String> article(String title, {DateTime? now}) =>
-      page(title, kind: 'article', now: now);
 
   /// [deviceId] enables the cross-device cache: this device's notes are
   /// published to `_system/index/<deviceId>.json` after the scan, and a scan

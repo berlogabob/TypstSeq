@@ -20,7 +20,7 @@ import 'vault_storage.dart';
 /// registered by the host before this runs.
 ///
 /// Deliberately conservative: it takes the vault lock or leaves, honours the
-/// conflict gate the same way the UI's auto-sync does, and never calls
+/// per-path conflict protection like the UI, and never calls
 /// `ensureCreated()` — a background pass must not up/downgrade the vault's
 /// managed Typst files.
 /// How long a single background run may take before the platform kills it.

@@ -118,7 +118,7 @@ Typst-native notes compile directly to typeset PDF; reproducible reports (.typ +
 
 ## Extensibility
 
-Custom properties and note kinds only. ABSENT by choice: plugin API, query blocks, flashcards/SRS, whiteboards, kanban, real-time collaboration, in-app AI/RAG.
+Custom properties and note kinds only. ABSENT by choice: plugin API, query blocks, flashcards/SRS, whiteboards, kanban, real-time collaboration, generated answers. Optional offline semantic retrieval ships in-app.
 
 ## Notable Logseq features TyLog lacks (for the audit's gap list)
 

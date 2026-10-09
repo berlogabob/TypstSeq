@@ -331,7 +331,7 @@ class AttachmentRef {
   };
 
   factory AttachmentRef.fromJson(Map<String, Object?> json) => AttachmentRef(
-    path: json['path'] as String,
+    path: (json['path'] as String).replaceFirst(RegExp(r'^/'), ''),
     kind: json['kind'] as String? ?? 'file',
     title: json['title'] as String?,
   );
@@ -504,7 +504,8 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 ///    entries written before it have no facts to re-derive from.
 /// 11: screenshot Description sections are cached for library card titles.
 /// 12: queried envelope validation problems are part of the cached index.
-const kVaultIndexVersion = 12;
+/// 13: fallback task properties and canonical attachment paths are retained.
+const kVaultIndexVersion = 13;
 
 /// Version of the *Typst query output* a cached entry was built from — the
 /// expensive half.

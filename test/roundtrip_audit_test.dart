@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
 
-/// Editing+parsing systemic audit harness (report-only; always passes).
+/// Editing+parsing systemic audit harness (synthetic edits are a required regression gate).
 /// Run: `flutter test test/roundtrip_audit_test.dart --tags audit -r expanded`.
 
 String _esc(String s) => s.replaceAll('\n', '↵');
@@ -146,7 +146,9 @@ void main() {
             return '$label2  ctx="${_esc(t.substring(lo, (at + 8).clamp(0, t.length)))}"';
           });
         }
-      } catch (_) {
+      } catch (error) {
+        errors.add(error);
+        editRevert++;
       } finally {
         c.dispose();
       }
@@ -205,13 +207,18 @@ void main() {
       checkEdits('syn:$label', src);
     });
 
+    expect(identityFail, isEmpty, reason: 'synthetic serialize/parse identity');
+    expect(editTried, 108, reason: 'all synthetic boundary edits must run');
+    expect(editRevert, 0, reason: 'synthetic boundary edits must succeed');
+
     // Real-vault sweep is opt-in (slow + machine-specific): run with
     // `AUDIT_VAULT=1 flutter test test/roundtrip_audit_test.dart --tags audit`.
-    final vault =
-        Directory('${Platform.environment['HOME']}/Nextcloud/TyLogVault');
+    final vault = Platform.environment['AUDIT_VAULT'] == '1'
+        ? Directory('${Platform.environment['HOME']}/Nextcloud/TyLogVault')
+        : null;
     var vaultFiles = 0;
     var editSample = 0;
-    if (Platform.environment['AUDIT_VAULT'] == '1' && vault.existsSync()) {
+    if (vault != null && vault.existsSync()) {
       final files = vault
           .listSync(recursive: true)
           .whereType<File>()

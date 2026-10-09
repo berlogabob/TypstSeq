@@ -7,7 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
-/// Metadata parsing/scanner audit harness (report-only; always passes).
+/// Metadata parsing/scanner audit harness (report-only; skips without opt-in vault).
 /// Runs the real `typst` metadata query over the vault via the CLI inspector
 /// (a faithful proxy for the native one — same decode path), classifying each
 /// note and timing it, to size the query/fallback/failed distribution, the
@@ -37,15 +37,13 @@ String _bucketError(String raw) {
 void main() {
   test('METADATA AUDIT: query / fallback / failed distribution', () async {
     if (Platform.environment['AUDIT_VAULT'] != '1') {
-      // ignore: avoid_print
-      print('metadata audit skipped (set AUDIT_VAULT=1 to run the sweep).');
+      markTestSkipped('set AUDIT_VAULT=1 to run the sweep');
       return;
     }
     final vault =
         Directory('${Platform.environment['HOME']}/Nextcloud/TyLogVault');
     if (!vault.existsSync()) {
-      // ignore: avoid_print
-      print('vault not found: ${vault.path}');
+      markTestSkipped('configured audit vault is unavailable');
       return;
     }
     final stride = int.tryParse(Platform.environment['AUDIT_STRIDE'] ?? '1') ?? 1;

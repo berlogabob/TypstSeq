@@ -1,12 +1,14 @@
 ## Dev tooling
 
 ### On-device profiling (Android)
-The `profile` build type is release-signed (`android/app/build.gradle.kts`), so a profile APK installs over the release app without wiping the vault:
+With `android/key.properties` and the matching release keystore available, the `profile` build type is release-signed (`android/app/build.gradle.kts`), so a profile APK installs over the release app without wiping the vault:
 ```bash
 flutter build apk --profile && \
   ~/Library/Android/sdk/platform-tools/adb install -r build/app/outputs/flutter-apk/app-profile.apk
 ```
-Use this (not `--debug`, which has appId suffix `.debug`) to capture real frame timings via DevTools / `dumpsys gfxinfo org.tylog.tylog`.
+Use this (not `--debug`, which has appId suffix `.debug`) with DevTools or `integration_test/support/editor_frame_metrics.dart` for Flutter frame timings. `dumpsys gfxinfo` measures platform decor and cannot establish Flutter jank. Integration drive must use the isolated optional `.profiletest` suffix, not the production package.
+
+Engineering policies and their local test gates live in [CONTEXT.md → Engineering rules](CONTEXT.md#engineering-rules); read them when changing startup, indexing, editor layout, sync, or release tooling.
 
 ### pxpipe (optional token-cost proxy)
 `pxpipe-proxy` renders bulky context to images to cut token cost (~59-70% on dense workloads). It is a proxy, **not** a Claude Code skill, and can only be used at session launch:

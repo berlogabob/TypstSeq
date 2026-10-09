@@ -147,9 +147,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     focusNode.onKeyEvent = _handleKey;
     _dateFocus.onKeyEvent = _handleKey;
     focusNode.addListener(_focusChanged);
-    if (kEnableInlineAutocomplete) {
-      widget.controller.addListener(_handleControllerChanged);
-    }
+    widget.controller.addListener(_handleControllerChanged);
   }
 
   void _focusChanged() {
@@ -878,9 +876,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     _window?.dispose();
     _debounce?.cancel();
     _removeOverlay();
-    if (kEnableInlineAutocomplete) {
-      widget.controller.removeListener(_handleControllerChanged);
-    }
+    widget.controller.removeListener(_handleControllerChanged);
     focusNode.removeListener(_focusChanged);
     widget.controller.onAutocompleteEnter = null;
     _dateInput.dispose();

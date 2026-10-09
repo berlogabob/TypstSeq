@@ -1,6 +1,6 @@
 # Sync memory investigation — working-set plateau during large sync
 
-> **Status: investigation note only. Nothing here is implemented.**
+> **Status: historical investigation; suspect 1 is fixed.** Archive reads now stream into a transient buffer and free entry content immediately; `test/archive_release_test.dart` pins release and subsequent-entry readability. Remaining suggestions below are not fresh performance evidence.
 > Context: on a large sync (~7,300 remote files, ~1,500 transfers) the Android
 > app's resident memory oscillates between 1.6 and 2.3 GB with ~135% CPU on a
 > Huawei P30 (5.4 GB RAM), making the phone swap. Plateau, not monotonic

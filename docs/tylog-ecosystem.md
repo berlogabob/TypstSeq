@@ -131,7 +131,9 @@ official CLI and embedded runtime, then verifies fallback indexing on
 intentionally malformed source. `make verify` runs the full local gate,
 including both release builds.
 
-Package registry support in the embedded runtime, app relocation, SQLite,
+Private SQLite projections, annotations, and durable revision envelopes already ship; note-file authority and projection retry are described in [PLAN](../PLAN.md#persistence-and-retrieval).
+
+Package registry support in the embedded runtime, app relocation,
 filesystem watchers, servers, plugins, and other P2 platform work are
 deliberately deferred. (A scoped Rust core does ship today:
 `tylog_import_core` handles import conversion behind the `typst_flutter`

@@ -452,7 +452,7 @@ class NextcloudSync {
     Map<String, String?>? freshFolders;
     var pushRaced = false;
     Map<String, SyncCursor>? syncState;
-    _RemoteArchiveSnapshot? archiveSnapshot;
+    RemoteArchiveSnapshot? archiveSnapshot;
     var pristineStarterPaths = const <String>[];
     final decisions = <SyncDecision>[];
     // Per-stage wall time, accumulated through the hook every stage already
@@ -1540,8 +1540,9 @@ class _RemoteFile {
   final bool sha256Lowercase;
 }
 
-class _RemoteArchiveSnapshot {
-  const _RemoteArchiveSnapshot({
+@visibleForTesting
+class RemoteArchiveSnapshot {
+  const RemoteArchiveSnapshot({
     required this.source,
     required this.input,
     required this.files,

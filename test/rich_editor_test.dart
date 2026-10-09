@@ -32,6 +32,28 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('rich paste across a task boundary preserves the task', () async {
+    const task = '#tylog.task(id: "t", text: "Keep task", properties: (owner: "Ada",))';
+    final errors = <Object>[];
+    final controller = TyLogEditingController(
+      source: '*Bold* before\n\n$task\n\nafter',
+      onSourceChanged: (_) {}, onError: errors.add, onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = const TextSelection(baseOffset: 0, extentOffset: 4);
+    await controller.copySelection();
+    controller.selection = TextSelection(
+      baseOffset: controller.text.indexOf('before'),
+      extentOffset: controller.text.indexOf('after') + 2,
+    );
+    await controller.paste();
+    expect(errors, isEmpty);
+    expect(controller.document.toSource(), contains(task));
+    expect(controller.text, contains('Keep task'));
+    expect(controller.text, endsWith('after'));
+    expect(controller.document.toSource(), contains('#strong[Bold]'));
+  });
+
   test('standard import is hidden and round-trips exactly', () {
     const import = '#import "/_system/tylog.typ" as tylog';
     for (final gap in ['', '\n', '\n\n', '\r\n \t\r\n']) {

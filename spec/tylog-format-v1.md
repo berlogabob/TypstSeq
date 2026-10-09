@@ -11,7 +11,7 @@ each metadata value rather than by changing the vault layout.
 - IDs are non-empty, stable strings. Producers must not silently replace an
   existing ID.
 - Note and attachment paths are vault-relative, use `/` separators, and must
-  not be absolute or contain `..` path segments.
+  not be absolute or contain backslashes, control characters, or empty, `.` or `..` path segments.
 - Unknown fields must be preserved where the host model supports custom
   properties and otherwise ignored by readers.
 
@@ -50,8 +50,8 @@ properties, removes the clocked key when no sessions remain, and collapses
 exact duplicate pairs. Readers also accept the older top-level `clocked`
 argument; the writer moves it into properties when edited.
 
-The standard note kinds are `note`, `daily`, `project`, `article`, and
-`research`. Other non-empty values are extensions and produce validation
+The standard note kinds are `note`, `daily`, `project`, `article`, `research`,
+`screenshot`, `idea`, `person`, `organization`, `place`, `website`, and `event`. Other non-empty values are extensions and produce validation
 warnings, not read failures.
 
 Three `properties` keys are reserved with cross-tool meaning on imported
@@ -102,7 +102,8 @@ alignment and width, rather than extra metadata fields:
 ```
 
 The leading slash in this source example selects Typst vault-root lookup.
-The attachment helper emits the path as passed. Width presets are 33%, 60% and 100%;
+The attachment helper removes one leading root slash from the metadata record;
+readers also normalize legacy root-slash attachment records. Lookup source stays unchanged. Width presets are 33%, 60% and 100%;
 alignment is `left`, `center` or `right`. New blocks default to 60% and centre.
 Older inline forms remain readable and are not rewritten until changed.
 

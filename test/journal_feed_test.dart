@@ -76,7 +76,7 @@ Future<Directory> seedJournalVault(
   final vault = Vault(vaultDir);
   await vault.ensureCreated();
   for (final entry in dailies) {
-    final path = await vault.dailyNote(entry.key);
+    final path = await vault.todayNote(entry.key);
     await vault.storage.writeText(
       path,
       '${await vault.readText(path)}\n${entry.value}\n',
@@ -263,7 +263,7 @@ void main() {
     addTearDown(() => base.delete(recursive: true));
     final vault = Vault(Directory('${base.path}/vault'));
     final day = DateTime(2026, 8, 4);
-    final path = await vault.dailyNote(day);
+    final path = await vault.todayNote(day);
     await vault.storage.writeText(path, '#tylog.ref-note("p")[Ann]');
     final opened = <String>[];
     final tapped = <String>[];

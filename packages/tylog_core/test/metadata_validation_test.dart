@@ -20,6 +20,84 @@ void main() {
   });
   tearDown(() => dir.delete(recursive: true));
 
+  test('actual attachment helper query produces validated metadata', () async {
+    if (Process.runSync('which', ['typst']).exitCode != 0) {
+      markTestSkipped('typst not on PATH');
+      return;
+    }
+    final repo = Directory.current.path.endsWith('packages/tylog_core')
+        ? Directory.current.parent.parent
+        : Directory.current;
+    await storage.writeText(
+      '_system/tylog.typ',
+      File('${repo.path}/typst/tylog/lib.typ').readAsStringSync(),
+    );
+    await storage.writeText('assets/file.txt', 'asset');
+    await storage.writeText(
+      'notes/a.typ',
+      '#import "/_system/tylog.typ" as tylog\n'
+          '#show: tylog.note.with(id: "a", title: "A")\n'
+          '#tylog.attachment("/assets/file.txt")[File]',
+    );
+    final index = await scanVaultStorage(
+      storage,
+      inspector: CliTypstInspector(dir),
+    );
+    expect(index.notes.single.metadataSource, 'typst-query');
+    expect(index.notes.single.attachments.single.path, 'assets/file.txt');
+    final report = await validatePkmsStorage(storage, index);
+    expect(
+      report.problems.where((p) => p.severity == PkmsSeverity.error),
+      isEmpty,
+    );
+  });
+
+  test('attachment lookup paths become safe metadata paths', () async {
+    await storage.writeText('assets/file.txt', 'asset');
+    const source =
+        '#show: tylog.note.with(id: "a", title: "A")\n'
+        '#tylog.attachment("/assets/file.txt")[File]';
+    await storage.writeText('notes/a.typ', source);
+    for (final inspector in [
+      null,
+      _Inspector(const [
+        TypstMetadataRecord(
+          label: '<tylog-note>',
+          value: {'id': 'a', 'title': 'A'},
+        ),
+        TypstMetadataRecord(
+          label: '<tylog-attachment>',
+          value: {'path': '/assets/file.txt', 'kind': 'file'},
+        ),
+      ]),
+    ]) {
+      final index = await scanVaultStorage(storage, inspector: inspector);
+      expect(index.notes.single.attachments.single.path, 'assets/file.txt');
+      final report = await validatePkmsStorage(storage, index);
+      expect(report.count('unsafe-attachment-path'), 0);
+      expect(report.count('missing-attachment'), 0);
+      final legacy = index.toJson();
+      legacy['version'] = kVaultIndexVersion - 1;
+      final notes = legacy['notes'] as List;
+      ((notes.single as Map)['attachments'] as List).single['path'] =
+          '/assets/file.txt';
+      final restored = VaultIndex.fromJson(legacy);
+      expect(restored.notes.single.attachments.single.path, 'assets/file.txt');
+      final cached = await scanVaultStorage(storage, previous: restored);
+      expect(cached.notes.single.attachments.single.path, 'assets/file.txt');
+    }
+    for (final path in [
+      r'assets\file.txt',
+      'assets/../file.txt',
+      '//assets/file.txt',
+      'assets//file.txt',
+      'assets/./file.txt',
+      'C:/file.txt',
+    ]) {
+      expect(isSafeVaultPath(path), isFalse, reason: path);
+    }
+  });
+
   test('pre-validation cached metadata is checked again', () async {
     final inspector = _Inspector(const [
       TypstMetadataRecord(

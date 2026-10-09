@@ -33,6 +33,15 @@ import 'package:tylog/widgets/idea_hub.dart';
 import 'package:tylog/widgets/task_row.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
+class _StartupHttp extends HttpOverrides {
+  int calls = 0;
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    calls++;
+    throw StateError('test startup attempted HTTP');
+  }
+}
+
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
     with MockPlatformInterfaceMixin {
   @override
@@ -168,6 +177,58 @@ Future<void> _tapTaskTimer(
 }
 
 void main() {
+  testWidgets('test startup suppresses default database and updater work', (tester) async {
+    final http = _StartupHttp();
+    final previous = HttpOverrides.current;
+    HttpOverrides.global = http;
+    addTearDown(() => HttpOverrides.global = previous);
+    final calls = <MethodCall>[];
+    const paths = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(paths, (call) async {
+      calls.add(call);
+      throw PlatformException(code: 'unexpected-startup-io');
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(paths, null));
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen(startup: _emptyStartup)));
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    expect(await home.database, isNull);
+    expect(calls, isEmpty);
+    expect(http.calls, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    final asset = await tester.runAsync(() => rootBundle.loadString('pubspec.yaml').timeout(const Duration(seconds: 2)));
+    expect(asset, contains('name: tylog'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('transient workspace status leaves editor bounds unchanged', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen(startup: _emptyStartup)));
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = Vault.withStorage(_FailingStorage());
+    home.workspace.index = VaultIndex(notesByPath: const {}, backlinksByTarget: const {});
+    home.workspace.replaceNote('notes/test.typ', 'Plain text');
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    final editor = find.byType(TyLogRichEditor);
+    expect(editor, findsOneWidget);
+    final before = tester.getRect(editor);
+    home.workspace.syncing = true;
+    home.workspace.syncStage = 'Uploading…';
+    home.workspace.notifyListeners();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.getRect(editor), before);
+    expect(find.text('Uploading…'), findsOneWidget);
+    home.workspace.syncing = false;
+    home.workspace.syncStage = null;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(editor), before);
+  });
+
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
   testWidgets(
     'autosave failure floats above editor and Retry Save preserves text',
@@ -1061,7 +1122,7 @@ void main() {
   });
 
   testWidgets('settings menu shows real app data', (tester) async {
-    final version = await appVersion();
+    final version = (await tester.runAsync(appVersion))!;
 
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -1082,6 +1143,7 @@ void main() {
     expect(find.text('Nextcloud settings'), findsNothing);
     expect(find.text('Sync server status'), findsNothing);
     expect(find.text('App version'), findsOneWidget);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pump();
     expect(find.text(version), findsOneWidget);
 

@@ -2218,7 +2218,7 @@ NoteRef _queriedNote(
       for (final item in metadata.attachments)
         if (item['path'] != null)
           AttachmentRef(
-            path: item['path'].toString(),
+            path: item['path'].toString().replaceFirst(RegExp(r'^/'), ''),
             kind: item['kind']?.toString() ?? 'file',
             title: _cleanContentText(item['title']),
           ),
@@ -2348,7 +2348,7 @@ NoteRef _fallbackNote(
       for (final call in attachmentCalls)
         if (_quoted.firstMatch(call.source)?.group(1) case final path?)
           AttachmentRef(
-            path: path,
+            path: path.replaceFirst(RegExp(r'^/'), ''),
             kind: _field(call.source, 'kind') ?? 'file',
             title: _bracketBody(call.source),
           ),
@@ -2493,6 +2493,7 @@ List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
         tags: _parseList(call.source, 'tags'),
         completed: _parseList(call.source, 'completed'),
         clocked: parseClockedField(call.source),
+        properties: _parseProperties(call.source),
       ),
     )
     .where((task) => task.id.isNotEmpty && task.text.isNotEmpty)

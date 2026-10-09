@@ -47,7 +47,7 @@ extension _SyncConflicts on NextcloudSync {
 
   Future<({File file, String? etag})> _captureRemote(
     String path, {
-    _RemoteArchiveSnapshot? archive,
+    RemoteArchiveSnapshot? archive,
     _RemoteFile? remoteFile,
   }) async {
     final file = await File(
@@ -155,7 +155,7 @@ extension _SyncConflicts on NextcloudSync {
     Vault vault,
     SyncConflict conflict,
     _RemoteFile remoteFile,
-    _RemoteArchiveSnapshot? archive,
+    RemoteArchiveSnapshot? archive,
   ) async {
     final captured = await _captureRemote(
       conflict.path,

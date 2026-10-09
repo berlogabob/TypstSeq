@@ -4,6 +4,20 @@ import 'package:tylog/graph.dart';
 import 'package:tylog/models.dart';
 
 void main() {
+  testWidgets('dismissing the graph banner leaves canvas bounds unchanged', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GraphView(
+      graph: NoteGraph(nodes: [for (var i = 0; i < 181; i++) GraphNode(path: 'n$i', title: 'N$i')], edges: const []),
+      currentPath: null, onOpenPath: (_) {}, isWholeVault: true,
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.byType(MaterialBanner), findsOneWidget);
+    final before = tester.getRect(find.byType(InteractiveViewer));
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MaterialBanner), findsNothing);
+    expect(tester.getRect(find.byType(InteractiveViewer)), before);
+  });
+
   test('boundGraphForLayout caps nodes and edges deterministically', () {
     final graph = NoteGraph(
       nodes: [

@@ -81,7 +81,7 @@
   #metadata((
     schema: 1,
     entity: "attachment",
-    path: path,
+    path: if path.starts-with("/") { path.slice(1) } else { path },
     kind: kind,
     title: repr(body),
   )) <tylog-attachment>

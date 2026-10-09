@@ -557,7 +557,7 @@ extension _WebDavClient on NextcloudSync {
     String path,
     VaultStorage storage, {
     bool protectNonEmpty = false,
-    _RemoteArchiveSnapshot? archive,
+    RemoteArchiveSnapshot? archive,
     _RemoteFile? remoteFile,
     SyncCursor? previous,
   }) async {

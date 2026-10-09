@@ -54,6 +54,8 @@ their history is in the commit log and the GitHub release notes.
 - The vault check reports task records with a wrong envelope, missing
   required fields, and impossible dates. The first launch after updating
   rescans note metadata once.
+- Tasks read by the fallback scanner keep their custom properties, and
+  attachment paths written with a leading slash are treated as vault paths.
 
 ### Removed
 

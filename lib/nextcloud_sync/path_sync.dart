@@ -32,7 +32,7 @@ extension _PathSync on NextcloudSync {
     return totalBytes == 0 || candidateBytes * 2 >= totalBytes;
   }
 
-  Future<_RemoteArchiveSnapshot?> _downloadArchive(
+  Future<RemoteArchiveSnapshot?> _downloadArchive(
     Map<String, _RemoteFile> remote,
     void Function(String stage, String? path) progress,
   ) async {
@@ -103,7 +103,7 @@ extension _PathSync on NextcloudSync {
         throw StateError('Cloud changed during archive download; Retry.');
       }
       keep = true;
-      return _RemoteArchiveSnapshot(
+      return RemoteArchiveSnapshot(
         source: temporary,
         input: input,
         files: files,
@@ -238,7 +238,7 @@ extension _PathSync on NextcloudSync {
     SyncConflict? unresolvedConflict,
     required bool possibleRename,
     required bool allowLocalDeletes,
-    required _RemoteArchiveSnapshot? archive,
+    required RemoteArchiveSnapshot? archive,
   }) async {
     final localExists = localStat != null;
     final remoteExists = remoteFile != null;

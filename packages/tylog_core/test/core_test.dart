@@ -77,6 +77,26 @@ void main() {
     expect(note.properties['rating'], '4');
   });
 
+  test('failed inspection retains task custom properties', () async {
+    final root = await Directory('.dart_tool').createTemp('task-properties-');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "a", title: "A")\n'
+          '#tylog.task(id: "t", text: "Call", properties: (owner: "Ada", "estimate": 3, enabled: true,))',
+    );
+    final index = await scanVaultStorage(
+      storage,
+      inspector: _FailingInspector(),
+    );
+    expect(index.tasks.single.properties, {
+      'owner': 'Ada',
+      'estimate': 3,
+      'enabled': true,
+    });
+  });
+
   test('inspector failure warns and retains fallback backlinks', () async {
     final root = await Directory.systemTemp.createTemp('tylog_core_bad_');
     addTearDown(() => root.delete(recursive: true));

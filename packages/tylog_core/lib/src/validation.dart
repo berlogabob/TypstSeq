@@ -236,11 +236,12 @@ bool _validTaskDate(String value) {
 }
 
 bool isSafeVaultPath(String path) {
-  if (path.isEmpty || path.startsWith('/') || path.startsWith(r'\')) {
+  try {
+    validateVaultPath(path);
+    return !RegExp(r'^[A-Za-z]:[\/]').hasMatch(path);
+  } on ArgumentError {
     return false;
   }
-  if (RegExp(r'^[A-Za-z]:[\/]').hasMatch(path)) return false;
-  return !path.replaceAll('\\', '/').split('/').contains('..');
 }
 
 void _duplicates(

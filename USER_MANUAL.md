@@ -113,7 +113,7 @@ The Sync dashboard shows the complete bounded diagnostic log, transfer/deletion 
 
 ## Backup and troubleshooting
 
-Back up the complete vault. The authoritative data is the Typst content, assets, system files, and output sources/PDFs. `_index` can be deleted and rebuilt.
+Back up the complete vault, including durable `_system/revisions` envelopes. Note content remains authoritative in Typst files; private SQLite also stores annotations, revisions, and projections. Use portable export for database-owned records. `_index` can be deleted and rebuilt.
 
 If text looks lost, back up the vault and `.tylog/undo` before further edits or sync. Check the note in Source, then inspect the local undo copies and Sync dashboard conflicts. Sync copies keep the original vault path under `.tylog/undo/sync-…`; copy recovered text into the note after reviewing it. Headerless journal pages are repaired with their text kept and an undo copy taken first. These copies are a safety net, not a complete version history.
 
@@ -123,4 +123,6 @@ If an iPad run reports that no development certificates are available, open `ios
 
 Open implementation and device checks are recorded in [GitHub issue #42](https://github.com/berlogabob/TypstSeq/issues/42), labeled `status:check-needed`.
 
-TyLog deliberately has no arbitrary-Typst WYSIWYG, realtime collaboration, automatic conflict merging, AI/RAG, or plugin API.
+Sync automatically handles identical content, safe append-only changes, and proven revision ancestry. Genuine divergent edits require explicit review.
+
+Optional semantic search downloads a model explicitly and then runs offline; it retrieves existing material without generating answers. TyLog deliberately has no arbitrary-Typst WYSIWYG, realtime collaboration, generated answers, or plugin API.

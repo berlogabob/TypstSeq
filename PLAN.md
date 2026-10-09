@@ -1,6 +1,6 @@
 # TyLog v5 implementation status
 
-Current release: 0.12.2+135. Last reviewed: 2026-10-08.
+Current version: see `pubspec.yaml`. Last reviewed: 2026-10-09.
 
 ## Implemented
 
@@ -11,7 +11,7 @@ Current release: 0.12.2+135. Last reviewed: 2026-10-08.
 - Selection-aware Magic actions for links, tags, tasks, dates, projects, citations, attachments, formatting, tables, equations, and reports
 - Styled, tappable blocks by default, with exact Preview, Source, and responsive split views available explicitly
 - Reproducible Typst reports and sibling PDF export
-- Existing atomic saves and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists
+- Atomic note-file replacement and Nextcloud conflict/checksum/polling behavior retained with v5 sync allowlists; database projection errors preserve the file and require retry
 - Focused local `typst_flutter` fork with explicit setup, CocoaPods/SwiftPM packaging, and no build-time downloads
 - Standard iOS host for iPad validation while Android and macOS remain the release platforms
 - Typed task creation and commands, three-language date suggestions, status glyphs and chips, shared rows, and Doing-controlled time tracking (0.11.9–0.12.0)
@@ -19,11 +19,19 @@ Current release: 0.12.2+135. Last reviewed: 2026-10-08.
 - Journal pages only, collapsed Agenda, upload-confirmation and complete-listing checks, and local sync safety copies (0.11.6)
 - Headerless daily repair preserves text and takes an undo copy (0.11.8)
 
+## Persistence and retrieval
+
+Typst note files remain authoritative for note content. A successful file save is kept if the private SQLite projection/revision transaction fails; the app reports the error and retry repairs the projection. SQLite also holds annotations and search data and is not synced as a database file.
+
+Revision transport uses session envelopes in `_system/revisions` through ordinary file sync. New unpublished local heads coalesce in fixed 60-second windows; materialized or uploaded revisions and conflict bases are sealed. Envelopes carry parent history for idempotent ancestry checks. Failed writes leave outbox work pending; this is not a separate v2 batch/device-head protocol.
+
+Optional offline semantic search uses an explicitly downloaded multilingual-e5-small model. Generated answers remain out of scope.
+
 ## Deliberate limits
 
 - Old-vault migration is unsupported
 - Journal blocks hide Typst syntax until selected; arbitrary Typst stays exact and is edited one block at a time or in Source
-- No Markdown storage (Markdown/Logseq/Obsidian sources are converted to Typst on import, never stored), HTML export, SQLite, AI/RAG, collaboration, plugin system, Kanban, or Zotero integration
+- No Markdown storage (Markdown/Logseq/Obsidian sources are converted to Typst on import, never stored), HTML export, generated answers, collaboration, plugin system, Kanban, or Zotero integration
 
 ## Verification
 

@@ -2,11 +2,6 @@ part of '../rich_editor.dart';
 
 const _object = '\uFFFC';
 
-/// Kill-switch for the inline "@"/"/" autocomplete popup. Flip to false to
-/// instantly disable it without touching call sites, if it ever
-/// destabilizes editing.
-const bool kEnableInlineAutocomplete = true;
-
 /// Icon and label shown for each [MagicAction] \u2014 the single source of truth
 /// reused by both the Magic bottom-sheet menu (`app_mobile.dart`) and the
 /// inline "/" command palette.
