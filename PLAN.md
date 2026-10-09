@@ -48,7 +48,11 @@ Earlier v5 verification: automated analysis, 66 tests, native macOS integration,
 
 ## Check needed
 
-- Phone verification of 0.11.6–0.12.0: sync loss fixes, mention lookup, image blocks, crop, task typing with a phone keyboard, and headerless-daily repair.
+- 0.12.3 was checked on the A24 (2026-10-09, server unreachable): typed tasks, due, repeat set/clear, list chip edits, long-press status, mention popup, leave-app save (1.0–1.4 s, 8 of 8), sync failing in under a second. Not checked on a phone: image blocks, crop, Ctrl+Enter, conflict resolution, the P30.
+- Audit status per finding: `docs/audits/2026-10-08-status.md`. Open: sync rereads all revision files, large downloads buffered in memory, uncached Library filtering, oversized functions, 8dp corners, shared confirm dialog/chips, 48dp calendar cells.
+- An index or query version bump empties the Library while it rebuilds (7 min for 8,871 notes on the A24; a query bump took over 30). Keep the old index visible during a rebuild before bumping `kVaultQueryVersion`.
+- Seen on the A24, not fixed: the list priority popup overlaps the bottom bar; the long-press status menu overlaps the row above and selects the glyph; the "validation errors=… warnings=…" pill after a rebuild is noise; "Continue reading" adds a row on Today.
+- SAF writes rename the note away for a moment; hidden from the app by the storage lock, visible to outside readers. An in-place rewrite was rejected (a kill mid-write would leave a truncated note).
 - Android autocomplete jumping/revert remains undiagnosed. Suspects: a late IME full-text update or a post-sync reload.
 - A headerless daily went three hours without syncing on the A24; still needs device evidence. Automated checks cover SAF repair snapshots, timestamp change signals, and fresh-background/10-minute full scans.
 - New unpublished local note heads coalesce within fixed 60-second windows; materialized/uploaded revisions and conflict bases remain immutable. Existing large histories are not shrunk, so their envelopes remain large.
