@@ -155,7 +155,15 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     setState(() {});
   }
 
-  final _taskMenu = ContextMenuController();
+  LocalHistoryEntry? _taskMenuHistory;
+  LocalHistoryEntry? _autocompleteHistory;
+  late final _taskMenu = ContextMenuController(
+    onRemove: () {
+      final history = _taskMenuHistory;
+      _taskMenuHistory = null;
+      history?.remove();
+    },
+  );
 
   void _showTaskStatus(int index) {
     final editable = _editableIn(_editorKey.currentContext);
@@ -171,6 +179,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final box = _editorKey.currentContext!.findRenderObject()! as RenderBox;
     final bounds = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
     final id = widget.controller.document.blocks[index].id;
+    _taskMenu.remove();
+    _taskMenuHistory = LocalHistoryEntry(onRemove: _taskMenu.remove);
+    ModalRoute.of(context)?.addLocalHistoryEntry(_taskMenuHistory!);
     _taskMenu.show(
       context: context,
       contextMenuBuilder: (context) => Stack(
@@ -662,6 +673,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     if (overlay == null) return;
     _overlayEntry = OverlayEntry(builder: _buildOverlayContent);
     overlay.insert(_overlayEntry!);
+    _autocompleteHistory = LocalHistoryEntry(onRemove: _cancelAutocomplete);
+    ModalRoute.of(context)?.addLocalHistoryEntry(_autocompleteHistory!);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _overlayEntry?.markNeedsBuild(),
     );
@@ -670,6 +683,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+    final history = _autocompleteHistory;
+    _autocompleteHistory = null;
+    history?.remove();
   }
 
   Widget _buildOverlayContent(BuildContext context) =>

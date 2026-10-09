@@ -77,32 +77,62 @@ class _TaskChipStripState extends State<TaskChipStrip> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final scheme = Theme.of(context).colorScheme;
-    Widget chip(String field, String label, {bool overdue = false}) =>
-        TextFieldTapRegion(
-          child: InkWell(
-            key: Key('task-chip-${_task.id}-$field'),
-            onTap: () => widget.onCommand(field),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: kMinTapTarget,
-                minWidth: kMinTapTarget,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: kSpace4),
-                child: Center(
-                  widthFactor: 1,
-                  heightFactor: 1,
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: overdue ? scheme.error : scheme.onSurfaceVariant,
-                    ),
-                  ),
+    Widget chip(
+      String field,
+      String label,
+      String tooltip, {
+      IconData? icon,
+      bool overdue = false,
+    }) => Tooltip(
+      message: tooltip,
+      child: TextFieldTapRegion(
+        child: InkWell(
+          key: Key('task-chip-${_task.id}-$field'),
+          onTap: () => widget.onCommand(field),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: kMinTapTarget,
+              minWidth: kMinTapTarget,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: kSpace4),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null)
+                      Icon(
+                        icon,
+                        size: 16,
+                        color: overdue ? scheme.error : scheme.onSurfaceVariant,
+                      ),
+                    if (icon != null && label.isNotEmpty)
+                      const SizedBox(width: kSpace4),
+                    if (label.isNotEmpty)
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          // ponytail: narrow or scaled date labels shorten; the tooltip keeps the full value.
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: overdue
+                                    ? scheme.error
+                                    : scheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     final start = DateTime.tryParse(_task.runningClock?.start ?? '');
     final elapsed = _task.status == 'doing' && start != null
@@ -112,27 +142,47 @@ class _TaskChipStripState extends State<TaskChipStrip> {
         _task.clockedTotal + (elapsed.isNegative ? Duration.zero : elapsed);
     return Wrap(
       spacing: kSpace4,
-      runSpacing: 2,
+      runSpacing: kSpace4,
       children: [
-        if (widget.showEmpty || _task.priority != 'normal')
-          chip('priority', _task.priority),
-        for (final (field, date) in [
-          ('due', _task.due),
-          ('scheduled', _task.scheduled),
-        ])
-          if (widget.showEmpty || date != null)
-            chip(
-              field,
-              '${field == 'due' ? 'Due' : 'Scheduled'} ${date == null ? '…' : _date(date, now)}',
-              overdue:
-                  field == 'due' &&
-                  date != null &&
-                  (DateTime.tryParse(
-                        date,
-                      )?.isBefore(DateTime(now.year, now.month, now.day)) ??
-                      false),
-            ),
-        if (widget.showEmpty || _task.recurrence != null) chip('repeat', '↻'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: kSpace4,
+          children: [
+            if (widget.showEmpty || _task.priority != 'normal')
+              chip(
+                'priority',
+                _task.priority == 'normal' ? '' : _task.priority,
+                'Priority: ${_task.priority}',
+                icon: _task.priority == 'normal' ? Icons.flag_outlined : null,
+              ),
+            for (final (field, date) in [
+              ('due', _task.due),
+              ('scheduled', _task.scheduled),
+            ])
+              if (widget.showEmpty || date != null)
+                Flexible(
+                  child: chip(
+                    field,
+                    date == null ? '' : _date(date, now),
+                    '${field == 'due' ? 'Due' : 'Scheduled'}${date == null ? '' : ': $date'}',
+                    icon: field == 'due' ? Icons.event : Icons.schedule,
+                    overdue:
+                        field == 'due' &&
+                        date != null &&
+                        (DateTime.tryParse(date)?.isBefore(
+                              DateTime(now.year, now.month, now.day),
+                            ) ??
+                            false),
+                  ),
+                ),
+            if (widget.showEmpty || _task.recurrence != null)
+              chip(
+                'repeat',
+                '↻',
+                'Repeat${_task.recurrence == null ? '' : ': ${_task.recurrence}'}',
+              ),
+          ],
+        ),
         if (total > Duration.zero || _task.status == 'doing' && start != null)
           SizedBox(
             key: Key('task-chip-${_task.id}-time'),

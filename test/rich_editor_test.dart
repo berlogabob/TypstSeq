@@ -1831,6 +1831,12 @@ void main() {
         todo.top,
         greaterThan(tester.getBottomLeft(find.byKey(const Key('header'))).dy),
       );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('todo'), findsNothing);
+      expect(find.byType(TyLogRichEditor), findsOneWidget);
+      await tester.longPressAt(point);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('doing'));
       await tester.pumpAndSettle();
       expect(controller.document.toSource(), contains('status: "doing"'));

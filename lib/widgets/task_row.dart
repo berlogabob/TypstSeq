@@ -25,7 +25,14 @@ class TaskRow extends StatefulWidget {
 }
 
 class _TaskRowState extends State<TaskRow> {
-  final _menu = ContextMenuController();
+  LocalHistoryEntry? _menuHistory;
+  late final _menu = ContextMenuController(
+    onRemove: () {
+      final history = _menuHistory;
+      _menuHistory = null;
+      history?.remove();
+    },
+  );
   TaskRef get task => widget.task;
   Future<void> Function(TaskRef, String)? get onSetStatus => widget.onSetStatus;
   Future<void> Function(TaskRef, String, String)? get onSetField =>
@@ -51,6 +58,9 @@ class _TaskRowState extends State<TaskRow> {
       bounds = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
       return false;
     });
+    _menu.remove();
+    _menuHistory = LocalHistoryEntry(onRemove: _menu.remove);
+    ModalRoute.of(context)?.addLocalHistoryEntry(_menuHistory!);
     _menu.show(
       context: context,
       contextMenuBuilder: (context) => Stack(

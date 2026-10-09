@@ -12,6 +12,136 @@ import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog_core/search_index.dart';
 
 void main() {
+  testWidgets('360dp task chips stay on one run in every state', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final filled in [false, true]) {
+      for (final running in [false, true]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: TaskRow(
+                task: TaskRef(
+                  id: 't',
+                  notePath: 't.typ',
+                  text: 'Task',
+                  priority: filled ? 'urgent' : 'normal',
+                  due: filled ? '2020-10-08' : null,
+                  scheduled: filled
+                      ? DateTime.now()
+                            .add(const Duration(days: 1))
+                            .toIso8601String()
+                      : null,
+                  recurrence: filled ? 'RRULE:FREQ=DAILY' : null,
+                  status: running ? 'doing' : 'todo',
+                  clocked: running
+                      ? [ClockEntry(start: DateTime.now().toIso8601String())]
+                      : [],
+                ),
+                onOpenPath: (_) {},
+                onSetField: (_, _, _) async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        final rects = [
+          for (final field in ['priority', 'due', 'scheduled', 'repeat'])
+            tester.getRect(find.byKey(Key('task-chip-t-$field'))),
+        ];
+        expect(rects.map((r) => r.top).toSet(), hasLength(1));
+        for (final rect in rects) {
+          expect(rect.width, greaterThanOrEqualTo(48));
+          expect(rect.height, greaterThanOrEqualTo(48));
+        }
+        for (final (icon, label) in [
+          (Icons.event, 'Due'),
+          (Icons.schedule, 'Scheduled'),
+        ]) {
+          expect(tester.widget<Icon>(find.byIcon(icon)).size, 16);
+          expect(
+            find.byWidgetPredicate(
+              (w) => w is Tooltip && (w.message?.startsWith(label) ?? false),
+            ),
+            findsOneWidget,
+          );
+        }
+        if (filled) {
+          expect(
+            tester.widget<Icon>(find.byIcon(Icons.event)).color,
+            Theme.of(
+              tester.element(find.byIcon(Icons.event)),
+            ).colorScheme.error,
+          );
+        } else {
+          expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
+          expect(find.byTooltip('Due'), findsOneWidget);
+          expect(find.byTooltip('Scheduled'), findsOneWidget);
+          expect(find.byTooltip('Repeat'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      }
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'list date hint aligns with none and Back closes each popup first',
+    (tester) async {
+      final nav = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: nav,
+          home: const Scaffold(body: Text('Home')),
+        ),
+      );
+      nav.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            body: TaskRow(
+              task: const TaskRef(id: 't', notePath: 't.typ', text: 'Task'),
+              onOpenPath: (_) {},
+              onSetField: (_, _, _) async {},
+              onSetStatus: (_, _) async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final field in [
+        'due',
+        'scheduled',
+        'priority',
+        'repeat',
+        'status',
+      ]) {
+        if (field == 'status') {
+          await tester.longPress(find.byTooltip('Task status'));
+        } else {
+          await tester.tap(find.byKey(Key('task-chip-t-$field')));
+        }
+        await tester.pumpAndSettle();
+        if (field == 'due' || field == 'scheduled') {
+          expect(
+            tester.getTopLeft(find.text('today / завтра / +3d')).dx,
+            tester.getTopLeft(find.text('none')).dx,
+          );
+        }
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('task-field-popup')), findsNothing);
+        expect(find.text('Task'), findsOneWidget);
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsOneWidget);
+    },
+  );
+
   testWidgets(
     'TaskRow glyphs, toggle, status menu, source and shared field chips',
     (tester) async {

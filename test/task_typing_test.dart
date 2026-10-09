@@ -614,6 +614,38 @@ void main() {
       check(c);
     }
   });
+  testWidgets('Back closes editor field popup before leaving route', (
+    tester,
+  ) async {
+    final c = editor('#tylog.task(id: "t", text: "Task", priority: "high")');
+    addTearDown(c.dispose);
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: nav,
+        home: const Scaffold(body: Text('Home')),
+      ),
+    );
+    nav.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: TyLogRichEditor(controller: c, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-chip-t-priority')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('autocomplete-popup')), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('autocomplete-popup')), findsNothing);
+    expect(find.byType(TyLogRichEditor), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Home'), findsOneWidget);
+  });
+
   testWidgets('task strip chips open the inline fields at 320px without overflow', (
     tester,
   ) async {
@@ -678,7 +710,7 @@ void main() {
         matching: find.byType(Text),
       ),
     );
-    expect(dueLabel.data, 'Due 15 Oct');
+    expect(dueLabel.data, '15 Oct');
     expect(
       dueLabel.style!.color,
       Theme.of(tester.element(field)).colorScheme.error,

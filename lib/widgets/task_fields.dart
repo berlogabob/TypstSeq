@@ -68,21 +68,24 @@ class TaskFieldList extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       if (field != 'repeat' && field != 'priority' && field != 'status')
-        TextField(
-          key: const Key('task-date-input'),
-          autofocus: true,
-          controller: input,
-          focusNode: focus,
-          decoration: InputDecoration(
-            hintText: 'today / завтра / +3d',
-            suffixIcon: IconButton(
-              tooltip: 'Calendar',
-              onPressed: onCalendar,
-              icon: const Icon(Icons.calendar_month),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+          child: TextField(
+            key: const Key('task-date-input'),
+            autofocus: true,
+            controller: input,
+            focusNode: focus,
+            decoration: InputDecoration(
+              hintText: 'today / завтра / +3d',
+              suffixIcon: IconButton(
+                tooltip: 'Calendar',
+                onPressed: onCalendar,
+                icon: const Icon(Icons.calendar_month),
+              ),
             ),
+            onChanged: onChanged,
+            onSubmitted: onSubmitted,
           ),
-          onChanged: onChanged,
-          onSubmitted: onSubmitted,
         ),
       Flexible(
         child: ListView(

@@ -2526,6 +2526,12 @@ bool shouldRolloverToday({required DateTime openedAt, required DateTime now}) {
 }
 
 String friendlySyncError(Object error) {
+  if (error is WebDavStatusException &&
+      (const {502, 503, 504}.contains(error.statusCode) ||
+          error.statusCode >= 520 && error.statusCode <= 530)) {
+    return 'Nextcloud server is unreachable (${error.statusCode}). '
+        'Your notes are saved on this device; sync will retry.';
+  }
   if (error is SocketException || error is TimeoutException) {
     return 'Nextcloud connection was interrupted. Progress was saved; Retry resumes.';
   }
