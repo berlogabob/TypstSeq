@@ -32,7 +32,7 @@ class EntityHeader extends StatelessWidget {
         .where((e) => e.value != null && '${e.value}'.trim().isNotEmpty)
         .toList();
     return Card(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      margin: const EdgeInsets.fromLTRB(kSpace12, kSpace12, kSpace12, 6),
       color: scheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -46,7 +46,7 @@ class EntityHeader extends StatelessWidget {
                   kind: note.kind,
                   imageResolver: imageResolver,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: kSpace12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,8 +108,7 @@ class _Avatar extends StatelessWidget {
         final data = snapshot.data;
         if (data == null || data.isEmpty) return fallback;
         // A 26pt avatar has no use for a full-resolution decode.
-        final side =
-            (52 * MediaQuery.devicePixelRatioOf(context)).round();
+        final side = (52 * MediaQuery.devicePixelRatioOf(context)).round();
         return CircleAvatar(
           radius: 26,
           backgroundImage: ResizeImage(
@@ -170,7 +169,7 @@ class _PropertyRow extends StatelessWidget {
       style: TextStyle(color: tappable ? scheme.primary : null),
     );
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: kSpace8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -183,20 +182,22 @@ class _PropertyRow extends StatelessWidget {
             size: 16,
             color: scheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: kSpace8),
           SizedBox(
             width: 84,
             child: Text(
               name,
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: tappable
                 ? InkWell(
-                    onTap: () =>
-                        onOpenUrl(_isEmail && !_isUrl ? 'mailto:$value' : value),
+                    onTap: () => onOpenUrl(
+                      _isEmail && !_isUrl ? 'mailto:$value' : value,
+                    ),
                     child: valueWidget,
                   )
                 : valueWidget,

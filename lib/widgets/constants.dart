@@ -38,10 +38,7 @@ ColorScheme tyLogColorScheme(Brightness brightness) =>
         surface: kLightSurface,
         onSurfaceVariant: kLightOnSurfaceVariant,
       )
-    : ColorScheme.fromSeed(
-        seedColor: kSeedColor,
-        brightness: Brightness.dark,
-      );
+    : ColorScheme.fromSeed(seedColor: kSeedColor, brightness: Brightness.dark);
 
 /// Corner-radius scale. Small = chips/inline chips, medium = list tiles, cards
 /// and popovers, large = settings-style container cards.
@@ -53,6 +50,19 @@ const kRadiusLarge = 20.0;
 /// draw smaller than this must still *hit* at least this big.
 const kMinTapTarget = 48.0;
 
+/// Space tokens: 4, 8, 12, 16, 24
+const kSpace4 = 4.0;
+const kSpace8 = 8.0;
+const kSpace12 = 12.0;
+const kSpace16 = 16.0;
+const kSpace24 = 24.0;
+const kEditorInset = 18.0;
+
+/// Motion tokens: 150ms, 200ms, 260ms
+const kMotionDock = Duration(milliseconds: 150);
+const kMotionStatus = Duration(milliseconds: 200);
+const kMotionGraphZoom = Duration(milliseconds: 260);
+
 /// Corner radius shared by the rounded [ListTile]s in the links panel.
 const listTileRadius = BorderRadius.all(Radius.circular(kRadiusMedium));
 
@@ -63,7 +73,6 @@ const listTileRadius = BorderRadius.all(Radius.circular(kRadiusMedium));
 Color warningColor(ColorScheme scheme) => scheme.brightness == Brightness.dark
     ? const Color(0xFFFFC107)
     : const Color(0xFFB26A00);
-
 
 /// The icon representing a note of the given [kind] — person/place/org entities
 /// and structural kinds. Used by inline reference chips and entity lists so
