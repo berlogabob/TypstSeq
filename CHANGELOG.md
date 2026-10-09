@@ -11,6 +11,15 @@ their history is in the commit log and the GitHub release notes.
   0.12.2 preferred an older shared index over the phone's own current one,
   so every launch re-derived every note (about three minutes with empty
   lists on a large vault). Never published.
+- **Typing right after launch no longer leaves the vault unindexed.** The
+  startup index run cancelled the scan your first save had started and
+  nothing restarted it, so Library showed "No notes yet" until the next
+  launch. A vault without an index now reads "Indexing…", never empty.
+- **Task rows fit one line of chips on narrow phones.** Unset dates and
+  normal priority show as icons; set dates show icon and date.
+- **Back closes an open task popup** instead of leaving the app.
+- **A server outage reads "Nextcloud server is unreachable (530)"**, and the
+  sync pill shows plain text ("Uploading changes") instead of engine names.
 - **Task chip popups in lists fit their rows** and stay above the bottom bar
   and the keyboard.
 - **Long-press on a task checkbox** opens the status menu as a popup beside

@@ -146,7 +146,6 @@ class _TaskChipStripState extends State<TaskChipStrip> {
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
-          spacing: kSpace4,
           children: [
             if (widget.showEmpty || _task.priority != 'normal')
               chip(
@@ -161,6 +160,8 @@ class _TaskChipStripState extends State<TaskChipStrip> {
             ])
               if (widget.showEmpty || date != null)
                 Flexible(
+                  // An unset date needs only its icon; the set one gets the room.
+                  flex: date == null ? 0 : 1,
                   child: chip(
                     field,
                     date == null ? '' : _date(date, now),
