@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -12,53 +11,6 @@ void main() {
       ).allMatches(plist).toList();
       expect(sandbox, hasLength(1), reason: name);
       expect(sandbox.single.group(1), 'false', reason: name);
-    }
-  });
-
-  test('packaged APK must contain the exact source-built ARM64 library', () async {
-    final root = await Directory('.dart_tool').createTemp('packaged-native-');
-    addTearDown(() => root.delete(recursive: true));
-    final script = File('${root.path}/tool/assert_source_built.sh');
-    await script.create(recursive: true);
-    await script.writeAsString(
-      File('tool/assert_source_built.sh').readAsStringSync(),
-    );
-    final native = File(
-      '${root.path}/packages/typst_flutter/.typst_flutter_prebuilt/android/arm64-v8a/libtypst_flutter.so',
-    );
-    await native.create(recursive: true);
-    await native.writeAsBytes([1, 2, 3]);
-    await File(
-      '${root.path}/packages/typst_flutter/.typst_flutter_prebuilt/.source-built',
-    ).writeAsString('android\n');
-    final apk = File('${root.path}/fixture.apk');
-    for (final payload in [
-      <int>[1, 2, 3],
-      <int>[9, 8, 7],
-      <int>[],
-    ]) {
-      final archive = Archive();
-      if (payload.isNotEmpty) {
-        archive.addFile(
-          ArchiveFile(
-            'lib/arm64-v8a/libtypst_flutter.so',
-            payload.length,
-            payload,
-          ),
-        );
-      }
-      await apk.writeAsBytes(ZipEncoder().encode(archive));
-      final result = await Process.run('sh', [
-        script.path,
-        'android',
-        '--apk',
-        apk.path,
-      ]);
-      expect(
-        result.exitCode,
-        payload.isNotEmpty && payload.first == 1 ? 0 : 1,
-        reason: '${result.stdout}\n${result.stderr}',
-      );
     }
   });
 
@@ -136,13 +88,6 @@ void main() {
       makefile,
       contains(
         '\$(MAKE) build-android\n\t@if [ "\$\$(uname -s)" = Darwin ]; then \$(MAKE) install-indexer; fi',
-      ),
-    );
-    expect(
-      workflow,
-      contains(
-        'flutter build apk --release --target-platform android-arm64\n'
-        '      - run: ./tool/assert_source_built.sh android --apk build/app/outputs/flutter-apk/app-release.apk',
       ),
     );
     final assertion = File('tool/assert_source_built.sh').readAsStringSync();

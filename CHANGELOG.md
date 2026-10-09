@@ -7,6 +7,10 @@ their history is in the commit log and the GitHub release notes.
 
 ### Fixed
 
+- **Opening the app no longer re-scans the whole vault.** Builds after
+  0.12.2 preferred an older shared index over the phone's own current one,
+  so every launch re-derived every note (about three minutes with empty
+  lists on a large vault). Never published.
 - **Task chip popups in lists fit their rows** and stay above the bottom bar
   and the keyboard.
 - **Long-press on a task checkbox** opens the status menu as a popup beside

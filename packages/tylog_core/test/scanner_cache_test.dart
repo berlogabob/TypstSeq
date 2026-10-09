@@ -3,8 +3,11 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/models.dart';
+import 'package:tylog_core/maintenance.dart';
+import 'package:tylog_core/index_donor.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/vault.dart';
 
 /// Counts reads so a test can assert the scan cache actually skipped a file
 /// rather than re-reading and happening to produce the same result.
@@ -117,6 +120,107 @@ void main() {
     expect(storage.reads, isEmpty, reason: 'cache hit must not read the file');
     expect(second.notes.map((n) => n.path), first.notes.map((n) => n.path));
   });
+
+  for (final donorVersion in [11, kVaultIndexVersion]) {
+    test(
+      'current local cache beats donor v$donorVersion across restart',
+      () async {
+        const count = 32;
+        for (var i = 2; i < count; i++) {
+          await storage.writeText('notes/n$i.typ', _note('Note $i'));
+        }
+        final inspector = _CountingInspector();
+        final first = await scanVaultStorage(storage, inspector: inspector);
+        expect(first.notes, hasLength(count));
+        expect(inspector.inspected, hasLength(count));
+        final donor = VaultIndex(
+          version: donorVersion,
+          notesByPath: first.notesByPath,
+          backlinksByTarget: first.backlinksByTarget,
+          tasks: first.tasks,
+        );
+        var previous = first;
+        for (var run = 2; run <= 3; run++) {
+          storage.reads.clear();
+          storage.hashes.clear();
+          inspector.inspected.clear();
+          var parsed = 0;
+          final next = await scanVaultStorage(
+            storage,
+            inspector: inspector,
+            previous: previous,
+            donor: donor,
+            onParsed: () => parsed++,
+          );
+          expect(
+            storage.reads.where((p) => p.startsWith('notes/')),
+            isEmpty,
+            reason: 'run $run must not read or re-derive unchanged notes',
+          );
+          expect(
+            storage.hashes,
+            isEmpty,
+            reason: 'run $run must not hash bodies',
+          );
+          expect(inspector.inspected, isEmpty);
+          expect(parsed, 0);
+          for (final path in previous.notesByPath.keys) {
+            expect(
+              identical(next.notesByPath[path], previous.notesByPath[path]),
+              isTrue,
+              reason: 'run $run must reuse the derived entry',
+            );
+          }
+          await storage.writeBytes(
+            TylogVaultPaths.index,
+            encodeVaultIndexBytes(next),
+          );
+          previous = decodeVaultIndexBytes(
+            await storage.readBytes(TylogVaultPaths.index),
+          );
+        }
+      },
+    );
+  }
+
+  test(
+    'old donor is re-derived once and maintenance persists the upgrade',
+    () async {
+      final inspector = _CountingInspector();
+      final queried = await scanVaultStorage(storage, inspector: inspector);
+      await IndexDonorStore(storage).publish(
+        'desktop',
+        VaultIndex(
+          version: 11,
+          notesByPath: queried.notesByPath,
+          backlinksByTarget: queried.backlinksByTarget,
+          tasks: queried.tasks,
+        ),
+      );
+      var maintenance = VaultMaintenance(storage, publishDonor: false);
+      storage.reads.clear();
+      inspector.inspected.clear();
+      final upgraded = await maintenance.buildIndex(
+        inspector: inspector,
+        deviceId: 'phone',
+      );
+      expect(upgraded.version, kVaultIndexVersion);
+      expect(storage.reads.where((p) => p.startsWith('notes/')), hasLength(2));
+      expect(inspector.inspected, isEmpty);
+      for (var run = 2; run <= 3; run++) {
+        if (run == 3) {
+          maintenance = VaultMaintenance(storage, publishDonor: false);
+        }
+        storage.reads.clear();
+        storage.hashes.clear();
+        await maintenance.buildIndex(inspector: inspector, deviceId: 'phone');
+        expect(storage.reads.where((p) => p.startsWith('notes/')), isEmpty);
+        expect(storage.hashes, isEmpty);
+        expect(inspector.inspected, isEmpty);
+        expect(maintenance.parsedNotes, 0);
+      }
+    },
+  );
 
   test('force re-reads everything', () async {
     final first = await scanVaultStorage(storage);

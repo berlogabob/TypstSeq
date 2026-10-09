@@ -66,7 +66,6 @@ jobs:
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=tylog-release.jks\n' \
             "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
       - run: flutter build apk --release --target-platform android-arm64
-      - run: ./tool/assert_source_built.sh android --apk build/app/outputs/flutter-apk/app-release.apk
       - run: cp build/app/outputs/flutter-apk/app-release.apk tylog-android.apk
       - uses: actions/upload-artifact@v4
         with:

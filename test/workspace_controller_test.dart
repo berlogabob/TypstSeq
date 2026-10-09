@@ -698,11 +698,13 @@ void main() {
       var notifyCount = 0;
       Object? vaultAtFirstNotify;
       Object? indexAtFirstNotify;
+      bool? indexingAtFirstNotify;
       controller.addListener(() {
         notifyCount++;
         if (notifyCount == 1) {
           vaultAtFirstNotify = controller.vault;
           indexAtFirstNotify = controller.index;
+          indexingAtFirstNotify = controller.indexing;
         }
       });
 
@@ -715,6 +717,7 @@ void main() {
       // populated but index is not.
       expect(vaultAtFirstNotify, isNotNull);
       expect(indexAtFirstNotify, isNull);
+      expect(indexingAtFirstNotify, isTrue);
       expect(controller.vault, isNotNull);
       expect(controller.note, isNotNull);
       expect(controller.source, isNotEmpty);

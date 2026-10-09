@@ -561,7 +561,17 @@ Future<VaultIndex> scanVaultStorage(
     final relative = file.path;
     final fingerprint =
         '${file.modified?.millisecondsSinceEpoch ?? 0}:${file.size ?? 0}';
-    final donatedNote = donor?.notesByPath[relative];
+    final local = previous?.notesByPath[relative];
+    // A donor must not replace a current local derivation on every scan.
+    final localCurrent =
+        !force &&
+        !stale.contains(relative) &&
+        previous?.version == kVaultIndexVersion &&
+        local?.metadataSource == 'typst-query' &&
+        local?.fingerprint == fingerprint &&
+        (knownHashes[relative] == null ||
+            knownHashes[relative] == local?.contentHash);
+    final donatedNote = localCurrent ? null : donor?.notesByPath[relative];
     final donorHash = donatedNote?.contentHash == null
         ? null
         : knownHashes[relative] ?? await storage.hash(relative);

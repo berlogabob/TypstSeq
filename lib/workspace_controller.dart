@@ -235,7 +235,8 @@ class WorkspaceController extends ChangeNotifier {
   /// light that up. Two concurrent scans would race on `index.json` (and the
   /// worker is single-flight by design).
   bool _indexing = false;
-  bool get indexing => rebuilding || _indexing;
+  bool _indexPending = false;
+  bool get indexing => _indexPending || rebuilding || _indexing;
 
   /// A scan asked for while one was already running. Coalesced rather than
   /// dropped — see [_scan].
@@ -342,6 +343,7 @@ class WorkspaceController extends ChangeNotifier {
     syncing = false;
     syncStage = null;
     rebuilding = false;
+    _indexPending = false;
     rebuildProgress = null;
     feedEvents = [];
     calendarSettings = {};
@@ -425,6 +427,7 @@ class WorkspaceController extends ChangeNotifier {
     rebuilding = false;
     rebuildProgress = null;
     _pollInFlight = false;
+    _indexPending = true;
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
       await opened.ensureCreated(
@@ -1223,6 +1226,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     _indexing = true;
+    _indexPending = false;
     final done = Completer<void>();
     _activeScan = done.future;
     notifyListeners();

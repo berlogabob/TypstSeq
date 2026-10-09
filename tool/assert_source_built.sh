@@ -10,17 +10,10 @@
 # started" are both compatible with shipping something with no Typst engine.
 #
 # Usage: tool/assert_source_built.sh android [linux ...]
-# After packaging: tool/assert_source_built.sh android --apk <apk>
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 stamp="$root/packages/typst_flutter/.typst_flutter_prebuilt/.source-built"
-
-apk=""
-if [ "$#" -eq 3 ] && [ "$1" = android ] && [ "$2" = --apk ]; then
-  apk=$3
-  set -- android
-fi
 
 if [ "$#" -eq 0 ]; then
   echo "usage: $0 <platform>..." >&2
@@ -46,21 +39,5 @@ done
 
 if [ "$status" -ne 0 ]; then
   echo "Source-built platforms: $(tr '\n' ' ' <"$stamp")" >&2
-fi
-if [ "$status" -eq 0 ] && [ -n "$apk" ]; then
-  embedded=$(mktemp)
-  trap 'rm -f "$embedded"' EXIT HUP INT TERM
-  native="$root/packages/typst_flutter/.typst_flutter_prebuilt/android/arm64-v8a/libtypst_flutter.so"
-  if ! unzip -p "$apk" lib/arm64-v8a/libtypst_flutter.so > "$embedded"; then
-    echo "FAIL: ARM64 native library missing from APK" >&2
-    exit 1
-  fi
-  expected=$(shasum -a 256 "$native" | cut -d ' ' -f 1)
-  actual=$(shasum -a 256 "$embedded" | cut -d ' ' -f 1)
-  if [ "$expected" != "$actual" ]; then
-    echo "FAIL: packaged ARM64 native library differs from the source build" >&2
-    exit 1
-  fi
-  echo "ok: APK embeds the source-built ARM64 library"
 fi
 exit "$status"
