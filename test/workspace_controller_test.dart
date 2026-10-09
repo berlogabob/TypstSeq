@@ -805,6 +805,103 @@ void main() {
     },
   );
 
+  for (final succeeded in [false, true]) {
+    test(
+      'cold startup sync $succeeded does not cancel a save-triggered scan',
+      () async {
+        final storage = _GatedScanStorage();
+        final controller = _GatedStartupSyncController();
+        addTearDown(controller.dispose);
+        addTearDown(storage.release);
+        await controller.openVault(
+          const VaultEntry(
+            id: 'cold-race',
+            name: 'Cold race',
+            path: '/not-used',
+            cloud: NextcloudConfig(
+              serverUrl: 'https://example.invalid/vault',
+              username: 'alice',
+              password: 'secret',
+            ),
+          ),
+          storage: storage,
+          trigger: 'startup',
+        );
+        expect(controller.index, isNull);
+        expect(controller.indexing, isTrue);
+        controller.edit('${controller.source}\nEarly edit');
+        expect(await controller.save(syncAfter: false), isTrue);
+        storage.armGate();
+        final scan = controller.refreshIndex();
+        await storage.gateReached.future;
+        controller.syncResult.complete(succeeded);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        // ponytail: mirror worker cancellation in-process until a worker fixture exists.
+        if (controller.cancelRebuild) {
+          storage.scanError = const IndexBuildCancelled();
+        }
+        storage.release();
+        await scan;
+        await _waitUntil(
+          () => controller.index != null && !controller.indexing,
+        );
+        expect(controller.index!.notesByPath, contains(controller.note));
+        expect(controller.indexing, isFalse);
+        expect(controller.cancelRebuild, isFalse);
+        expect(controller.rebuildProgress, isNull);
+      },
+    );
+  }
+
+  test(
+    'a cold vault stays indexing after cancellation until a reported error',
+    () async {
+      final storage = _GatedScanStorage();
+      final controller = _GatedStartupSyncController();
+      addTearDown(controller.dispose);
+      addTearDown(storage.release);
+      await controller.openVault(
+        const VaultEntry(
+          id: 'cold-ui',
+          name: 'Cold UI',
+          path: '/not-used',
+          cloud: NextcloudConfig(
+            serverUrl: 'https://example.invalid/vault',
+            username: 'alice',
+            password: 'secret',
+          ),
+        ),
+        storage: storage,
+        trigger: 'startup',
+      );
+      controller.edit('${controller.source}\nSaved note');
+      await controller.save(syncAfter: false);
+      storage.armGate();
+      final rebuild = controller.rebuildIndex();
+      await storage.gateReached.future;
+      await controller.rebuildIndex(); // Manual second tap still cancels.
+      expect(controller.cancelRebuild, isTrue);
+      storage.release();
+      await rebuild;
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.index, isNull);
+      expect(controller.indexing, isTrue);
+      expect(controller.cancelRebuild, isFalse);
+
+      storage.scanError = StateError('unreadable vault');
+      await controller.refreshIndex(always: true);
+      expect(controller.status, startsWith('Index refresh failed:'));
+      expect(controller.indexing, isFalse);
+
+      storage.scanError = null;
+      await controller.refreshIndex(always: true);
+      expect(controller.index, isNotNull);
+      expect(controller.indexing, isFalse);
+      expect(controller.cancelRebuild, isFalse);
+      controller.syncResult.complete(false);
+    },
+  );
+
   test('a warm index rebuilds without waiting for the sync', () async {
     final previousOverrides = HttpOverrides.current;
     HttpOverrides.global = null;
@@ -3705,6 +3802,28 @@ void main() {
   });
 }
 
+class _GatedStartupSyncController extends WorkspaceController {
+  _GatedStartupSyncController()
+    : super(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+
+  final syncResult = Completer<bool>();
+
+  @override
+  Future<bool> syncNow({
+    String trigger = 'manual',
+    NextcloudConfig? configOverride,
+    InitialSyncMode? initialMode,
+    bool remoteChanged = false,
+  }) => syncResult.future;
+
+  @override
+  void startCloudPolling() {}
+}
+
 class _TimerPollingController extends WorkspaceController {
   _TimerPollingController({
     required this.ioZone,
@@ -3767,6 +3886,7 @@ class _FakeInspector implements TypstInspector {
 /// logic exists for.
 class _GatedScanStorage extends _MemoryStorage {
   Completer<void>? _armed;
+  Object? scanError;
   Completer<void> gateReached = Completer<void>();
 
   void armGate() {
@@ -3791,6 +3911,9 @@ class _GatedScanStorage extends _MemoryStorage {
       if (!gateReached.isCompleted) gateReached.complete();
       await gate.future;
     }
+    final error = scanError;
+    scanError = null;
+    if (error != null) throw error;
     return result;
   }
 }

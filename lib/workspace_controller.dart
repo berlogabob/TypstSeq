@@ -236,7 +236,12 @@ class WorkspaceController extends ChangeNotifier {
   /// worker is single-flight by design).
   bool _indexing = false;
   bool _indexPending = false;
-  bool get indexing => _indexPending || rebuilding || _indexing;
+  bool _indexFailed = false;
+  bool get indexing =>
+      _indexPending ||
+      rebuilding ||
+      _indexing ||
+      (vault != null && index == null && !_indexFailed);
 
   /// A scan asked for while one was already running. Coalesced rather than
   /// dropped — see [_scan].
@@ -428,6 +433,7 @@ class WorkspaceController extends ChangeNotifier {
     rebuildProgress = null;
     _pollInFlight = false;
     _indexPending = true;
+    _indexFailed = false;
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
       await opened.ensureCreated(
@@ -584,13 +590,18 @@ class WorkspaceController extends ChangeNotifier {
       // that (test-only) path stays in-process.
       unawaited(
         coldIndex && firstSync != null
-            ? firstSync.whenComplete(() {
+            ? firstSync.whenComplete(() async {
+                await _activeScan;
                 if (_owns(opened, generation) &&
                     (index == null || index!.version != kVaultIndexVersion)) {
-                  return rebuildIndex(force: false);
+                  return _scan(
+                    opened,
+                    generation: generation,
+                    showProgress: true,
+                  );
                 }
               })
-            : rebuildIndex(force: false),
+            : _scan(opened, generation: generation, showProgress: true),
       );
     } catch (error) {
       if (!_disposed && generation == _vaultGeneration) {
@@ -1227,6 +1238,8 @@ class WorkspaceController extends ChangeNotifier {
     }
     _indexing = true;
     _indexPending = false;
+    _indexFailed = false;
+    cancelRebuild = false;
     final done = Completer<void>();
     _activeScan = done.future;
     notifyListeners();
@@ -1235,6 +1248,7 @@ class WorkspaceController extends ChangeNotifier {
       // not to re-compile the whole vault a second time.
       var repeat = false;
       do {
+        if (repeat) cancelRebuild = false;
         _rescanQueued = false;
         await _scanOnce(
           opened,
@@ -1249,6 +1263,10 @@ class WorkspaceController extends ChangeNotifier {
     } finally {
       if (_vaultGeneration == generation) {
         _indexing = false;
+        cancelRebuild = false;
+        // Startup scans report progress without going through rebuildIndex,
+        // whose finally used to be the only place the bar was cleared.
+        if (showProgress) rebuildProgress = null;
         _activeScan = null;
         if (!_disposed) notifyListeners();
       }
@@ -1343,6 +1361,7 @@ class WorkspaceController extends ChangeNotifier {
             status = 'Index rebuild cancelled';
             notifyListeners();
           } else if (showProgress || updateStatus) {
+            _indexFailed = true;
             status = 'Index refresh failed: $message';
             notifyListeners();
           }
@@ -1459,6 +1478,7 @@ class WorkspaceController extends ChangeNotifier {
       }
     } catch (error) {
       if (_owns(opened, generation) && (showProgress || updateStatus)) {
+        _indexFailed = true;
         status = 'Index refresh failed: $error';
         notifyListeners();
       }
