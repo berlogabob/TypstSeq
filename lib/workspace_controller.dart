@@ -1790,7 +1790,7 @@ class WorkspaceController extends ChangeNotifier {
             if (last == null ||
                 now.difference(last) >= const Duration(milliseconds: 500)) {
               _lastForegroundNotice = now;
-              unawaited(_updateSyncForeground(syncStage!));
+              unawaited(_updateSyncForeground(syncStageLabel(syncStage!)));
             }
           }
           syncProgressTick.notifyListeners();
@@ -2536,3 +2536,29 @@ String friendlySyncError(Object error) {
 /// deterministic and touches nothing but its argument, so it is isolate-safe.
 CommunityMap computeCommunitiesIsolate(VaultIndex index) =>
     computeCommunities(index);
+
+/// Readable text for a sync engine stage id (`push-local`,
+/// `sync-file 3/9 · notes/a.typ`); unknown ids pass through.
+String syncStageLabel(String stage) {
+  final cut = stage.indexOf(' · ');
+  final id = cut < 0 ? stage : stage.substring(0, cut);
+  final detail = cut < 0 ? '' : stage.substring(cut);
+  if (id.startsWith('sync-file ')) return 'Syncing ${id.substring(10)}$detail';
+  final label = const {
+    'load-local-state': 'Checking local notes',
+    'scan-local-shortcut': 'Checking local notes',
+    'scan-local': 'Checking local notes',
+    'probe-root': 'Checking server',
+    'prepare-remote-folder': 'Connecting to server',
+    'list-remote': 'Reading server list',
+    'push-local': 'Uploading changes',
+    'detect-renames': 'Matching renamed notes',
+    'download-archive': 'Downloading vault',
+    'validate-archive': 'Checking download',
+    'extract-archive': 'Unpacking download',
+    'verify-remote-writes': 'Verifying uploads',
+    'save-local-state': 'Finishing sync',
+    'index-local-changes': 'Updating index',
+  }[id];
+  return label == null ? stage : '$label$detail';
+}

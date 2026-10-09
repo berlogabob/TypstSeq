@@ -2959,7 +2959,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         storageLocation: vaultEntryLocation(active) ?? '',
         cloud: active?.cloud ?? cloud,
         syncing: syncing,
-        stage: syncStage,
+        stage: syncStage == null ? null : syncStageLabel(syncStage!),
         error: error,
         result: lastSync,
         lastSyncAt: lastSyncAt,
@@ -2990,7 +2990,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       backupPath: entry.backupPath,
       cloud: cloud,
       syncing: syncing,
-      stage: syncStage,
+      stage: syncStage == null ? null : syncStageLabel(syncStage!),
       error: syncError,
       result: lastSync,
       lastSyncAt: lastSyncAt,
@@ -5011,7 +5011,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      syncing && syncStage != null ? syncStage! : status,
+                      syncing && syncStage != null
+                          ? syncStageLabel(syncStage!)
+                          : status,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: kSpace4),
@@ -5023,7 +5025,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? statusPill(
                 key: const ValueKey('status-stage'),
                 child: Text(
-                  syncStage!,
+                  syncStageLabel(syncStage!),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               )
