@@ -480,6 +480,148 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('Tasks shows indexing during a gated refresh', (tester) async {
+    final storage = _GatedScanStorage();
+    await storage.writeText('notes/a.typ', 'Existing note');
+    final (_, home) = await _mountTaskTimers(tester, existing: storage);
+    home.workspace.index = null;
+    final release = Completer<void>();
+    storage.listGate = release.future;
+    storage.gateNextList = true;
+    final Future<void> refresh = home.workspace.refreshIndex(always: true);
+    home.workspace.notifyListeners();
+    await tester.pump();
+    try {
+      expect(home.workspace.rebuilding, isFalse);
+      expect(find.text('Indexing…'), findsOneWidget);
+      expect(find.text('No matching tasks'), findsNothing);
+    } finally {
+      release.complete();
+      await tester.pumpAndSettle();
+      await refresh;
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  for (final (state, composingOnly) in [
+    (null, false),
+    (AppLifecycleState.inactive, false),
+    (AppLifecycleState.hidden, false),
+    (AppLifecycleState.paused, false),
+    (AppLifecycleState.inactive, true),
+    (AppLifecycleState.hidden, true),
+    (AppLifecycleState.paused, true),
+  ]) {
+    testWidgets(
+      '${state?.name ?? 'sync trigger'} saves rich text before gated WebDAV completes; composingOnly=$composingOnly',
+      (tester) async {
+        final (storage, home) = await _mountTaskTimers(tester);
+        late _GatedProxyHttp http;
+        await tester.runAsync(() async {
+          http = _GatedProxyHttp();
+        });
+        final delays = NextcloudSync.busyRetryDelays;
+        NextcloudSync.busyRetryDelays = const [Duration.zero];
+        addTearDown(() => NextcloudSync.busyRetryDelays = delays);
+        home.workspace.cloud = const NextcloudConfig(
+          serverUrl: 'https://unused.invalid/Vault',
+          username: 'alice',
+          password: 'secret',
+        );
+        await tester.runAsync(
+          () => HttpOverrides.runZoned(() async {
+            final sync =
+                home.workspace.syncNow(trigger: 'background') as Future<bool>;
+            await Future.any([
+              http.started.future,
+              sync.then(
+                (_) => throw StateError(
+                  'Sync ended before request: ${home.workspace.status}',
+                ),
+              ),
+            ]).timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => throw StateError(
+                'Before request: ${home.workspace.status} / ${home.workspace.syncStage}',
+              ),
+            );
+            final first = '${home.richController.text}x';
+            home.richController.value = TextEditingValue(
+              text: first,
+              selection: TextSelection.collapsed(offset: first.length),
+              composing: composingOnly
+                  ? TextRange(start: first.length - 1, end: first.length)
+                  : TextRange.empty,
+            );
+            final text = '${first}y';
+            home.richController.value = TextEditingValue(
+              text: text,
+              selection: TextSelection.collapsed(offset: text.length),
+              composing: state == null
+                  ? TextRange.empty
+                  : TextRange(start: first.length - 1, end: text.length),
+            );
+            expect(home.dirty, isTrue);
+            expect(home.workspace.dirty, !composingOnly);
+            if (state == null) {
+              await home.workspace.syncNow(trigger: 'background');
+            } else {
+              home.didChangeAppLifecycleState(state);
+            }
+            // Less than the autosave debounce; the lifecycle flush must land now.
+            try {
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+              expect(http.completed, 0);
+              expect(await storage.readText('notes/a.typ'), contains('xy'));
+            } finally {
+              http.release.complete();
+              await sync;
+            }
+          }, createHttpClient: (_) => http),
+        );
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  for (final code in [502, 503, 504, ...List.generate(11, (i) => 520 + i)]) {
+    testWidgets('MKCOL $code fails once and backs off between runs', (
+      tester,
+    ) async {
+      final (_, home) = await _mountTaskTimers(tester);
+      late _GatedProxyHttp http;
+      await tester.runAsync(() async {
+        http = _GatedProxyHttp(status: code)..release.complete();
+      });
+      home.workspace.cloud = const NextcloudConfig(
+        serverUrl: 'https://unused.invalid/Vault',
+        username: 'alice',
+        password: 'secret',
+      );
+      final delays = NextcloudSync.busyRetryDelays;
+      NextcloudSync.busyRetryDelays = const [Duration.zero];
+      try {
+        await tester.runAsync(
+          () => HttpOverrides.runZoned(() async {
+            expect(
+              await home.workspace.syncNow(trigger: 'background'),
+              isFalse,
+            );
+            expect(http.completed, 1);
+            expect(
+              await home.workspace.syncNow(trigger: 'background'),
+              isFalse,
+            );
+            expect(http.completed, 1, reason: 'automatic runs back off');
+          }, createHttpClient: (_) => http),
+        );
+      } finally {
+        NextcloudSync.busyRetryDelays = delays;
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('pause saves dirty text when sync is already running', (
     tester,
   ) async {
@@ -3427,4 +3569,61 @@ Future<void> _openEditorVault(WidgetTester tester) async {
   );
   home.workspace.replaceNote('notes/test.typ', '');
   await tester.pump();
+}
+
+class _GatedProxyHttp implements HttpClient {
+  _GatedProxyHttp({this.status = 530});
+  final int status;
+  final started = Completer<void>();
+  final release = Completer<void>();
+  int completed = 0;
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async =>
+      _ProxyRequest(this);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ProxyHeaders implements HttpHeaders {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ProxyRequest implements HttpClientRequest {
+  _ProxyRequest(this.http);
+  final _GatedProxyHttp http;
+  @override
+  final headers = _ProxyHeaders();
+  @override
+  Future<HttpClientResponse> close() async {
+    if (!http.started.isCompleted) http.started.complete();
+    await http.release.future;
+    http.completed++;
+    return _ProxyResponse(http.status);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _ProxyResponse extends Stream<List<int>> implements HttpClientResponse {
+  _ProxyResponse(this.statusCode);
+  @override
+  final int statusCode;
+  @override
+  final headers = _ProxyHeaders();
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => const Stream<List<int>>.empty().listen(
+    onData,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -347,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   set status(String value) => workspace.status = value;
   bool get dirty =>
       workspace.dirty ||
+      richController.isComposing ||
       (_plainEditorKey.currentState?.hasPendingChanges ?? false);
   String get helperSource => workspace.helperSource;
   Map<String, Uint8List> get typstPackageFiles => workspace.typstPackageFiles;
@@ -804,6 +805,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _save({bool syncAfter = true}) async {
+    if (richController.isComposing) {
+      richController.value = richController.value.copyWith(
+        composing: TextRange.empty,
+      );
+    }
     _plainEditorKey.currentState?.flush();
     if (_currentSource() != workspace.source) {
       workspace.source = _currentSource();
@@ -2332,6 +2338,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_exiting) return;
+    if (state == AppLifecycleState.inactive) {
+      if (dirty) unawaited(_save(syncAfter: false));
+      return;
+    }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _semantic?.pause();
@@ -4466,7 +4476,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pagedNotes: _pagedLibraryNotes,
         calendar: workspace.calendar,
         dayMarks: workspace.calendarDayMarks,
-        indexing: rebuilding || syncing,
+        indexing: workspace.indexing || syncing,
         // Insertion order stays newest-opened-first — the shelf's
         // continue-reading card takes the first in-progress entry.
         progressByPath: {for (final r in _mergedRecent()) r.path: r.progress},
@@ -4903,6 +4913,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? PageStorage(
             bucket: _todayStorage,
             child: TodayPage(
+              indexing: workspace.indexing,
               shownDay: currentDaily,
               onOpenDay: (day) => _stepDay(0, target: day),
               events: [

@@ -51,8 +51,10 @@ class TodayPage extends StatelessWidget {
     this.onReadPath,
     this.onAllTasks,
     this.notes = const {},
+    this.indexing = false,
   });
 
+  final bool indexing;
   final VoidCallback? onAllTasks;
   final Map<String, NoteRef> notes;
   final List<CalendarItem> events;
@@ -104,6 +106,7 @@ class TodayPage extends StatelessWidget {
         agenda.isNotEmpty ||
         overdue.isNotEmpty ||
         onAllTasks != null ||
+        indexing ||
         recent.isNotEmpty;
     Widget taskRow(TaskRef task) => TaskRow(
       task: task,
@@ -133,7 +136,8 @@ class TodayPage extends StatelessWidget {
                         next != null ||
                         overdue.isNotEmpty ||
                         todayEvents.isNotEmpty ||
-                        onAllTasks != null)
+                        onAllTasks != null ||
+                        indexing)
                       ExpansionTile(
                         key: const PageStorageKey('today-agenda'),
                         leading: const Icon(Icons.event_note),
@@ -142,7 +146,9 @@ class TodayPage extends StatelessWidget {
                               ? null
                               : () => onOpenDay!(nextDay),
                           child: Text(
-                            next == null
+                            indexing && tasks.isEmpty
+                                ? 'Indexing…'
+                                : next == null
                                 ? 'Agenda · ${agenda.length + overdue.length + todayEvents.length}'
                                 : 'No classes · Next: ${compactHumanDate(nextDay!, now: nextDay)} ${nextStart == null ? '' : '${localTime(nextStart)} '}${next.title}',
                           ),

@@ -235,6 +235,7 @@ class WorkspaceController extends ChangeNotifier {
   /// light that up. Two concurrent scans would race on `index.json` (and the
   /// worker is single-flight by design).
   bool _indexing = false;
+  bool get indexing => rebuilding || _indexing;
 
   /// A scan asked for while one was already running. Coalesced rather than
   /// dropped — see [_scan].
@@ -1224,6 +1225,7 @@ class WorkspaceController extends ChangeNotifier {
     _indexing = true;
     final done = Completer<void>();
     _activeScan = done.future;
+    notifyListeners();
     try {
       // Repeats are never forced: a queued scan is there to pick up new bytes,
       // not to re-compile the whole vault a second time.
@@ -1244,6 +1246,7 @@ class WorkspaceController extends ChangeNotifier {
       if (_vaultGeneration == generation) {
         _indexing = false;
         _activeScan = null;
+        if (!_disposed) notifyListeners();
       }
       done.complete();
     }
@@ -1666,6 +1669,15 @@ class WorkspaceController extends ChangeNotifier {
       throw const WorkspaceSyncNotConfigured();
     }
     final generation = _vaultGeneration;
+    // Local edits must reach storage before any sync ownership gate.
+    if (dirty) {
+      final saved = await save(syncAfter: false);
+      if (!_owns(opened, generation)) return false;
+      if (!saved || dirty) {
+        status = 'Sync postponed — unsaved changes';
+        return false;
+      }
+    }
     if (syncing) return false;
     final pushOnly =
         trigger == 'autosave' &&
@@ -1738,17 +1750,6 @@ class WorkspaceController extends ChangeNotifier {
       if (keepRunningOffscreen) {
         _foregroundGeneration = generation;
         await _startSyncForeground('Preparing Nextcloud sync…');
-      }
-      if (dirty) {
-        final saved = await save(syncAfter: false);
-        if (!_owns(opened, generation)) return false;
-        if (!saved || dirty) {
-          // Without this the status string stays 'Syncing…' forever, which is
-          // what made the dashboard claim a sync was running while the banner
-          // said sync was paused.
-          status = 'Sync postponed — unsaved changes';
-          return false;
-        }
       }
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;

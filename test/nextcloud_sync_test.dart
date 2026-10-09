@@ -3074,7 +3074,7 @@ void main() {
     expect(await vault.storage.readText('notes/locked.typ'), 'locked note');
   });
 
-  test('a 502 download is retried, not failed', () async {
+  test('a 502 download fails the run and succeeds on the next run', () async {
     NextcloudSync.busyRetryDelays = const [Duration.zero];
     addTearDown(
       () => NextcloudSync.busyRetryDelays = const [
@@ -3100,6 +3100,16 @@ void main() {
       await dir.delete(recursive: true);
     });
     await vault.ensureCreated();
+
+    await expectLater(
+      NextcloudSync(
+        _config(server),
+      ).sync(vault, initialMode: InitialSyncMode.downloadRemote),
+      throwsA(
+        isA<WebDavStatusException>().having((e) => e.statusCode, 'status', 502),
+      ),
+    );
+    expect(await vault.storage.exists('notes/locked.typ'), isFalse);
 
     final result = await NextcloudSync(
       _config(server),

@@ -21,6 +21,27 @@ TaskRef _task(String id, {String? due}) => TaskRef(
 );
 
 void main() {
+  testWidgets('Today agenda shows indexing before tasks arrive', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TodayPage(
+            indexing: true,
+            tasks: const [],
+            recent: const [],
+            editor: const SizedBox(),
+            onOpenPath: (_) {},
+            onSetStatus: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Indexing…'), findsOneWidget);
+    expect(find.text('Agenda · 0'), findsNothing);
+  });
+
   testWidgets('Agenda lists events and due tasks for the shown day', (
     tester,
   ) async {

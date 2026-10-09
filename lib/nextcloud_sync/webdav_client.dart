@@ -731,12 +731,9 @@ extension _WebDavClient on NextcloudSync {
       try {
         return await run();
       } on WebDavStatusException catch (error) {
-        // Locks, rate limits, server failures and Cloudflare origin failures
-        // are transient and use the longer busy retry schedule.
-        // NB: WebDavStatusException extends HttpException/IOException, so this
-        // clause must precede the IOException catch.
-        if ((!const {423, 429, 500, 502, 503, 504}.contains(error.statusCode) &&
-                !(error.statusCode >= 520 && error.statusCode <= 530)) ||
+        // Proxy failures back off between runs; retrying here holds sync for 50s.
+        // This precedes IOException because status errors extend HttpException.
+        if (!const {423, 429, 500}.contains(error.statusCode) ||
             attempt >= NextcloudSync.busyRetryDelays.length) {
           rethrow;
         }

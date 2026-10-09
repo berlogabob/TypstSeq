@@ -524,8 +524,12 @@ const kVaultIndexVersion = 13;
 /// then re-derived in place instead of recompiled.
 ///
 /// 1: the query shape as of index version 6 — unchanged through 10.
-/// 2: raw envelopes are checked before applying legacy defaults.
-const kVaultQueryVersion = 2;
+///
+/// ponytail: not bumped for the raw-envelope check added in 0.12.3. A bump
+/// recompiles every note (30+ min with an empty Library on an 8,871-note
+/// phone); the check applies to notes as they are next compiled. Bump only
+/// once a stale index stays visible during the rebuild.
+const kVaultQueryVersion = 1;
 
 class VaultIndex {
   const VaultIndex({

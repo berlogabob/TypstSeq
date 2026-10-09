@@ -7,6 +7,12 @@ their history is in the commit log and the GitHub release notes.
 
 ### Fixed
 
+- **Text you were still composing on the keyboard is saved when you leave
+  the app,** and a save no longer waits behind a sync.
+- **An unreachable server fails a sync at once** (was 50 seconds of retries
+  inside one run); the next run retries.
+- Tasks and the Today agenda show "Indexing…" while the index is rebuilt,
+  instead of "No matching tasks".
 - **A failed save is shown** above the editor with a Retry button, instead
   of failing silently.
 - **Typing no longer switches the editor** when a note grows past the
@@ -52,8 +58,8 @@ their history is in the commit log and the GitHub release notes.
 - Database revision conflicts name the affected note instead of being
   ignored.
 - The vault check reports task records with a wrong envelope, missing
-  required fields, and impossible dates. The first launch after updating
-  rescans note metadata once.
+  required fields, and impossible dates. The envelope check applies to
+  notes as they are next compiled; this update does not recompile the vault.
 - Tasks read by the fallback scanner keep their custom properties, and
   attachment paths written with a leading slash are treated as vault paths.
 
