@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/knowledge_screen.dart';
@@ -14,6 +15,55 @@ PkmsProblem _broken(String subject, String target) => PkmsProblem(
 );
 
 void main() {
+  for (final vector in [false, true]) {
+    testWidgets(
+      '${vector ? "vector" : "keyword"} search failure keeps query and Retry recovers without reflow',
+      (tester) async {
+        var fail = false;
+        final pending = Completer<List<PkmsSearchResult>>();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: KnowledgeScreen(
+              index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+              search: (query, _, _) async {
+                if (query.isEmpty) return const [];
+                if (fail && !vector) throw StateError('keyword failed');
+                return pending.future;
+              },
+              vectorSearch: vector
+                  ? (_) async {
+                      if (fail) throw StateError('vector failed');
+                      return const <VectorHit>[];
+                    }
+                  : null,
+              problems: const [],
+              onOpenNote: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final before = tester.getRect(find.byType(TextField));
+        fail = true;
+        await tester.enterText(find.byType(TextField), 'retained query');
+        await tester.pump(const Duration(milliseconds: 150));
+        expect(find.text('No matches'), findsNothing);
+        pending.complete(const []);
+        await tester.pumpAndSettle();
+        expect(find.text('Search failed. Try again.'), findsOneWidget);
+        expect(tester.getRect(find.byType(TextField)), before);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'retained query',
+        );
+        fail = false;
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(find.text('Search failed. Try again.'), findsNothing);
+        expect(find.text('No matches'), findsOneWidget);
+      },
+    );
+  }
+
   testWidgets('search top bar exposes timestamp capture', (tester) async {
     var captures = 0;
     await tester.pumpWidget(

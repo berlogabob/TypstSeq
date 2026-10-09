@@ -242,6 +242,7 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
   TaskAgendaFilter _filter = TaskAgendaFilter.open;
   String? _project;
   String _search = '';
+  bool _searchOpen = false;
   List<TaskAgendaGroup> _groups = const [];
   Timer? _dayTimer;
   late String _today;
@@ -308,6 +309,13 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
                       _refresh();
                     }),
                   ),
+                IconButton(
+                  tooltip: 'Search tasks',
+                  icon: const Icon(Icons.search),
+                  onPressed: () => setState(() {
+                    _searchOpen = !_searchOpen || _search.isNotEmpty;
+                  }),
+                ),
                 DropdownButton<String>(
                   value: _project,
                   hint: const Text('All projects'),
@@ -326,16 +334,18 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
                 ),
               ],
             ),
-            TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search task text',
-                prefixIcon: Icon(Icons.search),
+            if (_searchOpen || _search.isNotEmpty)
+              TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search task text',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() {
+                  _search = value;
+                  _refresh();
+                }),
               ),
-              onChanged: (value) => setState(() {
-                _search = value;
-                _refresh();
-              }),
-            ),
           ],
         ),
       ),
@@ -633,9 +643,9 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
           ),
         Expanded(
           child: ListView.builder(
-            itemCount: 1 + (notes.isEmpty ? 1 : notes.length),
+            itemCount: notes.isEmpty ? 2 : notes.length,
             itemBuilder: (context, i) {
-              if (i == 0) {
+              if (notes.isEmpty && i == 0) {
                 return Row(
                   children: [
                     Expanded(
@@ -663,7 +673,7 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
                   title: Text(widget.indexing ? 'Indexing…' : 'No notes yet'),
                 );
               }
-              final note = notes[i - 1];
+              final note = notes[i];
               final isEntity = !structuralNoteKinds.contains(note.kind);
               return ListTile(
                 // Shared kind→icon map so a person reads as a person here too.

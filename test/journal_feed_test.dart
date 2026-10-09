@@ -157,6 +157,46 @@ void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
 
+  testWidgets('journal read failure offers Retry and reloads the day', (
+    tester,
+  ) async {
+    final root = await Directory.systemTemp.createTemp('tylog_journal_retry_');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    const path = 'daily/2026-10-08.typ';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JournalFeed(
+            vault: vault,
+            index: const VaultIndex(
+              notesByPath: {
+                path: NoteRef(
+                  id: '2026-10-08',
+                  path: path,
+                  title: '2026-10-08',
+                  date: '2026-10-08',
+                  kind: 'daily',
+                  outgoingLinks: [],
+                ),
+              },
+              backlinksByTarget: {},
+            ),
+            onOpenPath: (_) {},
+          ),
+        ),
+      ),
+    );
+    await pumpUntilFound(tester, find.text('Could not read this day.'));
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    await vault.storage.writeText(path, 'Recovered journal prose');
+    await tester.tap(find.text('Retry'));
+    await pumpUntilFound(tester, find.text('Recovered journal prose'));
+    expect(find.text('Could not read this day.'), findsNothing);
+    expect(find.text('Recovered journal prose'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('journal lists only real pages; a day\'s events stay collapsed', (
     tester,
   ) async {

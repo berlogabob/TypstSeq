@@ -7,6 +7,13 @@ their history is in the commit log and the GitHub release notes.
 
 ### Fixed
 
+- **A failed save is shown** above the editor with a Retry button, instead
+  of failing silently.
+- **Typing no longer switches the editor** when a note grows past the
+  long-note limit; the editor and focus stay for the session.
+- Cancelling vault setup shows "Choose vault" instead of an editor that
+  cannot save.
+- A journal day that failed to load, and a failed search, offer Retry.
 - **A database error no longer deletes a new note.** If saving to the index
   fails, the file on disk is kept, marked for re-indexing, and the error is
   shown.
@@ -50,6 +57,11 @@ their history is in the commit log and the GitHub release notes.
 
 ### Removed
 
+- **Rows that took space at the top of screens:** the Tasks search field is
+  now an icon that opens the field; the "New note / New entity" row is gone
+  from Library lists that have notes (still in More and on an empty list);
+  Undo/Redo in long plain notes moved into the app bar; the Idea row shows
+  only on idea notes.
 - **The "Add task…" field above Today and Tasks.** It took a row of space;
   type `TODO ` on any page instead.
 

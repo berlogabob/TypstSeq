@@ -11,18 +11,19 @@ class VirtualPlainEditor extends StatefulWidget {
     super.key,
     required this.source,
     required this.onChanged,
+    this.onHistoryChanged,
   });
 
   final String source;
   final ValueChanged<String> onChanged;
+  final VoidCallback? onHistoryChanged;
 
   @override
-  State<VirtualPlainEditor> createState() => _VirtualPlainEditorState();
+  State<VirtualPlainEditor> createState() => VirtualPlainEditorState();
 }
 
-class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
+class VirtualPlainEditorState extends State<VirtualPlainEditor> {
   final _scrollController = ScrollController();
-  final _revision = ValueNotifier<int>(0);
   Timer? _emitTimer;
   bool _emitPending = false;
   final _undo = <String>[];
@@ -59,7 +60,6 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       _replaceControllers(_source);
       _undo.clear();
       _redo.clear();
-      _revision.value++;
     }
   }
 
@@ -82,20 +82,35 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
       widget.onChanged(_source);
     });
     if (undoWasEmpty != _undo.isEmpty || redoWasNotEmpty != _redo.isNotEmpty) {
-      _revision.value++;
+      widget.onHistoryChanged?.call();
     }
   }
 
   void _restore(String source) {
-    _source = source;
-    _replaceControllers(source);
+    setState(() {
+      _source = source;
+      _replaceControllers(source);
+    });
     _emitTimer?.cancel();
     _emitPending = false;
     widget.onChanged(source);
-    _revision.value++;
+    widget.onHistoryChanged?.call();
   }
 
-  void _undoEdit() {
+  bool get hasPendingChanges => _emitPending;
+
+  void flush() {
+    if (!_emitPending) return;
+    _emitTimer?.cancel();
+    _emitPending = false;
+    _source = _readSource();
+    widget.onChanged(_source);
+  }
+
+  bool get canUndo => _undo.isNotEmpty;
+  bool get canRedo => _redo.isNotEmpty;
+
+  void undo() {
     if (_undo.isEmpty) return;
     final current = _readSource();
     final previous = _undo.removeLast();
@@ -103,7 +118,7 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _restore(previous);
   }
 
-  void _redoEdit() {
+  void redo() {
     if (_redo.isEmpty) return;
     final current = _readSource();
     final next = _redo.removeLast();
@@ -116,7 +131,6 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
     _scrollController.dispose();
     _emitTimer?.cancel();
     if (_emitPending) widget.onChanged(_readSource());
-    _revision.dispose();
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -124,50 +138,22 @@ class _VirtualPlainEditorState extends State<VirtualPlainEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      SizedBox(
-        height: 48,
-        child: ListenableBuilder(
-          listenable: _revision,
-          builder: (context, _) => Row(
-            children: [
-              IconButton(
-                tooltip: 'Undo',
-                onPressed: _undo.isEmpty ? null : _undoEdit,
-                icon: const Icon(Icons.undo),
-              ),
-              IconButton(
-                tooltip: 'Redo',
-                onPressed: _redo.isEmpty ? null : _redoEdit,
-                icon: const Icon(Icons.redo),
-              ),
-            ],
-          ),
-        ),
+  Widget build(BuildContext context) => ListView.builder(
+    controller: _scrollController,
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+    itemCount: _controllers.length,
+    itemBuilder: (context, index) => TextField(
+      controller: _controllers[index],
+      maxLines: null,
+      minLines: 1,
+      textAlignVertical: TextAlignVertical.top,
+      style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(vertical: 6),
       ),
-      Expanded(
-        child: ListView.builder(
-          controller: _scrollController,
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-          itemCount: _controllers.length,
-          itemBuilder: (context, index) => TextField(
-            controller: _controllers[index],
-            maxLines: null,
-            minLines: 1,
-            textAlignVertical: TextAlignVertical.top,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.55),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 6),
-            ),
-            onChanged: (_) => _changed(),
-          ),
-        ),
-      ),
-    ],
+      onChanged: (_) => _changed(),
+    ),
   );
 }

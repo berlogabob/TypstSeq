@@ -21,13 +21,16 @@ void main() {
     _note('a-screenshot', 'screenshot'),
   ];
 
-  Widget surface() => MaterialApp(
+  Widget surface({bool empty = false}) => MaterialApp(
     home: Scaffold(
       body: LibraryView(
         calendar: const [],
         dayMarks: (daily: <String>{}, refs: <String>{}),
         index: VaultIndex(
-          notesByPath: {for (final n in notes) n.path: n},
+          notesByPath: {
+            if (!empty)
+              for (final n in notes) n.path: n,
+          },
           backlinksByTarget: const {},
           tasks: const [],
         ),
@@ -56,6 +59,8 @@ void main() {
     expect(find.text('Projects'), findsNothing);
     expect(find.text('Entities'), findsNothing);
     // …and their contents live in the default Notes list.
+    expect(find.text('New note'), findsNothing);
+    expect(find.text('New entity'), findsNothing);
     expect(find.text('plain-note'), findsOneWidget);
     expect(find.text('the-project'), findsOneWidget);
     expect(find.text('ilya'), findsOneWidget);
@@ -64,6 +69,13 @@ void main() {
     expect(find.text('a-screenshot'), findsNothing);
     expect(find.widgetWithText(FilterChip, 'screenshot'), findsNothing);
     expect(find.text('Screenshots'), findsOneWidget);
+  });
+
+  testWidgets('empty Notes keeps note and entity creation', (tester) async {
+    await tester.pumpWidget(surface(empty: true));
+    expect(find.text('New note'), findsOneWidget);
+    expect(find.text('New entity'), findsOneWidget);
+    expect(find.text('No notes yet'), findsOneWidget);
   });
 
   testWidgets('kind chips filter the unified list', (tester) async {

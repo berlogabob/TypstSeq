@@ -251,6 +251,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Set<String> _reservedTaskIds = {};
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
+  var _plainEditorKey = GlobalKey<VirtualPlainEditorState>();
+  final _plainHistoryRevision = ValueNotifier<int>(0);
   late final TyLogEditingController richController;
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
@@ -343,7 +345,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   set note(String? value) => workspace.note = value;
   String get status => workspace.status;
   set status(String value) => workspace.status = value;
-  bool get dirty => workspace.dirty;
+  bool get dirty =>
+      workspace.dirty ||
+      (_plainEditorKey.currentState?.hasPendingChanges ?? false);
   String get helperSource => workspace.helperSource;
   Map<String, Uint8List> get typstPackageFiles => workspace.typstPackageFiles;
   String get bibliographySource => workspace.bibliographySource;
@@ -370,9 +374,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _captureFocus = FocusNode();
   final _todayStorage = PageStorageBucket();
   String? _timestampCapturePath;
+  (Vault?, String?)? _editorNote;
+  bool _plainLongEditor = false;
   bool get _usePlainLongEditor =>
-      note != _timestampCapturePath &&
-      shouldUseVirtualPlainEditor(richController);
+      note != _timestampCapturePath && _plainLongEditor;
   static const _shareChannel = MethodChannel('org.tylog.tylog/share');
   bool _handlingShare = false;
   List<ArticleJob> _articleJobs = const [];
@@ -561,6 +566,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     _openGeneration++;
     _captureFocus.dispose();
+    _plainHistoryRevision.dispose();
     _shareChannel.setMethodCallHandler(null);
     _previewDebounceTimer?.cancel();
     _semanticRefreshTimer?.cancel();
@@ -700,6 +706,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       sourceController.text = workspace.source;
       if (changed) richController.loadSource(workspace.source);
     }
+    if (_editorNote != (vault, note)) {
+      _editorNote = (vault, note);
+      _plainEditorKey = GlobalKey<VirtualPlainEditorState>();
+      _plainLongEditor = shouldUseVirtualPlainEditor(richController);
+    }
     final jobsRevision = (vault, syncing, workspace.indexRevision);
     if (_jobsRevision != jobsRevision) {
       _jobsRevision = jobsRevision;
@@ -790,6 +801,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _save({bool syncAfter = true}) async {
+    _plainEditorKey.currentState?.flush();
     if (_currentSource() != workspace.source) {
       workspace.source = _currentSource();
     }
@@ -4135,6 +4147,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
       _ShellAction.settings: (Icons.settings, 'Settings'),
       _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
+      _ShellAction.newEntity: (Icons.person_add_alt, 'New entity'),
       _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
       _ShellAction.split: (Icons.vertical_split, 'Split editor'),
       _ShellAction.backlinks: (Icons.link, 'Context'),
@@ -4265,6 +4278,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _showVaults();
       case _ShellAction.newPage:
         await _newPage();
+      case _ShellAction.newEntity:
+        await _createEntity();
       case _ShellAction.graph:
         setState(() => mode = 'graph');
       case _ShellAction.split:
@@ -4397,6 +4412,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'split',
     };
     final content = switch (mode) {
+      _ when v == null && documentModes.contains(mode) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Choose a vault folder to continue'),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => unawaited(_open()),
+              child: const Text('Choose vault'),
+            ),
+          ],
+        ),
+      ),
       'journal' => JournalFeed(
         onSetStatus: _setTaskStatus,
         onSetField: _setTaskField,
@@ -4585,8 +4613,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }(),
       'normal' when _usePlainLongEditor => VirtualPlainEditor(
+        key: _plainEditorKey,
+        onHistoryChanged: () => _plainHistoryRevision.value++,
         source: richController.text,
         onChanged: (visibleText) {
+          if (!identical(vault, v) || note != current) return;
           richController.value = TextEditingValue(
             text: visibleText,
             selection: TextSelection.collapsed(offset: visibleText.length),
@@ -4796,6 +4827,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (documentModes.contains(mode) &&
         currentNote != null &&
+        currentNote.kind == 'idea' &&
         currentDaily == null) {
       documentContent = Column(
         children: [
@@ -4915,20 +4947,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       listenable: Listenable.merge([workspace, workspace.syncProgressTick]),
       builder: (context, _) {
         final openFailed = status.startsWith('Open failed:');
-        final banner = openFailed
+        final saveFailed = status.startsWith('Save failed');
+        final failed = openFailed || saveFailed;
+        final banner = failed
             ? MaterialBanner(
                 key: const ValueKey('status-error'),
                 backgroundColor: Theme.of(context).colorScheme.errorContainer,
                 content: Text(
-                  status,
+                  saveFailed
+                      ? 'Could not save your note. Your edits are still here.'
+                      : status,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onErrorContainer,
                   ),
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () => unawaited(_open()),
-                    child: const Text('Retry'),
+                    onPressed: () =>
+                        saveFailed ? unawaited(_save()) : unawaited(_open()),
+                    child: Text(saveFailed ? 'Retry Save' : 'Retry'),
                   ),
                 ],
               )
@@ -4960,7 +4997,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return AnimatedSwitcher(
           key: error ? null : _statusPillBounds,
           duration: const Duration(milliseconds: 200),
-          child: openFailed == error
+          child: failed == error
               ? banner
               : const SizedBox.shrink(key: ValueKey('status-none')),
         );
@@ -5097,6 +5134,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(value: 'timeline', child: Text('Timeline')),
                 PopupMenuItem(value: 'voronoi', child: Text('Voronoi')),
               ],
+            ),
+          if (mode == 'normal' && _usePlainLongEditor && v != null)
+            ListenableBuilder(
+              listenable: _plainHistoryRevision,
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Undo',
+                    icon: const Icon(Icons.undo),
+                    onPressed: _plainEditorKey.currentState?.canUndo == true
+                        ? () => _plainEditorKey.currentState?.undo()
+                        : null,
+                  ),
+                  IconButton(
+                    tooltip: 'Redo',
+                    icon: const Icon(Icons.redo),
+                    onPressed: _plainEditorKey.currentState?.canRedo == true
+                        ? () => _plainEditorKey.currentState?.redo()
+                        : null,
+                  ),
+                ],
+              ),
             ),
           if (documentModes.contains(mode))
             PopupMenuButton<String>(
@@ -5280,6 +5340,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 enum _ShellAction {
   vaults,
   newPage,
+  newEntity,
   sharePdf,
   graph,
   split,

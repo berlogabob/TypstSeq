@@ -213,15 +213,13 @@ class _JournalFeedState extends State<JournalFeed> {
         final day = days[index];
         final source = day.path.isEmpty
             ? Future.value('')
-            : sources.putIfAbsent(
-                day.path,
-                // whenComplete registers before FutureBuilder subscribes, so the
-                // loaded marker is set by the time the completion frame's
-                // bootstrap/scroll checks run.
-                () =>
-                    widget.vault!.storage.readText(day.path)
-                      ..whenComplete(() => _loadedPaths.add(day.path)),
-              );
+            : sources.putIfAbsent(day.path, () async {
+                try {
+                  return await widget.vault!.storage.readText(day.path);
+                } finally {
+                  _loadedPaths.add(day.path);
+                }
+              });
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           clipBehavior: Clip.antiAlias,
@@ -254,6 +252,19 @@ class _JournalFeedState extends State<JournalFeed> {
                     future: source,
                     builder: (context, snapshot) {
                       if (day.path.isEmpty) return const SizedBox.shrink();
+                      if (snapshot.hasError) {
+                        return ListTile(
+                          leading: const Icon(Icons.error_outline),
+                          title: const Text('Could not read this day.'),
+                          trailing: TextButton(
+                            onPressed: () => setState(() {
+                              sources.remove(day.path);
+                              _loadedPaths.remove(day.path);
+                            }),
+                            child: const Text('Retry'),
+                          ),
+                        );
+                      }
                       if (!snapshot.hasData) {
                         return const LinearProgressIndicator();
                       }

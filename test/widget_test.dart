@@ -28,6 +28,8 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog/widgets/task_clock.dart';
+import 'package:tylog/widgets/virtual_plain_editor.dart';
+import 'package:tylog/widgets/idea_hub.dart';
 import 'package:tylog/widgets/task_row.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 
@@ -167,6 +169,213 @@ Future<void> _tapTaskTimer(
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets(
+    'autosave failure floats above editor and Retry Save preserves text',
+    (tester) async {
+      final (storage, home) = await _mountTaskTimers(tester);
+      home.mode = 'normal';
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      final before = tester.getRect(find.byType(TyLogRichEditor));
+      storage.failWrites = true;
+      home.sourceController.text = '${home.workspace.source}Unsaved prose';
+      home.workspace.edit(home.sourceController.text as String);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(home.workspace.dirty, isTrue);
+      expect(find.text('Retry Save'), findsOneWidget);
+      expect(tester.getRect(find.byType(TyLogRichEditor)), before);
+      storage.failWrites = false;
+      await tester.tap(find.text('Retry Save'));
+      await tester.pumpAndSettle();
+      expect(home.workspace.dirty, isFalse);
+      expect(await storage.readText('notes/a.typ'), contains('Unsaved prose'));
+      expect(find.text('Retry Save'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'cancelled vault setup offers Choose vault instead of an editor',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+      );
+      await tester.pumpAndSettle();
+      final dynamic home = tester.state(find.byType(HomeScreen));
+      home.workspace.close('Choose a vault folder to continue');
+      await tester.pumpAndSettle();
+      expect(find.byType(TyLogRichEditor), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('Choose a vault folder to continue'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Choose vault'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      home.workspace.vault = Vault.withStorage(_FailingStorage());
+      home.workspace.index = const VaultIndex(
+        notesByPath: {},
+        backlinksByTarget: {},
+      );
+      home.workspace.replaceNote('notes/a.typ', 'Writable note');
+      await tester.pumpAndSettle();
+      expect(find.byType(TyLogRichEditor), findsOneWidget);
+      expect(find.text('Choose vault'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('typing across long-note thresholds keeps editor and focus', (
+    tester,
+  ) async {
+    final (_, home) = await _mountTaskTimers(tester);
+    home.workspace.replaceNote('notes/short.typ', 'short');
+    home.mode = 'normal';
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    final editor = tester.element(find.byType(TyLogRichEditor));
+    await tester.tap(find.byType(TextField).first);
+    await tester.pumpAndSettle();
+    final focus = FocusManager.instance.primaryFocus;
+    home.richController.value = TextEditingValue(
+      text: 'a' * (32 * 1024),
+      selection: const TextSelection.collapsed(offset: 1),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(VirtualPlainEditor), findsNothing);
+    expect(tester.element(find.byType(TyLogRichEditor)), same(editor));
+    expect(FocusManager.instance.primaryFocus, same(focus));
+    home.workspace.replaceNote(
+      'notes/long.typ',
+      List.filled(200, 'paragraph').join('\n\n'),
+    );
+    await tester.pumpAndSettle();
+    final plain = tester.element(find.byType(VirtualPlainEditor));
+    home.richController.value = const TextEditingValue(
+      text: 'short again',
+      selection: TextSelection.collapsed(offset: 1),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.element(find.byType(VirtualPlainEditor)), same(plain));
+    home.workspace.replaceNote('notes/other.typ', 'small');
+    await tester.pumpAndSettle();
+    expect(find.byType(VirtualPlainEditor), findsNothing);
+    expect(find.byType(TyLogRichEditor), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('More keeps note and entity creation reachable', (tester) async {
+    await _mountTaskTimers(tester);
+    await tester.tap(find.text('More').last);
+    await tester.pumpAndSettle();
+    expect(find.text('New page'), findsOneWidget);
+    await tester.tap(find.text('New entity'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AlertDialog, 'New entity'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('long plain editor has Undo Redo in app bar and restores prose', (
+    tester,
+  ) async {
+    final (_, home) = await _mountTaskTimers(tester);
+    final source = List.filled(200, 'paragraph').join('\n\n');
+    home.workspace.replaceNote('notes/long.typ', source);
+    home.mode = 'normal';
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(VirtualPlainEditor),
+        matching: find.byType(IconButton),
+      ),
+      findsNothing,
+    );
+    final undo = find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byTooltip('Undo'),
+    );
+    final redo = find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byTooltip('Redo'),
+    );
+    expect(undo, findsOneWidget);
+    expect(redo, findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'edited');
+    await tester.pump(const Duration(milliseconds: 320));
+    await tester.pump();
+    await tester.tap(undo);
+    await tester.pumpAndSettle();
+    expect(home.richController.text, source);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'paragraph',
+    );
+    await tester.tap(redo);
+    await tester.pumpAndSettle();
+    expect(home.richController.text, startsWith('edited'));
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'edited',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('long plain editor saves pending typing before navigation', (
+    tester,
+  ) async {
+    final (storage, home) = await _mountTaskTimers(tester);
+    home.workspace.replaceNote(
+      'notes/long.typ',
+      List.filled(200, 'paragraph').join('\n\n'),
+    );
+    home.mode = 'normal';
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Last keystrokes');
+    await tester.tap(find.text('Library').last);
+    await tester.pumpAndSettle();
+    expect(
+      await storage.readText('notes/long.typ'),
+      startsWith('Last keystrokes'),
+    );
+    expect(home.workspace.dirty, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Idea controls appear only on idea notes', (tester) async {
+    final (_, home) = await _mountTaskTimers(tester);
+    final notes = [
+      for (final kind in ['note', 'person', 'project', 'idea'])
+        NoteRef(
+          id: kind,
+          path: 'notes/$kind.typ',
+          title: kind,
+          kind: kind,
+          outgoingLinks: const [],
+        ),
+    ];
+    home.workspace.index = VaultIndex(
+      notesByPath: {for (final note in notes) note.path: note},
+      backlinksByTarget: const {},
+    );
+    home.mode = 'normal';
+    for (final note in notes) {
+      home.workspace.replaceNote(note.path, 'Prose');
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(IdeaProperties),
+        note.kind == 'idea' ? findsOneWidget : findsNothing,
+      );
+      expect(find.byType(TyLogRichEditor), findsOneWidget);
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('pause saves dirty text when sync is already running', (
     tester,
   ) async {
@@ -795,8 +1004,9 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byKey(const Key('quick-capture')), findsNothing);
     expect(find.byTooltip('Quick actions'), findsNothing);
-    // Launch lands in the journal editor with today's file open.
-    expect(find.byKey(const Key('rich-journal-editor')), findsOneWidget);
+    // Until a vault opens, writing is replaced by folder setup.
+    expect(find.byKey(const Key('rich-journal-editor')), findsNothing);
+    expect(find.text('Choose vault'), findsOneWidget);
   });
 
   testWidgets('graph mode switches reuse cached graphs for the same revision', (
@@ -889,6 +1099,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
+    await _openEditorVault(tester);
 
     await openSource(tester);
     const raw = '= Heading\n\nVisible text\n\n#custom()[Secret]';
@@ -940,6 +1151,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
+    await _openEditorVault(tester);
     expect(find.byTooltip('View mode'), findsOneWidget);
     await tester.tap(find.byTooltip('View mode'));
     await tester.pumpAndSettle();
@@ -1023,6 +1235,7 @@ void main() {
 
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
+    await _openEditorVault(tester);
     await openSource(tester);
     await tester.enterText(
       find.byType(TextField),
@@ -1121,6 +1334,7 @@ void main() {
 
     await tester.pumpWidget(const TyLogApp());
     await tester.pump();
+    await _openEditorVault(tester);
     await setViewMode(tester, 'Read');
     await tester.tap(find.byTooltip('Reading settings'));
     await tester.pumpAndSettle();
@@ -1390,6 +1604,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
 
     await openSource(tester);
     final editor = find.byType(TextField);
@@ -1416,6 +1631,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
     final editor = find.byKey(const Key('rich-journal-editor'));
     await tester.tap(editor);
     await tester.pump();
@@ -1447,6 +1663,7 @@ void main() {
   testWidgets('editor changes are autosaved', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
 
     await openSource(tester);
 
@@ -1462,6 +1679,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
 
     await openSource(tester);
 
@@ -1655,6 +1873,7 @@ void main() {
     controller.vault = vault;
     controller.replaceNote('notes/current.typ', '');
     home.sourceController.text = '';
+    await tester.pump();
     final editor = tester.widget<TyLogRichEditor>(find.byType(TyLogRichEditor));
     editor.controller.loadSource('');
     editor.controller.applyMagic(
@@ -1977,7 +2196,7 @@ void main() {
     expect(controller.source, 'Unsaved current edit');
     expect(controller.dirty, isTrue);
     expect(await storage.exists('notes/Should not create.typ'), isFalse);
-    expect(find.textContaining('Save failed'), findsOneWidget);
+    expect(find.text('Retry Save'), findsOneWidget);
   });
 
   testWidgets('stale new page request cannot create after vault switch', (
@@ -2233,6 +2452,7 @@ void main() {
   testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
 
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
     await tester.pumpAndSettle();
@@ -2278,6 +2498,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
     final editor = find.byKey(const Key('rich-journal-editor'));
     await tester.tap(editor);
     await tester.pump();
@@ -2321,6 +2542,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
     final editor = find.byKey(const Key('rich-journal-editor'));
     await tester.tap(editor);
     await tester.pump();
@@ -2348,6 +2570,7 @@ void main() {
   testWidgets('source Magic Cancel restores source focus', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
+    await _openEditorVault(tester);
     await openSource(tester);
     await tester.pumpAndSettle();
     final editor = find.byType(TextField);
@@ -3089,3 +3312,14 @@ class _SearchStateProbe extends ChangeNotifier {
 }
 
 Future<void> _emptyStartup() async {}
+
+Future<void> _openEditorVault(WidgetTester tester) async {
+  final dynamic home = tester.state(find.byType(HomeScreen));
+  home.workspace.vault = Vault.withStorage(_FailingStorage());
+  home.workspace.index = const VaultIndex(
+    notesByPath: {},
+    backlinksByTarget: {},
+  );
+  home.workspace.replaceNote('notes/test.typ', '');
+  await tester.pump();
+}

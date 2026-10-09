@@ -113,6 +113,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   List<PkmsSearchResult> _results = const [];
   List<ChunkCitation> _citations = const [];
   Timer? _searchDebounce;
+  bool _searchPending = false;
+  bool _searchFailed = false;
 
   /// Guards against a slow reply overwriting a newer one. The query has *two*
   /// inputs (text and tag) reachable from three places, so comparing the reply
@@ -205,6 +207,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       if (_isSearchReady) {
         setState(() {
           _isSearchReady = false;
+          _searchPending = false;
+          _searchFailed = false;
           _results = const [];
           _citations = const [];
         });
@@ -234,30 +238,45 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     _searchDebounce?.cancel();
     final generation = ++_searchGeneration;
     if (!_isSearchReady) return;
+    setState(() {
+      _searchPending = true;
+      _searchFailed = false;
+      _results = const [];
+      _citations = const [];
+    });
     Future<void> run() async {
-      var results = await widget.search(query, selectedTag, selectedStatus);
-      final vectorSearch = widget.vectorSearch;
-      if (vectorSearch != null) {
-        results = mergeHybridSearchResults(
-          keywordResults: results,
-          vectorHits: await vectorSearch(query),
-          resolveMissing: widget.resolveMissing,
-          limit: results.length < 20 ? 20 : results.length,
-        );
-      }
-      var citations = const <ChunkCitation>[];
       try {
-        citations = await widget.citedSearch?.call(query) ?? const [];
+        var results = await widget.search(query, selectedTag, selectedStatus);
+        final vectorSearch = widget.vectorSearch;
+        if (vectorSearch != null) {
+          results = mergeHybridSearchResults(
+            keywordResults: results,
+            vectorHits: await vectorSearch(query),
+            resolveMissing: widget.resolveMissing,
+            limit: results.length < 20 ? 20 : results.length,
+          );
+        }
+        var citations = const <ChunkCitation>[];
+        try {
+          citations = await widget.citedSearch?.call(query) ?? const [];
+        } catch (_) {
+          // Citations are optional; keep ordinary FTS results usable.
+        }
+        // A newer query was issued while this one was in flight; its own reply owns
+        // the results now.
+        if (!mounted || generation != _searchGeneration) return;
+        setState(() {
+          _results = results;
+          _citations = citations;
+          _searchPending = false;
+        });
       } catch (_) {
-        // Citations are optional; keep ordinary FTS results usable.
+        if (!mounted || generation != _searchGeneration) return;
+        setState(() {
+          _searchPending = false;
+          _searchFailed = true;
+        });
       }
-      // A newer query was issued while this one was in flight; its own reply owns
-      // the results now.
-      if (!mounted || generation != _searchGeneration) return;
-      setState(() {
-        _results = results;
-        _citations = citations;
-      });
     }
 
     if (immediate) {
@@ -334,7 +353,34 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       ],
     ),
     body: switch (view) {
-      KnowledgeView.search => _search(),
+      KnowledgeView.search => Stack(
+        children: [
+          Positioned.fill(child: _search()),
+          if (_searchFailed)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: MaterialBanner(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                content: const Text('Search failed. Try again.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => _runSearch(immediate: true),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          if (_searchPending)
+            const Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
+      ),
       KnowledgeView.problems => _problems(),
     },
   );
@@ -547,6 +593,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
         }
         final resultIndex = i - 1 - citations.length;
         if (results.isEmpty || resultIndex >= results.length) {
+          if (_searchPending || _searchFailed) return const SizedBox.shrink();
           return ListTile(
             leading: Icon(
               _isSearchReady ? Icons.search_off : Icons.hourglass_top,
