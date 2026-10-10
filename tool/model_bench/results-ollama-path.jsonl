@@ -1,0 +1,5 @@
+{"date":"2026-10-10","provider":"studio-ollama","model":"bench-ornith35-gsq35:32k","task":"t2_same_value_edit","rep":1,"pass":true,"visible":true,"stray":0,"added":5,"deleted":4,"secs":134}
+{"date":"2026-10-10","provider":"studio-ollama","model":"bench-ornith35-gsq35:32k","task":"t1_new_file","rep":1,"pass":true,"visible":true,"stray":0,"added":77,"deleted":0,"secs":81}
+{"date":"2026-10-10","provider":"studio-ollama","model":"bench-ornith35-gsq35:32k","task":"t1_new_file","rep":2,"pass":false,"visible":true,"stray":0,"added":51,"deleted":0,"secs":61}
+{"date":"2026-10-10","provider":"studio-ollama","model":"bench-ornith35-gsq35:32k","task":"t1_new_file","rep":3,"pass":true,"visible":true,"stray":0,"added":61,"deleted":0,"secs":39}
+{"date":"2026-10-10","provider":"studio-ollama","model":"bench-ornith35-gsq35:32k","task":"t2_same_value_edit","rep":2,"pass":true,"visible":true,"stray":0,"added":5,"deleted":4,"secs":78}
