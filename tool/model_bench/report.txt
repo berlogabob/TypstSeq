@@ -1,0 +1,26 @@
+model                                        task                  pass silent stray     +     -   min
+llama/mannix/ornith-1.5-27b-a3b-coder:latest t1_new_file          1/3        0   0.0    32     0   0.4
+llama/mannix/ornith-1.5-27b-a3b-coder:latest t2_same_value_edit   0/3        3   0.0     0     0   0.1
+llama/mannix/ornith-1.5-27b-a3b-coder:latest t3_large_file_edit   0/3        3   0.0     0     0   0.1
+llama/mannix/ornith-1.5-27b-a3b-coder:latest t4_bug_fix           0/3        0   0.0     0     0   0.1
+llama/mannix/ornith-1.5-27b-a3b-coder:latest t5_write_test        0/3        0   0.0     0     0   0.2
+ollama/ornith-1.5:35b                        t1_new_file          3/3        0   0.0    55     0   0.6
+ollama/ornith-1.5:35b                        t2_same_value_edit   3/3        0   0.0     6     4   0.5
+ollama/ornith-1.5:35b                        t3_large_file_edit   3/3        0   0.0     7     0   0.4
+ollama/ornith-1.5:35b                        t4_bug_fix           2/3        1   0.0    17     2  17.2
+ollama/ornith-1.5:35b                        t5_write_test        3/3        0   0.0    39     0   0.6
+ollama/ornith-1.5:9b                         t1_new_file          3/3        0   0.0    55     0   0.8
+ollama/ornith-1.5:9b                         t2_same_value_edit   3/3        0   0.0     5     4   0.4
+ollama/ornith-1.5:9b                         t3_large_file_edit   1/3        2   0.0     5     0   0.5
+ollama/ornith-1.5:9b                         t4_bug_fix           1/3        1   0.3    23     4  37.9
+ollama/ornith-1.5:9b                         t5_write_test        3/3        0   0.0    55     0   3.8
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    t1_new_file          1/3        2   0.0    66     0   0.9
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    t2_same_value_edit   2/3        1   0.0     9     5   3.2
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    t3_large_file_edit   3/3        0   0.0     7     0   3.4
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    t4_bug_fix           0/3        0   0.7     4     1  33.4
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    t5_write_test        3/3        0   0.0    52     0   2.6
+
+ollama/ornith-1.5:35b                        pass 14/15 (93%)  silent-wrong 1
+ollama/ornith-1.5:9b                         pass 11/15 (73%)  silent-wrong 3
+unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    pass 9/15 (60%)  silent-wrong 3
+llama/mannix/ornith-1.5-27b-a3b-coder:latest pass 1/15 (6%)  silent-wrong 6
