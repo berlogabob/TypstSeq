@@ -65,15 +65,24 @@ reason to close the finding.
 | I1 | The Logseq importer emitted a **Typst dictionary with repeated keys** — one imported daily carries `login` and `pswrd` eleven times each — so the note has not compiled since the import and every reader fell back to source parsing. Suffixed (`login-2`) rather than deduplicated: dropping the extras would delete ten of eleven credentials. | — |
 | I2 | A `#tylog.ref-note(...)` could be **saved into a file with no import** — `unknown variable: tylog`, so the note never compiled and every reader fell back to source parsing without saying so. Three ordinary steps reach it: empty the starter daily (which deletes it), type a plain line, pick a note from the link autocomplete; the file is recreated from the buffer and the insertion has no idea. `managedNoteSource` had guaranteed the import for years — the ordinary save path, the one every insertion goes through, did not. | 3 |
 | L | **`resolveConflict` took no lock** — the one operation that deliberately overwrites a side of a disagreement, and the only vault write with no arbitration against the background service. Under its own owner name, because the lock is re-entrant by owner and releasing it under `'ui'` would have handed a running sync's lock away. | — |
+| L2 | **Background timeout lock strand — resolved 2026-10-12.** The duration was matched, but the service started its nine minutes after native engine startup and registry loading, so the lock could still outlive the host. The host now passes its absolute deadline (`android/app/src/main/kotlin/org/tylog/tylog/VaultSyncWorker.kt:49`), the service uses it (`lib/vault_service.dart:39`, `lib/vault_service.dart:69`), and acquisition preserves it even after storage waits (`lib/vault_lock.dart:56`). Regression coverage: `test/vault_lock_test.dart:10` and `test/background_completion_test.dart:12`. Existing duration-based UI callers and old lock records remain supported. | 4 |
 
 ## Still open
 
-Nothing. The remaining locking item from the earlier write-up — the cold rebuild
-running unlocked — is now a decision rather than an oversight: it writes only
-`_index/` (device-local, never synced) and this device's own donor (a per-device
-path no peer writes), so concurrency there costs duplicate CPU and not
-correctness. The `VaultSyncWorker` timeout strand is closed by the declared
-deadline in the lock file.
+**Cold rebuild locking — reopened on code review, 2026-10-12.** The earlier
+decision relied on writes being limited to `_index/` and the device's own donor.
+That rationale no longer matches the shared maintenance path:
+`lib/vault_worker.dart:322` invokes maintenance without a vault lock;
+`packages/tylog_core/lib/src/scanner.dart:941` can restore a note and
+`packages/tylog_core/lib/src/scanner.dart:945` deletes its stranded write;
+`packages/tylog_core/lib/src/index_donor.dart:155` prunes other devices' old
+donors; and `packages/tylog_core/lib/src/maintenance.dart:592` sweeps backups and
+forked locks. Native SAF serializes individual storage operations, not the
+whole listing/check/recovery pass (`android/app/src/main/kotlin/org/tylog/tylog/SafBridge.kt:376`).
+Coordination with sync remains open; no data-loss reproduction is claimed.
+Deferred because changing scan/sync lock ownership and cancellation is wider
+than a small behavior-preserving fix. The background timeout strand is resolved
+as L2 above.
 
 ## Verified on hardware
 

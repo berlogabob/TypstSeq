@@ -36,13 +36,14 @@ class VaultLock {
   /// a lock written before deadlines existed.
   static const staleAfter = Duration(minutes: 10);
 
-  /// Takes the lock for [owner], for at most [validFor]. Returns false if
-  /// another owner holds an unexpired lock; re-acquiring one's own lock
-  /// re-declares the deadline.
+  /// Takes the lock for [owner], until [validUntil] or for [validFor].
+  /// Returns false if another owner holds an unexpired lock; re-acquiring
+  /// one's own lock re-declares the deadline.
   static Future<bool> acquire(
     VaultStorage storage,
     String owner, {
     Duration validFor = staleAfter,
+    DateTime? validUntil,
   }) async {
     if (await heldByOther(storage, owner)) return false;
     final now = DateTime.now();
@@ -52,7 +53,7 @@ class VaultLock {
         jsonEncode({
           'owner': owner,
           'millis': now.millisecondsSinceEpoch,
-          'expiresAt': now.add(validFor).millisecondsSinceEpoch,
+          'expiresAt': (validUntil ?? now.add(validFor)).millisecondsSinceEpoch,
         }),
       ),
     );

@@ -7,6 +7,20 @@ import 'package:tylog/vault_service.dart';
 import 'package:tylog_core/storage.dart';
 
 void main() {
+  test('an absolute deadline is not extended by delayed acquisition', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_lock_absolute_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    final deadline = DateTime.now().subtract(const Duration(seconds: 1));
+
+    await VaultLock.acquire(storage, 'service', validUntil: deadline);
+
+    final record = jsonDecode(await storage.readText(VaultLock.path)) as Map;
+    expect(record['expiresAt'], deadline.millisecondsSinceEpoch);
+    expect(await VaultLock.heldByOther(storage, 'ui'), isFalse);
+    expect(await VaultLock.acquire(storage, 'ui'), isTrue);
+  });
+
   test('the background budget matches the timeout the platform enforces', () {
     // The bug was never the number - it was that the lock's expiry and the
     // process's lifetime were unrelated constants in two languages. Derived
@@ -15,6 +29,11 @@ void main() {
     final kotlin = File(
       'android/app/src/main/kotlin/org/tylog/tylog/VaultSyncWorker.kt',
     ).readAsStringSync();
+    expect(
+      kotlin,
+      contains('val deadline = System.currentTimeMillis() + TIMEOUT_MILLIS'),
+    );
+    expect(kotlin, contains('listOf(deadline.toString())'));
     final match = RegExp(
       r'TIMEOUT_MILLIS\s*=\s*([0-9]+)\s*\*\s*([0-9]+)\s*\*\s*([0-9]+)L',
     ).firstMatch(kotlin);

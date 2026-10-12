@@ -27,7 +27,9 @@ void main() {
     );
     expect(
       File('lib/vault_service.dart').readAsStringSync(),
-      contains("@pragma('vm:entry-point')\nFuture<void> vaultServiceMain()"),
+      contains(
+        "@pragma('vm:entry-point')\nFuture<void> vaultServiceMain([List<String> args = const []])",
+      ),
     );
   });
 

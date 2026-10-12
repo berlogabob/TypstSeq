@@ -9,6 +9,40 @@ import 'package:tylog/vault_storage.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'an expired platform deadline skips startup and still completes',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      var startupCalls = 0;
+      const paths = MethodChannel('plugins.flutter.io/path_provider');
+      messenger.setMockMethodCallHandler(paths, (_) async {
+        startupCalls++;
+        throw StateError('expired worker attempted startup');
+      });
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(paths, null);
+        messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        );
+      });
+
+      await vaultServiceMain(['0']);
+
+      expect(startupCalls, 0);
+      expect(calls.map((call) => call.method), ['backgroundDone']);
+      expect(calls.single.arguments, true);
+    },
+  );
+
+  test(
     'headless unconfigured vault completes without initialization writes',
     () async {
       final root = await Directory('.dart_tool').createTemp('headless-');

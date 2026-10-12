@@ -32,11 +32,14 @@ import 'vault_storage.dart';
 const backgroundRunBudget = Duration(minutes: 9);
 
 @pragma('vm:entry-point')
-Future<void> vaultServiceMain() async {
+Future<void> vaultServiceMain([List<String> args = const []]) async {
   WidgetsFlutterBinding.ensureInitialized();
   var success = false;
   try {
-    await _runOnce();
+    final deadline = args.isEmpty
+        ? DateTime.now().add(backgroundRunBudget)
+        : DateTime.fromMillisecondsSinceEpoch(int.parse(args.single));
+    if (DateTime.now().isBefore(deadline)) await _runOnce(deadline);
     success = true;
   } catch (error) {
     debugPrint('vaultServiceMain failed: $error');
@@ -52,7 +55,7 @@ Future<void> vaultServiceMain() async {
   }
 }
 
-Future<void> _runOnce() async {
+Future<void> _runOnce(DateTime deadline) async {
   final registry = await VaultRegistry.load();
   if (registry.entries.isEmpty) return;
   final entry = registry.active;
@@ -61,21 +64,14 @@ Future<void> _runOnce() async {
   final storage = entry.storage;
   final vault = Vault.withStorage(storage);
 
-  // Declare the ceiling the platform actually enforces. WorkManager destroys
-  // this engine at `VaultSyncWorker.TIMEOUT_MILLIS` without unwinding Dart, so
-  // the `finally` below — and with it VaultLock.release — simply does not run.
-  // Saying so up front means the lock expires exactly when the process can no
-  // longer be holding it, instead of a minute later.
-  final deadline = DateTime.now().add(backgroundRunBudget);
-  if (!await VaultLock.acquire(
-    storage,
-    'service',
-    validFor: backgroundRunBudget,
-  )) {
+  // Startup and SAF waits must not extend the host's absolute deadline.
+  if (!DateTime.now().isBefore(deadline)) return;
+  if (!await VaultLock.acquire(storage, 'service', validUntil: deadline)) {
     debugPrint('vaultService: UI holds the vault lock, skipping');
     return;
   }
   try {
+    if (!DateTime.now().isBefore(deadline)) return;
     // No conflict gate. This path kept the blanket suspend that the foreground
     // dropped, so one pending record still stopped the whole vault syncing —
     // on the *unattended* path, which is the one that runs for hours and caused

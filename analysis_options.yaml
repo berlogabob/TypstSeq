@@ -12,6 +12,8 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - build/**
+    # Standalone benchmark challenges reference code their candidate must create.
+    - tool/model_bench/tasks/**/hidden/**
     - packages/tylog_core/test/**
     - packages/typst_flutter/.native-build*/**
     - packages/typst_flutter/rust/target/**

@@ -46,14 +46,19 @@ class VaultSyncWorker(
             onBackgroundDone = { success -> done.complete(success) },
         )
         try {
-            engine.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint(
-                    loader.findAppBundlePath(),
-                    "package:tylog/vault_service.dart",
-                    "vaultServiceMain",
-                ),
-            )
-            if (withTimeout(TIMEOUT_MILLIS) { done.await() }) Result.success() else Result.retry()
+            val deadline = System.currentTimeMillis() + TIMEOUT_MILLIS
+            val success = withTimeout(TIMEOUT_MILLIS) {
+                engine.dartExecutor.executeDartEntrypoint(
+                    DartExecutor.DartEntrypoint(
+                        loader.findAppBundlePath(),
+                        "package:tylog/vault_service.dart",
+                        "vaultServiceMain",
+                    ),
+                    listOf(deadline.toString()),
+                )
+                done.await()
+            }
+            if (success) Result.success() else Result.retry()
         } catch (_: TimeoutCancellationException) {
             Result.retry()
         } catch (_: Throwable) {
