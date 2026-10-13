@@ -1,0 +1,1 @@
+flutter analyze --no-pub lib/audio lib/app_mobile/audio_flow.dart test/audio_asset_note_test.dart && flutter test test/audio_asset_note_test.dart test/audio_note_doc_test.dart

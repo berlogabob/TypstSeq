@@ -1,0 +1,1 @@
+uv run --with pytest python -m pytest -q tool/test_transcribe_worker.py
