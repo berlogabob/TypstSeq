@@ -3,6 +3,35 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.14.0+139
+
+### Added
+
+- **Audio section.** Library > Audio (also More > Audio): record or import a
+  file. Each recording is a note named by its timestamp
+  (`Audio 20261014-153042`). The player has a waveform you can drag, play and
+  pause, 10 s skips and 0.75x-1.5x speed.
+- **Timestamped comments** on any audio, SoundCloud style: the time is where
+  playback was when you started typing. Tap a comment to jump there. Comments
+  are plain note text, so they sync and search like any note.
+- **Lesson audio gets comments too.** Tapping an audio chip in any note
+  (including course lessons) opens that file's player and comments; the first
+  open creates a linked audio note.
+- **Waveforms for mp3, m4a and other imports** are decoded by the phone's own
+  codec on first open and kept in the note.
+- **Transcript tab** with a Request transcription button. It queues a job in
+  `_system/jobs/transcripts/` for a local worker
+  (`tool/transcribe_worker.py`, contract in `docs/audio-transcription.md`);
+  results appear as timestamped lines you can tap.
+
+### Changed
+
+- Record audio moved out of the attach menu into the Audio section.
+
+### Fixed
+
+- Tapping an audio chip opened the Typst editor instead of playing.
+
 ## 0.13.0+138
 
 ### Added

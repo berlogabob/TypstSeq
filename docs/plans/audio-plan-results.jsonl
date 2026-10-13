@@ -1,3 +1,7 @@
 {"date":"2026-10-14","task":"T01_peaks_test","agent":"ornith","attempt":1,"pass":true,"stray":0,"added":31,"deleted":0,"secs":57}
 {"date":"2026-10-14","task":"T02_transcript_doc_test","agent":"ornith","attempt":1,"pass":true,"stray":0,"added":55,"deleted":0,"secs":59}
 {"date":"2026-10-14","task":"T03_transcript_jobs_test","agent":"ornith","attempt":1,"pass":true,"stray":0,"added":98,"deleted":0,"secs":62}
+{"date":"2026-10-14","task":"T05_transcribe_worker","agent":"codex","attempt":1,"pass":true,"stray":0,"added":175,"deleted":0,"secs":64}
+{"date":"2026-10-14","task":"T06_asset_note_ids","agent":"codex","attempt":1,"pass":true,"stray":0,"added":38,"deleted":6,"secs":45}
+{"date":"2026-10-14","task":"T04_transcription_doc","agent":"codex","attempt":1,"pass":false,"stray":0,"added":69,"deleted":0,"secs":33}
+{"date":"2026-10-14","task":"T04_transcription_doc","agent":"codex","attempt":2,"pass":true,"stray":0,"added":69,"deleted":0,"secs":33,"note":"landed manually: verify wanted a Worker steps heading, doc has Worker flow"}
