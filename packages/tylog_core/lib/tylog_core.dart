@@ -6,6 +6,7 @@ export 'src/graph.dart';
 export 'src/index_donor.dart';
 export 'src/maintenance.dart';
 export 'src/models.dart';
+export 'src/module_pack.dart';
 export 'src/report.dart';
 export 'src/scanner.dart';
 export 'src/search_index.dart';

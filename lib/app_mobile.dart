@@ -61,6 +61,8 @@ import 'widgets/journal_feed.dart';
 import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
+import 'module_pack_io.dart';
+import 'widgets/audio_sheets.dart';
 import 'widgets/settings_sheet.dart';
 import 'widgets/nextcloud_connect_dialog.dart';
 import 'widgets/snack.dart';
@@ -83,6 +85,7 @@ export 'widgets/work_surface.dart'
 
 part 'app_mobile/desktop_update_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
+part 'app_mobile/module_flow.dart';
 part 'app_mobile/vault_import_flow.dart';
 part 'app_mobile/vault_lifecycle.dart';
 
@@ -2647,6 +2650,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Navigator.pop(context);
               await _importVault();
             },
+            onInstallModule: () async {
+              Navigator.pop(context);
+              await _installModule();
+            },
             onCheckForUpdates: Platform.isMacOS
                 ? () {
                     Navigator.pop(context);
@@ -2747,6 +2754,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             builder: (_) =>
                 PdfReaderScreen(bytes: bytes, path: path, database: db),
           ),
+        );
+      } else if (isAudioPath(path)) {
+        final bytes = await v.storage.readBytes(path);
+        if (!mounted || vault != v) return;
+        await showAudioPlayer(
+          context,
+          bytes: bytes,
+          title: path.split('/').last,
+          extension: path.split('.').last.toLowerCase(),
         );
       } else {
         await openPlatformFile(
@@ -4090,6 +4106,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _insertAttachment() async {
     final v = vault;
     if (v == null) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('Choose file'),
+              onTap: () => Navigator.pop(context, 'file'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.mic_none),
+              title: const Text('Record audio'),
+              onTap: () => Navigator.pop(context, 'record'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'record') return _insertRecording(v);
     final picked = await FilePicker.pickFiles();
     final sourcePath = picked?.files.single.path;
     if (sourcePath == null) return;
@@ -4112,7 +4150,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MagicRequest(
         action: MagicAction.attachment,
         value: '/$relative',
-        kind: image ? 'image' : 'file',
+        kind: image
+            ? 'image'
+            : isAudioPath(lower)
+            ? 'audio'
+            : 'file',
+      ),
+    );
+  }
+
+  /// Written once under a unique name and never rewritten, so sync never
+  /// sees a byte-different copy of the same file.
+  Future<void> _insertRecording(Vault v) async {
+    final take = await showAudioRecorder(context);
+    if (take == null || !mounted) return;
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final stamp = now.millisecondsSinceEpoch.toRadixString(36);
+    final target = 'assets/audio/${now.year}/$month/$stamp.${take.extension}';
+    try {
+      await v.storage.writeBytes(target, take.bytes);
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not save recording: $error');
+      return;
+    }
+    _applyMagic(
+      MagicRequest(
+        action: MagicAction.attachment,
+        value: '/$target',
+        kind: 'audio',
       ),
     );
   }

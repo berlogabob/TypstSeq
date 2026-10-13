@@ -26,6 +26,7 @@ class SettingsSheet extends StatefulWidget {
     required this.onMigrateEntityTypes,
     required this.onStripImportNoise,
     required this.onImportVault,
+    required this.onInstallModule,
     this.onCheckForUpdates,
     this.screenshotsMode = 'off',
     this.screenshotsTime = '03:00',
@@ -58,6 +59,7 @@ class SettingsSheet extends StatefulWidget {
   final Future<void> Function() onMigrateEntityTypes;
   final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
+  final Future<void> Function() onInstallModule;
 
   /// Desktop-only: check GitHub Releases for a newer build. Null hides the tile.
   final VoidCallback? onCheckForUpdates;
@@ -254,6 +256,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 title: 'Import Logseq/Obsidian vault',
                 subtitle: 'Convert a whole vault folder into TyLog notes',
                 onTap: () => unawaited(widget.onImportVault()),
+              ),
+              SettingsTile(
+                icon: Icons.extension_outlined,
+                title: 'Install module',
+                subtitle: 'Add a .tylogpack course or content pack',
+                onTap: () => unawaited(widget.onInstallModule()),
               ),
               FutureBuilder<String>(
                 future: appVersion(),

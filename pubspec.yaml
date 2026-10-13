@@ -37,6 +37,10 @@ dependencies:
   path_provider: ^2.1.6
   tylog_core:
     path: packages/tylog_core
+  tylog_audio:
+    path: packages/tylog_audio
+  just_audio: ^0.10.0
+  record: ^7.1.0
   typst_flutter:
     path: packages/typst_flutter
   flutter_local_notifications: ^22.0.1

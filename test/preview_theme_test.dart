@@ -67,6 +67,7 @@ void main() {
             onMigrateEntityTypes: () async {},
             onStripImportNoise: () async {},
             onImportVault: () async {},
+            onInstallModule: () async {},
             onPdfPaperChanged: (paper) => selected = paper,
           ),
         ),
