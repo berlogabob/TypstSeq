@@ -93,8 +93,16 @@ pub fn convert_vault_note(
         );
     }
     for (index, wikilink) in preprocessed.wikilinks.iter().enumerate() {
+        let marker = format!("QQWL{index}QQ");
+        // These suffixes would otherwise continue the ref-note call in Typst.
+        for punctuation in ['(', '.'] {
+            typst = typst.replace(
+                &format!("{marker}{punctuation}"),
+                &format!("{marker}\\{punctuation}"),
+            );
+        }
         typst = typst.replace(
-            &format!("QQWL{index}QQ"),
+            &marker,
             &format!(
                 "#tylog.ref-note({})[{}]",
                 typst_string(&wikilink.target),
@@ -1076,13 +1084,30 @@ fn replace_wikilinks_with(
             return out;
         };
         let (target, display) = wikilink_parts(&after[..end]);
+        let following = &after[end + 2..];
+        // Logseq can linkify URL components; keep them plain before autolinking.
+        if out
+            .rsplit(char::is_whitespace)
+            .next()
+            .unwrap_or("")
+            .contains("://")
+            || following
+                .split(char::is_whitespace)
+                .next()
+                .unwrap_or("")
+                .contains("://")
+        {
+            out.push_str(display);
+            rest = following;
+            continue;
+        }
         let index = targets.len();
         targets.push(Wikilink {
             target: target.to_owned(),
             display: display.to_owned(),
         });
         out.push_str(&replacement(target, display, index));
-        rest = &after[end + 2..];
+        rest = following;
     }
     out.push_str(rest);
     out
@@ -1465,6 +1490,64 @@ fn hex(byte: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escapes_punctuation_immediately_after_wikilinks() {
+        for dialect in [SourceDialect::Logseq, SourceDialect::Obsidian] {
+            for (markdown, expected) in [
+                (
+                    "What is a [[Game Engine]](GE)?",
+                    "What is a #tylog.ref-note(\"Game Engine\")[Game Engine]\\(GE)?\n",
+                ),
+                (
+                    "[[Transform|transform]].[[Transform|rotation]] = x",
+                    "#tylog.ref-note(\"Transform\")[transform]\\.#tylog.ref-note(\"Transform\")[rotation] \\= x\n",
+                ),
+                (
+                    "Has [[Collider|box collider]](or any other type of [[Collider|collider]])",
+                    "Has #tylog.ref-note(\"Collider\")[box collider]\\(or any other type of #tylog.ref-note(\"Collider\")[collider])\n",
+                ),
+            ] {
+                let note = convert_vault_note(dialect, "pages/Bugs.md", markdown).unwrap();
+                assert_eq!(note.typst.split_once("= Bugs\n\n").unwrap().1, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn flattens_wikilinks_inside_bare_urls() {
+        for dialect in [SourceDialect::Logseq, SourceDialect::Obsidian] {
+            for (markdown, expected) in [
+                (
+                    "https://assetstore.[[Unity|unity]].com/",
+                    "#link(\"https://assetstore.unity.com/\")[https:\\/\\/assetstore.unity.com\\/]\n",
+                ),
+                (
+                    "https://www.sketchuptextureclub.com/[[Texture|textures]]/[[Material|materials]]/metals",
+                    "#link(\"https://www.sketchuptextureclub.com/textures/materials/metals\")[https:\\/\\/www.sketchuptextureclub.com\\/textures\\/materials\\/metals]\n",
+                ),
+            ] {
+                let note = convert_vault_note(dialect, "pages/Bugs.md", markdown).unwrap();
+                assert_eq!(note.typst.split_once("= Bugs\n\n").unwrap().1, expected);
+                assert!(note.wikilink_targets.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn preserves_markdown_links_with_nested_brackets() {
+        for dialect in [SourceDialect::Logseq, SourceDialect::Obsidian] {
+            let note = convert_vault_note(
+                dialect,
+                "pages/Bugs.md",
+                "- [LM Studio vs Ollama 2026: 5x Memory Gap [Tested]](https://tech-insider.org/lm-studio-vs-ollama-2026/)",
+            ).unwrap();
+            assert_eq!(
+                note.typst.split_once("= Bugs\n\n").unwrap().1,
+                "- #link(\"https://tech-insider.org/lm-studio-vs-ollama-2026/\")[LM Studio vs Ollama 2026: 5x Memory Gap \\[Tested\\]]\n",
+            );
+        }
+    }
 
     #[test]
     fn converts_logseq_page_end_to_end() {
