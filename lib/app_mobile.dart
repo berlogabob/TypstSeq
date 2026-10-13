@@ -13,6 +13,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
+import 'package:tylog_audio/tylog_audio.dart' show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -61,7 +62,10 @@ import 'widgets/journal_feed.dart';
 import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
+import 'audio/audio_note_doc.dart';
 import 'module_pack_io.dart';
+import 'widgets/audio_note_screen.dart';
+import 'widgets/audio_shelf.dart';
 import 'widgets/audio_sheets.dart';
 import 'widgets/settings_sheet.dart';
 import 'widgets/nextcloud_connect_dialog.dart';
@@ -84,6 +88,7 @@ export 'widgets/work_surface.dart'
     show TodayPage, continueReadingEligible, isTaskInTodayAgenda, isTaskOverdue;
 
 part 'app_mobile/desktop_update_flow.dart';
+part 'app_mobile/audio_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
 part 'app_mobile/module_flow.dart';
 part 'app_mobile/vault_import_flow.dart';
@@ -1103,6 +1108,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String? protectedId,
   }) async {
     source = source.trim();
+    final audio = RegExp(
+      r'^#tylog\.attachment\("((?:\\.|[^"])*)",\s*kind:\s*"audio"',
+    ).firstMatch(source);
+    if (audio != null) {
+      await _openAttachment(unescapeTypstString(audio[1]!));
+      return;
+    }
     final match = RegExp(
       r'^#tylog\.date-ref\("(\d{4})-(\d{2})-(\d{2})"',
     ).firstMatch(source);
@@ -4106,28 +4118,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _insertAttachment() async {
     final v = vault;
     if (v == null) return;
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: const Text('Choose file'),
-              onTap: () => Navigator.pop(context, 'file'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.mic_none),
-              title: const Text('Record audio'),
-              onTap: () => Navigator.pop(context, 'record'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null || !mounted) return;
-    if (choice == 'record') return _insertRecording(v);
     final picked = await FilePicker.pickFiles();
     final sourcePath = picked?.files.single.path;
     if (sourcePath == null) return;
@@ -4155,30 +4145,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : isAudioPath(lower)
             ? 'audio'
             : 'file',
-      ),
-    );
-  }
-
-  /// Written once under a unique name and never rewritten, so sync never
-  /// sees a byte-different copy of the same file.
-  Future<void> _insertRecording(Vault v) async {
-    final take = await showAudioRecorder(context);
-    if (take == null || !mounted) return;
-    final now = DateTime.now();
-    final month = now.month.toString().padLeft(2, '0');
-    final stamp = now.millisecondsSinceEpoch.toRadixString(36);
-    final target = 'assets/audio/${now.year}/$month/$stamp.${take.extension}';
-    try {
-      await v.storage.writeBytes(target, take.bytes);
-    } catch (error) {
-      if (mounted) showSnack(context, 'Could not save recording: $error');
-      return;
-    }
-    _applyMagic(
-      MagicRequest(
-        action: MagicAction.attachment,
-        value: '/$target',
-        kind: 'audio',
       ),
     );
   }
@@ -4347,6 +4313,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _ShellAction.settings: (Icons.settings, 'Settings'),
       _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
       _ShellAction.newEntity: (Icons.person_add_alt, 'New entity'),
+      _ShellAction.audio: (Icons.graphic_eq, 'Audio'),
       _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
       _ShellAction.split: (Icons.vertical_split, 'Split editor'),
       _ShellAction.backlinks: (Icons.link, 'Context'),
@@ -4484,6 +4451,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _newPage();
       case _ShellAction.newEntity:
         await _createEntity();
+      case _ShellAction.audio:
+        await _selectDestination(2, libraryTab: 5);
       case _ShellAction.graph:
         setState(() => mode = 'graph');
       case _ShellAction.split:
@@ -4673,6 +4642,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         shelfPrefs: vaultRegistry?.shelfPrefs ?? const {},
         onShelfPrefsChanged: (prefs) =>
             unawaited(vaultRegistry?.updateShelfPrefs(prefs) ?? Future.value()),
+        audioShelf: _audioShelf,
         onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
         onCreateEntity: () => unawaited(_createEntity()),
         onImportMarkdownArticles: _importMarkdownArticles,
@@ -5557,6 +5527,7 @@ enum _ShellAction {
   vaults,
   newPage,
   newEntity,
+  audio,
   sharePdf,
   graph,
   split,

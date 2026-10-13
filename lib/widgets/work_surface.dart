@@ -467,6 +467,7 @@ class LibraryView extends StatelessWidget {
     required this.onImportMarkdownArticles,
     required this.onReadPath,
     required this.onDeleteArticle,
+    this.audioShelf,
     this.imageResolver,
     this.noteToCluster = const {},
     this.shelfPrefs = const {},
@@ -499,21 +500,25 @@ class LibraryView extends StatelessWidget {
   final ValueChanged<String> onReadPath;
   final Future<void> Function(NoteRef note) onDeleteArticle;
 
+  /// Builds the Audio tab; null (e.g. filtered sub-views) hides the tab.
+  final Widget Function(List<NoteRef> notes)? audioShelf;
+
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 5,
+    length: audioShelf == null ? 5 : 6,
     initialIndex: initialTab,
     child: Column(
       children: [
-        const TabBar(
+        TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: [
-            Tab(text: 'Notes'),
-            Tab(text: 'Articles'),
-            Tab(text: 'Screenshots'),
-            Tab(text: 'Tasks'),
-            Tab(text: 'Calendar'),
+            const Tab(text: 'Notes'),
+            const Tab(text: 'Articles'),
+            const Tab(text: 'Screenshots'),
+            const Tab(text: 'Tasks'),
+            const Tab(text: 'Calendar'),
+            if (audioShelf != null) const Tab(text: 'Audio'),
           ],
         ),
         Expanded(
@@ -577,6 +582,8 @@ class LibraryView extends StatelessWidget {
                 onOpenPath: onOpenPath,
                 onOpenDay: onOpenDay,
               ),
+              if (audioShelf != null)
+                audioShelf!(pagedNotes ?? index?.notes ?? const <NoteRef>[]),
             ],
           ),
         ),

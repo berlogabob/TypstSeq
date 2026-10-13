@@ -1,0 +1,101 @@
+part of '../app_mobile.dart';
+
+extension _AudioFlow on _HomeScreenState {
+  Widget _audioShelf(List<NoteRef> notes) => AudioShelf(
+    notes: notes,
+    onOpen: (note) => unawaited(_openAudioNote(note)),
+    onRecord: () => unawaited(_recordAudioNote()),
+    onImport: () => unawaited(_importAudioNote()),
+  );
+
+  Future<void> _recordAudioNote() async {
+    final take = await showAudioRecorder(context);
+    if (take == null || !mounted) return;
+    await _createAudioNote(
+      take.bytes,
+      take.extension,
+      peaks: take.peaks,
+      durationMs: take.durationMs,
+    );
+  }
+
+  Future<void> _importAudioNote() async {
+    final picked = await FilePicker.pickFiles(type: FileType.audio);
+    final source = picked?.files.single.path;
+    if (source == null || !mounted) return;
+    final extension = source.split('.').last.toLowerCase();
+    if (!isAudioPath('.$extension')) {
+      showSnack(context, 'Not an audio file: .$extension');
+      return;
+    }
+    final bytes = await File(source).readAsBytes();
+    await _createAudioNote(
+      bytes,
+      extension,
+      peaks: extension == 'wav' ? (peaksFromWav(bytes) ?? const []) : const [],
+      durationMs: audioDurationMs(bytes),
+    );
+  }
+
+  /// One recording = file under assets/audio + a `kind: audio` note whose id,
+  /// title and file name all carry the same timestamp stamp.
+  Future<void> _createAudioNote(
+    Uint8List bytes,
+    String extension, {
+    List<int> peaks = const [],
+    int? durationMs,
+  }) async {
+    final v = vault;
+    if (v == null) return;
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    String relative(String stamp) =>
+        'assets/audio/${now.year}/$month/$stamp.$extension';
+    var stamp = audioStamp(now);
+    if (await v.storage.exists(relative(stamp))) {
+      stamp = audioStamp(now, withMillis: true);
+    }
+    final asset = relative(stamp);
+    final title = audioTitle(stamp);
+    final id = 'audio-$stamp';
+    try {
+      await v.storage.writeBytes(asset, bytes);
+      final path = await workspace.createPage(title, kind: 'audio', id: id);
+      await workspace.mutateNote(path, (current) {
+        final header = replaceNoteHeader(
+          current,
+          NoteMetadataDraft(
+            id: id,
+            title: title,
+            kind: 'audio',
+            properties: {
+              'duration_ms': ?durationMs,
+              if (peaks.isNotEmpty) 'peaks': encodePeaks(peaks),
+            },
+          ),
+        );
+        return header + audioNoteBody(asset, '$stamp.$extension');
+      });
+      await workspace.refreshIndex(updateStatus: false, always: true);
+      final note = index?.notesByPath[path];
+      if (note != null && mounted) await _openAudioNote(note);
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not save recording: $error');
+    }
+  }
+
+  Future<void> _openAudioNote(NoteRef note) async {
+    final v = vault;
+    if (v == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AudioNoteScreen(
+          note: note,
+          readSource: v.storage.readText,
+          readBytes: v.storage.readBytes,
+          mutate: workspace.mutateNote,
+        ),
+      ),
+    );
+  }
+}

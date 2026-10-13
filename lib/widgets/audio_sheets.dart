@@ -22,17 +22,39 @@ const kMaxRecordingSeconds = 25 * 60;
 /// A finished take: an `.m4a` when the ADTS stream could be muxed, else the
 /// raw `.aac`/`.wav` the recorder produced.
 class AudioTake {
-  const AudioTake(this.bytes, this.extension);
+  const AudioTake(
+    this.bytes,
+    this.extension, [
+    this.peaks = const [],
+    this.durationMs,
+  ]);
   final Uint8List bytes;
   final String extension;
+
+  /// Waveform bars (0-255) measured while recording; empty when unknown.
+  final List<int> peaks;
+
+  /// Measured before muxing to m4a, which `audioDurationMs` can't read.
+  final int? durationMs;
 }
 
-AudioTake finishTake(Uint8List raw) {
+AudioTake finishTake(Uint8List raw, [List<int> peaks = const []]) {
+  final ms = audioDurationMs(raw);
   if (AudioNoteRecorder.extension == 'aac') {
     final m4a = m4aFromAdts(raw);
-    if (m4a != null) return AudioTake(m4a, 'm4a');
+    if (m4a != null) return AudioTake(m4a, 'm4a', peaks, ms);
   }
-  return AudioTake(raw, AudioNoteRecorder.extension);
+  return AudioTake(raw, AudioNoteRecorder.extension, peaks, ms);
+}
+
+/// Writes [bytes] to a cache-dir temp file for `just_audio`: the vault may be
+/// an Android SAF tree with no real path to open.
+Future<File> writeTempAudio(Uint8List bytes, String extension) async {
+  final dir = await getTemporaryDirectory();
+  final file = File(
+    '${dir.path}/tylog-audio-${DateTime.now().microsecondsSinceEpoch}.$extension',
+  );
+  return file.writeAsBytes(bytes, flush: true);
 }
 
 String formatClock(Duration d) {
@@ -104,7 +126,9 @@ class _RecorderSheetState extends State<_RecorderSheet> {
     // A take that doesn't parse as audio is discarded rather than saved.
     Navigator.pop(
       context,
-      audioDurationMs(raw) == null ? null : finishTake(raw),
+      audioDurationMs(raw) == null
+          ? null
+          : finishTake(raw, peaksFromLevels(_recorder.levels)),
     );
   }
 
@@ -208,11 +232,7 @@ class _PlayerSheetState extends State<_PlayerSheet> {
 
   Future<void> _load() async {
     try {
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/tylog-audio-${DateTime.now().microsecondsSinceEpoch}.${widget.extension}',
-      );
-      await file.writeAsBytes(widget.bytes, flush: true);
+      final file = await writeTempAudio(widget.bytes, widget.extension);
       _temp = file;
       await _player.setFilePath(file.path);
       unawaited(_player.play());
