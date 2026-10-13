@@ -1,7 +1,2 @@
-Downloading pygments (1.2MiB)
- Downloaded pygments
-Installed 5 packages in 20ms
-ERROR: file or directory not found: tool/test_transcribe_worker.py
-
-
-no tests ran in 0.00s
+..........                                                               [100%]
+10 passed in 0.01s

@@ -1,1 +1,1 @@
-grep -q '## Job file' docs/audio-transcription.md && grep -q '## Worker steps' docs/audio-transcription.md && grep -q '## Note format' docs/audio-transcription.md && grep -q '## Failure' docs/audio-transcription.md
+grep -qi '^## job file' docs/audio-transcription.md && grep -qi '^## worker steps' docs/audio-transcription.md && grep -qi '^## note format' docs/audio-transcription.md && grep -qi '^## failure' docs/audio-transcription.md
