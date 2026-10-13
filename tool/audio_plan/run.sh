@@ -34,7 +34,7 @@ run_agent() { # agent task log
       "$PI" "$(cat "$T/prompt.md")" < /dev/null > "$log" 2>&1
   else
     perl -e 'alarm 1500; exec @ARGV' codex exec -s workspace-write -C "$WT" -c model_reasoning_effort=low \
-      "$(cat "$T/prompt.md")" < /dev/null > "$log" 2>&1
+      "$(cat "$T/prompt.md") Do not run graphify and do not touch graphify-out." < /dev/null > "$log" 2>&1
   fi
 }
 
@@ -53,7 +53,7 @@ for task in "${tasks[@]}"; do
     secs=$(( $(date +%s) - start ))
     cd "$WT" || exit 1
     allow="$(cat "$T/allow")"
-    stray=$(git status --porcelain | awk '{print $2}' | grep -v -x -F -f <(echo "$allow") | grep -v '^\.pi-runs' | wc -l | tr -d ' ')
+    stray=$(git status --porcelain | awk '{print $2}' | grep -v -x -F -f <(echo "$allow") | grep -v -e '^\.pi-runs' -e '^graphify-out' | wc -l | tr -d ' ')
     pass=false
     [ "$stray" = 0 ] && bash -c "$(cat "$T/verify")" > "$log.verify" 2>&1 && pass=true
     git add -A -N
