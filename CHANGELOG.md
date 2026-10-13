@@ -3,6 +3,19 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.13.0+138
+
+### Added
+
+- **Audio notes.** Attach menu: Record audio (up to 25 minutes, saved as
+  m4a under `assets/audio/`) or choose an existing audio file. Tap the
+  audio chip to play. Needs the microphone permission on first record.
+- **Module packs.** Settings > Install module opens a `.tylogpack`
+  (data-only zip), asks for a first-lesson date, and installs notes, audio
+  and one dated task per lesson into the vault. Reinstall updates only
+  unedited files; uninstall removes only unedited files. Spec in
+  `docs/modules/PACK-SPEC.md`; `tylog pack-validate` checks a pack.
+
 ## 0.12.4+137
 
 ### Fixed
