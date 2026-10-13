@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 
 import 'package:tylog_core/tylog_core.dart';
@@ -31,8 +33,43 @@ Future<int> runTylog(List<String> arguments) async {
     'doctor' => _doctor(args),
     'dedupe' => _dedupe(args),
     'export' => _export(args),
+    'pack-validate' => _packValidate(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+/// Checks a `.tylogpack` against docs/modules/PACK-SPEC.md: manifest, hashes,
+/// paths, and that notes import nothing but the tylog helper (the in-app
+/// compile has no other files).
+Future<int> _packValidate(List<String> args) async {
+  if (args.length != 1) throw _UsageException('pack-validate takes one pack');
+  final zip = ZipDecoder().decodeBytes(await File(args.single).readAsBytes());
+  final entries = {
+    for (final f in zip.files)
+      if (f.isFile) f.name: Uint8List.fromList(f.content),
+  };
+  final ModulePack pack;
+  try {
+    pack = ModulePack.parse(entries);
+  } on FormatException catch (error) {
+    stderr.writeln('invalid: ${error.message}');
+    return 1;
+  }
+  var problems = 0;
+  for (final entry in pack.files.entries) {
+    if (!entry.key.endsWith('.typ')) continue;
+    for (final line in utf8.decode(entry.value).split('\n')) {
+      final m = RegExp(r'^\s*#import\s+"([^"]+)"').firstMatch(line);
+      if (m != null && m[1] != '/_system/tylog.typ') {
+        stderr.writeln('${entry.key}: unsupported import ${m[1]}');
+        problems++;
+      }
+    }
+  }
+  stdout.writeln(
+    '${pack.id} ${pack.version}: ${pack.files.length} files, $problems problems',
+  );
+  return problems == 0 ? 0 : 1;
 }
 
 Future<int> _init(List<String> args) async {
@@ -548,4 +585,5 @@ Usage:
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
   tylog dedupe <vault> [--apply]
-  tylog export <file.typ> [output.pdf]''';
+  tylog export <file.typ> [output.pdf]
+  tylog pack-validate <file.tylogpack>''';

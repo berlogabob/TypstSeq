@@ -31,5 +31,4 @@ listed and hash-verified; unlisted or traversal paths reject the pack.
 - Audio: `#tylog.attachment("<path>", kind: "audio")[label]`.
 - Stable note/task ids; never reuse an id across packs.
 - Upgrade/uninstall only touch files still identical to what was installed.
-- Check: compile every note with `typst compile --root <vault>` after token
-  substitution (see pack.py history), then install into a scratch vault.
+- Validate: `dart run packages/tylog_core/bin/tylog.dart pack-validate x.tylogpack`
