@@ -862,9 +862,15 @@ class WorkspaceController extends ChangeNotifier {
       now: now,
     );
     if (!_owns(opened, generation)) throw StateError('Vault changed');
+    if (id != null) recentNotePaths[id] = created;
     if (!existed) await _persistCreatedNote(opened, generation, created);
     return created;
   }
+
+  /// Ids of notes created this session mapped to their path. The link
+  /// resolver lags a just-created note until the background rescan lands, so a
+  /// chip tapped in that window would otherwise offer to create it again.
+  final recentNotePaths = <String, String>{};
 
   /// Opens today's journal without writing until the first edit.
   Future<String> ensureTodayNote([DateTime? day]) async {

@@ -86,6 +86,8 @@ void main() {
       expect(storage.writes.where((p) => p == path), hasLength(1));
       expect(await storage.readText(path), contains('id: "local-id"'));
       expect(storage.indexLookups, 0);
+      // A chip tapped before the rescan lands must still find its note by id.
+      expect(controller.recentNotePaths['local-id'], path);
       expect(controller.vault!.isStaleNote(path), isTrue);
       expect(controller.vault!.isPendingSyncWrite(path), isTrue);
       expect(

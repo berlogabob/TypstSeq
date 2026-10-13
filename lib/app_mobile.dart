@@ -1150,7 +1150,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             heading: heading,
           );
         case LinkResolutionStatus.unresolved:
-          await _createFromLink(target, heading: heading);
+          final recent = workspace.recentNotePaths[target];
+          if (recent != null) {
+            await _openNote(recent, heading: heading);
+          } else {
+            await _createFromLink(target, heading: heading);
+          }
       }
       return;
     }
