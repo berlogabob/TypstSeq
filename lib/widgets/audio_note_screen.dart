@@ -6,7 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:tylog_audio/tylog_audio.dart';
 
+import 'package:tylog_core/scanner.dart'
+    show NoteMetadataDraft, replaceNoteHeader;
+
 import '../audio/audio_note_doc.dart';
+import '../audio/audio_peaks.dart';
 import '../models.dart';
 import 'audio_sheets.dart';
 import 'snack.dart';
@@ -122,6 +126,8 @@ class AudioNoteScreen extends StatefulWidget {
     required this.readSource,
     required this.readBytes,
     required this.mutate,
+    required this.transcriptStatus,
+    required this.requestTranscript,
   });
 
   final NoteRef note;
@@ -129,6 +135,13 @@ class AudioNoteScreen extends StatefulWidget {
   final Future<Uint8List> Function(String path) readBytes;
   final Future<bool> Function(String path, String Function(String) transform)
   mutate;
+
+  /// Job status for this audio file (queued, processing, done, failed) or null.
+  final Future<String?> Function(String audioPath) transcriptStatus;
+
+  /// Queues a transcription job for a worker; see docs/audio-transcription.md.
+  final Future<void> Function(String audioPath, String notePath)
+  requestTranscript;
 
   @override
   State<AudioNoteScreen> createState() => _AudioNoteScreenState();
@@ -140,7 +153,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   final _player = AudioPlayer();
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
-  late final List<int> _peaks = decodePeaks(widget.note.properties['peaks']);
+  late List<int> _peaks = decodePeaks(widget.note.properties['peaks']);
+  List<AudioComment> _transcript = const [];
+  String? _audioPath;
+  String? _transcriptState;
+  bool _showTranscript = false;
   File? _temp;
   List<AudioComment> _comments = const [];
   Duration _position = Duration.zero;
@@ -181,16 +198,74 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       final bytes = await widget.readBytes(path);
       final file = await writeTempAudio(bytes, path.split('.').last);
       _temp = file;
+      _audioPath = path;
       await _player.setFilePath(file.path);
-      if (mounted) setState(() => _comments = parseComments(source));
+      if (mounted) {
+        setState(() {
+          _comments = parseComments(source);
+          _transcript = parseTranscript(source);
+        });
+      }
+      unawaited(_refreshTranscriptState());
+      if (_peaks.isEmpty) unawaited(_backfillPeaks(file));
     } catch (error) {
       if (mounted) setState(() => _error = 'Could not load audio: $error');
     }
   }
 
+  /// Imported mp3/m4a files arrive without peaks: decode once, then keep them
+  /// in the note header so the next open (and other devices) skip the work.
+  Future<void> _backfillPeaks(File file) async {
+    final peaks = await peaksFromAudioFile(file);
+    if (peaks.isEmpty || !mounted) return;
+    setState(() => _peaks = peaks);
+    final n = widget.note;
+    final ms = _duration.inMilliseconds;
+    await widget.mutate(
+      n.path,
+      (cur) => replaceNoteHeader(
+        cur,
+        NoteMetadataDraft(
+          id: n.id,
+          title: n.title,
+          kind: n.kind,
+          project: n.project,
+          date: n.date,
+          tags: n.tags,
+          aliases: n.aliases,
+          properties: {
+            ...n.properties,
+            'peaks': encodePeaks(peaks),
+            if (ms > 0 && n.properties['duration_ms'] == null)
+              'duration_ms': ms,
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _reloadComments() async {
     final source = await widget.readSource(widget.note.path);
-    if (mounted) setState(() => _comments = parseComments(source));
+    if (!mounted) return;
+    setState(() {
+      _comments = parseComments(source);
+      _transcript = parseTranscript(source);
+    });
+  }
+
+  Future<void> _refreshTranscriptState() async {
+    final path = _audioPath;
+    if (path == null) return;
+    final state = await widget.transcriptStatus(path);
+    if (mounted) setState(() => _transcriptState = state);
+  }
+
+  Future<void> _requestTranscript() async {
+    final path = _audioPath;
+    if (path == null) return;
+    await widget.requestTranscript(path, widget.note.path);
+    await _refreshTranscriptState();
+    if (mounted) showSnack(context, 'Transcription requested');
   }
 
   Future<void> _addComment() async {
@@ -262,8 +337,33 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   Text('${formatClock(_position)} / ${formatClock(_duration)}'),
                   _controls(),
                   const Divider(height: 1),
-                  Expanded(child: _commentList(active)),
-                  _commentInput(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: SegmentedButton<bool>(
+                      showSelectedIcon: false,
+                      segments: [
+                        ButtonSegment(
+                          value: false,
+                          label: Text('Comments (${_comments.length})'),
+                        ),
+                        const ButtonSegment(
+                          value: true,
+                          label: Text('Transcript'),
+                        ),
+                      ],
+                      selected: {_showTranscript},
+                      onSelectionChanged: (v) {
+                        setState(() => _showTranscript = v.first);
+                        if (v.first) unawaited(_reloadComments());
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: _showTranscript
+                        ? _transcriptList()
+                        : _commentList(active),
+                  ),
+                  if (!_showTranscript) _commentInput(),
                 ],
               ),
       ),
@@ -335,6 +435,44 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _transcriptList() {
+    if (_transcript.isEmpty) {
+      final waiting =
+          _transcriptState == 'queued' || _transcriptState == 'processing';
+      return Center(
+        child: waiting
+            ? Text('Transcription $_transcriptState…')
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _transcriptState == 'failed'
+                        ? 'Last transcription failed'
+                        : 'No transcript yet',
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(_requestTranscript()),
+                    icon: const Icon(Icons.subtitles_outlined),
+                    label: const Text('Request transcription'),
+                  ),
+                ],
+              ),
+      );
+    }
+    final active = activeIndex(_transcript, _position.inMilliseconds);
+    return ListView.builder(
+      itemCount: _transcript.length,
+      itemBuilder: (context, i) => ListTile(
+        dense: true,
+        selected: i == active,
+        leading: Text(formatTimestamp(_transcript[i].ms)),
+        title: Text(_transcript[i].text),
+        onTap: () => _seek(Duration(milliseconds: _transcript[i].ms)),
+      ),
     );
   }
 

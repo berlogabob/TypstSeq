@@ -13,7 +13,8 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
-import 'package:tylog_audio/tylog_audio.dart' show audioDurationMs, peaksFromWav;
+import 'package:tylog_audio/tylog_audio.dart'
+    show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -63,6 +64,7 @@ import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
 import 'audio/audio_note_doc.dart';
+import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
 import 'widgets/audio_note_screen.dart';
 import 'widgets/audio_shelf.dart';
@@ -2768,14 +2770,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         );
       } else if (isAudioPath(path)) {
-        final bytes = await v.storage.readBytes(path);
-        if (!mounted || vault != v) return;
-        await showAudioPlayer(
-          context,
-          bytes: bytes,
-          title: path.split('/').last,
-          extension: path.split('.').last.toLowerCase(),
-        );
+        await _openAudioAsset(path);
       } else {
         await openPlatformFile(
           v.storage,

@@ -94,8 +94,73 @@ extension _AudioFlow on _HomeScreenState {
           readSource: v.storage.readText,
           readBytes: v.storage.readBytes,
           mutate: workspace.mutateNote,
+          transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
+          requestTranscript: (audio, note) =>
+              enqueueTranscript(v.storage, audioPath: audio, notePath: note),
         ),
       ),
     );
+  }
+
+  /// Opens the comment/waveform screen for any audio file in the vault, e.g.
+  /// a lesson's mp3. The first open creates a `kind: audio` note for it with
+  /// a deterministic id and path (two devices opening the same file converge
+  /// on one note) and a link back to the note whose chip was tapped.
+  Future<void> _openAudioAsset(String assetPath) async {
+    final v = vault;
+    if (v == null) return;
+    for (final n in index?.notes ?? const <NoteRef>[]) {
+      if (n.kind == 'audio' && n.attachments.any((a) => a.path == assetPath)) {
+        await _openAudioNote(n);
+        return;
+      }
+    }
+    final slug = assetPath
+        .replaceFirst(RegExp(r'^assets/'), '')
+        .replaceFirst(RegExp(r'\.[^./]+$'), '')
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-');
+    final id = 'audio-$slug';
+    final base = assetPath
+        .split('/')
+        .last
+        .replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final title = audioTitle(base);
+    final origin = workspace.note == null
+        ? null
+        : index?.notesByPath[workspace.note!];
+    try {
+      final existed = await v.storage.exists('notes/$title.typ');
+      final path = await workspace.createPage(title, kind: 'audio', id: id);
+      if (!existed) {
+        await workspace.mutateNote(path, (current) {
+          final header = replaceNoteHeader(
+            current,
+            NoteMetadataDraft(id: id, title: title, kind: 'audio'),
+          );
+          return header +
+              audioNoteBody(
+                assetPath,
+                base,
+                fromId: origin != null && origin.kind != 'audio'
+                    ? origin.id
+                    : null,
+                fromTitle: origin?.title,
+              );
+        });
+        unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+      }
+      if (!mounted) return;
+      await _openAudioNote(
+        NoteRef(
+          id: id,
+          path: path,
+          title: title,
+          kind: 'audio',
+          outgoingLinks: const [],
+        ),
+      );
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not open audio: $error');
+    }
   }
 }

@@ -41,9 +41,25 @@ String _commentSource(int ms, String text) {
   return '- ${_two(total ~/ 60)}:${_two(total % 60)} ${escapeMarkup(flat)}';
 }
 
-List<AudioComment> parseComments(String source) {
+/// Line range `[start, end)` of the body under `== [heading]`, or null.
+/// Comments and transcript segments share one line format, so they are told
+/// apart by section only.
+(int, int)? _section(List<String> lines, String heading) {
+  final start = lines.indexWhere((l) => l.trim() == '== $heading');
+  if (start < 0) return null;
+  var end = start + 1;
+  while (end < lines.length && !lines[end].startsWith('== ')) {
+    end++;
+  }
+  return (start + 1, end);
+}
+
+List<AudioComment> _parseSection(String source, String heading) {
+  final lines = source.split('\n');
+  final range = _section(lines, heading);
+  if (range == null) return const [];
   final out = <AudioComment>[];
-  for (final line in source.split('\n')) {
+  for (final line in lines.sublist(range.$1, range.$2)) {
     final m = _commentLine.firstMatch(line);
     if (m == null) continue;
     out.add((
@@ -55,23 +71,40 @@ List<AudioComment> parseComments(String source) {
   return out;
 }
 
-/// Appends under `== Comments` (added if missing). Empty text is a no-op.
+List<AudioComment> parseComments(String source) =>
+    _parseSection(source, 'Comments');
+
+/// Timestamped segments a transcription worker wrote under `== Transcript`.
+List<AudioComment> parseTranscript(String source) =>
+    _parseSection(source, 'Transcript');
+
+/// Appends at the end of `== Comments` (section added if missing). Empty text
+/// is a no-op.
 String appendComment(String source, int ms, String text) {
   if (text.trim().isEmpty) return source;
   final line = _commentSource(ms, text);
-  final base = source.endsWith('\n') ? source : '$source\n';
-  if (RegExp(r'^== Comments\s*$', multiLine: true).hasMatch(base)) {
-    return '$base$line\n';
+  final lines = source.split('\n');
+  final range = _section(lines, 'Comments');
+  if (range == null) {
+    final base = source.endsWith('\n') ? source : '$source\n';
+    return '$base\n== Comments\n\n$line\n';
   }
-  return '$base\n== Comments\n\n$line\n';
+  var at = range.$2;
+  while (at > range.$1 && lines[at - 1].trim().isEmpty) {
+    at--;
+  }
+  lines.insert(at, line);
+  return lines.join('\n');
 }
 
-/// Removes the first line equal to this comment; other lines are untouched.
+/// Removes the first comment line equal to this one; other lines are untouched.
 String removeComment(String source, int ms, String text) {
   final target = _commentSource(ms, text);
   final lines = source.split('\n');
-  final i = lines.indexWhere((l) => l.trim() == target);
-  if (i < 0) return source;
+  final range = _section(lines, 'Comments');
+  if (range == null) return source;
+  final i = lines.indexWhere((l) => l.trim() == target, range.$1);
+  if (i < 0 || i >= range.$2) return source;
   return (lines..removeAt(i)).join('\n');
 }
 
@@ -85,6 +118,14 @@ String? audioPathOf(String source) {
   return path.replaceFirst(RegExp(r'^/+'), '');
 }
 
-/// Body appended to a freshly created `= Title` page.
-String audioNoteBody(String assetPath, String label) =>
-    '\n#tylog.attachment("/$assetPath", kind: "audio")[${escapeMarkup(label)}]\n\n== Comments\n';
+/// Body appended to a freshly created `= Title` page. [from] links back to
+/// the note whose audio chip first opened this recording (a lesson, say).
+String audioNoteBody(
+  String assetPath,
+  String label, {
+  String? fromId,
+  String? fromTitle,
+}) =>
+    '\n#tylog.attachment("/$assetPath", kind: "audio")[${escapeMarkup(label)}]\n'
+    '${fromId == null ? '' : '\nFrom: #tylog.ref-note("${fromId.replaceAll('"', '')}")[${escapeMarkup(fromTitle ?? fromId)}]\n'}'
+    '\n== Comments\n';
