@@ -820,6 +820,7 @@ class WorkspaceController extends ChangeNotifier {
   Future<String> createPage(
     String title, {
     String kind = 'note',
+    String? id,
     String? template,
     FeedEvent? event,
     Set<String>? knownIds,
@@ -841,6 +842,7 @@ class WorkspaceController extends ChangeNotifier {
     final created = await opened.page(
       title,
       kind: kind,
+      id: id,
       template: template,
       eventPath: event?.path,
       metadata: event == null
@@ -852,7 +854,8 @@ class WorkspaceController extends ChangeNotifier {
               date: event.date,
               properties: event.properties,
             ),
-      knownIds: knownIds,
+      knownIds:
+          knownIds ?? index?.notes.map((note) => note.id).toSet() ?? <String>{},
       now: now,
     );
     if (!_owns(opened, generation)) throw StateError('Vault changed');
@@ -885,10 +888,33 @@ class WorkspaceController extends ChangeNotifier {
     int generation,
     String path,
   ) async {
-    final source = utf8.decode(await opened.storage.readBytes(path));
-    if (!_owns(opened, generation)) throw StateError('Vault changed');
+    opened.restoreWriteMarkers(path, stale: true, pendingSync: true);
     try {
-      await _persistNote(opened, path, source);
+      final previous = _noteWrites[path];
+      final wait = previous == null
+          ? Future<void>.value()
+          : previous.then<void>((_) {}, onError: (_, _) {});
+      final operation = wait.then((_) async {
+        final activeEntry = entry;
+        final scoped = databaseForVault != null && activeEntry != null;
+        final db = scoped ? await databaseForVault!(activeEntry) : await database;
+        if (!_owns(opened, generation)) throw StateError('Vault changed');
+        if (db == null) return;
+        final source = utf8.decode(await opened.storage.readBytes(path));
+        if (!_owns(opened, generation)) throw StateError('Vault changed');
+        await persistNoteSource(
+          database: db,
+          path: path,
+          source: source,
+          updatedAtMs: _now().millisecondsSinceEpoch,
+        );
+      });
+      _noteWrites[path] = operation;
+      try {
+        await operation;
+      } finally {
+        if (identical(_noteWrites[path], operation)) _noteWrites.remove(path);
+      }
     } catch (error) {
       if (_owns(opened, generation)) {
         status = 'Save failed for $path: $error';
@@ -1662,6 +1688,9 @@ class WorkspaceController extends ChangeNotifier {
 
   final Set<Future<bool>> _syncFlights = {};
 
+  int _revisionFileGeneration = -1;
+  final Map<String, (int, DateTime)> _seenRevisionFiles = {};
+
   Future<bool> syncNow({
     String trigger = 'manual',
     NextcloudConfig? configOverride,
@@ -1833,15 +1862,35 @@ class WorkspaceController extends ChangeNotifier {
       if (!_owns(opened, generation)) return false;
       final revisionConflicts = <String>{};
       if (revisionDatabase != null) {
-        await revisionDatabase.transaction(() async {
-          for (final file in await opened.storage.list(
-            path: '_system/revisions',
-          )) {
-            if (file.isDirectory || !file.path.endsWith('.json')) continue;
-            try {
-              for (final envelope in RevisionPublisher.decodeEnvelopes(
-                await opened.storage.readBytes(file.path),
-              )) {
+        if (_revisionFileGeneration != generation) {
+          _seenRevisionFiles.clear();
+          _revisionFileGeneration = generation;
+        }
+        final files = await opened.storage.list(path: '_system/revisions');
+        if (!_owns(opened, generation)) return false;
+        final paths = files.map((file) => file.path).toSet();
+        _seenRevisionFiles.removeWhere((path, _) => !paths.contains(path));
+        for (final file in files) {
+          if (file.isDirectory || !file.path.endsWith('.json')) continue;
+          try {
+            final metadata = file.size == null || file.modified == null
+                ? await opened.storage.stat(file.path)
+                : file;
+            if (!_owns(opened, generation)) return false;
+            final size = file.size ?? metadata?.size;
+            final modified = file.modified ?? metadata?.modified;
+            final stamp = size != null && modified != null
+                ? (size, modified)
+                : null;
+            if (stamp != null && _seenRevisionFiles[file.path] == stamp) {
+              continue;
+            }
+            final envelopes = RevisionPublisher.decodeEnvelopes(
+              await opened.storage.readBytes(file.path),
+            ).toList();
+            if (!_owns(opened, generation)) return false;
+            for (final envelope in envelopes) {
+              await revisionDatabase.transaction(() async {
                 final node = envelope.node;
                 if (node != null) {
                   if (await revisionDatabase.receiveRevision(
@@ -1862,12 +1911,14 @@ class WorkspaceController extends ChangeNotifier {
                     revisionConflicts.add(envelope.revision.entityId);
                   }
                 }
-              }
-            } catch (_) {
-              // A malformed or partial envelope is retried on the next sync.
+              });
+              if (!_owns(opened, generation)) return false;
             }
+            if (stamp != null) _seenRevisionFiles[file.path] = stamp;
+          } catch (_) {
+            // A malformed or partial envelope is retried on the next sync.
           }
-        });
+        }
       }
       if (revisionPublisher != null &&
           materializedRevisionIds.isNotEmpty &&
@@ -1980,10 +2031,9 @@ class WorkspaceController extends ChangeNotifier {
           result.deletedRemote +
           result.repaired +
           result.renamed;
-      if (revisionConflicts.isNotEmpty) {
-        syncError =
-            'Divergent database revisions: ${revisionConflicts.join(', ')}';
-      }
+      // A forked revision history is not a failed sync: note content converges
+      // through file sync. Reported once via status; never via syncError, which
+      // renders the whole dashboard as "Sync paused".
       status =
           conflicts.isNotEmpty ||
               concurrentConflict ||

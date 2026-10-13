@@ -49,6 +49,11 @@ void main() {
         await database.receiveRevision(node: incomingNode, revision: divergent),
         RevisionReceiveResult.conflict,
       );
+      // Re-reading the same envelope on the next sync must not re-report.
+      expect(
+        await database.receiveRevision(node: incomingNode, revision: divergent),
+        RevisionReceiveResult.knownConflict,
+      );
       expect(await database.select(database.revisions).get(), hasLength(2));
     },
   );

@@ -278,7 +278,9 @@ typedef PendingRevisionUpload = ({
   AnnotationData? annotation,
 });
 
-enum RevisionReceiveResult { applied, duplicate, conflict }
+/// [knownConflict]: a rejected (forked) revision seen before. It is reported
+/// once as [conflict]; later syncs re-read the same envelope and must stay quiet.
+enum RevisionReceiveResult { applied, duplicate, conflict, knownConflict }
 
 @DriftDatabase(
   tables: [
@@ -956,6 +958,9 @@ class TyLogDatabase extends _$TyLogDatabase {
         revisions,
       )..where((table) => table.id.equals(revision.id))).getSingleOrNull();
       if (duplicate != null) return RevisionReceiveResult.duplicate;
+      if (await _isKnownFork(revision.id)) {
+        return RevisionReceiveResult.knownConflict;
+      }
       final head =
           await (select(revisions)
                 ..where(
@@ -975,6 +980,7 @@ class TyLogDatabase extends _$TyLogDatabase {
             databaseMetadata,
           )..where((t) => t.key.equals('note-draft:${head.id}'))).go();
         }
+        await _recordFork(revision.id);
         return RevisionReceiveResult.conflict;
       }
       await _commitNodeRows(
@@ -985,6 +991,21 @@ class TyLogDatabase extends _$TyLogDatabase {
       return RevisionReceiveResult.applied;
     });
   }
+
+  Future<bool> _isKnownFork(String revisionId) async =>
+      await (select(databaseMetadata)
+            ..where((t) => t.key.equals('revision-fork:$revisionId')))
+          .getSingleOrNull() !=
+      null;
+
+  Future<void> _recordFork(String revisionId) =>
+      into(databaseMetadata).insertOnConflictUpdate(
+        DatabaseMetadataData(
+          key: 'revision-fork:$revisionId',
+          value: '1',
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
 
   Future<RevisionReceiveResult> receiveAnnotationRevision({
     required AnnotationData annotation,
@@ -999,6 +1020,9 @@ class TyLogDatabase extends _$TyLogDatabase {
         revisions,
       )..where((table) => table.id.equals(revision.id))).getSingleOrNull();
       if (duplicate != null) return RevisionReceiveResult.duplicate;
+      if (await _isKnownFork(revision.id)) {
+        return RevisionReceiveResult.knownConflict;
+      }
       final head =
           await (select(revisions)
                 ..where(
@@ -1013,6 +1037,7 @@ class TyLogDatabase extends _$TyLogDatabase {
                 ..limit(1))
               .getSingleOrNull();
       if (head?.id != revision.parentRevisionId) {
+        await _recordFork(revision.id);
         return RevisionReceiveResult.conflict;
       }
       await into(annotations).insertOnConflictUpdate(annotation);

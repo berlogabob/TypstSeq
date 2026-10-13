@@ -34,12 +34,9 @@ class TyLogRichEditor extends StatefulWidget {
   /// the exact same handler the Magic menu uses for that action.
   final Future<void> Function(MagicAction action)? onCommandSelected;
 
-  /// Materialises the page a "create" mention row names, Logseq-style: Enter
-  /// on `[[New Page` creates the note immediately and returns its id, so the
-  /// inserted reference resolves instead of dangling until someone taps the
-  /// chip and confirms a dialog. Returning null falls back to the old
-  /// unresolved-chip behavior.
-  final Future<String?> Function(String title)? onCreateNote;
+  /// Allocates an id locally; creation runs after the reference is inserted.
+  final ({String id, Future<void> Function() create})? Function(String title)?
+  onCreateNote;
   final Future<void> Function(MentionSuggestion)? onSelectMention;
 
   @override
@@ -417,19 +414,15 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final caret = widget.controller.selection.baseOffset;
     _cancelAutocomplete();
     try {
-      await widget.onSelectMention?.call(item);
+      if (!item.create) await widget.onSelectMention?.call(item);
     } catch (_) {
       return;
     }
     if (!mounted) return;
-    // A create row materialises the page first, so the reference inserted
-    // below resolves immediately. On failure (or no handler) the old
-    // behavior remains: an unresolved chip the user can tap to create.
-    String? createdId;
-    if (item.create && item.kind == MentionKind.note) {
-      createdId = await widget.onCreateNote?.call(item.title);
-      if (!mounted) return;
-    }
+    final creation = item.create && item.kind == MentionKind.note
+        ? widget.onCreateNote?.call(item.title)
+        : null;
+    final createdId = creation?.id;
     // One atomic edit: the selection is set over the "@query"/"[[query"
     // trigger text and applyMagic replaces it wholesale (replaceSelection).
     // The old delete-then-insert pair left a revert window between the two
@@ -461,6 +454,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     };
     widget.controller.applyMagic(request);
     focusNode.requestFocus();
+    if (creation != null) {
+      unawaited(
+        Future<void>.sync(creation.create).catchError((Object error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not create ${item.title}: $error')),
+          );
+        }),
+      );
+    }
   }
 
   Future<void> _selectCommand(MagicAction action) async {

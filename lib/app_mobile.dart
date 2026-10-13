@@ -1243,7 +1243,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return false;
     if (dirty && !await _save()) return false;
+    if (!mounted || generation != _openGeneration || vault != v) return false;
     final path = await workspace.ensureTodayNote();
+    if (!mounted || generation != _openGeneration || vault != v) return false;
     if (!await _openNote(path, generation: generation)) return false;
     _todayNotePath = path;
     _todayOpenedAt = DateTime.now();
@@ -1562,98 +1564,116 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showKnowledge({
     KnowledgeView initialView = KnowledgeView.search,
   }) async {
-    // Deliberately not `await _ensureIndexed()`. That saves — which bumps
-    // savedRevision past indexedRevision, so refreshIndex's early-out is
-    // guaranteed to miss after any keystroke — and then awaits a full scan;
-    // a caller arriving mid-scan even queues a second pass and awaits both.
-    // Tens of seconds of dead tap on a big vault, and if the user typed during
-    // the wait the old `|| dirty` check threw the navigation away silently.
-    // Nothing here needs a fresh scan: worker searches are answered at the
-    // scanner's next yield (vault_worker.dart). The route listens for the
-    // first index too, when there is no existing instance to retain.
-    if (dirty && !await _save()) return;
     if (!mounted) return;
     final v = vault;
     if (v == null) return;
-    unawaited(_ensureSemanticController());
-    if (!mounted) return;
-    final searchStore = SavedSearchStore(v.storage);
-    var savedSearches = await searchStore.load();
-    if (!mounted) return;
-    unawaited(workspace.refreshIndex());
-    // Acknowledge the tap: without this the Search icon never highlights,
-    // so a slow open reads as "the button does nothing".
+    final generation = ++_destinationGeneration;
+    ++_openGeneration;
     final previousDestination = primaryDestination;
     setState(() => primaryDestination = 3);
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ListenableBuilder(
-          listenable: workspace,
-          builder: (_, _) {
-            final ix =
-                index ?? VaultIndex(notesByPath: {}, backlinksByTarget: {});
-            return KnowledgeScreen(
-              onSetTaskStatus: _setTaskStatus,
-              onSetTaskField: _setTaskField,
-              initialView: initialView,
-              index: ix,
-              search: (query, tag, status) =>
-                  _searchNotes(ix, query, tag: tag, status: status),
-              searchState: workspace,
-              searchReady: () => workspace.searchReady,
-              searchRevision: () => workspace.searchRevision,
-              // Checked per query: the controller may finish installing or
-              // indexing while the search screen is open.
-              vectorSearch: (query) async =>
-                  await _semantic?.searchNotes(query) ?? const [],
-              citedSearch: (query) async =>
-                  await _semantic?.citations(query) ?? const [],
-              resolveMissing: (id) {
-                final note = ix.notesByPath[id];
-                if (note == null) return null;
-                return PkmsSearchResult(
-                  id: note.path,
-                  path: note.path,
-                  title: note.title,
-                  kind: note.kind,
-                  tags: note.tags,
-                  score: 0,
-                );
-              },
-              savedSearches: savedSearches,
-              onSaveSearch: (search) async {
-                final next = [
-                  ...savedSearches.where((s) => s.name != search.name),
-                  search,
-                ];
-                await searchStore.save(next);
-                savedSearches = next;
-                _queueCloudSync();
-              },
-              onDeleteSearch: (search) async {
-                final next = savedSearches
-                    .where((s) => s.name != search.name)
-                    .toList();
-                await searchStore.save(next);
-                savedSearches = next;
-                _queueCloudSync();
-              },
-              problems: _knowledgeProblems(),
-              onCaptureTimestamp: () {
-                Navigator.of(context).pop();
-                unawaited(_captureTimestamp());
-              },
-              onOpenNote: _openPath,
-              onOpenCitation: _openCitation,
-              onFixProblems: _fixProblems,
-            );
-          },
-        ),
+    final searchStore = SavedSearchStore(v.storage);
+    var savedSearches = <SavedSearch>[];
+    final ready = ValueNotifier<bool>(false);
+    final route = MaterialPageRoute<void>(
+      builder: (_) => ValueListenableBuilder<bool>(
+        valueListenable: ready,
+        builder: (_, loaded, _) => loaded
+            ? ListenableBuilder(
+                listenable: workspace,
+                builder: (_, _) {
+                  final ix =
+                      index ??
+                      VaultIndex(notesByPath: {}, backlinksByTarget: {});
+                  return KnowledgeScreen(
+                    onSetTaskStatus: _setTaskStatus,
+                    onSetTaskField: _setTaskField,
+                    initialView: initialView,
+                    index: ix,
+                    search: (query, tag, status) =>
+                        _searchNotes(ix, query, tag: tag, status: status),
+                    searchState: workspace,
+                    searchReady: () => workspace.searchReady,
+                    searchRevision: () => workspace.searchRevision,
+                    // Checked per query: the controller may finish installing or
+                    // indexing while the search screen is open.
+                    vectorSearch: (query) async =>
+                        await _semantic?.searchNotes(query) ?? const [],
+                    citedSearch: (query) async =>
+                        await _semantic?.citations(query) ?? const [],
+                    resolveMissing: (id) {
+                      final note = ix.notesByPath[id];
+                      if (note == null) return null;
+                      return PkmsSearchResult(
+                        id: note.path,
+                        path: note.path,
+                        title: note.title,
+                        kind: note.kind,
+                        tags: note.tags,
+                        score: 0,
+                      );
+                    },
+                    savedSearches: savedSearches,
+                    onSaveSearch: (search) async {
+                      final next = [
+                        ...savedSearches.where((s) => s.name != search.name),
+                        search,
+                      ];
+                      await searchStore.save(next);
+                      savedSearches = next;
+                      _queueCloudSync();
+                    },
+                    onDeleteSearch: (search) async {
+                      final next = savedSearches
+                          .where((s) => s.name != search.name)
+                          .toList();
+                      await searchStore.save(next);
+                      savedSearches = next;
+                      _queueCloudSync();
+                    },
+                    problems: _knowledgeProblems(),
+                    onCaptureTimestamp: () {
+                      Navigator.of(context).pop();
+                      unawaited(_captureTimestamp());
+                    },
+                    onOpenNote: _openPath,
+                    onOpenCitation: _openCitation,
+                    onFixProblems: _fixProblems,
+                  );
+                },
+              )
+            : Scaffold(
+                appBar: AppBar(title: const Text('Search')),
+                body: const Center(child: CircularProgressIndicator()),
+              ),
       ),
     );
-    if (!mounted) return;
-    setState(() => primaryDestination = previousDestination);
+    final navigator = Navigator.of(context);
+    final closed = navigator.push<void>(route);
+    bool current() =>
+        mounted && generation == _destinationGeneration && vault == v;
+    Future<void> prepare() async {
+      if (dirty && !await _save()) {
+        if (current() && route.isActive) navigator.removeRoute(route);
+        return;
+      }
+      if (!current()) return;
+      unawaited(_ensureSemanticController());
+      final loaded = await searchStore.load();
+      if (!current()) return;
+      savedSearches = loaded;
+      ready.value = true;
+      unawaited(workspace.refreshIndex());
+    }
+
+    unawaited(prepare());
+    await closed;
+    // Ignore late storage completions once this route has closed.
+    if (current()) {
+      ++_destinationGeneration;
+      setState(() => primaryDestination = previousDestination);
+    }
+    // The outgoing route still listens during its reverse transition.
+    route.completed.then((_) => ready.dispose());
   }
 
   /// The Problems-screen view: everything except sync conflicts (which route to
@@ -2717,10 +2737,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => mode = 'normal');
   }
 
+  int _destinationGeneration = 0;
+
   Future<void> _showToday() async {
-    if (dirty && !await _save()) return;
     if (!mounted) return;
-    setState(() => primaryDestination = 0);
+    ++_destinationGeneration;
+    setState(() {
+      primaryDestination = 0;
+      mode = 'normal';
+    });
     await _openToday();
   }
 
@@ -3303,8 +3328,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (title == null || title.isEmpty || vault == null) return null;
     final file = await workspace.createPage(title, kind: kind ?? 'note');
-    await workspace.refreshIndex(always: true);
-    return index?.notesByPath[file];
+    unawaited(workspace.refreshIndex(always: true));
+    return scanNote(file, await workspace.readNote(file));
   }
 
   List<NoteRef> get _entities =>
@@ -3362,6 +3387,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  @visibleForTesting
+  Future<NoteRef?> createEntityForTesting() => _createEntity();
+
   Future<NoteRef?> _createEntity() async {
     final title = TextEditingController();
     final kind = TextEditingController(text: 'person');
@@ -3406,11 +3434,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return null;
     }
     final file = await workspace.createPage(name);
-    await workspace.refreshIndex(always: true);
-    final created = index?.notesByPath[file];
-    if (created == null) return null;
+    final source = await workspace.readNote(file);
+    final created = scanNote(file, source);
     final updated = replaceNoteHeader(
-      await v.storage.readText(file),
+      source,
       NoteMetadataDraft(
         id: created.id,
         title: created.title,
@@ -3426,8 +3453,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!await workspace.mutateNote(file, (_) => updated)) {
       return null;
     }
-    await workspace.refreshIndex(always: true);
-    return index?.notesByPath[file];
+    unawaited(workspace.refreshIndex(always: true));
+    return scanNote(file, updated);
   }
 
   Future<void> _runMagic(MagicAction action) async {
@@ -4138,27 +4165,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _showKnowledge();
       return;
     }
-    if (destination == 4) return;
-    if (dirty && !await _save()) return;
-    if (!mounted) return;
+    if (destination == 4 || !mounted) return;
+    if (destination == 0) {
+      await _showToday();
+      return;
+    }
+    final generation = ++_destinationGeneration;
+    ++_openGeneration;
     switch (destination) {
-      case 0:
-        await _showToday();
-        return;
       case 1:
         setState(() {
           primaryDestination = 1;
           mode = 'journal';
         });
-        return;
+        break;
       case 2:
         setState(() {
           primaryDestination = 2;
           _libraryTab = libraryTab;
           mode = 'library';
         });
+        break;
+      default:
         return;
     }
+    if (dirty && !await _save()) return;
+    if (!mounted || generation != _destinationGeneration) return;
   }
 
   Future<void> _showMoreMenu(Widget linksPanel) async {
@@ -4784,25 +4816,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return suggestions;
         },
         onCommandSelected: _runMagic,
-        onCreateNote: (title) async {
+        onCreateNote: (title) {
           final v = vault;
           if (v == null) return null;
-          // Same direct-mapping check as _createFromLink: the resolver lags a
-          // just-created note until the background rescan lands.
           final direct =
               'notes/${title.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
-          if (await v.storage.exists(direct)) return null;
-          try {
-            final file = await workspace.createPage(title);
-            if (context.mounted) showSnack(context, 'Created $file');
-            unawaited(workspace.refreshIndex(always: true));
-            // The reference is inserted by title either way; returning the
-            // title keeps the emitted ref identical to the pre-create one,
-            // which the resolver maps to the new file.
-            return title;
-          } catch (_) {
-            return null;
-          }
+          final existing = index?.notesByPath[direct];
+          final id = existing?.id ??
+              v.allocateNoteId(
+                title,
+                knownIds: index?.notes.map((note) => note.id).toSet() ?? <String>{},
+              );
+          return (
+            id: id,
+            create: () async {
+              if (existing != null) return;
+              if (!identical(vault, v)) throw StateError('Vault changed');
+              final file = await workspace.createPage(title, id: id);
+              if (context.mounted) showSnack(context, 'Created $file');
+              unawaited(workspace.refreshIndex(always: true));
+            },
+          );
         },
       ),
       _ => const SizedBox.shrink(),

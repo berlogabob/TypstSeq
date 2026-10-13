@@ -216,7 +216,8 @@ void main() {
       expect(await controller.syncNow(), isTrue);
     }, createHttpClient: (_) => _ResolveHttpClient());
     expect(controller.status, 'Needs attention');
-    expect(controller.syncError, contains(id));
+    // A forked revision history is reported via status only; it is not a failed sync.
+    expect(controller.syncError, isNull);
     expect(await storage.exists(path), isTrue);
   });
 

@@ -149,6 +149,7 @@ class Vault {
   Future<String> page(
     String title, {
     String kind = 'note',
+    String? id,
     String? template,
     String? eventPath,
     NoteMetadataDraft? metadata,
@@ -165,19 +166,26 @@ class Vault {
     };
     final path = eventPath ?? '$directory/$safe.typ';
     if (!await storage.exists(path)) {
-      final id =
-          metadata?.id ?? await nextNoteId(title, now: now, knownIds: knownIds);
+      final noteId =
+          metadata?.id ??
+          id ??
+          await nextNoteId(title, now: now, knownIds: knownIds);
       final source = template == null
-          ? _noteSource(id: id, title: title.trim(), kind: kind)
+          ? _noteSource(id: noteId, title: title.trim(), kind: kind)
           : replaceNoteHeader(
               await storage.readText(template),
-              NoteMetadataDraft(id: id, title: title.trim(), kind: kind),
+              NoteMetadataDraft(id: noteId, title: title.trim(), kind: kind),
             );
       await storage.createDirectory(path.substring(0, path.lastIndexOf('/')));
       await storage.writeText(
         path,
-        metadata == null ? source : replaceNoteHeader(source, metadata),
+        withTylogImport(
+          path,
+          metadata == null ? source : replaceNoteHeader(source, metadata),
+        ),
       );
+      _staleNotes.add(path);
+      _pendingSyncWrites.add(path);
     }
     return path;
   }
@@ -271,6 +279,8 @@ class Vault {
 
   Future<VaultIndex?> loadIndex() => loadVaultIndex(storage);
 
+  final _allocatedNoteIds = <String>{};
+
   /// [knownIds] lets a caller creating several notes at once own the id
   /// namespace for the whole batch. Without it each call re-reads the on-disk
   /// index, which cannot know about the note written a millisecond ago — and
@@ -278,24 +288,29 @@ class Vault {
   /// collapses to the bare second-resolution timestamp and mints *the same id*
   /// every time. Ids chosen here are added back to the set, the way
   /// [nextTaskId] uses `reserved`.
+  String allocateNoteId(
+    String title, {
+    DateTime? now,
+    required Set<String> knownIds,
+  }) {
+    knownIds.addAll(_allocatedNoteIds);
+    final id = reserveNoteId(_idPrefix(title, now ?? DateTime.now()), knownIds);
+    _allocatedNoteIds.add(id);
+    return id;
+  }
+
   Future<String> nextNoteId(
     String title, {
     DateTime? now,
     Set<String>? knownIds,
-  }) async {
-    final base = _idPrefix(title, now ?? DateTime.now());
-    final ids =
+  }) async => allocateNoteId(
+    title,
+    now: now,
+    knownIds:
         knownIds ??
         (await loadIndex())?.notes.map((note) => note.id).toSet() ??
-        <String>{};
-    var id = base;
-    var suffix = 2;
-    while (ids.contains(id)) {
-      id = '$base-${suffix++}';
-    }
-    ids.add(id);
-    return id;
-  }
+        <String>{},
+  );
 
   String _idPrefix(String text, DateTime instant) {
     final stamp =

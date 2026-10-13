@@ -279,3 +279,14 @@ bool _sameBytes(List<int> left, List<int> right) {
   }
   return true;
 }
+
+/// Reserves a note id in a caller-owned, in-memory namespace.
+String reserveNoteId(String base, Set<String> knownIds) {
+  var id = base;
+  var suffix = 2;
+  while (knownIds.contains(id)) {
+    id = '$base-${suffix++}';
+  }
+  knownIds.add(id);
+  return id;
+}

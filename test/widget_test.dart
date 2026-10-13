@@ -2283,6 +2283,9 @@ void main() {
     controller.notifyListeners();
     await tester.pump();
 
+    // Today now switches the shell at once, so the Library callback is
+    // captured first: a stale in-flight open from that view must still lose.
+    final page = tester.widget<LibraryView>(find.byType(LibraryView));
     final releaseTodayPath = Completer<void>();
     storage.existsGate = releaseTodayPath.future;
     storage.gateNextExists = true;
@@ -2292,7 +2295,6 @@ void main() {
       ),
     );
     await tester.pump();
-    final page = tester.widget<LibraryView>(find.byType(LibraryView));
     page.onOpenPath('notes/b.typ');
     await tester.pump();
     expect(controller.note, 'notes/b.typ');
