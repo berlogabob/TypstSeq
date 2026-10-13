@@ -5,7 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 export 'package:tylog_core/tylog_core.dart'
-    show ModulePack, installModule, moduleRecordPath;
+    show ModulePack, installModule, moduleRecordPath, uninstallModule;
 
 /// Reads and verifies a `.tylogpack` zip. Throws [FormatException].
 Future<ModulePack> readModulePack(File file) async {

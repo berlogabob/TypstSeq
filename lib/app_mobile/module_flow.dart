@@ -20,6 +20,45 @@ extension _ModuleFlow on _HomeScreenState {
     final notes = pack.files.keys.where((p) => p.startsWith('notes/')).length;
     final installed = await v.storage.exists(moduleRecordPath(pack.id));
     if (!mounted) return;
+    if (installed) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('${pack.name} is installed'),
+          content: const Text(
+            'Update rewrites unedited files. Uninstall removes only files '
+            'you have not edited.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'uninstall'),
+              child: const Text('Uninstall'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'update'),
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+      if (action == null || !mounted) return;
+      if (action == 'uninstall') {
+        final result = await uninstallModule(v.storage, pack.id);
+        await workspace.refreshIndex(updateStatus: false, always: true);
+        if (mounted) {
+          showSnack(
+            context,
+            'Removed ${result.written.length} files'
+            '${result.skipped.isEmpty ? '' : ', ${result.skipped.length} kept (edited)'}',
+          );
+        }
+        return;
+      }
+    }
     final start = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
