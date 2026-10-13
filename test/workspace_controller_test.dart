@@ -191,7 +191,6 @@ void main() {
     ).materialize(write: (_, value) async => bytes = value);
     final json = jsonDecode(utf8.decode(bytes)) as Map;
     (json['revision'] as Map)['id'] = 'divergent-annotation';
-    final id = (json['annotation'] as Map)['id'] as String;
     final storage = _MemoryStorage();
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),

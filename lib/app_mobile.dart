@@ -495,6 +495,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onSourceChanged: _acceptRichSource,
       onError: _richEditorError,
       onProtectedTap: (id) => unawaited(_tapProtected(id)),
+      onProtectedLongPress: (id) => unawaited(_longPressProtected(id)),
       imageResolver: _readAsset,
       imageWriter: (path, bytes) => saveImageCrop(vault!.storage, path, bytes),
       resolveKind: _resolveKind,
@@ -1020,6 +1021,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     allowEdit: true,
     protectedId: id,
   );
+
+  Future<void> _longPressProtected(String id) async {
+    final source = richController.protectedSource(id);
+    final match = RegExp(
+      r'^#tylog\.ref-note\s*\(\s*"((?:\\.|[^"\\])*)"',
+    ).firstMatch(source.trim());
+    if (match == null) return;
+    final target = match[1]!.replaceAllMapped(RegExp(r'\\(.)'), (m) => m[1]!);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final action in ['Rename', 'Edit Typst', 'Remove'])
+              ListTile(
+                minTileHeight: 48,
+                title: Text(action),
+                onTap: () => Navigator.pop(context, action),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'Edit Typst') {
+      await _editProtectedBlock(id);
+      return;
+    }
+    if (action == 'Remove') {
+      richController.replaceProtected(id, '');
+      return;
+    }
+    final resolution =
+        workspace.linkResolver?.resolve(target) ?? _resolveLink(target);
+    final path = resolution.path;
+    if (path == null) {
+      showSnack(context, 'Resolve this reference before renaming.');
+      return;
+    }
+    final currentTitle =
+        index?.notes.where((n) => n.path == path).firstOrNull?.title ?? target;
+    var draftTitle = currentTitle;
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename note'),
+        content: TextFormField(
+          initialValue: currentTitle,
+          onChanged: (value) => draftTitle = value,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+          onFieldSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, draftTitle),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || title == null) return;
+    if (_currentSource() != workspace.source) workspace.edit(_currentSource());
+    final result = await workspace.renameNote(path, title);
+    if (mounted) showSnack(context, result.message);
+  }
 
   Future<void> _handleAtomSource(
     String source, {
@@ -4822,10 +4895,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final direct =
               'notes/${title.trim().replaceAll(RegExp(r'[\\/]'), '-')}.typ';
           final existing = index?.notesByPath[direct];
-          final id = existing?.id ??
+          final id =
+              existing?.id ??
               v.allocateNoteId(
                 title,
-                knownIds: index?.notes.map((note) => note.id).toSet() ?? <String>{},
+                knownIds:
+                    index?.notes.map((note) => note.id).toSet() ?? <String>{},
               );
           return (
             id: id,

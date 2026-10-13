@@ -23,6 +23,9 @@ import 'vault_lock.dart';
 import 'vault_registry.dart';
 import 'vault_storage.dart';
 import 'vault_worker.dart';
+import 'package:tylog_core/values.dart';
+
+part 'workspace_note_rename.dart';
 
 class WorkspaceSyncNotConfigured implements Exception {
   const WorkspaceSyncNotConfigured();
@@ -897,7 +900,9 @@ class WorkspaceController extends ChangeNotifier {
       final operation = wait.then((_) async {
         final activeEntry = entry;
         final scoped = databaseForVault != null && activeEntry != null;
-        final db = scoped ? await databaseForVault!(activeEntry) : await database;
+        final db = scoped
+            ? await databaseForVault!(activeEntry)
+            : await database;
         if (!_owns(opened, generation)) throw StateError('Vault changed');
         if (db == null) return;
         final source = utf8.decode(await opened.storage.readBytes(path));
@@ -940,6 +945,14 @@ class WorkspaceController extends ChangeNotifier {
       path,
       () => _mutateNote(opened, generation, path, transform),
     );
+  }
+
+  Future<void> _renameTail = Future<void>.value();
+
+  Future<RenameNoteResult> renameNote(String path, String newTitle) {
+    final operation = _renameTail.then((_) => _renameNote(path, newTitle));
+    _renameTail = operation.then<void>((_) {});
+    return operation;
   }
 
   Future<bool> deleteNote(String path) {

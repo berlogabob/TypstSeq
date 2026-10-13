@@ -1885,6 +1885,7 @@ class _ProtectedChip extends StatelessWidget {
     required this.label,
     required this.block,
     required this.onTap,
+    this.onLongPress,
     required this.icon,
     this.unresolved = false,
     this.textStyle,
@@ -1893,6 +1894,7 @@ class _ProtectedChip extends StatelessWidget {
   final String label;
   final bool block;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final IconData icon;
   final bool unresolved;
 
@@ -1924,6 +1926,7 @@ class _ProtectedChip extends StatelessWidget {
           borderRadius: radius,
           child: InkWell(
             onTap: onTap,
+            onLongPress: onLongPress,
             borderRadius: radius,
             child: Padding(
               padding: EdgeInsets.symmetric(

@@ -178,6 +178,55 @@ Future<void> _tapTaskTimer(
 }
 
 void main() {
+  testWidgets('note chip long press opens Rename dialog', (tester) async {
+    final storage = _FailingStorage();
+    final vault = Vault.withStorage(storage);
+    await tester.runAsync(() async {
+      await vault.ensureCreated();
+      await vault.page('проаерка', id: 'stable');
+      await storage.writeText(
+        'notes/ref.typ',
+        '#import "/_system/tylog.typ" as tylog\n#tylog.ref-note("проаерка")[проаерка]',
+      );
+    });
+    final index = await tester.runAsync(() => scanVaultStorage(storage));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = vault;
+    home.workspace.index = index;
+    home.workspace.linkResolver = LinkResolver(index!.notes);
+    home.workspace.replaceNote(
+      'notes/ref.typ',
+      await storage.readText('notes/ref.typ'),
+    );
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('проаерка').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Edit Typst'), findsOneWidget);
+    expect(find.text('Remove'), findsOneWidget);
+    expect(home.workspace.note, 'notes/ref.typ');
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename note'), findsOneWidget);
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(field.controller!.text, 'проаерка');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'semantic refresh follows index changes, not typing or sync status',
     (tester) async {

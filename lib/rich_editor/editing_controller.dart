@@ -6,6 +6,7 @@ class TyLogEditingController extends TextEditingController {
     required ValueChanged<String> onSourceChanged,
     required ValueChanged<Object> onError,
     required ValueChanged<String> onProtectedTap,
+    ValueChanged<String>? onProtectedLongPress,
     Future<String> Function(String text)? nextTaskId,
     Future<void> Function(String taskId)? beforeTaskDoing,
     Future<Uint8List?> Function(String path)? imageResolver,
@@ -16,6 +17,7 @@ class TyLogEditingController extends TextEditingController {
          onSourceChanged,
          onError,
          onProtectedTap,
+         onProtectedLongPress,
          imageResolver,
          resolveKind,
          imageWriter,
@@ -28,6 +30,7 @@ class TyLogEditingController extends TextEditingController {
     this.onSourceChanged,
     this.onError,
     this.onProtectedTap,
+    this.onProtectedLongPress,
     this.imageResolver,
     this.resolveKind,
     this.imageWriter,
@@ -49,6 +52,7 @@ class TyLogEditingController extends TextEditingController {
   final ValueChanged<String> onSourceChanged;
   final ValueChanged<Object> onError;
   final ValueChanged<String> onProtectedTap;
+  final ValueChanged<String>? onProtectedLongPress;
 
   /// Resolves a `#tylog.ref-note("target")` reference to the target note's
   /// `kind` (person/place/project/…) so the chip shows a matching icon. Null
@@ -1397,6 +1401,14 @@ class TyLogEditingController extends TextEditingController {
               label: part.label!,
               block: false,
               onTap: isImage ? null : onTap,
+              onLongPress:
+                  interactive &&
+                      onProtectedLongPress != null &&
+                      RegExp(
+                        r'^#tylog\.ref-note\s*\(',
+                      ).hasMatch(part.source!.trimLeft())
+                  ? () => onProtectedLongPress!(part.id!)
+                  : null,
               unresolved: resolvedKind == 'unresolved',
               icon: _atomIcon(part.source!, resolvedKind: resolvedKind),
               textStyle: _styleFor(
