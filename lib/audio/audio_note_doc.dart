@@ -18,6 +18,15 @@ String audioStamp(DateTime t, {bool withMillis = false}) =>
 /// Same readable id as the file name: `Audio 20261014-153042`.
 String audioTitle(String stamp) => 'Audio $stamp';
 
+({String id, String title}) audioAssetNote(String assetPath) {
+  final slug = assetPath
+      .replaceFirst(RegExp(r'^assets/'), '')
+      .replaceFirst(RegExp(r'\.[^./]+$'), '')
+      .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-');
+  final base = assetPath.split('/').last.replaceFirst(RegExp(r'\.[^.]+$'), '');
+  return (id: 'audio-$slug', title: audioTitle(base));
+}
+
 /// Waveform peaks (0-255) as hex, two chars each, to fit a header property.
 String encodePeaks(List<int> peaks) =>
     peaks.map((p) => p.clamp(0, 255).toRadixString(16).padLeft(2, '0')).join();

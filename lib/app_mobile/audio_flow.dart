@@ -115,16 +115,11 @@ extension _AudioFlow on _HomeScreenState {
         return;
       }
     }
-    final slug = assetPath
-        .replaceFirst(RegExp(r'^assets/'), '')
-        .replaceFirst(RegExp(r'\.[^./]+$'), '')
-        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-');
-    final id = 'audio-$slug';
+    final (:id, :title) = audioAssetNote(assetPath);
     final base = assetPath
         .split('/')
         .last
         .replaceFirst(RegExp(r'\.[^.]+$'), '');
-    final title = audioTitle(base);
     final origin = workspace.note == null
         ? null
         : index?.notesByPath[workspace.note!];
