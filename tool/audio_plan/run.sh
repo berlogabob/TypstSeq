@@ -33,7 +33,7 @@ run_agent() { # agent task log
       PI_TIMEOUT=900 PI_LOGDIR="$LOGS/pi" PI_VERIFY="$(cat "$T/verify")" \
       "$PI" "$(cat "$T/prompt.md")" < /dev/null > "$log" 2>&1
   else
-    timeout 1500 codex exec -s workspace-write -C "$WT" -c model_reasoning_effort=low \
+    perl -e 'alarm 1500; exec @ARGV' codex exec -s workspace-write -C "$WT" -c model_reasoning_effort=low \
       "$(cat "$T/prompt.md")" < /dev/null > "$log" 2>&1
   fi
 }
