@@ -4,6 +4,7 @@ F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@32k t2_same_value_edit   3/3        0  
 F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@32k t3_large_file_edit   3/3        0   0.0     7     0   0.2
 F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@32k t4_bug_fix           0/3        2   0.0    13     3  11.2
 F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@32k t5_write_test        3/3        0   0.0    29     0   0.4
+F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@64k t4_bug_fix           1/3        2   0.3    25     4  17.0
 llama/mannix/ornith-1.5-27b-a3b-coder:latest t1_new_file          1/3        0   0.0    32     0   0.4
 llama/mannix/ornith-1.5-27b-a3b-coder:latest t2_same_value_edit   0/3        3   0.0     0     0   0.1
 llama/mannix/ornith-1.5-27b-a3b-coder:latest t3_large_file_edit   0/3        3   0.0     0     0   0.1
@@ -19,6 +20,7 @@ ollama/ornith-1.5:35b@32k                    t2_same_value_edit   3/3        0  
 ollama/ornith-1.5:35b@32k                    t3_large_file_edit   3/3        0   0.0     7     0   0.3
 ollama/ornith-1.5:35b@32k                    t4_bug_fix           0/3        3   0.0    14     4   6.9
 ollama/ornith-1.5:35b@32k                    t5_write_test        3/3        0   0.0    48     0   1.2
+ollama/ornith-1.5:35b@64k                    t4_bug_fix           2/3        1   0.7    20     5  12.0
 ollama/ornith-1.5:9b                         t1_new_file          3/3        0   0.0    55     0   0.8
 ollama/ornith-1.5:9b                         t2_same_value_edit   3/3        0   0.0     5     4   0.4
 ollama/ornith-1.5:9b                         t3_large_file_edit   1/3        2   0.0     5     0   0.5
@@ -34,5 +36,7 @@ ollama/ornith-1.5:35b                        pass 14/15 (93%)  silent-wrong 1
 F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@32k pass 12/15 (80%)  silent-wrong 2
 ollama/ornith-1.5:35b@32k                    pass 12/15 (80%)  silent-wrong 3
 ollama/ornith-1.5:9b                         pass 11/15 (73%)  silent-wrong 3
+ollama/ornith-1.5:35b@64k                    pass 2/3 (66%)  silent-wrong 1
 unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF    pass 9/15 (60%)  silent-wrong 3
+F:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf@64k pass 1/3 (33%)  silent-wrong 2
 llama/mannix/ornith-1.5-27b-a3b-coder:latest pass 1/15 (6%)  silent-wrong 6

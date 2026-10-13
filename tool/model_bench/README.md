@@ -27,3 +27,33 @@ Columns in the report:
 - **stray**: files changed outside the task's allowlist.
 - **+/-**: lines added / deleted in allowed files (a rewrite shows as a large -).
 - **min**: wall-clock minutes per run.
+
+## Context window matters (2026-10-10)
+
+Unsloth Studio loads a new model at 8,192 tokens unless told otherwise. At
+that size the model returns empty replies as soon as it reads a source file,
+and every run looks like "no change". `run.sh` therefore loads the model
+itself (`studio_load.py`) before a Studio run:
+
+    BENCH_CTX=65536 BENCH_LABEL=@64k tool/model_bench/run.sh studio <model> 3 t4_bug_fix
+
+`BENCH_CTX` defaults to 32768. `BENCH_LABEL` is appended to the model name in
+`results.jsonl` so rounds at different sizes stay separate. pi assumes 65,536
+for every Studio model (`~/.pi/agent/models.json`), so 65536 is the matching
+server value; going higher needs both raised.
+
+Bug-fix task (`t4_bug_fix`), 3 runs each:
+
+| Model | 32k | 64k |
+|---|---|---|
+| `ollama/ornith-1.5:35b` (Q4_K_M, 22.6 GB) | 0/3 | 2/3 |
+| `pfeifferj/Ornith-1.5-35B-A3B-GSQ-RCO-GGUF` 3.5-bit (15.2 GB) | 0/3 | 1/3 |
+
+The other four tasks were 3/3 for both builds at 32k. Every 64k failure was
+silent (visible test passed, core suite failed), so bug-fix diffs still need a
+human read. Three runs per cell is a small sample: 2/3 against 1/3 does not
+separate the two builds.
+
+Side files: `results-invalid-8k-context.jsonl` (the first, 8k, run of the
+3.5-bit build) and `results-ollama-path.jsonl` (rows taken through Ollama
+instead of Studio); neither is counted in `report.txt`.
