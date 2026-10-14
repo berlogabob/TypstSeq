@@ -43,3 +43,13 @@ D1 (this one): `lib/widgets/ds/` components + tokens, More drawer, Settings rest
 - Choose-one-of-N stays as-is (sheet for lists, dialog for 2-3 options); no new component.
 ## D4: icon sweep (decisions)
 One icon per meaning (map in `lib/widgets/app_icons.dart`: edit, settings, overflow, close, warning, daily, sync states); replace duplicate variants; resolve the "one icon, several meanings" cases (`folder_open`, `calendar_month`, `sync`, `cloud_off_outlined`) by giving each meaning its own icon. Pure rename/sweep, no layout change.
+
+## D5: screens and editor menus (decisions)
+1. The Magic/Insert sheet is "Add to note" (sheet title, dock button tooltip, FAB label); its groups stay Insert / Text style / Structure (no duplicate "Insert").
+2. Editor dock: the add button is the first dock item (always visible), then undo/redo, headings, formats.
+3. View-mode popup gets Split (icon `vertical_split`, icon follows mode); the More > Split entry is removed (one place).
+4. `/` palette includes Task (`/task`, `/todo` stays as alias).
+5. Search result subtitles show a human kind label (Note, Article, Task, Entity...) instead of the raw kind string.
+6. Graph chip row uses one chip style (FilterChip) for legend, orphans, hubs; export stays an icon button.
+7. "Discard article…" and "Delete article?" become one wording: "Delete article".
+Not in D5: Journal chevrons (feed has no single day), reading-mode return rule (needs product decision).
