@@ -480,7 +480,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             : Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                     child: WaveformSeekBar(
                       peaks: _peaks,
                       progress: totalMs == 0
@@ -490,11 +490,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                         if (totalMs > 0)
                           for (final c in _comments) c.ms / totalMs,
                       ],
+                      height: 72,
                       onSeek: (f) =>
                           _seek(Duration(milliseconds: (f * totalMs).round())),
                     ),
                   ),
-                  _timeRow(),
                   _controls(),
                   const Divider(height: 1),
                   _tabBar(),
@@ -580,26 +580,78 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     );
   }
 
-  /// One 16 px margin and one centre axis for the whole player block:
-  /// position at the left edge, duration at the right edge (both under the
-  /// waveform they measure), playback speed centred between them.
-  Widget _timeRow() {
-    final style = Theme.of(context).textTheme.labelLarge?.copyWith(
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
+  /// One row, three cells on a 16 px margin: time at the left edge (position
+  /// over duration), back / play / forward on the centre axis, speed at the
+  /// right edge. The side cells are equal, so play stays centred.
+  Widget _controls() {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    const tabular = [FontFeature.tabularFigures()];
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Row(
         children: [
-          SizedBox(
-            width: 56,
-            child: Text(formatClock(_position), style: style),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatClock(_position),
+                  style: textTheme.labelLarge?.copyWith(fontFeatures: tabular),
+                ),
+                Text(
+                  formatClock(_duration),
+                  style: textTheme.labelMedium?.copyWith(
+                    fontFeatures: tabular,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            iconSize: 28,
+            tooltip: 'Back 10 s',
+            icon: const Icon(Icons.replay_10),
+            onPressed: () => _seek(_position - const Duration(seconds: 10)),
+          ),
+          const SizedBox(width: 4),
+          StreamBuilder<PlayerState>(
+            stream: _player.playerStateStream,
+            builder: (context, snap) {
+              final done =
+                  snap.data?.processingState == ProcessingState.completed;
+              final playing = (snap.data?.playing ?? false) && !done;
+              return IconButton.filled(
+                iconSize: 32,
+                padding: const EdgeInsets.all(10),
+                tooltip: playing ? 'Pause' : 'Play',
+                icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                onPressed: () {
+                  if (playing) {
+                    _player.pause();
+                  } else {
+                    if (done) _player.seek(Duration.zero);
+                    _player.play();
+                  }
+                },
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            iconSize: 28,
+            tooltip: 'Forward 10 s',
+            icon: const Icon(Icons.forward_10),
+            onPressed: () => _seek(_position + const Duration(seconds: 10)),
           ),
           Expanded(
-            child: Center(
+            child: Align(
+              alignment: Alignment.centerRight,
               child: FilledButton.tonal(
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size(64, 32),
+                  minimumSize: const Size(52, 32),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -609,73 +661,14 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   setState(() => _speed = next);
                   _player.setSpeed(next);
                 },
-                child: Text(
-                  '${_speed}x',
-                  style: const TextStyle(
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                ),
+                child: Text('${_speed}x'),
               ),
-            ),
-          ),
-          SizedBox(
-            width: 56,
-            child: Text(
-              formatClock(_duration),
-              style: style,
-              textAlign: TextAlign.end,
             ),
           ),
         ],
       ),
     );
   }
-
-  /// Back / play / forward on the centre axis, equal 24 px gaps.
-  Widget _controls() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          iconSize: 32,
-          tooltip: 'Back 10 s',
-          icon: const Icon(Icons.replay_10),
-          onPressed: () => _seek(_position - const Duration(seconds: 10)),
-        ),
-        const SizedBox(width: 24),
-        StreamBuilder<PlayerState>(
-          stream: _player.playerStateStream,
-          builder: (context, snap) {
-            final done =
-                snap.data?.processingState == ProcessingState.completed;
-            final playing = (snap.data?.playing ?? false) && !done;
-            return IconButton.filled(
-              iconSize: 40,
-              padding: const EdgeInsets.all(12),
-              tooltip: playing ? 'Pause' : 'Play',
-              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-              onPressed: () {
-                if (playing) {
-                  _player.pause();
-                } else {
-                  if (done) _player.seek(Duration.zero);
-                  _player.play();
-                }
-              },
-            );
-          },
-        ),
-        const SizedBox(width: 24),
-        IconButton(
-          iconSize: 32,
-          tooltip: 'Forward 10 s',
-          icon: const Icon(Icons.forward_10),
-          onPressed: () => _seek(_position + const Duration(seconds: 10)),
-        ),
-      ],
-    ),
-  );
 
   Widget _commentList(int active) {
     if (_comments.isEmpty) {
