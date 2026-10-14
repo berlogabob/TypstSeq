@@ -3,6 +3,20 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.14.3+142
+
+### Fixed
+
+- A recording's player card now appears the moment you stop recording; the
+  file and its note are written in the background and the card plays from
+  memory until then.
+- Audio inserted into a note takes its own line and moves the text after it
+  down.
+- The waveform is always drawn: any resolution is stretched to 64 bars with
+  quiet takes scaled up, and files without stored peaks (older recordings,
+  lesson audio) get them decoded when the card appears.
+- Recording shows elapsed / maximum time and a scrolling live waveform.
+
 ## 0.14.2+141
 
 ### Fixed

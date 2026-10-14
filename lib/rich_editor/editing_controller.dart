@@ -777,7 +777,7 @@ class TyLogEditingController extends TextEditingController {
           }.contains(request.action);
           final offset =
               request.action == MagicAction.attachment &&
-                  request.kind == 'image'
+                  (request.kind == 'image' || request.kind == 'audio')
               ? document.insertImage(selection, edit.text)
               : isBlock
               ? document.insertBlock(selection, edit.text)

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -67,6 +68,26 @@ class WaveformSeekBar extends StatelessWidget {
   }
 }
 
+/// Bars to draw: always [count] of them, whatever the source resolution
+/// (a 3 s take has 30 samples, an 11 s one 110), stretched so the quietest
+/// bar is low and the loudest tall. A quiet take then looks like a loud one,
+/// and an empty/flat source still draws a placeholder wave.
+List<int> displayBars(List<int> peaks, {int count = 64}) {
+  if (peaks.isEmpty) return List.filled(count, 40);
+  final resampled = [
+    for (var i = 0; i < count; i++)
+      () {
+        final a = i * peaks.length ~/ count;
+        final b = math.max(a + 1, (i + 1) * peaks.length ~/ count);
+        return peaks.sublist(a, math.min(b, peaks.length)).reduce(math.max);
+      }(),
+  ];
+  final lo = resampled.reduce(math.min);
+  final hi = resampled.reduce(math.max);
+  if (hi - lo < 8) return List.filled(count, 110);
+  return [for (final p in resampled) 40 + (p - lo) * 215 ~/ (hi - lo)];
+}
+
 class _WaveformPainter extends CustomPainter {
   _WaveformPainter({
     required this.peaks,
@@ -86,7 +107,7 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bars = peaks.isEmpty ? List.filled(80, 40) : peaks;
+    final bars = displayBars(peaks);
     final slot = size.width / bars.length;
     final paint = Paint()
       ..strokeCap = StrokeCap.round

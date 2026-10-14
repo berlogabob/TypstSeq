@@ -84,7 +84,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
   late final AudioNoteRecorder _recorder = AudioNoteRecorder(_audio);
   Timer? _ticker;
   int _seconds = 0;
-  double _level = 0; // 0..1
+  final List<double> _recent = []; // 0..1, newest last
   String? _error;
   bool _stopping = false;
 
@@ -103,7 +103,11 @@ class _RecorderSheetState extends State<_RecorderSheet> {
         return;
       }
       _recorder.onLevel = (db) {
-        if (mounted) setState(() => _level = ((db + 60) / 60).clamp(0.0, 1.0));
+        if (!mounted) return;
+        setState(() {
+          _recent.add(((db + 60) / 60).clamp(0.0, 1.0));
+          if (_recent.length > 60) _recent.removeAt(0);
+        });
       };
       await _recorder.start();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -163,11 +167,18 @@ class _RecorderSheetState extends State<_RecorderSheet> {
               ),
             ] else ...[
               Text(
-                formatClock(Duration(seconds: _seconds)),
+                '${formatClock(Duration(seconds: _seconds))} / '
+                '${formatClock(const Duration(seconds: kMaxRecordingSeconds))}',
                 style: Theme.of(context).textTheme.displaySmall,
               ),
               const SizedBox(height: 12),
-              LinearProgressIndicator(value: _level, color: scheme.primary),
+              SizedBox(
+                height: 56,
+                child: CustomPaint(
+                  size: const Size(double.infinity, 56),
+                  painter: _LiveWavePainter(_recent, scheme.primary),
+                ),
+              ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -186,4 +197,34 @@ class _RecorderSheetState extends State<_RecorderSheet> {
       ),
     );
   }
+}
+
+/// Scrolling level history: the last ~6 s of the mic, newest on the right.
+class _LiveWavePainter extends CustomPainter {
+  _LiveWavePainter(this.levels, this.color);
+
+  final List<double> levels;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final slot = size.width / 60;
+    final paint = Paint()
+      ..color = color
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = (slot * 0.6).clamp(1.0, 6.0);
+    final offset = 60 - levels.length;
+    for (var i = 0; i < levels.length; i++) {
+      final x = slot * (offset + i + 0.5);
+      final h = (levels[i] * size.height).clamp(3.0, size.height);
+      canvas.drawLine(
+        Offset(x, size.height / 2 - h / 2),
+        Offset(x, size.height / 2 + h / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LiveWavePainter old) => true;
 }

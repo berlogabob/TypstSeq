@@ -494,7 +494,8 @@ SourceEdit applyMagicEdit(
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
   };
-  if (request.action == MagicAction.attachment && request.kind == 'image') {
+  if (request.action == MagicAction.attachment &&
+      (request.kind == 'image' || request.kind == 'audio')) {
     final inList = parseControlledTypst(source).blocks.any(
       (block) =>
           block.kind == ControlledBlockKind.list &&

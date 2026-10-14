@@ -63,13 +63,44 @@ extension _AudioFlow on _HomeScreenState {
         break;
       }
     }
+    final pending = _pendingAudio[assetPath];
+    final note = audioNote;
     return AudioInlineCard(
       key: ValueKey(assetPath),
       label: label,
-      peaks: decodePeaks(audioNote?.properties['peaks']),
-      readBytes: () => v.storage.readBytesNow(assetPath),
+      peaks: pending?.peaks ?? decodePeaks(note?.properties['peaks']),
+      onPeaks: note == null
+          ? null
+          : (peaks, ms) => unawaited(_storePeaks(note, peaks, ms)),
+      readBytes: () async =>
+          _pendingAudio[assetPath]?.bytes ??
+          await v.storage.readBytesNow(assetPath),
       extension: assetPath.split('.').last,
       onExpand: () => unawaited(_openAudioAsset(assetPath)),
+    );
+  }
+
+  Future<void> _storePeaks(NoteRef n, List<int> peaks, int ms) async {
+    await workspace.mutateNote(
+      n.path,
+      (cur) => replaceNoteHeader(
+        cur,
+        NoteMetadataDraft(
+          id: n.id,
+          title: n.title,
+          kind: n.kind,
+          project: n.project,
+          date: n.date,
+          tags: n.tags,
+          aliases: n.aliases,
+          properties: {
+            ...n.properties,
+            'peaks': encodePeaks(peaks),
+            if (ms > 0 && n.properties['duration_ms'] == null)
+              'duration_ms': ms,
+          },
+        ),
+      ),
     );
   }
 
@@ -108,13 +139,18 @@ extension _AudioFlow on _HomeScreenState {
     String relative(String stamp) =>
         'assets/audio/${now.year}/$month/$stamp.$extension';
     var stamp = audioStamp(now);
-    if (await v.storage.exists(relative(stamp))) {
+    // The inline path must not wait on SAF (an `exists` call queues behind
+    // the index), so it avoids collisions from what this session has used.
+    if (inline
+        ? _pendingAudio.containsKey(relative(stamp)) ||
+              _audioNoteTasks.containsKey(relative(stamp))
+        : await v.storage.exists(relative(stamp))) {
       stamp = audioStamp(now, withMillis: true);
     }
     final asset = relative(stamp);
     final title = audioTitle(stamp);
     final id = 'audio-$stamp';
-    try {
+    Future<String> persist() async {
       await v.storage.writeBytes(asset, bytes);
       final path = await workspace.createPage(title, kind: 'audio', id: id);
       await workspace.mutateNote(path, (current) {
@@ -133,18 +169,32 @@ extension _AudioFlow on _HomeScreenState {
         return header + audioNoteBody(asset, '$stamp.$extension');
       });
       await workspace.refreshIndex(updateStatus: false, always: true);
+      return path;
+    }
+
+    try {
       if (inline) {
-        if (mounted) {
-          _applyMagic(
-            MagicRequest(
-              action: MagicAction.attachment,
-              value: '/$asset',
-              kind: 'audio',
-            ),
-          );
-        }
+        // Chip first: the user sees the take land at once, the slow writes
+        // follow in the background.
+        _pendingAudio[asset] = (bytes: bytes, peaks: peaks);
+        _applyMagic(
+          MagicRequest(
+            action: MagicAction.attachment,
+            value: '/$asset',
+            kind: 'audio',
+          ),
+        );
+        _audioNoteTasks[asset] = persist()
+            .then<void>((_) {}, onError: (Object error) {
+              if (mounted) showSnack(context, 'Could not save recording: $error');
+            })
+            .whenComplete(() {
+              _pendingAudio.remove(asset);
+              _audioNoteTasks.remove(asset);
+            });
         return;
       }
+      final path = await persist();
       final note = index?.notesByPath[path];
       if (note != null && mounted) await _openAudioNote(note);
     } catch (error) {
@@ -177,6 +227,7 @@ extension _AudioFlow on _HomeScreenState {
   Future<void> _openAudioAsset(String assetPath) async {
     final v = vault;
     if (v == null) return;
+    await _audioNoteTasks[assetPath];
     for (final n in index?.notes ?? const <NoteRef>[]) {
       if (n.kind == 'audio' && n.attachments.any((a) => a.path == assetPath)) {
         await _openAudioNote(n);

@@ -254,6 +254,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Future<TyLogDatabase?> database;
   final Map<String, Future<TyLogDatabase?>> _vaultDatabases = {};
+
+  /// Recordings whose chip is already in the note but whose file/note are
+  /// still being written (startup index and sync can delay SAF writes for
+  /// minutes): playback and the waveform read from memory meanwhile.
+  final Map<String, ({Uint8List bytes, List<int> peaks})> _pendingAudio = {};
+  final Map<String, Future<void>> _audioNoteTasks = {};
   final List<TyLogDatabase> _additionalDatabases = [];
   bool _exiting = false;
   Future<void>? _shutdownFuture;

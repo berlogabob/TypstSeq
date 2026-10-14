@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../audio/audio_peaks.dart';
 import 'audio_note_screen.dart' show WaveformSeekBar;
 import 'audio_sheets.dart';
 
@@ -19,6 +20,7 @@ class AudioInlineCard extends StatefulWidget {
     required this.readBytes,
     required this.extension,
     required this.onExpand,
+    this.onPeaks,
   });
 
   final String label;
@@ -26,6 +28,9 @@ class AudioInlineCard extends StatefulWidget {
   final Future<Uint8List> Function() readBytes;
   final String extension;
   final VoidCallback onExpand;
+
+  /// Called with peaks decoded from the file when [peaks] was empty.
+  final void Function(List<int> peaks, int durationMs)? onPeaks;
 
   @override
   State<AudioInlineCard> createState() => _AudioInlineCardState();
@@ -41,6 +46,35 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   bool _busy = false;
   String? _error;
   final _subs = <StreamSubscription<Object?>>[];
+  late List<int> _peaks = widget.peaks;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_peaks.isEmpty) unawaited(_decodePeaks());
+  }
+
+  @override
+  void didUpdateWidget(AudioInlineCard old) {
+    super.didUpdateWidget(old);
+    if (widget.peaks.isNotEmpty && widget.peaks != old.peaks) {
+      _peaks = widget.peaks;
+    }
+  }
+
+  /// A file without stored peaks (older recording, lesson mp3) gets its wave
+  /// decoded once and handed back to be saved in its audio note.
+  Future<void> _decodePeaks() async {
+    try {
+      await _ensure();
+      final file = _temp;
+      if (file == null || !mounted) return;
+      final peaks = await peaksFromAudioFile(file);
+      if (peaks.isEmpty || !mounted) return;
+      setState(() => _peaks = peaks);
+      widget.onPeaks?.call(peaks, _duration.inMilliseconds);
+    } catch (_) {}
+  }
 
   Future<void> _ensure() => _loading ??= () async {
     try {
@@ -140,7 +174,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   WaveformSeekBar(
-                    peaks: widget.peaks,
+                    peaks: _peaks,
                     progress: progress,
                     markers: const [],
                     height: 48,
