@@ -112,17 +112,25 @@ class AndroidTreeVaultStorage extends VaultStorage {
   Future<List<VaultStorageEntry>> list({
     String path = '',
     bool recursive = false,
+  }) => _list('list', path: path, recursive: recursive);
+
+  @override
+  Future<List<VaultStorageEntry>> listNow({String path = ''}) =>
+      _list('listNow', path: path, recursive: false);
+
+  Future<List<VaultStorageEntry>> _list(
+    String method, {
+    required String path,
+    required bool recursive,
   }) async {
-    final values =
-        await invoke(
-          channel.invokeListMethod<Map<Object?, Object?>>(
-            'list',
-            args({'path': path, 'recursive': recursive}),
-          ),
-          'list',
-        ) ??
-        const [];
-    return values
+    final values = await invoke(
+      channel.invokeListMethod<Map<Object?, Object?>>(
+        method,
+        args({'path': path, 'recursive': recursive}),
+      ),
+      method,
+    );
+    return (values ?? const <Map<Object?, Object?>>[])
         .map(
           (value) => VaultStorageEntry(
             path: value['path']! as String,

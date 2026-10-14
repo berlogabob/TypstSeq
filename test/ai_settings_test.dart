@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/ai/ai_settings.dart';
@@ -88,6 +89,27 @@ void main() {
       );
     },
   );
+
+  test('AI settings use priority reads and tolerate corrupt data', () async {
+    final priority = _PriorityOnlyStorage(dir);
+    expect(
+      (await readAiSettings(priority)).toJson(),
+      const AiSettings().toJson(),
+    );
+    const settings = AiSettings(
+      connections: [
+        AiConnection(id: 'pc', label: 'Компьютер', url: 'http://pc/v1'),
+      ],
+      transcribe: AiTask(quality: 'fast'),
+    );
+    await writeAiSettings(storage, settings);
+    expect((await readAiSettings(priority)).toJson(), settings.toJson());
+    await storage.writeText(aiSettingsPath, '{bad');
+    expect(
+      (await readAiSettings(priority)).toJson(),
+      const AiSettings().toJson(),
+    );
+  });
 
   test(
     'settings tolerate wrong types and drop connections without id or url',
@@ -239,7 +261,8 @@ void main() {
   test(
     'workers reading skips corrupt files and non-heartbeat entries',
     () async {
-      expect(await readWorkers(storage), isEmpty);
+      final priority = _PriorityOnlyStorage(dir);
+      expect(await readWorkers(priority), isEmpty);
       await storage.createDirectory('_system/workers/nested.json');
       for (final host in ['desktop', 'laptop']) {
         await storage.writeText(
@@ -261,7 +284,7 @@ void main() {
       await storage.writeText('_system/workers/list.json', '[]');
       await storage.writeText('_system/workers/ignored.txt', '{}');
       await storage.writeText('_system/workers/nested.json/ignored.json', '{}');
-      final workers = await readWorkers(storage);
+      final workers = await readWorkers(priority);
       expect(
         workers.map((worker) => worker.host),
         unorderedEquals(['desktop', 'laptop']),
@@ -356,4 +379,33 @@ void main() {
       );
     },
   );
+}
+
+class _PriorityOnlyStorage extends LocalVaultStorage {
+  _PriorityOnlyStorage(super.root);
+
+  @override
+  Future<bool> exists(String path) => throw StateError('Queued exists');
+
+  @override
+  Future<String> readText(String path) => throw StateError('Queued readText');
+
+  @override
+  Future<Uint8List> readBytes(String path) => throw StateError('Queued read');
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) => throw StateError('Queued list');
+
+  @override
+  Future<bool> existsNow(String path) => super.exists(path);
+
+  @override
+  Future<Uint8List> readBytesNow(String path) => super.readBytes(path);
+
+  @override
+  Future<List<VaultStorageEntry>> listNow({String path = ''}) =>
+      super.list(path: path);
 }

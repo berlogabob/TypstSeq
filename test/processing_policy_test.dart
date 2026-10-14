@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/audio/processing_policy.dart';
@@ -22,6 +23,27 @@ void main() {
     expect(p.onTheFly, isFalse);
     expect(p.scheduled, isFalse);
     expect(p.translateTo, ['ru', 'en', 'pt']);
+  });
+
+  test('policy uses priority reads and still tolerates corrupt data', () async {
+    final priority = _PriorityOnlyStorage(dir);
+    expect((await readAudioPolicy(priority)).transcribe, isFalse);
+    await storage.writeText(
+      processingSettingsPath,
+      jsonEncode({
+        'audio': {
+          'transcribe': true,
+          'time': '04:15',
+          'translate_to': ['українська'],
+        },
+      }),
+    );
+    final policy = await readAudioPolicy(priority);
+    expect(policy.transcribe, isTrue);
+    expect(policy.time, '04:15');
+    expect(policy.translateTo, ['українська']);
+    await storage.writeText(processingSettingsPath, '{bad');
+    expect((await readAudioPolicy(priority)).transcribe, isFalse);
   });
 
   test('round trip keeps other keys and the worker contract names', () async {
@@ -99,4 +121,33 @@ void main() {
     final b = jsonDecode(await storage.readText(processNowPath)) as Map;
     expect(a['requested_at'], isNot(b['requested_at']));
   });
+}
+
+class _PriorityOnlyStorage extends LocalVaultStorage {
+  _PriorityOnlyStorage(super.root);
+
+  @override
+  Future<bool> exists(String path) => throw StateError('Queued exists');
+
+  @override
+  Future<String> readText(String path) => throw StateError('Queued readText');
+
+  @override
+  Future<Uint8List> readBytes(String path) => throw StateError('Queued read');
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) => throw StateError('Queued list');
+
+  @override
+  Future<bool> existsNow(String path) => super.exists(path);
+
+  @override
+  Future<Uint8List> readBytesNow(String path) => super.readBytes(path);
+
+  @override
+  Future<List<VaultStorageEntry>> listNow({String path = ''}) =>
+      super.list(path: path);
 }

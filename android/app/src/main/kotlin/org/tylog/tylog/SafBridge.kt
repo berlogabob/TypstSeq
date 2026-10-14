@@ -122,7 +122,7 @@ class SafBridge(
     private val writeExecutor = Executors.newSingleThreadExecutor()
     private val syncExecutor = Executors.newSingleThreadExecutor()
 
-    // User-initiated reads (audio playback) must not queue behind an index
+    // User-initiated reads (audio playback, settings) must not queue behind an index
     // pass's thousands of reads or a sync writer on the fair storageLock.
     private val priorityExecutor = Executors.newFixedThreadPool(2)
     private val heldSyncLocks = mutableMapOf<String, Semaphore>()
@@ -288,16 +288,15 @@ class SafBridge(
             return
         }
 
-        if (call.method == "readNow" || call.method == "existsNow") {
-            // No storageLock: only for write-once files (recordings, lesson
-            // audio), which no writer ever replaces under a reader.
+        if (call.method in setOf("readNow", "existsNow", "listNow")) {
+            // No storageLock: settings readers tolerate concurrent atomic writes.
             priorityExecutor.execute {
                 try {
                     val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
-                    val value: Any = if (call.method == "readNow") {
-                        withResolved(tree, path(call), ::read)
-                    } else {
-                        resolve(tree, path(call))?.let { document ->
+                    val value: Any = when (call.method) {
+                        "readNow" -> withResolved(tree, path(call), ::read)
+                        "listNow" -> list(tree, path(call), false)
+                        else -> resolve(tree, path(call))?.let { document ->
                             documentExists(document) || run {
                                 invalidate(tree, path(call))
                                 resolve(tree, path(call)) != null

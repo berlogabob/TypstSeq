@@ -93,10 +93,12 @@ const processNowPath = '_system/jobs/process-now.json';
 
 Future<AudioPolicy> readAudioPolicy(VaultStorage storage) async {
   try {
-    if (!await storage.exists(processingSettingsPath)) {
+    if (!await storage.existsNow(processingSettingsPath)) {
       return const AudioPolicy();
     }
-    final data = jsonDecode(await storage.readText(processingSettingsPath));
+    final data = jsonDecode(
+      utf8.decode(await storage.readBytesNow(processingSettingsPath)),
+    );
     return AudioPolicy.fromJson(data is Map ? data['audio'] : null);
   } catch (_) {
     return const AudioPolicy();

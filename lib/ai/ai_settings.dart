@@ -190,9 +190,9 @@ const aiSettingsPath = '_system/settings/ai.json';
 
 Future<AiSettings> readAiSettings(VaultStorage storage) async {
   try {
-    if (!await storage.exists(aiSettingsPath)) return const AiSettings();
+    if (!await storage.existsNow(aiSettingsPath)) return const AiSettings();
     return AiSettings.fromJson(
-      jsonDecode(await storage.readText(aiSettingsPath)),
+      jsonDecode(utf8.decode(await storage.readBytesNow(aiSettingsPath))),
     );
   } catch (_) {
     return const AiSettings();
@@ -271,12 +271,14 @@ class WorkerStatus {
 
 Future<List<WorkerStatus>> readWorkers(VaultStorage storage) async {
   const directory = '_system/workers';
-  if (!await storage.exists(directory)) return const [];
+  if (!await storage.existsNow(directory)) return const [];
   final workers = <WorkerStatus>[];
-  for (final entry in await storage.list(path: directory)) {
+  for (final entry in await storage.listNow(path: directory)) {
     if (entry.isDirectory || !entry.path.endsWith('.json')) continue;
     try {
-      final data = jsonDecode(await storage.readText(entry.path));
+      final data = jsonDecode(
+        utf8.decode(await storage.readBytesNow(entry.path)),
+      );
       if (data is! Map) continue;
       workers.add(WorkerStatus.fromJson(data));
     } catch (_) {}
