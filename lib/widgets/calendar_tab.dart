@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 import 'screenshot_strip.dart';
 
 import '../models.dart';
@@ -80,7 +81,7 @@ class _CalendarTabState extends State<CalendarTab> {
             return const Divider();
           case 2:
             return ListTile(
-              leading: const Icon(Icons.edit_note),
+              leading: const Icon(AppIcons.daily),
               title: Text('Open journal $iso'),
               onTap: () => widget.onOpenDay(selected),
             );
@@ -113,9 +114,9 @@ class _CalendarTabState extends State<CalendarTab> {
             final item = items[i - headerCount];
             return ListTile(
               leading: Icon(switch (item.kind) {
-                CalendarItemKind.daily => Icons.book_outlined,
+                CalendarItemKind.daily => AppIcons.daily,
                 CalendarItemKind.task => Icons.task_alt,
-                _ => Icons.event,
+                _ => AppIcons.calendarEvent,
               }),
               title: Text(item.title),
               onTap: () => widget.onOpenPath(item.notePath),

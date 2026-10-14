@@ -2394,10 +2394,10 @@ IconData _atomIcon(String source, {String? resolvedKind}) {
   if (source.startsWith('#link(')) {
     final url =
         RegExp(r'^#link\("((?:\\.|[^"])*)"').firstMatch(source)?.group(1) ?? '';
-    return url.startsWith('mailto:') ? Icons.alternate_email : Icons.link;
+    return url.startsWith('mailto:') ? Icons.alternate_email : AppIcons.link;
   }
   if (source.startsWith('#tylog.tag(')) return Icons.tag;
-  if (source.startsWith('#tylog.date-ref(')) return Icons.event_outlined;
+  if (source.startsWith('#tylog.date-ref(')) return AppIcons.calendarDate;
   if (source.startsWith('#tylog.attachment(')) return Icons.attach_file;
   if (source.startsWith('#cite(') || source.startsWith('@')) {
     return Icons.format_quote;
@@ -2409,7 +2409,7 @@ IconData _atomIcon(String source, {String? resolvedKind}) {
       _ => iconForKind(resolvedKind),
     };
   }
-  return Icons.link;
+  return AppIcons.link;
 }
 
 String? _refNoteKind(String source, String? Function(String id)? resolveKind) {

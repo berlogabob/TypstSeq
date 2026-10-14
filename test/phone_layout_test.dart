@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
@@ -55,7 +56,7 @@ void main() {
                   for (var i = 0; i < 3; i++)
                     IconButton(
                       onPressed: () {},
-                      icon: const Icon(Icons.more_vert),
+                      icon: const Icon(AppIcons.overflow),
                     ),
                 ],
               ),

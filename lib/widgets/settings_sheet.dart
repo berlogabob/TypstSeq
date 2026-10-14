@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
@@ -229,7 +230,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ),
             if (widget.onConfigureCalendars != null)
               AppTile(
-                icon: Icons.calendar_month,
+                icon: AppIcons.calendars,
                 title: 'Calendars',
                 subtitle: 'My classes · Lab schedule',
                 onTap: _calendars,
@@ -269,13 +270,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
           children: [
             _InfoRow(title: 'Local folder', value: readableVaultPath),
             AppTile(
-              icon: Icons.create_new_folder,
+              icon: AppIcons.folder,
               title: 'Vaults',
               subtitle: '${widget.vaultCount} vaults · manage and switch',
               onTap: widget.onManageVaults,
             ),
             AppTile(
-              icon: Icons.sync,
+              icon: AppIcons.sync,
               title: 'Sync',
               subtitle: widget.syncStatusSubtitle,
               onTap: widget.onNextcloud,
@@ -286,7 +287,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           title: 'Tools',
           children: [
             AppTile(
-              icon: Icons.warning_amber_rounded,
+              icon: AppIcons.warning,
               title: 'Problems',
               onTap: widget.onProblems,
             ),

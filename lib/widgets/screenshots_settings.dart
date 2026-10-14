@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 import '../screenshots_ocr.dart';
 import 'processing_policy_editor.dart';
 import 'snack.dart';
@@ -80,7 +81,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
     final fly = mode == 'watch';
     final sched = mode == 'schedule' || mode == 'both';
     return ProcessingPolicyEditor(
-      icon: Icons.screenshot,
+      icon: AppIcons.screenshot,
       title: 'Screenshots (OCR)',
       onTheFly: fly,
       scheduled: sched,

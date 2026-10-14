@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
@@ -43,7 +44,7 @@ void main() {
       );
 
       for (final scenario in [
-        ({'text': 'A plain note'}, 'Add to today', Icons.today),
+        ({'text': 'A plain note'}, 'Add to today', AppIcons.today),
         (
           {'text': 'https://example.org/page'},
           'Save as article',

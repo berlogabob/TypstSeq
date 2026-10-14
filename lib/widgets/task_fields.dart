@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tylog_core/scanner.dart';
+import 'app_icons.dart';
 import '../models.dart';
 import 'package:tylog_core/tylog_core.dart' show parseDateWords;
 import '../controlled_editor.dart' show localTime;
@@ -80,7 +81,7 @@ class TaskFieldList extends StatelessWidget {
               suffixIcon: IconButton(
                 tooltip: 'Calendar',
                 onPressed: onCalendar,
-                icon: const Icon(Icons.calendar_month),
+                icon: const Icon(AppIcons.calendarDate),
               ),
             ),
             onChanged: onChanged,

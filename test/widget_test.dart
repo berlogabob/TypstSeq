@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1690,7 +1691,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
     for (final icon in [
-      Icons.edit_outlined,
+      AppIcons.edit,
       Icons.chrome_reader_mode_outlined,
       Icons.preview_outlined,
       Icons.code,

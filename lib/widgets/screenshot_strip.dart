@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
 import '../controlled_editor.dart' show localTime;
@@ -53,7 +54,7 @@ class ScreenshotThumbnail extends StatelessWidget {
       child: FutureBuilder<Uint8List?>(
         future: path == null ? null : imageResolver?.call(path),
         builder: (context, snapshot) => snapshot.data == null
-            ? const Icon(Icons.screenshot_outlined)
+            ? const Icon(AppIcons.screenshot)
             : Image.memory(
                 snapshot.data!,
                 fit: BoxFit.cover,

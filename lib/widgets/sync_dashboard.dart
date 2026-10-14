@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'constants.dart';
@@ -185,7 +186,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
             onTap: () => Navigator.pop(sheet, SyncConflictResolution.keepLocal),
           ),
           ListTile(
-            leading: const Icon(Icons.cloud_outlined),
+            leading: const Icon(AppIcons.cloud),
             title: const Text("Keep Nextcloud's version"),
             subtitle: const Text('Overwrites each local copy'),
             onTap: () => Navigator.pop(sheet, SyncConflictResolution.keepRemote),
@@ -250,7 +251,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                 : () => _run(() async {
                     await widget.onConfigure();
                   }),
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(AppIcons.settings),
           ),
         ],
       ),
@@ -320,7 +321,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                   const SizedBox(height: 16),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.folder_open),
+                      leading: const Icon(AppIcons.folderOpen),
                       title: Text(value.storageName),
                       subtitle: Text(
                         [
@@ -337,7 +338,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                   ),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.cloud_outlined),
+                      leading: const Icon(AppIcons.cloud),
                       title: Text(
                         value.cloud?.isReady ?? false
                             ? value.cloud!.serverUrl
@@ -389,7 +390,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                         key: ValueKey('conflict-${conflict.id}'),
                         color: Theme.of(context).colorScheme.errorContainer,
                         child: ListTile(
-                          leading: const Icon(Icons.warning_amber_rounded),
+                          leading: const Icon(AppIcons.warning),
                           title: Text(conflict.path),
                           subtitle: Text(
                             _resolving.contains(conflict.id)
@@ -526,16 +527,16 @@ class SyncIconButton extends StatelessWidget {
     );
     final label = syncStatusTitle(kind, conflicts: conflicts);
     final icon = switch (kind) {
-      SyncStatusKind.vaultClosed => Icons.folder_open,
-      SyncStatusKind.storageUnavailable => Icons.cloud_off_outlined,
-      SyncStatusKind.desktopManaged => Icons.cloud_done_outlined,
-      SyncStatusKind.notConfigured => Icons.cloud_off_outlined,
-      SyncStatusKind.syncing => Icons.sync,
-      SyncStatusKind.paused => Icons.cloud_off_outlined,
-      SyncStatusKind.conflicts => Icons.warning_amber_rounded,
-      SyncStatusKind.ready => Icons.cloud_outlined,
+      SyncStatusKind.vaultClosed => AppIcons.folder,
+      SyncStatusKind.storageUnavailable => AppIcons.storageUnavailable,
+      SyncStatusKind.desktopManaged => AppIcons.syncManaged,
+      SyncStatusKind.notConfigured => AppIcons.syncOff,
+      SyncStatusKind.syncing => AppIcons.syncBusy,
+      SyncStatusKind.paused => AppIcons.syncPaused,
+      SyncStatusKind.conflicts => AppIcons.warning,
+      SyncStatusKind.ready => AppIcons.syncReady,
       SyncStatusKind.upToDate ||
-      SyncStatusKind.synced => Icons.cloud_done_outlined,
+      SyncStatusKind.synced => AppIcons.syncOk,
     };
     return IconButton(
       onPressed: onPressed,
@@ -677,16 +678,16 @@ class _SyncStatusCard extends StatelessWidget {
       result: result,
     );
     final icon = switch (kind) {
-      SyncStatusKind.vaultClosed => Icons.folder_open,
-      SyncStatusKind.storageUnavailable => Icons.cloud_off_outlined,
-      SyncStatusKind.desktopManaged => Icons.cloud_done_outlined,
-      SyncStatusKind.notConfigured => Icons.cloud_off_outlined,
-      SyncStatusKind.syncing => Icons.sync,
-      SyncStatusKind.paused => Icons.cloud_off_outlined,
-      SyncStatusKind.conflicts => Icons.warning_amber_rounded,
-      SyncStatusKind.ready => Icons.cloud_done_outlined,
+      SyncStatusKind.vaultClosed => AppIcons.folder,
+      SyncStatusKind.storageUnavailable => AppIcons.storageUnavailable,
+      SyncStatusKind.desktopManaged => AppIcons.syncManaged,
+      SyncStatusKind.notConfigured => AppIcons.syncOff,
+      SyncStatusKind.syncing => AppIcons.syncBusy,
+      SyncStatusKind.paused => AppIcons.syncPaused,
+      SyncStatusKind.conflicts => AppIcons.warning,
+      SyncStatusKind.ready => AppIcons.syncReady,
       SyncStatusKind.upToDate ||
-      SyncStatusKind.synced => Icons.cloud_done_outlined,
+      SyncStatusKind.synced => AppIcons.syncOk,
     };
     final title = syncStatusTitle(kind, conflicts: conflicts);
     final subtitle = switch (kind) {

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../models.dart';
 import '../rich_editor.dart';
 import '../vault.dart';
@@ -113,7 +114,7 @@ class _JournalFeedState extends State<JournalFeed> {
 
   Widget _eventRow(CalendarItem event) => ListTile(
     dense: true,
-    leading: const Icon(Icons.event),
+    leading: const Icon(AppIcons.calendarEvent),
     title: Text(event.title),
     subtitle: event.start == null
         ? null
@@ -129,7 +130,7 @@ class _JournalFeedState extends State<JournalFeed> {
     trailing: event.notePath.startsWith('events/')
         ? IconButton(
             tooltip: 'Write about this',
-            icon: const Icon(Icons.edit_note),
+            icon: const Icon(AppIcons.edit),
             onPressed: () => widget.onOpenPath(event.notePath),
           )
         : null,
@@ -273,7 +274,7 @@ class _JournalFeedState extends State<JournalFeed> {
                       ).visibleText.trim().isEmpty) {
                         return TextButton.icon(
                           onPressed: () => widget.onOpenPath(day.path),
-                          icon: const Icon(Icons.edit_outlined),
+                          icon: const Icon(AppIcons.edit),
                           label: const Text('Start writing…'),
                         );
                       }

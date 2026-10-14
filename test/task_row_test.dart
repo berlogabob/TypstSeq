@@ -1,5 +1,6 @@
 import 'package:tylog/vault_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/models.dart';
@@ -59,8 +60,8 @@ void main() {
           expect(rect.height, greaterThanOrEqualTo(48));
         }
         for (final (icon, label) in [
-          (Icons.event, 'Due'),
-          (Icons.schedule, 'Scheduled'),
+          (AppIcons.calendarDate, 'Due'),
+          (AppIcons.schedule, 'Scheduled'),
         ]) {
           expect(tester.widget<Icon>(find.byIcon(icon)).size, 16);
           expect(
@@ -72,9 +73,9 @@ void main() {
         }
         if (filled) {
           expect(
-            tester.widget<Icon>(find.byIcon(Icons.event)).color,
+            tester.widget<Icon>(find.byIcon(AppIcons.calendarDate)).color,
             Theme.of(
-              tester.element(find.byIcon(Icons.event)),
+              tester.element(find.byIcon(AppIcons.calendarDate)),
             ).colorScheme.error,
           );
         } else {

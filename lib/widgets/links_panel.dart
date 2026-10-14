@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../models.dart';
 import '../scanner.dart';
 import 'constants.dart';
@@ -99,7 +100,7 @@ class LinksPanel extends StatelessWidget {
               leading: Icon(
                 item.kind == CalendarItemKind.task
                     ? Icons.task_alt
-                    : Icons.event,
+                    : AppIcons.calendarEvent,
               ),
               title: Text(
                 item.title,
@@ -123,7 +124,7 @@ class LinksPanel extends StatelessWidget {
           ListTile(
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            leading: const Icon(Icons.link),
+            leading: const Icon(AppIcons.link),
             title: Text(
               index?.notesByPath[path]?.title ?? path,
               maxLines: 1,

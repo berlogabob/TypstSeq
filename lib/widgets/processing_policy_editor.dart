@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 
 /// The one control set for every background pipeline (audio transcription,
 /// screenshot OCR): manual, right after, or on a daily schedule, plus process
@@ -89,9 +90,9 @@ class ProcessingPolicyEditor extends StatelessWidget {
         if (scheduled)
           ListTile(
             contentPadding: const EdgeInsets.only(left: 32, right: 16),
-            leading: const Icon(Icons.schedule),
+            leading: const Icon(AppIcons.schedule),
             title: Text('Every day at $time'),
-            trailing: const Icon(Icons.edit_outlined, size: 20),
+            trailing: const Icon(AppIcons.edit, size: 20),
             enabled: enabled && !busy,
             onTap: () => _pickTime(context),
           ),

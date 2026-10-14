@@ -10,6 +10,7 @@ import 'package:tylog_audio/tylog_audio.dart';
 import 'package:tylog_core/scanner.dart'
     show NoteMetadataDraft, replaceNoteHeader, scanNote;
 
+import 'app_icons.dart';
 import '../audio/audio_info.dart';
 import '../audio/audio_note_doc.dart';
 import '../audio/audio_peaks.dart';
@@ -801,7 +802,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           onTap: () => _seek(Duration(milliseconds: c.ms)),
           trailing: IconButton(
             tooltip: 'Delete comment',
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(AppIcons.close, size: 18),
             onPressed: () => unawaited(_deleteComment(c)),
           ),
         );

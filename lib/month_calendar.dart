@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'widgets/app_icons.dart';
 import 'widgets/constants.dart';
 
 import 'widgets/date_format.dart';
@@ -170,7 +171,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
                   if (hasRefs) _dot(scheme.tertiary),
                   if (widget.screenshotDays.contains(iso))
                     Icon(
-                      Icons.screenshot,
+                      AppIcons.screenshot,
                       key: Key('screenshot-marker-$iso'),
                       size: 6,
                     ),

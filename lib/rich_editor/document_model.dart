@@ -6,12 +6,12 @@ const _object = '\uFFFC';
 /// reused by both the Magic bottom-sheet menu (`app_mobile.dart`) and the
 /// inline "/" command palette.
 const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
-  MagicAction.noteLink: (Icons.link, 'Note link'),
+  MagicAction.noteLink: (AppIcons.link, 'Note link'),
   MagicAction.mention: (Icons.alternate_email, 'Mention'),
   MagicAction.tag: (Icons.tag, 'Tag'),
   MagicAction.task: (Icons.task_alt, 'Task'),
-  MagicAction.date: (Icons.event, 'Date'),
-  MagicAction.time: (Icons.access_time, 'Time'),
+  MagicAction.date: (AppIcons.calendarDate, 'Date'),
+  MagicAction.time: (AppIcons.schedule, 'Time'),
   MagicAction.project: (Icons.work_outline, 'Project'),
   MagicAction.citation: (Icons.format_quote, 'Citation'),
   MagicAction.attachment: (Icons.attach_file, 'Attachment'),

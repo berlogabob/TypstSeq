@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'widgets/app_icons.dart';
 import 'models.dart';
 import 'saved_searches.dart';
 import 'retrieval/cosine_search.dart';
@@ -562,7 +563,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           final citation = citations[i - 1];
           return ListTile(
             key: ValueKey('citation-${citation.chunkId}'),
-            leading: const Icon(Icons.menu_book_outlined),
+            leading: const Icon(AppIcons.citation),
             title: Text(citation.sourceTitle ?? citation.sourceLocator),
             subtitle: Text(
               '${citation.sourceLocator} · characters ${citation.startOffset}–${citation.endOffset}',
@@ -763,7 +764,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   IconData _problemIcon(PkmsSeverity severity) => switch (severity) {
     PkmsSeverity.error => Icons.error_outline,
-    PkmsSeverity.warning => Icons.warning_amber,
+    PkmsSeverity.warning => AppIcons.warning,
     PkmsSeverity.info => Icons.info_outline,
   };
 

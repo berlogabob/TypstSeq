@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../vault_registry.dart';
 import 'settings_sheet.dart';
 import 'ds/app_sheet.dart';
@@ -71,7 +72,7 @@ class VaultsSheet extends StatelessWidget {
           ),
         ),
       SettingsTile(
-        icon: Icons.create_new_folder,
+        icon: AppIcons.folderAdd,
         title: 'Add or create vault',
         subtitle: 'Choose an existing or empty folder',
         onTap: () {

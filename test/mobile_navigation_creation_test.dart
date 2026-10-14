@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
@@ -75,7 +76,7 @@ void main() {
       expect(tester.takeException(), isNull);
       final library = find.descendant(
         of: find.byType(NavigationRail),
-        matching: find.byIcon(Icons.library_books),
+        matching: find.byIcon(AppIcons.library),
       );
       await tester.ensureVisible(library);
       await tester.tap(library);

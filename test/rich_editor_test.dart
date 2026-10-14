@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -591,7 +592,7 @@ void main() {
     );
     await tester.pump();
     expect(find.byIcon(Icons.alternate_email), findsOneWidget); // email
-    expect(find.byIcon(Icons.link), findsOneWidget); // http link
+    expect(find.byIcon(AppIcons.link), findsOneWidget); // http link
     expect(find.byIcon(Icons.person_outline), findsOneWidget); // person
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget); // place
     expect(find.byIcon(Icons.tag), findsOneWidget); // tag

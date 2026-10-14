@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'widgets/app_icons.dart';
 import 'calendar_feeds.dart';
 import 'dart:ui' show AppExitResponse;
 import 'dart:convert';
@@ -484,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               if (path == null)
                 ListTile(
-                  leading: const Icon(Icons.today),
+                  leading: const Icon(AppIcons.today),
                   title: Text(article == null ? 'Add to today' : 'Add link to today'),
                   subtitle: article == null ? const Text('Default') : null,
                   onTap: () => Navigator.pop(context, 'today'),
@@ -3282,7 +3283,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             leading: IconButton(
               tooltip: 'Cancel',
               onPressed: () => Navigator.pop(context, false),
-              icon: const Icon(Icons.close),
+              icon: const Icon(AppIcons.close),
             ),
           ),
           body: ListView(
@@ -4404,8 +4405,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'Switch',
               divider: false,
               children: [
-                tile(_ShellAction.vaults, Icons.folder_outlined, 'Vaults'),
-                tile(_ShellAction.settings, Icons.settings_outlined, 'Settings'),
+                tile(_ShellAction.vaults, AppIcons.folder, 'Vaults'),
+                tile(_ShellAction.settings, AppIcons.settings, 'Settings'),
               ],
             ),
             AppSection(
@@ -4420,14 +4421,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 title: 'This note',
                 children: [
                   tile(_ShellAction.split, Icons.vertical_split, 'Split editor'),
-                  tile(_ShellAction.backlinks, Icons.link, 'Context'),
+                  tile(_ShellAction.backlinks, AppIcons.link, 'Context'),
                   tile(_ShellAction.sharePdf, Icons.ios_share, 'Share as PDF'),
                 ],
               ),
             AppSection(
               title: 'Views',
               children: [
-                tile(_ShellAction.graph, Icons.account_tree_outlined, 'Graph'),
+                tile(_ShellAction.graph, AppIcons.graph, 'Graph'),
               ],
             ),
           ],
@@ -5364,14 +5365,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             IconButton(
               tooltip: 'Choose journal date',
               onPressed: () => unawaited(_showCalendarPicker()),
-              icon: const Icon(Icons.calendar_month),
+              icon: const Icon(AppIcons.calendarDate),
             ),
           if (mode == 'graph')
             PopupMenuButton<String>(
               tooltip: 'Graph view',
               icon: Icon(switch (_graphMode) {
                 'conceptMap' => Icons.bubble_chart,
-                'allFiles' => Icons.hub,
+                'allFiles' => AppIcons.graph,
                 'timeline' => Icons.timeline,
                 'voronoi' => Icons.hive,
                 _ => Icons.center_focus_strong,
@@ -5418,12 +5419,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'read' => Icons.chrome_reader_mode_outlined,
                 'preview' => Icons.preview_outlined,
                 'source' => Icons.code,
-                _ => Icons.edit_outlined,
+                _ => AppIcons.edit,
               }),
               onSelected: _setEditorMode,
               itemBuilder: (_) => [
                 for (final (value, label, icon) in const [
-                  ('normal', 'Edit', Icons.edit_outlined),
+                  ('normal', 'Edit', AppIcons.edit),
                   ('read', 'Read', Icons.chrome_reader_mode_outlined),
                   ('preview', 'Preview', Icons.preview_outlined),
                   ('source', 'Source', Icons.code),
@@ -5484,13 +5485,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 }
               },
               destinations: const [
-                NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
+                NavigationDestination(icon: Icon(AppIcons.today), label: 'Today'),
                 NavigationDestination(
-                  icon: Icon(Icons.edit_note),
+                  icon: Icon(AppIcons.daily),
                   label: 'Journal',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.library_books),
+                  icon: Icon(AppIcons.library),
                   label: 'Library',
                 ),
                 NavigationDestination(
@@ -5498,7 +5499,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   label: 'Search',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.more_horiz),
+                  icon: Icon(AppIcons.overflow),
                   label: 'More',
                 ),
               ],
@@ -5521,15 +5522,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       : NavigationRailLabelType.all,
                   destinations: const [
                     NavigationRailDestination(
-                      icon: Icon(Icons.today),
+                      icon: Icon(AppIcons.today),
                       label: Text('Today'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.edit_note),
+                      icon: Icon(AppIcons.daily),
                       label: Text('Journal'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.library_books),
+                      icon: Icon(AppIcons.library),
                       label: Text('Library'),
                     ),
                     NavigationRailDestination(
@@ -5537,7 +5538,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       label: Text('Search'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.more_horiz),
+                      icon: Icon(AppIcons.overflow),
                       label: Text('More'),
                     ),
                   ],

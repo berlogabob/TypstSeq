@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_icons.dart';
 import '../constants.dart';
 
 class LibraryToolbar extends StatelessWidget {
@@ -54,7 +55,7 @@ class LibraryToolbar extends StatelessWidget {
                           ? null
                           : IconButton(
                               tooltip: 'Clear search',
-                              icon: const Icon(Icons.close, size: kIconSmall),
+                              icon: const Icon(AppIcons.close, size: kIconSmall),
                               onPressed: () {
                                 controller.clear();
                                 onChanged('');

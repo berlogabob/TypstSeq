@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
 import 'task_clock.dart';
@@ -166,7 +167,9 @@ class _TaskChipStripState extends State<TaskChipStrip> {
                     field,
                     date == null ? '' : _date(date, now),
                     '${field == 'due' ? 'Due' : 'Scheduled'}${date == null ? '' : ': $date'}',
-                    icon: field == 'due' ? Icons.event : Icons.schedule,
+                    icon: field == 'due'
+                        ? AppIcons.calendarDate
+                        : AppIcons.schedule,
                     overdue:
                         field == 'due' &&
                         date != null &&

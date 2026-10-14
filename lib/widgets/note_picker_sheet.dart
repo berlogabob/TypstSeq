@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tylog_core/models.dart';
 
+import 'app_icons.dart';
 import 'constants.dart';
 import 'ds/app_sheet.dart';
 
@@ -87,7 +88,7 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
                   ),
                 if (visible.length < filtered.length)
                   ListTile(
-                    leading: const Icon(Icons.more_horiz),
+                    leading: const Icon(AppIcons.overflow),
                     title: Text(
                       'Load more (${filtered.length - visible.length})',
                     ),

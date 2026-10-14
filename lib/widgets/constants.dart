@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 
 /// Note kinds that represent the app's own structural taxonomy (daily
 /// journal, pages, projects, …) rather than a user-defined entity. Defined in
@@ -92,7 +93,7 @@ IconData iconForKind(String? kind) => switch (kind) {
   'project' => Icons.work_outline,
   'idea' => Icons.lightbulb_outline,
   'article' => Icons.article_outlined,
-  'screenshot' => Icons.screenshot_outlined,
-  'daily' => Icons.event_note,
+  'screenshot' => AppIcons.screenshot,
+  'daily' => AppIcons.daily,
   _ => Icons.description_outlined, // generic note reference
 };

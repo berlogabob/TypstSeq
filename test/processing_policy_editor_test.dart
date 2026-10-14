@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/processing_policy_editor.dart';
 
@@ -14,7 +15,7 @@ void main() {
         home: Scaffold(
           body: StatefulBuilder(
             builder: (context, setState) => ProcessingPolicyEditor(
-              icon: Icons.screenshot,
+              icon: AppIcons.screenshot,
               title: 'Processing',
               onTheFly: fly,
               scheduled: scheduled,
@@ -68,7 +69,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: ProcessingPolicyEditor(
-              icon: Icons.screenshot,
+              icon: AppIcons.screenshot,
               title: 'Processing',
               onTheFly: true,
               scheduled: true,
@@ -106,7 +107,7 @@ void main() {
           MaterialApp(
             home: Scaffold(
               body: ProcessingPolicyEditor(
-                icon: Icons.screenshot,
+                icon: AppIcons.screenshot,
                 title: 'Processing',
                 onTheFly: false,
                 scheduled: true,

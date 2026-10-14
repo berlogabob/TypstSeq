@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/article_jobs.dart';
@@ -269,7 +270,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Fresh sorts first (most recently modified); open its overflow menu.
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(find.byIcon(AppIcons.overflow).first);
       await tester.pumpAndSettle();
       expect(find.text('Delete article…'), findsOneWidget);
 

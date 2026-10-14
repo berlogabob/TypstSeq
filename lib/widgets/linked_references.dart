@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'app_icons.dart';
 import 'screenshot_strip.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
@@ -94,7 +95,7 @@ class _LinkedReferencesState extends State<LinkedReferences> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.hub_outlined, size: 18),
+                  const Icon(AppIcons.backlinks, size: 18),
                   const SizedBox(width: kSpace8),
                   Expanded(
                     child: Text(

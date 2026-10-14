@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'app_icons.dart';
 import 'screenshot_strip.dart';
 
 import 'package:flutter/material.dart';
@@ -125,7 +126,7 @@ class TodayPage extends StatelessWidget {
     List<Widget> agendaContent() => [
       for (final event in todayEvents)
         ListTile(
-          leading: const Icon(Icons.event),
+          leading: const Icon(AppIcons.calendarEvent),
           title: Text(event.title),
           onTap: () => onOpenPath(event.notePath),
         ),
@@ -152,7 +153,7 @@ class TodayPage extends StatelessWidget {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: ListTile(
-                  leading: const Icon(Icons.auto_stories_outlined),
+                  leading: const Icon(AppIcons.read),
                   title: Text(
                     note.title,
                     maxLines: 2,
@@ -178,7 +179,7 @@ class TodayPage extends StatelessWidget {
           if (hasTopContent) ...[
             if (compactHeight)
               ListTile(
-                leading: const Icon(Icons.event_note),
+                leading: const Icon(AppIcons.agenda),
                 title: Text(
                   agendaTitle,
                   maxLines: 1,
@@ -221,7 +222,7 @@ class TodayPage extends StatelessWidget {
                           recent.isNotEmpty)
                         ExpansionTile(
                           key: const PageStorageKey('today-agenda'),
-                          leading: const Icon(Icons.event_note),
+                          leading: const Icon(AppIcons.agenda),
                           title: InkWell(
                             onTap: nextDay == null || onOpenDay == null
                                 ? null
@@ -1133,7 +1134,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                           leading: Icon(
                             job.status == 'processing'
                                 ? Icons.hourglass_top
-                                : Icons.schedule,
+                                : AppIcons.queued,
                           ),
                           title: Text(job.title ?? job.url),
                           subtitle: Text(
@@ -1146,7 +1147,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                           '${screenshots ? 'screenshots' : 'articles'}-continue-reading',
                         ),
                         child: ListTile(
-                          leading: const Icon(Icons.auto_stories),
+                          leading: const Icon(AppIcons.read),
                           title: Text(
                             'Continue reading · ${continueNote.title}',
                           ),
@@ -1186,7 +1187,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   }
 
   Widget _emptyState(List<NoteRef> all) => AppEmptyState(
-    icon: screenshots ? Icons.screenshot_outlined : Icons.article_outlined,
+    icon: screenshots ? AppIcons.screenshot : Icons.article_outlined,
     loading: widget.indexing && all.isEmpty,
     title: widget.indexing && all.isEmpty
         ? 'Indexing…'
@@ -1388,7 +1389,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                   shape: const CircleBorder(),
                 ),
                 icon: const Icon(
-                  Icons.more_horiz,
+                  AppIcons.overflow,
                   size: kIconSmall,
                   color: Colors.white,
                 ),
@@ -1457,7 +1458,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       ),
       trailing: PopupMenuButton<String>(
         tooltip: 'More',
-        icon: const Icon(Icons.more_horiz, size: kIcon),
+        icon: const Icon(AppIcons.overflow, size: kIcon),
         onSelected: (value) {
           if (value == 'delete') unawaited(widget.onDeleteArticle(note));
         },

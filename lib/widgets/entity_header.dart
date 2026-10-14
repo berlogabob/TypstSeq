@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'app_icons.dart';
 import '../models.dart';
 import 'constants.dart';
 
@@ -177,7 +178,7 @@ class _PropertyRow extends StatelessWidget {
             _isEmail
                 ? Icons.alternate_email
                 : _isUrl
-                ? Icons.link
+                ? AppIcons.link
                 : Icons.label_outline,
             size: 16,
             color: scheme.onSurfaceVariant,
