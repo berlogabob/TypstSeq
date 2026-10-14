@@ -46,6 +46,26 @@ TyLogEditingController _controller(
   return controller;
 }
 
+Future<String> Function(String, Uint8List) _trackCropWrites(
+  Directory dir,
+  Future<String> Function(String, Uint8List) write,
+) {
+  final pending = <Future<String>>[];
+  addTearDown(() async {
+    await Future.wait(
+      pending.map(
+        (future) => future.then<void>((_) {}, onError: (Object _) {}),
+      ),
+    );
+    await dir.delete(recursive: true);
+  });
+  return (path, bytes) {
+    final future = write(path, bytes);
+    pending.add(future);
+    return future;
+  };
+}
+
 Future<void> _editor(
   WidgetTester tester,
   TyLogEditingController controller,
@@ -82,11 +102,17 @@ Future<void> _openCrop(WidgetTester tester) async {
   expect(find.text('Crop image'), findsOneWidget);
 }
 
-Future<void> _done(WidgetTester tester) async {
+Future<void> _done(WidgetTester tester, {bool Function()? completed}) async {
+  final isDone = completed ?? () => find.text('Crop image').evaluate().isEmpty;
   await tester.runAsync(() async {
     await tester.tap(find.text('Done'));
     await tester.pump();
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final stopwatch = Stopwatch()..start();
+    while (!isDone() && stopwatch.elapsed < const Duration(seconds: 10)) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      await tester.pump(const Duration(milliseconds: 25));
+    }
+    expect(isDone(), isTrue, reason: 'Crop did not complete within 10 seconds');
   });
   await tester.pump();
   if (find.byType(Image).evaluate().isNotEmpty) {
@@ -97,7 +123,11 @@ Future<void> _done(WidgetTester tester) async {
       ),
     );
   }
-  await tester.pumpAndSettle();
+  await tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 20),
+  );
 }
 
 void main() {
@@ -416,7 +446,6 @@ void main() {
         final dir = await tester.runAsync(
           () => Directory.systemTemp.createTemp('tylog_crop_widget_'),
         );
-        addTearDown(() => dir!.delete(recursive: true));
         final storage = LocalVaultStorage(dir!);
         final original = (await tester.runAsync(_png))!;
         await tester.runAsync(
@@ -429,12 +458,12 @@ void main() {
         final controller = _controller(
           source,
           read: (path) async => data[path],
-          write: (path, bytes) async {
+          write: _trackCropWrites(dir, (path, bytes) async {
             writes++;
             final next = await saveImageCrop(storage, path, bytes);
             data[next] = bytes;
             return next;
-          },
+          }),
         );
         await _editor(tester, controller);
         final editorRect = tester.getRect(find.byType(Image));
@@ -497,7 +526,7 @@ void main() {
       await _openCrop(tester);
       await tester.tap(find.text('1:1'));
       await tester.pumpAndSettle();
-      await _done(tester);
+      await _done(tester, completed: () => errors.isNotEmpty);
       expect(errors.single, isA<FileSystemException>());
       expect(controller.document.toSource(), source);
       expect(controller.canUndo, isFalse);
@@ -539,7 +568,7 @@ void main() {
       }
       await tester.dragFrom(surface.center, const Offset(-30, -20));
       await tester.pumpAndSettle();
-      await _done(tester);
+      await _done(tester, completed: () => outputs.isNotEmpty);
       expect(outputs, hasLength(1));
       final image = await tester.runAsync(
         () => decodeCropImage(outputs.single),
