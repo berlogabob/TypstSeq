@@ -437,6 +437,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           'getPendingShare',
         );
         if (data == null || !mounted || vault == null) break;
+        final path = data['path'];
+        final mime = data['mime'] ?? '';
         final text = data['text'] ?? '';
         final article = SharedArticle.parse(text, title: data['title']);
         final targetVault = vault!;
@@ -448,27 +450,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: [
                 ListTile(
                   title: Text(
-                    article?.title ?? article?.url ?? text,
+                    path != null
+                        ? data['name'] ?? path.split('/').last
+                        : article?.title ?? article?.url ?? text,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.article_outlined),
-                  title: const Text('Save as article'),
-                  subtitle: Text(
-                    article == null
-                        ? 'Share a web URL to save an article'
-                        : 'Default',
+                if (path != null)
+                  ListTile(
+                    leading: Icon(
+                      mime.startsWith('image/')
+                          ? Icons.image_outlined
+                          : mime.startsWith('audio/')
+                          ? Icons.audiotrack
+                          : Icons.attach_file,
+                    ),
+                    title: const Text('Attach to today'),
+                    subtitle: const Text('Default'),
+                    onTap: () => Navigator.pop(context, 'attach'),
                   ),
-                  enabled: article != null,
-                  onTap: () => Navigator.pop(context, 'article'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.today),
-                  title: const Text('Add to today'),
-                  onTap: () => Navigator.pop(context, 'today'),
-                ),
+                if (path == null && article != null)
+                  ListTile(
+                    leading: const Icon(Icons.article_outlined),
+                    title: const Text('Save as article'),
+                    subtitle: const Text(
+                      'Fetch and convert the page to text',
+                    ),
+                    trailing: const Text('Default'),
+                    onTap: () => Navigator.pop(context, 'article'),
+                  ),
+                if (path == null)
+                  ListTile(
+                    leading: const Icon(Icons.today),
+                    title: Text(
+                      article == null ? 'Add to today' : 'Add link to today',
+                    ),
+                    subtitle: article == null ? const Text('Default') : null,
+                    onTap: () => Navigator.pop(context, 'today'),
+                  ),
               ],
             ),
           ),
@@ -484,6 +504,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           workspace.queueCloudSync();
           await _refreshArticleJobs();
           if (mounted) showSnack(context, 'Article queued');
+        } else if (choice == 'attach' && path != null) {
+          if (!await _captureTimestamp()) continue;
+          if (!mounted || !identical(vault, targetVault)) continue;
+          await _attachFile(File(path));
         } else if (choice == 'today') {
           if (!await _captureTimestamp()) continue;
           if (!mounted || !identical(vault, targetVault)) continue;
@@ -4160,12 +4184,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _insertAttachment() async {
-    final v = vault;
-    if (v == null) return;
+    if (vault == null) return;
     final picked = await FilePicker.pickFiles();
     final sourcePath = picked?.files.single.path;
     if (sourcePath == null) return;
-    final source = File(sourcePath);
+    await _attachFile(File(sourcePath));
+  }
+
+  Future<void> _attachFile(File source) async {
+    final v = vault;
+    if (v == null) return;
     final base = source.path.split(Platform.pathSeparator).last;
     var target = 'assets/$base';
     var suffix = 2;

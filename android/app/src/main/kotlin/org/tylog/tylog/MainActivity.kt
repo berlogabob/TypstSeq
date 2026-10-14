@@ -1,6 +1,13 @@
 package org.tylog.tylog
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Log
+import android.webkit.MimeTypeMap
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.Executors
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
@@ -9,14 +16,65 @@ class MainActivity : FlutterActivity() {
     private lateinit var safBridge: SafBridge
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
+    private val shareWorker = Executors.newSingleThreadExecutor()
 
+    @Suppress("DEPRECATION")
     private fun receiveShare(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND || intent.type != "text/plain") return
-        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return
-        val payload = mutableMapOf("text" to text)
-        intent.getStringExtra(Intent.EXTRA_SUBJECT)?.let { payload["title"] = it }
-        pendingShares.add(payload)
+        if (intent == null || (intent.action != Intent.ACTION_SEND &&
+                intent.action != Intent.ACTION_SEND_MULTIPLE)) return
+        val streams = if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+        } else {
+            listOfNotNull(intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        }
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+        val title = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+        val intentMime = intent.type
         intent.action = null
+        shareWorker.execute {
+            val root = File(cacheDir, "shared")
+            val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+            root.listFiles()?.filter { it.lastModified() < cutoff }?.forEach {
+                it.deleteRecursively()
+            }
+            for (uri in streams) {
+                val directory = File(root, UUID.randomUUID().toString())
+                try {
+                    val mime = contentResolver.getType(uri) ?: intentMime ?: "application/octet-stream"
+                    val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                    val fallback = "shared" + (extension?.let { ".$it" } ?: "")
+                    val displayName = contentResolver.query(
+                        uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                    val name = displayName?.replace(Regex("[\\\\/\\p{Cntrl}]"), "_")
+                        ?.trim()?.takeIf { it.isNotEmpty() && it != "." && it != ".." }
+                        ?: fallback
+                    check(directory.mkdirs()) { "Could not create shared file directory" }
+                    val file = File(directory, name)
+                    contentResolver.openInputStream(uri).use { input ->
+                        checkNotNull(input) { "Could not open shared file" }
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val payload = mutableMapOf("path" to file.path, "name" to name, "mime" to mime)
+                    text?.let { payload["text"] = it }
+                    runOnUiThread { enqueueShare(payload) }
+                } catch (error: Exception) {
+                    directory.deleteRecursively()
+                    Log.w("TyLog", "Could not copy shared file", error)
+                }
+            }
+        }
+        if (streams.isEmpty() && intentMime == "text/plain" && text != null) {
+            val payload = mutableMapOf("text" to text)
+            title?.let { payload["title"] = it }
+            enqueueShare(payload)
+        }
+    }
+
+    private fun enqueueShare(payload: Map<String, String>) {
+        pendingShares.add(payload)
         if (::shareChannel.isInitialized) shareChannel.invokeMethod("shareAvailable", null)
     }
 
@@ -49,6 +107,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        shareWorker.shutdown()
         if (::safBridge.isInitialized) safBridge.dispose()
         super.onDestroy()
     }
