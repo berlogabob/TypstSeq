@@ -194,7 +194,8 @@ void main() {
       expect(theme.textButtonTheme.style?.shape?.resolve({}), isNotNull);
       expect(theme.appBarTheme.surfaceTintColor, Colors.transparent);
       expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);
-      expect(theme.inputDecorationTheme.border, isA<OutlineInputBorder>());
+      // Regression: a global outline border boxed the borderless editor field.
+      expect(theme.inputDecorationTheme.border, isNot(isA<OutlineInputBorder>()));
       expect(theme.listTileTheme.contentPadding,
           const EdgeInsets.symmetric(horizontal: kSpace16));
       expect(theme.dividerTheme.space, kSpace16);

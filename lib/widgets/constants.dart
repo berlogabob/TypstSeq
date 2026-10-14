@@ -76,11 +76,7 @@ ThemeData tyLogTheme(Brightness brightness) {
         borderRadius: BorderRadius.vertical(top: Radius.circular(kRadiusLarge)),
       ),
     ),
-    inputDecorationTheme: const InputDecorationThemeData(
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(kRadiusMedium)),
-      ),
-    ),
+    // No global inputDecorationTheme: the editor relies on the default (borderless) field.
     listTileTheme: const ListTileThemeData(
       contentPadding: EdgeInsets.symmetric(horizontal: kSpace16),
     ),
