@@ -64,7 +64,7 @@ def test_cli_core(tmp_path, monkeypatch):
         assert audio == tmp_path / "audio.wav"
         assert (model, lang) == ("small", "pt")
         assert json.loads(job_path.read_text())["status"] == "processing"
-        return [(65, "Fixed text")], "pt"
+        return [(65, "Fixed text")], "pt", ["pt"]
 
     monkeypatch.setattr(worker, "transcribe", fake_transcribe)
     state_path = tmp_path / "custom-state.json"
@@ -74,6 +74,7 @@ def test_cli_core(tmp_path, monkeypatch):
     assert job["status"] == "done"
     assert job["finished_at"]
     assert job["lang"] == "pt"
+    assert job["langs"] == ["pt"]
     assert note.read_bytes() == (
         b"= Note\r\n== Comments\r\nKeep me\r\n\n== Transcript\n\n- 01:05 Fixed text\n"
     )
@@ -110,36 +111,111 @@ def test_job_language(tmp_path, monkeypatch, requested):
 
     def fake(audio, model, lang):
         assert lang == (requested or None)
-        return [(0, "Hello")], "en"
+        return [(0, "Hello")], "en", ["en", "ru"]
 
     monkeypatch.setattr(worker, "transcribe", fake)
     worker.run_once(tmp_path)
     job = json.loads(job_path.read_text())
     assert job["lang"] == "en"
+    assert job["langs"] == ["en", "ru"]
     assert job["status"] == "done"
     assert job["extra"] == 42
     assert job["requested_at"] == "yesterday"
 
 
 def test_transcribe_detected_language(monkeypatch):
+    calls = []
+
+    class Model:
+        def __init__(self, model):
+            assert model == "small"
+            calls.append("load")
+
+        def transcribe(self, audio, language, multilingual):
+            assert (audio, language, multilingual) == ("audio.wav", None, True)
+            return iter([SimpleNamespace(start=1, end=4, text=" Hello ")]), SimpleNamespace(language="en")
+
+        def detect_language(self, audio):
+            assert audio == range(30 * 16000)
+            calls.append("detect")
+            return "en", 0.9, []
+
+    def decode(audio, sampling_rate):
+        assert (audio, sampling_rate) == ("audio.wav", 16000)
+        calls.append("decode")
+        return range(30 * 16000)
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model, decode_audio=decode))
+    assert worker.transcribe("audio.wav", lang="") == ([(1, "Hello")], "en", ["en"])
+    assert calls == ["load", "decode", "detect"]
+
+
+@pytest.mark.parametrize("fail_detection", [False, True])
+def test_transcribe_language_windows_and_threshold(monkeypatch, fail_detection):
+    segments = [SimpleNamespace(start=start, end=end, text=" speech ")
+                for start, end in [(0, 20), (20, 30), (30, 40), (40, 45),
+                                   (90, 105), (120, 134), (150, 166), (180, 190)]]
+    # 100 s speech: ru=45%, pt=15%, de=14%, en=16%, dominant fr=10%.
+    detections = {0: "ru", 1: "ru", 3: "pt", 4: "de", 5: "en", 6: "fr"}
+    calls = []
+
+    class Model:
+        def __init__(self, model):
+            calls.append("load")
+
+        def transcribe(self, audio, **kwargs):
+            assert kwargs == {"language": None, "multilingual": True}
+            return iter(segments), SimpleNamespace(language="fr")
+
+        def detect_language(self, audio):
+            window = audio.start // (30 * 16000)
+            assert audio == range(window * 30 * 16000, (window + 1) * 30 * 16000)
+            calls.append(window)
+            if fail_detection and window == 3:
+                raise RuntimeError("Detection failed")
+            return detections[window], 0.9, []
+
+    def decode(audio, sampling_rate):
+        assert (audio, sampling_rate) == ("audio.wav", 16000)
+        calls.append("decode")
+        return range(210 * 16000)
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model, decode_audio=decode))
+    texts, dominant, languages = worker.transcribe("audio.wav")
+    assert texts == [(segment.start, "speech") for segment in segments]
+    assert dominant == "fr"
+    assert languages == (["fr"] if fail_detection else ["fr", "ru", "en", "pt"])
+    assert calls == ["load", "decode", 0, 1, 3] + ([] if fail_detection else [4, 5, 6])
+
+
+def test_transcribe_forced_language_skips_detection(monkeypatch):
     class Model:
         def __init__(self, model):
             assert model == "small"
 
-        def transcribe(self, audio, language):
-            assert (audio, language) == ("audio.wav", None)
-            return iter([SimpleNamespace(start=1, text=" Hello ")]), SimpleNamespace(language="en")
+        def transcribe(self, audio, **kwargs):
+            assert kwargs == {"language": "pt"}
+            return iter([SimpleNamespace(start=1, end=2, text=" Olá ")]), SimpleNamespace(language="pt")
 
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model))
-    assert worker.transcribe("audio.wav", lang="") == ([(1, "Hello")], "en")
+        def detect_language(self, **kwargs):
+            pytest.fail("Forced language must skip detection")
+
+    def decode(*args, **kwargs):
+        pytest.fail("Forced language must skip decoding")
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model, decode_audio=decode))
+    assert worker.transcribe("audio.wav", lang="pt") == ([(1, "Olá")], "pt", ["pt"])
 
 
 @pytest.mark.parametrize("existing", [False, True])
-def test_translation_job(tmp_path, existing):
+@pytest.mark.parametrize("source_langs", [None, ["en", "pt"]])
+def test_translation_job(tmp_path, existing, source_langs):
     jobs = tmp_path / "_system/jobs/translations"
     jobs.mkdir(parents=True)
     original = {"audio": "audio.wav", "note": "note.typ", "target": "ru",
                 "source_lang": "en", "requested_at": "yesterday", "status": "queued"}
+    if source_langs is not None:
+        original["source_langs"] = source_langs
     job_path = jobs / (hashlib.sha1(b"audio.wav\nru").hexdigest() + ".json")
     job_path.write_text(json.dumps(original))
     comments = "== Comments\r\nKeep *this* \\# exactly.\r\n\r\n"
@@ -149,9 +225,10 @@ def test_translation_job(tmp_path, existing):
     note = tmp_path / "note.typ"
     note.write_bytes((prefix + ("== Translation ru\nOld\n" if existing else "") + notes).encode())
 
-    def fake(texts, source_lang, target):
+    def fake(texts, source_lang, target, source_langs):
         assert (texts, source_lang, target) == (["Hello #name\\", "Next"], "en", "ru")
         assert json.loads(job_path.read_text())["status"] == "processing"
+        assert source_langs == original.get("source_langs", ["en"])
         return ["Привет \\#[]$*_@", "Далее"]
 
     expected = (prefix + "== Translation ru\n\n- 00:00 " +
@@ -195,9 +272,9 @@ def test_transcription_before_translation(tmp_path, monkeypatch):
         (jobs / "job.json").write_text(json.dumps(job))
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
-    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(65, "Hello")], "en"))
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(65, "Hello")], "en", ["en"]))
 
-    def fake(texts, source_lang, target):
+    def fake(texts, source_lang, target, source_langs):
         assert texts == ["Hello"]
         return ["Привет"]
 
@@ -229,7 +306,8 @@ def test_translation_backend_failure_keeps_note(tmp_path):
 
 
 @pytest.mark.parametrize("fenced", [False, True])
-def test_translation_backend_batches(tmp_path, monkeypatch, fenced):
+@pytest.mark.parametrize("source_langs", [None, ["en", "pt", "ru"]])
+def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs):
     monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1/")
     monkeypatch.setenv("TYLOG_LLM_KEY", "test-key")
     monkeypatch.delenv("TYLOG_LLM_MODEL", raising=False)
@@ -247,6 +325,10 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced):
             payload = json.loads(request.data)
             assert payload["model"] == "translator"
             assert payload["temperature"] == 0
+            prompt = payload["messages"][0]["content"]
+            assert "Translate faithfully into ru" in prompt
+            assert "Segments that are already in the target language must be returned unchanged" in prompt
+            assert "The source may mix these languages: " + ", ".join(source_langs or ["en"]) in prompt
             batch = json.loads(payload["messages"][1]["content"])
             batches.append(batch)
             reply = json.dumps(["ru " + text for text in batch])
@@ -257,7 +339,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced):
 
     monkeypatch.setattr(worker, "urlopen", fake)
     texts = [f"segment {index}" for index in range(81)]
-    assert worker.translate(texts, "en", "ru") == ["ru " + text for text in texts]
+    assert worker.translate(texts, "en", "ru", source_langs) == ["ru " + text for text in texts]
     assert [len(batch) for batch in batches] == [40, 40, 1]
 
 
@@ -299,7 +381,7 @@ def sweep_vault(tmp_path, monkeypatch):
     settings_path.parent.mkdir(parents=True)
     (tmp_path / "notes").mkdir()
     (tmp_path / "assets/audio").mkdir(parents=True)
-    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(0, "Hello")], "en"))
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(0, "Hello")], "en", ["en"]))
     return tmp_path
 
 
@@ -363,7 +445,7 @@ def test_on_the_fly_processes_then_translates_next_sweep(sweep_vault):
 
     calls = []
 
-    def fake_translate(texts, source_lang, target):
+    def fake_translate(texts, source_lang, target, source_langs):
         calls.append((texts, source_lang, target))
         return [target + " Hello"]
 
@@ -423,8 +505,8 @@ def test_process_now_forces_once_per_request(sweep_vault):
     assert json.loads(state_path.read_text())["last_process_now"] == "2026-10-14T01:01:00Z"
 
 
-def test_force_respects_transcribe_disabled(sweep_vault):
-    set_audio_settings(sweep_vault, transcribe=False, translate_to=["ru"])
+def test_force_respects_both_features_disabled(sweep_vault):
+    set_audio_settings(sweep_vault, transcribe=False, translate=False, translate_to=["ru"])
     audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
     write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
     assert worker.sweep(sweep_vault, NOW, {}, force=True) == 0
@@ -454,8 +536,84 @@ def test_translation_only_missing_targets(sweep_vault):
     assert worker.sweep(vault, NOW, {}) == 1
     job = json.loads(job_path(vault, "translations", audio + "\npt").read_text())
     assert (job["target"], job["source_lang"], job["status"], job["auto"]) == ("pt", "en", "queued", True)
+    assert job["source_langs"] == ["en"]
     assert not job_path(vault, "translations", audio + "\nen").exists()
     assert not job_path(vault, "translations", audio + "\nru").exists()
+
+
+@pytest.mark.parametrize("flag, targets, expected", [
+    (None, ["ru"], 1), (None, [], 0),
+    (False, ["ru"], 0), (True, ["ru"], 1), (True, [], 0),
+])
+def test_translate_setting_independent_of_transcribe(sweep_vault, flag, targets, expected):
+    settings = {"transcribe": False, "on_the_fly": True, "translate_to": targets}
+    if flag is not None:
+        settings["translate"] = flag
+    set_audio_settings(sweep_vault, **settings)
+    audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
+    add_audio_note(sweep_vault, "untranscribed.wav")
+    transcript_job = write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
+    original = transcript_job.read_bytes()
+    assert worker.sweep(sweep_vault, NOW, {}) == expected
+    assert list((sweep_vault / "_system/jobs/transcripts").glob("*.json")) == [transcript_job]
+    assert transcript_job.read_bytes() == original
+    assert len(list((sweep_vault / "_system/jobs/translations").glob("*.json"))) == expected
+
+
+def test_transcribe_enabled_translate_disabled(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True, translate=False, translate_to=["ru"])
+    missing, _ = add_audio_note(sweep_vault)
+    complete, _ = add_audio_note(sweep_vault, "complete.wav", body="== Transcript\n- 00:00 Hello\n")
+    write_job(sweep_vault, "transcripts", complete, lang="en", status="done")
+    assert worker.sweep(sweep_vault, NOW, {}) == 1
+    assert job_path(sweep_vault, "transcripts", missing).exists()
+    assert not list((sweep_vault / "_system/jobs/translations").glob("*.json"))
+
+
+@pytest.mark.parametrize("langs, expected", [(["pt"], ["ru", "en"]),
+                                            (["pt", "ru"], ["ru", "en", "pt"])])
+def test_translation_targets_for_monolingual_and_mixed_transcripts(sweep_vault, langs, expected):
+    set_audio_settings(sweep_vault, on_the_fly=True, translate_to=["ru", "en", "pt"])
+    second = "Привет" if len(langs) > 1 else "Olá novamente"
+    audio, note = add_audio_note(sweep_vault, body=f"== Transcript\n- 00:00 Olá\n- 00:30 {second}\n")
+    write_job(sweep_vault, "transcripts", audio, lang="pt", langs=langs, status="done")
+    assert worker.sweep(sweep_vault, NOW, {}) == len(expected)
+    for target in expected:
+        job = json.loads(job_path(sweep_vault, "translations", audio + "\n" + target).read_text())
+        assert job["source_lang"] == "pt"
+        assert job["source_langs"] == langs
+        assert job["target"] == target
+    calls = []
+
+    def fake(texts, source_lang, target, source_langs):
+        assert texts == ["Olá", second]
+        assert (source_lang, source_langs) == ("pt", langs)
+        calls.append(target)
+        return [target + " first", target + " second"]
+
+    worker.run_once(sweep_vault, now=NOW, translate=fake)
+    assert sorted(calls) == sorted(expected)
+    for target in expected:
+        assert f"== Translation {target}\n\n- 00:00 {target} first\n- 00:30 {target} second\n" in note.read_text()
+    assert worker.sweep(sweep_vault, NOW, {}) == 0
+
+
+@pytest.mark.parametrize("gate", ["closed", "on_the_fly", "scheduled", "force"])
+def test_translation_only_preserves_sweep_gate(sweep_vault, gate):
+    set_audio_settings(sweep_vault, transcribe=False, translate=True, translate_to=["ru"],
+                       on_the_fly=gate == "on_the_fly", scheduled=gate == "scheduled")
+    audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
+    write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
+    assert worker.sweep(sweep_vault, NOW, {}, force=gate == "force") == (0 if gate == "closed" else 1)
+
+
+def test_translate_enabled_without_targets_completes_scheduled_sweep(sweep_vault):
+    set_audio_settings(sweep_vault, transcribe=False, translate=True, translate_to=[], scheduled=True)
+    add_audio_note(sweep_vault)
+    state = {}
+    assert worker.sweep(sweep_vault, NOW, state) == 0
+    assert state == {"last_scheduled_date": "2026-10-14"}
+    assert not list((sweep_vault / "_system/jobs").rglob("*.json"))
 
 
 @pytest.mark.parametrize("lang", [None, ""])
@@ -536,7 +694,7 @@ def test_scheduled_run_stays_open_until_translations_exist(sweep_vault):
     state_path = vault / "state.json"
     translated = []
 
-    def fake_translate(texts, source_lang, target):
+    def fake_translate(texts, source_lang, target, source_langs):
         translated.append(target)
         return [target] * len(texts)
 

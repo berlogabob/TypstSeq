@@ -92,27 +92,57 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
           title: const Text('Transcribe automatically'),
           onChanged: _busy ? null : (v) => _save(p.copyWith(transcribe: v)),
         ),
+        CheckboxListTile(
+          value: p.translate,
+          title: const Text('Translate automatically'),
+          onChanged: _busy ? null : (v) => _save(p.copyWith(translate: v)),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(
-            spacing: 8,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final e in kLanguageNames.entries)
-                FilterChip(
-                  label: Text(e.value),
-                  selected: p.translateTo.contains(e.key),
-                  onSelected: _busy || !p.transcribe
-                      ? null
-                      : (on) => _save(
-                          p.copyWith(
-                            translateTo: [
-                              for (final l in kLanguageNames.keys)
-                                if (l == e.key ? on : p.translateTo.contains(l))
-                                  l,
-                            ],
-                          ),
+              Text(
+                'Full text in each of these languages',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final l in p.translateTo)
+                    InputChip(
+                      label: Text(kLanguageNames[l] ?? l),
+                      onDeleted: () => _save(
+                        p.copyWith(
+                          translateTo: p.translateTo
+                              .where((v) => v != l)
+                              .toList(),
                         ),
-                ),
+                      ),
+                    ),
+                  MenuAnchor(
+                    menuChildren: [
+                      for (final e in kLanguageNames.entries)
+                        if (!p.translateTo.contains(e.key))
+                          MenuItemButton(
+                            onPressed: () => _save(
+                              p.copyWith(
+                                translateTo: [...p.translateTo, e.key],
+                              ),
+                            ),
+                            child: Text(e.value),
+                          ),
+                    ],
+                    builder: (context, controller, child) => ActionChip(
+                      avatar: const Icon(Icons.add),
+                      label: const Text('Add language'),
+                      onPressed: () => controller.isOpen
+                          ? controller.close()
+                          : controller.open(),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

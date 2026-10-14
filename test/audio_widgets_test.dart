@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
+import 'package:tylog/widgets/audio_processing_settings.dart';
 import 'package:tylog/widgets/audio_shelf.dart';
 
 NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
@@ -15,6 +17,109 @@ NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
     );
 
 void main() {
+  testWidgets('mixed transcript requests a missing selected translation', (
+    tester,
+  ) async {
+    String? requested;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioLanguageBar(
+            selected: const ['ru', 'en', 'pt'],
+            original: null,
+            translated: const {'ru'},
+            translating: const {},
+            view: 'ru',
+            onView: (_) {},
+            onRequest: (l) => requested = l,
+            canRequest: true,
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('· original'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Русский'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'English'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Português'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ActionChip, 'English'));
+    expect(requested, 'en');
+  });
+
+  testWidgets('monolingual original chip allows viewing a translation', (
+    tester,
+  ) async {
+    String? viewed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioLanguageBar(
+            selected: const ['ru', 'en', 'pt'],
+            original: 'pt',
+            translated: const {'ru'},
+            translating: const {},
+            view: 'pt',
+            onView: (l) => viewed = l,
+            onRequest: (_) {},
+            canRequest: true,
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.widgetWithText(ChoiceChip, 'Português · original'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(ActionChip, 'Português'), findsNothing);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Русский'));
+    expect(viewed, 'ru');
+  });
+
+  testWidgets(
+    'language settings stay editable with both automation switches off',
+    (tester) async {
+      AudioPolicy? saved;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AudioProcessingSettings(
+                read: () async => const AudioPolicy(translateTo: ['pt', 'ru']),
+                write: (p) async => saved = p,
+                processNow: () async {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(FilterChip), findsNothing);
+      expect(find.text('Full text in each of these languages'), findsOneWidget);
+      expect(
+        tester
+            .widgetList<InputChip>(find.byType(InputChip))
+            .map((c) => (c.label as Text).data),
+        ['Português', 'Русский'],
+      );
+      await tester.tap(find.text('Add language'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(MenuItemButton, 'English'));
+      await tester.pumpAndSettle();
+      expect(saved!.translateTo, ['pt', 'ru', 'en']);
+      expect(saved!.transcribe, isFalse);
+      expect(saved!.translate, isFalse);
+      final chip = tester.widget<InputChip>(
+        find.widgetWithText(InputChip, 'Русский'),
+      );
+      chip.onDeleted!();
+      await tester.pumpAndSettle();
+      expect(saved!.translateTo, ['pt', 'en']);
+      await tester.tap(find.text('Translate automatically'));
+      await tester.pumpAndSettle();
+      expect(saved!.translate, isTrue);
+      expect(saved!.transcribe, isFalse);
+    },
+  );
+
   testWidgets('waveform maps a tap to a fraction of its width', (tester) async {
     double? seek;
     await tester.pumpWidget(

@@ -37,6 +37,18 @@ Future<String?> transcriptJobLang(
 ) async =>
     (await _readJob(storage, transcriptJobPath(audioPath)))?['lang'] as String?;
 
+/// Languages detected in the transcript, with support for older single-language jobs.
+Future<List<String>> transcriptJobLangs(
+  VaultStorage storage,
+  String audioPath,
+) async {
+  final job = await _readJob(storage, transcriptJobPath(audioPath));
+  final langs = job?['langs'];
+  if (langs is List) return langs.whereType<String>().toList();
+  final lang = job?['lang'];
+  return lang is String ? [lang] : [];
+}
+
 /// One job per (audio, target language); see docs/audio-transcription.md.
 String translationJobPath(String audioPath, String target) =>
     '_system/jobs/translations/${sha1.convert(utf8.encode('$audioPath\n$target'))}.json';
@@ -56,6 +68,7 @@ Future<void> enqueueTranslation(
   required String notePath,
   required String target,
   required String sourceLang,
+  List<String> sourceLangs = const [],
   DateTime? now,
 }) async {
   final status = await translationJobStatus(storage, audioPath, target);
@@ -68,6 +81,7 @@ Future<void> enqueueTranslation(
       'note': notePath,
       'target': target,
       'source_lang': sourceLang,
+      if (sourceLangs.isNotEmpty) 'source_langs': sourceLangs,
       'requested_at': (now ?? DateTime.now()).toUtc().toIso8601String(),
       'status': 'queued',
     }),

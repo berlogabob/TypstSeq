@@ -41,13 +41,34 @@ def apply_transcript(note_text, segments):
 
 
 def transcribe(audio, model="small", lang=None):
-    from faster_whisper import WhisperModel
+    from faster_whisper import WhisperModel, decode_audio
 
-    segments, info = WhisperModel(model).transcribe(str(audio), language=lang or None)
-    return [(segment.start, segment.text.strip()) for segment in segments], info.language
+    model = WhisperModel(model)
+    segments, info = model.transcribe(str(audio), language=lang or None,
+                                      **({"multilingual": True} if not lang else {}))
+    segments = list(segments)
+    languages = [lang] if lang else [info.language]
+    if not lang:
+        try:
+            windows = {}
+            for segment in segments:
+                window = int(segment.start // 30)
+                windows[window] = windows.get(window, 0) + segment.end - segment.start
+            samples = decode_audio(str(audio), sampling_rate=16000)
+            weights = {}
+            for window, duration in windows.items():
+                detected, _, _ = model.detect_language(
+                    audio=samples[window * 30 * 16000:(window + 1) * 30 * 16000])
+                weights[detected] = weights.get(detected, 0) + duration
+            total = sum(windows.values())
+            languages += [language for language in sorted(weights, key=weights.get, reverse=True)
+                          if language != info.language and weights[language] >= 0.15 * total]
+        except Exception:
+            languages = [info.language]
+    return [(segment.start, segment.text.strip()) for segment in segments], info.language, languages
 
 
-def translate(texts, source_lang, target):
+def translate(texts, source_lang, target, source_langs=None):
     base = os.environ.get("TYLOG_LLM_URL")
     key = os.environ.get("TYLOG_LLM_KEY")
     if not base or not key:
@@ -81,7 +102,9 @@ def translate(texts, source_lang, target):
             "temperature": 0,
             "messages": [
                 {"role": "system", "content": (
-                    f"Translate faithfully from {source_lang} to {target}. Keep names. "
+                    f"Translate faithfully into {target}. Keep names. "
+                    "Segments that are already in the target language must be returned unchanged. "
+                    f"The source may mix these languages: {', '.join(source_langs or [source_lang])}. "
                     "No commentary. Input is a JSON array of strings; return only a JSON "
                     "array of translated strings of the same length, in the same order."
                 )},
@@ -100,7 +123,7 @@ def translate(texts, source_lang, target):
     return translated
 
 
-def apply_translation(note_text, source_lang, target, translate):
+def apply_translation(note_text, source_lang, target, translate, source_langs=None):
     lines = note_text.splitlines(keepends=True)
 
     def section_bounds(heading):
@@ -120,7 +143,8 @@ def apply_translation(note_text, source_lang, target, translate):
         match = re.fullmatch(r"- (\d{2,}:[0-5]\d) (.*)", line.rstrip("\r\n"))
         if match:
             segments.append((match[1], re.sub(r"\\(.)", r"\1", match[2])))
-    translated = translate([text for _, text in segments], source_lang, target)
+    translated = translate([text for _, text in segments], source_lang, target,
+                           source_langs or [source_lang])
     if len(translated) != len(segments):
         raise ValueError("Translation reply must have the same length as the transcript")
     section = f"== Translation {target}\n\n" + "".join(
@@ -160,7 +184,10 @@ def _has_pending_jobs(vault):
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
     audio_settings = _read_json(vault / "_system/settings/processing.json").get("audio", {})
-    if not audio_settings.get("transcribe"):
+    transcribe_enabled = audio_settings.get("transcribe", False)
+    targets = audio_settings.get("translate_to", [])
+    translate_enabled = audio_settings.get("translate", bool(targets))
+    if not (transcribe_enabled or translate_enabled):
         return 0
     local_now = now.astimezone()
     today = local_now.date().isoformat()
@@ -210,15 +237,19 @@ def sweep(vault, now, state, force=False):
         job = {"audio": audio, "note": note.relative_to(vault).as_posix()}
         transcript = section(text, "== Transcript")
         if not transcript or not transcript.strip():
-            enqueue("transcripts", audio, job)
+            if transcribe_enabled:
+                enqueue("transcripts", audio, job)
             continue
-        source_lang = _read_json(vault / "_system/jobs/transcripts" /
-                                 (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".json")).get("lang")
-        if source_lang:
-            for target in audio_settings.get("translate_to", []):
-                if target != source_lang and section(text, f"== Translation {target}") is None:
+        source = _read_json(vault / "_system/jobs/transcripts" /
+                            (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".json"))
+        source_lang = source.get("lang")
+        source_langs = source.get("langs", [source_lang])
+        if translate_enabled and source_lang:
+            for target in targets:
+                if source_langs != [target] and section(text, f"== Translation {target}") is None:
                     enqueue("translations", audio + "\n" + target,
-                            {**job, "target": target, "source_lang": source_lang})
+                            {**job, "target": target, "source_lang": source_lang,
+                             "source_langs": source_langs})
     # The scheduled run stays open until a sweep finds nothing new and nothing
     # queued or running: translations only appear after their transcripts
     # finish, so closing after the first sweep would push them to tomorrow.
@@ -253,14 +284,16 @@ def run_once(vault, model="small", translate=translate, *, now=None, state_path=
                 note_text = stream.read()
             if kind == "transcripts":
                 audio = _vault_path(vault, job["audio"])
-                segments, language = transcribe(audio, model=model, lang=job.get("lang") or None)
+                segments, language, languages = transcribe(audio, model=model, lang=job.get("lang") or None)
                 updated_note = apply_transcript(note_text, segments)
             else:
-                updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate)
+                updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
+                                                 job.get("source_langs", [job["source_lang"]]))
             with note.open("w", encoding="utf-8", newline="") as stream:
                 stream.write(updated_note)
             if kind == "transcripts":
                 job["lang"] = language
+                job["langs"] = languages
             job["status"] = "done"
             job["finished_at"] = datetime.now(timezone.utc).isoformat()
             job.pop("error", None)

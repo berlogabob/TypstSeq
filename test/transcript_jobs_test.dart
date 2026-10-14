@@ -95,6 +95,53 @@ void main() {
   );
 
   test(
+    'transcript languages prefer the list and fall back to the old lang',
+    () async {
+      const audio = 'assets/mixed.m4a';
+      expect(await transcriptJobLangs(storage, audio), isEmpty);
+      await storage.createDirectory('_system/jobs/transcripts');
+      for (final (job, expected) in <(Map<String, Object?>, List<String>)>[
+        (
+          {
+            'langs': ['ru', 'en', 'pt'],
+            'lang': 'ru',
+          },
+          ['ru', 'en', 'pt'],
+        ),
+        ({'langs': [], 'lang': 'ru'}, []),
+        ({'lang': 'pt'}, ['pt']),
+        ({}, []),
+        (
+          {
+            'langs': ['en', 7],
+          },
+          ['en'],
+        ),
+      ]) {
+        await storage.writeText(transcriptJobPath(audio), jsonEncode(job));
+        expect(await transcriptJobLangs(storage, audio), expected);
+      }
+    },
+  );
+
+  test('translation jobs include all source languages when supplied', () async {
+    const audio = 'assets/mixed.m4a';
+    await enqueueTranslation(
+      storage,
+      audioPath: audio,
+      notePath: 'notes/mixed.typ',
+      target: 'pt',
+      sourceLang: 'ru',
+      sourceLangs: ['ru', 'en', 'pt'],
+    );
+    final job =
+        jsonDecode(await storage.readText(translationJobPath(audio, 'pt')))
+            as Map;
+    expect(job['source_lang'], 'ru');
+    expect(job['source_langs'], ['ru', 'en', 'pt']);
+  });
+
+  test(
     'translation jobs queue once per target and report the language',
     () async {
       const audio = 'assets/a.m4a';
@@ -115,6 +162,7 @@ void main() {
           jsonDecode(await storage.readText(translationJobPath(audio, 'ru')))
               as Map;
       expect(job['source_lang'], 'pt');
+      expect(job.containsKey('source_langs'), isFalse);
 
       await storage.writeText(
         transcriptJobPath(audio),

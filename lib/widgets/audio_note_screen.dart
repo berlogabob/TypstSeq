@@ -13,6 +13,7 @@ import 'package:tylog_core/scanner.dart'
 import '../audio/audio_info.dart';
 import '../audio/audio_note_doc.dart';
 import '../audio/audio_peaks.dart';
+import '../audio/processing_policy.dart';
 import '../models.dart';
 import 'audio_sheets.dart';
 import 'snack.dart';
@@ -146,6 +147,96 @@ class _WaveformPainter extends CustomPainter {
       old.played != played;
 }
 
+/// Language choices and translation requests for an audio transcript.
+class AudioLanguageBar extends StatelessWidget {
+  const AudioLanguageBar({
+    super.key,
+    required this.selected,
+    required this.original,
+    required this.translated,
+    required this.translating,
+    required this.view,
+    required this.onView,
+    required this.onRequest,
+    required this.canRequest,
+  });
+
+  final List<String> selected;
+  final String? original;
+  final Set<String> translated;
+  final Map<String, String> translating;
+  final String? view;
+  final ValueChanged<String> onView;
+  final ValueChanged<String> onRequest;
+  final bool canRequest;
+
+  String _name(String code) => kLanguageNames[code] ?? code;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = {...selected, ...translated, ...translating.keys};
+    final offered = kLanguageNames.keys.where((l) => !shown.contains(l));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: 8,
+          children: [
+            for (final l in shown)
+              if ((original == l) || translated.contains(l))
+                ChoiceChip(
+                  label: Text(
+                    original == l ? '${_name(l)} · original' : _name(l),
+                  ),
+                  selected: view == l,
+                  onSelected: (_) => onView(l),
+                )
+              else if (translating.containsKey(l))
+                Chip(
+                  avatar: translating[l] == 'failed'
+                      ? const Icon(Icons.error_outline, size: 18)
+                      : const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                  label: Text(
+                    translating[l] == 'failed'
+                        ? '${_name(l)} failed'
+                        : _name(l),
+                  ),
+                  onDeleted: canRequest && translating[l] == 'failed'
+                      ? () => onRequest(l)
+                      : null,
+                  deleteIcon: const Icon(Icons.refresh, size: 18),
+                )
+              else
+                ActionChip(
+                  avatar: const Icon(Icons.add),
+                  label: Text(_name(l)),
+                  onPressed: canRequest ? () => onRequest(l) : null,
+                ),
+            if (canRequest && offered.isNotEmpty)
+              PopupMenuButton<String>(
+                tooltip: 'Translate',
+                onSelected: onRequest,
+                itemBuilder: (_) => [
+                  for (final l in offered)
+                    PopupMenuItem(value: l, child: Text(_name(l))),
+                ],
+                child: const Chip(
+                  avatar: Icon(Icons.translate, size: 18),
+                  label: Text('Translate'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Player + timestamped comments for one `kind: audio` note.
 class AudioNoteScreen extends StatefulWidget {
   const AudioNoteScreen({
@@ -157,6 +248,8 @@ class AudioNoteScreen extends StatefulWidget {
     required this.transcriptStatus,
     required this.requestTranscript,
     this.transcriptLang,
+    this.transcriptLangs,
+    this.selectedLanguages = const [],
     this.translationStatus,
     this.requestTranslation,
     this.initialTab = AudioTab.comments,
@@ -164,6 +257,8 @@ class AudioNoteScreen extends StatefulWidget {
   });
 
   final AudioTab initialTab;
+  final List<String> selectedLanguages;
+  final Future<List<String>> Function(String audioPath)? transcriptLangs;
 
   /// Called after alias/tags are saved so the index and chips can refresh.
   final VoidCallback? onChanged;
@@ -194,6 +289,7 @@ class AudioNoteScreen extends StatefulWidget {
     String notePath,
     String target,
     String sourceLang,
+    List<String> sourceLangs,
   )?
   requestTranslation;
 
@@ -215,6 +311,8 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   String? _transcriptState;
   late AudioTab _tab = widget.initialTab;
   String? _lang;
+  List<String> _langs = const [];
+  bool get _monolingual => _langs.length <= 1;
   String? _view; // selected translation's language
   late List<String> _aliases = [...widget.note.aliases];
   late final List<String> _tags = [
@@ -377,14 +475,23 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
-    if (_view != null && !_translations.containsKey(_view)) _view = null;
+    if (_view != null &&
+        !_translations.containsKey(_view) &&
+        !(_monolingual &&
+            _view == _lang &&
+            widget.selectedLanguages.contains(_lang))) {
+      _view = null;
+    }
   }
 
   Future<void> _refreshTranscriptState() async {
     final path = _audioPath;
     if (path == null) return;
     final state = await widget.transcriptStatus(path);
-    final lang = await widget.transcriptLang?.call(path);
+    final langs = await widget.transcriptLangs?.call(path) ?? const <String>[];
+    final lang = langs.isNotEmpty
+        ? langs.first
+        : await widget.transcriptLang?.call(path);
     final jobs = <String, String>{};
     for (final target in _translating.keys.toList()) {
       final status = await widget.translationStatus?.call(path, target);
@@ -394,6 +501,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final finished = _translating.keys.any((k) => !jobs.containsKey(k));
     setState(() {
       _transcriptState = state;
+      _langs = langs;
       _lang = lang ?? _lang;
       _translating
         ..clear()
@@ -409,7 +517,14 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final path = _audioPath;
     final lang = _lang;
     if (path == null || lang == null) return;
-    await widget.requestTranslation?.call(path, widget.note.path, target, lang);
+    await widget.requestTranslation?.call(
+      path,
+      widget.note.path,
+      target,
+      lang,
+      _langs,
+    );
+    if (!mounted) return;
     setState(() => _translating[target] = 'queued');
     await _refreshTranscriptState();
     if (mounted) showSnack(context, 'Translation requested');
@@ -771,19 +886,36 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ),
       );
     }
-    final view = _translations.containsKey(_view)
+    final original =
+        _monolingual &&
+            _lang != null &&
+            (widget.selectedLanguages.contains(_lang) ||
+                _translations.containsKey(_lang))
+        ? _lang
+        : null;
+    final view =
+        _view != null && (_view == original || _translations.containsKey(_view))
         ? _view
-        : (_translations.isEmpty ? null : _translations.keys.first);
+        : original ?? (_translations.isEmpty ? null : _translations.keys.first);
+    final shown = view == original && original != null
+        ? _transcript
+        : _translations[view];
     return Column(
       children: [
-        _languageBar(view),
+        AudioLanguageBar(
+          selected: widget.selectedLanguages,
+          original: original,
+          translated: _translations.keys.toSet(),
+          translating: _translating,
+          view: view,
+          onView: (l) => setState(() => _view = l),
+          onRequest: (l) => unawaited(_requestTranslation(l)),
+          canRequest: widget.requestTranslation != null && _lang != null,
+        ),
         Expanded(
-          child: view == null
+          child: shown == null
               ? const Center(child: Text('Pick a language to translate into'))
-              : _segments(
-                  _translations[view]!,
-                  activeIndex(_translations[view]!, _position.inMilliseconds),
-                ),
+              : _segments(shown, activeIndex(shown, _position.inMilliseconds)),
         ),
       ],
     );
@@ -875,78 +1007,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     );
   }
 
-  static const _languageNames = {
-    'ru': 'Русский',
-    'en': 'English',
-    'pt': 'Português',
-    'uk': 'Українська',
-    'es': 'Español',
-    'fr': 'Français',
-    'de': 'Deutsch',
-    'it': 'Italiano',
-  };
-
-  String _name(String code) => _languageNames[code] ?? code;
-
-  /// Step 2 of the pipeline: once the transcript names its language, offer
-  /// the original, finished translations, and a menu to request another.
-  Widget _languageBar(String? view) {
-    final can = widget.requestTranslation != null && _lang != null;
-    final offered = [
-      for (final l in _languageNames.keys)
-        if (l != _lang &&
-            !_translations.containsKey(l) &&
-            !_translating.containsKey(l))
-          l,
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          spacing: 8,
-          children: [
-            for (final l in _translations.keys)
-              ChoiceChip(
-                label: Text(_name(l)),
-                selected: view == l,
-                onSelected: (_) => setState(() => _view = l),
-              ),
-            for (final e in _translating.entries)
-              Chip(
-                avatar: e.value == 'failed'
-                    ? const Icon(Icons.error_outline, size: 18)
-                    : const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                label: Text(
-                  e.value == 'failed' ? '${_name(e.key)} failed' : _name(e.key),
-                ),
-                onDeleted: e.value == 'failed'
-                    ? () => unawaited(_requestTranslation(e.key))
-                    : null,
-                deleteIcon: const Icon(Icons.refresh, size: 18),
-              ),
-            if (can && offered.isNotEmpty)
-              PopupMenuButton<String>(
-                tooltip: 'Translate',
-                onSelected: (l) => unawaited(_requestTranslation(l)),
-                itemBuilder: (_) => [
-                  for (final l in offered)
-                    PopupMenuItem(value: l, child: Text(_name(l))),
-                ],
-                child: const Chip(
-                  avatar: Icon(Icons.translate, size: 18),
-                  label: Text('Translate'),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  String _name(String code) => kLanguageNames[code] ?? code;
 
   Widget _commentInput() => Padding(
     padding: EdgeInsets.fromLTRB(

@@ -20,13 +20,15 @@ const kLanguageNames = {
 class AudioPolicy {
   const AudioPolicy({
     this.transcribe = false,
+    this.translate = false,
     this.onTheFly = false,
     this.scheduled = false,
     this.time = '03:00',
-    this.translateTo = const [],
+    this.translateTo = const ['ru', 'en', 'pt'],
   });
 
   final bool transcribe;
+  final bool translate;
 
   /// Process right after the audio appears.
   final bool onTheFly;
@@ -38,12 +40,14 @@ class AudioPolicy {
 
   AudioPolicy copyWith({
     bool? transcribe,
+    bool? translate,
     bool? onTheFly,
     bool? scheduled,
     String? time,
     List<String>? translateTo,
   }) => AudioPolicy(
     transcribe: transcribe ?? this.transcribe,
+    translate: translate ?? this.translate,
     onTheFly: onTheFly ?? this.onTheFly,
     scheduled: scheduled ?? this.scheduled,
     time: time ?? this.time,
@@ -52,6 +56,7 @@ class AudioPolicy {
 
   Map<String, Object?> toJson() => {
     'transcribe': transcribe,
+    'translate': translate,
     'on_the_fly': onTheFly,
     'scheduled': scheduled,
     'time': time,
@@ -64,17 +69,21 @@ class AudioPolicy {
     if (json is! Map) return const AudioPolicy();
     final time = json['time'];
     final to = json['translate_to'];
+    final translateTo = to is List
+        ? [
+            for (final l in to)
+              if (l is String) l,
+          ]
+        : const ['ru', 'en', 'pt'];
     return AudioPolicy(
       transcribe: json['transcribe'] == true,
+      translate: json.containsKey('translate')
+          ? json['translate'] == true
+          : translateTo.isNotEmpty,
       onTheFly: json['on_the_fly'] == true,
       scheduled: json['scheduled'] == true,
       time: time is String && _time.hasMatch(time) ? time : '03:00',
-      translateTo: to is List
-          ? [
-              for (final l in to)
-                if (l is String) l,
-            ]
-          : [],
+      translateTo: translateTo,
     );
   }
 }

@@ -241,11 +241,18 @@ extension _AudioFlow on _HomeScreenState {
   }) async {
     final v = vault;
     if (v == null) return;
+    List<String> selectedLanguages = const [];
+    try {
+      selectedLanguages = (await readAudioPolicy(v.storage)).translateTo;
+    } catch (_) {}
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => AudioNoteScreen(
           note: note,
           initialTab: tab,
+          selectedLanguages: selectedLanguages,
+          transcriptLangs: (audio) => transcriptJobLangs(v.storage, audio),
           onChanged: () => unawaited(
             workspace.refreshIndex(updateStatus: false, always: true),
           ),
@@ -258,13 +265,14 @@ extension _AudioFlow on _HomeScreenState {
           transcriptLang: (audio) => transcriptJobLang(v.storage, audio),
           translationStatus: (audio, target) =>
               translationJobStatus(v.storage, audio, target),
-          requestTranslation: (audio, note, target, source) =>
+          requestTranslation: (audio, note, target, source, sourceLangs) =>
               enqueueTranslation(
                 v.storage,
                 audioPath: audio,
                 notePath: note,
                 target: target,
                 sourceLang: source,
+                sourceLangs: sourceLangs,
               ),
         ),
       ),
