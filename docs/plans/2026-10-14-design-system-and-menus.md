@@ -34,3 +34,12 @@ D1 (this one): `lib/widgets/ds/` components + tokens, More drawer, Settings rest
 - Row actions: trailing `more_horiz` popup wherever a row has actions (Articles: delete; Screenshots: existing actions; Notes/Tasks/Audio keep tap and long-press only). Existing long-press stays.
 - Chip rows: one component, one scroller; Notes kind chips show counts.
 - Status vocabularies stay per domain (articles and screenshots are different pipelines).
+
+## D3: dialogs, sheets, notices (decisions)
+- Bottom sheets: every `showModalBottomSheet` uses the `AppSheet` frame (drag handle, one title style `titleLarge`, safe area, scroll). No sheet without a handle (resolve-all, recorder, reading rating included). Sheet-internal titles use the same style.
+- Dialogs with a dismiss + a primary action: dismiss is always labelled "Cancel" and sits left of the primary; informational one-button dialogs say "Close". "Later", "Back to setup" etc. only where the meaning is not cancel (keep and list them).
+- Destructive confirmations all go through `showConfirmDialog` (error-coloured filled primary, verb names the action: "Delete", "Discard"); replace the plain TextButton / filled non-error variants.
+- Notices: raw `ScaffoldMessenger.of(...).showSnackBar` calls go through `showSnack`; MaterialBanners share one helper with the error colour passed explicitly.
+- Choose-one-of-N stays as-is (sheet for lists, dialog for 2-3 options); no new component.
+## D4: icon sweep (decisions)
+One icon per meaning (map in `lib/widgets/app_icons.dart`: edit, settings, overflow, close, warning, daily, sync states); replace duplicate variants; resolve the "one icon, several meanings" cases (`folder_open`, `calendar_month`, `sync`, `cloud_off_outlined`) by giving each meaning its own icon. Pure rename/sweep, no layout change.
