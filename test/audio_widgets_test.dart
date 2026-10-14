@@ -38,10 +38,24 @@ void main() {
       ),
     );
     expect(find.textContaining('· original'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Русский'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'English'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'Português'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ActionChip, 'English'));
+    expect(find.byIcon(Icons.add), findsNWidgets(2));
+    final scroll = tester.widget<SingleChildScrollView>(
+      find.byType(SingleChildScrollView),
+    );
+    expect(scroll.scrollDirection, Axis.horizontal);
+    expect(
+      scroll.padding,
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    );
+    expect(scroll.child, isA<Row>());
+    expect((scroll.child! as Row).spacing, 8);
+    expect(find.byType(Wrap), findsNothing);
+    expect(find.byIcon(Icons.translate), findsOneWidget);
+    expect(find.text('Translate'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'EN'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'PT'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ActionChip, 'EN'));
     expect(requested, 'en');
   });
 
@@ -65,12 +79,16 @@ void main() {
         ),
       ),
     );
-    expect(
-      find.widgetWithText(ChoiceChip, 'Português · original'),
-      findsOneWidget,
+    expect(find.widgetWithText(ChoiceChip, 'PT'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'PT'), findsNothing);
+    final original = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'PT'),
     );
-    expect(find.widgetWithText(ActionChip, 'Português'), findsNothing);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Русский'));
+    expect(original.selected, isTrue);
+    expect(original.showCheckmark, isFalse);
+    expect(original.visualDensity, VisualDensity.compact);
+    expect(original.materialTapTargetSize, MaterialTapTargetSize.shrinkWrap);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'RU'));
     expect(viewed, 'ru');
   });
 

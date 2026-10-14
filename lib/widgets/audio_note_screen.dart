@@ -176,62 +176,62 @@ class AudioLanguageBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final shown = {...selected, ...translated, ...translating.keys};
     final offered = kLanguageNames.keys.where((l) => !shown.contains(l));
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          spacing: 8,
-          children: [
-            for (final l in shown)
-              if ((original == l) || translated.contains(l))
-                ChoiceChip(
-                  label: Text(
-                    original == l ? '${_name(l)} · original' : _name(l),
-                  ),
-                  selected: view == l,
-                  onSelected: (_) => onView(l),
-                )
-              else if (translating.containsKey(l))
-                Chip(
-                  avatar: translating[l] == 'failed'
-                      ? const Icon(Icons.error_outline, size: 18)
-                      : const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                  label: Text(
-                    translating[l] == 'failed'
-                        ? '${_name(l)} failed'
-                        : _name(l),
-                  ),
-                  onDeleted: canRequest && translating[l] == 'failed'
-                      ? () => onRequest(l)
-                      : null,
-                  deleteIcon: const Icon(Icons.refresh, size: 18),
-                )
-              else
-                ActionChip(
-                  avatar: const Icon(Icons.add),
-                  label: Text(_name(l)),
-                  onPressed: canRequest ? () => onRequest(l) : null,
-                ),
-            if (canRequest && offered.isNotEmpty)
-              PopupMenuButton<String>(
-                tooltip: 'Translate',
-                onSelected: onRequest,
-                itemBuilder: (_) => [
-                  for (final l in offered)
-                    PopupMenuItem(value: l, child: Text(_name(l))),
-                ],
-                child: const Chip(
-                  avatar: Icon(Icons.translate, size: 18),
-                  label: Text('Translate'),
-                ),
+    final faded = Theme.of(
+      context,
+    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        spacing: 8,
+        children: [
+          for (final l in shown)
+            if ((original == l) || translated.contains(l))
+              ChoiceChip(
+                label: Text(l.toUpperCase()),
+                selected: view == l,
+                onSelected: (_) => onView(l),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                showCheckmark: false,
+              )
+            else if (translating.containsKey(l))
+              Chip(
+                avatar: translating[l] == 'failed'
+                    ? null
+                    : const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                label: Text(l.toUpperCase()),
+                onDeleted: canRequest && translating[l] == 'failed'
+                    ? () => onRequest(l)
+                    : null,
+                deleteIcon: const Icon(Icons.refresh, size: 18),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              )
+            else
+              ActionChip(
+                avatar: Icon(Icons.add, size: 16, color: faded),
+                label: Text(l.toUpperCase()),
+                labelStyle: TextStyle(color: faded),
+                onPressed: canRequest ? () => onRequest(l) : null,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-          ],
-        ),
+          if (canRequest && offered.isNotEmpty)
+            PopupMenuButton<String>(
+              tooltip: 'Translate into another language',
+              icon: const Icon(Icons.translate),
+              onSelected: onRequest,
+              itemBuilder: (_) => [
+                for (final l in offered)
+                  PopupMenuItem(value: l, child: Text(_name(l))),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -901,6 +901,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ? _transcript
         : _translations[view];
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AudioLanguageBar(
           selected: widget.selectedLanguages,
