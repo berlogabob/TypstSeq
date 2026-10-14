@@ -5225,6 +5225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       },
     );
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     final workArea = WorkSurface(
       child: Stack(
         children: [
@@ -5237,15 +5238,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             right: 0,
             child: statusBanner(error: true),
           ),
+          // While the keyboard is up the editor's tool row sits at the bottom
+          // of this area; the transient pills move to the top then so they
+          // never cover the editing tools.
           Positioned(
-            bottom: runningTask == null ? 0 : 60,
+            top: typing ? 0 : null,
+            bottom: typing ? null : (runningTask == null ? 0 : 60),
             left: 0,
             right: 0,
             child: statusBanner(error: false),
           ),
           if (runningTask != null)
             Positioned(
-              bottom: 0,
+              top: typing ? 56 : null,
+              bottom: typing ? null : 0,
               left: 0,
               right: 0,
               child: statusPill(

@@ -3,6 +3,49 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.16.0+145
+
+### Added
+
+- **Compact audio chip.** Original name (left), alias (right) and transcript /
+  translation status icons on one line, play and waveform on the next.
+  Tap the line or long-press to open the full screen; tapping an icon opens
+  that tab. Status is read from the note file, so it is correct while the
+  index is still building.
+- **Audio screen tabs:** Comments, Transcribe, Translate, Properties. Properties
+  has an alias, tags and file info (format, size, sample rate, average
+  bitrate, waveform samples). The player is one grid-aligned row (time left,
+  back / play / forward, speed right).
+- **Automatic processing.** Settings > Audio: "Transcribe automatically" and
+  "Translate automatically" are separate switches; languages are a short list
+  (default ru, en, pt) with an "Add language" menu. Run "right after it is
+  added" and/or "on schedule" (daily time); "Process now" forces one pass.
+  Screenshot OCR uses the same controls (both modes can be on together).
+  A scheduled run stays open until all transcripts and their translations
+  are done.
+- **Full text in every selected language.** The worker detects the languages
+  spoken; a single-language recording is its own version in that language, a
+  mixed one gets a clean translation into every selected language.
+- Translate tab: one row of language codes (RU, EN, PT), missing ones are
+  tappable "+", an icon-only menu for any other language.
+
+### Changed
+
+- Magic > Audio records or imports straight into the open note; the chip
+  appears at once and the file/note are written in the background with
+  "Saving… / Saved" messages. Images and files attach the same way.
+- Audio playback and chip status reads use a separate queue, so they no longer
+  wait behind the startup index or sync.
+
+### Fixed
+
+- Sync / index status pills no longer cover the editor tool row while the
+  keyboard is open; they move to the top.
+- The screen now reloads when a transcript or translation finishes.
+- Older audio chips with a leading `/` in the path open again.
+- Waveform: always drawn (stretched to 64 bars, decoded from the file when
+  no peaks are stored); the playhead no longer jumps.
+
 ## 0.15.0+144
 
 ### Added
