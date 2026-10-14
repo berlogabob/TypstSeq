@@ -64,6 +64,7 @@ import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
 import 'audio/audio_note_doc.dart';
+import 'audio/processing_policy.dart';
 import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
 import 'widgets/audio_inline_card.dart';
@@ -2633,6 +2634,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
+            audioPolicyRead: vault == null
+                ? null
+                : () => readAudioPolicy(vault!.storage),
+            audioPolicyWrite: vault == null
+                ? null
+                : (policy) async {
+                    await writeAudioPolicy(vault!.storage, policy);
+                    unawaited(_syncNow());
+                  },
+            onProcessAudio: vault == null
+                ? null
+                : () async {
+                    await requestProcessNow(vault!.storage);
+                    unawaited(_syncNow());
+                  },
             screenshotsMode: registry?.screenshotsMode ?? 'off',
             screenshotsTime: registry?.screenshotsTime ?? '03:00',
             readScreenshotsStatus: () async =>

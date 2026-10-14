@@ -26,7 +26,8 @@ re-queued by the app with a new `requested_at`; optional fields are not retained
 
 ## Worker lifecycle
 
-1. List JSON jobs under `_system/jobs/transcripts/` and select queued jobs.
+1. Sweep eligible audio notes according to the settings and local state below,
+   then list JSON jobs under `_system/jobs/transcripts/` and select queued jobs.
 2. Claim a job by writing `status: processing` to its job file.
 3. Read the file at `audio` from the vault and transcribe it.
 4. Write the transcript section in the existing file at `note`.
@@ -38,6 +39,74 @@ Language selection is per job through `lang`; the worker no longer takes
 a global `--lang` option.
 The worker processes queued translation jobs after transcription jobs, so a
 translation can use a transcript written in the same run.
+
+## Automatic sweep
+
+The synced settings file is `<vault>/_system/settings/processing.json`:
+
+```json
+{
+  "schema": 1,
+  "audio": {
+    "transcribe": true,
+    "on_the_fly": false,
+    "scheduled": true,
+    "time": "03:00",
+    "translate_to": ["ru", "en", "pt"]
+  }
+}
+```
+
+Missing settings or `transcribe: false` disable sweep jobs, including translations.
+Already queued jobs still run. `translate_to` contains ISO language codes; an
+empty list disables automatic translations.
+
+Each worker invocation starts with a sweep. Its gate opens when `on_the_fly`
+is true, or when `scheduled` is true and the current local time has reached
+today's `time` (24-hour `HH:MM`) without a completed scheduled sweep today.
+This catches up after sleep: waking at 09:00 still runs a 03:00 sweep. A due
+scheduled run stays open on every invocation until a sweep creates no jobs and
+no job is `queued` or `processing`; only then does it record the local date as
+`last_scheduled_date`. This lets transcripts finish and their translations be
+created the same night. With both modes enabled, on-the-fly sweeps continue
+after that day's scheduled run.
+
+For manual **process now**, write `<vault>/_system/jobs/process-now.json`:
+
+```json
+{"requested_at": "2026-10-14T12:00:00Z"}
+```
+
+A `requested_at` different from state `last_process_now` forces the sweep gate
+open once, then records that value. The worker leaves the request file in
+place; use a new timestamp for a new request. This bypasses the time gate but
+still requires `audio.transcribe: true`.
+
+Local worker state is JSON at `~/.tylog-transcribe-state.json` by default.
+Override it with `--state <path>` (or `run_once(..., state_path=...)`). Missing
+or corrupt state is treated as empty. The state stores `last_scheduled_date`
+and `last_process_now`; keep it local and use a separate file per vault.
+
+The sweep scans `notes/Audio *.typ`, requiring `kind: "audio"` in the note
+header and an audio attachment of the form
+`#tylog.attachment("<path>", kind: "audio")`. It unescapes backslash-prefixed
+characters, strips leading slashes, and skips missing audio files or paths
+outside the vault.
+
+- A missing or whitespace-only `== Transcript` section queues a transcription
+  job, unless its SHA-1 job file already exists in any status.
+- A non-empty Transcript section plus `lang` in its transcription job permits
+  translation jobs for each configured target except the source language.
+  An existing `== Translation <target>` heading (even empty) or an existing
+  translation job file blocks creation for that target.
+- Sweep jobs use the formats below with `auto: true` and `status: "queued"`.
+  Existing jobs, including `failed` jobs, are never re-created by the sweep;
+  retry failed jobs through the app.
+
+Jobs created by the sweep are processed in the same invocation. Transcripts
+completed during that invocation become eligible for automatic translations
+on the next sweep (the next minute: the scheduled run stays open until all
+jobs are finished, see above).
 
 ## Note format and preservation
 

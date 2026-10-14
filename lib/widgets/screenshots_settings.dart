@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../screenshots_ocr.dart';
+import 'processing_policy_editor.dart';
 import 'snack.dart';
 
 class ScreenshotsSettings extends StatefulWidget {
@@ -76,56 +77,38 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   @override
   Widget build(BuildContext context) {
     final editable = widget.editable ?? Platform.isMacOS;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const ListTile(
-          leading: Icon(Icons.screenshot),
-          title: Text('Screenshots (OCR)'),
-        ),
-        DropdownButton<String>(
-          value: mode,
-          items: const [
-            DropdownMenuItem(value: 'off', child: Text('Off')),
-            DropdownMenuItem(value: 'watch', child: Text('Watch')),
-            DropdownMenuItem(value: 'schedule', child: Text('Schedule')),
-          ],
-          onChanged: !editable || busy
-              ? null
-              : (value) => perform(() async {
-                  await widget.onConfigure(value!, time);
-                  if (mounted) setState(() => mode = value);
-                }),
-        ),
-        if (mode == 'schedule')
-          TextButton(
-            onPressed: !editable || busy
-                ? null
-                : () async {
-                    final parts = time.split(':');
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: TimeOfDay(
-                        hour: int.tryParse(parts.first) ?? 3,
-                        minute: int.tryParse(parts.last) ?? 0,
-                      ),
-                    );
-                    if (picked == null || !mounted) return;
-                    final next =
-                        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-                    await perform(() async {
-                      await widget.onConfigure(mode, next);
-                      if (mounted) setState(() => time = next);
-                    });
-                  },
-            child: Text('Daily at $time'),
-          ),
-        Text(status),
-        TextButton(
-          onPressed: busy ? null : () => perform(widget.onProcessNow),
-          child: const Text('Process now'),
-        ),
-      ],
+    final fly = mode == 'watch' || mode == 'both';
+    final sched = mode == 'schedule' || mode == 'both';
+    return ProcessingPolicyEditor(
+      icon: Icons.screenshot,
+      title: 'Screenshots (OCR)',
+      onTheFly: fly,
+      scheduled: sched,
+      time: time,
+      enabled: editable,
+      busy: busy,
+      status: status,
+      onChanged: (nextFly, nextSched, nextTime) {
+        final next = nextFly && nextSched
+            ? 'both'
+            : nextFly
+            ? 'watch'
+            : nextSched
+            ? 'schedule'
+            : 'off';
+        unawaited(
+          perform(() async {
+            await widget.onConfigure(next, nextTime);
+            if (mounted) {
+              setState(() {
+                mode = next;
+                time = nextTime;
+              });
+            }
+          }),
+        );
+      },
+      onProcessNow: () => unawaited(perform(widget.onProcessNow)),
     );
   }
 }

@@ -787,12 +787,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
-          .onChanged,
-      isNull,
-    );
+    for (final box in tester.widgetList<CheckboxListTile>(
+      find.byType(CheckboxListTile),
+    )) {
+      expect(box.onChanged, isNull);
+    }
     expect(find.textContaining('12 processed'), findsOneWidget);
     await tester.tap(find.text('Process now'));
     await tester.pumpAndSettle();
@@ -819,12 +818,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('No screenshot status available'), findsOneWidget);
-      await tester.tap(find.text('Off'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Schedule').last);
+      await tester.tap(find.text('Process on schedule'));
       await tester.pumpAndSettle();
       expect(configured, ['schedule:03:00']);
-      expect(find.text('Daily at 03:00'), findsOneWidget);
+      expect(find.text('Every day at 03:00'), findsOneWidget);
+      await tester.tap(find.text('Process right after it is added'));
+      await tester.pumpAndSettle();
+      expect(configured, ['schedule:03:00', 'both:03:00']);
+      await tester.tap(find.text('Process on schedule'));
+      await tester.pumpAndSettle();
+      expect(configured.last, 'watch:03:00');
       await tester.pumpWidget(const SizedBox());
     },
   );

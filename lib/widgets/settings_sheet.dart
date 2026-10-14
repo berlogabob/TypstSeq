@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'app_version.dart';
+import '../audio/processing_policy.dart';
+import 'audio_processing_settings.dart';
 import 'screenshots_settings.dart';
 import 'constants.dart';
 
@@ -28,6 +30,9 @@ class SettingsSheet extends StatefulWidget {
     required this.onImportVault,
     required this.onInstallModule,
     this.onCheckForUpdates,
+    this.audioPolicyRead,
+    this.audioPolicyWrite,
+    this.onProcessAudio,
     this.screenshotsMode = 'off',
     this.screenshotsTime = '03:00',
     this.onConfigureScreenshots,
@@ -39,6 +44,9 @@ class SettingsSheet extends StatefulWidget {
 
   final Map<String, dynamic> calendarSettings;
   final Future<void> Function(Map<String, dynamic>)? onConfigureCalendars;
+  final Future<AudioPolicy> Function()? audioPolicyRead;
+  final Future<void> Function(AudioPolicy)? audioPolicyWrite;
+  final Future<void> Function()? onProcessAudio;
   final String screenshotsMode;
   final String screenshotsTime;
   final Future<void> Function(String, String)? onConfigureScreenshots;
@@ -206,6 +214,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   title: 'Calendars',
                   subtitle: 'My classes · Lab schedule',
                   onTap: _calendars,
+                ),
+              if (widget.audioPolicyRead != null)
+                AudioProcessingSettings(
+                  read: widget.audioPolicyRead!,
+                  write: widget.audioPolicyWrite!,
+                  processNow: widget.onProcessAudio!,
                 ),
               if (readScreenshotsStatusAvailable)
                 ScreenshotsSettings(

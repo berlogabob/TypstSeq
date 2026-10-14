@@ -226,33 +226,42 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
             children: [
               InkWell(
                 onTap: () => unawaited(_expand(AudioTab.comments)),
+                // Icons are pinned to the right edge in their own slot; name
+                // and alias share the rest, so nothing shifts when the alias
+                // loads, is long, or is absent.
                 child: Row(
                   children: [
-                    Flexible(
-                      flex: _alias == null ? 1 : 0,
-                      fit: _alias == null ? FlexFit.tight : FlexFit.loose,
-                      child: Text(
-                        _error ?? name,
-                        style: textTheme.labelMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            flex: _alias == null ? 1 : 0,
+                            fit: _alias == null ? FlexFit.tight : FlexFit.loose,
+                            child: Text(
+                              _error ?? name,
+                              style: textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_alias != null)
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Text(
+                                  _alias!,
+                                  style: textTheme.titleSmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.end,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (_alias != null)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Text(
-                            _alias!,
-                            style: textTheme.titleSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                          ),
-                        ),
-                      ),
                     _statusIcon(
                       Icons.subtitles_outlined,
                       'Transcript',

@@ -283,7 +283,7 @@ class VaultRegistry {
           themeMode: themeMode,
           pdfPaper: pdfPaper,
           screenshotsMode:
-              ['off', 'watch', 'schedule'].contains(json['screenshotsMode'])
+              ['off', 'watch', 'schedule', 'both'].contains(json['screenshotsMode'])
               ? json['screenshotsMode'] as String
               : 'off',
           screenshotsTime: _screenshotsTime(json['screenshotsTime']),
@@ -436,7 +436,7 @@ class VaultRegistry {
       : '03:00';
 
   Future<void> setScreenshotsOcr(String mode, String time) {
-    if (!['off', 'watch', 'schedule'].contains(mode) ||
+    if (!['off', 'watch', 'schedule', 'both'].contains(mode) ||
         _screenshotsTime(time) != time) {
       throw ArgumentError('Invalid screenshot mode or schedule');
     }

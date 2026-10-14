@@ -1,12 +1,18 @@
 import json
 import hashlib
 import sys
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from io import BytesIO
 
 import pytest
 
 import transcribe_worker as worker
+
+
+@pytest.fixture(autouse=True)
+def isolated_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker.Path, "home", lambda: tmp_path)
 
 
 def test_escape_markup():
@@ -61,7 +67,9 @@ def test_cli_core(tmp_path, monkeypatch):
         return [(65, "Fixed text")], "pt"
 
     monkeypatch.setattr(worker, "transcribe", fake_transcribe)
-    worker.main(["--vault", str(tmp_path), "--once"])
+    state_path = tmp_path / "custom-state.json"
+    worker.main(["--vault", str(tmp_path), "--once", "--state", str(state_path)])
+    assert json.loads(state_path.read_text()) == {}
     job = json.loads(job_path.read_text())
     assert job["status"] == "done"
     assert job["finished_at"]
@@ -283,3 +291,259 @@ def test_translation_backend_studio_fallback(tmp_path, monkeypatch):
 
     monkeypatch.setattr(worker, "urlopen", fake)
     assert worker.translate(["Hello"], "en", "ru") == ["Привет"]
+
+
+@pytest.fixture
+def sweep_vault(tmp_path, monkeypatch):
+    settings_path = tmp_path / "_system/settings/processing.json"
+    settings_path.parent.mkdir(parents=True)
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "assets/audio").mkdir(parents=True)
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(0, "Hello")], "en"))
+    return tmp_path
+
+
+def set_audio_settings(vault, **overrides):
+    audio = {"transcribe": True, "on_the_fly": False, "scheduled": False,
+             "time": "03:00", "translate_to": []}
+    audio.update(overrides)
+    (vault / "_system/settings/processing.json").write_text(json.dumps({"schema": 1, "audio": audio}))
+
+
+def add_audio_note(vault, name="take.wav", kind="audio", body="", exists=True, attachment=None):
+    audio = "assets/audio/" + name
+    if exists:
+        (vault / audio).write_bytes(b"fake audio")
+    note = vault / "notes" / ("Audio " + name + ".typ")
+    note.write_text(f'#show: tylog.note.with(id: "take", kind: "{kind}")\n'
+                    f'\n= Audio\n#tylog.attachment("{attachment or audio}", kind: "audio")\n' + body)
+    return audio, note
+
+
+def job_path(vault, kind, key):
+    return vault / "_system/jobs" / kind / (hashlib.sha1(key.encode()).hexdigest() + ".json")
+
+
+def write_job(vault, kind, key, **fields):
+    path = job_path(vault, kind, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(fields))
+    return path
+
+
+NOW = datetime(2026, 10, 14, 9)
+
+
+@pytest.mark.parametrize("settings", [None, {}, {"transcribe": False, "on_the_fly": True},
+                                      {"transcribe": False, "scheduled": True}])
+def test_sweep_closed(sweep_vault, settings):
+    vault = sweep_vault
+    add_audio_note(vault)
+    if settings is not None:
+        set_audio_settings(vault, **settings)
+    state = {}
+    assert worker.sweep(vault, NOW, state) == 0
+    assert not list((vault / "_system/jobs").rglob("*.json"))
+    assert state == {}
+
+
+def test_on_the_fly_processes_then_translates_next_sweep(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True, translate_to=["ru", "en", "pt"])
+    audio, note = add_audio_note(vault)
+    state_path = vault / "state.json"
+    worker.run_once(vault, now=NOW, state_path=state_path)
+    job = json.loads(job_path(vault, "transcripts", audio).read_text())
+    assert job["status"] == "done"
+    assert job["auto"] is True
+    assert job["note"] == note.relative_to(vault).as_posix()
+    assert job["requested_at"] == NOW.astimezone(worker.timezone.utc).isoformat()
+    assert "== Transcript" in note.read_text()
+    assert not list((vault / "_system/jobs/translations").glob("*.json"))
+
+    calls = []
+
+    def fake_translate(texts, source_lang, target):
+        calls.append((texts, source_lang, target))
+        return [target + " Hello"]
+
+    worker.run_once(vault, now=NOW, state_path=state_path, translate=fake_translate)
+    assert sorted(calls) == [(["Hello"], "en", "pt"), (["Hello"], "en", "ru")]
+    assert worker.sweep(vault, NOW, {}) == 0
+
+
+def test_scheduled_catch_up_once_per_local_day(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, scheduled=True)
+    first, _ = add_audio_note(vault)
+    state_path = vault / "state.json"
+    worker.run_once(vault, now=NOW.replace(hour=2, minute=59), state_path=state_path)
+    assert not job_path(vault, "transcripts", first).exists()
+    worker.run_once(vault, now=NOW, state_path=state_path)
+    assert job_path(vault, "transcripts", first).exists()
+    # The scheduled run stays open until a sweep finds nothing left to do.
+    assert "last_scheduled_date" not in json.loads(state_path.read_text())
+    worker.run_once(vault, now=NOW, state_path=state_path)
+    assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
+    second, _ = add_audio_note(vault, "second.wav")
+    worker.run_once(vault, now=NOW, state_path=state_path)
+    assert not job_path(vault, "transcripts", second).exists()
+    worker.run_once(vault, now=NOW + timedelta(days=1), state_path=state_path)
+    assert job_path(vault, "transcripts", second).exists()
+    worker.run_once(vault, now=NOW + timedelta(days=1), state_path=state_path)
+    assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-15"
+
+
+def test_schedule_at_exact_time_and_empty_sweep(sweep_vault):
+    set_audio_settings(sweep_vault, scheduled=True)
+    state = {}
+    assert worker.sweep(sweep_vault, NOW.replace(hour=3, minute=0), state) == 0
+    assert state == {"last_scheduled_date": "2026-10-14"}
+
+
+def test_process_now_forces_once_per_request(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, scheduled=True)
+    first, _ = add_audio_note(vault)
+    request = vault / "_system/jobs/process-now.json"
+    request.parent.mkdir(parents=True)
+    request.write_text(json.dumps({"requested_at": "2026-10-14T01:00:00Z"}))
+    state_path = vault / "state.json"
+    before = NOW.replace(hour=1)
+    worker.run_once(vault, now=before, state_path=state_path)
+    assert job_path(vault, "transcripts", first).exists()
+    assert json.loads(state_path.read_text()) == {"last_process_now": "2026-10-14T01:00:00Z"}
+    second, _ = add_audio_note(vault, "second.wav")
+    worker.run_once(vault, now=before, state_path=state_path)
+    assert not job_path(vault, "transcripts", second).exists()
+    request.write_text(json.dumps({"requested_at": "2026-10-14T01:01:00Z"}))
+    worker.run_once(vault, now=before, state_path=state_path)
+    assert job_path(vault, "transcripts", second).exists()
+    assert request.exists()
+    assert json.loads(state_path.read_text())["last_process_now"] == "2026-10-14T01:01:00Z"
+
+
+def test_force_respects_transcribe_disabled(sweep_vault):
+    set_audio_settings(sweep_vault, transcribe=False, translate_to=["ru"])
+    audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
+    write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
+    assert worker.sweep(sweep_vault, NOW, {}, force=True) == 0
+    assert not list((sweep_vault / "_system/jobs/translations").glob("*.json"))
+
+
+@pytest.mark.parametrize("status", ["queued", "processing", "done", "failed"])
+def test_existing_jobs_block_recreation(sweep_vault, status):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True, translate_to=["ru"])
+    missing, _ = add_audio_note(vault, body="== Transcript\n \n== Comments\nKeep\n")
+    complete, _ = add_audio_note(vault, "complete.wav", body="== Transcript\n- 00:00 Hello\n")
+    transcript = write_job(vault, "transcripts", missing, status=status)
+    write_job(vault, "transcripts", complete, status="done", lang="en")
+    translation = write_job(vault, "translations", complete + "\nru", status=status)
+    originals = [path.read_bytes() for path in (transcript, translation)]
+    assert worker.sweep(vault, NOW, {}) == 0
+    assert [path.read_bytes() for path in (transcript, translation)] == originals
+
+
+def test_translation_only_missing_targets(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True, translate_to=["ru", "en", "pt", "de"])
+    audio, _ = add_audio_note(vault, body="== Transcript\n- 00:00 Hello\n== Translation ru\n\n")
+    write_job(vault, "transcripts", audio, lang="en", status="done")
+    write_job(vault, "translations", audio + "\nde", status="failed")
+    assert worker.sweep(vault, NOW, {}) == 1
+    job = json.loads(job_path(vault, "translations", audio + "\npt").read_text())
+    assert (job["target"], job["source_lang"], job["status"], job["auto"]) == ("pt", "en", "queued", True)
+    assert not job_path(vault, "translations", audio + "\nen").exists()
+    assert not job_path(vault, "translations", audio + "\nru").exists()
+
+
+@pytest.mark.parametrize("lang", [None, ""])
+def test_transcript_without_language_does_not_translate(sweep_vault, lang):
+    set_audio_settings(sweep_vault, on_the_fly=True, translate_to=["ru"])
+    audio, _ = add_audio_note(sweep_vault, body="== Transcript\nHello\n")
+    write_job(sweep_vault, "transcripts", audio, lang=lang, status="done")
+    assert worker.sweep(sweep_vault, NOW, {}) == 0
+
+
+def test_sweep_skips_invalid_notes_and_audio(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    add_audio_note(vault, "other.wav", kind="note")
+    add_audio_note(vault, "missing.wav", exists=False)
+    _, no_attachment = add_audio_note(vault, "no-attachment.wav")
+    no_attachment.write_text('#show: tylog.note.with(kind: "audio")\n')
+    _, no_header = add_audio_note(vault, "no-header.wav")
+    no_header.write_text('#tylog.attachment("assets/audio/no-header.wav", kind: "audio")\n')
+    add_audio_note(vault, "outside.wav", attachment="../outside.wav")
+    (vault.parent / "outside.wav").write_bytes(b"outside")
+    assert worker.sweep(vault, NOW, {}) == 0
+
+
+def test_attachment_unescaping_and_leading_slash(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True)
+    audio, _ = add_audio_note(sweep_vault, 'a"b\\c.wav', attachment=r'/assets/audio/a\"b\\c.wav')
+    assert worker.sweep(sweep_vault, NOW, {}) == 1
+    assert json.loads(job_path(sweep_vault, "transcripts", audio).read_text())["audio"] == audio
+
+
+@pytest.mark.parametrize("contents", ["broken JSON", "[]", "null"])
+def test_corrupt_state_is_empty(sweep_vault, contents):
+    set_audio_settings(sweep_vault, scheduled=True)
+    audio, _ = add_audio_note(sweep_vault)
+    state_path = sweep_vault / "state.json"
+    state_path.write_text(contents)
+    worker.run_once(sweep_vault, now=NOW, state_path=state_path)
+    assert job_path(sweep_vault, "transcripts", audio).exists()
+    worker.run_once(sweep_vault, now=NOW, state_path=state_path)
+    assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
+
+
+def test_multiline_header_with_parentheses_in_title(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True)
+    audio, note = add_audio_note(sweep_vault)
+    note.write_text('#show: tylog.note.with(\n  title: "Audio (take)",\n  kind: "audio",\n)\n'
+                    f'#tylog.attachment("{audio}", kind: "audio")\n')
+    assert worker.sweep(sweep_vault, NOW, {}) == 1
+
+
+def test_on_the_fly_continues_after_scheduled_sweep(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True, scheduled=True)
+    add_audio_note(sweep_vault)
+    state = {}
+    assert worker.sweep(sweep_vault, NOW, state) == 1
+    assert "last_scheduled_date" not in state  # job still queued
+    for job in (sweep_vault / "_system/jobs/transcripts").glob("*.json"):
+        job.write_text(json.dumps({"status": "done", "lang": "en"}))
+    assert worker.sweep(sweep_vault, NOW, state) == 0
+    assert state["last_scheduled_date"] == "2026-10-14"
+    add_audio_note(sweep_vault, "next.wav")
+    assert worker.sweep(sweep_vault, NOW, state) == 1
+
+
+def test_empty_translation_targets(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True, translate_to=[])
+    audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
+    write_job(sweep_vault, "transcripts", audio, status="done", lang="en")
+    assert worker.sweep(sweep_vault, NOW, {}) == 0
+
+
+def test_scheduled_run_stays_open_until_translations_exist(sweep_vault):
+    """Overnight: transcripts first, translations on a later sweep, same night."""
+    vault = sweep_vault
+    set_audio_settings(vault, scheduled=True, translate_to=["ru", "pt"])
+    audio, note = add_audio_note(vault)
+    state_path = vault / "state.json"
+    translated = []
+
+    def fake_translate(texts, source_lang, target):
+        translated.append(target)
+        return [target] * len(texts)
+
+    for _ in range(4):  # the worker runs once a minute
+        worker.run_once(vault, now=NOW, state_path=state_path, translate=fake_translate)
+    text = note.read_text()
+    assert "== Transcript" in text
+    assert "== Translation ru" in text and "== Translation pt" in text
+    assert sorted(translated) == ["pt", "ru"]
+    assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"

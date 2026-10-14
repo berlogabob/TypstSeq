@@ -2,6 +2,7 @@
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -140,8 +141,104 @@ def _vault_path(vault, relative):
     return path
 
 
-def run_once(vault, model="small", translate=translate):
+def _read_json(path):
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _has_pending_jobs(vault):
+    for kind in ("transcripts", "translations"):
+        for path in (vault / "_system/jobs" / kind).glob("*.json"):
+            if _read_json(path).get("status") in ("queued", "processing"):
+                return True
+    return False
+
+
+def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
+    audio_settings = _read_json(vault / "_system/settings/processing.json").get("audio", {})
+    if not audio_settings.get("transcribe"):
+        return 0
+    local_now = now.astimezone()
+    today = local_now.date().isoformat()
+    scheduled = False
+    time = audio_settings.get("time", "")
+    if audio_settings.get("scheduled") and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time):
+        scheduled = (local_now.strftime("%H:%M") >= time
+                     and state.get("last_scheduled_date") != today)
+    if not (force or audio_settings.get("on_the_fly") or scheduled):
+        return 0
+
+    def section(text, heading):
+        match = re.search(r"^" + re.escape(heading) + r"\r?$(.*?)(?=^== |\Z)",
+                          text, re.MULTILINE | re.DOTALL)
+        return match.group(1) if match else None
+
+    created = 0
+
+    def enqueue(kind, key, job):
+        nonlocal created
+        path = vault / "_system/jobs" / kind / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("x", encoding="utf-8") as stream:
+                json.dump({**job, "requested_at": now.astimezone(timezone.utc).isoformat(),
+                           "status": "queued", "auto": True}, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+            created += 1
+        except FileExistsError:
+            pass
+
+    for note in sorted((vault / "notes").glob("Audio *.typ")):
+        text = note.read_text(encoding="utf-8")
+        header = re.search(r'#show:\s*tylog\.note\.with\(((?:"(?:\\.|[^"\\])*"|[^")])*)\)',
+                           text, re.DOTALL)
+        if not header or not re.search(r'\bkind:\s*"audio"', header.group(1)):
+            continue
+        attachment = re.search(r'#tylog\.attachment\(\s*"((?:\\.|[^"\\])*)"\s*,\s*kind:\s*"audio"\s*\)', text)
+        if not attachment:
+            continue
+        audio = re.sub(r"\\(.)", r"\1", attachment.group(1)).lstrip("/")
+        try:
+            if not _vault_path(vault, audio).is_file():
+                continue
+        except ValueError:
+            continue
+        job = {"audio": audio, "note": note.relative_to(vault).as_posix()}
+        transcript = section(text, "== Transcript")
+        if not transcript or not transcript.strip():
+            enqueue("transcripts", audio, job)
+            continue
+        source_lang = _read_json(vault / "_system/jobs/transcripts" /
+                                 (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".json")).get("lang")
+        if source_lang:
+            for target in audio_settings.get("translate_to", []):
+                if target != source_lang and section(text, f"== Translation {target}") is None:
+                    enqueue("translations", audio + "\n" + target,
+                            {**job, "target": target, "source_lang": source_lang})
+    # The scheduled run stays open until a sweep finds nothing new and nothing
+    # queued or running: translations only appear after their transcripts
+    # finish, so closing after the first sweep would push them to tomorrow.
+    if scheduled and created == 0 and not _has_pending_jobs(vault):
+        state["last_scheduled_date"] = today
+    return created
+
+
+def run_once(vault, model="small", translate=translate, *, now=None, state_path=None):
+    vault = Path(vault).resolve()
+    now = now if now is not None else datetime.now()
+    state_path = Path(state_path).expanduser() if state_path is not None else Path.home() / ".tylog-transcribe-state.json"
+    state = _read_json(state_path)
+    requested_at = _read_json(vault / "_system/jobs/process-now.json").get("requested_at")
+    force = bool(requested_at) and requested_at != state.get("last_process_now")
+    sweep(vault, now, state, force=force)
+    if force:
+        state["last_process_now"] = requested_at
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     jobs = [(kind, path) for kind in ("transcripts", "translations")
             for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
     for kind, job_path in jobs:
@@ -178,8 +275,9 @@ def main(argv=None):
     parser.add_argument("--vault", required=True, type=Path)
     parser.add_argument("--once", required=True, action="store_true")
     parser.add_argument("--model", default="small")
+    parser.add_argument("--state", type=Path, default=Path.home() / ".tylog-transcribe-state.json")
     args = parser.parse_args(argv)
-    run_once(args.vault, model=args.model)
+    run_once(args.vault, model=args.model, state_path=args.state)
 
 
 if __name__ == "__main__":

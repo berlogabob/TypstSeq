@@ -7,6 +7,7 @@ String screenshotLaunchAgentPlist({
   required String vault,
   required String mode,
   String time = '03:00',
+  String label = 'org.tylog.screenshots',
 }) {
   String xml(String text) =>
       const HtmlEscape(HtmlEscapeMode.element).convert(text);
@@ -38,51 +39,65 @@ String screenshotLaunchAgentPlist({
   return '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>Label</key><string>org.tylog.screenshots</string>
+<key>Label</key><string>${xml(label)}</string>
 <key>ProgramArguments</key><array>${args.map((a) => '<string>${xml(a)}</string>').join()}</array>
 ${mode == 'watch' ? '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>' : '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>'}
 </dict></plist>''';
 }
 
+/// off | watch (on the fly) | schedule (daily) | both (one agent each).
 Future<void> configureScreenshotsOcr(
   String vault,
   String mode,
   String time,
 ) async {
   if (!Platform.isMacOS) return;
-  final home = Platform.environment['HOME']!;
-  final plist = mode == 'off'
-      ? null
-      : screenshotLaunchAgentPlist(
-          home: home,
-          vault: vault,
-          mode: mode,
-          time: time,
-        );
-  if (!['off', 'watch', 'schedule'].contains(mode)) {
+  if (!['off', 'watch', 'schedule', 'both'].contains(mode)) {
     throw ArgumentError('Invalid screenshot mode');
   }
+  final home = Platform.environment['HOME']!;
+  const watchLabel = 'org.tylog.screenshots';
+  const scheduleLabel = 'org.tylog.screenshots.schedule';
+  // (label, agent mode). A lone schedule keeps the original label.
+  final agents = [
+    if (mode == 'watch' || mode == 'both') (watchLabel, 'watch'),
+    if (mode == 'schedule') (watchLabel, 'schedule'),
+    if (mode == 'both') (scheduleLabel, 'schedule'),
+  ];
+  // Build every plist first: a bad time must not leave agents half removed.
+  final plists = [
+    for (final (label, agentMode) in agents)
+      (
+        label,
+        screenshotLaunchAgentPlist(
+          home: home,
+          vault: vault,
+          mode: agentMode,
+          time: time,
+          label: label,
+        ),
+      ),
+  ];
   final uid = (await Process.run('/usr/bin/id', [
     '-u',
   ])).stdout.toString().trim();
   final domain = 'gui/$uid';
-  final file = File('$home/Library/LaunchAgents/org.tylog.screenshots.plist');
-  await Process.run('/bin/launchctl', [
-    'bootout',
-    '$domain/org.tylog.screenshots',
-  ]);
-  if (mode == 'off') {
-    if (await file.exists()) await file.delete();
-    return;
+  File fileFor(String label) => File('$home/Library/LaunchAgents/$label.plist');
+  for (final label in [watchLabel, scheduleLabel]) {
+    await Process.run('/bin/launchctl', ['bootout', '$domain/$label']);
+    if (await fileFor(label).exists()) await fileFor(label).delete();
   }
-  await file.parent.create(recursive: true);
-  await writeFileAtomic(file, utf8.encode(plist!));
-  final result = await Process.run('/bin/launchctl', [
-    'bootstrap',
-    domain,
-    file.path,
-  ]);
-  if (result.exitCode != 0) throw StateError('launchctl: ${result.stderr}');
+  for (final (label, plist) in plists) {
+    final file = fileFor(label);
+    await file.parent.create(recursive: true);
+    await writeFileAtomic(file, utf8.encode(plist));
+    final result = await Process.run('/bin/launchctl', [
+      'bootstrap',
+      domain,
+      file.path,
+    ]);
+    if (result.exitCode != 0) throw StateError('launchctl: ${result.stderr}');
+  }
 }
 
 Future<void> runScreenshotsBackfill(String vault) async {
