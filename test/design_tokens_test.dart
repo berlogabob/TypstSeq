@@ -195,7 +195,7 @@ void main() {
       expect(theme.appBarTheme.surfaceTintColor, Colors.transparent);
       expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);
       // Regression: a global outline border boxed the borderless editor field.
-      expect(theme.inputDecorationTheme.border, isNot(isA<OutlineInputBorder>()));
+      expect(theme.inputDecorationTheme.border, InputBorder.none);
       expect(theme.listTileTheme.contentPadding,
           const EdgeInsets.symmetric(horizontal: kSpace16));
       expect(theme.dividerTheme.space, kSpace16);

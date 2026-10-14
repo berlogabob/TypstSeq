@@ -76,7 +76,10 @@ ThemeData tyLogTheme(Brightness brightness) {
         borderRadius: BorderRadius.vertical(top: Radius.circular(kRadiusLarge)),
       ),
     ),
-    // No global inputDecorationTheme: the editor relies on the default (borderless) field.
+    // The app was borderless before D6; fields that want a border set their own.
+    inputDecorationTheme: const InputDecorationThemeData(
+      border: InputBorder.none,
+    ),
     listTileTheme: const ListTileThemeData(
       contentPadding: EdgeInsets.symmetric(horizontal: kSpace16),
     ),
