@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../audio/audio_peaks.dart';
-import 'audio_note_screen.dart' show WaveformSeekBar;
+import 'audio_note_screen.dart' show AudioTab, WaveformSeekBar;
 import 'audio_sheets.dart';
 
 /// A note-body audio attachment as a player: waveform, play/pause and an
@@ -21,13 +21,20 @@ class AudioInlineCard extends StatefulWidget {
     required this.extension,
     required this.onExpand,
     this.onPeaks,
+    this.status,
   });
 
   final String label;
   final List<int> peaks;
   final Future<Uint8List> Function() readBytes;
   final String extension;
-  final VoidCallback onExpand;
+
+  /// Opens the full screen on [AudioTab]; completes when it is closed.
+  final Future<void> Function(AudioTab tab) onExpand;
+
+  /// Whether a transcript / translations exist, for the chip's status icons.
+  final Future<({bool transcribed, bool translated, String? alias})> Function()?
+  status;
 
   /// Called with peaks decoded from the file when [peaks] was empty.
   final void Function(List<int> peaks, int durationMs)? onPeaks;
@@ -47,11 +54,33 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   String? _error;
   final _subs = <StreamSubscription<Object?>>[];
   late List<int> _peaks = widget.peaks;
+  bool _transcribed = false;
+  bool _translated = false;
+  String? _alias;
 
   @override
   void initState() {
     super.initState();
     if (_peaks.isEmpty) unawaited(_decodePeaks());
+    unawaited(_loadStatus());
+  }
+
+  Future<void> _loadStatus() async {
+    try {
+      final s = await widget.status?.call();
+      if (s != null && mounted) {
+        setState(() {
+          _transcribed = s.transcribed;
+          _translated = s.translated;
+          _alias = s.alias;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _expand(AudioTab tab) async {
+    await widget.onExpand(tab);
+    if (mounted) await _loadStatus();
   }
 
   @override
@@ -150,6 +179,27 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
     super.dispose();
   }
 
+  Widget _statusIcon(IconData icon, String name, bool done, AudioTab tab) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkResponse(
+      onTap: () => unawaited(_expand(tab)),
+      radius: 18,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: Tooltip(
+          message: done ? '$name ready' : 'No ${name.toLowerCase()} yet',
+          child: Icon(
+            icon,
+            size: 18,
+            color: done
+                ? scheme.primary
+                : scheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -179,28 +229,49 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    _error ?? _alias ?? widget.label,
+                    style: Theme.of(context).textTheme.labelLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   WaveformSeekBar(
                     peaks: _peaks,
                     progress: progress,
                     markers: const [],
-                    height: 48,
+                    height: 44,
                     onSeek: (f) => unawaited(_seek(f)),
                   ),
-                  Text(
-                    _error ??
-                        (_duration == Duration.zero
-                            ? widget.label
-                            : '${formatClock(_position)} / ${formatClock(_duration)}'),
-                    style: Theme.of(context).textTheme.labelSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _duration == Duration.zero
+                              ? ''
+                              : '${formatClock(_position)} / ${formatClock(_duration)}',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                      _statusIcon(
+                        Icons.subtitles_outlined,
+                        'Transcript',
+                        _transcribed,
+                        AudioTab.transcribe,
+                      ),
+                      _statusIcon(
+                        Icons.translate,
+                        'Translation',
+                        _translated,
+                        AudioTab.translate,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             IconButton(
               tooltip: 'Comments and transcript',
-              onPressed: widget.onExpand,
+              onPressed: () => unawaited(_expand(AudioTab.comments)),
               icon: const Icon(Icons.open_in_full),
             ),
           ],

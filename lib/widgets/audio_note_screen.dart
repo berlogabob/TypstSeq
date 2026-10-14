@@ -8,13 +8,17 @@ import 'package:just_audio/just_audio.dart';
 import 'package:tylog_audio/tylog_audio.dart';
 
 import 'package:tylog_core/scanner.dart'
-    show NoteMetadataDraft, replaceNoteHeader;
+    show NoteMetadataDraft, replaceNoteHeader, scanNote;
 
+import '../audio/audio_info.dart';
 import '../audio/audio_note_doc.dart';
 import '../audio/audio_peaks.dart';
 import '../models.dart';
 import 'audio_sheets.dart';
 import 'snack.dart';
+
+/// Sections of the expanded audio screen.
+enum AudioTab { comments, transcribe, translate, properties }
 
 /// Waveform with a played portion, comment dots and tap/drag seeking.
 class WaveformSeekBar extends StatelessWidget {
@@ -155,7 +159,14 @@ class AudioNoteScreen extends StatefulWidget {
     this.transcriptLang,
     this.translationStatus,
     this.requestTranslation,
+    this.initialTab = AudioTab.comments,
+    this.onChanged,
   });
+
+  final AudioTab initialTab;
+
+  /// Called after alias/tags are saved so the index and chips can refresh.
+  final VoidCallback? onChanged;
 
   final NoteRef note;
   final Future<String> Function(String path) readSource;
@@ -197,12 +208,22 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   late List<int> _peaks = decodePeaks(widget.note.properties['peaks']);
+  bool get _watching =>
+      _tab == AudioTab.transcribe || _tab == AudioTab.translate;
   List<AudioComment> _transcript = const [];
   String? _audioPath;
   String? _transcriptState;
-  bool _showTranscript = false;
+  late AudioTab _tab = widget.initialTab;
   String? _lang;
-  String? _view; // null = original transcript, else a translation's language
+  String? _view; // selected translation's language
+  late List<String> _aliases = [...widget.note.aliases];
+  late final List<String> _tags = [
+    ...widget.note.tags.where((t) => t != widget.note.kind),
+  ];
+  late final Map<String, Object?> _props = {...widget.note.properties};
+  final _aliasInput = TextEditingController();
+  final _tagInput = TextEditingController();
+  AudioInfo? _info;
   Map<String, List<AudioComment>> _translations = const {};
   final Map<String, String> _translating = {}; // target -> job status
   Timer? _poll;
@@ -248,7 +269,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       _translating.values.any((v) => v == 'queued' || v == 'processing');
 
   void _tick() {
-    if (mounted && _showTranscript && _jobsPending) {
+    if (mounted &&
+        _watching &&
+        (_jobsPending || (_transcriptState == 'done' && _transcript.isEmpty))) {
       unawaited(_reloadComments());
       unawaited(_refreshTranscriptState());
     }
@@ -266,10 +289,28 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Future<void> _load() async {
     try {
       final source = await widget.readSource(widget.note.path);
+      // The NoteRef we were opened with may be a stub (index still building);
+      // the file is the truth, and later header rewrites must not drop it.
+      final fresh = scanNote(widget.note.path, source);
+      _aliases = [...fresh.aliases];
+      _tags
+        ..clear()
+        ..addAll(
+          fresh.tags.where((t) => t != fresh.kind),
+        ); // kind is an implicit tag
+      _props
+        ..clear()
+        ..addAll(fresh.properties);
+      if (_peaks.isEmpty) _peaks = decodePeaks(_props['peaks']);
       final path = audioPathOf(source);
       if (path == null) throw StateError('No audio file in this note');
       final bytes = await widget.readBytes(path);
       final file = await writeTempAudio(bytes, path.split('.').last);
+      _info = audioInfo(
+        bytes,
+        path.split('.').last,
+        _props['duration_ms'] as int?,
+      );
       _temp = file;
       _audioPath = path;
       await _player.setFilePath(file.path);
@@ -291,8 +332,15 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final peaks = await peaksFromAudioFile(file);
     if (peaks.isEmpty || !mounted) return;
     setState(() => _peaks = peaks);
-    final n = widget.note;
     final ms = _duration.inMilliseconds;
+    _props['peaks'] = encodePeaks(peaks);
+    if (ms > 0 && _props['duration_ms'] == null) _props['duration_ms'] = ms;
+    await _writeHeader();
+  }
+
+  /// Rewrites the note header from this screen's copy of the metadata.
+  Future<void> _writeHeader() async {
+    final n = widget.note;
     await widget.mutate(
       n.path,
       (cur) => replaceNoteHeader(
@@ -303,17 +351,18 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           kind: n.kind,
           project: n.project,
           date: n.date,
-          tags: n.tags,
-          aliases: n.aliases,
-          properties: {
-            ...n.properties,
-            'peaks': encodePeaks(peaks),
-            if (ms > 0 && n.properties['duration_ms'] == null)
-              'duration_ms': ms,
-          },
+          tags: _tags,
+          aliases: _aliases,
+          properties: _props,
         ),
       ),
     );
+  }
+
+  Future<void> _saveMeta() async {
+    await _writeHeader();
+    widget.onChanged?.call();
+    if (mounted) showSnack(context, 'Saved');
   }
 
   Future<void> _reloadComments() async {
@@ -342,6 +391,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       if (status != null && status != 'done') jobs[target] = status;
     }
     if (!mounted) return;
+    final finished = _translating.keys.any((k) => !jobs.containsKey(k));
     setState(() {
       _transcriptState = state;
       _lang = lang ?? _lang;
@@ -349,6 +399,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ..clear()
         ..addAll(jobs);
     });
+    // The job finishing and the note arriving are separate sync events.
+    if (finished || (state == 'done' && _transcript.isEmpty)) {
+      unawaited(_reloadComments());
+    }
   }
 
   Future<void> _requestTranslation(String target) async {
@@ -400,6 +454,8 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _aliasInput.dispose();
+    _tagInput.dispose();
     for (final s in _subs) {
       s.cancel();
     }
@@ -415,7 +471,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final totalMs = _duration.inMilliseconds;
     final active = activeIndex(_comments, _position.inMilliseconds);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.note.title)),
+      appBar: AppBar(
+        title: Text(_aliases.isEmpty ? widget.note.title : _aliases.first),
+      ),
       body: SafeArea(
         child: _error != null
             ? Center(child: Text(_error!))
@@ -439,36 +497,83 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   Text('${formatClock(_position)} / ${formatClock(_duration)}'),
                   _controls(),
                   const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: SegmentedButton<bool>(
-                      showSelectedIcon: false,
-                      segments: [
-                        ButtonSegment(
-                          value: false,
-                          label: Text('Comments (${_comments.length})'),
-                        ),
-                        const ButtonSegment(
-                          value: true,
-                          label: Text('Transcript'),
-                        ),
-                      ],
-                      selected: {_showTranscript},
-                      onSelectionChanged: (v) {
-                        setState(() => _showTranscript = v.first);
-                        if (v.first) unawaited(_reloadComments());
-                      },
-                    ),
-                  ),
+                  _tabBar(),
                   Expanded(
-                    child: _showTranscript
-                        ? _transcriptList()
-                        : _commentList(active),
+                    child: switch (_tab) {
+                      AudioTab.comments => _commentList(active),
+                      AudioTab.transcribe => _transcribeView(),
+                      AudioTab.translate => _translateView(),
+                      AudioTab.properties => _propertiesView(),
+                    },
                   ),
-                  if (!_showTranscript) _commentInput(),
+                  if (_tab == AudioTab.comments) _commentInput(),
                 ],
               ),
       ),
+    );
+  }
+
+  Widget _tabBar() {
+    const tabs = {
+      AudioTab.comments: (Icons.chat_bubble_outline, 'Comments'),
+      AudioTab.transcribe: (Icons.subtitles_outlined, 'Transcribe'),
+      AudioTab.translate: (Icons.translate, 'Translate'),
+      AudioTab.properties: (Icons.info_outline, 'Properties'),
+    };
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        for (final e in tabs.entries)
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                setState(() => _tab = e.key);
+                if (e.key != AudioTab.comments) {
+                  unawaited(_reloadComments());
+                  unawaited(_refreshTranscriptState());
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      width: 3,
+                      color: _tab == e.key
+                          ? scheme.primary
+                          : Colors.transparent,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Badge(
+                      isLabelVisible:
+                          e.key == AudioTab.comments && _comments.isNotEmpty,
+                      label: Text('${_comments.length}'),
+                      child: Icon(
+                        e.value.$1,
+                        color: _tab == e.key
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      e.value.$2,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: _tab == e.key
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -540,13 +645,19 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     );
   }
 
-  Widget _transcriptList() {
+  Widget _transcribeView() {
     if (_transcript.isEmpty) {
       final waiting =
-          _transcriptState == 'queued' || _transcriptState == 'processing';
+          _transcriptState == 'queued' ||
+          _transcriptState == 'processing' ||
+          _transcriptState == 'done';
       return Center(
         child: waiting
-            ? Text('Transcription $_transcriptState…')
+            ? Text(
+                _transcriptState == 'done'
+                    ? 'Transcript ready, waiting for it to sync…'
+                    : 'Transcription $_transcriptState…',
+              )
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -565,23 +676,152 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               ),
       );
     }
-    final shown = _view == null ? _transcript : _translations[_view]!;
-    final active = activeIndex(shown, _position.inMilliseconds);
+    final active = activeIndex(_transcript, _position.inMilliseconds);
     return Column(
       children: [
-        _languageBar(),
-        Expanded(
-          child: ListView.builder(
-            itemCount: shown.length,
-            itemBuilder: (context, i) => ListTile(
-              dense: true,
-              selected: i == active,
-              leading: Text(formatTimestamp(shown[i].ms)),
-              title: Text(shown[i].text),
-              onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
+        if (_lang != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Language: ${_name(_lang!)}',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
             ),
           ),
+        Expanded(child: _segments(_transcript, active)),
+      ],
+    );
+  }
+
+  Widget _segments(List<AudioComment> shown, int active) => ListView.builder(
+    itemCount: shown.length,
+    itemBuilder: (context, i) => ListTile(
+      dense: true,
+      selected: i == active,
+      leading: Text(formatTimestamp(shown[i].ms)),
+      title: Text(shown[i].text),
+      onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
+    ),
+  );
+
+  Widget _translateView() {
+    if (_transcript.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Transcribe the audio first'),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => setState(() => _tab = AudioTab.transcribe),
+              child: const Text('Go to Transcribe'),
+            ),
+          ],
         ),
+      );
+    }
+    final view = _translations.containsKey(_view)
+        ? _view
+        : (_translations.isEmpty ? null : _translations.keys.first);
+    return Column(
+      children: [
+        _languageBar(view),
+        Expanded(
+          child: view == null
+              ? const Center(child: Text('Pick a language to translate into'))
+              : _segments(
+                  _translations[view]!,
+                  activeIndex(_translations[view]!, _position.inMilliseconds),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _propertiesView() {
+    final info = _info;
+    Widget row(String k, String? v) => v == null
+        ? const SizedBox.shrink()
+        : ListTile(
+            dense: true,
+            title: Text(k),
+            trailing: Text(v, style: Theme.of(context).textTheme.bodyMedium),
+          );
+    String mb(int b) => b < 1024 * 1024
+        ? '${(b / 1024).toStringAsFixed(0)} KB'
+        : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        TextField(
+          controller: _aliasInput,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            labelText: 'Alias',
+            helperText: 'A name of your own; shown instead of the file name',
+            suffixIcon: IconButton(
+              tooltip: 'Save alias',
+              icon: const Icon(Icons.check),
+              onPressed: () {
+                final v = _aliasInput.text.trim();
+                setState(() => _aliases = v.isEmpty ? [] : [v]);
+                unawaited(_saveMeta());
+              },
+            ),
+          ),
+          onSubmitted: (v) {
+            final t = v.trim();
+            setState(() => _aliases = t.isEmpty ? [] : [t]);
+            unawaited(_saveMeta());
+          },
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final t in _tags)
+              InputChip(
+                label: Text('#$t'),
+                onDeleted: () {
+                  setState(() => _tags.remove(t));
+                  unawaited(_saveMeta());
+                },
+              ),
+          ],
+        ),
+        TextField(
+          controller: _tagInput,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(labelText: 'Add tag'),
+          onSubmitted: (v) {
+            final t = v.trim().replaceFirst(RegExp(r'^#'), '');
+            _tagInput.clear();
+            if (t.isEmpty || _tags.contains(t)) return;
+            setState(() => _tags.add(t));
+            unawaited(_saveMeta());
+          },
+        ),
+        const SizedBox(height: 16),
+        Text('File', style: Theme.of(context).textTheme.titleSmall),
+        row('Format', info?.format),
+        row('Duration', formatClock(_duration)),
+        row('Size', info == null ? null : mb(info.bytes)),
+        row(
+          'Sample rate',
+          info?.sampleRate == null
+              ? null
+              : '${(info!.sampleRate! / 1000).toStringAsFixed(info.sampleRate! % 1000 == 0 ? 0 : 1)} kHz',
+        ),
+        row(
+          'Average bitrate',
+          info?.bitrateKbps == null ? null : '${info!.bitrateKbps} kbps',
+        ),
+        row('Waveform', _peaks.isEmpty ? null : '${_peaks.length} samples'),
+        row('Language', _lang == null ? null : _name(_lang!)),
+        row('Audio file', _audioPath),
+        row('Note', widget.note.path),
       ],
     );
   }
@@ -601,7 +841,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
 
   /// Step 2 of the pipeline: once the transcript names its language, offer
   /// the original, finished translations, and a menu to request another.
-  Widget _languageBar() {
+  Widget _languageBar(String? view) {
     final can = widget.requestTranslation != null && _lang != null;
     final offered = [
       for (final l in _languageNames.keys)
@@ -617,15 +857,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         child: Wrap(
           spacing: 8,
           children: [
-            ChoiceChip(
-              label: Text(_lang == null ? 'Original' : _name(_lang!)),
-              selected: _view == null,
-              onSelected: (_) => setState(() => _view = null),
-            ),
             for (final l in _translations.keys)
               ChoiceChip(
                 label: Text(_name(l)),
-                selected: _view == l,
+                selected: view == l,
                 onSelected: (_) => setState(() => _view = l),
               ),
             for (final e in _translating.entries)

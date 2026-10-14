@@ -68,6 +68,22 @@ extension _AudioFlow on _HomeScreenState {
     return AudioInlineCard(
       key: ValueKey(assetPath),
       label: label,
+      // Read from the file, not the index: the index is empty for minutes at
+      // startup, and the chip must show its state at once.
+      status: () async {
+        final path =
+            note?.path ?? 'notes/${audioAssetNote(assetPath).title}.typ';
+        if (!await v.storage.existsNow(path)) {
+          return (transcribed: false, translated: false, alias: null);
+        }
+        final text = utf8.decode(await v.storage.readBytesNow(path));
+        final aliases = scanNote(path, text).aliases;
+        return (
+          transcribed: parseTranscript(text).isNotEmpty,
+          translated: translationLangs(text).isNotEmpty,
+          alias: aliases.isEmpty ? null : aliases.first,
+        );
+      },
       peaks: pending?.peaks ?? decodePeaks(note?.properties['peaks']),
       onPeaks: note == null
           ? null
@@ -76,7 +92,7 @@ extension _AudioFlow on _HomeScreenState {
           _pendingAudio[assetPath]?.bytes ??
           await v.storage.readBytesNow(assetPath),
       extension: assetPath.split('.').last,
-      onExpand: () => unawaited(_openAudioAsset(assetPath)),
+      onExpand: (tab) => _openAudioAsset(assetPath, tab: tab),
     );
   }
 
@@ -219,13 +235,20 @@ extension _AudioFlow on _HomeScreenState {
     }
   }
 
-  Future<void> _openAudioNote(NoteRef note) async {
+  Future<void> _openAudioNote(
+    NoteRef note, {
+    AudioTab tab = AudioTab.comments,
+  }) async {
     final v = vault;
     if (v == null) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => AudioNoteScreen(
           note: note,
+          initialTab: tab,
+          onChanged: () => unawaited(
+            workspace.refreshIndex(updateStatus: false, always: true),
+          ),
           readSource: v.storage.readText,
           readBytes: v.storage.readBytesNow,
           mutate: workspace.mutateNote,
@@ -252,13 +275,17 @@ extension _AudioFlow on _HomeScreenState {
   /// a lesson's mp3. The first open creates a `kind: audio` note for it with
   /// a deterministic id and path (two devices opening the same file converge
   /// on one note) and a link back to the note whose chip was tapped.
-  Future<void> _openAudioAsset(String assetPath) async {
+  Future<void> _openAudioAsset(
+    String assetPath, {
+    AudioTab tab = AudioTab.comments,
+  }) async {
     final v = vault;
     if (v == null) return;
+    showSnack(context, 'Opening audio…');
     await _audioNoteTasks[assetPath];
     for (final n in index?.notes ?? const <NoteRef>[]) {
       if (n.kind == 'audio' && n.attachments.any((a) => a.path == assetPath)) {
-        await _openAudioNote(n);
+        await _openAudioNote(n, tab: tab);
         return;
       }
     }
@@ -293,6 +320,7 @@ extension _AudioFlow on _HomeScreenState {
       }
       if (!mounted) return;
       await _openAudioNote(
+        tab: tab,
         NoteRef(
           id: id,
           path: path,

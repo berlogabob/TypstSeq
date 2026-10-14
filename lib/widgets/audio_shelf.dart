@@ -54,7 +54,9 @@ class AudioShelf extends StatelessWidget {
                     final ms = n.properties['duration_ms'];
                     return ListTile(
                       leading: const Icon(Icons.graphic_eq),
-                      title: Text(n.title),
+                      title: Text(
+                        n.aliases.isEmpty ? n.title : n.aliases.first,
+                      ),
                       subtitle: ms is int
                           ? Text(formatClock(Duration(milliseconds: ms)))
                           : null,
