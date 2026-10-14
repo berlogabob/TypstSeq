@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// The one control set for every background pipeline (audio transcription,
-/// screenshot OCR): process right after, process on a daily schedule, process
+/// screenshot OCR): manual, right after, or on a daily schedule, plus process
 /// now. Pipeline-specific options go in [extras].
 class ProcessingPolicyEditor extends StatelessWidget {
   const ProcessingPolicyEditor({
@@ -42,7 +42,7 @@ class ProcessingPolicyEditor extends StatelessWidget {
     );
     if (picked == null) return;
     onChanged(
-      onTheFly,
+      onTheFly && !scheduled,
       scheduled,
       '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
     );
@@ -55,19 +55,36 @@ class ProcessingPolicyEditor extends StatelessWidget {
       children: [
         ListTile(leading: Icon(icon), title: Text(title)),
         ...extras,
-        CheckboxListTile(
-          value: onTheFly,
-          title: const Text('Process right after it is added'),
-          onChanged: enabled && !busy
-              ? (v) => onChanged(v ?? false, scheduled, time)
-              : null,
-        ),
-        CheckboxListTile(
-          value: scheduled,
-          title: const Text('Process on schedule'),
-          onChanged: enabled && !busy
-              ? (v) => onChanged(onTheFly, v ?? false, time)
-              : null,
+        RadioGroup<String>(
+          groupValue: scheduled
+              ? 'schedule'
+              : onTheFly
+              ? 'watch'
+              : 'off',
+          onChanged: (value) {
+            if (enabled && !busy && value != null) {
+              onChanged(value == 'watch', value == 'schedule', time);
+            }
+          },
+          child: Column(
+            children: [
+              RadioListTile<String>(
+                value: 'off',
+                title: const Text('Only when I ask'),
+                enabled: enabled && !busy,
+              ),
+              RadioListTile<String>(
+                value: 'watch',
+                title: const Text('Right after it is added'),
+                enabled: enabled && !busy,
+              ),
+              RadioListTile<String>(
+                value: 'schedule',
+                title: const Text('On schedule'),
+                enabled: enabled && !busy,
+              ),
+            ],
+          ),
         ),
         if (scheduled)
           ListTile(

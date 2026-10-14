@@ -77,7 +77,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   @override
   Widget build(BuildContext context) {
     final editable = widget.editable ?? Platform.isMacOS;
-    final fly = mode == 'watch' || mode == 'both';
+    final fly = mode == 'watch';
     final sched = mode == 'schedule' || mode == 'both';
     return ProcessingPolicyEditor(
       icon: Icons.screenshot,
@@ -89,12 +89,10 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
       busy: busy,
       status: status,
       onChanged: (nextFly, nextSched, nextTime) {
-        final next = nextFly && nextSched
-            ? 'both'
+        final next = nextSched
+            ? 'schedule'
             : nextFly
             ? 'watch'
-            : nextSched
-            ? 'schedule'
             : 'off';
         unawaited(
           perform(() async {

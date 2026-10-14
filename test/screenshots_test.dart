@@ -769,7 +769,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ScreenshotsSettings(
-            mode: 'schedule',
+            mode: 'both',
             time: '03:00',
             editable: false,
             onConfigure: (_, _) async =>
@@ -787,10 +787,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    for (final box in tester.widgetList<CheckboxListTile>(
-      find.byType(CheckboxListTile),
+    expect(find.byType(RadioListTile<String>), findsNWidgets(3));
+    expect(
+      tester
+          .widget<RadioGroup<String>>(find.byType(RadioGroup<String>))
+          .groupValue,
+      'schedule',
+    );
+    for (final radio in tester.widgetList<RadioListTile<String>>(
+      find.byType(RadioListTile<String>),
     )) {
-      expect(box.onChanged, isNull);
+      expect(radio.enabled, isFalse);
     }
     expect(find.textContaining('12 processed'), findsOneWidget);
     await tester.tap(find.text('Process now'));
@@ -818,16 +825,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('No screenshot status available'), findsOneWidget);
-      await tester.tap(find.text('Process on schedule'));
+      await tester.tap(find.text('On schedule'));
       await tester.pumpAndSettle();
       expect(configured, ['schedule:03:00']);
       expect(find.text('Every day at 03:00'), findsOneWidget);
-      await tester.tap(find.text('Process right after it is added'));
+      await tester.tap(find.text('Right after it is added'));
       await tester.pumpAndSettle();
-      expect(configured, ['schedule:03:00', 'both:03:00']);
-      await tester.tap(find.text('Process on schedule'));
+      expect(configured, ['schedule:03:00', 'watch:03:00']);
+      expect(find.text('Every day at 03:00'), findsNothing);
+      await tester.tap(find.text('Only when I ask'));
       await tester.pumpAndSettle();
-      expect(configured.last, 'watch:03:00');
+      expect(configured, ['schedule:03:00', 'watch:03:00', 'off:03:00']);
       await tester.pumpWidget(const SizedBox());
     },
   );
