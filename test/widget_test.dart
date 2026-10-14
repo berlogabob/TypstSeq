@@ -76,7 +76,7 @@ Future<void> openMagicAction(WidgetTester tester, String label) async {
   // The dock slides open over 150ms after the editor gains focus; let it
   // finish before aiming at its buttons.
   await tester.pumpAndSettle();
-  await tester.tap(find.byTooltip('Insert'));
+  await tester.tap(find.byTooltip('Add to note'));
   await tester.pumpAndSettle();
   await tester.scrollUntilVisible(
     find.text(label),
@@ -439,10 +439,10 @@ void main() {
     expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
       ['Switch', 'Create', 'This note', 'Views']);
     expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
-      ['Vaults', 'Settings', 'New page', 'New entity', 'Split editor',
+      ['Vaults', 'Settings', 'New page', 'New entity',
        'Context', 'Share as PDF', 'Graph']);
     for (final label in ['Audio', 'Maintenance', 'Problems', 'Rebuild index',
-      'Relink vault', 'Semantic search', 'Typst help']) {
+      'Relink vault', 'Semantic search', 'Typst help', 'Split', 'Split editor']) {
       expect(
         find.descendant(of: find.byType(AppSheet), matching: find.text(label)),
         findsNothing,
@@ -1680,6 +1680,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Split is in the view popup and its icon follows the mode', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pump();
+    await _openEditorVault(tester);
+    await tester.tap(find.byTooltip('View mode'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(PopupMenuItem<String>, 'Split'), findsOneWidget);
+    await tester.tap(find.text('Split'));
+    await tester.pumpAndSettle();
+    final home = tester.state(find.byType(HomeScreen)) as dynamic;
+    expect(home.mode, 'split');
+    expect(
+      find.descendant(
+        of: find.byTooltip('View mode'),
+        matching: find.byIcon(Icons.vertical_split),
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('view chooser opens read preview source and editor modes', (
     tester,
   ) async {
@@ -1689,12 +1712,13 @@ void main() {
     expect(find.byTooltip('View mode'), findsOneWidget);
     await tester.tap(find.byTooltip('View mode'));
     await tester.pumpAndSettle();
-    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
     for (final icon in [
       AppIcons.edit,
       Icons.chrome_reader_mode_outlined,
       Icons.preview_outlined,
       Icons.code,
+      Icons.vertical_split,
     ]) {
       expect(
         find.descendant(
@@ -2997,7 +3021,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Insert'));
+    await tester.tap(find.byTooltip('Add to note'));
     await tester.pumpAndSettle();
 
     final menu = find.descendant(
@@ -3005,6 +3029,8 @@ void main() {
       matching: find.byType(CustomScrollView),
     );
     expect(menu, findsOneWidget);
+    expect(find.text('Add to note'), findsOneWidget);
+    expect(find.text('Insert'), findsOneWidget);
     for (final label in const [
       'Insert',
       'Note link',
@@ -3130,7 +3156,7 @@ void main() {
     await tester.tap(editor);
     await tester.pump();
 
-    await tester.tap(find.widgetWithText(FloatingActionButton, 'Magic'));
+    await tester.tap(find.widgetWithText(FloatingActionButton, 'Add to note'));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();

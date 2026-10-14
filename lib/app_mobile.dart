@@ -3079,7 +3079,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null) return;
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Delete ${ref.kind == 'screenshot' ? 'screenshot' : 'article'}?',
+      title: ref.kind == 'screenshot' ? 'Delete screenshot?' : 'Delete article',
       message:
           '"${ref.title}" will be removed from the vault. '
           'There is no recovery.',
@@ -4286,7 +4286,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (context) {
           final columns = MediaQuery.sizeOf(context).width < 500 ? 3 : 4;
           return AppSheet.body(
-            title: 'Insert',
+            title: 'Add to note',
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * 0.8,
               child: CustomScrollView(
@@ -4420,7 +4420,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               AppSection(
                 title: 'This note',
                 children: [
-                  tile(_ShellAction.split, Icons.vertical_split, 'Split editor'),
                   tile(_ShellAction.backlinks, AppIcons.link, 'Context'),
                   tile(_ShellAction.sharePdf, Icons.ios_share, 'Share as PDF'),
                 ],
@@ -5419,15 +5418,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'read' => Icons.chrome_reader_mode_outlined,
                 'preview' => Icons.preview_outlined,
                 'source' => Icons.code,
+                'split' => Icons.vertical_split,
                 _ => AppIcons.edit,
               }),
-              onSelected: _setEditorMode,
+              onSelected: (value) {
+                if (value == 'split') {
+                  unawaited(_runShellAction(_ShellAction.split, linksPanel));
+                } else {
+                  _setEditorMode(value);
+                }
+              },
               itemBuilder: (_) => [
                 for (final (value, label, icon) in const [
                   ('normal', 'Edit', AppIcons.edit),
                   ('read', 'Read', Icons.chrome_reader_mode_outlined),
                   ('preview', 'Preview', Icons.preview_outlined),
                   ('source', 'Source', Icons.code),
+                  ('split', 'Split', Icons.vertical_split),
                 ])
                   PopupMenuItem(
                     value: value,
@@ -5469,7 +5476,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: FloatingActionButton.extended(
                 onPressed: _showMagicMenu,
                 icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Magic'),
+                label: const Text('Add to note'),
               ),
             )
           : null,

@@ -335,13 +335,14 @@ class _GraphViewState extends State<GraphView>
                 }),
               ),
               if (stats.orphanPaths.isNotEmpty)
-                ActionChip(
+                FilterChip(
+                  selected: _focusFilter != null,
                   // "topics" when the graph is concepts (Concept map), else notes.
                   label: Text(
                     '${stats.orphanPaths.length} '
                     '${_isConceptGraph ? 'isolated topics' : 'orphan notes'}',
                   ),
-                  onPressed: () => setState(() {
+                  onSelected: (_) => setState(() {
                     _focusFilter = _focusFilter == null
                         ? stats.orphanPaths.toSet()
                         : null;
@@ -349,26 +350,28 @@ class _GraphViewState extends State<GraphView>
                   }),
                 ),
               if (stats.hubPaths.isNotEmpty)
-                ActionChip(
+                FilterChip(
                   label: const Text('Hubs'),
-                  onPressed: () => setState(() {
+                  onSelected: (_) => setState(() {
                     _selectedPath =
                         stats.hubPaths[_hubCycleIndex % stats.hubPaths.length];
                     _hubCycleIndex++;
                   }),
                 ),
               if (_focusFilter != null)
-                Chip(
+                FilterChip(
+                  selected: true,
                   label: const Text('Filtered'),
+                  onSelected: null,
                   onDeleted: () => setState(() {
                     _focusFilter = null;
                     _invalidateLayout();
                   }),
                 ),
               if (widget.onExportSvg != null)
-                ActionChip(
-                  avatar: const Icon(Icons.ios_share, size: 18),
-                  label: const Text('Export SVG'),
+                IconButton(
+                  tooltip: 'Export SVG',
+                  icon: const Icon(Icons.ios_share),
                   onPressed: () => widget.onExportSvg!(displayGraph),
                 ),
             ],

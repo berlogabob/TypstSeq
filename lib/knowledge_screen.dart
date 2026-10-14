@@ -621,7 +621,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           }),
           title: Text(result.title),
           subtitle: Text(
-            result.kind,
+            labelForKind(result.kind),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

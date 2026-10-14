@@ -828,7 +828,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
             dense: true,
             selected: state.highlighted == index,
             leading: const Icon(Icons.task_alt),
-            title: Text('/$command'),
+            title: Text(command == 'task' ? 'Task' : '/$command'),
+            subtitle: command == 'task' ? const Text('/task') : null,
             onTap: () => _selectTaskCommand(command),
           );
         }
@@ -1406,109 +1407,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       height: 48,
                       child: ListenableBuilder(
                         listenable: widget.controller,
-                        builder: (context, _) => ListView(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: kSpace8,
-                          ),
-                          scrollDirection: Axis.horizontal,
+                        builder: (context, _) => Row(
                           children: [
                             IconButton(
-                              tooltip: 'Undo',
-                              onPressed: widget.controller.canUndo
-                                  ? widget.controller.undo
-                                  : null,
-                              icon: const Icon(Icons.undo),
-                            ),
-                            IconButton(
-                              tooltip: 'Redo',
-                              onPressed: widget.controller.canRedo
-                                  ? widget.controller.redo
-                                  : null,
-                              icon: const Icon(Icons.redo),
-                            ),
-                            IconButton(
-                              key: _headingButtonKey,
-                              tooltip: 'Heading 1',
-                              onPressed: widget.controller.setHeading,
-                              onLongPress: () => _showHeadingMenu(context),
-                              icon: Text(
-                                'H1',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'More heading levels',
-                              onPressed: () => _showHeadingMenu(context),
-                              icon: const Icon(Icons.arrow_drop_down),
-                            ),
-                            // ponytail: two loops, not one — the highlight button sits
-                            // mid-row and carries a key + onLongPress. Order here is
-                            // the on-screen order; do not merge the loops.
-                            for (final (tip, press, icon)
-                                in <(String, VoidCallback, IconData)>[
-                                  (
-                                    'Bold',
-                                    widget.controller.toggleBold,
-                                    Icons.format_bold,
-                                  ),
-                                  (
-                                    'Italic',
-                                    widget.controller.toggleItalic,
-                                    Icons.format_italic,
-                                  ),
-                                  (
-                                    'Strikethrough',
-                                    widget.controller.toggleStrike,
-                                    Icons.format_strikethrough,
-                                  ),
-                                  (
-                                    'Underline',
-                                    widget.controller.toggleUnderline,
-                                    Icons.format_underline,
-                                  ),
-                                  (
-                                    'Monospace',
-                                    widget.controller.toggleMono,
-                                    Icons.code,
-                                  ),
-                                ])
-                              IconButton(
-                                tooltip: tip,
-                                onPressed: press,
-                                icon: Icon(icon),
-                              ),
-                            IconButton(
-                              key: _highlightButtonKey,
-                              tooltip: 'Highlight (long-press for colors)',
-                              onPressed: widget.controller.toggleHighlight,
-                              onLongPress: () => _showHighlightMenu(context),
-                              icon: const Icon(Icons.border_color),
-                            ),
-                            for (final (tip, press, icon)
-                                in <(String, VoidCallback, IconData)>[
-                                  (
-                                    'Bulleted list',
-                                    widget.controller.setBulletList,
-                                    Icons.format_list_bulleted,
-                                  ),
-                                  (
-                                    'Numbered list',
-                                    widget.controller.setNumberedList,
-                                    Icons.format_list_numbered,
-                                  ),
-                                  (
-                                    'Clear formatting',
-                                    widget.controller.clearFormatting,
-                                    Icons.format_clear,
-                                  ),
-                                ])
-                              IconButton(
-                                tooltip: tip,
-                                onPressed: press,
-                                icon: Icon(icon),
-                              ),
-                            IconButton(
-                              tooltip: 'Insert',
+                              tooltip: 'Add to note',
                               onPressed: () async {
                                 try {
                                   await widget.onInsert();
@@ -1517,6 +1419,111 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                                 }
                               },
                               icon: const Icon(Icons.add_circle_outline),
+                            ),
+                            Expanded(
+                              child: ListView(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: kSpace8,
+                                ),
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Undo',
+                                    onPressed: widget.controller.canUndo
+                                        ? widget.controller.undo
+                                        : null,
+                                    icon: const Icon(Icons.undo),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Redo',
+                                    onPressed: widget.controller.canRedo
+                                        ? widget.controller.redo
+                                        : null,
+                                    icon: const Icon(Icons.redo),
+                                  ),
+                                  IconButton(
+                                    key: _headingButtonKey,
+                                    tooltip: 'Heading 1',
+                                    onPressed: widget.controller.setHeading,
+                                    onLongPress: () => _showHeadingMenu(context),
+                                    icon: Text(
+                                      'H1',
+                                      style: Theme.of(context).textTheme.titleMedium,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'More heading levels',
+                                    onPressed: () => _showHeadingMenu(context),
+                                    icon: const Icon(Icons.arrow_drop_down),
+                                  ),
+                                  // ponytail: two loops, not one — the highlight button sits
+                                  // mid-row and carries a key + onLongPress. Order here is
+                                  // the on-screen order; do not merge the loops.
+                                  for (final (tip, press, icon)
+                                      in <(String, VoidCallback, IconData)>[
+                                        (
+                                          'Bold',
+                                          widget.controller.toggleBold,
+                                          Icons.format_bold,
+                                        ),
+                                        (
+                                          'Italic',
+                                          widget.controller.toggleItalic,
+                                          Icons.format_italic,
+                                        ),
+                                        (
+                                          'Strikethrough',
+                                          widget.controller.toggleStrike,
+                                          Icons.format_strikethrough,
+                                        ),
+                                        (
+                                          'Underline',
+                                          widget.controller.toggleUnderline,
+                                          Icons.format_underline,
+                                        ),
+                                        (
+                                          'Monospace',
+                                          widget.controller.toggleMono,
+                                          Icons.code,
+                                        ),
+                                      ])
+                                    IconButton(
+                                      tooltip: tip,
+                                      onPressed: press,
+                                      icon: Icon(icon),
+                                    ),
+                                  IconButton(
+                                    key: _highlightButtonKey,
+                                    tooltip: 'Highlight (long-press for colors)',
+                                    onPressed: widget.controller.toggleHighlight,
+                                    onLongPress: () => _showHighlightMenu(context),
+                                    icon: const Icon(Icons.border_color),
+                                  ),
+                                  for (final (tip, press, icon)
+                                      in <(String, VoidCallback, IconData)>[
+                                        (
+                                          'Bulleted list',
+                                          widget.controller.setBulletList,
+                                          Icons.format_list_bulleted,
+                                        ),
+                                        (
+                                          'Numbered list',
+                                          widget.controller.setNumberedList,
+                                          Icons.format_list_numbered,
+                                        ),
+                                        (
+                                          'Clear formatting',
+                                          widget.controller.clearFormatting,
+                                          Icons.format_clear,
+                                        ),
+                                      ])
+                                    IconButton(
+                                      tooltip: tip,
+                                      onPressed: press,
+                                      icon: Icon(icon),
+                                    ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

@@ -97,3 +97,22 @@ IconData iconForKind(String? kind) => switch (kind) {
   'daily' => AppIcons.daily,
   _ => Icons.description_outlined, // generic note reference
 };
+
+/// Human labels for search result kinds, including user-defined entities.
+String labelForKind(String kind) => switch (kind) {
+  'note' => 'Note',
+  'daily' => 'Journal',
+  'article' => 'Article',
+  'task' => 'Task',
+  'file' => 'File',
+  'project' => 'Project',
+  'research' => 'Research',
+  'idea' => 'Idea',
+  'screenshot' => 'Screenshot',
+  'person' => 'Person',
+  'org' || 'organization' || 'company' => 'Organization',
+  'place' => 'Place',
+  'website' => 'Website',
+  'event' => 'Event',
+  _ => 'Entity',
+};

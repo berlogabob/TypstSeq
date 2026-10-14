@@ -272,9 +272,9 @@ void main() {
       // Fresh sorts first (most recently modified); open its overflow menu.
       await tester.tap(find.byIcon(AppIcons.overflow).first);
       await tester.pumpAndSettle();
-      expect(find.text('Delete article…'), findsOneWidget);
+      expect(find.text('Delete article'), findsOneWidget);
 
-      await tester.tap(find.text('Delete article…'));
+      await tester.tap(find.text('Delete article'));
       await tester.pumpAndSettle();
       expect(deleted, ['articles/Fresh.typ']);
     },

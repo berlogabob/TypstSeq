@@ -591,7 +591,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.text('Export SVG'));
+    await tester.tap(find.byTooltip('Export SVG'));
     expect(exported, same(graph));
   });
 }

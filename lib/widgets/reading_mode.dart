@@ -175,7 +175,7 @@ class _ReadingModeState extends State<ReadingMode> {
                 ),
                 onPressed: () => Navigator.pop(context, 'shit'),
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('Discard article…'),
+                label: const Text('Delete article'),
               ),
               const SizedBox(height: 8),
             ],

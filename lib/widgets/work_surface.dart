@@ -1466,7 +1466,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           PopupMenuItem(
             value: 'delete',
             child: Text(
-              'Delete ${screenshots ? 'screenshot' : 'article'}…',
+              screenshots ? 'Delete screenshot…' : 'Delete article',
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),

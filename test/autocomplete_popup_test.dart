@@ -11,6 +11,63 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/editor_autocomplete.dart';
 
 void main() {
+  testWidgets('/task palette entry keeps /todo as an alias', (tester) async {
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: (_) {},
+      onError: (e) => fail('$e'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+    final field = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(field);
+    await tester.enterText(field, '/task');
+    await tester.pumpAndSettle();
+    final task = find.byKey(const Key('autocomplete-task-task'));
+    expect(find.descendant(of: task, matching: find.text('Task')), findsOneWidget);
+    expect(find.descendant(of: task, matching: find.text('/task')), findsOneWidget);
+    await tester.enterText(field, '/todo');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('autocomplete-task-todo')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('Add to note stays first and visible when the dock scrolls', (
+    tester,
+  ) async {
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: (_) {},
+      onError: (e) => fail('$e'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('rich-journal-editor')));
+    await tester.pumpAndSettle();
+    final add = find.byTooltip('Add to note');
+    final before = tester.getRect(add);
+    expect(before.left, lessThan(tester.getRect(find.byTooltip('Undo')).left));
+    await tester.drag(find.byTooltip('Bold'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(add), before);
+    expect(add.hitTestable(), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('stale mention result is ignored during the next debounce', (
     tester,
   ) async {

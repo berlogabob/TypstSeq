@@ -1269,7 +1269,7 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('rich-journal-editor')));
     await tester.pump();
-    await tester.tap(find.byTooltip('Insert'));
+    await tester.tap(find.byTooltip('Add to note'));
     await tester.pumpAndSettle();
 
     expect(
@@ -2493,6 +2493,11 @@ void main() {
     expect(
       tooltips,
       containsAllInOrder(<String>[
+        'Add to note',
+        'Undo',
+        'Redo',
+        'Heading 1',
+        'More heading levels',
         'Bold',
         'Italic',
         'Strikethrough',
@@ -2502,7 +2507,6 @@ void main() {
         'Bulleted list',
         'Numbered list',
         'Clear formatting',
-        'Insert',
       ]),
     );
   });

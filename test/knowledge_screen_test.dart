@@ -82,6 +82,38 @@ void main() {
     expect(captures, 1);
   });
 
+  testWidgets('search results show human kind labels', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeScreen(
+            index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+            search: (_, _, _) async => [
+              for (final kind in ['note', 'article', 'task', 'custom_kind'])
+                PkmsSearchResult(
+                  id: kind,
+                  path: '$kind.typ',
+                  title: 'Result $kind',
+                  kind: kind,
+                  tags: const [],
+                  score: 0,
+                ),
+            ],
+            problems: const [],
+            onOpenNote: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final label in ['Note', 'Article', 'Task', 'Entity']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    for (final kind in ['note', 'article', 'task', 'custom_kind']) {
+      expect(find.text(kind), findsNothing);
+    }
+  });
+
   // Shapes taken from the real migrated vault: 2687 broken links over 1350
   // targets, of which 98 still carry escaped brackets and ~150 are really an
   // existing tag under a different casing.
@@ -206,5 +238,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Vector note'), findsOneWidget);
+    expect(find.text('Note'), findsOneWidget);
+    expect(find.text('note'), findsNothing);
   });
 }
