@@ -108,6 +108,38 @@ class AiTask {
   }
 }
 
+class AiServerTask {
+  const AiServerTask({this.connection, this.model});
+
+  final String? connection;
+  final String? model;
+
+  AiServerTask copyWith({
+    Object? connection = _unset,
+    Object? model = _unset,
+  }) => AiServerTask(
+    connection: identical(connection, _unset)
+        ? this.connection
+        : connection as String?,
+    model: identical(model, _unset) ? this.model : model as String?,
+  );
+
+  Map<String, Object?> toJson() => {
+    if (connection != null) 'connection': connection,
+    if (model != null) 'model': model,
+  };
+
+  factory AiServerTask.fromJson(Object? json) {
+    if (json is! Map) return const AiServerTask();
+    return AiServerTask(
+      connection: json['connection'] is String
+          ? json['connection'] as String
+          : null,
+      model: json['model'] is String ? json['model'] as String : null,
+    );
+  }
+}
+
 String whisperModelFor(AiTask t) =>
     t.model ??
     switch (t.quality) {
@@ -127,11 +159,15 @@ class AiSettings {
     this.connections = const [],
     this.transcribe = const AiTask(),
     this.translate = const AiTask(),
+    this.articles = const AiServerTask(),
+    this.screenshots = const AiServerTask(),
   });
 
   final List<AiConnection> connections;
   final AiTask transcribe;
   final AiTask translate;
+  final AiServerTask articles;
+  final AiServerTask screenshots;
 
   AiPreset? get preset {
     if (transcribe.model != null || translate.model != null) return null;
@@ -156,10 +192,14 @@ class AiSettings {
     List<AiConnection>? connections,
     AiTask? transcribe,
     AiTask? translate,
+    AiServerTask? articles,
+    AiServerTask? screenshots,
   }) => AiSettings(
     connections: connections ?? this.connections,
     transcribe: transcribe ?? this.transcribe,
     translate: translate ?? this.translate,
+    articles: articles ?? this.articles,
+    screenshots: screenshots ?? this.screenshots,
   );
 
   AiSettings upsertConnection(AiConnection connection) => copyWith(
@@ -176,6 +216,12 @@ class AiSettings {
     translate: translate.connection == id
         ? translate.copyWith(connection: null, model: null)
         : translate,
+    articles: articles.connection == id
+        ? const AiServerTask()
+        : articles,
+    screenshots: screenshots.connection == id
+        ? const AiServerTask()
+        : screenshots,
   );
 
   Map<String, Object?> toJson() => {
@@ -184,6 +230,8 @@ class AiSettings {
     'tasks': {
       'transcribe': transcribe.toJson(),
       'translate': translate.toJson(),
+      'articles': articles.toJson(),
+      'screenshots': screenshots.toJson(),
     },
   };
 
@@ -203,6 +251,8 @@ class AiSettings {
           : const [],
       transcribe: AiTask.fromJson(tasks is Map ? tasks['transcribe'] : null),
       translate: AiTask.fromJson(tasks is Map ? tasks['translate'] : null),
+      articles: AiServerTask.fromJson(tasks is Map ? tasks['articles'] : null),
+      screenshots: AiServerTask.fromJson(tasks is Map ? tasks['screenshots'] : null),
     );
   }
 }
@@ -230,11 +280,23 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
     }
   } catch (_) {}
   final tasks = all['tasks'];
+  Map<String, Object?> mergeServerTask(String name, AiServerTask task) {
+    final existing = tasks is Map ? tasks[name] : null;
+    return {
+      if (existing is Map) ...existing.cast<String, Object?>(),
+      'connection': task.connection,
+      'model': task.model,
+    }..removeWhere((key, value) =>
+        (key == 'connection' || key == 'model') && value == null);
+  }
+
   all.addAll(settings.toJson());
   all['tasks'] = {
     if (tasks is Map) ...tasks.cast<String, Object?>(),
     'transcribe': settings.transcribe.toJson(),
     'translate': settings.translate.toJson(),
+    'articles': mergeServerTask('articles', settings.articles),
+    'screenshots': mergeServerTask('screenshots', settings.screenshots),
   };
   await storage.createDirectory('_system/settings');
   await storage.writeText(aiSettingsPath, jsonEncode(all));

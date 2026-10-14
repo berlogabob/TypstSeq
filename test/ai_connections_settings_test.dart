@@ -234,7 +234,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tap(tester, dropdown('Server'));
+      await tap(tester, dropdown('Server').first);
       await tap(tester, find.text('Studio').last);
       expect(saved!.translate.connection, 'studio');
       expect(saved!.translate.model, 'explicit');
@@ -242,11 +242,13 @@ void main() {
           .widget<AiConnectionsSection>(find.byType(AiConnectionsSection))
           .onModelsChanged!('studio', const [ProbeModel(id: 'discovered')]);
       await tester.pump();
-      await tap(tester, dropdown('Model'));
+      await tap(tester, dropdown('Model').first);
       expect(find.text('discovered'), findsWidgets);
       expect(find.text('explicit'), findsWidgets);
       await tap(tester, find.text('llm').last);
       expect(saved!.toJson()['tasks'], {
+        'articles': {},
+        'screenshots': {},
         'transcribe': {'quality': 'best'},
         'translate': {
           'quality': 'best',
@@ -254,10 +256,10 @@ void main() {
           'model': 'llm',
         },
       });
-      await tap(tester, dropdown('Model'));
+      await tap(tester, dropdown('Model').first);
       await tap(tester, find.text('Auto (ollama/ornith-1.5:35b)').last);
       expect(saved!.translate.model, isNull);
-      await tap(tester, dropdown('Server'));
+      await tap(tester, dropdown('Server').first);
       await tap(tester, find.text('Default (worker config)').last);
       expect(saved!.translate.connection, isNull);
       expect(saved!.translate.toJson(), {'quality': 'best'});

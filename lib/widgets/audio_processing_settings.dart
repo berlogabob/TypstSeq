@@ -245,6 +245,75 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     );
   }
 
+  Widget _serverTaskBlock({
+    required String title,
+    required String description,
+    required AiSettings ai,
+    required AiServerTask task,
+    required ValueChanged<AiServerTask> onChanged,
+  }) {
+    final connection = task.connection ?? ai.connections.firstOrNull?.id;
+    final models = <String>{
+      ...?_discoveredModels[connection],
+      ...?_workerView[connection]?.loaded,
+      if (task.model != null) task.model!,
+    };
+    return Padding(
+      key: ValueKey(title),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title),
+          Text(description, style: Theme.of(context).textTheme.bodySmall),
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              '$title:server:${task.connection}:${ai.connections.map((c) => c.id).join('|')}',
+            ),
+            initialValue: ai.connections.any((c) => c.id == task.connection)
+                ? task.connection
+                : null,
+            decoration: const InputDecoration(labelText: 'Server'),
+            isExpanded: true,
+            items: [
+              const DropdownMenuItem(
+                value: null,
+                child: Text('Default server'),
+              ),
+              for (final connection in ai.connections)
+                DropdownMenuItem(
+                  value: connection.id,
+                  child: Text(
+                    connection.label.isEmpty ? connection.id : connection.label,
+                  ),
+                ),
+            ],
+            onChanged: _aiBusy
+                ? null
+                : (value) => onChanged(task.copyWith(connection: value)),
+          ),
+          DropdownButtonFormField<String>(
+            key: ValueKey('$title:model:$connection:${task.model}:${models.join('|')}'),
+            initialValue: task.model,
+            decoration: const InputDecoration(labelText: 'Model'),
+            isExpanded: true,
+            items: [
+              const DropdownMenuItem(
+                value: null,
+                child: Text('Auto (default)'),
+              ),
+              for (final model in models)
+                DropdownMenuItem(value: model, child: Text(model)),
+            ],
+            onChanged: _aiBusy
+                ? null
+                : (value) => onChanged(task.copyWith(model: value)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _qualityRow({
     required String title,
     required AiTask task,
@@ -402,6 +471,27 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
               ),
             ),
             _translationOverrides(ai),
+            if (ai.connections.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
+                child: Text('Add a server above to choose where this runs'),
+              )
+            else ...[
+              _serverTaskBlock(
+                title: 'Articles',
+                description: 'Fetches pages and writes the article text',
+                ai: ai,
+                task: ai.articles,
+                onChanged: (task) => unawaited(_saveAi(ai.copyWith(articles: task))),
+              ),
+              _serverTaskBlock(
+                title: 'Screenshots',
+                description: 'Reads screenshot text and tags',
+                ai: ai,
+                task: ai.screenshots,
+                onChanged: (task) => unawaited(_saveAi(ai.copyWith(screenshots: task))),
+              ),
+            ],
           ],
         ],
         CheckboxListTile(

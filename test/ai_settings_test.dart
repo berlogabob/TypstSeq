@@ -79,11 +79,16 @@ void main() {
       connections: [a],
       transcribe: AiTask(connection: 'a', model: 'small', quality: 'fast'),
       translate: AiTask(connection: 'b', model: 'llm'),
+      articles: AiServerTask(connection: 'a', model: 'article/model'),
+      screenshots: AiServerTask(connection: 'b', model: 'vision/model'),
     ).upsertConnection(b).upsertConnection(a.copyWith(label: 'Updated'));
     expect(settings.connections.map((c) => c.id), ['a', 'b']);
     expect(settings.connections.first.label, 'Updated');
     final removed = settings.removeConnection('a');
     expect(removed.connections.single.id, 'b');
+    expect(removed.articles.toJson(), isEmpty);
+    expect(removed.screenshots.toJson(), settings.screenshots.toJson());
+    expect(settings.removeConnection('b').screenshots.toJson(), isEmpty);
     expect(removed.transcribe.toJson(), {'quality': 'fast'});
     expect(removed.translate.toJson(), settings.translate.toJson());
     expect(settings.removeConnection('b').translate.toJson(), {
@@ -125,6 +130,8 @@ void main() {
         'tasks': {
           'transcribe': {'quality': 'best'},
           'translate': {'quality': 'best'},
+          'articles': {},
+          'screenshots': {},
         },
       });
       await storage.createDirectory('_system/settings');
@@ -229,6 +236,8 @@ void main() {
       ],
       transcribe: AiTask(quality: 'fast', model: 'small'),
       translate: AiTask(connection: 'studio'),
+      articles: AiServerTask(connection: 'studio', model: 'article/model'),
+      screenshots: AiServerTask(connection: 'studio', model: 'vision/model'),
     );
     await writeAiSettings(storage, settings);
     await storage.writeText(
@@ -237,7 +246,13 @@ void main() {
         ...settings.toJson(),
         'other': {'enabled': true},
         'tasks': {
-          'articles': {'quality': 'balanced', 'model': 'article/model'},
+          'articles': {
+            'connection': 'old',
+            'model': 'old/model',
+            'fallback_model': 'fallback/model',
+          },
+          'screenshots': {'connection': 'old', 'custom': true},
+          'future_task': {'enabled': true},
           'transcribe': {'quality': 'best', 'unknown': true},
           'translate': {'quality': 'fast', 'unknown': true},
         },
@@ -257,12 +272,42 @@ void main() {
         },
       ],
       'tasks': {
-        'articles': {'quality': 'balanced', 'model': 'article/model'},
+        'articles': {
+          'connection': 'studio',
+          'model': 'article/model',
+          'fallback_model': 'fallback/model',
+        },
+        'screenshots': {
+          'connection': 'studio',
+          'model': 'vision/model',
+          'custom': true,
+        },
+        'future_task': {'enabled': true},
         'transcribe': {'quality': 'fast', 'model': 'small'},
         'translate': {'quality': 'best', 'connection': 'studio'},
       },
     });
     expect((await readAiSettings(storage)).toJson(), settings.toJson());
+    await writeAiSettings(storage, settings.removeConnection('studio'));
+    final cleared = jsonDecode(await storage.readText(aiSettingsPath)) as Map;
+    expect(cleared['tasks']['articles'], {'fallback_model': 'fallback/model'});
+    expect(cleared['tasks']['screenshots'], {'custom': true});
+    expect(cleared['other'], {'enabled': true});
+  });
+
+  test('server tasks round trip, tolerate invalid data and clear overrides', () {
+    const task = AiServerTask(connection: 'studio', model: 'custom/model');
+    expect(AiServerTask.fromJson(task.toJson()).toJson(), task.toJson());
+    expect(task.copyWith().toJson(), task.toJson());
+    expect(task.copyWith(connection: null, model: null).toJson(), isEmpty);
+    for (final value in [null, [], 7, {'connection': false, 'model': 7}]) {
+      expect(AiServerTask.fromJson(value).toJson(), isEmpty);
+    }
+    const settings = AiSettings(articles: task, screenshots: task);
+    expect(settings.copyWith().toJson(), settings.toJson());
+    expect(settings.withPreset(AiPreset.light).articles, same(task));
+    expect(settings.withPreset(AiPreset.light).screenshots, same(task));
+    expect(AiSettings.fromJson(settings.toJson()).toJson(), settings.toJson());
   });
 
   test('copyWith retains values and can clear nullable overrides', () {

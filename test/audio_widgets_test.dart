@@ -94,6 +94,44 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('Articles server selection saves the task connection', (tester) async {
+    AiSettings? saved;
+    await pumpAudioSettings(
+      tester,
+      readAi: () async => const AiSettings(
+        connections: [
+          AiConnection(id: 'studio', label: 'Studio PC', url: 'http://studio/v1'),
+        ],
+      ),
+      writeAi: (next) async => saved = next,
+    );
+    final server = find.descendant(
+      of: find.byKey(const ValueKey('Articles')),
+      matching: find.byType(DropdownButtonFormField<String>),
+    ).first;
+    await tester.ensureVisible(server);
+    await tester.tap(server);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Studio PC').last);
+    await tester.pumpAndSettle();
+    expect((saved!.toJson()['tasks'] as Map)['articles'], {
+      'connection': 'studio',
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('server task cards show a hint when no servers exist', (tester) async {
+    await pumpAudioSettings(
+      tester,
+      readAi: () async => const AiSettings(),
+      writeAi: (_) async {},
+    );
+    expect(find.text('Add a server above to choose where this runs'), findsOneWidget);
+    expect(find.text('Articles'), findsNothing);
+    expect(find.text('Screenshots'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('worker status refreshes every 30 seconds and stops on dispose', (
     tester,
   ) async {
