@@ -322,7 +322,7 @@ class _GraphViewState extends State<GraphView>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: kSpace12, vertical: 6),
           child: Wrap(
             spacing: 12,
             runSpacing: 6,
@@ -467,6 +467,7 @@ class _GraphViewState extends State<GraphView>
                     positions: positions,
                     selectedPath: _selectedPath,
                     colorScheme: scheme,
+                    labelStyle: Theme.of(context).textTheme.labelSmall!,
                     visibleEdgeKinds: _visibleKinds,
                     onSelect: (path) => setState(() => _selectedPath = path),
                     communities: widget.communities,
@@ -1075,6 +1076,7 @@ class GraphPainter extends CustomPainter {
     required this.positions,
     required this.selectedPath,
     required this.colorScheme,
+    required this.labelStyle,
     required this.onSelect,
     required this.transform,
     required this.viewport,
@@ -1095,6 +1097,7 @@ class GraphPainter extends CustomPainter {
   final Map<String, Offset> positions;
   final String? selectedPath;
   final ColorScheme colorScheme;
+  final TextStyle labelStyle;
   final ValueChanged<String> onSelect;
   final Set<GraphEdgeKind> visibleEdgeKinds;
 
@@ -1320,9 +1323,8 @@ class GraphPainter extends CustomPainter {
       final textPainter = TextPainter(
         text: TextSpan(
           text: title,
-          style: TextStyle(
+          style: labelStyle.copyWith(
             color: colorScheme.onSurface,
-            fontSize: 11,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
           children: [
@@ -1334,7 +1336,7 @@ class GraphPainter extends CustomPainter {
                   color: colorScheme.onSurface.withValues(
                     alpha: kGraphCountAlpha,
                   ),
-                  fontSize: 11 * kGraphCountScale,
+                  fontSize: labelStyle.fontSize! * kGraphCountScale,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1377,6 +1379,7 @@ class GraphPainter extends CustomPainter {
       positions != oldDelegate.positions ||
       selectedPath != oldDelegate.selectedPath ||
       colorScheme != oldDelegate.colorScheme ||
+      labelStyle != oldDelegate.labelStyle ||
       clusters != oldDelegate.clusters ||
       viewport != oldDelegate.viewport ||
       !setEquals(visibleEdgeKinds, oldDelegate.visibleEdgeKinds);

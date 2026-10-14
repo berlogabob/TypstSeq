@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'constants.dart';
 
 /// Plain-note editor that keeps only visible rows in the render tree.
 ///
@@ -141,7 +142,7 @@ class VirtualPlainEditorState extends State<VirtualPlainEditor> {
   Widget build(BuildContext context) => ListView.builder(
     controller: _scrollController,
     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+    padding: const EdgeInsets.fromLTRB(18, kSpace8, 18, kSpace24),
     itemCount: _controllers.length,
     itemBuilder: (context, index) => TextField(
       controller: _controllers[index],

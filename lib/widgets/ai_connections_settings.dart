@@ -6,6 +6,7 @@ import '../ai/ai_settings.dart';
 import '../ai/connection_probe.dart' as connection_probe;
 import 'ds/app_sheet.dart';
 import 'dialogs.dart';
+import 'constants.dart';
 
 typedef ServerProbe =
     Future<connection_probe.ProbeResult> Function(
@@ -124,7 +125,7 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
           onTap: () => _edit(connection),
         ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: kSpace16),
         child: ActionChip(
           avatar: const Icon(Icons.add),
           label: const Text('Add server'),
@@ -237,10 +238,10 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
       title: widget.connection == null ? 'Add server' : 'Edit server',
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          16,
+          kSpace16,
           0,
-          16,
-          16 + MediaQuery.viewInsetsOf(context).bottom,
+          kSpace16,
+          kSpace16 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Form(
           key: _form,

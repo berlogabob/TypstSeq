@@ -18,6 +18,7 @@ import '../audio/processing_policy.dart';
 import '../models.dart';
 import 'audio_sheets.dart';
 import 'snack.dart';
+import 'constants.dart';
 
 /// Sections of the expanded audio screen.
 enum AudioTab { comments, transcribe, translate, properties }
@@ -182,7 +183,7 @@ class AudioLanguageBar extends StatelessWidget {
     ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace12, vertical: kSpace4),
       child: Row(
         spacing: 8,
         children: [
@@ -596,7 +597,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             : Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, 0),
                     child: WaveformSeekBar(
                       peaks: _peaks,
                       progress: totalMs == 0
@@ -638,7 +639,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     };
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
       child: Row(
         children: [
           for (final e in tabs.entries)
@@ -652,7 +653,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   }
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: kSpace8),
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
@@ -704,7 +705,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final scheme = Theme.of(context).colorScheme;
     const tabular = [FontFeature.tabularFigures()];
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace4),
       child: Row(
         children: [
           Expanded(
@@ -768,7 +769,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               child: FilledButton.tonal(
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(52, 32),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: kSpace12),
                   visualDensity: VisualDensity.compact,
                 ),
                 onPressed: () {
@@ -846,7 +847,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       children: [
         if (_lang != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace4),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -936,7 +937,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ? '${(b / 1024).toStringAsFixed(0)} KB'
         : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(kSpace16, kSpace8, kSpace16, kSpace24),
       children: [
         TextField(
           controller: _aliasInput,
@@ -1013,10 +1014,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
 
   Widget _commentInput() => Padding(
     padding: EdgeInsets.fromLTRB(
-      16,
-      4,
-      8,
-      8 + MediaQuery.viewInsetsOf(context).bottom,
+      kSpace16,
+      kSpace4,
+      kSpace8,
+      kSpace8 + MediaQuery.viewInsetsOf(context).bottom,
     ),
     child: Row(
       children: [

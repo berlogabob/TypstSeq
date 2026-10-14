@@ -427,7 +427,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
                   maxLines: null,
                   minLines: null,
                   textAlignVertical: TextAlignVertical.top,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText: 'Manual merged Typst source',
@@ -484,7 +484,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
   Widget _markdownSourcePane(String title, String source) => DecoratedBox(
     decoration: BoxDecoration(
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(kRadiusSmall),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -499,7 +499,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
             padding: const EdgeInsets.all(kSpace8),
             child: SelectableText(
               source,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
             ),
           ),
         ),

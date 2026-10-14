@@ -7,6 +7,7 @@ import '../audio/processing_policy.dart';
 import 'ai_connections_settings.dart';
 import 'processing_policy_editor.dart';
 import 'snack.dart';
+import 'constants.dart';
 
 /// Settings section: when audio is transcribed and which languages it is
 /// translated into. Works on any platform because the policy file syncs; the
@@ -181,7 +182,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
       if (task.model != null) task.model!,
     };
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
       child: Column(
         children: [
           DropdownButtonFormField<String>(
@@ -251,7 +252,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     required ValueChanged<String> onChanged,
     String? serverStatus,
   }) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -334,7 +335,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -414,7 +415,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
           onChanged: _busy ? null : (v) => _save(p.copyWith(translate: v)),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: kSpace16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

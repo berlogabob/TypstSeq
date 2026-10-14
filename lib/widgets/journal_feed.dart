@@ -11,6 +11,7 @@ import 'date_format.dart';
 import 'loading.dart';
 import 'task_row.dart';
 import 'task_fields.dart';
+import 'constants.dart';
 
 class JournalFeed extends StatefulWidget {
   const JournalFeed({
@@ -207,7 +208,7 @@ class _JournalFeedState extends State<JournalFeed> {
       itemBuilder: (context, index) {
         if (index >= visible) {
           return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+            padding: EdgeInsets.symmetric(vertical: kSpace24),
             child: Center(child: LoadingIndicator()),
           );
         }
@@ -222,12 +223,12 @@ class _JournalFeedState extends State<JournalFeed> {
                 }
               });
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: kSpace12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: day.path.isEmpty ? null : () => widget.onOpenPath(day.path),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(kSpace16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

@@ -9,6 +9,7 @@ import 'pdf_extraction.dart';
 import 'pdf_reader_store.dart';
 import '../widgets/banner.dart';
 import '../widgets/snack.dart';
+import '../widgets/constants.dart';
 
 /// The vault owns the database; leaving the reader never closes it.
 class PdfReaderScreen extends StatefulWidget {
@@ -328,7 +329,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
             const ListTile(title: Text('Highlights')),
             if (_annotations.isEmpty)
               const Padding(
-                padding: EdgeInsets.all(16),
+                padding: EdgeInsets.all(kSpace16),
                 child: Text('Select text, then choose Save highlight.'),
               ),
             Expanded(
@@ -370,7 +371,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     body: Column(
       children: [
         if (_status != null)
-          Padding(padding: const EdgeInsets.all(8), child: Text(_status!)),
+          Padding(padding: const EdgeInsets.all(kSpace8), child: Text(_status!)),
         if (_reassigningAnnotation != null)
           appBanner(
             backgroundColor: null,

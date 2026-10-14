@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import '../audio/audio_peaks.dart';
 import 'audio_note_screen.dart' show AudioTab, WaveformSeekBar;
 import 'audio_sheets.dart';
+import 'constants.dart';
 
 /// A note-body audio attachment as a player: waveform, play/pause and an
 /// expand button that opens the full comment screen. The player is created on
@@ -185,7 +186,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
       onTap: () => unawaited(_expand(tab)),
       radius: 18,
       child: Padding(
-        padding: const EdgeInsets.only(left: 8),
+        padding: const EdgeInsets.only(left: kSpace8),
         child: Tooltip(
           message: done ? '$name ready' : 'No ${name.toLowerCase()} yet',
           child: Icon(
@@ -213,14 +214,14 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
     // line of play + waveform. Time, speed and everything else live in the
     // expanded screen. 4 dp grid: 12 side padding, 8 top/bottom, 8 gaps.
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: kSpace4),
       color: scheme.surfaceContainerHighest,
       clipBehavior: Clip.antiAlias,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onLongPress: () => unawaited(_expand(AudioTab.comments)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(kSpace12, kSpace8, kSpace12, kSpace8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -249,7 +250,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                           if (_alias != null)
                             Expanded(
                               child: Padding(
-                                padding: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.only(left: kSpace8),
                                 child: Text(
                                   _alias!,
                                   style: textTheme.titleSmall,

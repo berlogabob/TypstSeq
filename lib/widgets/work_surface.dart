@@ -1327,7 +1327,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Color(0x99000000)],
+                      colors: [Colors.transparent, kImageGradientScrim],
                     ),
                   ),
                 ),
@@ -1382,7 +1382,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
               child: PopupMenuButton<String>(
                 tooltip: 'Screenshot actions',
                 style: IconButton.styleFrom(
-                  backgroundColor: const Color(0x66000000),
+                  backgroundColor: kImageControlScrim,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(kMinTapTarget, kMinTapTarget),
                   padding: const EdgeInsets.all(kSpace4),

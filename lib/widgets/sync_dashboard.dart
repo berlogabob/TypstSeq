@@ -264,7 +264,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
           : RefreshIndicator(
               onRefresh: _reload,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(kSpace16),
                 children: [
                   if ((running || value.syncing) && value.stage != null) ...[
                     LinearProgressIndicator(semanticsLabel: 'Sync progress'),
@@ -738,7 +738,7 @@ class _SyncStatusCard extends StatelessWidget {
         color: color,
         margin: EdgeInsets.zero,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 8, 6),
+          padding: const EdgeInsets.fromLTRB(kSpace12, kSpace12, kSpace8, 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

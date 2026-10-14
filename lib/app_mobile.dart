@@ -198,26 +198,10 @@ class _TyLogAppState extends State<TyLogApp> {
 
   @override
   Widget build(BuildContext context) {
-    final darkColorScheme = tyLogColorScheme(Brightness.dark);
     return MaterialApp(
       title: 'TyLog',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: tyLogColorScheme(Brightness.light),
-        scaffoldBackgroundColor: kLightSurface,
-        hintColor: kLightHint,
-        inputDecorationTheme: const InputDecorationTheme(
-          border: InputBorder.none,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: darkColorScheme,
-        scaffoldBackgroundColor: darkColorScheme.surface,
-        inputDecorationTheme: const InputDecorationTheme(
-          border: InputBorder.none,
-        ),
-      ),
+      theme: tyLogTheme(Brightness.light),
+      darkTheme: tyLogTheme(Brightness.dark),
       themeMode: _themeMode,
       home: HomeScreen(
         themeMode: _themeMode,

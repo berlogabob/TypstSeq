@@ -165,6 +165,44 @@ void main() {
     },
   );
 
+  testWidgets('app component themes are set in light and dark modes', (tester) async {
+    for (final brightness in Brightness.values) {
+      late ThemeData theme;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: tyLogTheme(Brightness.light),
+          darkTheme: tyLogTheme(Brightness.dark),
+          themeMode: brightness == Brightness.light
+              ? ThemeMode.light
+              : ThemeMode.dark,
+          home: Builder(
+            builder: (context) {
+              theme = Theme.of(context);
+              return const Scaffold(body: SizedBox.shrink());
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(theme.brightness, brightness);
+      expect(theme.chipTheme.shape, isNotNull);
+      expect(theme.dialogTheme.shape, isNotNull);
+      expect(theme.cardTheme.shape, isNotNull);
+      expect(theme.bottomSheetTheme.shape, isNotNull);
+      expect(theme.filledButtonTheme.style?.shape?.resolve({}), isNotNull);
+      expect(theme.outlinedButtonTheme.style?.shape?.resolve({}), isNotNull);
+      expect(theme.textButtonTheme.style?.shape?.resolve({}), isNotNull);
+      expect(theme.appBarTheme.surfaceTintColor, Colors.transparent);
+      expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);
+      expect(theme.inputDecorationTheme.border, isA<OutlineInputBorder>());
+      expect(theme.listTileTheme.contentPadding,
+          const EdgeInsets.symmetric(horizontal: kSpace16));
+      expect(theme.dividerTheme.space, kSpace16);
+      expect(theme.hintColor, brightness == Brightness.light
+          ? kLightHint : theme.colorScheme.onSurfaceVariant);
+    }
+  });
+
   test('the brand seed lives only in the token file', () {
     expect(
       offenders(

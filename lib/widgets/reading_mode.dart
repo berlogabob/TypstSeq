@@ -316,10 +316,10 @@ class _ReadingModeState extends State<ReadingMode> {
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    8,
-                                    12,
-                                    4,
+                                    kSpace12,
+                                    kSpace8,
+                                    kSpace12,
+                                    kSpace4,
                                   ),
                                   child: Row(
                                     children: [

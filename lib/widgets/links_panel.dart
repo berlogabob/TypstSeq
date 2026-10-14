@@ -37,7 +37,7 @@ class LinksPanel extends StatelessWidget {
   Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surfaceContainerLow,
     child: ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(kSpace12),
       children: [
         Text('Context', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -66,7 +66,7 @@ class LinksPanel extends StatelessWidget {
               };
               return ListTile(
                 dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                contentPadding: const EdgeInsets.symmetric(horizontal: kSpace8),
                 title: Text(link),
                 subtitle: Text(subtitle),
                 trailing: Icon(icon),
@@ -83,7 +83,7 @@ class LinksPanel extends StatelessWidget {
         for (final path in fileRefs)
           ListTile(
             dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: kSpace8),
             leading: const Icon(Icons.attach_file),
             title: Text(path.split('/').last),
             subtitle: Text(path),
@@ -96,7 +96,7 @@ class LinksPanel extends StatelessWidget {
           for (final item in dayItems)
             ListTile(
               dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              contentPadding: const EdgeInsets.symmetric(horizontal: kSpace8),
               leading: Icon(
                 item.kind == CalendarItemKind.task
                     ? Icons.task_alt
@@ -123,7 +123,7 @@ class LinksPanel extends StatelessWidget {
         for (final path in backlinks)
           ListTile(
             dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: kSpace8),
             leading: const Icon(AppIcons.link),
             title: Text(
               index?.notesByPath[path]?.title ?? path,
@@ -156,7 +156,7 @@ class _EmptyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
+    padding: const EdgeInsets.symmetric(vertical: kSpace8),
     child: Text(text, style: Theme.of(context).textTheme.bodySmall),
   );
 }

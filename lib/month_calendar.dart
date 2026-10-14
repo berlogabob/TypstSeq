@@ -126,7 +126,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final hasRefs = marks.refs.contains(iso);
     return InkWell(
       key: Key('calendar-day-$iso'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(kRadiusSmall),
       onTap: () {
         if (widget.onDaySelected == null) {
           widget.onOpenDay(day);
@@ -143,7 +143,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         decoration: isSelected
             ? BoxDecoration(
                 color: scheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(kRadiusSmall),
               )
             : null,
         child: Column(

@@ -8,6 +8,7 @@ import '../month_calendar.dart';
 import 'date_format.dart';
 import 'loading.dart';
 import 'task_row.dart';
+import 'constants.dart';
 
 class CalendarTab extends StatefulWidget {
   const CalendarTab({
@@ -62,7 +63,7 @@ class _CalendarTabState extends State<CalendarTab> {
         headerCount +
         (items.isEmpty && tasks.isEmpty ? 1 : items.length + tasks.length);
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
       itemCount: itemCount,
       itemBuilder: (context, i) {
         switch (i) {

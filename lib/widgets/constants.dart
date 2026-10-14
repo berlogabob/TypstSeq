@@ -41,6 +41,61 @@ ColorScheme tyLogColorScheme(Brightness brightness) =>
       )
     : ColorScheme.fromSeed(seedColor: kSeedColor, brightness: Brightness.dark);
 
+/// App component defaults; unspecified properties retain Material 3 defaults.
+ThemeData tyLogTheme(Brightness brightness) {
+  final scheme = tyLogColorScheme(brightness);
+  const smallShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(kRadiusSmall)),
+  );
+  const mediumShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(kRadiusMedium)),
+  );
+  const largeShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(kRadiusLarge)),
+  );
+  const buttonStyle = ButtonStyle(
+    shape: WidgetStatePropertyAll(mediumShape),
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: scheme.surface,
+    hintColor: brightness == Brightness.light
+        ? kLightHint
+        : scheme.onSurfaceVariant,
+    cardTheme: const CardThemeData(shape: mediumShape),
+    dialogTheme: const DialogThemeData(shape: largeShape),
+    chipTheme: const ChipThemeData(shape: smallShape),
+    filledButtonTheme: const FilledButtonThemeData(style: buttonStyle),
+    outlinedButtonTheme: const OutlinedButtonThemeData(style: buttonStyle),
+    textButtonTheme: const TextButtonThemeData(style: buttonStyle),
+    appBarTheme: const AppBarThemeData(surfaceTintColor: Colors.transparent),
+    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    bottomSheetTheme: const BottomSheetThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(kRadiusLarge)),
+      ),
+    ),
+    inputDecorationTheme: const InputDecorationThemeData(
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(kRadiusMedium)),
+      ),
+    ),
+    listTileTheme: const ListTileThemeData(
+      contentPadding: EdgeInsets.symmetric(horizontal: kSpace16),
+    ),
+    dividerTheme: DividerThemeData(
+      color: scheme.outlineVariant,
+      space: kSpace16,
+      thickness: 1,
+    ),
+  );
+}
+
+/// Black scrims preserve legibility over images regardless of app brightness.
+const kImageGradientScrim = Color(0x99000000);
+const kImageControlScrim = Color(0x66000000);
+
 /// Corner-radius scale. Small = chips/inline chips, medium = list tiles, cards
 /// and popovers, large = settings-style container cards.
 const kRadiusSmall = 6.0;
