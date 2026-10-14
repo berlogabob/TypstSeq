@@ -374,6 +374,7 @@ enum MagicAction {
   project,
   citation,
   attachment,
+  audio,
   heading,
   bold,
   italic,
@@ -472,7 +473,7 @@ SourceEdit applyMagicEdit(
     MagicAction.citation => '@${_citationKey(value ?? selected)}',
     MagicAction.attachment when request.kind == 'image' =>
       imageAttachmentSource(value ?? ''),
-    MagicAction.attachment =>
+    MagicAction.attachment || MagicAction.audio =>
       '#tylog.attachment(${typstString(value ?? '')}, kind: ${typstString(request.kind ?? 'file')})[${escapeMarkup(selected.isEmpty ? value?.split('/').last ?? '' : selected)}]',
     MagicAction.heading =>
       '= ${escapeMarkup(selected.isEmpty ? value ?? '' : selected)}',

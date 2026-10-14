@@ -3,6 +3,19 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.14.1+140
+
+### Added
+
+- **Audio in the note.** Magic menu (and `/`) > Audio: record or import, and a
+  player card (waveform, play/pause, time) lands in the open note, e.g. today's
+  page. The expand button opens the comment/transcript screen.
+
+### Fixed
+
+- Tapping an older audio chip did nothing: its path had a leading `/` that the
+  opener rejected.
+
 ## 0.14.0+139
 
 ### Added

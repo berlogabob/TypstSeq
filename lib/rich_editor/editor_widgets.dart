@@ -2326,6 +2326,18 @@ String? _imageAtomPath(String source) {
   return null;
 }
 
+/// Asset path of an audio attachment atom; null for other atoms.
+String? _audioAtomPath(String source) {
+  if (!source.startsWith('#tylog.attachment(') ||
+      !RegExp(r'kind:\s*"audio"').hasMatch(source)) {
+    return null;
+  }
+  final path = RegExp(r'"((?:\\.|[^"])*)"').firstMatch(source)?.group(1);
+  return path == null
+      ? null
+      : unescapeTypstString(path).replaceFirst(RegExp(r'^/+'), '');
+}
+
 /// Inner content of a `#name(...)?[body]` call's trailing bracket group, or
 /// the raw source unchanged if it has no bracket body.
 String _atomBody(String source) {

@@ -67,6 +67,10 @@ class TyLogEditingController extends TextEditingController {
   final Map<String, Future<Uint8List?>> _imageCache = {};
   double? imageContentWidth;
 
+  /// Renders an audio attachment as a player card; set once by the app shell.
+  /// Null keeps the plain chip (tests, read-only previews).
+  static Widget Function(String assetPath, String label)? audioBuilder;
+
   /// Cached bytes for [path] — loaded at most once per note so a rebuild on
   /// every keystroke doesn't re-hit SAF/disk.
   Future<Uint8List?> imageBytes(String path) => imageResolver == null
@@ -1387,6 +1391,22 @@ class TyLogEditingController extends TextEditingController {
                   global += nestedPart.text.length;
                 }
               }
+              continue;
+            }
+            final audioPath = audioBuilder == null
+                ? null
+                : _audioAtomPath(part.source!);
+            if (audioPath != null) {
+              children.add(
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: SizedBox(
+                    width: math.max(240, imageContentWidth ?? 320),
+                    child: audioBuilder!(audioPath, part.label!),
+                  ),
+                ),
+              );
+              global++;
               continue;
             }
             final imagePath = _imageAtomPath(part.source!);

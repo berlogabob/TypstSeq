@@ -8,7 +8,7 @@ extension _AudioFlow on _HomeScreenState {
     onImport: () => unawaited(_importAudioNote()),
   );
 
-  Future<void> _recordAudioNote() async {
+  Future<void> _recordAudioNote({bool inline = false}) async {
     final take = await showAudioRecorder(context);
     if (take == null || !mounted) return;
     await _createAudioNote(
@@ -16,10 +16,64 @@ extension _AudioFlow on _HomeScreenState {
       take.extension,
       peaks: take.peaks,
       durationMs: take.durationMs,
+      inline: inline,
     );
   }
 
-  Future<void> _importAudioNote() async {
+  /// Magic > Audio: record or import, then drop the player card into the open
+  /// note (the day's page, say) instead of navigating away.
+  Future<void> _insertAudio() async {
+    final choice = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.mic),
+              title: const Text('Record'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.audio_file_outlined),
+              title: const Text('Import file'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await (choice
+        ? _recordAudioNote(inline: true)
+        : _importAudioNote(inline: true));
+  }
+
+  /// The player card for an audio attachment in a note body.
+  Widget _audioCard(String assetPath, String label) {
+    final v = vault!;
+    NoteRef? audioNote;
+    for (final n in index?.notes ?? const <NoteRef>[]) {
+      if (n.kind == 'audio' &&
+          n.attachments.any(
+            (a) => a.path.replaceFirst(RegExp(r'^/+'), '') == assetPath,
+          )) {
+        audioNote = n;
+        break;
+      }
+    }
+    return AudioInlineCard(
+      key: ValueKey(assetPath),
+      label: label,
+      peaks: decodePeaks(audioNote?.properties['peaks']),
+      readBytes: () => v.storage.readBytes(assetPath),
+      extension: assetPath.split('.').last,
+      onExpand: () => unawaited(_openAudioAsset(assetPath)),
+    );
+  }
+
+  Future<void> _importAudioNote({bool inline = false}) async {
     final picked = await FilePicker.pickFiles(type: FileType.audio);
     final source = picked?.files.single.path;
     if (source == null || !mounted) return;
@@ -34,6 +88,7 @@ extension _AudioFlow on _HomeScreenState {
       extension,
       peaks: extension == 'wav' ? (peaksFromWav(bytes) ?? const []) : const [],
       durationMs: audioDurationMs(bytes),
+      inline: inline,
     );
   }
 
@@ -44,6 +99,7 @@ extension _AudioFlow on _HomeScreenState {
     String extension, {
     List<int> peaks = const [],
     int? durationMs,
+    bool inline = false,
   }) async {
     final v = vault;
     if (v == null) return;
@@ -77,6 +133,18 @@ extension _AudioFlow on _HomeScreenState {
         return header + audioNoteBody(asset, '$stamp.$extension');
       });
       await workspace.refreshIndex(updateStatus: false, always: true);
+      if (inline) {
+        if (mounted) {
+          _applyMagic(
+            MagicRequest(
+              action: MagicAction.attachment,
+              value: '/$asset',
+              kind: 'audio',
+            ),
+          );
+        }
+        return;
+      }
       final note = index?.notesByPath[path];
       if (note != null && mounted) await _openAudioNote(note);
     } catch (error) {

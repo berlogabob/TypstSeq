@@ -15,6 +15,7 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.project: (Icons.work_outline, 'Project'),
   MagicAction.citation: (Icons.format_quote, 'Citation'),
   MagicAction.attachment: (Icons.attach_file, 'Attachment'),
+  MagicAction.audio: (Icons.graphic_eq, 'Audio'),
   MagicAction.heading: (Icons.title, 'Heading'),
   MagicAction.bold: (Icons.format_bold, 'Bold'),
   MagicAction.italic: (Icons.format_italic, 'Italic'),
@@ -36,6 +37,7 @@ const Map<String, List<MagicAction>> kMagicActionGroups = {
     MagicAction.time,
     MagicAction.citation,
     MagicAction.attachment,
+    MagicAction.audio,
     MagicAction.equation,
   ],
   'Text style': [

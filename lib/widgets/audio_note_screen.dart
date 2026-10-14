@@ -23,7 +23,10 @@ class WaveformSeekBar extends StatelessWidget {
     required this.progress,
     required this.markers,
     required this.onSeek,
+    this.height = 96,
   });
+
+  final double height;
 
   /// 0-255 bars; empty draws a flat placeholder (e.g. an imported mp3).
   final List<int> peaks;
@@ -47,7 +50,7 @@ class WaveformSeekBar extends StatelessWidget {
             onTapDown: (d) => seek(d.localPosition.dx),
             onHorizontalDragUpdate: (d) => seek(d.localPosition.dx),
             child: CustomPaint(
-              size: Size(box.maxWidth, 96),
+              size: Size(box.maxWidth, height),
               painter: _WaveformPainter(
                 peaks: peaks,
                 progress: progress,

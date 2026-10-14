@@ -185,7 +185,7 @@ MagicRequest _requestFor(MagicAction action) => switch (action) {
     action: MagicAction.citation,
     value: 'smith2026',
   ),
-  MagicAction.attachment => const MagicRequest(
+  MagicAction.attachment || MagicAction.audio => const MagicRequest(
     action: MagicAction.attachment,
     value: 'assets/native.png',
     kind: 'image',
@@ -230,7 +230,7 @@ String _sourceMarker(MagicAction action) => switch (action) {
   MagicAction.time => '09:07',
   MagicAction.date => '#tylog.date-ref(',
   MagicAction.citation => '@smith2026',
-  MagicAction.attachment => '#tylog.attachment(',
+  MagicAction.attachment || MagicAction.audio => '#tylog.attachment(',
   MagicAction.heading => '= |тест-heading|',
   MagicAction.bold => '#strong[',
   MagicAction.italic => '#emph[',

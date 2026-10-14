@@ -66,6 +66,7 @@ import 'widgets/reading_mode.dart';
 import 'audio/audio_note_doc.dart';
 import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
+import 'widgets/audio_inline_card.dart';
 import 'widgets/audio_note_screen.dart';
 import 'widgets/audio_shelf.dart';
 import 'widgets/audio_sheets.dart';
@@ -500,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : Platform.environment.containsKey('FLUTTER_TEST')
         ? Future.value(null)
         : openDatabase();
+    TyLogEditingController.audioBuilder = _audioCard;
     richController = TyLogEditingController(
       source: '',
       onSourceChanged: _acceptRichSource,
@@ -1114,7 +1116,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       r'^#tylog\.attachment\("((?:\\.|[^"])*)",\s*kind:\s*"audio"',
     ).firstMatch(source);
     if (audio != null) {
-      await _openAttachment(unescapeTypstString(audio[1]!));
+      await _openAttachment(
+        unescapeTypstString(audio[1]!).replaceFirst(RegExp(r'^/+'), ''),
+      );
       return;
     }
     final match = RegExp(
@@ -3787,6 +3791,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       case MagicAction.attachment:
         await _insertAttachment();
+        return;
+      case MagicAction.audio:
+        await _insertAudio();
         return;
       case MagicAction.report:
         await _createReport();
