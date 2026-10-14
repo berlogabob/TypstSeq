@@ -30,6 +30,7 @@ class LibraryToolbar extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: kSpace16, vertical: gap),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [

@@ -39,15 +39,18 @@ class AppEmptyState extends StatelessWidget {
               ),
             const SizedBox(height: kSpace12),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: kSpace8),
-            Text(
-              hint,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            if (!loading) ...[
+              const SizedBox(height: kSpace8),
+              Text(
+                hint,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            if (primaryAction != null || secondaryAction != null) ...[
+            ],
+            if (!loading &&
+                (primaryAction != null || secondaryAction != null)) ...[
               const SizedBox(height: kSpace16),
               Wrap(
                 spacing: kSpace8,
