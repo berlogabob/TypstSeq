@@ -24,7 +24,7 @@ import 'package:flutter/material.dart';
 /// calendars -> calendar_view_month_outlined
 /// schedule -> schedule_outlined
 /// queued -> hourglass_empty
-/// agenda -> view_agenda_outlined
+/// agenda -> checklist_outlined
 /// link -> link_outlined
 /// backlinks -> schema_outlined
 /// graph -> account_tree_outlined
@@ -63,7 +63,7 @@ class AppIcons {
   static const IconData calendars = Icons.calendar_view_month_outlined;
   static const IconData schedule = Icons.schedule_outlined;
   static const IconData queued = Icons.hourglass_empty;
-  static const IconData agenda = Icons.view_agenda_outlined;
+  static const IconData agenda = Icons.checklist_outlined;
   static const IconData link = Icons.link_outlined;
   static const IconData backlinks = Icons.schema_outlined;
   static const IconData graph = Icons.account_tree_outlined;
