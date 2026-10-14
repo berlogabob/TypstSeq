@@ -10,6 +10,9 @@ import '../audio/processing_policy.dart';
 import 'audio_processing_settings.dart';
 import 'screenshots_settings.dart';
 import 'constants.dart';
+import 'ds/app_tile.dart';
+import 'ds/app_section.dart';
+import 'ds/app_sheet.dart';
 
 class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
@@ -30,6 +33,11 @@ class SettingsSheet extends StatefulWidget {
     required this.onStripImportNoise,
     required this.onImportVault,
     required this.onInstallModule,
+    this.onProblems,
+    this.onRebuildIndex,
+    this.onRelinkVault,
+    this.onSemanticSearch,
+    this.onTypstHelp,
     this.onCheckForUpdates,
     this.audioPolicyRead,
     this.audioPolicyWrite,
@@ -75,6 +83,16 @@ class SettingsSheet extends StatefulWidget {
   final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
   final Future<void> Function() onInstallModule;
+
+  final VoidCallback? onProblems;
+
+  final VoidCallback? onRebuildIndex;
+
+  final VoidCallback? onRelinkVault;
+
+  final VoidCallback? onSemanticSearch;
+
+  final VoidCallback? onTypstHelp;
 
   /// Desktop-only: check GitHub Releases for a newer build. Null hides the tile.
   final VoidCallback? onCheckForUpdates;
@@ -179,135 +197,189 @@ class _SettingsSheetState extends State<SettingsSheet> {
   @override
   Widget build(BuildContext context) {
     final readableVaultPath = readableVaultLocation(widget.vaultPath);
-    return SafeArea(
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Settings',
-                style: Theme.of(context).textTheme.headlineSmall,
+    return AppSheet(
+      title: 'Settings',
+      children: [
+        AppSection(
+          title: 'General',
+          divider: false,
+          children: [
+            _ThemeModeSelector(
+              themeMode: widget.themeMode,
+              onChanged: widget.onThemeModeChanged,
+            ),
+            const SizedBox(height: kSpace8),
+            AppTile(
+              icon: Icons.picture_as_pdf_outlined,
+              title: 'PDF page size',
+              trailing: DropdownButton<String>(
+                value: _selectedPaper ?? widget.pdfPaper,
+                items: const [
+                  DropdownMenuItem(value: 'a4', child: Text('A4')),
+                  DropdownMenuItem(value: 'us-letter', child: Text('Letter')),
+                  DropdownMenuItem(value: 'a5', child: Text('A5')),
+                  DropdownMenuItem(value: 'us-legal', child: Text('Legal')),
+                ],
+                onChanged: (paper) {
+                  if (paper == null) return;
+                  setState(() => _selectedPaper = paper);
+                  widget.onPdfPaperChanged?.call(paper);
+                },
               ),
-              const SizedBox(height: kSpace12),
-              _ThemeModeSelector(
-                themeMode: widget.themeMode,
-                onChanged: widget.onThemeModeChanged,
+            ),
+            if (widget.onConfigureCalendars != null)
+              AppTile(
+                icon: Icons.calendar_month,
+                title: 'Calendars',
+                subtitle: 'My classes · Lab schedule',
+                onTap: _calendars,
               ),
-              const SizedBox(height: kSpace8),
-              ListTile(
-                leading: const Icon(Icons.picture_as_pdf_outlined),
-                title: const Text('PDF page size'),
-                trailing: DropdownButton<String>(
-                  value: _selectedPaper ?? widget.pdfPaper,
-                  items: const [
-                    DropdownMenuItem(value: 'a4', child: Text('A4')),
-                    DropdownMenuItem(value: 'us-letter', child: Text('Letter')),
-                    DropdownMenuItem(value: 'a5', child: Text('A5')),
-                    DropdownMenuItem(value: 'us-legal', child: Text('Legal')),
-                  ],
-                  onChanged: (paper) {
-                    if (paper == null) return;
-                    setState(() => _selectedPaper = paper);
-                    widget.onPdfPaperChanged?.call(paper);
-                  },
-                ),
-              ),
-              if (widget.onConfigureCalendars != null)
-                SettingsTile(
-                  icon: Icons.calendar_month,
-                  title: 'Calendars',
-                  subtitle: 'My classes · Lab schedule',
-                  onTap: _calendars,
-                ),
-              if (widget.audioPolicyRead != null)
-                AudioProcessingSettings(
-                  read: widget.audioPolicyRead!,
-                  write: widget.audioPolicyWrite!,
-                  processNow: widget.onProcessAudio!,
-                  readAi: widget.readAi,
-                  writeAi: widget.writeAi,
-                  readWorkers: widget.readWorkers,
-                ),
-              if (readScreenshotsStatusAvailable)
-                ScreenshotsSettings(
-                  mode: widget.screenshotsMode,
-                  time: widget.screenshotsTime,
-                  onConfigure: widget.onConfigureScreenshots!,
-                  onProcessNow: widget.onProcessScreenshots!,
-                  readStatus: widget.readScreenshotsStatus!,
-                ),
-              SettingsTile(
-                icon: Icons.folder_open,
-                title: 'Local folder',
-                subtitle: readableVaultPath,
-                singleLineSubtitle: !readableVaultPath.contains('\n'),
-              ),
-              SettingsTile(
-                icon: Icons.create_new_folder,
-                title: 'Vaults',
-                subtitle: '${widget.vaultCount} vaults · manage and switch',
-                onTap: widget.onManageVaults,
-              ),
-              SettingsTile(
-                icon: Icons.sync,
-                title: 'Sync',
-                subtitle: widget.syncStatusSubtitle,
-                onTap: widget.onNextcloud,
-              ),
-              SettingsTile(
-                icon: Icons.notifications_outlined,
-                title: 'Task reminders',
-                subtitle: 'Enable local scheduled notifications',
-                onTap: () => unawaited(widget.onEnableReminders()),
-              ),
-              SettingsTile(
-                icon: Icons.build_outlined,
-                title: 'Migrate entity types',
-                subtitle: 'Update older notes to the current format',
-                onTap: () => unawaited(widget.onMigrateEntityTypes()),
-              ),
-              SettingsTile(
-                icon: Icons.cleaning_services_outlined,
-                title: 'Clean up imported notes',
-                subtitle: 'Remove empty Logseq drawers and trailing blanks',
-                onTap: () => unawaited(widget.onStripImportNoise()),
-              ),
-              SettingsTile(
-                icon: Icons.drive_folder_upload_outlined,
-                title: 'Import Logseq/Obsidian vault',
-                subtitle: 'Convert a whole vault folder into TyLog notes',
-                onTap: () => unawaited(widget.onImportVault()),
-              ),
-              SettingsTile(
-                icon: Icons.extension_outlined,
-                title: 'Install module',
-                subtitle: 'Add a .tylogpack course or content pack',
-                onTap: () => unawaited(widget.onInstallModule()),
-              ),
-              FutureBuilder<String>(
-                future: appVersion(),
-                builder: (context, snapshot) => SettingsTile(
-                  icon: Icons.info_outline,
-                  title: 'App version',
-                  subtitle: snapshot.data ?? '...',
-                ),
-              ),
-              if (widget.onCheckForUpdates case final onTap?)
-                SettingsTile(
-                  icon: Icons.system_update,
-                  title: 'Check for updates',
-                  subtitle: 'Download the latest release from GitHub',
-                  onTap: onTap,
-                ),
-            ],
-          ),
+            AppTile(
+              icon: Icons.notifications_outlined,
+              title: 'Task reminders',
+              subtitle: 'Enable local scheduled notifications',
+              onTap: () => unawaited(widget.onEnableReminders()),
+            ),
+          ],
         ),
-      ),
+        AppSection(
+          title: 'AI and processing',
+          children: [
+            if (widget.audioPolicyRead != null)
+              AudioProcessingSettings(
+                read: widget.audioPolicyRead!,
+                write: widget.audioPolicyWrite!,
+                processNow: widget.onProcessAudio!,
+                readAi: widget.readAi,
+                writeAi: widget.writeAi,
+                readWorkers: widget.readWorkers,
+              ),
+            if (readScreenshotsStatusAvailable)
+              ScreenshotsSettings(
+                mode: widget.screenshotsMode,
+                time: widget.screenshotsTime,
+                onConfigure: widget.onConfigureScreenshots!,
+                onProcessNow: widget.onProcessScreenshots!,
+                readStatus: widget.readScreenshotsStatus!,
+              ),
+          ],
+        ),
+        AppSection(
+          title: 'Storage and sync',
+          children: [
+            _InfoRow(title: 'Local folder', value: readableVaultPath),
+            AppTile(
+              icon: Icons.create_new_folder,
+              title: 'Vaults',
+              subtitle: '${widget.vaultCount} vaults · manage and switch',
+              onTap: widget.onManageVaults,
+            ),
+            AppTile(
+              icon: Icons.sync,
+              title: 'Sync',
+              subtitle: widget.syncStatusSubtitle,
+              onTap: widget.onNextcloud,
+            ),
+          ],
+        ),
+        AppSection(
+          title: 'Tools',
+          children: [
+            AppTile(
+              icon: Icons.warning_amber_rounded,
+              title: 'Problems',
+              onTap: widget.onProblems,
+            ),
+            AppTile(
+              icon: Icons.refresh,
+              title: 'Rebuild index',
+              onTap: widget.onRebuildIndex,
+            ),
+            AppTile(
+              icon: Icons.auto_fix_high,
+              title: 'Relink vault',
+              onTap: widget.onRelinkVault,
+            ),
+            AppTile(
+              icon: Icons.build_outlined,
+              title: 'Migrate entity types',
+              subtitle: 'Update older notes to the current format',
+              onTap: () => unawaited(widget.onMigrateEntityTypes()),
+            ),
+            AppTile(
+              icon: Icons.cleaning_services_outlined,
+              title: 'Clean up imported notes',
+              subtitle: 'Remove empty Logseq drawers and trailing blanks',
+              onTap: () => unawaited(widget.onStripImportNoise()),
+            ),
+            AppTile(
+              icon: Icons.drive_folder_upload_outlined,
+              title: 'Import vault',
+              subtitle: 'Convert a whole vault folder into TyLog notes',
+              onTap: () => unawaited(widget.onImportVault()),
+            ),
+            AppTile(
+              icon: Icons.extension_outlined,
+              title: 'Install module',
+              subtitle: 'Add a .tylogpack course or content pack',
+              onTap: () => unawaited(widget.onInstallModule()),
+            ),
+            AppTile(
+              icon: Icons.manage_search,
+              title: 'Semantic search',
+              onTap: widget.onSemanticSearch,
+            ),
+          ],
+        ),
+        AppSection(
+          title: 'About',
+          children: [
+            FutureBuilder<String>(
+              future: appVersion(),
+              builder: (context, snapshot) =>
+                  _InfoRow(title: 'App version', value: snapshot.data ?? '...'),
+            ),
+            if (widget.onCheckForUpdates case final onTap?)
+              AppTile(
+                icon: Icons.system_update,
+                title: 'Check for updates',
+                subtitle: 'Download the latest release from GitHub',
+                onTap: onTap,
+              ),
+            AppTile(
+              icon: Icons.help_outline,
+              title: 'Typst help',
+              onTap: widget.onTypstHelp,
+            ),
+          ],
+        ),
+      ],
     );
   }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.title, required this.value});
+
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(kSpace8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.bodyLarge),
+        const SizedBox(height: kSpace4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
+    ),
+  );
 }
 
 class SettingsTile extends StatelessWidget {
@@ -384,22 +456,36 @@ class _ThemeModeSelectorState extends State<_ThemeModeSelector> {
     // settle under pumpAndSettle in this app's widget tests.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: kSpace8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.brightness_6_outlined,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Row(
+            children: [
+              Icon(
+                Icons.brightness_6_outlined,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: kSpace12),
+              const Text('Appearance'),
+            ],
           ),
-          const SizedBox(width: kSpace12),
-          const Expanded(child: Text('Appearance')),
-          Wrap(
-            spacing: kSpace8,
+          const SizedBox(height: kSpace8),
+          Row(
             children: [
               for (final (mode, label) in _options)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _mode == mode,
-                  onSelected: (_) => _select(mode),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: kSpace8),
+                    child: ChoiceChip(
+                      showCheckmark: false,
+                      label: SizedBox(
+                        width: double.infinity,
+                        child: Text(label, textAlign: TextAlign.center),
+                      ),
+                      selected: _mode == mode,
+                      onSelected: (_) => _select(mode),
+                    ),
+                  ),
                 ),
             ],
           ),

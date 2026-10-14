@@ -304,13 +304,13 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     if (p == null) {
       return const ListTile(
         leading: Icon(Icons.graphic_eq),
-        title: Text('Audio transcription'),
+        title: Text('Audio'),
         subtitle: Text('Loading…'),
       );
     }
     return ProcessingPolicyEditor(
       icon: Icons.graphic_eq,
-      title: 'Audio: transcribe and translate',
+      title: 'Audio',
       onTheFly: p.onTheFly,
       scheduled: p.scheduled,
       time: p.time,

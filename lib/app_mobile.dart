@@ -73,6 +73,9 @@ import 'widgets/audio_note_screen.dart';
 import 'widgets/audio_shelf.dart';
 import 'widgets/audio_sheets.dart';
 import 'widgets/settings_sheet.dart';
+import 'widgets/ds/app_sheet.dart';
+import 'widgets/ds/app_section.dart';
+import 'widgets/ds/app_tile.dart';
 import 'widgets/nextcloud_connect_dialog.dart';
 import 'widgets/snack.dart';
 import 'desktop_updater.dart' as updater;
@@ -2628,7 +2631,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     showModalBottomSheet<bool>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (context) => FutureBuilder<bool>(
         future: storageHealth,
         initialData: initialStorageHealth,
@@ -2736,6 +2739,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onInstallModule: () async {
               Navigator.pop(context);
               await _installModule();
+            },
+            onProblems: () {
+              Navigator.pop(context);
+              unawaited(_showKnowledge(initialView: KnowledgeView.problems));
+            },
+            onRebuildIndex: () {
+              Navigator.pop(context);
+              unawaited(_rebuildIndex(force: true));
+            },
+            onRelinkVault: () {
+              Navigator.pop(context);
+              unawaited(_relinkVault());
+            },
+            onSemanticSearch: () {
+              Navigator.pop(context);
+              unawaited(_showSemanticSearch());
+            },
+            onTypstHelp: () {
+              Navigator.pop(context);
+              unawaited(_showTypstHelp());
             },
             onCheckForUpdates: Platform.isMacOS
                 ? () {
@@ -4379,65 +4402,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showMoreMenu(Widget linksPanel) async {
-    // Everyday actions vs. whole-vault maintenance (index rebuild, relink)
-    // used to sit in one undifferentiated list; a section break keeps the
-    // disruptive, rarely-needed operations from looking as casual as "New
-    // page".
-    const dailyActions = <_ShellAction, (IconData, String)>{
-      _ShellAction.vaults: (Icons.folder_outlined, 'Vaults'),
-      _ShellAction.settings: (Icons.settings, 'Settings'),
-      _ShellAction.newPage: (Icons.note_add_outlined, 'New page'),
-      _ShellAction.newEntity: (Icons.person_add_alt, 'New entity'),
-      _ShellAction.audio: (Icons.graphic_eq, 'Audio'),
-      _ShellAction.graph: (Icons.account_tree_outlined, 'Graph'),
-      _ShellAction.split: (Icons.vertical_split, 'Split editor'),
-      _ShellAction.backlinks: (Icons.link, 'Context'),
-      _ShellAction.sharePdf: (Icons.ios_share, 'Share as PDF'),
-    };
-    const maintenanceActions = <_ShellAction, (IconData, String)>{
-      _ShellAction.problems: (Icons.warning_amber, 'Problems'),
-      _ShellAction.rebuild: (Icons.refresh, 'Rebuild index'),
-      _ShellAction.relink: (Icons.auto_fix_high, 'Relink vault'),
-      _ShellAction.semantic: (Icons.manage_search, 'Semantic search'),
-      _ShellAction.typstHelp: (Icons.help_outline, 'Typst help'),
-    };
     final action = await showModalBottomSheet<_ShellAction>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
+      isScrollControlled: true,
+      showDragHandle: false,
+      builder: (context) {
+        Widget tile(_ShellAction action, IconData icon, String title) =>
+            AppTile(
+              icon: icon,
+              title: title,
+              onTap: () => Navigator.pop(context, action),
+            );
+        return AppSheet(
+          title: 'More',
           children: [
-            for (final entry in dailyActions.entries)
-              ListTile(
-                leading: Icon(entry.value.$1),
-                title: Text(entry.value.$2),
-                onTap: () => Navigator.pop(context, entry.key),
-              ),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                kSpace16,
-                kSpace4,
-                kSpace16,
-                kSpace4,
-              ),
-              child: Text(
-                'Maintenance',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+            AppSection(
+              title: 'Switch',
+              divider: false,
+              children: [
+                tile(_ShellAction.vaults, Icons.folder_outlined, 'Vaults'),
+                tile(
+                  _ShellAction.settings,
+                  Icons.settings_outlined,
+                  'Settings',
                 ),
-              ),
+              ],
             ),
-            for (final entry in maintenanceActions.entries)
-              ListTile(
-                leading: Icon(entry.value.$1),
-                title: Text(entry.value.$2),
-                onTap: () => Navigator.pop(context, entry.key),
+            AppSection(
+              title: 'Create',
+              children: [
+                tile(_ShellAction.newPage, Icons.note_add_outlined, 'New page'),
+                tile(
+                  _ShellAction.newEntity,
+                  Icons.person_add_alt,
+                  'New entity',
+                ),
+              ],
+            ),
+            if (vault != null && note != null)
+              AppSection(
+                title: 'This note',
+                children: [
+                  tile(
+                    _ShellAction.split,
+                    Icons.vertical_split,
+                    'Split editor',
+                  ),
+                  tile(_ShellAction.backlinks, Icons.link, 'Context'),
+                  tile(_ShellAction.sharePdf, Icons.ios_share, 'Share as PDF'),
+                ],
               ),
+            AppSection(
+              title: 'Views',
+              children: [
+                tile(_ShellAction.graph, Icons.account_tree_outlined, 'Graph'),
+              ],
+            ),
           ],
-        ),
-      ),
+        );
+      },
     );
     if (action == null) return;
     await _runShellAction(action, linksPanel);
@@ -4526,8 +4549,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _newPage();
       case _ShellAction.newEntity:
         await _createEntity();
-      case _ShellAction.audio:
-        await _selectDestination(2, libraryTab: 5);
       case _ShellAction.graph:
         setState(() => mode = 'graph');
       case _ShellAction.split:
@@ -4545,16 +4566,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       case _ShellAction.sharePdf:
         await _sharePdf();
-      case _ShellAction.problems:
-        await _showKnowledge(initialView: KnowledgeView.problems);
-      case _ShellAction.rebuild:
-        await _rebuildIndex(force: true);
-      case _ShellAction.relink:
-        await _relinkVault();
-      case _ShellAction.semantic:
-        await _showSemanticSearch();
-      case _ShellAction.typstHelp:
-        await _showTypstHelp();
       case _ShellAction.settings:
         _showSettings();
     }
@@ -5628,16 +5639,10 @@ enum _ShellAction {
   vaults,
   newPage,
   newEntity,
-  audio,
   sharePdf,
   graph,
   split,
   backlinks,
-  problems,
-  rebuild,
-  relink,
-  semantic,
-  typstHelp,
   settings,
 }
 

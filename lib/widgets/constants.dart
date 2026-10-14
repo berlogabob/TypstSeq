@@ -46,6 +46,10 @@ const kRadiusSmall = 6.0;
 const kRadiusMedium = 12.0;
 const kRadiusLarge = 20.0;
 
+/// Icon sizes: compact controls and standard tile icons.
+const kIconSmall = 20.0;
+const kIcon = 24.0;
+
 /// Minimum interactive size (Material/WCAG target-size guidance). Controls that
 /// draw smaller than this must still *hit* at least this big.
 const kMinTapTarget = 48.0;

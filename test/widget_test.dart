@@ -28,6 +28,9 @@ import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/work_surface.dart';
+import 'package:tylog/widgets/ds/app_sheet.dart';
+import 'package:tylog/widgets/ds/app_section.dart';
+import 'package:tylog/widgets/ds/app_tile.dart';
 import 'package:tylog/widgets/task_clock.dart';
 import 'package:tylog/widgets/virtual_plain_editor.dart';
 import 'package:tylog/widgets/idea_hub.dart';
@@ -428,14 +431,38 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('More keeps note and entity creation reachable', (tester) async {
+  testWidgets('More shows only Switch, Create, This note and Views with a note open', (tester) async {
     await _mountTaskTimers(tester);
     await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();
+    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
+      ['Switch', 'Create', 'This note', 'Views']);
+    expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
+      ['Vaults', 'Settings', 'New page', 'New entity', 'Split editor',
+       'Context', 'Share as PDF', 'Graph']);
+    for (final label in ['Audio', 'Maintenance', 'Problems', 'Rebuild index',
+      'Relink vault', 'Semantic search', 'Typst help']) {
+      expect(
+        find.descendant(of: find.byType(AppSheet), matching: find.text(label)),
+        findsNothing,
+      );
+    }
     expect(find.text('New page'), findsOneWidget);
     await tester.tap(find.text('New entity'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(AlertDialog, 'New entity'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('More hides This note when no note is open', (tester) async {
+    await tester.pumpWidget(const TyLogApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NavigationDestination).last);
+    await tester.pumpAndSettle();
+    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
+      ['Switch', 'Create', 'Views']);
+    expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
+      ['Vaults', 'Settings', 'New page', 'New entity', 'Graph']);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -899,6 +926,8 @@ void main() {
       for (var i = 0; i < 2; i++) {
         await tester.pumpAndSettle();
         await tester.tap(find.text('More').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, 'Settings'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.text('Typst help'),
@@ -1568,9 +1597,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsWidgets);
+    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
+      ['General', 'AI and processing', 'Storage and sync', 'Tools', 'About']);
+    final tools = tester.widgetList<AppSection>(find.byType(AppSection))
+        .singleWhere((s) => s.title == 'Tools');
+    expect(tools.children.whereType<AppTile>().map((t) => t.title),
+      ['Problems', 'Rebuild index', 'Relink vault', 'Migrate entity types',
+       'Clean up imported notes', 'Import vault', 'Install module', 'Semantic search']);
+    for (final title in ['Local folder', 'App version']) {
+      expect(find.widgetWithText(ListTile, title), findsNothing);
+    }
+
     expect(find.text('Local folder'), findsOneWidget);
     expect(find.text('Sync'), findsOneWidget);
-    expect(find.text('Import Logseq/Obsidian vault'), findsOneWidget);
+    expect(find.text('Import vault'), findsOneWidget);
     expect(find.text('Nextcloud settings'), findsNothing);
     expect(find.text('Sync server status'), findsNothing);
     expect(find.text('App version'), findsOneWidget);
