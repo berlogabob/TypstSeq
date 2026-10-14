@@ -1030,7 +1030,7 @@ def test_heartbeat_content_and_probe_throttling(tmp_path):
 
 def test_probe_http_contract(monkeypatch):
     def http(request, timeout):
-        assert (request.full_url, request.get_method(), timeout) == ("https://studio/v1/models", "GET", 3)
+        assert (request.full_url, request.get_method(), timeout) == ("https://studio/v1/models", "GET", 15)
         assert request.get_header("Authorization") == "Bearer secret"
         return BytesIO(b'{"data": [{"id": "loaded", "loaded": true}, {"id": "off", "loaded": false}, {"id": "openai"}]}')
     monkeypatch.setattr(worker, "urlopen", http)

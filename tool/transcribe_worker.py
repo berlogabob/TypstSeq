@@ -260,7 +260,7 @@ def connection_credentials(connection=None):
 
 def probe_connection(base, key):
     headers = {"Authorization": f"Bearer {key}"} if key else {}
-    with urlopen(Request(base.rstrip("/") + "/models", headers=headers), timeout=3) as response:
+    with urlopen(Request(base.rstrip("/") + "/models", headers=headers), timeout=15) as response:
         entries = json.load(response)["data"]
     return {"reachable": True, "loaded": [entry["id"] for entry in entries
             if isinstance(entry.get("id"), str) and entry.get("loaded", True) is True]}
