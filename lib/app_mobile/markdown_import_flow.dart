@@ -356,9 +356,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
     }
     await workspace.waitForMutationRefresh();
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text('Relinked ${articles.length} articles')),
-    );
+    if (ScaffoldMessenger.maybeOf(context) != null) showSnack(context, 'Relinked ${articles.length} articles');
   }
 
   Future<_MarkdownDuplicateDecision> _resolveMarkdownDuplicate({

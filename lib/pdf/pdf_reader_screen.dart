@@ -7,6 +7,8 @@ import '../database/tylog_database.dart';
 import 'annotation_reattach.dart';
 import 'pdf_extraction.dart';
 import 'pdf_reader_store.dart';
+import '../widgets/banner.dart';
+import '../widgets/snack.dart';
 
 /// The vault owns the database; leaving the reader never closes it.
 class PdfReaderScreen extends StatefulWidget {
@@ -210,21 +212,11 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       }
       await _refreshAnnotations();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              reassigning == null ? 'Highlight saved' : 'Highlight reassigned',
-            ),
-          ),
-        );
+        showSnack(context, reassigning == null ? 'Highlight saved' : 'Highlight reassigned');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save highlight. Please try again.'),
-          ),
-        );
+        showSnack(context, 'Could not save highlight. Please try again.');
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -270,9 +262,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open this highlight.')),
-        );
+        showSnack(context, 'Could not open this highlight.');
       }
     }
   }
@@ -290,6 +280,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         ),
         actions: [
           TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
             onPressed: () {
               Navigator.pop(context);
               if (mounted) {
@@ -297,10 +291,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
               }
             },
             child: const Text('Select replacement'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
           ),
         ],
       ),
@@ -382,10 +372,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         if (_status != null)
           Padding(padding: const EdgeInsets.all(8), child: Text(_status!)),
         if (_reassigningAnnotation != null)
-          MaterialBanner(
-            content: const Text(
-              'Select replacement text, then save highlight.',
-            ),
+          appBanner(
+            backgroundColor: null,
+            content: const Text('Select replacement text, then save highlight.'),
             actions: [
               TextButton(
                 onPressed: () => setState(() => _reassigningAnnotation = null),

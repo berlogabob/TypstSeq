@@ -17,6 +17,7 @@ import 'widgets/loading.dart';
 import 'widgets/task_checkbox.dart';
 import 'widgets/task_chip_strip.dart';
 import 'widgets/task_fields.dart';
+import 'widgets/snack.dart';
 export 'widgets/task_fields.dart' show autocompletePopupRect;
 
 export 'editor_autocomplete.dart'

@@ -351,40 +351,25 @@ extension _VaultLifecycle on _HomeScreenState {
     );
     if (!warned || !mounted) return;
     final typed = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Confirm permanent deletion'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Type ${entry.name} to delete this vault and every file in it.',
-              ),
-              TextField(
-                controller: typed,
-                autofocus: true,
-                onChanged: (_) => setDialogState(() {}),
-                decoration: const InputDecoration(labelText: 'Vault name'),
-              ),
-            ],
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Confirm permanent deletion',
+      contentBuilder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Type ${entry.name} to delete this vault and every file in it.'),
+          TextField(
+            controller: typed,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Vault name'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: typed.text == entry.name
-                  ? () => Navigator.pop(context, true)
-                  : null,
-              child: const Text('Delete permanently'),
-            ),
-          ],
-        ),
+        ],
       ),
+      confirmChanges: typed,
+      canConfirm: () => typed.text == entry.name,
+      confirmLabel: 'Delete permanently',
+      destructive: true,
     );
     if (confirmed != true) return;
 

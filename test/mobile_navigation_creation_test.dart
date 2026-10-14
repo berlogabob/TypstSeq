@@ -14,6 +14,8 @@ import 'package:tylog/models.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/idea_hub.dart';
+import 'package:tylog/widgets/ds/app_sheet.dart';
+import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/widgets/screenshot_strip.dart';
 
 Future<void> _emptyStartup() async {}
@@ -104,10 +106,20 @@ void main() {
       await tester.tap(agenda);
       await tester.pumpAndSettle();
       expect(find.byType(BottomSheet), findsOneWidget);
-      expect(
-        tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
-        isTrue,
+      expect(find.byType(AppSheet), findsOneWidget);
+      final handle = find.descendant(
+        of: find.byType(AppSheet),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.constraints?.maxWidth == kMinTapTarget &&
+              widget.constraints?.maxHeight == kSpace4,
+        ),
       );
+      expect(handle, findsOneWidget);
+      final grip = find.descendant(of: handle, matching: find.byType(DecoratedBox));
+      expect(grip.hitTestable(), findsOneWidget);
+      expect(tester.getSize(grip), const Size(kMinTapTarget, kSpace4));
       expect(
         tester.getSize(find.byType(BottomSheet)).height,
         lessThanOrEqualTo(288),

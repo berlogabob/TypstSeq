@@ -8,6 +8,7 @@ import 'constants.dart';
 import 'loading.dart';
 import 'snack.dart';
 import 'sync_status.dart';
+import 'ds/app_sheet.dart';
 
 class SyncDashboardData {
   const SyncDashboardData({
@@ -167,33 +168,29 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
     final count = conflicts.length;
     final choice = await showModalBottomSheet<SyncConflictResolution>(
       context: context,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text('Resolve $count conflicts'),
-              subtitle: const Text(
-                'One choice, applied to every file listed below.',
-              ),
+      showDragHandle: false,
+      builder: (sheet) => AppSheet(
+        title: 'Resolve $count conflicts',
+        children: [
+          ListTile(
+            subtitle: const Text(
+              'One choice, applied to every file listed below.',
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.smartphone),
-              title: const Text("Keep this device's version"),
-              subtitle: const Text('Uploads each local copy to Nextcloud'),
-              onTap: () =>
-                  Navigator.pop(sheet, SyncConflictResolution.keepLocal),
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_outlined),
-              title: const Text("Keep Nextcloud's version"),
-              subtitle: const Text('Overwrites each local copy'),
-              onTap: () =>
-                  Navigator.pop(sheet, SyncConflictResolution.keepRemote),
-            ),
-          ],
-        ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.smartphone),
+            title: const Text("Keep this device's version"),
+            subtitle: const Text('Uploads each local copy to Nextcloud'),
+            onTap: () => Navigator.pop(sheet, SyncConflictResolution.keepLocal),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_outlined),
+            title: const Text("Keep Nextcloud's version"),
+            subtitle: const Text('Overwrites each local copy'),
+            onTap: () => Navigator.pop(sheet, SyncConflictResolution.keepRemote),
+          ),
+        ],
       ),
     );
     if (choice == null || !mounted) return;

@@ -2999,6 +2999,11 @@ void main() {
     await tester.tap(find.byTooltip('Insert'));
     await tester.pumpAndSettle();
 
+    final menu = find.descendant(
+      of: find.byType(AppSheet),
+      matching: find.byType(CustomScrollView),
+    );
+    expect(menu, findsOneWidget);
     for (final label in const [
       'Insert',
       'Note link',
@@ -3008,6 +3013,7 @@ void main() {
       'Time',
       'Citation',
       'Attachment',
+      'Audio',
       'Equation',
       'Text style',
       'Bold',
@@ -3023,12 +3029,18 @@ void main() {
       'Table',
       'Report',
     ]) {
+      final item = find.descendant(of: menu, matching: find.text(label));
       await tester.scrollUntilVisible(
-        find.text(label),
+        item,
         100,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: find.descendant(
+          of: menu,
+          matching: find.byType(Scrollable),
+        ),
       );
-      expect(find.text(label), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(item, findsOneWidget);
+      expect(item.hitTestable(), findsOneWidget);
     }
     expect(find.text('H1'), findsWidgets);
   });
@@ -3617,7 +3629,7 @@ void main() {
 
     await tester.longPress(find.text('Second'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
     expect(stored.map((item) => item.name), ['First']);
     expect(find.text('Second'), findsNothing);
@@ -3659,7 +3671,7 @@ void main() {
     expect(find.widgetWithText(ActionChip, 'Save'), findsNothing);
     await tester.longPress(find.text('First'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pump();
     expect(deletes, 0);
     release.complete();
@@ -3688,7 +3700,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('Delete saved search'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
     expect(deleted, ['First']);
     expect(find.text('First'), findsNothing);

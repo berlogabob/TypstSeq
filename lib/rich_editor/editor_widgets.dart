@@ -458,9 +458,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       unawaited(
         Future<void>.sync(creation.create).catchError((Object error) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not create ${item.title}: $error')),
-          );
+          showSnack(context, 'Could not create ${item.title}: $error');
         }),
       );
     }

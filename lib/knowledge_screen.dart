@@ -12,6 +12,8 @@ import 'widgets/constants.dart';
 import 'widgets/property_select_chip.dart';
 import 'widgets/snack.dart';
 import 'widgets/task_row.dart';
+import 'widgets/dialogs.dart';
+import 'widgets/banner.dart';
 
 enum KnowledgeView { search, problems }
 
@@ -289,22 +291,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   }
 
   Future<void> _confirmDeletePreset(SavedSearch preset) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete saved search?'),
-        content: Text('Delete "${preset.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirm = await showConfirmDialog(
+      context,
+      title: 'Delete saved search?',
+      message: 'Delete "${preset.name}"?',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (confirm == true && mounted && !_presetBusy) {
       setState(() => _presetBusy = true);
@@ -361,7 +353,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               top: 0,
               left: 0,
               right: 0,
-              child: MaterialBanner(
+              child: appBanner(
                 backgroundColor: Theme.of(context).colorScheme.errorContainer,
                 content: const Text('Search failed. Try again.'),
                 actions: [

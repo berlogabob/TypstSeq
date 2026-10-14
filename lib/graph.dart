@@ -7,6 +7,7 @@ import 'package:flutter/semantics.dart';
 import 'package:tylog_core/graph.dart';
 
 import 'widgets/graph_label.dart';
+import 'widgets/banner.dart';
 
 export 'package:tylog_core/graph.dart'
     show
@@ -385,7 +386,8 @@ class _GraphViewState extends State<GraphView>
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: MaterialBanner(
+                  child: appBanner(
+                    backgroundColor: null,
                     elevation: 2,
                     content: Text(
                       '${widget.graph.nodes.length} notes in view — this can '
@@ -398,8 +400,7 @@ class _GraphViewState extends State<GraphView>
                           child: const Text('Focused view'),
                         ),
                       TextButton(
-                        onPressed: () =>
-                            setState(() => _bannerDismissed = true),
+                        onPressed: () => setState(() => _bannerDismissed = true),
                         child: const Text('Dismiss'),
                       ),
                     ],

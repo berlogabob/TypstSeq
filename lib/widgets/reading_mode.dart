@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../rich_editor.dart';
 import 'constants.dart';
+import 'ds/app_sheet.dart';
 
 class ReadingMode extends StatefulWidget {
   const ReadingMode({
@@ -133,64 +134,51 @@ class _ReadingModeState extends State<ReadingMode> {
     _ratingSheetOpen = true;
     final value = await showModalBottomSheet<String>(
       context: context,
+      showDragHandle: false,
       builder: (context) {
         // Lives outside StatefulBuilder's `builder` callback (which reruns,
         // and would otherwise reset a variable declared inside it) so the
         // pressed star survives the rebuild that paints its fill.
         var pressedStars = 0;
-        return SafeArea(
-          // Local state just for star fill feedback on press/select — the
-          // sheet itself is stateless, so a StatefulBuilder is the least
-          // invasive way to hold it.
-          child: StatefulBuilder(
-            builder: (context, setSheetState) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Rate this article',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var stars = 1; stars <= 5; stars++)
-                      IconButton(
-                        key: Key('rate-$stars'),
-                        iconSize: 36,
-                        tooltip: '$stars star${stars == 1 ? '' : 's'}',
-                        onPressed: () {
-                          setSheetState(() => pressedStars = stars);
-                          Navigator.pop(context, '$stars');
-                        },
-                        icon: Icon(
-                          stars <= pressedStars
-                              ? Icons.star
-                              : Icons.star_border,
-                        ),
+        return StatefulBuilder(
+          builder: (context, setSheetState) => AppSheet(
+            title: 'Rate this article',
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var stars = 1; stars <= 5; stars++)
+                    IconButton(
+                      key: Key('rate-$stars'),
+                      iconSize: 36,
+                      tooltip: '$stars star${stars == 1 ? '' : 's'}',
+                      onPressed: () {
+                        setSheetState(() => pressedStars = stars);
+                        Navigator.pop(context, '$stars');
+                      },
+                      icon: Icon(
+                        stars <= pressedStars ? Icons.star : Icons.star_border,
                       ),
-                  ],
+                    ),
+                ],
+              ),
+              const Divider(height: 24),
+              // Not just another rating: the caller deletes the article on
+              // 'shit', so this reads as a distinct destructive action
+              // rather than a sixth star. The "…" flags a confirm dialog
+              // follows; the returned value must stay the literal 'shit'
+              // string the caller switches on.
+              TextButton.icon(
+                key: const Key('rate-shit'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
                 ),
-                const Divider(height: 24),
-                // Not just another rating: the caller deletes the article on
-                // 'shit', so this reads as a distinct destructive action
-                // rather than a sixth star. The "…" flags a confirm dialog
-                // follows; the returned value must stay the literal 'shit'
-                // string the caller switches on.
-                TextButton.icon(
-                  key: const Key('rate-shit'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                  onPressed: () => Navigator.pop(context, 'shit'),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Discard article…'),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
+                onPressed: () => Navigator.pop(context, 'shit'),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Discard article…'),
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
         );
       },

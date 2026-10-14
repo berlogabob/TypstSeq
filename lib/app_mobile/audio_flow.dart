@@ -25,23 +25,21 @@ extension _AudioFlow on _HomeScreenState {
   Future<void> _insertAudio() async {
     final choice = await showModalBottomSheet<bool>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.mic),
-              title: const Text('Record'),
-              onTap: () => Navigator.pop(context, true),
-            ),
-            ListTile(
-              leading: const Icon(Icons.audio_file_outlined),
-              title: const Text('Import file'),
-              onTap: () => Navigator.pop(context, false),
-            ),
-          ],
-        ),
+      showDragHandle: false,
+      builder: (context) => AppSheet(
+        title: 'Audio',
+        children: [
+          ListTile(
+            leading: const Icon(Icons.mic),
+            title: const Text('Record'),
+            onTap: () => Navigator.pop(context, true),
+          ),
+          ListTile(
+            leading: const Icon(Icons.audio_file_outlined),
+            title: const Text('Import file'),
+            onTap: () => Navigator.pop(context, false),
+          ),
+        ],
       ),
     );
     if (choice == null || !mounted) return;

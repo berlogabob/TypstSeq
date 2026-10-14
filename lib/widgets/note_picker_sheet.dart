@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tylog_core/models.dart';
 
 import 'constants.dart';
+import 'ds/app_sheet.dart';
 
 /// Bottom-sheet note picker with a filter field. The magic-menu choosers used
 /// to render every note in the vault as one unsearchable ListView — unusable
@@ -48,15 +49,13 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
         if (matches(note)) note,
     ];
     final visible = filtered.take(_visibleLimit).toList();
-    return SafeArea(
+    return AppSheet.body(
+      title: widget.heading ?? 'Choose note',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (widget.heading != null)
-            ListTile(
-              title: Text(widget.heading!),
-              subtitle: const Text('Dismiss to use no filter'),
-            ),
+            const ListTile(subtitle: Text('Dismiss to use no filter')),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: kSpace16),
             child: TextField(

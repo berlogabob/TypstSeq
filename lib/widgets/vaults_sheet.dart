@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'constants.dart';
 
 import '../vault_registry.dart';
 import 'settings_sheet.dart';
+import 'ds/app_sheet.dart';
 
 class VaultsSheet extends StatelessWidget {
   const VaultsSheet({
@@ -23,66 +23,62 @@ class VaultsSheet extends StatelessWidget {
   final ValueChanged<VaultEntry> onDeleteVault;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace24),
-      children: [
-        Text('Vaults', style: Theme.of(context).textTheme.headlineSmall),
-        for (final entry in vaults)
-          ListTile(
-            leading: Icon(
-              entry.id == activeVaultId
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_off,
-            ),
-            title: Text(entry.name),
-            subtitle: Text(
-              entry.treeUri ?? entry.path,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: entry.id == activeVaultId
-                ? null
-                : () {
-                    Navigator.pop(context);
-                    onSwitchVault(entry);
-                  },
-            trailing: PopupMenuButton<String>(
-              onSelected: (action) {
-                Navigator.pop(context);
-                if (action == 'forget') onForgetVault(entry);
-                if (action == 'delete') onDeleteVault(entry);
-              },
-              itemBuilder: (context) {
-                final errorColor = Theme.of(context).colorScheme.error;
-                return [
-                  const PopupMenuItem(
-                    value: 'forget',
-                    child: Text('Disconnect (keep files)'),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: Text(
-                      'Delete permanently…',
-                      style: TextStyle(color: errorColor),
-                    ),
-                  ),
-                ];
-              },
-            ),
+  Widget build(BuildContext context) => AppSheet(
+    title: 'Vaults',
+    children: [
+      for (final entry in vaults)
+        ListTile(
+          leading: Icon(
+            entry.id == activeVaultId
+                ? Icons.radio_button_checked
+                : Icons.radio_button_off,
           ),
-        SettingsTile(
-          icon: Icons.create_new_folder,
-          title: 'Add or create vault',
-          subtitle: 'Choose an existing or empty folder',
-          onTap: () {
-            Navigator.pop(context);
-            onAddVault();
-          },
+          title: Text(entry.name),
+          subtitle: Text(
+            entry.treeUri ?? entry.path,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: entry.id == activeVaultId
+              ? null
+              : () {
+                  Navigator.pop(context);
+                  onSwitchVault(entry);
+                },
+          trailing: PopupMenuButton<String>(
+            onSelected: (action) {
+              Navigator.pop(context);
+              if (action == 'forget') onForgetVault(entry);
+              if (action == 'delete') onDeleteVault(entry);
+            },
+            itemBuilder: (context) {
+              final errorColor = Theme.of(context).colorScheme.error;
+              return [
+                const PopupMenuItem(
+                  value: 'forget',
+                  child: Text('Disconnect (keep files)'),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text(
+                    'Delete permanently…',
+                    style: TextStyle(color: errorColor),
+                  ),
+                ),
+              ];
+            },
+          ),
         ),
-      ],
-    ),
+      SettingsTile(
+        icon: Icons.create_new_folder,
+        title: 'Add or create vault',
+        subtitle: 'Choose an existing or empty folder',
+        onTap: () {
+          Navigator.pop(context);
+          onAddVault();
+        },
+      ),
+    ],
   );
 }

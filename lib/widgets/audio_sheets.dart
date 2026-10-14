@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:tylog_audio/tylog_audio.dart';
+import 'ds/app_sheet.dart';
 
 const _audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus'];
 
@@ -66,6 +67,7 @@ String formatClock(Duration d) {
 Future<AudioTake?> showAudioRecorder(BuildContext context) {
   return showModalBottomSheet<AudioTake>(
     context: context,
+    showDragHandle: false,
     isDismissible: false,
     enableDrag: false,
     builder: (_) => const _RecorderSheet(),
@@ -152,49 +154,44 @@ class _RecorderSheetState extends State<_RecorderSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_error != null) ...[
-              Text(_error!),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ] else ...[
-              Text(
-                '${formatClock(Duration(seconds: _seconds))} / '
-                '${formatClock(const Duration(seconds: kMaxRecordingSeconds))}',
-                style: Theme.of(context).textTheme.displaySmall,
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 56,
-                child: CustomPaint(
-                  size: const Size(double.infinity, 56),
-                  painter: _LiveWavePainter(_recent, scheme.primary),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton(onPressed: _cancel, child: const Text('Cancel')),
-                  FilledButton.icon(
-                    onPressed: _stop,
-                    icon: const Icon(Icons.stop),
-                    label: const Text('Save'),
-                  ),
-                ],
+    return AppSheet(
+      title: 'Record audio',
+      children: [
+        if (_error != null) ...[
+          Text(_error!),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ] else ...[
+          Text(
+            '${formatClock(Duration(seconds: _seconds))} / '
+            '${formatClock(const Duration(seconds: kMaxRecordingSeconds))}',
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 56,
+            child: CustomPaint(
+              size: const Size(double.infinity, 56),
+              painter: _LiveWavePainter(_recent, scheme.primary),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              TextButton(onPressed: _cancel, child: const Text('Cancel')),
+              FilledButton.icon(
+                onPressed: _stop,
+                icon: const Icon(Icons.stop),
+                label: const Text('Save'),
               ),
             ],
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -88,6 +88,7 @@ import 'widgets/task_clock.dart';
 import 'widgets/task_fields.dart' show setOneTaskField;
 import 'widgets/virtual_plain_editor.dart';
 import 'workspace_controller.dart';
+import 'widgets/banner.dart';
 
 export 'widgets/app_version.dart';
 export 'widgets/date_format.dart';
@@ -447,53 +448,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final targetVault = vault!;
         final choice = await showModalBottomSheet<String>(
           context: context,
-          builder: (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: Text(
-                    path != null
-                        ? data['name'] ?? path.split('/').last
-                        : article?.title ?? article?.url ?? text,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+          showDragHandle: false,
+          builder: (context) => AppSheet(
+            title: 'Share',
+            children: [
+              ListTile(
+                title: Text(
+                  path != null
+                      ? data['name'] ?? path.split('/').last
+                      : article?.title ?? article?.url ?? text,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                if (path != null)
-                  ListTile(
-                    leading: Icon(
-                      mime.startsWith('image/')
-                          ? Icons.image_outlined
-                          : mime.startsWith('audio/')
-                          ? Icons.audiotrack
-                          : Icons.attach_file,
-                    ),
-                    title: const Text('Attach to today'),
-                    subtitle: const Text('Default'),
-                    onTap: () => Navigator.pop(context, 'attach'),
+              ),
+              if (path != null)
+                ListTile(
+                  leading: Icon(
+                    mime.startsWith('image/')
+                        ? Icons.image_outlined
+                        : mime.startsWith('audio/')
+                        ? Icons.audiotrack
+                        : Icons.attach_file,
                   ),
-                if (path == null && article != null)
-                  ListTile(
-                    leading: const Icon(Icons.article_outlined),
-                    title: const Text('Save as article'),
-                    subtitle: const Text(
-                      'Fetch and convert the page to text',
-                    ),
-                    trailing: const Text('Default'),
-                    onTap: () => Navigator.pop(context, 'article'),
-                  ),
-                if (path == null)
-                  ListTile(
-                    leading: const Icon(Icons.today),
-                    title: Text(
-                      article == null ? 'Add to today' : 'Add link to today',
-                    ),
-                    subtitle: article == null ? const Text('Default') : null,
-                    onTap: () => Navigator.pop(context, 'today'),
-                  ),
-              ],
-            ),
+                  title: const Text('Attach to today'),
+                  subtitle: const Text('Default'),
+                  onTap: () => Navigator.pop(context, 'attach'),
+                ),
+              if (path == null && article != null)
+                ListTile(
+                  leading: const Icon(Icons.article_outlined),
+                  title: const Text('Save as article'),
+                  subtitle: const Text('Fetch and convert the page to text'),
+                  trailing: const Text('Default'),
+                  onTap: () => Navigator.pop(context, 'article'),
+                ),
+              if (path == null)
+                ListTile(
+                  leading: const Icon(Icons.today),
+                  title: Text(article == null ? 'Add to today' : 'Add link to today'),
+                  subtitle: article == null ? const Text('Default') : null,
+                  onTap: () => Navigator.pop(context, 'today'),
+                ),
+            ],
           ),
         );
         if (!mounted || !identical(vault, targetVault)) continue;
@@ -1086,19 +1082,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final target = match[1]!.replaceAllMapped(RegExp(r'\\(.)'), (m) => m[1]!);
     final action = await showModalBottomSheet<String>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final action in ['Rename', 'Edit Typst', 'Remove'])
-              ListTile(
-                minTileHeight: 48,
-                title: Text(action),
-                onTap: () => Navigator.pop(context, action),
-              ),
-          ],
-        ),
+      showDragHandle: false,
+      builder: (context) => AppSheet(
+        title: 'Reference actions',
+        children: [
+          for (final action in ['Rename', 'Edit Typst', 'Remove'])
+            ListTile(
+              minTileHeight: 48,
+              title: Text(action),
+              onTap: () => Navigator.pop(context, action),
+            ),
+        ],
       ),
     );
     if (!mounted || action == null) return;
@@ -1266,22 +1260,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final generation = ++_openGeneration;
     final choice = await showModalBottomSheet<String>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
+      showDragHandle: false,
+      builder: (context) => AppSheet(
+        title: '“$target” matches ${candidates.length} notes',
+        children: [
+          for (final path in candidates)
             ListTile(
-              title: Text('“$target” matches ${candidates.length} notes'),
+              leading: const Icon(Icons.description_outlined),
+              title: Text(path),
+              onTap: () => Navigator.pop(context, path),
             ),
-            for (final path in candidates)
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: Text(path),
-                onTap: () => Navigator.pop(context, path),
-              ),
-          ],
-        ),
+        ],
       ),
     );
     if (choice != null) {
@@ -1996,29 +1985,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         problem.targets.isNotEmpty ? problem.targets : [problem.subject];
     final choice = await showModalBottomSheet<String>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(
-              subtitle: Text('Open each to compare, then merge or delete one.'),
-            ),
-            for (final problem in problems) ...[
-              ListTile(
-                title: Text(
-                  '“${problem.subject}” is claimed by ${owners(problem).length} files',
-                ),
+      showDragHandle: false,
+      builder: (context) => AppSheet(
+        title: 'Duplicate owners',
+        children: [
+          const ListTile(
+            subtitle: Text('Open each to compare, then merge or delete one.'),
+          ),
+          for (final problem in problems) ...[
+            ListTile(
+              title: Text(
+                '“${problem.subject}” is claimed by ${owners(problem).length} files',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-              for (final path in owners(problem))
-                ListTile(
-                  leading: const Icon(Icons.description_outlined),
-                  title: Text(path),
-                  onTap: () => Navigator.pop(context, path),
-                ),
-            ],
+            ),
+            for (final path in owners(problem))
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: Text(path),
+                onTap: () => Navigator.pop(context, path),
+              ),
           ],
-        ),
+        ],
       ),
     );
     if (choice == null || !mounted) return;
@@ -2568,7 +2556,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final registry = vaultRegistry;
     showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (context) => VaultsSheet(
         vaults: registry?.entries ?? const [],
         activeVaultId: registry?.activeId,
@@ -3507,7 +3495,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return null;
     final chosen = await showModalBottomSheet<Object>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (context) => NotePickerSheet(
         notes: notes,
         heading: heading,
@@ -3537,7 +3525,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return null;
     final chosen = await showModalBottomSheet<Object>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (context) => NotePickerSheet(
         notes: paged ?? _entities,
         createLabel: 'New entity',
@@ -3667,29 +3655,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // has no way to discover. Surface them explicitly here instead.
         final chosen = await showModalBottomSheet<String>(
           context: context,
-          showDragHandle: true,
-          builder: (context) => SafeArea(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final (fill, label) in kHighlightChoices)
-                  ListTile(
-                    leading: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: highlightSwatchColor(fill),
-                        borderRadius: BorderRadius.circular(kRadiusSmall),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
+          showDragHandle: false,
+          builder: (context) => AppSheet(
+            title: 'Highlight',
+            children: [
+              for (final (fill, label) in kHighlightChoices)
+                ListTile(
+                  leading: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: highlightSwatchColor(fill),
+                      borderRadius: BorderRadius.circular(kRadiusSmall),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
                       ),
                     ),
-                    title: Text(label),
-                    onTap: () => Navigator.pop(context, fill),
                   ),
-              ],
-            ),
+                  title: Text(label),
+                  onTap: () => Navigator.pop(context, fill),
+                ),
+            ],
           ),
         );
         if (!mounted) return;
@@ -4128,11 +4114,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return null;
     return showModalBottomSheet<String>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       isScrollControlled: true,
       builder: (context) {
         var query = '';
-        return SafeArea(
+        return AppSheet.body(
+          title: 'Citations',
           child: StatefulBuilder(
             builder: (context, setSheetState) {
               final q = query.trim().toLowerCase();
@@ -4163,8 +4150,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: TextField(
                         key: const Key('citation-search'),
                         autofocus: entries.length > 8,
-                        onChanged: (value) =>
-                            setSheetState(() => query = value),
+                        onChanged: (value) => setSheetState(() => query = value),
                         decoration: const InputDecoration(
                           isDense: true,
                           prefixIcon: Icon(Icons.search),
@@ -4294,11 +4280,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final action = await showModalBottomSheet<MagicAction>(
         context: context,
-        showDragHandle: true,
+        showDragHandle: false,
         isScrollControlled: true,
         builder: (context) {
           final columns = MediaQuery.sizeOf(context).width < 500 ? 3 : 4;
-          return SafeArea(
+          return AppSheet.body(
+            title: 'Insert',
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * 0.8,
               child: CustomScrollView(
@@ -4314,7 +4301,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       sliver: SliverToBoxAdapter(
                         child: Text(
                           group.key,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
                     ),
@@ -4333,9 +4320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 if (action == MagicAction.heading)
                                   Text(
                                     'H1',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleLarge,
+                                    style: Theme.of(context).textTheme.titleLarge,
                                   )
                                 else
                                   Icon(display.$1),
@@ -4407,12 +4392,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isScrollControlled: true,
       showDragHandle: false,
       builder: (context) {
-        Widget tile(_ShellAction action, IconData icon, String title) =>
-            AppTile(
-              icon: icon,
-              title: title,
-              onTap: () => Navigator.pop(context, action),
-            );
+        Widget tile(_ShellAction action, IconData icon, String title) => AppTile(
+          icon: icon,
+          title: title,
+          onTap: () => Navigator.pop(context, action),
+        );
         return AppSheet(
           title: 'More',
           children: [
@@ -4421,33 +4405,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               divider: false,
               children: [
                 tile(_ShellAction.vaults, Icons.folder_outlined, 'Vaults'),
-                tile(
-                  _ShellAction.settings,
-                  Icons.settings_outlined,
-                  'Settings',
-                ),
+                tile(_ShellAction.settings, Icons.settings_outlined, 'Settings'),
               ],
             ),
             AppSection(
               title: 'Create',
               children: [
                 tile(_ShellAction.newPage, Icons.note_add_outlined, 'New page'),
-                tile(
-                  _ShellAction.newEntity,
-                  Icons.person_add_alt,
-                  'New entity',
-                ),
+                tile(_ShellAction.newEntity, Icons.person_add_alt, 'New entity'),
               ],
             ),
             if (vault != null && note != null)
               AppSection(
                 title: 'This note',
                 children: [
-                  tile(
-                    _ShellAction.split,
-                    Icons.vertical_split,
-                    'Split editor',
-                  ),
+                  tile(_ShellAction.split, Icons.vertical_split, 'Split editor'),
                   tile(_ShellAction.backlinks, Icons.link, 'Context'),
                   tile(_ShellAction.sharePdf, Icons.ios_share, 'Share as PDF'),
                 ],
@@ -4472,69 +4444,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || controller == null) return;
     await showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (context) => AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
           final state = controller.state;
           final installed = state is SemanticReady || state is SemanticIndexing;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, kSpace8, 20, kSpace24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Semantic search',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: kSpace12),
-                  Text(switch (state) {
-                    SemanticNotInstalled() => 'Not installed',
-                    SemanticDownloading(:final progress) =>
-                      'Downloading ${(progress * 100).round()}%',
-                    SemanticIndexing(:final done, :final pending) =>
-                      'Indexing: $done done, $pending pending',
-                    SemanticReady() => 'Ready',
-                    SemanticError(:final message) => 'Error: $message',
-                  }),
-                  const SizedBox(height: kSpace12),
-                  if (state case SemanticDownloading(:final progress)) ...[
-                    LinearProgressIndicator(value: progress),
-                    TextButton(
-                      onPressed: controller.cancel,
-                      child: const Text('Cancel'),
-                    ),
-                  ] else if (!installed)
-                    FilledButton(
-                      onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Download semantic model?'),
-                            content: const Text(
-                              'It downloads once from Hugging Face and works offline afterwards.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancel'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('Download'),
-                              ),
-                            ],
+          return AppSheet(
+            title: 'Semantic search',
+            children: [
+              Text(switch (state) {
+                SemanticNotInstalled() => 'Not installed',
+                SemanticDownloading(:final progress) =>
+                  'Downloading ${(progress * 100).round()}%',
+                SemanticIndexing(:final done, :final pending) =>
+                  'Indexing: $done done, $pending pending',
+                SemanticReady() => 'Ready',
+                SemanticError(:final message) => 'Error: $message',
+              }),
+              const SizedBox(height: kSpace12),
+              if (state case SemanticDownloading(:final progress)) ...[
+                LinearProgressIndicator(value: progress),
+                TextButton(
+                  onPressed: controller.cancel,
+                  child: const Text('Cancel'),
+                ),
+              ] else if (!installed)
+                FilledButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Download semantic model?'),
+                        content: const Text(
+                          'It downloads once from Hugging Face and works offline afterwards.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
                           ),
-                        );
-                        if (ok == true) unawaited(controller.download());
-                      },
-                      child: const Text('Download model (252 MB)'),
-                    ),
-                ],
-              ),
-            ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Download'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) unawaited(controller.download());
+                  },
+                  child: const Text('Download model (252 MB)'),
+                ),
+            ],
           );
         },
       ),
@@ -5235,25 +5196,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final saveFailed = status.startsWith('Save failed');
         final failed = openFailed || saveFailed;
         final banner = failed
-            ? MaterialBanner(
-                key: const ValueKey('status-error'),
-                backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                content: Text(
-                  saveFailed
-                      ? 'Could not save your note. Your edits are still here.'
-                      : status,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
+            ? appBanner(
+              key: const ValueKey('status-error'),
+              backgroundColor: Theme.of(context).colorScheme.errorContainer,
+              content: Text(
+                saveFailed
+                    ? 'Could not save your note. Your edits are still here.'
+                    : status,
+                style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => saveFailed ? unawaited(_save()) : unawaited(_open()),
+                  child: Text(saveFailed ? 'Retry Save' : 'Retry'),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () =>
-                        saveFailed ? unawaited(_save()) : unawaited(_open()),
-                    child: Text(saveFailed ? 'Retry Save' : 'Retry'),
-                  ),
-                ],
-              )
+              ],
+            )
             : (v != null && (index == null || rebuildProgress != null))
             ? statusPill(
                 key: const ValueKey('status-progress'),

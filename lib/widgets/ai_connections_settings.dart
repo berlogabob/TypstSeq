@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../ai/ai_settings.dart';
 import '../ai/connection_probe.dart' as connection_probe;
+import 'ds/app_sheet.dart';
+import 'dialogs.dart';
 
 typedef ServerProbe =
     Future<connection_probe.ProbeResult> Function(
@@ -63,7 +65,7 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
     String? latestUrl;
     final saved = await showModalBottomSheet<AiConnection>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
       isScrollControlled: true,
       builder: (_) => _ConnectionEditor(
         connection: connection,
@@ -213,24 +215,12 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete server?'),
-        content: const Text(
-          'Tasks using this server will return to their defaults.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete server?',
+      message: 'Tasks using this server will return to their defaults.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (!mounted || confirmed != true) return;
     widget.onDelete!();
@@ -243,134 +233,137 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
       for (final model in _result?.models ?? <connection_probe.ProbeModel>[])
         model.id: model,
     }.values.toList();
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        0,
-        16,
-        16 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Form(
-        key: _form,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextFormField(
-              controller: _name,
-              enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'Name'),
-              validator: (value) =>
-                  value == null || value.trim().isEmpty ? 'Enter a name' : null,
-            ),
-            TextFormField(
-              controller: _url,
-              enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'Server URL'),
-              validator: (value) => validateConnectionUrl(value ?? ''),
-              onChanged: (_) => setState(() {
-                _result = null;
-                _model = null;
-                _test = null;
-              }),
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: _kind,
-              decoration: const InputDecoration(labelText: 'Kind'),
-              items: [
-                for (final kind in _kinds.entries)
-                  DropdownMenuItem(value: kind.key, child: Text(kind.value)),
-              ],
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _kind = value!),
-            ),
-            TextFormField(
-              controller: _key,
-              enabled: !_busy,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'API key (used for Test only, not saved)',
+    return AppSheet.body(
+      title: widget.connection == null ? 'Add server' : 'Edit server',
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _name,
+                enabled: !_busy,
+                decoration: const InputDecoration(labelText: 'Name'),
+                validator: (value) =>
+                    value == null || value.trim().isEmpty ? 'Enter a name' : null,
               ),
-            ),
-            TextButton(
-              onPressed: _busy ? null : _probe,
-              child: const Text('Test connection'),
-            ),
-            if (_busy) const LinearProgressIndicator(),
-            if (_result case final result?) ...[
-              Text(
-                result.ok
-                    ? 'Reachable · ${result.latencyMs} ms'
-                    : result.error ?? 'Cannot connect',
+              TextFormField(
+                controller: _url,
+                enabled: !_busy,
+                decoration: const InputDecoration(labelText: 'Server URL'),
+                validator: (value) => validateConnectionUrl(value ?? ''),
+                onChanged: (_) => setState(() {
+                  _result = null;
+                  _model = null;
+                  _test = null;
+                }),
               ),
-              for (final model in models)
-                Text(
-                  '${model.id}${model.loaded == null
-                      ? ''
-                      : model.loaded!
-                      ? ' · loaded'
-                      : ' · not loaded'}${model.contextLength == null ? '' : ' · context ${model.contextLength}'}',
-                ),
-            ],
-            if (models.isNotEmpty) ...[
               DropdownButtonFormField<String>(
-                key: ValueKey(models.map((m) => m.id).join('|')),
-                initialValue: _model ?? models.first.id,
-                decoration: const InputDecoration(labelText: 'Test model'),
-                isExpanded: true,
+                initialValue: _kind,
+                decoration: const InputDecoration(labelText: 'Kind'),
                 items: [
-                  for (final model in models)
-                    DropdownMenuItem(value: model.id, child: Text(model.id)),
+                  for (final kind in _kinds.entries)
+                    DropdownMenuItem(value: kind.key, child: Text(kind.value)),
                 ],
                 onChanged: _busy
                     ? null
-                    : (value) => setState(() => _model = value),
+                    : (value) => setState(() => _kind = value!),
+              ),
+              TextFormField(
+                controller: _key,
+                enabled: !_busy,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'API key (used for Test only, not saved)',
+                ),
               ),
               TextButton(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        _model ??= models.first.id;
-                        _testModel();
-                      },
-                child: const Text('Test model'),
+                onPressed: _busy ? null : _probe,
+                child: const Text('Test connection'),
               ),
-            ],
-            if (_test case final result?)
-              Text(
-                result.ok
-                    ? '${result.reply} · ${result.latencyMs} ms'
-                    : result.error ?? 'Cannot connect',
-              ),
-            Wrap(
-              spacing: 8,
-              children: [
-                if (widget.onDelete != null)
-                  TextButton(
-                    onPressed: _busy ? null : _delete,
-                    child: const Text('Delete'),
+              if (_busy) const LinearProgressIndicator(),
+              if (_result case final result?) ...[
+                Text(
+                  result.ok
+                      ? 'Reachable · ${result.latencyMs} ms'
+                      : result.error ?? 'Cannot connect',
+                ),
+                for (final model in models)
+                  Text(
+                    '${model.id}${model.loaded == null
+                        ? ''
+                        : model.loaded!
+                        ? ' · loaded'
+                        : ' · not loaded'}${model.contextLength == null ? '' : ' · context ${model.contextLength}'}',
                   ),
-                FilledButton(
+              ],
+              if (models.isNotEmpty) ...[
+                DropdownButtonFormField<String>(
+                  key: ValueKey(models.map((m) => m.id).join('|')),
+                  initialValue: _model ?? models.first.id,
+                  decoration: const InputDecoration(labelText: 'Test model'),
+                  isExpanded: true,
+                  items: [
+                    for (final model in models)
+                      DropdownMenuItem(value: model.id, child: Text(model.id)),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _model = value),
+                ),
+                TextButton(
                   onPressed: _busy
                       ? null
                       : () {
-                          if (!_form.currentState!.validate()) return;
-                          Navigator.pop(
-                            context,
-                            AiConnection(
-                              id: widget.connection?.id ?? '',
-                              label: _name.text.trim(),
-                              url: normalizeConnectionUrl(_url.text),
-                              kind: _kind,
-                            ),
-                          );
+                          _model ??= models.first.id;
+                          _testModel();
                         },
-                  child: const Text('Save'),
+                  child: const Text('Test model'),
                 ),
               ],
-            ),
-          ],
+              if (_test case final result?)
+                Text(
+                  result.ok
+                      ? '${result.reply} · ${result.latencyMs} ms'
+                      : result.error ?? 'Cannot connect',
+                ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (widget.onDelete != null)
+                    TextButton(
+                      onPressed: _busy ? null : _delete,
+                      child: const Text('Delete'),
+                    ),
+                  FilledButton(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            if (!_form.currentState!.validate()) return;
+                            Navigator.pop(
+                              context,
+                              AiConnection(
+                                id: widget.connection?.id ?? '',
+                                label: _name.text.trim(),
+                                url: normalizeConnectionUrl(_url.text),
+                                kind: _kind,
+                              ),
+                            );
+                          },
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -15,6 +15,7 @@ import 'date_format.dart';
 import 'property_select_chip.dart';
 import 'task_row.dart';
 import 'task_agenda.dart';
+import 'ds/app_sheet.dart';
 export 'task_agenda.dart' show isTaskInTodayAgenda, isTaskOverdue;
 
 class WorkSurface extends StatelessWidget {
@@ -186,15 +187,18 @@ class TodayPage extends StatelessWidget {
                 trailing: const Icon(Icons.expand_more),
                 onTap: () => showModalBottomSheet<void>(
                   context: context,
-                  showDragHandle: true,
+                  showDragHandle: false,
                   isScrollControlled: true,
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.sizeOf(context).height * 0.8,
                   ),
-                  builder: (context) => SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: agendaContent(),
+                  builder: (context) => AppSheet.body(
+                    title: agendaTitle,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: agendaContent(),
+                      ),
                     ),
                   ),
                 ),
@@ -1233,67 +1237,53 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   void _screenshotActions(NoteRef note) => unawaited(
     showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(kSpace16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _screenshotTitle(note),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Wrap(
-                  spacing: kSpace12,
-                  children: [
-                    PropertySelectChip(
-                      value: _bucket(note),
-                      options: statuses,
-                      labels: labels,
-                      tooltip: 'Change status',
-                      onChanged: (next) {
-                        Navigator.pop(context);
-                        unawaited(widget.onSetReadStatus(note, next));
-                      },
-                    ),
-                    PropertySelectChip(
-                      value: note.properties['relevance'] as String?,
-                      options: relevanceOptions,
-                      labels: relevanceLabels,
-                      tooltip: 'Set relevance',
-                      placeholder: '★',
-                      onChanged: (next) {
-                        Navigator.pop(context);
-                        unawaited(widget.onSetRelevance(note, next));
-                      },
-                    ),
-                  ],
-                ),
-                ListTile(
-                  leading: const Icon(Icons.open_in_new),
-                  title: const Text('Open screenshot'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    widget.onReadPath(note.path);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline),
-                  title: const Text('Delete screenshot…'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    unawaited(widget.onDeleteArticle(note));
-                  },
-                ),
-              ],
-            ),
+      showDragHandle: false,
+      builder: (context) => AppSheet(
+        title: _screenshotTitle(note),
+        children: [
+          Wrap(
+            spacing: kSpace12,
+            children: [
+              PropertySelectChip(
+                value: _bucket(note),
+                options: statuses,
+                labels: labels,
+                tooltip: 'Change status',
+                onChanged: (next) {
+                  Navigator.pop(context);
+                  unawaited(widget.onSetReadStatus(note, next));
+                },
+              ),
+              PropertySelectChip(
+                value: note.properties['relevance'] as String?,
+                options: relevanceOptions,
+                labels: relevanceLabels,
+                tooltip: 'Set relevance',
+                placeholder: '★',
+                onChanged: (next) {
+                  Navigator.pop(context);
+                  unawaited(widget.onSetRelevance(note, next));
+                },
+              ),
+            ],
           ),
-        ),
+          ListTile(
+            leading: const Icon(Icons.open_in_new),
+            title: const Text('Open screenshot'),
+            onTap: () {
+              Navigator.pop(context);
+              widget.onReadPath(note.path);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Delete screenshot…'),
+            onTap: () {
+              Navigator.pop(context);
+              unawaited(widget.onDeleteArticle(note));
+            },
+          ),
+        ],
       ),
     ),
   );
