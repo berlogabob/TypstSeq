@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../ai/ai_settings.dart';
 import '../audio/processing_policy.dart';
+import 'ai_connections_settings.dart';
 import 'processing_policy_editor.dart';
 import 'snack.dart';
 
@@ -40,6 +41,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
   List<WorkerStatus> _workers = const [];
   Timer? _workerTimer;
   bool _aiBusy = false;
+  final _discoveredModels = <String, List<String>>{};
 
   bool get _aiEnabled => widget.readAi != null && widget.writeAi != null;
 
@@ -160,6 +162,88 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
         : 'Server $label: not reachable';
   }
 
+  Map<String, ({bool reachable, List<String> loaded})> get _workerView {
+    final now = DateTime.now();
+    return {
+      for (final worker in [
+        ..._workers.where((w) => !w.isOnline(now: now)),
+        ..._workers.where((w) => w.isOnline(now: now)),
+      ])
+        ...worker.connections,
+    };
+  }
+
+  Widget _translationOverrides(AiSettings ai) {
+    final task = ai.translate;
+    final models = <String>{
+      ...?_discoveredModels[task.connection],
+      ...?_workerView[task.connection]?.loaded,
+      if (task.model != null) task.model!,
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              'server:${task.connection}:${ai.connections.map((c) => c.id).join('|')}',
+            ),
+            initialValue: ai.connections.any((c) => c.id == task.connection)
+                ? task.connection
+                : null,
+            decoration: const InputDecoration(labelText: 'Server'),
+            isExpanded: true,
+            items: [
+              const DropdownMenuItem(
+                value: null,
+                child: Text('Default (worker config)'),
+              ),
+              for (final connection in ai.connections)
+                DropdownMenuItem(
+                  value: connection.id,
+                  child: Text(
+                    connection.label.isEmpty ? connection.id : connection.label,
+                  ),
+                ),
+            ],
+            onChanged: _aiBusy
+                ? null
+                : (value) => unawaited(
+                    _saveAi(
+                      ai.copyWith(translate: task.copyWith(connection: value)),
+                    ),
+                  ),
+          ),
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              'model:${task.connection}:${task.model}:${task.quality}:${models.join('|')}',
+            ),
+            initialValue: task.model,
+            decoration: const InputDecoration(labelText: 'Model'),
+            isExpanded: true,
+            items: [
+              DropdownMenuItem(
+                value: null,
+                child: Text(
+                  'Auto (${translateModelFor(task.copyWith(model: null))})',
+                ),
+              ),
+              for (final model in models)
+                DropdownMenuItem(value: model, child: Text(model)),
+            ],
+            onChanged: _aiBusy
+                ? null
+                : (value) => unawaited(
+                    _saveAi(
+                      ai.copyWith(translate: task.copyWith(model: value)),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _qualityRow({
     required String title,
     required AiTask task,
@@ -241,6 +325,14 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
         if (_aiEnabled) ...[
           _workerStatus(),
           if (_ai case final ai?) ...[
+            AiConnectionsSection(
+              settings: ai,
+              workerView: _workerView,
+              onChanged: (next) => unawaited(_saveAi(next)),
+              onModelsChanged: (id, models) => setState(
+                () => _discoveredModels[id] = models.map((m) => m.id).toList(),
+              ),
+            ),
             _qualityRow(
               title: 'Transcription quality',
               task: ai.transcribe,
@@ -266,6 +358,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
                 ),
               ),
             ),
+            _translationOverrides(ai),
           ],
         ],
         CheckboxListTile(

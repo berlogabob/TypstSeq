@@ -164,9 +164,20 @@ The CLI has no model override unless `--model` is supplied.
 Translation uses the URL of the connection whose `id` matches
 `tasks.translate.connection`; an unknown selected connection fails the job.
 For a selected connection, its URL takes precedence over `TYLOG_LLM_URL`.
-The key comes from `TYLOG_LLM_KEY`, then the matching
-`providers.<connection id>.apiKey` in `~/.pi/agent/models.json`. Keys in
-`ai.json` are not used. Without a selected connection, the existing
+For a selected connection with id `X`, the first non-empty key wins:
+
+1. Environment variable `TYLOG_LLM_KEY`.
+2. Environment variable `TYLOG_KEY_<X>`, with the id uppercased and each
+   non-alphanumeric character replaced by `_` (e.g. `my-server` becomes
+   `TYLOG_KEY_MY_SERVER`).
+3. The matching id in local `~/.tylog/keys.json`, a JSON object such as
+   `{"my-server": "your-api-key"}`. Missing or corrupt files are ignored.
+4. `providers.<connection id>.apiKey` in `~/.pi/agent/models.json`.
+
+Translation and heartbeat probes use the same key lookup. Keys are never
+logged or written to jobs, heartbeat, or worker state. Tests can override the
+worker's module-level `KEYS_PATH`. Keys in `ai.json` are not used.
+Without a selected connection, the existing
 `TYLOG_LLM_URL` / `providers.studio.baseUrl` fallback applies.
 
 Translation model precedence is `TYLOG_LLM_MODEL`, then

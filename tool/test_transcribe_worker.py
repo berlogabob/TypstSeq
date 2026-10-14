@@ -13,6 +13,10 @@ import transcribe_worker as worker
 @pytest.fixture(autouse=True)
 def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(worker.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(worker, "KEYS_PATH", tmp_path / ".tylog/keys.json")
+    for name in worker.os.environ:
+        if name.startswith("TYLOG_KEY_"):
+            monkeypatch.delenv(name, raising=False)
     for name in ("TYLOG_LLM_URL", "TYLOG_LLM_KEY", "TYLOG_LLM_MODEL", "TYLOG_LLM_PREFER"):
         monkeypatch.delenv(name, raising=False)
 
@@ -908,6 +912,88 @@ def test_connection_credentials_match_only_selected_provider(tmp_path, monkeypat
     assert worker.connection_credentials({"id": "other", "url": "url"}) == ("url", "env-key")
     with pytest.raises(ValueError, match="Unknown translation connection"):
         worker.translate([], "en", "ru", settings={"tasks": {"translate": {"connection": "missing"}}})
+
+
+@pytest.mark.parametrize("global_key, connection_key, file_key, expected", [
+    ("global-secret", "connection-secret", "file-secret", "global-secret"),
+    ("", "connection-secret", "file-secret", "connection-secret"),
+    ("", "", "file-secret", "file-secret"),
+    ("", "", "", "provider-secret"),
+])
+def test_connection_key_precedence(tmp_path, monkeypatch, global_key, connection_key,
+                                   file_key, expected):
+    monkeypatch.setenv("TYLOG_LLM_KEY", global_key)
+    monkeypatch.setenv("TYLOG_KEY_MY_SERVER", connection_key)
+    worker.KEYS_PATH.parent.mkdir(parents=True)
+    worker.KEYS_PATH.write_text(json.dumps({"my-server": file_key, "other": "other-secret"}))
+    providers = tmp_path / ".pi/agent/models.json"
+    providers.parent.mkdir(parents=True)
+    providers.write_text(json.dumps({"providers": {"my-server": {"apiKey": "provider-secret"}}}))
+    connection = {"id": "my-server", "url": "https://server/v1"}
+    assert worker.connection_credentials(connection) == (connection["url"], expected)
+    assert worker.connection_credentials({"id": "unknown", "url": "url"}) == (
+        "url", global_key or None)
+
+
+@pytest.mark.parametrize("contents", [None, "broken JSON", "[]", "null",
+                                      '{"my-server": 42}', '{"my-server": ""}'])
+def test_missing_or_corrupt_keys_file(tmp_path, contents):
+    if contents is not None:
+        worker.KEYS_PATH.parent.mkdir(parents=True)
+        worker.KEYS_PATH.write_text(contents)
+    providers = tmp_path / ".pi/agent/models.json"
+    providers.parent.mkdir(parents=True)
+    providers.write_text(json.dumps({"providers": {"my-server": {"apiKey": "fallback"}}}))
+    assert worker.connection_credentials({"id": "my-server", "url": "url"}) == ("url", "fallback")
+
+
+@pytest.mark.parametrize("source", ["global", "connection", "file", "provider"])
+@pytest.mark.parametrize("failed", [False, True])
+def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypatch, capsys,
+                                                            source, failed):
+    secret = "private-api-key-123"
+    if source == "global":
+        monkeypatch.setenv("TYLOG_LLM_KEY", secret)
+    elif source == "connection":
+        monkeypatch.setenv("TYLOG_KEY_MY_SERVER", secret)
+    elif source == "file":
+        worker.KEYS_PATH.parent.mkdir(parents=True)
+        worker.KEYS_PATH.write_text(json.dumps({"my-server": secret}))
+    else:
+        providers = tmp_path / ".pi/agent/models.json"
+        providers.parent.mkdir(parents=True)
+        providers.write_text(json.dumps({"providers": {"my-server": {"apiKey": secret}}}))
+    write_ai(tmp_path, connections=[{"id": "my-server", "url": "https://server/v1"}],
+             tasks={"translate": {"connection": "my-server", "model": "translator"}})
+    path = write_job(tmp_path, "translations", "audio\nru", status="queued",
+                     note="note.typ", source_lang="en", target="ru")
+    (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
+    calls = []
+
+    def http(request, timeout):
+        assert request.get_header("Authorization") == "Bearer " + secret
+        calls.append(request.full_url)
+        if failed and request.full_url.endswith("/chat/completions"):
+            raise OSError("Backend rejected key " + secret)
+        result = ({"data": [{"id": "translator"}]} if request.full_url.endswith("/models") else
+                  {"choices": [{"message": {"content": '["translated"]'}}]})
+        return BytesIO(json.dumps(result).encode())
+
+    monkeypatch.setattr(worker, "urlopen", http)
+    state_path = tmp_path / "state.json"
+    worker.run_once(tmp_path, state_path=state_path, hostname=lambda: "test-host", now=NOW)
+    job = json.loads(path.read_text())
+    assert job["status"] == ("failed" if failed else "done")
+    if failed:
+        assert job["error"] == "Backend rejected key [redacted]"
+    heartbeat = tmp_path / "_system/workers/test-host.json"
+    assert json.loads(heartbeat.read_text())["connections"]["my-server"]["reachable"] is True
+    assert calls == ["https://server/v1/chat/completions", "https://server/v1/models"]
+    written = [state_path, *(tmp_path / "_system/jobs").rglob("*.json"),
+               *(tmp_path / "_system/workers").glob("*.json")]
+    assert all(secret not in file.read_text() for file in written)
+    captured = capsys.readouterr()
+    assert secret not in captured.out + captured.err
 
 
 def test_heartbeat_content_and_probe_throttling(tmp_path):

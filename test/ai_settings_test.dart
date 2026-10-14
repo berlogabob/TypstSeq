@@ -20,6 +20,41 @@ void main() {
     }
   });
 
+  test('upsert preserves order and remove clears referencing tasks', () {
+    const a = AiConnection(id: 'a', label: 'A', url: 'http://a/v1');
+    const b = AiConnection(id: 'b', url: 'http://b/v1');
+    final settings = const AiSettings(
+      connections: [a],
+      transcribe: AiTask(connection: 'a', model: 'small', quality: 'fast'),
+      translate: AiTask(connection: 'b', model: 'llm'),
+    ).upsertConnection(b).upsertConnection(a.copyWith(label: 'Updated'));
+    expect(settings.connections.map((c) => c.id), ['a', 'b']);
+    expect(settings.connections.first.label, 'Updated');
+    final removed = settings.removeConnection('a');
+    expect(removed.connections.single.id, 'b');
+    expect(removed.transcribe.toJson(), {'quality': 'fast'});
+    expect(removed.translate.toJson(), settings.translate.toJson());
+    expect(settings.removeConnection('b').translate.toJson(), {
+      'quality': 'best',
+    });
+  });
+
+  test('URLs require http and a host, normalization keeps explicit paths', () {
+    for (final url in ['', 'localhost:8080', 'ftp://host', 'http:///']) {
+      expect(validateConnectionUrl(url), isNotNull);
+    }
+    for (final url in [
+      'http://host',
+      'https://host/v1/',
+      'http://localhost:8080/api',
+    ]) {
+      expect(validateConnectionUrl(url), isNull);
+    }
+    expect(normalizeConnectionUrl(' http://host '), 'http://host/v1');
+    expect(normalizeConnectionUrl('http://host/'), 'http://host/v1');
+    expect(normalizeConnectionUrl('https://host/api/'), 'https://host/api');
+  });
+
   late Directory dir;
   late LocalVaultStorage storage;
 

@@ -12,6 +12,9 @@ import time
 from urllib.request import Request, urlopen
 
 
+KEYS_PATH = Path.home() / ".tylog/keys.json"
+
+
 def escape_markup(s):
     return "".join("\\" + char if char in "\\#[]$*_@" else char for char in s)
 
@@ -245,7 +248,14 @@ def connection_credentials(connection=None):
     provider = provider if isinstance(provider, dict) else {}
     base = connection["url"] if connection else (
         os.environ.get("TYLOG_LLM_URL") or provider.get("baseUrl"))
-    return base, os.environ.get("TYLOG_LLM_KEY") or provider.get("apiKey")
+    key = os.environ.get("TYLOG_LLM_KEY")
+    if connection and not key:
+        env_name = "TYLOG_KEY_" + re.sub(r"[^A-Z0-9]", "_", provider_id.upper())
+        key = os.environ.get(env_name)
+        if not key:
+            local_key = _read_json(KEYS_PATH).get(provider_id)
+            key = local_key if isinstance(local_key, str) else None
+    return base, key or provider.get("apiKey")
 
 
 def probe_connection(base, key):
@@ -387,7 +397,15 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
     model = resolve_whisper_model(settings, model)
     if translate is None:
         def translate(texts, source_lang, target, source_langs):
-            result = globals()["translate"](texts, source_lang, target, source_langs, settings=settings)
+            identifier = settings.get("tasks", {}).get("translate", {}).get("connection")
+            connection = next((entry for entry in settings.get("connections", [])
+                               if entry["id"] == identifier), None)
+            _, key = connection_credentials(connection)
+            try:
+                result = globals()["translate"](texts, source_lang, target, source_langs, settings=settings)
+            except Exception as error:
+                message = str(error).replace(key, "[redacted]") if key else str(error)
+                raise ValueError(message) from None
             translate.last_model = globals()["translate"].last_model
             return result
     state_path = Path(state_path).expanduser() if state_path is not None else Path.home() / ".tylog-transcribe-state.json"

@@ -47,6 +47,25 @@ class AiConnection {
   }
 }
 
+String? validateConnectionUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null ||
+      !['http', 'https'].contains(uri.scheme) ||
+      uri.host.isEmpty) {
+    return 'Enter an http or https URL with a server host';
+  }
+  return null;
+}
+
+String normalizeConnectionUrl(String value) {
+  final trimmed = value.trim();
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return trimmed;
+  return (uri.path.isEmpty || uri.path == '/')
+      ? uri.replace(path: '/v1').toString()
+      : trimmed.replaceFirst(RegExp(r'/+$'), '');
+}
+
 const _unset = Object();
 
 class AiTask {
@@ -120,6 +139,22 @@ class AiSettings {
     connections: connections ?? this.connections,
     transcribe: transcribe ?? this.transcribe,
     translate: translate ?? this.translate,
+  );
+
+  AiSettings upsertConnection(AiConnection connection) => copyWith(
+    connections: connections.any((c) => c.id == connection.id)
+        ? [for (final c in connections) c.id == connection.id ? connection : c]
+        : [...connections, connection],
+  );
+
+  AiSettings removeConnection(String id) => copyWith(
+    connections: connections.where((c) => c.id != id).toList(),
+    transcribe: transcribe.connection == id
+        ? transcribe.copyWith(connection: null, model: null)
+        : transcribe,
+    translate: translate.connection == id
+        ? translate.copyWith(connection: null, model: null)
+        : translate,
   );
 
   Map<String, Object?> toJson() => {
