@@ -67,3 +67,16 @@ vault can run the worker. Read the audio from that same vault.
 On any error, set `status: failed` with descriptive `error` text. Every claimed
 job must finish as `done` or `failed`; never leave it in `processing` without
 finishing. The app can re-queue a failed job on a later request.
+
+## Running the worker (macOS)
+
+`faster-whisper` 1.2.x breaks with `av` 19 (`open() got an unexpected keyword
+argument 'metadata_errors'`); pin `av==17.0.1`:
+
+```
+uv run --with faster-whisper --with av==17.0.1 python tool/transcribe_worker.py \
+  --vault ~/Nextcloud/TyLogVault --once --model small
+```
+
+A launchd agent (`~/Library/LaunchAgents/org.tylog.transcribe.plist`, every
+60 s) runs this; its log is `/tmp/tylog-transcribe.log`.
