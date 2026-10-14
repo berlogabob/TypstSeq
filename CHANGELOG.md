@@ -3,6 +3,28 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.18.0+150
+
+### Changed
+
+- One design system: shared tile, section and sheet components; one icon per
+  meaning; component themes and tokens.
+- More drawer fits one screen (Switch, Create, This note, Views). Maintenance
+  tools moved to Settings > Tools; Settings has five sections (General, AI and
+  processing, Storage and sync, Tools, About).
+- Library tabs share one toolbar (search on every tab, one filter-chip row,
+  counts on Notes kinds) and one empty-state layout; article rows keep the
+  title at full width.
+- Sheets share one frame; two-action dialogs say Cancel; deletes use one red
+  confirmation; notices go through one snackbar helper.
+- The insert sheet is "Add to note", its button is first in the editor dock;
+  Split is in the view-mode menu; search results show readable kinds.
+
+### Added
+
+- Light / Best presets for transcription and translation quality.
+- Articles and Screenshots can use a server and model chosen in Settings.
+
 ## 0.17.3+149
 
 ### Added
