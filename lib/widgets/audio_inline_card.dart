@@ -206,75 +206,115 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
     final progress = _duration.inMilliseconds == 0
         ? 0.0
         : (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
+    final textTheme = Theme.of(context).textTheme;
+    // File name without its extension: the extension is in Properties.
+    final name = widget.label.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    // 8 dp grid: 12 outer padding, 8 between rows, 12 between play and wave.
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       color: scheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-        child: Row(
-          children: [
-            IconButton.filled(
-              tooltip: _playing ? 'Pause' : 'Play',
-              onPressed: _toggle,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(_playing ? Icons.pause : Icons.play_arrow),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _error ?? _alias ?? widget.label,
-                    style: Theme.of(context).textTheme.labelLarge,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  WaveformSeekBar(
-                    peaks: _peaks,
-                    progress: progress,
-                    markers: const [],
-                    height: 44,
-                    onSeek: (f) => unawaited(_seek(f)),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _duration == Duration.zero
-                              ? ''
-                              : '${formatClock(_position)} / ${formatClock(_duration)}',
-                          style: Theme.of(context).textTheme.labelSmall,
+      clipBehavior: Clip.antiAlias,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () => unawaited(_expand(AudioTab.comments)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: () => unawaited(_expand(AudioTab.comments)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _error ?? name,
+                        style: textTheme.labelMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_alias != null)
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            _alias!,
+                            style: textTheme.titleSmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                      _statusIcon(
-                        Icons.subtitles_outlined,
-                        'Transcript',
-                        _transcribed,
-                        AudioTab.transcribe,
-                      ),
-                      _statusIcon(
-                        Icons.translate,
-                        'Translation',
-                        _translated,
-                        AudioTab.translate,
-                      ),
-                    ],
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconButton.filled(
+                    tooltip: _playing ? 'Pause' : 'Play',
+                    onPressed: _toggle,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(_playing ? Icons.pause : Icons.play_arrow),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        WaveformSeekBar(
+                          peaks: _peaks,
+                          progress: progress,
+                          markers: const [],
+                          height: 40,
+                          onSeek: (f) => unawaited(_seek(f)),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _duration == Duration.zero
+                                    ? ''
+                                    : '${formatClock(_position)} / ${formatClock(_duration)}',
+                                style: textTheme.labelSmall,
+                              ),
+                            ),
+                            _statusIcon(
+                              Icons.subtitles_outlined,
+                              'Transcript',
+                              _transcribed,
+                              AudioTab.transcribe,
+                            ),
+                            _statusIcon(
+                              Icons.translate,
+                              'Translation',
+                              _translated,
+                              AudioTab.translate,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-            IconButton(
-              tooltip: 'Comments and transcript',
-              onPressed: () => unawaited(_expand(AudioTab.comments)),
-              icon: const Icon(Icons.open_in_full),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
