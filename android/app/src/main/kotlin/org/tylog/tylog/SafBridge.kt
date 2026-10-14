@@ -121,6 +121,10 @@ class SafBridge(
     private val readExecutor = Executors.newFixedThreadPool(4)
     private val writeExecutor = Executors.newSingleThreadExecutor()
     private val syncExecutor = Executors.newSingleThreadExecutor()
+
+    // User-initiated reads (audio playback) must not queue behind an index
+    // pass's thousands of reads or a sync writer on the fair storageLock.
+    private val priorityExecutor = Executors.newFixedThreadPool(2)
     private val heldSyncLocks = mutableMapOf<String, Semaphore>()
 
     // ...but a mutation must still never be *observed* half-done, which is
@@ -284,6 +288,23 @@ class SafBridge(
             return
         }
 
+        if (call.method == "readNow") {
+            // No storageLock: only for write-once files (recordings, lesson
+            // audio), which no writer ever replaces under a reader.
+            priorityExecutor.execute {
+                try {
+                    val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
+                    val bytes = withResolved(tree, path(call), ::read)
+                    postMain { result.success(bytes) }
+                } catch (error: Throwable) {
+                    postMain {
+                        result.error("saf_error", error.message ?: error.javaClass.simpleName, null)
+                    }
+                }
+            }
+            return
+        }
+
         if (call.method !in setOf(
                 "exists", "createDirectory", "list", "stat", "read", "write",
                 "delete", "deleteRoot", "releaseAccess", "hash", "import",
@@ -437,6 +458,7 @@ class SafBridge(
             heldSyncLocks.clear()
         }
         syncExecutor.shutdownNow()
+        priorityExecutor.shutdownNow()
         pendingPick = null
         channel.setMethodCallHandler(null)
         mainHandler.removeCallbacksAndMessages(null)

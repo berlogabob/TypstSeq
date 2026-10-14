@@ -164,6 +164,14 @@ class AndroidTreeVaultStorage extends VaultStorage {
       Uint8List(0);
 
   @override
+  Future<Uint8List> readBytesNow(String path) async =>
+      await invoke<Uint8List?>(
+        channel.invokeMethod<Uint8List>('readNow', args({'path': path})),
+        'readNow',
+      ) ??
+      Uint8List(0);
+
+  @override
   Future<void> writeBytes(String path, List<int> bytes) async {
     final marker = await markIndexDirty(path);
     await invoke(

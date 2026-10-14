@@ -38,6 +38,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _playing = false;
+  bool _busy = false;
   String? _error;
   final _subs = <StreamSubscription<Object?>>[];
 
@@ -78,7 +79,9 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   }();
 
   Future<void> _toggle() async {
+    setState(() => _busy = true);
     await _ensure();
+    if (mounted) setState(() => _busy = false);
     final player = _player;
     if (player == null) return;
     if (_playing) {
@@ -123,7 +126,13 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
             IconButton.filled(
               tooltip: _playing ? 'Pause' : 'Play',
               onPressed: _toggle,
-              icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(_playing ? Icons.pause : Icons.play_arrow),
             ),
             const SizedBox(width: 8),
             Expanded(

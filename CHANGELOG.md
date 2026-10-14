@@ -3,6 +3,14 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.14.2+141
+
+### Fixed
+
+- Audio would not start while the startup sync and index ran: its file read
+  queued behind thousands of index reads and the sync writer. Playback reads
+  now use their own queue. The play button shows a spinner while loading.
+
 ## 0.14.1+140
 
 ### Added

@@ -67,7 +67,7 @@ extension _AudioFlow on _HomeScreenState {
       key: ValueKey(assetPath),
       label: label,
       peaks: decodePeaks(audioNote?.properties['peaks']),
-      readBytes: () => v.storage.readBytes(assetPath),
+      readBytes: () => v.storage.readBytesNow(assetPath),
       extension: assetPath.split('.').last,
       onExpand: () => unawaited(_openAudioAsset(assetPath)),
     );
@@ -160,7 +160,7 @@ extension _AudioFlow on _HomeScreenState {
         builder: (_) => AudioNoteScreen(
           note: note,
           readSource: v.storage.readText,
-          readBytes: v.storage.readBytes,
+          readBytes: v.storage.readBytesNow,
           mutate: workspace.mutateNote,
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
           requestTranscript: (audio, note) =>

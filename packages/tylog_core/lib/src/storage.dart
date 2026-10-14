@@ -70,6 +70,10 @@ abstract class VaultStorage {
   Future<VaultStorageEntry?> stat(String path);
   Future<Uint8List> readBytes(String path);
 
+  /// A user-waiting read of a write-once file (audio playback). Providers
+  /// with a shared read queue override this to skip it; others just read.
+  Future<Uint8List> readBytesNow(String path) => readBytes(path);
+
   /// Null when this provider only supports whole-file reads.
   Stream<List<int>>? openRead(String path, [int? start, int? end]) => null;
   Future<void> writeBytes(String path, List<int> bytes);
