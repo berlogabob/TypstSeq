@@ -2815,7 +2815,7 @@ void main() {
     });
   }
 
-  for (final choice in ['Save as article', 'Add to today']) {
+  for (final choice in ['Save as article', 'Add link to today']) {
     testWidgets('Android share sheet: $choice', (tester) async {
       const channel = MethodChannel('org.tylog.tylog/share');
       var pending = true;
@@ -2854,7 +2854,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Save as article'), findsOneWidget);
-      expect(find.text('Add to today'), findsOneWidget);
+      expect(find.text('Add link to today'), findsOneWidget);
       await tester.tap(find.text(choice));
       await tester.pumpAndSettle();
       if (choice == 'Save as article') {

@@ -3,7 +3,7 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
-## 0.17.2+148
+## 0.17.3+149
 
 ### Added
 
@@ -13,10 +13,12 @@ their history is in the commit log and the GitHub release notes.
   "Add to today".
 - Settings > Audio > AI: servers (add, edit, test), model pickers for
   translation, and the connection status of your worker.
+- Light / Best presets for transcription and translation quality (Settings > Audio).
 - The article worker reads its server and models from the synced AI settings.
 
 ### Fixed
 
+- Saving AI settings no longer erases other tools' tasks in `ai.json`.
 - Settings reads no longer wait behind indexing (audio settings load in ~1 s).
 
 ## 0.17.1+147
