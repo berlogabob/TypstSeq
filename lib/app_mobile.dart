@@ -4848,13 +4848,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'normal' => TyLogRichEditor(
         popupBottomY: () {
+          // Only pills docked at the bottom limit the popup. While the
+          // keyboard is up the pills sit at the top (see `typing`), and
+          // counting them squeezed the suggestions into a strip there.
           final bounds = [_statusPillBounds, _taskClockBounds]
-              .map((key) => key.currentContext?.findRenderObject())
-              .whereType<RenderBox>();
+              .where((key) => key.currentContext != null)
+              .where(
+                (key) =>
+                    (key.currentContext!.findRenderObject()! as RenderBox)
+                        .localToGlobal(Offset.zero)
+                        .dy >
+                    MediaQuery.sizeOf(key.currentContext!).height / 2,
+              )
+              .map(
+                (key) => (key.currentContext!.findRenderObject()! as RenderBox)
+                    .localToGlobal(Offset.zero)
+                    .dy,
+              );
           if (bounds.isEmpty) return null;
-          return bounds
-              .map((box) => box.localToGlobal(Offset.zero).dy)
-              .reduce((a, b) => a < b ? a : b);
+          return bounds.reduce((a, b) => a < b ? a : b);
         },
         focusNode: _captureFocus,
         controller: richController,

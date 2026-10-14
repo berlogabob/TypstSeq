@@ -3,6 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.17.1+147
+
+### Fixed
+
+- `@` mention and `/` command suggestions opened as a one-row strip at the very
+  top of the screen. The editor limited the popup to sit above the status pill,
+  and since 0.16.0 that pill moves to the top while the keyboard is open.
+  Only pills docked at the bottom limit the popup now.
+
 ## 0.17.0+146
 
 ### Added
