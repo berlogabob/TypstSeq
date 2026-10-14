@@ -3,6 +3,21 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.15.0+144
+
+### Added
+
+- **Translate transcripts.** After a transcription the audio screen knows the
+  detected language and offers chips: the original, finished translations,
+  and a Translate menu (ru, en, pt, uk, es, fr, de, it). A translation is a
+  `== Translation <lang>` section with the same timestamps. The worker uses
+  `large-v3` for transcription and the local Studio model for translation.
+
+### Fixed
+
+- The playhead no longer jumps: position updates come at ~30 fps instead of
+  every 200 ms (card and audio screen).
+
 ## 0.14.4+143
 
 ### Changed

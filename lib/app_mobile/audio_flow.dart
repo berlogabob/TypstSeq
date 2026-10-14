@@ -232,6 +232,17 @@ extension _AudioFlow on _HomeScreenState {
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
           requestTranscript: (audio, note) =>
               enqueueTranscript(v.storage, audioPath: audio, notePath: note),
+          transcriptLang: (audio) => transcriptJobLang(v.storage, audio),
+          translationStatus: (audio, target) =>
+              translationJobStatus(v.storage, audio, target),
+          requestTranslation: (audio, note, target, source) =>
+              enqueueTranslation(
+                v.storage,
+                audioPath: audio,
+                notePath: note,
+                target: target,
+                sourceLang: source,
+              ),
         ),
       ),
     );

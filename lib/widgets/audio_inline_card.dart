@@ -87,9 +87,15 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
       _player = player;
       _subs
         ..add(
-          player.positionStream.listen((p) {
-            if (mounted) setState(() => _position = p);
-          }),
+          player
+              .createPositionStream(
+                steps: 1000,
+                minPeriod: const Duration(milliseconds: 16),
+                maxPeriod: const Duration(milliseconds: 33),
+              )
+              .listen((p) {
+                if (mounted) setState(() => _position = p);
+              }),
         )
         ..add(
           player.durationStream.listen((d) {

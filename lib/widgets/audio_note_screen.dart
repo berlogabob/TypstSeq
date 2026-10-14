@@ -152,6 +152,9 @@ class AudioNoteScreen extends StatefulWidget {
     required this.mutate,
     required this.transcriptStatus,
     required this.requestTranscript,
+    this.transcriptLang,
+    this.translationStatus,
+    this.requestTranslation,
   });
 
   final NoteRef note;
@@ -166,6 +169,22 @@ class AudioNoteScreen extends StatefulWidget {
   /// Queues a transcription job for a worker; see docs/audio-transcription.md.
   final Future<void> Function(String audioPath, String notePath)
   requestTranscript;
+
+  /// Language the worker detected while transcribing (ISO code), if known.
+  final Future<String?> Function(String audioPath)? transcriptLang;
+
+  /// Status of the translation job into [target], or null.
+  final Future<String?> Function(String audioPath, String target)?
+  translationStatus;
+
+  /// Queues a translation of the existing transcript into [target].
+  final Future<void> Function(
+    String audioPath,
+    String notePath,
+    String target,
+    String sourceLang,
+  )?
+  requestTranslation;
 
   @override
   State<AudioNoteScreen> createState() => _AudioNoteScreenState();
@@ -182,6 +201,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   String? _audioPath;
   String? _transcriptState;
   bool _showTranscript = false;
+  String? _lang;
+  String? _view; // null = original transcript, else a translation's language
+  Map<String, List<AudioComment>> _translations = const {};
+  final Map<String, String> _translating = {}; // target -> job status
+  Timer? _poll;
   File? _temp;
   List<AudioComment> _comments = const [];
   Duration _position = Duration.zero;
@@ -196,13 +220,38 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     super.initState();
     _input.addListener(_capturePosition);
     _subs
-      ..add(_player.positionStream.listen((p) => setState(() => _position = p)))
+      ..add(
+        // The default stream ticks every 200 ms, which makes the playhead
+        // visibly jump; ask for ~30 fps.
+        _player
+            .createPositionStream(
+              steps: 1000,
+              minPeriod: const Duration(milliseconds: 16),
+              maxPeriod: const Duration(milliseconds: 33),
+            )
+            .listen((p) {
+              if (mounted) setState(() => _position = p);
+            }),
+      )
       ..add(
         _player.durationStream.listen(
           (d) => setState(() => _duration = d ?? Duration.zero),
         ),
       );
     unawaited(_load());
+    _poll = Timer.periodic(const Duration(seconds: 8), (_) => _tick());
+  }
+
+  bool get _jobsPending =>
+      _transcriptState == 'queued' ||
+      _transcriptState == 'processing' ||
+      _translating.values.any((v) => v == 'queued' || v == 'processing');
+
+  void _tick() {
+    if (mounted && _showTranscript && _jobsPending) {
+      unawaited(_reloadComments());
+      unawaited(_refreshTranscriptState());
+    }
   }
 
   /// SoundCloud-style: the comment lands where playback was when typing began.
@@ -226,8 +275,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       await _player.setFilePath(file.path);
       if (mounted) {
         setState(() {
-          _comments = parseComments(source);
-          _transcript = parseTranscript(source);
+          _applySource(source);
         });
       }
       unawaited(_refreshTranscriptState());
@@ -271,17 +319,46 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Future<void> _reloadComments() async {
     final source = await widget.readSource(widget.note.path);
     if (!mounted) return;
-    setState(() {
-      _comments = parseComments(source);
-      _transcript = parseTranscript(source);
-    });
+    setState(() => _applySource(source));
+  }
+
+  void _applySource(String source) {
+    _comments = parseComments(source);
+    _transcript = parseTranscript(source);
+    _translations = {
+      for (final l in translationLangs(source)) l: parseTranslation(source, l),
+    };
+    if (_view != null && !_translations.containsKey(_view)) _view = null;
   }
 
   Future<void> _refreshTranscriptState() async {
     final path = _audioPath;
     if (path == null) return;
     final state = await widget.transcriptStatus(path);
-    if (mounted) setState(() => _transcriptState = state);
+    final lang = await widget.transcriptLang?.call(path);
+    final jobs = <String, String>{};
+    for (final target in _translating.keys.toList()) {
+      final status = await widget.translationStatus?.call(path, target);
+      if (status != null && status != 'done') jobs[target] = status;
+    }
+    if (!mounted) return;
+    setState(() {
+      _transcriptState = state;
+      _lang = lang ?? _lang;
+      _translating
+        ..clear()
+        ..addAll(jobs);
+    });
+  }
+
+  Future<void> _requestTranslation(String target) async {
+    final path = _audioPath;
+    final lang = _lang;
+    if (path == null || lang == null) return;
+    await widget.requestTranslation?.call(path, widget.note.path, target, lang);
+    setState(() => _translating[target] = 'queued');
+    await _refreshTranscriptState();
+    if (mounted) showSnack(context, 'Translation requested');
   }
 
   Future<void> _requestTranscript() async {
@@ -322,6 +399,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -487,15 +565,101 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               ),
       );
     }
-    final active = activeIndex(_transcript, _position.inMilliseconds);
-    return ListView.builder(
-      itemCount: _transcript.length,
-      itemBuilder: (context, i) => ListTile(
-        dense: true,
-        selected: i == active,
-        leading: Text(formatTimestamp(_transcript[i].ms)),
-        title: Text(_transcript[i].text),
-        onTap: () => _seek(Duration(milliseconds: _transcript[i].ms)),
+    final shown = _view == null ? _transcript : _translations[_view]!;
+    final active = activeIndex(shown, _position.inMilliseconds);
+    return Column(
+      children: [
+        _languageBar(),
+        Expanded(
+          child: ListView.builder(
+            itemCount: shown.length,
+            itemBuilder: (context, i) => ListTile(
+              dense: true,
+              selected: i == active,
+              leading: Text(formatTimestamp(shown[i].ms)),
+              title: Text(shown[i].text),
+              onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static const _languageNames = {
+    'ru': 'Русский',
+    'en': 'English',
+    'pt': 'Português',
+    'uk': 'Українська',
+    'es': 'Español',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+  };
+
+  String _name(String code) => _languageNames[code] ?? code;
+
+  /// Step 2 of the pipeline: once the transcript names its language, offer
+  /// the original, finished translations, and a menu to request another.
+  Widget _languageBar() {
+    final can = widget.requestTranslation != null && _lang != null;
+    final offered = [
+      for (final l in _languageNames.keys)
+        if (l != _lang &&
+            !_translations.containsKey(l) &&
+            !_translating.containsKey(l))
+          l,
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: Text(_lang == null ? 'Original' : _name(_lang!)),
+              selected: _view == null,
+              onSelected: (_) => setState(() => _view = null),
+            ),
+            for (final l in _translations.keys)
+              ChoiceChip(
+                label: Text(_name(l)),
+                selected: _view == l,
+                onSelected: (_) => setState(() => _view = l),
+              ),
+            for (final e in _translating.entries)
+              Chip(
+                avatar: e.value == 'failed'
+                    ? const Icon(Icons.error_outline, size: 18)
+                    : const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                label: Text(
+                  e.value == 'failed' ? '${_name(e.key)} failed' : _name(e.key),
+                ),
+                onDeleted: e.value == 'failed'
+                    ? () => unawaited(_requestTranslation(e.key))
+                    : null,
+                deleteIcon: const Icon(Icons.refresh, size: 18),
+              ),
+            if (can && offered.isNotEmpty)
+              PopupMenuButton<String>(
+                tooltip: 'Translate',
+                onSelected: (l) => unawaited(_requestTranslation(l)),
+                itemBuilder: (_) => [
+                  for (final l in offered)
+                    PopupMenuItem(value: l, child: Text(_name(l))),
+                ],
+                child: const Chip(
+                  avatar: Icon(Icons.translate, size: 18),
+                  label: Text('Translate'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -87,6 +87,19 @@ List<AudioComment> parseComments(String source) =>
 List<AudioComment> parseTranscript(String source) =>
     _parseSection(source, 'Transcript');
 
+/// A translation of the transcript, `== Translation <lang>`.
+List<AudioComment> parseTranslation(String source, String lang) =>
+    _parseSection(source, 'Translation $lang');
+
+/// Languages that already have a `== Translation <lang>` section.
+List<String> translationLangs(String source) => [
+  for (final m in RegExp(
+    r'^== Translation (\S+)\s*$',
+    multiLine: true,
+  ).allMatches(source))
+    m[1]!,
+];
+
 /// Appends at the end of `== Comments` (section added if missing). Empty text
 /// is a no-op.
 String appendComment(String source, int ms, String text) {

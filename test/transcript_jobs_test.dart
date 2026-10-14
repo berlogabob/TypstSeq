@@ -27,7 +27,8 @@ void main() {
       expect(path, endsWith('.json'));
       expect(await storage.exists(path), isTrue);
 
-      final data = jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
+      final data =
+          jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
       expect(data['status'], 'queued');
       expect(data['audio'], audio);
       expect(data['note'], note);
@@ -47,16 +48,13 @@ void main() {
       final path = transcriptJobPath(audio);
       await storage.writeText(
         path,
-        jsonEncode({
-          'audio': audio,
-          'note': note,
-          'status': 'processing',
-        }),
+        jsonEncode({'audio': audio, 'note': note, 'status': 'processing'}),
       );
 
       await enqueueTranscript(storage, audioPath: audio, notePath: note);
 
-      final data = jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
+      final data =
+          jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
       expect(data['status'], 'processing');
       expect(await transcriptJobStatus(storage, audio), 'processing');
     },
@@ -71,16 +69,13 @@ void main() {
     final path = transcriptJobPath(audio);
     await storage.writeText(
       path,
-      jsonEncode({
-        'audio': audio,
-        'note': note,
-        'status': 'failed',
-      }),
+      jsonEncode({'audio': audio, 'note': note, 'status': 'failed'}),
     );
 
     await enqueueTranscript(storage, audioPath: audio, notePath: note);
 
-    final data = jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
+    final data =
+        jsonDecode(await storage.readText(path)) as Map<String, dynamic>;
     expect(data['status'], 'queued');
     expect(await transcriptJobStatus(storage, audio), 'queued');
   });
@@ -88,11 +83,44 @@ void main() {
   test(
     'transcriptJobStatus is null when no job exists and transcriptJobPath is stable',
     () async {
-      expect(await transcriptJobStatus(storage, '/assets/clips/missing.mp3'), isNull);
+      expect(
+        await transcriptJobStatus(storage, '/assets/clips/missing.mp3'),
+        isNull,
+      );
 
       const audio = '/assets/clips/voice.mp3';
       expect(transcriptJobPath(audio), transcriptJobPath(audio));
       expect(transcriptJobPath(audio), endsWith('.json'));
+    },
+  );
+
+  test(
+    'translation jobs queue once per target and report the language',
+    () async {
+      const audio = 'assets/a.m4a';
+      await enqueueTranslation(
+        storage,
+        audioPath: audio,
+        notePath: 'notes/a.typ',
+        target: 'ru',
+        sourceLang: 'pt',
+      );
+      expect(await translationJobStatus(storage, audio, 'ru'), 'queued');
+      expect(await translationJobStatus(storage, audio, 'en'), isNull);
+      expect(
+        translationJobPath(audio, 'ru'),
+        isNot(translationJobPath(audio, 'en')),
+      );
+      final job =
+          jsonDecode(await storage.readText(translationJobPath(audio, 'ru')))
+              as Map;
+      expect(job['source_lang'], 'pt');
+
+      await storage.writeText(
+        transcriptJobPath(audio),
+        jsonEncode({'status': 'done', 'lang': 'pt'}),
+      );
+      expect(await transcriptJobLang(storage, audio), 'pt');
     },
   );
 }
