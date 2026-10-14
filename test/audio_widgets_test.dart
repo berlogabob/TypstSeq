@@ -81,7 +81,7 @@ void main() {
     expect(find.text('large-v3'), findsOneWidget);
     await tester.tap(
       find.descendant(
-        of: find.byType(SegmentedButton<String>).first,
+        of: find.byType(SegmentedButton<String>).at(1),
         matching: find.text('Fast'),
       ),
     );
