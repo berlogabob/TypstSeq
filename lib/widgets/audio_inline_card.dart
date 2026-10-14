@@ -209,7 +209,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
     final textTheme = Theme.of(context).textTheme;
     // File name without its extension: the extension is in Properties.
     final name = widget.label.replaceFirst(RegExp(r'\.[^.]+$'), '');
-    // Quick-use chip: header line (name, alias, status icons, chevron) and one
+    // Quick-use chip: header line (name, alias, status icons; the whole line opens the screen) and one
     // line of play + waveform. Time, speed and everything else live in the
     // expanded screen. 4 dp grid: 12 side padding, 8 top/bottom, 8 gaps.
     return Card(
@@ -264,12 +264,6 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                       'Translation',
                       _translated,
                       AudioTab.translate,
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 20,
-                      color: scheme.onSurfaceVariant,
                     ),
                   ],
                 ),
