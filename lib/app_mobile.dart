@@ -4532,6 +4532,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _debouncedPreviewWidth = null;
       _pendingPreviewWidth = null;
     }
+    final compactHeight = MediaQuery.sizeOf(context).height < 480;
     final v = vault;
     final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
@@ -5071,7 +5072,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       );
     }
-    if (documentModes.contains(mode) && currentDaily != null) {
+    if (documentModes.contains(mode) &&
+        currentDaily != null &&
+        !(isTodayDocument && compactHeight)) {
       documentContent = Column(
         children: [
           IdeaHubStrip(
@@ -5268,9 +5271,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
 
-    final wideNavigation = MediaQuery.sizeOf(context).width >= 900;
+    final wideNavigation =
+        MediaQuery.sizeOf(context).width >= 900 || compactHeight;
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: compactHeight ? 48 : 56,
         automaticallyImplyLeading: false,
         centerTitle: false,
         title: mode == 'journal'
@@ -5490,7 +5495,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       unawaited(_selectDestination(destination));
                     }
                   },
-                  labelType: NavigationRailLabelType.all,
+                  scrollable: compactHeight,
+                  labelType: compactHeight
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
                   destinations: const [
                     NavigationRailDestination(
                       icon: Icon(Icons.today),

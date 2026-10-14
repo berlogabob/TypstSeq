@@ -13,6 +13,8 @@ import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
+import 'package:tylog/widgets/idea_hub.dart';
+import 'package:tylog/widgets/screenshot_strip.dart';
 
 Future<void> _emptyStartup() async {}
 
@@ -36,6 +38,20 @@ Future<dynamic> _mount(WidgetTester tester, _GatedStorage storage) async {
   return home;
 }
 
+Future<dynamic> _mountToday(WidgetTester tester, Size size) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final home = await _mount(tester, _GatedStorage());
+  const path = 'daily/2026/10/2026-10-14.typ';
+  await home.workspace.vault.storage.writeText(path, 'Original');
+  home.workspace.replaceNote(path, 'Original');
+  home.workspace.notifyListeners();
+  await tester.pumpAndSettle();
+  return home;
+}
+
 void _dirty(dynamic home) {
   home.sourceController.text = 'Unsaved edit';
   home.workspace.edit('Unsaved edit');
@@ -43,6 +59,96 @@ void _dirty(dynamic home) {
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets(
+    'landscape uses an icon rail without overflow and switches screens',
+    (tester) async {
+      final home = await _mountToday(tester, const Size(780, 360));
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+      expect(rail.labelType, NavigationRailLabelType.none);
+      expect(rail.destinations, hasLength(5));
+      expect(rail.scrollable, isTrue);
+      expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
+      expect(tester.takeException(), isNull);
+      final library = find.descendant(
+        of: find.byType(NavigationRail),
+        matching: find.byIcon(Icons.library_books),
+      );
+      await tester.ensureVisible(library);
+      await tester.tap(library);
+      await tester.pumpAndSettle();
+      expect(home.primaryDestination, 2);
+      expect(home.mode, 'library');
+      expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'landscape Today has a single agenda row opening a bounded sheet',
+    (tester) async {
+      await _mountToday(tester, const Size(780, 360));
+      expect(find.byType(TodayPage), findsOneWidget);
+      expect(find.byType(IdeaHubStrip), findsNothing);
+      expect(find.byType(ScreenshotStrip), findsNothing);
+      final agenda = find.text('Agenda · 0');
+      final header = find.ancestor(of: agenda, matching: find.byType(ListTile));
+      expect(header, findsOneWidget);
+      expect(tester.getSize(header).height, 56);
+      expect(tester.widget<Text>(agenda).maxLines, 1);
+      expect(find.byKey(const PageStorageKey('today-agenda')), findsNothing);
+      expect(find.text('All tasks →'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(agenda);
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(
+        tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+        isTrue,
+      );
+      expect(
+        tester.getSize(find.byType(BottomSheet)).height,
+        lessThanOrEqualTo(288),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(SingleChildScrollView),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('All tasks →'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('All tasks →'));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('portrait keeps the bottom navigation and inline agenda', (
+    tester,
+  ) async {
+    await _mountToday(tester, const Size(400, 800));
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 56);
+    expect(find.byType(IdeaHubStrip), findsOneWidget);
+    expect(find.byType(ScreenshotStrip), findsOneWidget);
+    expect(find.byKey(const PageStorageKey('today-agenda')), findsOneWidget);
+    expect(find.text('All tasks →'), findsNothing);
+    await tester.tap(find.text('Agenda · 0'));
+    await tester.pumpAndSettle();
+    expect(find.text('All tasks →'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final destination in [0, 1, 2, 3]) {
     testWidgets('destination $destination responds before a delayed save', (
       tester,

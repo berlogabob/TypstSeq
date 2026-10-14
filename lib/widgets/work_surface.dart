@@ -114,6 +114,56 @@ class TodayPage extends StatelessWidget {
       onSetField: onSetField,
       onOpenPath: onOpenPath,
     );
+    final compactHeight = MediaQuery.sizeOf(context).height < 480;
+    final agendaTitle = indexing && tasks.isEmpty
+        ? 'Indexing…'
+        : next == null
+        ? 'Agenda · ${agenda.length + overdue.length + todayEvents.length}'
+        : 'No classes · Next: ${compactHumanDate(nextDay!, now: nextDay)} ${nextStart == null ? '' : '${localTime(nextStart)} '}${next.title}';
+    List<Widget> agendaContent() => [
+      for (final event in todayEvents)
+        ListTile(
+          leading: const Icon(Icons.event),
+          title: Text(event.title),
+          onTap: () => onOpenPath(event.notePath),
+        ),
+      for (final task in agenda) taskRow(task),
+      if (overdue.isNotEmpty)
+        ExpansionTile(
+          key: const PageStorageKey('today-overdue'),
+          title: Text('Overdue · ${overdue.length}'),
+          children: [for (final task in overdue) taskRow(task)],
+        ),
+      if (onAllTasks != null)
+        ListTile(title: const Text('All tasks →'), onTap: onAllTasks),
+      if (recent.isNotEmpty)
+        ExpansionTile(
+          key: const PageStorageKey('today-continue-reading'),
+          leading: const Icon(Icons.history),
+          title: const Text('Continue reading'),
+          children: [
+            for (final (note, progress) in recent)
+              Card(
+                margin: const EdgeInsets.symmetric(
+                  horizontal: kSpace12,
+                  vertical: kSpace4,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
+                  leading: const Icon(Icons.auto_stories_outlined),
+                  title: Text(
+                    note.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: LinearProgressIndicator(value: progress),
+                  trailing: Text('${(progress * 100).round()}%'),
+                  onTap: () => (onReadPath ?? onOpenPath)(note.path),
+                ),
+              ),
+          ],
+        ),
+    ];
     return LayoutBuilder(
       builder: (context, constraints) => Column(
         children: [
@@ -124,99 +174,61 @@ class TodayPage extends StatelessWidget {
           // that leaves the editor >=55%, and a long recent list still can't
           // starve it or overflow.
           if (hasTopContent) ...[
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: constraints.maxHeight * 0.45,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (agenda.isNotEmpty ||
-                        next != null ||
-                        overdue.isNotEmpty ||
-                        todayEvents.isNotEmpty ||
-                        onAllTasks != null ||
-                        indexing ||
-                        recent.isNotEmpty)
-                      ExpansionTile(
-                        key: const PageStorageKey('today-agenda'),
-                        leading: const Icon(Icons.event_note),
-                        title: InkWell(
-                          onTap: nextDay == null || onOpenDay == null
-                              ? null
-                              : () => onOpenDay!(nextDay),
-                          child: Text(
-                            indexing && tasks.isEmpty
-                                ? 'Indexing…'
-                                : next == null
-                                ? 'Agenda · ${agenda.length + overdue.length + todayEvents.length}'
-                                : 'No classes · Next: ${compactHumanDate(nextDay!, now: nextDay)} ${nextStart == null ? '' : '${localTime(nextStart)} '}${next.title}',
+            if (compactHeight)
+              ListTile(
+                leading: const Icon(Icons.event_note),
+                title: Text(
+                  agendaTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.expand_more),
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  isScrollControlled: true,
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+                  ),
+                  builder: (context) => SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: agendaContent(),
+                    ),
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * 0.45,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (agenda.isNotEmpty ||
+                          next != null ||
+                          overdue.isNotEmpty ||
+                          todayEvents.isNotEmpty ||
+                          onAllTasks != null ||
+                          indexing ||
+                          recent.isNotEmpty)
+                        ExpansionTile(
+                          key: const PageStorageKey('today-agenda'),
+                          leading: const Icon(Icons.event_note),
+                          title: InkWell(
+                            onTap: nextDay == null || onOpenDay == null
+                                ? null
+                                : () => onOpenDay!(nextDay),
+                            child: Text(agendaTitle),
                           ),
+                          children: agendaContent(),
                         ),
-                        children: [
-                          for (final event in todayEvents)
-                            ListTile(
-                              leading: const Icon(Icons.event),
-                              title: Text(event.title),
-                              onTap: () => onOpenPath(event.notePath),
-                            ),
-                          for (final task in agenda) taskRow(task),
-                          if (overdue.isNotEmpty)
-                            ExpansionTile(
-                              key: const PageStorageKey('today-overdue'),
-                              title: Text('Overdue · ${overdue.length}'),
-                              children: [
-                                for (final task in overdue) taskRow(task),
-                              ],
-                            ),
-                          if (onAllTasks != null)
-                            ListTile(
-                              title: const Text('All tasks →'),
-                              onTap: onAllTasks,
-                            ),
-                          if (recent.isNotEmpty)
-                            ExpansionTile(
-                              key: const PageStorageKey(
-                                'today-continue-reading',
-                              ),
-                              leading: const Icon(Icons.history),
-                              title: const Text('Continue reading'),
-                              children: [
-                                for (final (note, progress) in recent)
-                                  Card(
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: kSpace12,
-                                      vertical: kSpace4,
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: ListTile(
-                                      leading: const Icon(
-                                        Icons.auto_stories_outlined,
-                                      ),
-                                      title: Text(
-                                        note.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: LinearProgressIndicator(
-                                        value: progress,
-                                      ),
-                                      trailing: Text(
-                                        '${(progress * 100).round()}%',
-                                      ),
-                                      onTap: () =>
-                                          (onReadPath ?? onOpenPath)(note.path),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                        ],
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             const Divider(height: 1),
           ],
           Expanded(child: editor),
