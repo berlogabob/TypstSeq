@@ -182,7 +182,8 @@ the transcript's languages and defaults to `[source_lang]` when missing.
 Sweep jobs copy these from the transcription job's `lang` and `langs`.
 Translation jobs use the same `queued` → `processing` →
 `done`/`failed` lifecycle, with optional `finished_at` and `error` fields.
-On success the worker adds `finished_at` and removes any old `error`.
+On success the worker adds `finished_at`, records the model actually used in
+`llm`, and removes any old `error`.
 On failure it stores descriptive `error` text, preserving the other fields.
 
 The worker reads `- mm:ss text` lines from the existing `== Transcript`
@@ -209,7 +210,18 @@ library; no extra translation dependency is needed:
 | --- | --- |
 | `TYLOG_LLM_URL` | API base URL, including its API prefix, e.g. `http://localhost:1234/v1`. |
 | `TYLOG_LLM_KEY` | API key sent as a Bearer token. |
-| `TYLOG_LLM_MODEL` | Chat model ID. If unset, use the first model with `loaded: true` from `GET <base>/models`. |
+| `TYLOG_LLM_MODEL` | Explicit chat model ID, used exactly as supplied; overrides automatic selection. |
+| `TYLOG_LLM_PREFER` | Preferred chat model ID when `TYLOG_LLM_MODEL` is unset; defaults to `ollama/ornith-1.5:35b`. |
+
+Automatic selection first uses a loaded model whose ID exactly matches the
+preferred ID, then a loaded model whose ID contains `ornith` (case-insensitive).
+If neither is loaded, the worker resolves the preferred model's Studio reference
+ID through `GET <root>/api/models/local` and sends `POST <root>/load` with
+`model_path` and `max_seq_length: 65536`, without `force_cancel_active`.
+Here `<root>` is the base URL with its `/v1` suffix removed. It polls
+`GET <base>/models` for up to 15 minutes until the preferred model is loaded.
+Loading errors or timeout fail the job with an error naming the preferred model;
+the worker never silently falls back to an unrelated loaded model such as Qwen.
 
 Unset URL/key values fall back individually to `providers.studio.baseUrl` and
 `providers.studio.apiKey` in `~/.pi/agent/models.json`. A URL is required; a

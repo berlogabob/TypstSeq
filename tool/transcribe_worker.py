@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 from urllib.request import Request, urlopen
 
 
@@ -68,7 +69,36 @@ def transcribe(audio, model="small", lang=None):
     return [(segment.start, segment.text.strip()) for segment in segments], info.language, languages
 
 
+def ensure_model(base, key, prefer, request):
+    """Select Ornith or load the preferred model using the authenticated request."""
+    try:
+        loaded = [entry["id"] for entry in request("/models")["data"]
+                  if entry.get("loaded") is True]
+        if prefer in loaded:
+            return prefer
+        ornith = next((model for model in loaded if "ornith" in model.lower()), None)
+        if ornith:
+            return ornith
+        root = base.rstrip("/").rsplit("/v1", 1)[0]
+        local = request(root + "/api/models/local")["models"]
+        reference = next((entry["id"] for entry in local
+                          if entry.get("model_id") == prefer), prefer)
+        result = request(base.rstrip("/") + "/load", {"model_path": reference, "max_seq_length": 65536})
+        if result.get("error") or result.get("success") is False:
+            raise ValueError(f"Studio rejected load: {result}")
+        deadline = time.monotonic() + 15 * 60
+        while time.monotonic() < deadline:
+            if any(entry["id"] == prefer and entry.get("loaded") is True
+                   for entry in request("/models")["data"]):
+                return prefer
+            time.sleep(min(5, max(0, deadline - time.monotonic())))
+        raise ValueError("not loaded after 15 minutes")
+    except Exception as error:
+        raise ValueError(f"Could not load preferred translation model {prefer}: {error}") from error
+
+
 def translate(texts, source_lang, target, source_langs=None):
+    translate.last_model = None
     base = os.environ.get("TYLOG_LLM_URL")
     key = os.environ.get("TYLOG_LLM_KEY")
     if not base or not key:
@@ -85,15 +115,15 @@ def translate(texts, source_lang, target, source_langs=None):
         if key:
             headers["Authorization"] = f"Bearer {key}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
-        with urlopen(Request(base.rstrip("/") + route, data=data, headers=headers), timeout=120) as response:
+        url = route if route.startswith(("http://", "https://")) else base.rstrip("/") + route
+        with urlopen(Request(url, data=data, headers=headers),
+                     timeout=900 if route.endswith("/load") else 120) as response:
             return json.load(response)
 
     model = os.environ.get("TYLOG_LLM_MODEL")
     if not model:
-        model = next((entry["id"] for entry in request("/models")["data"]
-                      if entry.get("loaded") is True), None)
-        if not model:
-            raise ValueError("No loaded model found; set TYLOG_LLM_MODEL")
+        model = ensure_model(base, key, os.environ.get("TYLOG_LLM_PREFER", "ollama/ornith-1.5:35b"),
+                             request)
     translated = []
     for start in range(0, len(texts), 40):
         batch = texts[start:start + 40]
@@ -120,6 +150,7 @@ def translate(texts, source_lang, target, source_langs=None):
         ):
             raise ValueError("Translation reply must be a JSON array of strings with the same length")
         translated.extend(result)
+    translate.last_model = model
     return translated
 
 
@@ -294,6 +325,8 @@ def run_once(vault, model="small", translate=translate, *, now=None, state_path=
             if kind == "transcripts":
                 job["lang"] = language
                 job["langs"] = languages
+            elif getattr(translate, "last_model", None) is not None:
+                job["llm"] = translate.last_model
             job["status"] = "done"
             job["finished_at"] = datetime.now(timezone.utc).isoformat()
             job.pop("error", None)

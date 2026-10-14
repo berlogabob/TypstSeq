@@ -13,6 +13,8 @@ import transcribe_worker as worker
 @pytest.fixture(autouse=True)
 def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(worker.Path, "home", lambda: tmp_path)
+    for name in ("TYLOG_LLM_URL", "TYLOG_LLM_KEY", "TYLOG_LLM_MODEL", "TYLOG_LLM_PREFER"):
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_escape_markup():
@@ -319,11 +321,12 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
         if request.full_url.endswith("/models"):
             assert request.get_method() == "GET"
             result = {"data": [{"id": "unloaded", "loaded": False},
-                               {"id": "translator", "loaded": True}]}
+                               {"id": "Qwen3-Coder", "loaded": True},
+                               {"id": "ollama/ornith-1.5:35b", "loaded": True}]}
         else:
             assert request.full_url == "https://studio.example/v1/chat/completions"
             payload = json.loads(request.data)
-            assert payload["model"] == "translator"
+            assert payload["model"] == "ollama/ornith-1.5:35b"
             assert payload["temperature"] == 0
             prompt = payload["messages"][0]["content"]
             assert "Translate faithfully into ru" in prompt
@@ -366,13 +369,115 @@ def test_translation_backend_studio_fallback(tmp_path, monkeypatch):
 
     def fake(request, timeout):
         assert request.get_header("Authorization") == "Bearer studio-key"
-        result = ({"data": [{"id": "model", "loaded": True}]}
+        result = ({"data": [{"id": "Ornith", "loaded": True}]}
                   if request.full_url.endswith("/models") else
                   {"choices": [{"message": {"content": '["Привет"]'}}]})
         return BytesIO(json.dumps(result).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
     assert worker.translate(["Hello"], "en", "ru") == ["Привет"]
+
+
+@pytest.mark.parametrize("prefer, loaded, expected", [
+    ("ollama/ornith-1.5:35b", ["Qwen3-Coder", "ORNITH-other", "ollama/ornith-1.5:35b"],
+     "ollama/ornith-1.5:35b"),
+    ("custom-translator", ["Qwen3-Coder", "Ornith", "custom-translator"], "custom-translator"),
+    ("ollama/ornith-1.5:35b", ["Qwen3-Coder", "OLLAMA/ORNITH-other"], "OLLAMA/ORNITH-other"),
+])
+def test_ensure_model_loaded_preference(prefer, loaded, expected):
+    def request(route, payload=None):
+        assert (route, payload) == ("/models", None)
+        return {"data": [{"id": model, "loaded": True} for model in loaded]}
+
+    assert worker.ensure_model("https://studio.example/v1", "key", prefer, request) == expected
+
+
+def test_translation_loads_preferred_model(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1/")
+    monkeypatch.setenv("TYLOG_LLM_KEY", "test-key")
+    monkeypatch.setenv("TYLOG_LLM_PREFER", "custom-translator")
+    calls = []
+    polls = 0
+    sleeps = []
+    monkeypatch.setattr(worker.time, "sleep", sleeps.append)
+
+    def fake(request, timeout):
+        nonlocal polls
+        assert request.get_header("Authorization") == "Bearer test-key"
+        calls.append(request.full_url)
+        if request.full_url.endswith("/models"):
+            polls += 1
+            result = {"data": [{"id": "Qwen3-Coder", "loaded": True},
+                               {"id": "custom-translator", "loaded": polls >= 3}]}
+        elif request.full_url == "https://studio.example/api/models/local":
+            result = {"models": [{"id": "studio-reference", "model_id": "custom-translator"}]}
+        elif request.full_url == "https://studio.example/v1/load":
+            assert request.get_method() == "POST"
+            assert timeout == 900
+            assert json.loads(request.data) == {"model_path": "studio-reference", "max_seq_length": 65536}
+            result = {"success": True}
+        else:
+            assert request.full_url == "https://studio.example/v1/chat/completions"
+            assert json.loads(request.data)["model"] == "custom-translator"
+            result = {"choices": [{"message": {"content": '["Привет"]'}}]}
+        return BytesIO(json.dumps(result).encode())
+
+    monkeypatch.setattr(worker, "urlopen", fake)
+    assert worker.translate(["Hello"], "en", "ru") == ["Привет"]
+    assert worker.translate.last_model == "custom-translator"
+    assert calls == ["https://studio.example/v1/models", "https://studio.example/api/models/local",
+                     "https://studio.example/v1/load", "https://studio.example/v1/models",
+                     "https://studio.example/v1/models", "https://studio.example/v1/chat/completions"]
+    assert sleeps == [5]
+
+
+@pytest.mark.parametrize("failure", ["http", "rejected", "timeout"])
+def test_ensure_model_load_failure_has_no_fallback(monkeypatch, failure):
+    now = [0]
+    monkeypatch.setattr(worker.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    calls = []
+
+    def request(route, payload=None):
+        calls.append(route)
+        if route == "/models":
+            return {"data": [{"id": "Qwen3-Coder", "loaded": True}]}
+        if route.endswith("/api/models/local"):
+            return {"models": []}
+        assert route == "https://studio.example/v1/load"
+        assert payload == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536}
+        if failure == "http":
+            raise OSError("load unavailable")
+        return {"success": failure != "rejected"}
+
+    with pytest.raises(ValueError, match="preferred translation model ollama/ornith-1.5:35b"):
+        worker.ensure_model("https://studio.example/v1", "key", "ollama/ornith-1.5:35b", request)
+    assert "https://studio.example/v1/load" in calls
+    if failure == "timeout":
+        assert now[0] == 900
+
+
+def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "exact/custom-model")
+    monkeypatch.setenv("TYLOG_LLM_PREFER", "ollama/ornith-1.5:35b")
+    jobs = tmp_path / "_system/jobs/translations"
+    jobs.mkdir(parents=True)
+    job_path = jobs / "job.json"
+    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav",
+                                    "note": "note.typ", "source_lang": "en", "target": "ru"}))
+    (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
+
+    def fake(request, timeout):
+        assert request.full_url == "https://studio.example/v1/chat/completions"
+        assert json.loads(request.data)["model"] == "exact/custom-model"
+        return BytesIO(json.dumps({"choices": [{"message": {"content": '["Привет"]'}}]}).encode())
+
+    monkeypatch.setattr(worker, "urlopen", fake)
+    worker.run_once(tmp_path)
+    job = json.loads(job_path.read_text())
+    assert job["status"] == "done"
+    assert job["llm"] == "exact/custom-model"
 
 
 @pytest.fixture
