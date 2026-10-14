@@ -160,6 +160,29 @@ void main() {
     expect(find.text('Done'), findsNothing);
   });
 
+  testWidgets('article rows leave room for titles at 360 dp', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(shelf());
+    await tester.tap(find.text('Articles'));
+    await tester.pumpAndSettle();
+
+    final title = find.text('Fresh');
+    expect(tester.getSize(title).width, greaterThan(180));
+    final row = tester.widget<ListTile>(
+      find.ancestor(of: title, matching: find.byType(ListTile)),
+    );
+    expect(row.trailing, isA<PopupMenuButton<String>>());
+    expect((row.title! as Text).maxLines, 2);
+    expect((row.title! as Text).overflow, TextOverflow.ellipsis);
+    final subtitle = find.byWidget(row.subtitle!);
+    expect(
+      find.descendant(of: subtitle, matching: find.byType(PropertySelectChip)),
+      findsNWidgets(2),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('articles shelf: relevance filter narrows to matching articles', (
     tester,
   ) async {

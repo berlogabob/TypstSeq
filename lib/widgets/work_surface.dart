@@ -1456,17 +1456,37 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       leading: screenshots
           ? ScreenshotThumbnail(note: note, imageResolver: widget.imageResolver)
           : const Icon(Icons.article_outlined),
-      title: Text(note.title),
-      subtitle: subtitle.isEmpty
-          ? null
-          : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: _trailing(note),
+      title: Text(note.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (subtitle.isNotEmpty)
+            Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          _metadata(note),
+        ],
+      ),
+      trailing: PopupMenuButton<String>(
+        tooltip: 'More',
+        icon: const Icon(Icons.more_horiz, size: kIcon),
+        onSelected: (value) {
+          if (value == 'delete') unawaited(widget.onDeleteArticle(note));
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'delete',
+            child: Text(
+              'Delete ${screenshots ? 'screenshot' : 'article'}…',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
       onTap: () => widget.onReadPath(note.path),
       onLongPress: () => unawaited(widget.onDeleteArticle(note)),
     );
   }
 
-  Widget _trailing(NoteRef note) {
+  Widget _metadata(NoteRef note) {
     final status = _bucket(note);
     final progress = widget.progressByPath[note.path] ?? 0;
     final scheme = Theme.of(context).colorScheme;
@@ -1475,18 +1495,26 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       'read' => (scheme.secondaryContainer, scheme.onSecondaryContainer),
       _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
     };
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: kSpace8,
+      runSpacing: kSpace4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (progress > 0 && progress < 1) ...[
-          Text(
-            '${(progress * 100).round()}%',
-            style: Theme.of(context).textTheme.labelSmall,
+        if (progress > 0 && progress < 1)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${(progress * 100).round()}%',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(width: kSpace4),
+              SizedBox(
+                width: 40,
+                child: LinearProgressIndicator(value: progress),
+              ),
+            ],
           ),
-          const SizedBox(width: kSpace4),
-          SizedBox(width: 40, child: LinearProgressIndicator(value: progress)),
-          const SizedBox(width: kSpace8),
-        ],
         PropertySelectChip(
           value: status,
           options: statuses,
@@ -1496,7 +1524,6 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           foregroundColor: foreground,
           onChanged: (next) => unawaited(widget.onSetReadStatus(note, next)),
         ),
-        const SizedBox(width: 6),
         PropertySelectChip(
           value: note.properties['relevance'] as String?,
           options: relevanceOptions,
@@ -1504,24 +1531,6 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
           tooltip: 'Set relevance',
           placeholder: '★',
           onChanged: (next) => unawaited(widget.onSetRelevance(note, next)),
-        ),
-        // Long-press delete has no visible affordance; this menu makes it
-        // discoverable without displacing the status/relevance chips.
-        PopupMenuButton<String>(
-          tooltip: 'More',
-          icon: const Icon(Icons.more_horiz, size: kIcon),
-          onSelected: (value) {
-            if (value == 'delete') unawaited(widget.onDeleteArticle(note));
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'delete',
-              child: Text(
-                'Delete ${screenshots ? 'screenshot' : 'article'}…',
-                style: TextStyle(color: scheme.error),
-              ),
-            ),
-          ],
         ),
       ],
     );
