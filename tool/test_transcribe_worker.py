@@ -64,7 +64,7 @@ def test_cli_core(tmp_path, monkeypatch):
 
     def fake_transcribe(audio, model, lang):
         assert audio == tmp_path / "audio.wav"
-        assert (model, lang) == ("small", "pt")
+        assert (model, lang) == ("large-v3", "pt")
         assert json.loads(job_path.read_text())["status"] == "processing"
         return [(65, "Fixed text")], "pt", ["pt"]
 
@@ -810,3 +810,181 @@ def test_scheduled_run_stays_open_until_translations_exist(sweep_vault):
     assert "== Translation ru" in text and "== Translation pt" in text
     assert sorted(translated) == ["pt", "ru"]
     assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
+
+
+def write_ai(vault, **fields):
+    path = vault / "_system/settings/ai.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": 1, **fields}))
+
+
+@pytest.mark.parametrize("contents", [None, "broken", "[]", "null", '{"schema": 2}',
+                                      '{"unknown": true}'])
+def test_load_ai_settings_missing_corrupt_unknown(tmp_path, contents):
+    if contents is not None:
+        path = tmp_path / "_system/settings/ai.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(contents)
+    assert worker.load_ai_settings(tmp_path) == {}
+
+
+@pytest.mark.parametrize("quality, expected", [("fast", "small"), ("balanced", "large-v3-turbo"),
+                                               ("best", "large-v3"), ("unknown", "large-v3")])
+def test_whisper_precedence(tmp_path, quality, expected):
+    write_ai(tmp_path, tasks={"transcribe": {"quality": quality, "model": None}})
+    settings = worker.load_ai_settings(tmp_path)
+    assert worker.resolve_whisper_model(settings, None) == expected
+    settings["tasks"]["transcribe"]["model"] = "explicit"
+    assert worker.resolve_whisper_model(settings, None) == "explicit"
+    assert worker.resolve_whisper_model(settings, "cli") == "cli"
+    assert worker.resolve_whisper_model({}, None) == "large-v3"
+
+
+def test_run_resolves_settings_each_time(sweep_vault, monkeypatch):
+    set_audio_settings(sweep_vault, on_the_fly=True)
+    calls = []
+    monkeypatch.setattr(worker, "transcribe", lambda audio, model, lang:
+                        (calls.append(model) or [], "en", ["en"]))
+    for index, (task, cli, expected) in enumerate([
+        ({"quality": "fast"}, None, "small"),
+        ({"quality": "best", "model": "explicit"}, None, "explicit"),
+        ({"model": "explicit"}, "cli", "cli"),
+    ]):
+        write_ai(sweep_vault, tasks={"transcribe": task})
+        add_audio_note(sweep_vault, f"{index}.wav")
+        worker.run_once(sweep_vault, model=cli, now=NOW)
+        assert calls[-1] == expected
+
+
+@pytest.mark.parametrize("quality, explicit, env_model, prefer, expected, automatic", [
+    ("fast", None, None, None, "ollama/ornith-1.5:9b", True),
+    ("balanced", None, None, None, "ollama/ornith-1.5:35b", True),
+    ("best", None, None, None, "ollama/ornith-1.5:35b", True),
+    (None, None, None, None, "ollama/ornith-1.5:35b", True),
+    ("fast", "explicit", None, None, "explicit", False),
+    ("fast", "explicit", "env", "preferred", "env", False),
+    ("fast", None, None, "preferred", "preferred", True),
+])
+def test_translation_ai_precedence(tmp_path, monkeypatch, quality, explicit, env_model,
+                                   prefer, expected, automatic):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://configured/v1"}],
+             tasks={"translate": {"connection": "studio", "quality": quality, "model": explicit}})
+    providers = tmp_path / ".pi/agent/models.json"
+    providers.parent.mkdir(parents=True)
+    providers.write_text(json.dumps({"providers": {"studio": {"apiKey": "local-key"}}}))
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://other/v1")
+    if env_model:
+        monkeypatch.setenv("TYLOG_LLM_MODEL", env_model)
+    if prefer:
+        monkeypatch.setenv("TYLOG_LLM_PREFER", prefer)
+    calls = []
+
+    def ensure(base, key, preferred, request):
+        assert (base, key, preferred) == ("https://configured/v1", "local-key", expected)
+        calls.append(preferred)
+        return preferred
+
+    def http(request, timeout):
+        assert request.full_url == "https://configured/v1/chat/completions"
+        assert request.get_header("Authorization") == "Bearer local-key"
+        assert json.loads(request.data)["model"] == expected
+        return BytesIO(b'{"choices": [{"message": {"content": "[\\"translated\\"]"}}]}')
+
+    monkeypatch.setattr(worker, "ensure_model", ensure)
+    monkeypatch.setattr(worker, "urlopen", http)
+    assert worker.translate(["hello"], "en", "ru", settings=worker.load_ai_settings(tmp_path)) == ["translated"]
+    assert calls == ([expected] if automatic else [])
+
+
+def test_connection_credentials_match_only_selected_provider(tmp_path, monkeypatch):
+    path = tmp_path / ".pi/agent/models.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"providers": {"studio": {"baseUrl": "studio-url", "apiKey": "studio-key"},
+                                              "other": {"apiKey": "other-key"}}}))
+    assert worker.connection_credentials() == ("studio-url", "studio-key")
+    assert worker.connection_credentials({"id": "other", "url": "other-url"}) == ("other-url", "other-key")
+    assert worker.connection_credentials({"id": "unknown", "url": "url"}) == ("url", None)
+    monkeypatch.setenv("TYLOG_LLM_KEY", "env-key")
+    assert worker.connection_credentials({"id": "other", "url": "url"}) == ("url", "env-key")
+    with pytest.raises(ValueError, match="Unknown translation connection"):
+        worker.translate([], "en", "ru", settings={"tasks": {"translate": {"connection": "missing"}}})
+
+
+def test_heartbeat_content_and_probe_throttling(tmp_path):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"},
+                                    {"id": "offline", "url": "https://offline/v1"}])
+    hub = tmp_path / ".cache/huggingface/hub"
+    for model in ("small", "large-v3"):
+        (hub / ("models--Systran--faster-whisper-" + model)).mkdir(parents=True)
+    (hub / "models--Other--model").mkdir()
+    calls = []
+
+    def probe(base, key):
+        calls.append(base)
+        if "offline" in base:
+            raise OSError("offline")
+        return {"reachable": True, "loaded": ["ornith"]}
+
+    now = NOW.replace(tzinfo=worker.timezone.utc)
+    kwargs = {"hostname": lambda: "host/unsafe", "probe": probe, "clock": lambda: now}
+    worker.run_once(tmp_path, **kwargs)
+    heartbeat_path = tmp_path / "_system/workers/host_unsafe.json"
+    assert json.loads(heartbeat_path.read_text()) == {
+        "host": "host/unsafe", "last_seen": now.isoformat(), "whisper_models": ["large-v3", "small"],
+        "connections": {"studio": {"reachable": True, "loaded": ["ornith"]},
+                        "offline": {"reachable": False, "loaded": []}}}
+    worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=299)})
+    assert len(calls) == 2
+    assert json.loads(heartbeat_path.read_text())["last_seen"] == (now + timedelta(seconds=299)).isoformat()
+    worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=300)})
+    assert len(calls) == 4
+    state = json.loads((tmp_path / ".tylog-transcribe-state.json").read_text())
+    assert state["connection_probes"]["studio"]["result"]["loaded"] == ["ornith"]
+
+
+def test_probe_http_contract(monkeypatch):
+    def http(request, timeout):
+        assert (request.full_url, request.get_method(), timeout) == ("https://studio/v1/models", "GET", 3)
+        assert request.get_header("Authorization") == "Bearer secret"
+        return BytesIO(b'{"data": [{"id": "loaded", "loaded": true}, {"id": "off", "loaded": false}, {"id": "openai"}]}')
+    monkeypatch.setattr(worker, "urlopen", http)
+    assert worker.probe_connection("https://studio/v1/", "secret") == {
+        "reachable": True, "loaded": ["loaded", "openai"]}
+
+
+def test_heartbeat_write_failure_ignored(sweep_vault):
+    set_audio_settings(sweep_vault, on_the_fly=True)
+    audio, note = add_audio_note(sweep_vault)
+    (sweep_vault / "_system/workers").write_text("blocks directory")
+    worker.run_once(sweep_vault, now=NOW)
+    assert json.loads(job_path(sweep_vault, "transcripts", audio).read_text())["status"] == "done"
+    assert "== Transcript" in note.read_text()
+
+
+@pytest.mark.parametrize("tasks, connections", [(None, None), ([], {}),
+    ({"transcribe": [], "translate": {"model": 42, "quality": {}}}, [None, {"id": []}])])
+def test_malformed_ai_fields_are_ignored(tmp_path, tasks, connections):
+    write_ai(tmp_path, tasks=tasks, connections=connections)
+    settings = worker.load_ai_settings(tmp_path)
+    assert worker.resolve_whisper_model(settings) == "large-v3"
+    assert settings["connections"] == []
+
+
+def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}],
+             tasks={"translate": {"connection": "studio", "quality": "fast"}})
+    path = write_job(tmp_path, "translations", "audio\nru", status="queued",
+                     note="note.typ", source_lang="en", target="ru")
+    (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
+
+    def ensure(base, key, prefer, request):
+        assert (base, prefer) == ("https://studio/v1", "ollama/ornith-1.5:9b")
+        return prefer
+
+    monkeypatch.setattr(worker, "ensure_model", ensure)
+    monkeypatch.setattr(worker, "urlopen", lambda request, timeout:
+                        BytesIO(b'{"choices": [{"message": {"content": "[\\"translated\\"]"}}]}'))
+    worker.run_once(tmp_path, probe=lambda base, key: {"reachable": True, "loaded": []})
+    job = json.loads(path.read_text())
+    assert job["status"] == "done"
+    assert job["llm"] == "ollama/ornith-1.5:9b"

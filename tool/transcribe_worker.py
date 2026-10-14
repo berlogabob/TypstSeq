@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import time
 from urllib.request import Request, urlopen
 
@@ -97,16 +98,15 @@ def ensure_model(base, key, prefer, request):
         raise ValueError(f"Could not load preferred translation model {prefer}: {error}") from error
 
 
-def translate(texts, source_lang, target, source_langs=None):
+def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     translate.last_model = None
-    base = os.environ.get("TYLOG_LLM_URL")
-    key = os.environ.get("TYLOG_LLM_KEY")
-    if not base or not key:
-        config_path = Path.home() / ".pi/agent/models.json"
-        studio = (json.loads(config_path.read_text(encoding="utf-8"))
-                  .get("providers", {}).get("studio", {})) if config_path.exists() else {}
-        base = base or studio.get("baseUrl")
-        key = key or studio.get("apiKey")
+    settings = settings or {}
+    task = settings.get("tasks", {}).get("translate", {})
+    connection = next((entry for entry in settings.get("connections", [])
+                       if entry["id"] == task.get("connection")), None)
+    if task.get("connection") and connection is None:
+        raise ValueError(f"Unknown translation connection: {task['connection']}")
+    base, key = connection_credentials(connection)
     if not base:
         raise ValueError("Set TYLOG_LLM_URL or configure provider studio in ~/.pi/agent/models.json")
 
@@ -120,9 +120,11 @@ def translate(texts, source_lang, target, source_langs=None):
                      timeout=900 if route.endswith("/load") else 120) as response:
             return json.load(response)
 
-    model = os.environ.get("TYLOG_LLM_MODEL")
+    model = os.environ.get("TYLOG_LLM_MODEL") or task.get("model")
     if not model:
-        model = ensure_model(base, key, os.environ.get("TYLOG_LLM_PREFER", "ollama/ornith-1.5:35b"),
+        model = ensure_model(base, key, os.environ.get("TYLOG_LLM_PREFER") or
+                             ("ollama/ornith-1.5:9b" if task.get("quality") == "fast"
+                              else "ollama/ornith-1.5:35b"),
                              request)
     translated = []
     for start in range(0, len(texts), 40):
@@ -202,6 +204,92 @@ def _read_json(path):
         return value if isinstance(value, dict) else {}
     except (FileNotFoundError, ValueError):
         return {}
+
+
+def load_ai_settings(vault):
+    """Read the supported settings schema, ignoring malformed/unknown fields."""
+    try:
+        value = _read_json(Path(vault) / "_system/settings/ai.json")
+    except OSError:
+        return {}
+    if value.get("schema") != 1:
+        return {}
+    tasks = value.get("tasks")
+    tasks = tasks if isinstance(tasks, dict) else {}
+    clean_tasks = {}
+    for name in ("transcribe", "translate"):
+        task = tasks.get(name)
+        if isinstance(task, dict):
+            clean_tasks[name] = {key: item for key, item in task.items()
+                                 if key in ("quality", "model", "connection")
+                                 and isinstance(item, str) and item}
+    connections = value.get("connections")
+    connections = connections if isinstance(connections, list) else []
+    return {"schema": 1, "tasks": clean_tasks,
+            "connections": [entry for entry in connections if isinstance(entry, dict)
+                            and isinstance(entry.get("id"), str) and entry["id"]
+                            and isinstance(entry.get("url"), str) and entry["url"]]}
+
+
+def resolve_whisper_model(settings, cli_model=None):
+    task = settings.get("tasks", {}).get("transcribe", {})
+    return cli_model or task.get("model") or {
+        "fast": "small", "balanced": "large-v3-turbo", "best": "large-v3"
+    }.get(task.get("quality"), "large-v3")
+
+
+def connection_credentials(connection=None):
+    provider_id = connection["id"] if connection else "studio"
+    providers = _read_json(Path.home() / ".pi/agent/models.json").get("providers", {})
+    provider = providers.get(provider_id, {}) if isinstance(providers, dict) else {}
+    provider = provider if isinstance(provider, dict) else {}
+    base = connection["url"] if connection else (
+        os.environ.get("TYLOG_LLM_URL") or provider.get("baseUrl"))
+    return base, os.environ.get("TYLOG_LLM_KEY") or provider.get("apiKey")
+
+
+def probe_connection(base, key):
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    with urlopen(Request(base.rstrip("/") + "/models", headers=headers), timeout=3) as response:
+        entries = json.load(response)["data"]
+    return {"reachable": True, "loaded": [entry["id"] for entry in entries
+            if isinstance(entry.get("id"), str) and entry.get("loaded", True) is True]}
+
+
+def write_heartbeat(vault, settings, state, state_path, now, hostname, probe):
+    """Best effort presence and cached connection health; never break jobs."""
+    try:
+        host = hostname()
+        filename = re.sub(r"[^A-Za-z0-9_.-]", "_", host).strip(".") or "unknown"
+        now = now.astimezone(timezone.utc)
+        connections = {}
+        cache = state.setdefault("connection_probes", {}) if settings.get("connections") else {}
+        for connection in settings.get("connections", []):
+            identifier = connection["id"]
+            previous = cache.get(identifier, {})
+            age = now.timestamp() - previous.get("last_probe", 0)
+            if previous.get("url") != connection["url"] or not 0 <= age < 300:
+                try:
+                    result = probe(*connection_credentials(connection))
+                except Exception:
+                    result = {"reachable": False, "loaded": []}
+                previous = {"url": connection["url"], "last_probe": now.timestamp(),
+                            "result": result}
+                cache[identifier] = previous
+            connections[identifier] = previous["result"]
+        prefix = "models--Systran--faster-whisper-"
+        hub = Path.home() / ".cache/huggingface/hub"
+        models = sorted(path.name[len(prefix):] for path in hub.glob(prefix + "*")
+                        if path.is_dir())
+        heartbeat = {"host": host, "last_seen": now.isoformat(),
+                     "whisper_models": models, "connections": connections}
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        directory = vault / "_system/workers"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / (filename + ".json")).write_text(
+            json.dumps(heartbeat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _has_pending_jobs(vault):
@@ -289,58 +377,73 @@ def sweep(vault, now, state, force=False):
     return created
 
 
-def run_once(vault, model="small", translate=translate, *, now=None, state_path=None):
+def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
+             hostname=None, clock=None, probe=None):
     vault = Path(vault).resolve()
-    now = now if now is not None else datetime.now()
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    supplied_now = now
+    now = now if now is not None else clock()
+    settings = load_ai_settings(vault)
+    model = resolve_whisper_model(settings, model)
+    if translate is None:
+        def translate(texts, source_lang, target, source_langs):
+            result = globals()["translate"](texts, source_lang, target, source_langs, settings=settings)
+            translate.last_model = globals()["translate"].last_model
+            return result
     state_path = Path(state_path).expanduser() if state_path is not None else Path.home() / ".tylog-transcribe-state.json"
     state = _read_json(state_path)
-    requested_at = _read_json(vault / "_system/jobs/process-now.json").get("requested_at")
-    force = bool(requested_at) and requested_at != state.get("last_process_now")
-    sweep(vault, now, state, force=force)
-    if force:
-        state["last_process_now"] = requested_at
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    jobs = [(kind, path) for kind in ("transcripts", "translations")
-            for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
-    for kind, job_path in jobs:
-        job = json.loads(job_path.read_text(encoding="utf-8"))
-        if job.get("status") != "queued":
-            continue
-        try:
-            job["status"] = "processing"
+    try:
+        requested_at = _read_json(vault / "_system/jobs/process-now.json").get("requested_at")
+        force = bool(requested_at) and requested_at != state.get("last_process_now")
+        sweep(vault, now, state, force=force)
+        if force:
+            state["last_process_now"] = requested_at
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        jobs = [(kind, path) for kind in ("transcripts", "translations")
+                for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
+        for kind, job_path in jobs:
+            job = json.loads(job_path.read_text(encoding="utf-8"))
+            if job.get("status") != "queued":
+                continue
+            try:
+                job["status"] = "processing"
+                job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                note = _vault_path(vault, job["note"])
+                with note.open(encoding="utf-8", newline="") as stream:
+                    note_text = stream.read()
+                if kind == "transcripts":
+                    audio = _vault_path(vault, job["audio"])
+                    segments, language, languages = transcribe(audio, model=model, lang=job.get("lang") or None)
+                    updated_note = apply_transcript(note_text, segments)
+                else:
+                    updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
+                                                     job.get("source_langs", [job["source_lang"]]))
+                with note.open("w", encoding="utf-8", newline="") as stream:
+                    stream.write(updated_note)
+                if kind == "transcripts":
+                    job["lang"] = language
+                    job["langs"] = languages
+                elif getattr(translate, "last_model", None) is not None:
+                    job["llm"] = translate.last_model
+                job["status"] = "done"
+                job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                job.pop("error", None)
+            except Exception as error:
+                job["status"] = "failed"
+                job["error"] = str(error)
             job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            note = _vault_path(vault, job["note"])
-            with note.open(encoding="utf-8", newline="") as stream:
-                note_text = stream.read()
-            if kind == "transcripts":
-                audio = _vault_path(vault, job["audio"])
-                segments, language, languages = transcribe(audio, model=model, lang=job.get("lang") or None)
-                updated_note = apply_transcript(note_text, segments)
-            else:
-                updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
-                                                 job.get("source_langs", [job["source_lang"]]))
-            with note.open("w", encoding="utf-8", newline="") as stream:
-                stream.write(updated_note)
-            if kind == "transcripts":
-                job["lang"] = language
-                job["langs"] = languages
-            elif getattr(translate, "last_model", None) is not None:
-                job["llm"] = translate.last_model
-            job["status"] = "done"
-            job["finished_at"] = datetime.now(timezone.utc).isoformat()
-            job.pop("error", None)
-        except Exception as error:
-            job["status"] = "failed"
-            job["error"] = str(error)
-        job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    finally:
+        write_heartbeat(vault, settings, state, state_path,
+                        supplied_now if supplied_now is not None else clock(),
+                        hostname or socket.gethostname, probe or probe_connection)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", required=True, type=Path)
     parser.add_argument("--once", required=True, action="store_true")
-    parser.add_argument("--model", default="small")
+    parser.add_argument("--model", default=None)
     parser.add_argument("--state", type=Path, default=Path.home() / ".tylog-transcribe-state.json")
     args = parser.parse_args(argv)
     run_once(args.vault, model=args.model, state_path=args.state)

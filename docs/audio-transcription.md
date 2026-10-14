@@ -133,6 +133,76 @@ completed during that invocation become eligible for automatic translations
 on the next sweep (the next minute: the scheduled run stays open until all
 jobs are finished, see above).
 
+## AI settings and worker heartbeat
+
+The worker rereads `<vault>/_system/settings/ai.json` on each invocation.
+This synced file contains no credentials:
+
+```json
+{
+  "schema": 1,
+  "connections": [
+    {"id": "studio", "kind": "openai-compatible", "label": "Studio PC",
+     "url": "http://desktop-vdsrh2e:8888/v1"}
+  ],
+  "tasks": {
+    "transcribe": {"quality": "best", "model": null},
+    "translate": {"connection": "studio", "quality": "best", "model": null}
+  }
+}
+```
+
+Missing, corrupt, non-object, or unsupported-schema settings are treated as
+empty. Unknown fields are ignored. The worker uses connection `id` and `url`,
+and each task's `model`, `quality`, and translation `connection`.
+
+Transcription precedence is explicit CLI `--model`, then
+`tasks.transcribe.model`, then the quality profile, then `large-v3`.
+Profiles are `fast: small`, `balanced: large-v3-turbo`, and `best: large-v3`.
+The CLI has no model override unless `--model` is supplied.
+
+Translation uses the URL of the connection whose `id` matches
+`tasks.translate.connection`; an unknown selected connection fails the job.
+For a selected connection, its URL takes precedence over `TYLOG_LLM_URL`.
+The key comes from `TYLOG_LLM_KEY`, then the matching
+`providers.<connection id>.apiKey` in `~/.pi/agent/models.json`. Keys in
+`ai.json` are not used. Without a selected connection, the existing
+`TYLOG_LLM_URL` / `providers.studio.baseUrl` fallback applies.
+
+Translation model precedence is `TYLOG_LLM_MODEL`, then
+`tasks.translate.model` (both used directly), then automatic selection with
+the quality profile as the preferred ID: `fast: ollama/ornith-1.5:9b`,
+`balanced` and `best: ollama/ornith-1.5:35b`. `TYLOG_LLM_PREFER` overrides
+that profile. Missing or unknown quality defaults to the 35b preference.
+Automatic selection/loading follows the rules below; without `ai.json`,
+translation retains its existing environment and Studio behavior.
+
+At the end of every run the worker attempts to write
+`<vault>/_system/workers/<hostname>.json`:
+
+```json
+{
+  "host": "desktop",
+  "last_seen": "2026-10-14T12:00:00+00:00",
+  "whisper_models": ["large-v3", "small"],
+  "connections": {"studio": {"reachable": true, "loaded": ["ollama/ornith-1.5:35b"]}}
+}
+```
+
+The filename uses a sanitized `socket.gethostname()`; `host` retains the
+original hostname. `last_seen` is UTC. `whisper_models` lists directory names
+found under `~/.cache/huggingface/hub/models--Systran--faster-whisper-*`,
+with the cache prefix removed. Each configured connection is probed via
+`GET <url>/models` with a three-second timeout. Entries marked `loaded: false`
+are excluded; endpoints without a `loaded` flag list their returned model IDs.
+A failed probe records `reachable: false` and an empty list.
+Probe times and results are cached in `connection_probes` in the existing
+local state file for five minutes; changing a connection URL triggers a fresh
+probe. Heartbeat failures never fail job processing.
+For tests, `run_once` accepts `hostname` and `clock` callables, and a
+`probe(base, key)` callable returning the connection result. The existing
+`now` argument also fixes the heartbeat time when supplied.
+
 ## Note format and preservation
 
 Replace the contents of the existing `== Transcript` section, or append that
@@ -211,7 +281,7 @@ library; no extra translation dependency is needed:
 | `TYLOG_LLM_URL` | API base URL, including its API prefix, e.g. `http://localhost:1234/v1`. |
 | `TYLOG_LLM_KEY` | API key sent as a Bearer token. |
 | `TYLOG_LLM_MODEL` | Explicit chat model ID, used exactly as supplied; overrides automatic selection. |
-| `TYLOG_LLM_PREFER` | Preferred chat model ID when `TYLOG_LLM_MODEL` is unset; defaults to `ollama/ornith-1.5:35b`. |
+| `TYLOG_LLM_PREFER` | Preferred chat model ID during automatic selection; overrides the settings profile, otherwise defaults to `ollama/ornith-1.5:35b`. |
 
 Automatic selection first uses a loaded model whose ID exactly matches the
 preferred ID, then a loaded model whose ID contains `ornith` (case-insensitive).
@@ -223,7 +293,7 @@ Here `<root>` is the base URL with its `/v1` suffix removed. It polls
 Loading errors or timeout fail the job with an error naming the preferred model;
 the worker never silently falls back to an unrelated loaded model such as Qwen.
 
-Unset URL/key values fall back individually to `providers.studio.baseUrl` and
+Without a selected AI connection, unset URL/key values fall back individually to `providers.studio.baseUrl` and
 `providers.studio.apiKey` in `~/.pi/agent/models.json`. A URL is required; a
 keyless local endpoint is supported. The worker sends batches of at most 40
 strings to `<base>/chat/completions` at temperature 0, requesting faithful

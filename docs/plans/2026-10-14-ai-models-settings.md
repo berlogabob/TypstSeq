@@ -67,8 +67,21 @@ One Settings section "AI". Two levels, so most people never see the second.
 5. Presets and the privacy notice.
 Each phase ends with a release and a check on Mac and P30.
 
-## 6. Decisions needed
+## 6. Decisions (2026-10-14)
 
-- Who is the "regular user": you plus a few friends running their own Mac worker (current reality), or people with no computer worker at all (then phone-only cloud or on-device models become the default, and phase 3 matters most)?
-- Are cloud providers (API keys) in scope, or local and own-server only?
-- Should the app be allowed to load/unload models on a Studio server itself (the worker already loads Ornith when it is missing), or only show them?
+- Audience: you and friends who each run a Mac worker. Task cards first, own-server connections after them.
+- No cloud providers and no API keys in the first versions. Presets are therefore **Light** (small models, fast) and **Best** (large models), not Cloud.
+- The app only shows server models and their loaded state; the worker loads what it needs (as the translation worker already does with Ornith).
+
+## 7. Contract for phase 1 (`_system/settings/ai.json`, no secrets)
+
+```json
+{"schema": 1,
+ "connections": [{"id": "studio", "kind": "openai-compatible", "label": "Studio PC", "url": "http://desktop-vdsrh2e:8888/v1"}],
+ "tasks": {
+   "transcribe": {"quality": "best", "model": null},
+   "translate":  {"connection": "studio", "quality": "best", "model": null}
+ }}
+```
+`quality` is `fast | balanced | best`; `model` (when set) overrides the quality profile. Worker profiles: transcribe fast = `small`, balanced = `large-v3-turbo`, best = `large-v3`; translate fast = `ollama/ornith-1.5:9b`, balanced and best = `ollama/ornith-1.5:35b`. Missing file or key means today's behaviour (large-v3, the Studio from `~/.pi/agent/models.json`).
+Heartbeat: each worker run writes `_system/workers/<host>.json` (`host`, `last_seen`, cached Whisper models, per connection `reachable` and loaded model ids, probed at most every 5 minutes).
