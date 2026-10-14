@@ -12,9 +12,9 @@ import 'package:flutter/foundation.dart'
     show compute, listEquals, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'nextcloud_sync/chunked_upload.dart';
+import 'nextcloud_sync/nfc.dart';
 import 'vault.dart';
 import 'vault_storage.dart';
 
@@ -560,7 +560,7 @@ class NextcloudSync {
           syncState.isNotEmpty) {
         final conflicted = {
           for (final conflict in await loadSyncConflicts(vault))
-            unorm.nfc(conflict.path),
+            nfcPath(conflict.path),
         };
         progress('push-local');
         if (coveredWrites.isNotEmpty) {
@@ -568,10 +568,10 @@ class NextcloudSync {
           scannedListing = await _localFiles(vault.storage);
         }
         for (final path in coveredWrites.toList()) {
-          if (_isSyncInternal(path) || conflicted.contains(unorm.nfc(path))) {
+          if (_isSyncInternal(path) || conflicted.contains(nfcPath(path))) {
             continue;
           }
-          final previous = syncState[unorm.nfc(path)];
+          final previous = syncState[nfcPath(path)];
           if (previous != null && previous.remoteEtag == null) continue;
           // The receipt certifies the bytes as of the read, not the PUT's end:
           // an autosave landing during a slow upload must not look synced.
@@ -602,7 +602,7 @@ class NextcloudSync {
                         ),
                 ),
               );
-              syncState[unorm.nfc(path)] = SyncCursor(
+              syncState[nfcPath(path)] = SyncCursor(
                 remoteConfirmed: false,
                 recordedAt: readAt,
                 localMillis: stat.modified?.millisecondsSinceEpoch,
@@ -719,7 +719,7 @@ class NextcloudSync {
                   scannedListing!.syncable,
                   syncState,
                   pendingPaths: {
-                    for (final c in unresolvedForShortcut) unorm.nfc(c.path),
+                    for (final c in unresolvedForShortcut) nfcPath(c.path),
                   },
                 )) {
               remoteCount = syncState.length;
@@ -763,7 +763,7 @@ class NextcloudSync {
       await _retryTransient(_ensureConfiguredFolder);
       progress('list-remote');
       final pendingConflicts = {
-        for (final c in await loadSyncConflicts(vault)) unorm.nfc(c.path): c,
+        for (final c in await loadSyncConflicts(vault)) nfcPath(c.path): c,
       };
       final remoteResult = initialMode != null || pushRaced
           ? (await _retryTransient(_remoteFiles))!
@@ -937,7 +937,7 @@ class NextcloudSync {
       }
       final unresolved = {
         for (final conflict in await loadSyncConflicts(vault))
-          unorm.nfc(conflict.path): conflict,
+          nfcPath(conflict.path): conflict,
       };
       final allPaths =
           <String>{
@@ -1248,7 +1248,7 @@ class NextcloudSync {
       conflict = active;
 
       final state = await _loadSyncState(vault);
-      final previous = state.cursors[unorm.nfc(conflict.path)];
+      final previous = state.cursors[nfcPath(conflict.path)];
       String? remoteEtag;
       String? resolvedHash;
       VaultStorageEntry? resolvedStat;
@@ -1299,7 +1299,7 @@ class NextcloudSync {
           : localExists;
       if (localExists && remoteExists) {
         final local = resolvedStat ?? await vault.storage.stat(conflict.path);
-        state.cursors[unorm.nfc(conflict.path)] = SyncCursor(
+        state.cursors[nfcPath(conflict.path)] = SyncCursor(
           remoteConfirmed: resolution == SyncConflictResolution.keepRemote,
           localSize: local?.size,
           localMillis: local?.modified?.millisecondsSinceEpoch,
@@ -1314,7 +1314,7 @@ class NextcloudSync {
           ),
         );
       } else {
-        state.cursors.remove(unorm.nfc(conflict.path));
+        state.cursors.remove(nfcPath(conflict.path));
       }
       await _saveSyncState(vault, state.cursors, rootEtag: state.rootEtag);
       for (final snapshot in [
@@ -1487,7 +1487,7 @@ String? _relativeRemotePathFor(String href, String root) {
   final start = href.indexOf(root);
   if (start < 0) return null;
   final path = href.substring(start + root.length);
-  return path.isEmpty ? null : unorm.nfc(path);
+  return path.isEmpty ? null : nfcPath(path);
 }
 
 String? _xmlValue(String xml, String name) {
@@ -1552,10 +1552,10 @@ class RemoteArchiveSnapshot {
   final InputFileStream input;
   final Map<String, ArchiveFile> files;
 
-  bool contains(String path) => files.containsKey(unorm.nfc(path));
+  bool contains(String path) => files.containsKey(nfcPath(path));
 
   Uint8List read(String path) {
-    final file = files[unorm.nfc(path)];
+    final file = files[nfcPath(path)];
     if (file == null) {
       throw FormatException('Archive file is unreadable: $path');
     }
@@ -1974,7 +1974,7 @@ Future<void> _discardConflictsForPath(Vault vault, String path) async {
       continue;
     }
     final recordPath = json['path'];
-    if (recordPath is! String || unorm.nfc(recordPath) != unorm.nfc(path)) {
+    if (recordPath is! String || nfcPath(recordPath) != nfcPath(path)) {
       continue;
     }
     for (final key in const ['localSnapshot', 'remoteSnapshot']) {

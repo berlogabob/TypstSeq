@@ -335,7 +335,7 @@ extension _WebDavClient on NextcloudSync {
       final hrefValue = _xmlValue(candidate, 'href');
       if (hrefValue == null) continue;
       if (_relativeRemotePath(Uri.decodeComponent(hrefValue)) ==
-          unorm.nfc(path)) {
+          nfcPath(path)) {
         block = candidate;
         break;
       }
@@ -405,7 +405,7 @@ extension _WebDavClient on NextcloudSync {
     if (remoteHash != null && remoteHash.toLowerCase() != localHash) {
       throw HttpException('PUT $path checksum mismatch');
     }
-    _remoteWrites.add(unorm.nfc(path));
+    _remoteWrites.add(nfcPath(path));
     return response.headers.value('oc-etag') ??
         response.headers.value(HttpHeaders.etagHeader);
   }
@@ -486,7 +486,7 @@ extension _WebDavClient on NextcloudSync {
           alreadyUploaded: completed,
           onChunkUploaded: completed.add,
         );
-        _remoteWrites.add(unorm.nfc(path));
+        _remoteWrites.add(nfcPath(path));
         return etag;
       } catch (error) {
         if (error is ChunkUploadException) {
@@ -632,7 +632,7 @@ extension _WebDavClient on NextcloudSync {
   }
 
   Future<void> _ensureParents(String path) async {
-    final parts = unorm.nfc(path).split('/')..removeLast();
+    final parts = nfcPath(path).split('/')..removeLast();
     var uri = config.rootUri;
     for (final part in parts) {
       uri = uri.resolve('$part/');
@@ -659,7 +659,7 @@ extension _WebDavClient on NextcloudSync {
   }
 
   Uri _remoteUri(String path) =>
-      config.rootUri.resolveUri(Uri(pathSegments: unorm.nfc(path).split('/')));
+      config.rootUri.resolveUri(Uri(pathSegments: nfcPath(path).split('/')));
 
   Future<void> _mkcol(Uri uri) async {
     final response = await (await _open(
@@ -704,7 +704,7 @@ extension _WebDavClient on NextcloudSync {
       );
     }
     await response.drain<void>().timeout(const Duration(seconds: 60));
-    _remoteWrites.addAll([unorm.nfc(from), unorm.nfc(to)]);
+    _remoteWrites.addAll([nfcPath(from), nfcPath(to)]);
     return _RemoteFile(
       modified: DateTime.now().toUtc(),
       etag: etag,
@@ -727,7 +727,7 @@ extension _WebDavClient on NextcloudSync {
         response.statusCode,
       );
     }
-    _remoteWrites.add(unorm.nfc(path));
+    _remoteWrites.add(nfcPath(path));
   }
 
   // ponytail: retries a whole path sync on any I/O error; a PUT whose success

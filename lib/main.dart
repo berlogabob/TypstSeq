@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_mobile.dart';
+import 'diagnostics/jank_monitor.dart';
 // Not used by the UI: pulls vaultServiceMain into the compiled program so the
 // background engine's entrypoint lookup can find it. @pragma alone cannot save
 // a function in a file the import graph never reaches.
@@ -10,6 +11,8 @@ import 'rich_editor.dart' show debugEnableEditorWindow;
 export 'app_mobile.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  startJankMonitor();
   // P12k bounded editing window: off by default until the on-device keyboard
   // check passes; `--dart-define=TYLOG_EDITOR_WINDOW=true` turns it on.
   debugEnableEditorWindow = const bool.fromEnvironment('TYLOG_EDITOR_WINDOW');

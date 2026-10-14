@@ -1,5 +1,49 @@
 part of '../nextcloud_sync.dart';
 
+typedef _SyncState = ({
+  Map<String, SyncCursor> cursors,
+  bool recovered,
+  bool remoteMismatch,
+  String? rootEtag,
+  Map<String, String?> folders,
+  bool legacy,
+});
+
+final Expando<({String remoteKey, int size, int modifiedMs, _SyncState state})>
+_syncStateCache = Expando();
+
+_SyncState _copySyncState(_SyncState state) => (
+  cursors: Map.of(state.cursors),
+  recovered: state.recovered,
+  remoteMismatch: state.remoteMismatch,
+  rootEtag: state.rootEtag,
+  folders: Map.of(state.folders),
+  legacy: state.legacy,
+);
+
+@visibleForTesting
+Future<
+  ({
+    Map<String, SyncCursor> cursors,
+    bool recovered,
+    bool remoteMismatch,
+    String? rootEtag,
+    Map<String, String?> folders,
+    bool legacy,
+  })
+>
+loadSyncStateForTesting(NextcloudSync sync, Vault vault) =>
+    sync._loadSyncState(vault);
+
+@visibleForTesting
+Future<void> saveSyncStateForTesting(
+  NextcloudSync sync,
+  Vault vault,
+  Map<String, SyncCursor> cursors, {
+  String? rootEtag,
+  Map<String, String?>? folders,
+}) => sync._saveSyncState(vault, cursors, rootEtag: rootEtag, folders: folders);
+
 extension _SyncStatePersistence on NextcloudSync {
   bool _isChanged(DateTime? now, int? previousMillis) {
     if (now == null) return false;
@@ -23,17 +67,7 @@ extension _SyncStatePersistence on NextcloudSync {
         .toString();
   }
 
-  Future<
-    ({
-      Map<String, SyncCursor> cursors,
-      bool recovered,
-      bool remoteMismatch,
-      String? rootEtag,
-      Map<String, String?> folders,
-      bool legacy,
-    })
-  >
-  _loadSyncState(Vault vault) async {
+  Future<_SyncState> _loadSyncState(Vault vault) async {
     const path = '.tylog/sync_state.json';
     if (!await vault.storage.exists(path)) {
       return (
@@ -44,6 +78,19 @@ extension _SyncStatePersistence on NextcloudSync {
         folders: <String, String?>{},
         legacy: false,
       );
+    }
+    final stat = await vault.storage.stat(path);
+    final remoteKey = _remoteKey;
+    final cached = _syncStateCache[vault];
+    final size = stat?.size;
+    final modifiedMs = stat?.modified?.millisecondsSinceEpoch;
+    if (size != null &&
+        modifiedMs != null &&
+        cached != null &&
+        cached.remoteKey == remoteKey &&
+        cached.size == size &&
+        cached.modifiedMs == modifiedMs) {
+      return _copySyncState(cached.state);
     }
     final source = await vault.storage.readText(path);
     try {
@@ -92,18 +139,18 @@ extension _SyncStatePersistence on NextcloudSync {
         if (!_validSyncCursor(cursor)) {
           throw const FormatException('sync cursor has invalid fields');
         }
-        final key = unorm.nfc(entry.key as String);
+        final key = nfcPath(entry.key as String);
         normalizedKeys |= key != entry.key;
         cursors[key] = SyncCursor.fromJson(cursor);
       }
-      return (
+      final state = (
         cursors: cursors,
         recovered: false,
         remoteMismatch: false,
         rootEtag: decoded['rootEtag'] as String?,
         folders: {
           for (final entry in ((decoded['folders'] as Map?) ?? {}).entries)
-            unorm.nfc(entry.key as String): entry.value as String?,
+            nfcPath(entry.key as String): entry.value as String?,
         },
         // Written before `schema`/`remoteKey` existed. Accepted rather than
         // discarded — that migration is deliberate — but reported, so the pass
@@ -114,6 +161,18 @@ extension _SyncStatePersistence on NextcloudSync {
             decoded['schema'] == null ||
             decoded['remoteKey'] == null,
       );
+      if (!state.recovered &&
+          !state.remoteMismatch &&
+          size != null &&
+          modifiedMs != null) {
+        _syncStateCache[vault] = (
+          remoteKey: remoteKey,
+          size: size,
+          modifiedMs: modifiedMs,
+          state: _copySyncState(state),
+        );
+      }
+      return state;
     } catch (error) {
       if (error is! FormatException && error is! TypeError) rethrow;
       final modified =
@@ -148,10 +207,11 @@ extension _SyncStatePersistence on NextcloudSync {
         'rootEtag': ?rootEtag,
         'folders': ?folders,
         'cursors': {
-          for (final e in state.entries) unorm.nfc(e.key): e.value.toJson(),
+          for (final e in state.entries) nfcPath(e.key): e.value.toJson(),
         },
       }),
     );
+    _syncStateCache[vault] = null;
   }
 
   Future<void> _trace(Vault vault, List<Map<String, Object?>> events) async {

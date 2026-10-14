@@ -144,7 +144,7 @@ extension _PathSync on NextcloudSync {
           return null;
         }
         if (_isSyncInternal(path)) continue;
-        path = unorm.nfc(path);
+        path = nfcPath(path);
         final expected = remote[path];
         if (expected == null || out.containsKey(path)) return null;
         if (expected.length != null && expected.length != file.size) {
@@ -196,7 +196,7 @@ extension _PathSync on NextcloudSync {
       if (entity.isDirectory || entity.path.endsWith('.tmp')) continue;
       if (_isSyncInternal(entity.path)) continue;
       // Compare canonical names, but retain the filesystem spelling in the entry.
-      final key = unorm.nfc(entity.path);
+      final key = nfcPath(entity.path);
       if (syncable.containsKey(key)) {
         throw StateError('Local paths have the same NFC name: $key');
       }
@@ -388,7 +388,7 @@ extension _PathSync on NextcloudSync {
         }
         if (!isMachineRevisionPath(path)) {
           final remoteHash = await _sha256(captured.file);
-          final latest = (await _loadSyncState(vault)).cursors[unorm.nfc(path)];
+          final latest = (await _loadSyncState(vault)).cursors[nfcPath(path)];
           if (remoteHash == previous?.uploadedSha256 ||
               remoteHash == latest?.uploadedSha256 ||
               (previous?.remoteConfirmed == false &&
@@ -616,7 +616,7 @@ extension _PathSync on NextcloudSync {
         );
         observedRemoteEtag = captured.etag;
         final remoteHash = await _sha256(captured.file);
-        final latest = (await _loadSyncState(vault)).cursors[unorm.nfc(path)];
+        final latest = (await _loadSyncState(vault)).cursors[nfcPath(path)];
         if (remoteHash == localHash) {
           await captured.file.delete();
           skipped++;
@@ -1165,9 +1165,9 @@ extension _PathSync on NextcloudSync {
       }
       final old = oldMatches.single;
       final replacement = newMatches.single;
-      if (unorm.nfc(old.key) == unorm.nfc(replacement.key)) {
+      if (nfcPath(old.key) == nfcPath(replacement.key)) {
         state.remove(old.key);
-        state[unorm.nfc(replacement.key)] = old.value;
+        state[nfcPath(replacement.key)] = old.value;
         continue;
       }
       progress('detect-renames', '${old.key} → ${replacement.key}');
@@ -1248,9 +1248,9 @@ extension _PathSync on NextcloudSync {
         final old = oldMatches.single;
         final replacement = newMatches.single;
         // APFS aliases these spellings: never write then delete the same file.
-        if (unorm.nfc(old.key) == unorm.nfc(replacement)) {
+        if (nfcPath(old.key) == nfcPath(replacement)) {
           state.remove(old.key);
-          state[unorm.nfc(replacement)] = old.value;
+          state[nfcPath(replacement)] = old.value;
           continue;
         }
         final oldStat = local[old.key];
