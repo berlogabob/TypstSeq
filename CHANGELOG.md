@@ -3,6 +3,22 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.17.2+148
+
+### Added
+
+- Share images, audio, PDFs and other files to TyLog from any Android app; the
+  share sheet offers "Attach to today". Shared links offer "Save as article"
+  (fetch and convert the page) or "Add link to today"; plain text only offers
+  "Add to today".
+- Settings > Audio > AI: servers (add, edit, test), model pickers for
+  translation, and the connection status of your worker.
+- The article worker reads its server and models from the synced AI settings.
+
+### Fixed
+
+- Settings reads no longer wait behind indexing (audio settings load in ~1 s).
+
 ## 0.17.1+147
 
 ### Fixed
