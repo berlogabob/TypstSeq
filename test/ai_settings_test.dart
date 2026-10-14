@@ -6,6 +6,20 @@ import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('model profiles and explicit overrides match the worker contract', () {
+    for (final (quality, whisper, translate) in [
+      ('fast', 'small', 'ollama/ornith-1.5:9b'),
+      ('balanced', 'large-v3-turbo', 'ollama/ornith-1.5:35b'),
+      ('best', 'large-v3', 'ollama/ornith-1.5:35b'),
+    ]) {
+      expect(whisperModelFor(AiTask(quality: quality)), whisper);
+      expect(translateModelFor(AiTask(quality: quality)), translate);
+      final override = AiTask(quality: quality, model: 'custom/model');
+      expect(whisperModelFor(override), 'custom/model');
+      expect(translateModelFor(override), 'custom/model');
+    }
+  });
+
   late Directory dir;
   late LocalVaultStorage storage;
 

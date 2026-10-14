@@ -3,6 +3,28 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.17.0+146
+
+### Added
+
+- **AI quality settings.** Settings > Audio shows which computer is processing
+  ("Berlogas-MBP online") and a Fast / Balanced / Best choice for transcription
+  and translation, with the model it maps to. Stored in
+  `_system/settings/ai.json`; the worker obeys it and writes a heartbeat to
+  `_system/workers/`.
+- **Phone landscape layout.** Navigation moves to a side rail, the app bar is
+  slimmer and Agenda opens as a sheet, so the note stays visible.
+- Processing mode is one choice (only when I ask / right after it is added /
+  on schedule) for audio and screenshots.
+
+### Fixed
+
+- UI stalls during indexing and sync: Unicode normalisation of sync paths got a
+  fast path and the sync state is cached instead of being decoded on every
+  poll (300-690 ms freezes down to about one per few minutes).
+- Translation always uses Ornith (loaded on demand) instead of whatever model
+  the server happened to have loaded; the job records which model was used.
+
 ## 0.16.0+145
 
 ### Added

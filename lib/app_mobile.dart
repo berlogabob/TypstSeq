@@ -18,6 +18,7 @@ import 'package:tylog_audio/tylog_audio.dart'
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'ai/ai_settings.dart';
 import 'article_jobs.dart';
 import 'bibliography.dart';
 import 'controlled_editor.dart';
@@ -2634,6 +2635,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             syncing: syncing,
             syncStatusSubtitle: syncStatusSubtitle,
             vaultCount: registry?.entries.length ?? 0,
+            readAi: vault == null ? null : () => readAiSettings(vault!.storage),
+            writeAi: vault == null
+                ? null
+                : (settings) async {
+                    await writeAiSettings(vault!.storage, settings);
+                    unawaited(_syncNow());
+                  },
+            readWorkers: vault == null
+                ? null
+                : () => readWorkers(vault!.storage),
             audioPolicyRead: vault == null
                 ? null
                 : () => readAudioPolicy(vault!.storage),

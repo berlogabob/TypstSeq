@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
@@ -16,7 +17,148 @@ NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
       properties: p,
     );
 
+Future<void> pumpAudioSettings(
+  WidgetTester tester, {
+  Future<AiSettings> Function()? readAi,
+  Future<void> Function(AiSettings)? writeAi,
+  Future<List<WorkerStatus>> Function()? readWorkers,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: AudioProcessingSettings(
+            read: () async => const AudioPolicy(),
+            write: (_) async {},
+            processNow: () async {},
+            readAi: readAi,
+            writeAi: writeAi,
+            readWorkers: readWorkers,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('AI quality saves immediately and preserves other settings', (
+    tester,
+  ) async {
+    const settings = AiSettings(
+      connections: [
+        AiConnection(id: 'studio', label: 'Studio PC', url: 'http://studio/v1'),
+      ],
+      transcribe: AiTask(connection: 'local'),
+      translate: AiTask(connection: 'studio', model: 'custom/translation'),
+    );
+    AiSettings? saved;
+    await pumpAudioSettings(
+      tester,
+      readAi: () async => settings,
+      writeAi: (next) async => saved = next,
+      readWorkers: () async => [
+        const WorkerStatus(host: 'Old Mac'),
+        WorkerStatus(
+          host: 'Mac',
+          lastSeen: DateTime.now(),
+          connections: const {
+            'studio': (
+              reachable: true,
+              loaded: ['ollama/ornith-1.5:35b', 'provider/model'],
+            ),
+          },
+        ),
+      ],
+    );
+    expect(find.text('Mac online'), findsOneWidget);
+    expect(find.byIcon(Icons.computer), findsOneWidget);
+    expect(
+      find.text('Server Studio PC: reachable, loaded: ornith-1.5:35b, model'),
+      findsOneWidget,
+    );
+    expect(find.text('large-v3'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(SegmentedButton<String>).first,
+        matching: find.text('Fast'),
+      ),
+    );
+    await tester.pump();
+    expect(saved!.transcribe.quality, 'fast');
+    expect(saved!.transcribe.connection, 'local');
+    expect(saved!.translate.toJson(), settings.translate.toJson());
+    expect(saved!.connections, settings.connections);
+    expect(find.text('small'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('worker status refreshes every 30 seconds and stops on dispose', (
+    tester,
+  ) async {
+    var reads = 0;
+    List<WorkerStatus> workers = [];
+    await pumpAudioSettings(
+      tester,
+      readAi: () async => const AiSettings(
+        connections: [
+          AiConnection(
+            id: 'studio',
+            label: 'Studio PC',
+            url: 'http://studio/v1',
+          ),
+        ],
+      ),
+      writeAi: (_) async {},
+      readWorkers: () async {
+        reads++;
+        return workers;
+      },
+    );
+    expect(reads, 1);
+    expect(
+      find.text(
+        'No computer is processing yet. Start the TyLog worker on your computer.',
+      ),
+      findsOneWidget,
+    );
+    workers = [
+      WorkerStatus(
+        host: 'Mac',
+        lastSeen: DateTime.now().subtract(const Duration(minutes: 10)),
+        connections: const {'studio': (reachable: false, loaded: <String>[])},
+      ),
+    ];
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(reads, 2);
+    expect(find.text('Mac last seen 10 minutes ago (offline)'), findsOneWidget);
+    expect(find.byIcon(Icons.computer_outlined), findsOneWidget);
+    expect(find.text('Server Studio PC: not reachable'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
+    expect(reads, 2);
+  });
+
+  testWidgets('AI area is absent unless both settings callbacks are supplied', (
+    tester,
+  ) async {
+    for (final readable in [false, true]) {
+      await pumpAudioSettings(
+        tester,
+        readAi: readable ? () async => const AiSettings() : null,
+        writeAi: readable ? null : (_) async {},
+      );
+      expect(find.byType(SegmentedButton<String>), findsNothing);
+      expect(find.text('Transcription quality'), findsNothing);
+      expect(find.text('Translation quality'), findsNothing);
+      expect(find.byIcon(Icons.computer_outlined), findsNothing);
+      expect(find.text('Transcribe automatically'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('mixed transcript requests a missing selected translation', (
     tester,
   ) async {

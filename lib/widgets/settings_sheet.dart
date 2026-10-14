@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'app_version.dart';
@@ -33,6 +34,9 @@ class SettingsSheet extends StatefulWidget {
     this.audioPolicyRead,
     this.audioPolicyWrite,
     this.onProcessAudio,
+    this.readAi,
+    this.writeAi,
+    this.readWorkers,
     this.screenshotsMode = 'off',
     this.screenshotsTime = '03:00',
     this.onConfigureScreenshots,
@@ -47,6 +51,9 @@ class SettingsSheet extends StatefulWidget {
   final Future<AudioPolicy> Function()? audioPolicyRead;
   final Future<void> Function(AudioPolicy)? audioPolicyWrite;
   final Future<void> Function()? onProcessAudio;
+  final Future<AiSettings> Function()? readAi;
+  final Future<void> Function(AiSettings)? writeAi;
+  final Future<List<WorkerStatus>> Function()? readWorkers;
   final String screenshotsMode;
   final String screenshotsTime;
   final Future<void> Function(String, String)? onConfigureScreenshots;
@@ -220,6 +227,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   read: widget.audioPolicyRead!,
                   write: widget.audioPolicyWrite!,
                   processNow: widget.onProcessAudio!,
+                  readAi: widget.readAi,
+                  writeAi: widget.writeAi,
+                  readWorkers: widget.readWorkers,
                 ),
               if (readScreenshotsStatusAvailable)
                 ScreenshotsSettings(

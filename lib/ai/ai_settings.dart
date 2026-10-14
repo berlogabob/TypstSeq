@@ -89,6 +89,18 @@ class AiTask {
   }
 }
 
+String whisperModelFor(AiTask t) =>
+    t.model ??
+    switch (t.quality) {
+      'fast' => 'small',
+      'balanced' => 'large-v3-turbo',
+      _ => 'large-v3',
+    };
+
+String translateModelFor(AiTask t) =>
+    t.model ??
+    (t.quality == 'fast' ? 'ollama/ornith-1.5:9b' : 'ollama/ornith-1.5:35b');
+
 class AiSettings {
   const AiSettings({
     this.connections = const [],
