@@ -120,6 +120,8 @@ String translateModelFor(AiTask t) =>
     t.model ??
     (t.quality == 'fast' ? 'ollama/ornith-1.5:9b' : 'ollama/ornith-1.5:35b');
 
+enum AiPreset { light, best }
+
 class AiSettings {
   const AiSettings({
     this.connections = const [],
@@ -130,6 +132,25 @@ class AiSettings {
   final List<AiConnection> connections;
   final AiTask transcribe;
   final AiTask translate;
+
+  AiPreset? get preset {
+    if (transcribe.model != null || translate.model != null) return null;
+    if (transcribe.quality == 'fast' && translate.quality == 'fast') {
+      return AiPreset.light;
+    }
+    if (transcribe.quality == 'best' && translate.quality == 'best') {
+      return AiPreset.best;
+    }
+    return null;
+  }
+
+  AiSettings withPreset(AiPreset p) {
+    final quality = p == AiPreset.light ? 'fast' : 'best';
+    return copyWith(
+      transcribe: transcribe.copyWith(quality: quality, model: null),
+      translate: translate.copyWith(quality: quality, model: null),
+    );
+  }
 
   AiSettings copyWith({
     List<AiConnection>? connections,
@@ -199,7 +220,7 @@ Future<AiSettings> readAiSettings(VaultStorage storage) async {
   }
 }
 
-/// Replaces known settings so other top-level keys survive.
+/// Replaces known settings so other top-level keys and tasks survive.
 Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
   Map<String, Object?> all = {};
   try {
@@ -208,7 +229,13 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
       if (data is Map) all = data.cast<String, Object?>();
     }
   } catch (_) {}
+  final tasks = all['tasks'];
   all.addAll(settings.toJson());
+  all['tasks'] = {
+    if (tasks is Map) ...tasks.cast<String, Object?>(),
+    'transcribe': settings.transcribe.toJson(),
+    'translate': settings.translate.toJson(),
+  };
   await storage.createDirectory('_system/settings');
   await storage.writeText(aiSettingsPath, jsonEncode(all));
 }

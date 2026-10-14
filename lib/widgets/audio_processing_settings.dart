@@ -333,6 +333,48 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
                 () => _discoveredModels[id] = models.map((m) => m.id).toList(),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Preset'),
+                  const SizedBox(height: 4),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'light',
+                        label: Text('Light'),
+                        tooltip: 'small + 9b models, fast',
+                      ),
+                      ButtonSegment(
+                        value: 'best',
+                        label: Text('Best'),
+                        tooltip: 'large models',
+                      ),
+                      ButtonSegment(
+                        value: 'custom',
+                        label: Text('Custom'),
+                        enabled: false,
+                      ),
+                    ],
+                    selected: {ai.preset?.name ?? 'custom'},
+                    onSelectionChanged: _aiBusy
+                        ? null
+                        : (values) => unawaited(
+                            _saveAi(
+                              ai.withPreset(AiPreset.values.byName(values.single)),
+                            ),
+                          ),
+                  ),
+                  Text(
+                    'Light: fastest. Best: most accurate. '
+                    'Servers stay as you set them; model overrides reset.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
             _qualityRow(
               title: 'Transcription quality',
               task: ai.transcribe,

@@ -7,6 +7,57 @@ import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('presets require matching qualities and no model overrides', () {
+    expect(const AiSettings().preset, AiPreset.best);
+    for (final transcribe in ['fast', 'balanced', 'best']) {
+      for (final translate in ['fast', 'balanced', 'best']) {
+        final settings = AiSettings(
+          transcribe: AiTask(quality: transcribe, connection: 'a'),
+          translate: AiTask(quality: translate, connection: 'b'),
+        );
+        expect(
+          settings.preset,
+          transcribe == translate && transcribe == 'fast'
+              ? AiPreset.light
+              : transcribe == translate && transcribe == 'best'
+              ? AiPreset.best
+              : null,
+        );
+        expect(
+          settings.copyWith(
+            transcribe: settings.transcribe.copyWith(model: 'custom'),
+          ).preset,
+          isNull,
+        );
+        expect(
+          settings.copyWith(
+            translate: settings.translate.copyWith(model: 'custom'),
+          ).preset,
+          isNull,
+        );
+      }
+    }
+  });
+
+  test('applying presets clears models and keeps connections', () {
+    const settings = AiSettings(
+      connections: [AiConnection(id: 'a', url: 'http://a/v1')],
+      transcribe: AiTask(quality: 'balanced', model: 'whisper', connection: 'a'),
+      translate: AiTask(model: 'llm', connection: 'b'),
+    );
+    for (final preset in AiPreset.values) {
+      final next = settings.withPreset(preset);
+      final quality = preset == AiPreset.light ? 'fast' : 'best';
+      expect(next.preset, preset);
+      expect(next.connections, same(settings.connections));
+      expect(next.transcribe.toJson(), {'quality': quality, 'connection': 'a'});
+      expect(next.translate.toJson(), {'quality': quality, 'connection': 'b'});
+      expect(next.withPreset(preset).toJson(), next.toJson());
+    }
+    expect(settings.transcribe.model, 'whisper');
+    expect(settings.translate.model, 'llm');
+  });
+
   test('model profiles and explicit overrides match the worker contract', () {
     for (final (quality, whisper, translate) in [
       ('fast', 'small', 'ollama/ornith-1.5:9b'),
@@ -185,6 +236,11 @@ void main() {
       jsonEncode({
         ...settings.toJson(),
         'other': {'enabled': true},
+        'tasks': {
+          'articles': {'quality': 'balanced', 'model': 'article/model'},
+          'transcribe': {'quality': 'best', 'unknown': true},
+          'translate': {'quality': 'fast', 'unknown': true},
+        },
       }),
     );
     await writeAiSettings(storage, settings);
@@ -201,6 +257,7 @@ void main() {
         },
       ],
       'tasks': {
+        'articles': {'quality': 'balanced', 'model': 'article/model'},
         'transcribe': {'quality': 'fast', 'model': 'small'},
         'translate': {'quality': 'best', 'connection': 'studio'},
       },
