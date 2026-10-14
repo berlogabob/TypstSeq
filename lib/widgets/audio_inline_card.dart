@@ -209,7 +209,9 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
     final textTheme = Theme.of(context).textTheme;
     // File name without its extension: the extension is in Properties.
     final name = widget.label.replaceFirst(RegExp(r'\.[^.]+$'), '');
-    // 8 dp grid: 12 outer padding, 8 between rows, 12 between play and wave.
+    // Quick-use chip: header line (name, alias, status icons, chevron) and one
+    // line of play + waveform. Time, speed and everything else live in the
+    // expanded screen. 4 dp grid: 12 side padding, 8 top/bottom, 8 gaps.
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       color: scheme.surfaceContainerHighest,
@@ -218,7 +220,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
         behavior: HitTestBehavior.opaque,
         onLongPress: () => unawaited(_expand(AudioTab.comments)),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -226,7 +228,9 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                 onTap: () => unawaited(_expand(AudioTab.comments)),
                 child: Row(
                   children: [
-                    Expanded(
+                    Flexible(
+                      flex: _alias == null ? 1 : 0,
+                      fit: _alias == null ? FlexFit.tight : FlexFit.loose,
                       child: Text(
                         _error ?? name,
                         style: textTheme.labelMedium?.copyWith(
@@ -237,7 +241,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                       ),
                     ),
                     if (_alias != null)
-                      Flexible(
+                      Expanded(
                         child: Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Text(
@@ -245,9 +249,23 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                             style: textTheme.titleSmall,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
                           ),
                         ),
                       ),
+                    _statusIcon(
+                      Icons.subtitles_outlined,
+                      'Transcript',
+                      _transcribed,
+                      AudioTab.transcribe,
+                    ),
+                    _statusIcon(
+                      Icons.translate,
+                      'Translation',
+                      _translated,
+                      AudioTab.translate,
+                    ),
+                    const SizedBox(width: 4),
                     Icon(
                       Icons.chevron_right,
                       size: 20,
@@ -256,11 +274,14 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   IconButton.filled(
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(40, 40),
+                      padding: EdgeInsets.zero,
+                    ),
                     tooltip: _playing ? 'Pause' : 'Play',
                     onPressed: _toggle,
                     icon: _busy
@@ -273,42 +294,12 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        WaveformSeekBar(
-                          peaks: _peaks,
-                          progress: progress,
-                          markers: const [],
-                          height: 40,
-                          onSeek: (f) => unawaited(_seek(f)),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _duration == Duration.zero
-                                    ? ''
-                                    : '${formatClock(_position)} / ${formatClock(_duration)}',
-                                style: textTheme.labelSmall,
-                              ),
-                            ),
-                            _statusIcon(
-                              Icons.subtitles_outlined,
-                              'Transcript',
-                              _transcribed,
-                              AudioTab.transcribe,
-                            ),
-                            _statusIcon(
-                              Icons.translate,
-                              'Translation',
-                              _translated,
-                              AudioTab.translate,
-                            ),
-                          ],
-                        ),
-                      ],
+                    child: WaveformSeekBar(
+                      peaks: _peaks,
+                      progress: progress,
+                      markers: const [],
+                      height: 40,
+                      onSeek: (f) => unawaited(_seek(f)),
                     ),
                   ),
                 ],
