@@ -494,7 +494,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                           _seek(Duration(milliseconds: (f * totalMs).round())),
                     ),
                   ),
-                  Text('${formatClock(_position)} / ${formatClock(_duration)}'),
+                  _timeRow(),
                   _controls(),
                   const Divider(height: 1),
                   _tabBar(),
@@ -521,104 +521,160 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       AudioTab.properties: (Icons.info_outline, 'Properties'),
     };
     final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        for (final e in tabs.entries)
-          Expanded(
-            child: InkWell(
-              onTap: () {
-                setState(() => _tab = e.key);
-                if (e.key != AudioTab.comments) {
-                  unawaited(_reloadComments());
-                  unawaited(_refreshTranscriptState());
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      width: 3,
-                      color: _tab == e.key
-                          ? scheme.primary
-                          : Colors.transparent,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          for (final e in tabs.entries)
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  setState(() => _tab = e.key);
+                  if (e.key != AudioTab.comments) {
+                    unawaited(_reloadComments());
+                    unawaited(_refreshTranscriptState());
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        width: 3,
+                        color: _tab == e.key
+                            ? scheme.primary
+                            : Colors.transparent,
+                      ),
                     ),
                   ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Badge(
+                        isLabelVisible:
+                            e.key == AudioTab.comments && _comments.isNotEmpty,
+                        label: Text('${_comments.length}'),
+                        child: Icon(
+                          e.value.$1,
+                          color: _tab == e.key
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        e.value.$2,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: _tab == e.key
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Badge(
-                      isLabelVisible:
-                          e.key == AudioTab.comments && _comments.isNotEmpty,
-                      label: Text('${_comments.length}'),
-                      child: Icon(
-                        e.value.$1,
-                        color: _tab == e.key
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      e.value.$2,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: _tab == e.key
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// One 16 px margin and one centre axis for the whole player block:
+  /// position at the left edge, duration at the right edge (both under the
+  /// waveform they measure), playback speed centred between them.
+  Widget _timeRow() {
+    final style = Theme.of(context).textTheme.labelLarge?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(formatClock(_position), style: style),
+          ),
+          Expanded(
+            child: Center(
+              child: FilledButton.tonal(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(64, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () {
+                  final next =
+                      _speeds[(_speeds.indexOf(_speed) + 1) % _speeds.length];
+                  setState(() => _speed = next);
+                  _player.setSpeed(next);
+                },
+                child: Text(
+                  '${_speed}x',
+                  style: const TextStyle(
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
               ),
             ),
           ),
-      ],
+          SizedBox(
+            width: 56,
+            child: Text(
+              formatClock(_duration),
+              style: style,
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _controls() => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      IconButton(
-        tooltip: 'Back 10 s',
-        icon: const Icon(Icons.replay_10),
-        onPressed: () => _seek(_position - const Duration(seconds: 10)),
-      ),
-      StreamBuilder<PlayerState>(
-        stream: _player.playerStateStream,
-        builder: (context, snap) {
-          final done = snap.data?.processingState == ProcessingState.completed;
-          final playing = (snap.data?.playing ?? false) && !done;
-          return IconButton.filled(
-            iconSize: 40,
-            tooltip: playing ? 'Pause' : 'Play',
-            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-            onPressed: () {
-              if (playing) {
-                _player.pause();
-              } else {
-                if (done) _player.seek(Duration.zero);
-                _player.play();
-              }
-            },
-          );
-        },
-      ),
-      IconButton(
-        tooltip: 'Forward 10 s',
-        icon: const Icon(Icons.forward_10),
-        onPressed: () => _seek(_position + const Duration(seconds: 10)),
-      ),
-      TextButton(
-        onPressed: () {
-          final next = _speeds[(_speeds.indexOf(_speed) + 1) % _speeds.length];
-          setState(() => _speed = next);
-          _player.setSpeed(next);
-        },
-        child: Text('${_speed}x'),
-      ),
-    ],
+  /// Back / play / forward on the centre axis, equal 24 px gaps.
+  Widget _controls() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          iconSize: 32,
+          tooltip: 'Back 10 s',
+          icon: const Icon(Icons.replay_10),
+          onPressed: () => _seek(_position - const Duration(seconds: 10)),
+        ),
+        const SizedBox(width: 24),
+        StreamBuilder<PlayerState>(
+          stream: _player.playerStateStream,
+          builder: (context, snap) {
+            final done =
+                snap.data?.processingState == ProcessingState.completed;
+            final playing = (snap.data?.playing ?? false) && !done;
+            return IconButton.filled(
+              iconSize: 40,
+              padding: const EdgeInsets.all(12),
+              tooltip: playing ? 'Pause' : 'Play',
+              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+              onPressed: () {
+                if (playing) {
+                  _player.pause();
+                } else {
+                  if (done) _player.seek(Duration.zero);
+                  _player.play();
+                }
+              },
+            );
+          },
+        ),
+        const SizedBox(width: 24),
+        IconButton(
+          iconSize: 32,
+          tooltip: 'Forward 10 s',
+          icon: const Icon(Icons.forward_10),
+          onPressed: () => _seek(_position + const Duration(seconds: 10)),
+        ),
+      ],
+    ),
   );
 
   Widget _commentList(int active) {
