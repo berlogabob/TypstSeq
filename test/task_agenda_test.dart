@@ -319,17 +319,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Task hidden'), findsNothing);
       expect(find.text('Task journal'), findsNothing);
-      expect(find.byType(TextField), findsNothing);
-      await tester.tap(find.byTooltip('Search tasks'));
+      expect(find.byKey(const Key('tasks-search')), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('tasks-search')), 'hidden');
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'hidden');
-      await tester.tap(find.byTooltip('Search tasks'));
+      expect(find.text('From journal'), findsNothing);
+      await tester.tap(find.byTooltip('Clear search'));
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '');
-      await tester.tap(find.byTooltip('Search tasks'));
-      await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
+      expect(find.byKey(const Key('tasks-search')), findsOneWidget);
       expect(find.text('From journal'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('From journal')).dy,

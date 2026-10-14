@@ -2696,7 +2696,7 @@ void main() {
     page.onCreateNote('note');
     await tester.pump();
     expect(find.text('New page'), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'Created');
+    await tester.enterText(find.byType(TextField).last, 'Created');
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await tester.pump();
     expect(controller.note, 'notes/Created.typ');
@@ -2729,7 +2729,7 @@ void main() {
     final page = tester.widget<LibraryView>(find.byType(LibraryView));
     page.onCreateNote('note');
     await tester.pump();
-    await tester.enterText(find.byType(TextField), 'Should not create');
+    await tester.enterText(find.byType(TextField).last, 'Should not create');
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await tester.pump();
     expect(controller.note, 'notes/current.typ');
@@ -2793,7 +2793,7 @@ void main() {
     var page = tester.widget<LibraryView>(find.byType(LibraryView));
     page.onCreateNote('note');
     await tester.pump();
-    await tester.enterText(find.byType(TextField), 'Retry me');
+    await tester.enterText(find.byType(TextField).last, 'Retry me');
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await tester.pump();
     expect(find.textContaining('Could not create page'), findsOneWidget);
@@ -2801,7 +2801,7 @@ void main() {
     page = tester.widget<LibraryView>(find.byType(LibraryView));
     page.onCreateNote('note');
     await tester.pump();
-    await tester.enterText(find.byType(TextField), 'Created after retry');
+    await tester.enterText(find.byType(TextField).last, 'Created after retry');
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await tester.pump();
     expect(controller.note, 'notes/Created after retry.typ');

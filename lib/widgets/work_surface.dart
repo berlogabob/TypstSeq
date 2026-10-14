@@ -9,8 +9,9 @@ import '../controlled_editor.dart' show localTime;
 import '../article_jobs.dart';
 import 'calendar_tab.dart';
 import 'constants.dart';
+import 'ds/library_toolbar.dart';
+import 'ds/app_empty_state.dart';
 import 'date_format.dart';
-import 'loading.dart';
 import 'property_select_chip.dart';
 import 'task_row.dart';
 import 'task_agenda.dart';
@@ -265,7 +266,7 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
   TaskAgendaFilter _filter = TaskAgendaFilter.open;
   String? _project;
   String _search = '';
-  bool _searchOpen = false;
+  final _query = TextEditingController();
   List<TaskAgendaGroup> _groups = const [];
   Timer? _dayTimer;
   late String _today;
@@ -304,6 +305,7 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
 
   @override
   void dispose() {
+    _query.dispose();
     _dayTimer?.cancel();
     super.dispose();
   }
@@ -311,65 +313,47 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      Padding(
-        padding: const EdgeInsets.all(kSpace16),
-        child: Column(
-          children: [
-            Wrap(
-              spacing: kSpace8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final filter in TaskAgendaFilter.values)
-                  ChoiceChip(
-                    label: Text(switch (filter) {
-                      TaskAgendaFilter.open => 'Open',
-                      TaskAgendaFilter.done => 'Done',
-                      TaskAgendaFilter.all => 'All',
-                    }),
-                    selected: _filter == filter,
-                    onSelected: (_) => setState(() {
-                      _filter = filter;
-                      _refresh();
-                    }),
-                  ),
-                IconButton(
-                  tooltip: 'Search tasks',
-                  icon: const Icon(Icons.search),
-                  onPressed: () => setState(() {
-                    _searchOpen = !_searchOpen || _search.isNotEmpty;
-                  }),
-                ),
-                DropdownButton<String>(
-                  value: _project,
-                  hint: const Text('All projects'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All projects'),
-                    ),
-                    for (final project in _cache.projects)
-                      DropdownMenuItem(value: project, child: Text(project)),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _project = value;
-                    _refresh();
-                  }),
-                ),
-              ],
+      LibraryToolbar(
+        controller: _query,
+        searchKey: const Key('tasks-search'),
+        hintText: 'Search task text',
+        onChanged: (value) => setState(() {
+          _search = value;
+          _refresh();
+        }),
+        chips: [
+          for (final filter in TaskAgendaFilter.values)
+            LibraryFilterChip(
+              label: switch (filter) {
+                TaskAgendaFilter.open => 'Open',
+                TaskAgendaFilter.done => 'Done',
+                TaskAgendaFilter.all => 'All',
+              },
+              selected: _filter == filter,
+              onSelected: (_) => setState(() {
+                _filter = filter;
+                _refresh();
+              }),
             ),
-            if (_searchOpen || _search.isNotEmpty)
-              TextField(
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search task text',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (value) => setState(() {
-                  _search = value;
-                  _refresh();
-                }),
-              ),
-          ],
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: DropdownButton<String>(
+            value: _project,
+            hint: const Text('All projects'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('All projects')),
+              for (final project in _cache.projects)
+                DropdownMenuItem(value: project, child: Text(project)),
+            ],
+            onChanged: (value) => setState(() {
+              _project = value;
+              _refresh();
+            }),
+          ),
         ),
       ),
       Expanded(
@@ -377,13 +361,11 @@ class _PrimaryTasksViewState extends State<_PrimaryTasksView> {
           slivers: [
             if (_groups.isEmpty)
               SliverToBoxAdapter(
-                child: ListTile(
-                  leading: widget.indexing
-                      ? const LoadingIndicator(size: 20, strokeWidth: 2)
-                      : null,
-                  title: Text(
-                    widget.indexing ? 'Indexing…' : 'No matching tasks',
-                  ),
+                child: AppEmptyState(
+                  icon: Icons.checklist,
+                  loading: widget.indexing,
+                  title: widget.indexing ? 'Indexing…' : 'No matching tasks',
+                  hint: 'Try another search or filter.',
                 ),
               ),
             for (final group in _groups) ...[
@@ -632,6 +614,13 @@ class _UnifiedNotesView extends StatefulWidget {
 
 class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
   String? _kind;
+  final _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -643,84 +632,75 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
       ..remove('screenshot');
     final chips = kinds.toList()..sort();
     final selected = _kind;
+    final query = _query.text.trim().toLowerCase();
     final notes = all.where((note) {
+      if (!note.title.toLowerCase().contains(query)) return false;
       if (selected != null) return note.kind == selected;
       return note.kind != 'article' && note.kind != 'screenshot';
     }).toList()..sort((a, b) => a.title.compareTo(b.title));
     return Column(
       children: [
-        if (chips.isNotEmpty)
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: kSpace12),
-              children: [
-                for (final kind in chips)
-                  Padding(
-                    padding: const EdgeInsets.only(right: kSpace8, top: 6),
-                    child: FilterChip(
-                      avatar: Icon(iconForKind(kind), size: 16),
-                      label: Text(kind),
-                      selected: selected == kind,
-                      onSelected: (_) => setState(
-                        () => _kind = selected == kind ? null : kind,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        LibraryToolbar(
+          controller: _query,
+          searchKey: const Key('notes-search'),
+          hintText: 'Search notes',
+          onChanged: (_) => setState(() {}),
+          chips: [
+            for (final kind in chips)
+              LibraryFilterChip(
+                icon: iconForKind(kind),
+                label: kind,
+                count: all.where((note) => note.kind == kind).length,
+                selected: selected == kind,
+                onSelected: (_) => setState(
+                  () => _kind = selected == kind ? null : kind,
+                ),
+              ),
+          ],
+        ),
         Expanded(
-          child: ListView.builder(
-            itemCount: notes.isEmpty ? 2 : notes.length,
-            itemBuilder: (context, i) {
-              if (notes.isEmpty && i == 0) {
-                return Row(
-                  children: [
-                    Expanded(
-                      child: ListTile(
-                        leading: const Icon(Icons.add),
-                        title: const Text('New note'),
-                        onTap: () => widget.onCreateNote(_kind ?? 'note'),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListTile(
-                        leading: const Icon(Icons.person_add_alt),
-                        title: const Text('New entity'),
-                        onTap: widget.onCreateEntity,
-                      ),
-                    ),
-                  ],
-                );
-              }
-              if (notes.isEmpty) {
-                return ListTile(
-                  leading: widget.indexing
-                      ? const LoadingIndicator(size: 20, strokeWidth: 2)
-                      : null,
-                  title: Text(widget.indexing ? 'Indexing…' : 'No notes yet'),
-                );
-              }
-              final note = notes[i];
-              final isEntity = !structuralNoteKinds.contains(note.kind);
-              return ListTile(
-                // Shared kind→icon map so a person reads as a person here too.
-                leading: Icon(iconForKind(note.kind)),
-                title: Text(note.title),
-                subtitle: isEntity || note.kind == 'project'
-                    ? Text(
-                        [
-                          note.kind,
-                          if (note.aliases.isNotEmpty) note.aliases.join(', '),
-                        ].join(' · '),
-                      )
-                    : null,
-                onTap: () => widget.onOpenPath(note.path),
-              );
-            },
-          ),
+          child: notes.isEmpty
+              ? AppEmptyState(
+                  icon: Icons.description_outlined,
+                  loading: widget.indexing,
+                  title: widget.indexing
+                      ? 'Indexing…'
+                      : query.isNotEmpty
+                      ? 'Nothing matches'
+                      : 'No notes yet',
+                  hint: query.isNotEmpty
+                      ? 'Try another search or filter.'
+                      : 'Create a note or entity to get started.',
+                  primaryAction: FilledButton(
+                    onPressed: () => widget.onCreateNote(_kind ?? 'note'),
+                    child: const Text('New note'),
+                  ),
+                  secondaryAction: OutlinedButton(
+                    onPressed: widget.onCreateEntity,
+                    child: const Text('New entity'),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: notes.length,
+                  itemBuilder: (context, i) {
+                    final note = notes[i];
+                    final isEntity = !structuralNoteKinds.contains(note.kind);
+                    return ListTile(
+                      // Shared kind→icon map so a person reads as a person here too.
+                      leading: Icon(iconForKind(note.kind)),
+                      title: Text(note.title),
+                      subtitle: isEntity || note.kind == 'project'
+                          ? Text(
+                              [
+                                note.kind,
+                                if (note.aliases.isNotEmpty) note.aliases.join(', '),
+                              ].join(' · '),
+                            )
+                          : null,
+                      onTap: () => widget.onOpenPath(note.path),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -916,6 +896,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 (note) =>
                     note.title.toLowerCase().contains(q) ||
                     note.tags.any((tag) => tag.toLowerCase().contains(q)) ||
+                    (_source(note)?.toLowerCase().contains(q) ?? false) ||
+                    (screenshots && _screenshotTitle(note).toLowerCase().contains(q)) ||
                     (screenshots &&
                         '${note.properties['source_app']} ${note.properties['keywords']}'
                             .toLowerCase()
@@ -998,194 +980,95 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     ];
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(kSpace4, kSpace8, kSpace4, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: Key(
-                    '${screenshots ? 'screenshots' : 'articles'}-search',
-                  ),
-                  controller: _query,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search),
-                    hintText:
-                        'Search ${screenshots ? 'screenshots' : 'articles'}',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: _query.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _query.clear();
-                              setState(() {});
-                            },
-                          ),
-                  ),
-                ),
-              ),
-              PopupMenuButton<String>(
-                key: Key('${screenshots ? 'screenshots' : 'articles'}-sort'),
-                tooltip: 'Sort: ${_sortLabels[sort]}',
-                icon: const Icon(Icons.sort),
-                initialValue: sort,
-                onSelected: (value) {
-                  setState(() => sort = value);
-                  _persist();
-                },
-                itemBuilder: (_) => [
-                  for (final entry in _sortLabels.entries)
-                    PopupMenuItem(value: entry.key, child: Text(entry.value)),
-                ],
-              ),
-              PopupMenuButton<String>(
-                key: Key('${screenshots ? 'screenshots' : 'articles'}-group'),
-                tooltip:
-                    'Grouping: ${groupBy == 'category' ? 'Group by category' : _groupLabels[groupBy]}',
-                icon: const Icon(Icons.workspaces_outline),
-                initialValue: groupBy,
-                onSelected: (value) {
-                  setState(() => groupBy = value);
-                  _persist();
-                },
-                itemBuilder: (_) => [
-                  for (final entry
-                      in (screenshots
-                              ? const {
-                                  'none': 'No grouping',
-                                  'source': 'Group by source app',
-                                  'category': 'Group by category',
-                                  'month': 'Group by month',
-                                }
-                              : _groupLabels)
-                          .entries)
-                    PopupMenuItem(value: entry.key, child: Text(entry.value)),
-                ],
-              ),
-            ],
-          ),
-        ),
-        if (screenshots)
-          SingleChildScrollView(
-            key: const Key('screenshots-filters'),
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-              horizontal: kSpace4,
-              vertical: 6,
-            ),
-            child: Row(
-              children: [
-                for (final (value, label) in statusChips)
-                  Padding(
-                    padding: const EdgeInsets.only(right: kSpace8),
-                    child: ChoiceChip(
-                      label: Text(
-                        '$label · ${value == null ? searched.length : counts[value]}',
-                      ),
-                      selected: statusFilter == value,
-                      onSelected: (_) => setState(() => statusFilter = value),
-                    ),
-                  ),
-                for (final category in categoryChips)
-                  Padding(
-                    padding: const EdgeInsets.only(right: kSpace8),
-                    child: FilterChip(
-                      key: ValueKey('screenshot-category-$category'),
-                      label: Text(
-                        '$category · ${categoryCounts[category] ?? 0}',
-                      ),
-                      selected: categoryFilter == category,
-                      onSelected: (selected) => setState(
-                        () => categoryFilter = selected ? category : null,
-                      ),
-                    ),
-                  ),
-                for (final (value, label) in <(String?, String)>[
-                  (null, 'Any relevance'),
-                  for (final r in relevanceOptions) (r, relevanceLabels[r]!),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: kSpace8),
-                    child: ChoiceChip(
-                      label: Text(label),
-                      selected: relevanceFilter == value,
-                      onSelected: (_) =>
-                          setState(() => relevanceFilter = value),
-                    ),
-                  ),
+        LibraryToolbar(
+          controller: _query,
+          searchKey: Key('${screenshots ? 'screenshots' : 'articles'}-search'),
+          filtersKey: screenshots ? const Key('screenshots-filters') : null,
+          hintText: 'Search ${screenshots ? 'screenshots' : 'articles'}',
+          onChanged: (_) => setState(() {}),
+          trailing: [
+            PopupMenuButton<String>(
+              key: Key('${screenshots ? 'screenshots' : 'articles'}-sort'),
+              tooltip: 'Sort: ${_sortLabels[sort]}',
+              icon: const Icon(Icons.sort, size: kIcon),
+              initialValue: sort,
+              onSelected: (value) {
+                setState(() => sort = value);
+                _persist();
+              },
+              itemBuilder: (_) => [
+                for (final entry in _sortLabels.entries)
+                  PopupMenuItem(value: entry.key, child: Text(entry.value)),
               ],
             ),
-          )
-        else ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: kSpace4,
-              vertical: 6,
+            PopupMenuButton<String>(
+              key: Key('${screenshots ? 'screenshots' : 'articles'}-group'),
+              tooltip:
+                  'Grouping: ${groupBy == 'category' ? 'Group by category' : _groupLabels[groupBy]}',
+              icon: const Icon(Icons.view_agenda_outlined, size: kIcon),
+              initialValue: groupBy,
+              onSelected: (value) {
+                setState(() => groupBy = value);
+                _persist();
+              },
+              itemBuilder: (_) => [
+                for (final entry
+                    in (screenshots
+                            ? const {
+                                'none': 'No grouping',
+                                'source': 'Group by source app',
+                                'category': 'Group by category',
+                                'month': 'Group by month',
+                              }
+                            : _groupLabels)
+                        .entries)
+                  PopupMenuItem(value: entry.key, child: Text(entry.value)),
+              ],
             ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: kSpace8,
-                children: [
-                  for (final (value, label) in statusChips)
-                    ChoiceChip(
-                      label: Text(
-                        '$label · ${value == null ? searched.length : counts[value]}',
-                      ),
-                      selected: statusFilter == value,
-                      onSelected: (_) {
-                        setState(() => statusFilter = value);
-                        _persist();
-                      },
-                    ),
-                ],
+          ],
+          chips: [
+            for (final (value, label) in statusChips)
+              LibraryFilterChip(
+                label: label,
+                count: value == null ? searched.length : counts[value],
+                selected: statusFilter == value,
+                onSelected: (_) {
+                  setState(() => statusFilter = value);
+                  _persist();
+                },
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(kSpace4, 0, kSpace4, 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: kSpace8,
-                children: [
-                  for (final (value, label) in <(String?, String)>[
-                    (null, 'Any relevance'),
-                    for (final r in relevanceOptions) (r, relevanceLabels[r]!),
-                  ])
-                    ChoiceChip(
-                      label: Text(label),
-                      selected: relevanceFilter == value,
-                      onSelected: (_) {
-                        setState(() => relevanceFilter = value);
-                        _persist();
-                      },
-                    ),
-                ],
+            if (screenshots)
+              for (final category in categoryChips)
+                LibraryFilterChip(
+                  key: ValueKey('screenshot-category-$category'),
+                  label: category,
+                  count: categoryCounts[category] ?? 0,
+                  selected: categoryFilter == category,
+                  onSelected: (selected) => setState(
+                    () => categoryFilter = selected ? category : null,
+                  ),
+                ),
+            for (final (value, label) in <(String?, String)>[
+              (null, 'Any relevance'),
+              for (final r in relevanceOptions) (r, relevanceLabels[r]!),
+            ])
+              LibraryFilterChip(
+                label: label,
+                selected: relevanceFilter == value,
+                onSelected: (_) {
+                  setState(() => relevanceFilter = value);
+                  _persist();
+                },
               ),
-            ),
-          ),
-        ],
+          ],
+        ),
         Expanded(
           child: screenshots
               ? CustomScrollView(
                   slivers: [
                     if (filtered.isEmpty)
                       SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.all(kSpace24),
-                          child: Text(
-                            widget.indexing && all.isEmpty
-                                ? 'Indexing…'
-                                : all.isEmpty
-                                ? 'No screenshots yet'
-                                : 'Nothing matches',
-                          ),
-                        ),
+                        child: _emptyState(all),
                       ),
                     for (final (header, notes) in groups) ...[
                       if (header.isNotEmpty)
@@ -1274,32 +1157,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                       ),
                     if (filtered.isEmpty &&
                         (screenshots || widget.articleJobs.isEmpty))
-                      Padding(
-                        padding: const EdgeInsets.all(kSpace24),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.indexing && all.isEmpty) ...[
-                                const LoadingIndicator(
-                                  size: 20,
-                                  strokeWidth: 2,
-                                ),
-                                const SizedBox(width: kSpace8),
-                              ],
-                              Text(
-                                widget.indexing && all.isEmpty
-                                    ? 'Indexing…'
-                                    : q.isNotEmpty || statusFilter != null
-                                    ? 'Nothing matches'
-                                    : screenshots
-                                    ? 'No screenshots yet'
-                                    : 'No articles yet — import one above',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _emptyState(all),
                     for (final (header, notes) in groups) ...[
                       if (header.isNotEmpty)
                         Padding(
@@ -1322,6 +1180,27 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
       ],
     );
   }
+
+  Widget _emptyState(List<NoteRef> all) => AppEmptyState(
+    icon: screenshots ? Icons.screenshot_outlined : Icons.article_outlined,
+    loading: widget.indexing && all.isEmpty,
+    title: widget.indexing && all.isEmpty
+        ? 'Indexing…'
+        : all.isNotEmpty ||
+              _query.text.trim().isNotEmpty ||
+              statusFilter != null ||
+              relevanceFilter != null ||
+              categoryFilter != null
+        ? 'Nothing matches'
+        : screenshots
+        ? 'No screenshots yet'
+        : 'No articles yet',
+    hint: all.isEmpty
+        ? screenshots
+              ? 'Import screenshots to get started.'
+              : 'Import an article above to get started.'
+        : 'Try another search or filter.',
+  );
 
   String _screenshotMetadata(NoteRef note) => [
     if (screenshotCapturedAt(note) case final time?) localTime(time),
@@ -1509,17 +1388,57 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             Positioned(
               top: 0,
               right: 0,
-              child: IconButton(
+              child: PopupMenuButton<String>(
                 tooltip: 'Screenshot actions',
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0x66000000),
                   foregroundColor: Colors.white,
-                  minimumSize: const Size(32, 32),
+                  minimumSize: const Size(kMinTapTarget, kMinTapTarget),
                   padding: const EdgeInsets.all(kSpace4),
                   shape: const CircleBorder(),
                 ),
-                icon: const Icon(Icons.more_vert, size: 20),
-                onPressed: () => _screenshotActions(note),
+                icon: const Icon(
+                  Icons.more_horiz,
+                  size: kIconSmall,
+                  color: Colors.white,
+                ),
+                onSelected: (value) {
+                  if (value == 'open') widget.onReadPath(note.path);
+                  if (value == 'delete') {
+                    unawaited(widget.onDeleteArticle(note));
+                  }
+                  if (value.startsWith('status:')) {
+                    unawaited(widget.onSetReadStatus(
+                      note, value.substring('status:'.length),
+                    ));
+                  }
+                  if (value.startsWith('relevance:')) {
+                    unawaited(widget.onSetRelevance(
+                      note, value.substring('relevance:'.length),
+                    ));
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'open', child: Text('Open screenshot'),
+                  ),
+                  for (final status in statuses)
+                    PopupMenuItem(
+                      value: 'status:$status', child: Text(labels[status]!),
+                    ),
+                  for (final relevance in relevanceOptions)
+                    PopupMenuItem(
+                      value: 'relevance:$relevance',
+                      child: Text(relevanceLabels[relevance]!),
+                    ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(
+                      'Delete screenshot…',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1590,7 +1509,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
         // discoverable without displacing the status/relevance chips.
         PopupMenuButton<String>(
           tooltip: 'More',
-          icon: const Icon(Icons.more_vert),
+          icon: const Icon(Icons.more_horiz, size: kIcon),
           onSelected: (value) {
             if (value == 'delete') unawaited(widget.onDeleteArticle(note));
           },

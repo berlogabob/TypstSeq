@@ -169,6 +169,7 @@ void main() {
 
     // Only Fresh is relevance:high. The filter ChoiceChip is distinct from the
     // per-row relevance PropertySelectChip, so target the ChoiceChip.
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'High'));
     await tester.tap(find.widgetWithText(ChoiceChip, 'High'));
     await tester.pumpAndSettle();
     expect(find.text('Fresh'), findsOneWidget);
@@ -245,7 +246,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Fresh sorts first (most recently modified); open its overflow menu.
-      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.tap(find.byIcon(Icons.more_horiz).first);
       await tester.pumpAndSettle();
       expect(find.text('Delete article…'), findsOneWidget);
 

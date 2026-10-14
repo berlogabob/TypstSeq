@@ -67,7 +67,7 @@ void main() {
     // Articles keep their own shelf; the unified list does not double them.
     expect(find.text('an-article'), findsNothing);
     expect(find.text('a-screenshot'), findsNothing);
-    expect(find.widgetWithText(FilterChip, 'screenshot'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'screenshot'), findsNothing);
     expect(find.text('Screenshots'), findsOneWidget);
   });
 
@@ -78,25 +78,37 @@ void main() {
     expect(find.text('No notes yet'), findsOneWidget);
   });
 
+  testWidgets('Notes search filters titles without case and clears', (tester) async {
+    await tester.pumpWidget(surface());
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('notes-search')), 'PLAIN');
+    await tester.pumpAndSettle();
+    expect(find.text('plain-note'), findsOneWidget);
+    expect(find.text('the-project'), findsNothing);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    expect(find.text('the-project'), findsOneWidget);
+  });
+
   testWidgets('kind chips filter the unified list', (tester) async {
     await tester.pumpWidget(surface());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilterChip, 'person'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'person · 1'));
     await tester.pumpAndSettle();
     expect(find.text('ilya'), findsOneWidget);
     expect(find.text('plain-note'), findsNothing);
     expect(find.text('the-project'), findsNothing);
 
-    await tester.tap(find.widgetWithText(FilterChip, 'idea'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'idea · 1'));
     await tester.pumpAndSettle();
     expect(find.text('an-idea'), findsOneWidget);
     expect(find.text('ilya'), findsNothing);
-    await tester.tap(find.widgetWithText(FilterChip, 'person'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'person · 1'));
     await tester.pumpAndSettle();
 
     // Tapping again clears the filter.
-    await tester.tap(find.widgetWithText(FilterChip, 'person'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'person · 1'));
     await tester.pumpAndSettle();
     expect(find.text('plain-note'), findsOneWidget);
   });

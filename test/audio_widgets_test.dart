@@ -333,6 +333,45 @@ void main() {
     expect(opened?.id, 'audio-20261014-100000');
   });
 
+  testWidgets('audio searches title and aliases and retains actions', (tester) async {
+    var recorded = false;
+    var imported = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: AudioShelf(
+        notes: const [
+          NoteRef(
+            id: 'audio-1', path: 'audio/one.typ', title: 'Interview', kind: 'audio',
+            aliases: ['Alice'], outgoingLinks: [],
+          ),
+          NoteRef(
+            id: 'audio-2', path: 'audio/two.typ', title: 'Lecture', kind: 'audio',
+            outgoingLinks: [],
+          ),
+        ],
+        onOpen: (_) {},
+        onRecord: () => recorded = true,
+        onImport: () => imported = true,
+      )),
+    ));
+    await tester.enterText(find.byKey(const Key('audio-search')), 'INTERVIEW');
+    await tester.pump();
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('Lecture'), findsNothing);
+    await tester.enterText(find.byKey(const Key('audio-search')), 'ALICE');
+    await tester.pump();
+    expect(find.text('Alice'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('audio-search')), 'missing');
+    await tester.pump();
+    expect(find.text('Nothing matches'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump();
+    expect(find.text('Lecture'), findsOneWidget);
+    await tester.tap(find.text('Record'));
+    await tester.tap(find.text('Import file'));
+    expect(recorded, isTrue);
+    expect(imported, isTrue);
+  });
+
   test('activeIndex picks the last comment at or before the playhead', () {
     const c = [(ms: 1000, text: 'a'), (ms: 5000, text: 'b')];
     expect(activeIndex(c, 500), -1);

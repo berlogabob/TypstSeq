@@ -235,8 +235,8 @@ void main() {
       expect(gradientRect.height, closeTo(tile.height * 0.35, 0.01));
       expect(gradientRect.bottom, tile.bottom);
       expect(tile.contains(tester.getRect(subtitleFinder).bottomRight), isTrue);
-      final actions = tester.widget<IconButton>(
-        find.descendant(of: card, matching: find.byType(IconButton)),
+      final actions = tester.widget<PopupMenuButton<String>>(
+        find.descendant(of: card, matching: find.byType(PopupMenuButton<String>)),
       );
       expect(actions.style?.shape?.resolve({}), isA<CircleBorder>());
       expect(
@@ -246,7 +246,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Screenshot actions'));
       await tester.pumpAndSettle();
-      expect(find.text(expectedTitle), findsNWidgets(showTitle ? 2 : 1));
+      expect(find.text(expectedTitle), showTitle ? findsOneWidget : findsNothing);
       await tester.tap(find.text('Open screenshot'));
       await tester.pumpAndSettle();
     }
@@ -529,8 +529,6 @@ void main() {
     expect(statuses, ['${shot.id}:acted']);
     await tester.tap(find.byTooltip('Screenshot actions').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(PropertySelectChip, '★'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('High').last);
     await tester.pumpAndSettle();
     expect(ratings, ['${shot.id}:high']);
@@ -653,7 +651,7 @@ void main() {
     await tester.ensureVisible(chip);
     await tester.tap(chip);
     await tester.pumpAndSettle();
-    expect(tester.widget<FilterChip>(chip).selected, isFalse);
+    expect(tester.widget<ChoiceChip>(find.descendant(of: chip, matching: find.byType(ChoiceChip))).selected, isFalse);
     expect(find.byKey(ValueKey(shot.path)), findsOneWidget);
     expect(find.text('Uncategorized · 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
