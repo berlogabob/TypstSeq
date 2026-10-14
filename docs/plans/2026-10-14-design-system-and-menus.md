@@ -26,3 +26,11 @@ Removed from More: Audio (Library > Audio tab already), Problems/Rebuild/Relink/
 
 ## Slices
 D1 (this one): `lib/widgets/ds/` components + tokens, More drawer, Settings restructure. D2: Library tabs (shared search/filter/empty-state). D3: dialogs and sheets (frame, labels, destructive). D4: icons sweep.
+
+## D2: Library tabs (decisions)
+- `LibraryToolbar` (lib/widgets/ds): always-visible compact search field with clear button; optional trailing sort and group popups (`more_horiz`-free, icons `sort`, `view_agenda_outlined`); optional single-row horizontal chip scroller (ChoiceChip, optional count) below. Same paddings (kSpace16 sides, kSpace8 between rows) on every tab.
+- `AppEmptyState` (lib/widgets/ds): icon, title, one-line hint, optional primary/secondary buttons; replaces the six empty layouts.
+- Search on every tab: Notes (title), Tasks (always visible instead of the toggled icon), Audio (title/alias), Articles, Screenshots. Same behaviour: case-insensitive substring over the visible fields; clear button.
+- Row actions: trailing `more_horiz` popup wherever a row has actions (Articles: delete; Screenshots: existing actions; Notes/Tasks/Audio keep tap and long-press only). Existing long-press stays.
+- Chip rows: one component, one scroller; Notes kind chips show counts.
+- Status vocabularies stay per domain (articles and screenshots are different pipelines).
