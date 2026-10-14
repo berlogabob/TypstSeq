@@ -80,6 +80,26 @@ extension _AudioFlow on _HomeScreenState {
     );
   }
 
+  /// Tells the user a background save started and how it ended, and keeps
+  /// the pending bytes servable until the copy lands.
+  void _trackSave(String label, String path, Future<void> work) {
+    if (mounted) showSnack(context, 'Saving $label…');
+    _attachTasks[path] = work
+        .then<void>(
+          (_) {
+            if (mounted) showSnack(context, 'Saved $label');
+          },
+          onError: (Object error) {
+            if (mounted) showSnack(context, 'Could not save $label: $error');
+          },
+        )
+        .whenComplete(() {
+          _attachTasks.remove(path);
+          _pendingAttach.remove(path);
+          if (mounted) _refreshNoteAssets(_currentSource());
+        });
+  }
+
   Future<void> _storePeaks(NoteRef n, List<int> peaks, int ms) async {
     await workspace.mutateNote(
       n.path,
@@ -184,14 +204,11 @@ extension _AudioFlow on _HomeScreenState {
             kind: 'audio',
           ),
         );
-        _audioNoteTasks[asset] = persist()
-            .then<void>((_) {}, onError: (Object error) {
-              if (mounted) showSnack(context, 'Could not save recording: $error');
-            })
-            .whenComplete(() {
-              _pendingAudio.remove(asset);
-              _audioNoteTasks.remove(asset);
-            });
+        _trackSave('recording', asset, persist());
+        _audioNoteTasks[asset] = _attachTasks[asset]!.whenComplete(() {
+          _pendingAudio.remove(asset);
+          _audioNoteTasks.remove(asset);
+        });
         return;
       }
       final path = await persist();

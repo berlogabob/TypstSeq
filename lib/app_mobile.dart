@@ -260,6 +260,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// minutes): playback and the waveform read from memory meanwhile.
   final Map<String, ({Uint8List bytes, List<int> peaks})> _pendingAudio = {};
   final Map<String, Future<void>> _audioNoteTasks = {};
+
+  /// Attachments picked but still being copied into the vault: [_readAsset]
+  /// serves them from the picked file, and opening waits on the copy.
+  final Map<String, File> _pendingAttach = {};
+  final Map<String, Future<void>> _attachTasks = {};
   final List<TyLogDatabase> _additionalDatabases = [];
   bool _exiting = false;
   Future<void>? _shutdownFuture;
@@ -894,7 +899,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return null;
     try {
-      return await v.storage.readBytes(path.replaceFirst(RegExp(r'^/+'), ''));
+      final clean = path.replaceFirst(RegExp(r'^/+'), '');
+      final pending = _pendingAttach[clean];
+      if (pending != null) return await pending.readAsBytes();
+      return await v.storage.readBytes(clean);
     } catch (_) {
       return null;
     }
@@ -2768,6 +2776,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null || !isSafeVaultPath(path)) return;
     try {
+      await _attachTasks[path];
       if (path.toLowerCase().endsWith('.pdf')) {
         final entry = workspace.entry;
         final bytes = await v.storage.readBytes(path);
@@ -4133,21 +4142,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final base = source.path.split(Platform.pathSeparator).last;
     var target = 'assets/$base';
     var suffix = 2;
-    while (await v.storage.exists(target)) {
+    while (_pendingAttach.containsKey(target) ||
+        await v.storage.existsNow(target)) {
       final dot = base.lastIndexOf('.');
       final stem = dot < 0 ? base : base.substring(0, dot);
       final extension = dot < 0 ? '' : base.substring(dot);
       target = 'assets/$stem-${suffix++}$extension';
     }
-    await importPlatformFile(v.storage, target, source);
-    final relative = target;
     const imageExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'};
     final lower = target.toLowerCase();
     final image = imageExtensions.any(lower.endsWith);
+    // Chip first, copy after: the SAF write can queue behind the index for
+    // minutes, and the user must see the attachment land at once.
+    _pendingAttach[target] = source;
     _applyMagic(
       MagicRequest(
         action: MagicAction.attachment,
-        value: '/$relative',
+        value: '/$target',
         kind: image
             ? 'image'
             : isAudioPath(lower)
@@ -4155,6 +4166,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : 'file',
       ),
     );
+    _trackSave(base, target, importPlatformFile(v.storage, target, source));
   }
 
   Future<void> _createReport() async {

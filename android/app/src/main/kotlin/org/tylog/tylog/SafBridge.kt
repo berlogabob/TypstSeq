@@ -288,14 +288,23 @@ class SafBridge(
             return
         }
 
-        if (call.method == "readNow") {
+        if (call.method == "readNow" || call.method == "existsNow") {
             // No storageLock: only for write-once files (recordings, lesson
             // audio), which no writer ever replaces under a reader.
             priorityExecutor.execute {
                 try {
                     val tree = Uri.parse(call.argument<String>("uri") ?: error("Missing tree URI"))
-                    val bytes = withResolved(tree, path(call), ::read)
-                    postMain { result.success(bytes) }
+                    val value: Any = if (call.method == "readNow") {
+                        withResolved(tree, path(call), ::read)
+                    } else {
+                        resolve(tree, path(call))?.let { document ->
+                            documentExists(document) || run {
+                                invalidate(tree, path(call))
+                                resolve(tree, path(call)) != null
+                            }
+                        } ?: false
+                    }
+                    postMain { result.success(value) }
                 } catch (error: Throwable) {
                     postMain {
                         result.error("saf_error", error.message ?: error.javaClass.simpleName, null)

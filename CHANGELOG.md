@@ -3,6 +3,15 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.14.4+143
+
+### Changed
+
+- Attaching an image or file works like audio: the chip (or picture) appears
+  as soon as you pick it, the copy into the vault runs in the background, and
+  "Saving X…" / "Saved X" (or the error) is shown. The name-collision check
+  no longer waits behind the startup index.
+
 ## 0.14.3+142
 
 ### Fixed

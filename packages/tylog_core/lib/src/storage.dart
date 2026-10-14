@@ -74,6 +74,9 @@ abstract class VaultStorage {
   /// with a shared read queue override this to skip it; others just read.
   Future<Uint8List> readBytesNow(String path) => readBytes(path);
 
+  /// [exists] for a user-waiting check; see [readBytesNow].
+  Future<bool> existsNow(String path) => exists(path);
+
   /// Null when this provider only supports whole-file reads.
   Stream<List<int>>? openRead(String path, [int? start, int? end]) => null;
   Future<void> writeBytes(String path, List<int> bytes);

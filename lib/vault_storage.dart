@@ -164,6 +164,14 @@ class AndroidTreeVaultStorage extends VaultStorage {
       Uint8List(0);
 
   @override
+  Future<bool> existsNow(String path) async =>
+      await invoke<bool?>(
+        channel.invokeMethod<bool>('existsNow', args({'path': path})),
+        'existsNow',
+      ) ??
+      false;
+
+  @override
   Future<Uint8List> readBytesNow(String path) async =>
       await invoke<Uint8List?>(
         channel.invokeMethod<Uint8List>('readNow', args({'path': path})),
