@@ -53,3 +53,10 @@ One icon per meaning (map in `lib/widgets/app_icons.dart`: edit, settings, overf
 6. Graph chip row uses one chip style (FilterChip) for legend, orphans, hubs; export stays an icon button.
 7. "Discard article…" and "Delete article?" become one wording: "Delete article".
 Not in D5: Journal chevrons (feed has no single day), reading-mode return rule (needs product decision).
+
+## D6: component themes and tokens (decisions)
+Goal: tokenisation, not redesign; the app must look the same except where raw values disagreed. 
+- `ThemeData` gets component themes built from tokens: card, dialog, chip, filled/outlined/text button shapes, app bar (no scroll tint), snack bar (floating), bottom sheet (top radius kRadiusLarge), input decoration (outline radius kRadiusMedium), list tile (horizontal kSpace16), divider.
+- Dark theme gets the same hint colour override as light.
+- Raw `Color(0x...)` in widgets move to `colorScheme` roles or named constants in `constants.dart`, except data-driven colours (graph legend, highlight palette, user-chosen).
+- Raw font sizes (11/12) use `textTheme.labelSmall/bodySmall`; raw radius 8 uses kRadius tokens; raw paddings near token values (4/8/12/16/24) use kSpace tokens (leave odd values with a comment only if they are optical corrections).
