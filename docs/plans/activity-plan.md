@@ -4,7 +4,7 @@ Rules: Claude coordinates; codex CLI does multi-file edits; pi + Ornith 35b on S
 
 ## Queue (in order)
 1. D3 dialogs, sheets, notices  [done 2026-10-15, 1498 tests green, P30 checked: More, Library, Insert sheet]
-2. D4 icon sweep (app_icons.dart)
+2. D4 icon sweep (app_icons.dart)  [done 2026-10-15, 1498 green, P30 checked; agenda icon clash fixed]
 3. Release 0.18.0 candidate (D1-D4 + presets): install on P30 + Mac, A24 when connected; user confirms; then tag
 4. D5 Today/Journal/Search consistency, editor menu naming, Split view entry, `/` palette Task, graph chips
 5. D6 component themes, raw colours/fonts to tokens, dark hint colour
@@ -18,3 +18,6 @@ Rules: Claude coordinates; codex CLI does multi-file edits; pi + Ornith 35b on S
 - 2026-10-15: D3 Insert sheet shows title 'Insert' above group heading 'Insert' (duplicate). Fix in D5: sheet title 'Add to note', groups Insert / Text style / Structure.
 - 2026-10-15: editor dock on P30 is a single scrolling row; Insert (+) is last, off-screen on first view. Consider moving Insert to the first slot in D5.
 - 2026-10-15: codex modifies ~1300 lines per sweep (re-indentation from wrapping); always run the full suite and a P30 check before committing.
+- 2026-10-15: Mac visual check impossible while the screen is locked (lock screen at 00:18); debug macOS build compiles and launches (flutter build macos --debug ok). Redo Mac checks when the user is at the Mac; do not try to unlock.
+- 2026-10-15: D4 sweep changed agenda icon to view_agenda (same as group-by); fixed to checklist_outlined. Lesson: after icon sweeps look at Today, Library, Settings on P30.
+- 2026-10-15: earlier bare `git push -q` silently skipped (no upstream); use `git push -q origin HEAD`.
