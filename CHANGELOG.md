@@ -14,6 +14,8 @@ their history is in the commit log and the GitHub release notes.
 
 ### Fixed
 
+- Search no longer fails with "Search failed" right after launch when semantic
+  search is on (the query embedder ran before the native library was ready).
 - Reschedule no longer marks a note you edited as untouched, so Uninstall keeps it.
 - Vaults list shows a readable path for folders picked through Downloads.
 
