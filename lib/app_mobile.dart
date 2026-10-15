@@ -2548,7 +2548,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (_editingRecently) {
           _queueCloudSync();
         } else {
-          unawaited(_syncNow(trigger: 'resume'));
+          unawaited(workspace.pollOnResume());
         }
       }
     }

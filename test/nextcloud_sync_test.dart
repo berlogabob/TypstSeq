@@ -2389,9 +2389,8 @@ void main() {
   // This device rewrites its reading state on every note open and its index
   // donor after every scan. Counting those uploads as "something changed" made
   // each poll trigger a full vault scan, whose donor write fed the next poll —
-  // indexing that sustained itself. Content uploads must still count, or a note
-  // dropped into the vault folder from outside the app is never indexed.
-  test('only this device\'s own bookkeeping uploads skip the reindex', () async {
+  // indexing that sustained itself. Content uploads also leave local bytes alone.
+  test('uploads skip the reindex, including content uploads', () async {
     final remote = <String, _MutableRemoteFile>{};
     final server = await _mutableWebDavServer(remote);
     final dir = await Directory.systemTemp.createTemp('tylog_selfupload_');
@@ -2422,7 +2421,7 @@ void main() {
     final content = await NextcloudSync(_config(server)).sync(vault);
 
     expect(content.uploadedContent, greaterThan(0));
-    expect(content.requiresIndexRefresh, isTrue);
+    expect(content.requiresIndexRefresh, isFalse);
 
     // The same asymmetry on the way in: a peer's donor and reading file arrive
     // constantly (one per device, rewritten after every scan), and pulling them
@@ -5548,7 +5547,7 @@ void main() {
       final result = await NextcloudSync(_config(server)).sync(vault);
 
       expect(result.renamed, 1);
-      expect(result.requiresIndexRefresh, isTrue);
+      expect(result.requiresIndexRefresh, isFalse);
       expect(metrics.moves, 1);
       expect(metrics.puts, 0);
       expect(metrics.individualGets, 0);
@@ -5617,6 +5616,7 @@ void main() {
       remote[renamed] = remote.remove(nfc)!;
       final rename = await NextcloudSync(_config(server)).sync(vault);
       expect(rename.renamed, 1);
+      expect(rename.requiresIndexRefresh, isTrue);
       expect(await storage.exists(nfd), isFalse);
       expect(await storage.readText(renamed), 'same note plus remote edit');
       expect(storage.deleted, [nfd]);

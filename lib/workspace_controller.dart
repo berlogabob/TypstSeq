@@ -212,12 +212,14 @@ class WorkspaceController extends ChangeNotifier {
   SyncResult? lastSync;
   List<SyncConflict> syncConflicts = const [];
   DateTime? lastSyncAt;
+  DateTime? lastPollAt;
   String? syncError;
 
   /// How long a conflict resolve waits for a running sync to release the
   /// vault lock before giving up (background syncs run back to back).
   Duration resolveLockWait = const Duration(minutes: 2);
   bool syncing = false;
+  bool _acquiringSyncLock = false;
   String? syncStage;
   bool? storageHealthy;
   bool rebuilding = false;
@@ -383,6 +385,7 @@ class WorkspaceController extends ChangeNotifier {
     lastSync = null;
     syncConflicts = const [];
     lastSyncAt = null;
+    lastPollAt = null;
     _lastAutosaveSyncAt = null;
     _firstTransientFailureAt = null;
     _transientFailures = 0;
@@ -539,6 +542,7 @@ class WorkspaceController extends ChangeNotifier {
       if (_disposed || generation != _vaultGeneration) return;
       cloud = next.cloud;
       lastSyncAt = null;
+      lastPollAt = null;
       _lastAutosaveSyncAt = null;
       _firstTransientFailureAt = null;
       _transientFailures = 0;
@@ -1606,10 +1610,19 @@ class WorkspaceController extends ChangeNotifier {
     _pushClient = null;
   }
 
+  Future<void> pollOnResume() async {
+    final now = _now();
+    if ([lastSyncAt, lastPollAt].any(
+      (at) => at != null && now.difference(at) < const Duration(seconds: 60),
+    )) {
+      return;
+    }
+    await pollTick();
+  }
+
   /// One 20s poll tick's worth of work. Exposed (not just called from the
   /// [Timer] in [startCloudPolling]) so tests can drive it directly instead
   /// of waiting on a real 20-second timer.
-  @visibleForTesting
   Future<void> pollTick({bool remoteChanged = false}) async {
     if (_disposed) return;
     final generation = _vaultGeneration;
@@ -1676,7 +1689,10 @@ class WorkspaceController extends ChangeNotifier {
       );
       // State may have changed while the network probe was in flight.
       if (syncing || editingRecently) return;
-      if (unchanged) return;
+      if (unchanged) {
+        if (_owns(opened, generation)) lastPollAt = _now();
+        return;
+      }
       await syncNow(trigger: 'poll', remoteChanged: true);
     } finally {
       if (_vaultGeneration == generation) _pollInFlight = false;
@@ -1799,9 +1815,9 @@ class WorkspaceController extends ChangeNotifier {
         return false;
       }
     }
-    if (syncing) return false;
+    if (syncing || _acquiringSyncLock) return false;
     final pushOnly =
-        trigger == 'autosave' &&
+        const {'autosave', 'note-close'}.contains(trigger) &&
         _lastAutosaveSyncAt != null &&
         _now().difference(_lastAutosaveSyncAt!) < cloudAutosaveInterval;
     if (pushOnly && !opened.hasPendingSyncWrites) {
@@ -1814,14 +1830,23 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     }
-    // Single-owner rule: the background worker (vault_service.dart) may be
-    // mid-sync in its own engine. Taking the lock as 'ui' both blocks while
-    // it holds a fresh lock and keeps it out until we release.
-    if (!await VaultLock.acquire(opened.storage, 'ui')) {
-      status = 'Background sync in progress';
-      notifyListeners();
-      return false;
+    // Give the service a chance to finish before the next poll retries.
+    var acquired = false;
+    _acquiringSyncLock = true;
+    try {
+      final lockWait = Stopwatch()..start();
+      acquired = await VaultLock.acquire(opened.storage, 'ui');
+      while (!acquired && lockWait.elapsed < const Duration(seconds: 15)) {
+        final owner = await VaultLock.currentOwner(opened.storage);
+        if (owner != null && owner != 'service') break;
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (!_owns(opened, generation) || syncing) return false;
+        acquired = await VaultLock.acquire(opened.storage, 'ui');
+      }
+    } finally {
+      _acquiringSyncLock = false;
     }
+    if (!acquired) return false;
     if (!_owns(opened, generation)) {
       await VaultLock.release(opened.storage, 'ui');
       return false;
@@ -1858,7 +1883,9 @@ class WorkspaceController extends ChangeNotifier {
           'autosave',
         }.contains(trigger);
     syncing = true;
-    if (trigger == 'autosave' && !pushOnly) _lastAutosaveSyncAt = _now();
+    if (const {'autosave', 'note-close'}.contains(trigger) && !pushOnly) {
+      _lastAutosaveSyncAt = _now();
+    }
     syncError = null;
     status = 'Syncing…';
     _cloudAutosave?.cancel();
@@ -2051,6 +2078,7 @@ class WorkspaceController extends ChangeNotifier {
         if (const {
           'poll',
           'autosave',
+          'note-close',
           'startup',
           'resume',
           'background',

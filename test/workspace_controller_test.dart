@@ -2929,6 +2929,188 @@ void main() {
     },
   );
 
+  test('resume skips recent syncs and polls after 60 seconds', () async {
+    final previousOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final server = await _GatedWebDavServer.start();
+    server.includeRoot = true;
+    addTearDown(() => server.server.close(force: true));
+    final directory = await Directory.systemTemp.createTemp('tylog_resume_');
+    addTearDown(() => directory.delete(recursive: true));
+    var now = DateTime.utc(2026);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: LocalVaultStorage(directory),
+    );
+    await controller.refreshIndex(always: true);
+    controller.cloud = server.config;
+    expect(await controller.syncNow(), isTrue);
+    expect(await controller.syncNow(), isTrue);
+    final syncedAt = controller.lastSyncAt;
+    final before = server.propfinds;
+    now = now.add(const Duration(seconds: 59));
+    await controller.pollOnResume();
+    expect(server.propfinds, before);
+    now = now.add(const Duration(seconds: 1));
+    await controller.pollOnResume();
+    expect(server.propfinds, before + 1, reason: 'only the root etag probe');
+    expect(controller.lastSyncAt, syncedAt, reason: 'no full sync ran');
+    expect(controller.lastPollAt, now);
+    now = now.add(const Duration(seconds: 59));
+    await controller.pollOnResume();
+    expect(server.propfinds, before + 1, reason: 'recent poll also counts');
+  });
+
+  test(
+    'upload-only sync skips scanning; downloads refresh the index',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      controller.deviceId = 'test-device';
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: storage,
+      );
+      await controller.refreshIndex(always: true);
+      controller.cloud = server.config;
+      storage.writes.clear();
+      expect(await controller.syncNow(), isTrue);
+      expect(controller.lastSync!.uploadedContent, greaterThan(0));
+      expect(controller.lastSync!.requiresIndexRefresh, isFalse);
+      expect(storage.writes, isNot(contains('_system/index/test-device.json')));
+
+      server._files['notes/download.typ'] = utf8.encode(
+        '#show: tylog.note.with(id: "download", title: "Download")\nBody',
+      );
+      server._etags['notes/download.typ'] = '"download"';
+      expect(await controller.syncNow(), isTrue);
+      expect(controller.lastSync!.requiresIndexRefresh, isTrue);
+      expect(storage.writes, contains('_system/index/test-device.json'));
+      expect(
+        controller.index!.notes.any((note) => note.id == 'download'),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'note-close finishes while its download scan is still running',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final inspector = _GatedPollInspector();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: inspector,
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: _MemoryStorage(),
+      );
+      await controller.refreshIndex(always: true);
+      controller.cloud = server.config;
+      server._files['notes/probe.typ'] = utf8.encode(
+        '#show: tylog.note.with(id: "probe", title: "Probe")\nBody',
+      );
+      server._etags['notes/probe.typ'] = '"probe"';
+      inspector.armed = true;
+      try {
+        expect(
+          await controller
+              .syncNow(trigger: 'note-close')
+              .timeout(const Duration(seconds: 5)),
+          isTrue,
+        );
+        await inspector.reached.future.timeout(const Duration(seconds: 5));
+        expect(controller.syncing, isFalse);
+      } finally {
+        inspector.release.complete();
+        await controller.refreshIndex(always: true);
+      }
+    },
+  );
+
+  test('UI sync waits for a service lock and then succeeds', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'https://unused.invalid',
+      username: 'alice',
+      password: 'secret',
+    );
+    await VaultLock.acquire(storage, 'service');
+    await HttpOverrides.runZoned(() async {
+      var finished = false;
+      final flight = controller.syncNow().whenComplete(() => finished = true);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(finished, isFalse);
+      expect(await controller.syncNow(), isFalse, reason: 'one UI waiter');
+      await VaultLock.release(storage, 'service');
+      expect(await flight.timeout(const Duration(seconds: 3)), isTrue);
+    }, createHttpClient: (_) => _ResolveHttpClient());
+  });
+
+  test('UI sync gives up a service lock quietly after 15 seconds', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    controller.cloud = const NextcloudConfig(
+      serverUrl: 'https://unused.invalid',
+      username: 'alice',
+      password: 'secret',
+    );
+    await VaultLock.acquire(storage, 'service');
+    final status = controller.status;
+    final elapsed = Stopwatch()..start();
+    expect(await controller.syncNow(), isFalse);
+    expect(elapsed.elapsed, greaterThanOrEqualTo(const Duration(seconds: 15)));
+    expect(controller.status, status);
+    expect(controller.syncError, isNull);
+    expect(await VaultLock.currentOwner(storage), 'service');
+  });
+
   test(
     'the post-sync reindex goes through the scan driver, not an inline one',
     () async {
@@ -2972,6 +3154,8 @@ void main() {
         '#import "/_system/tylog.typ" as tylog\n// synced edit\n',
       );
       expect(await controller.syncNow(trigger: 'setup'), isTrue);
+      expect(controller.lastSync!.requiresIndexRefresh, isFalse);
+      expect(controller.indexedRevision, controller.savedRevision);
 
       expect(
         await storage.exists(donor),
@@ -3155,7 +3339,7 @@ void main() {
       expect(await controller.syncNow(trigger: 'autosave'), isFalse);
       expect(await controller.syncNow(), isTrue);
       expect(await controller.syncNow(trigger: 'background'), isTrue);
-      expect(await controller.syncNow(trigger: 'note-close'), isTrue);
+      expect(await controller.syncNow(trigger: 'note-close'), isFalse);
       now = now.add(const Duration(seconds: 1));
       expect(await controller.syncNow(trigger: 'autosave'), isTrue);
       server.uploaded.clear();
@@ -3164,10 +3348,9 @@ void main() {
         '${controller.source}\nPush within the full-sync throttle',
       );
       now = now.add(const Duration(seconds: 3));
-      expect(await controller.save(), isTrue);
-      await _waitUntil(
-        () => server.uploaded.contains(controller.note) && !controller.syncing,
-      );
+      expect(await controller.save(syncAfter: false), isTrue);
+      expect(await controller.syncNow(trigger: 'note-close'), isTrue);
+      expect(server.uploaded, contains(controller.note));
       expect(
         server.propfinds,
         beforePush + 4,

@@ -60,6 +60,13 @@ class VaultLock {
     return true;
   }
 
+  static Future<String?> currentOwner(VaultStorage storage) async {
+    final holder = await _read(storage);
+    return holder != null && DateTime.now().isBefore(holder.expiresAt)
+        ? holder.owner
+        : null;
+  }
+
   static Future<bool> heldByOther(VaultStorage storage, String owner) async {
     final holder = await _read(storage);
     if (holder == null || holder.owner == owner) return false;

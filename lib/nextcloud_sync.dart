@@ -265,6 +265,7 @@ class NextcloudSync {
   final void Function(String path)? onLocalContentChanged;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   final _remoteWrites = <String>{};
+  bool _localContentChanged = false;
   var _listedFolders = 0;
   var _listedEntries = 0;
   // Where PROPFIND time goes (connect, server wait, body, parse), summed per
@@ -274,7 +275,10 @@ class NextcloudSync {
   final _ensuredParents = <String, Future<void>>{};
 
   void _recordLocalContentChange(String path) {
-    if (!isDeviceScopedVaultPath(path)) onLocalContentChanged?.call(path);
+    if (!isDeviceScopedVaultPath(path)) {
+      _localContentChanged = true;
+      onLocalContentChanged?.call(path);
+    }
   }
 
   /// How often a run may persist its cursor map mid-loop.
@@ -432,6 +436,7 @@ class NextcloudSync {
     bool pushOnly = false,
     bool remoteChanged = false,
   }) async {
+    _localContentChanged = false;
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     var stage = 'start';
     String? currentPath;
@@ -1125,6 +1130,7 @@ class NextcloudSync {
         uploadedContent: upContent,
         downloaded: down,
         downloadedContent: downContent,
+        localContentChanged: _localContentChanged,
         downloadedReadingState: downReading,
         skipped: skip,
         conflicts: conflict,
@@ -2070,6 +2076,7 @@ class SyncResult {
     int? uploadedContent,
     int? downloadedContent,
     this.downloadedReadingState = false,
+    this.localContentChanged = false,
     this.repaired = 0,
     this.renamed = 0,
     this.deletedLocal = 0,
@@ -2082,7 +2089,7 @@ class SyncResult {
 
   /// The subset of [uploaded] that was real vault content — every upload that
   /// was not one of this device's own bookkeeping files. See
-  /// [isDeviceScopedVaultPath]; only this subset can imply the index is stale.
+  /// [isDeviceScopedVaultPath].
   final int uploadedContent;
   final int downloaded;
 
@@ -2101,18 +2108,12 @@ class SyncResult {
   final int deletedLocal;
   final int deletedRemote;
 
-  /// Uploads are deliberately counted as [uploadedContent], not [uploaded].
-  /// An upload changes no local bytes, so on its own it can never make the
-  /// index stale — and this device re-uploads its own reading state after
-  /// every note open and its own index donor after every scan. Counting those
-  /// made each 25s poll trigger a full vault scan, whose donor write fed the
-  /// next poll: indexing that sustained itself. Content uploads still count,
-  /// so a note dropped into the vault folder from outside the app is picked up.
+  /// Local content written, deleted or renamed by sync, including repairs.
+  final bool localContentChanged;
+
+  /// Uploads change no local bytes. Editor saves track their own index revision.
   bool get requiresIndexRefresh =>
-      uploadedContent > 0 ||
-      downloadedContent > 0 ||
-      renamed > 0 ||
-      deletedLocal > 0;
+      localContentChanged || downloadedContent > 0 || deletedLocal > 0;
 
   @override
   String toString() =>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
@@ -71,6 +72,7 @@ Future<void> _runOnce(DateTime deadline) async {
     return;
   }
   try {
+    if (await backgroundSyncRecentlyCompleted(storage)) return;
     if (!DateTime.now().isBefore(deadline)) return;
     // No conflict gate. This path kept the blanket suspend that the foreground
     // dropped, so one pending record still stopped the whole vault syncing —
@@ -155,4 +157,38 @@ Future<void> _runOnce(DateTime deadline) async {
   } finally {
     await VaultLock.release(storage, 'service');
   }
+}
+
+/// Check successful runs, not sync_state.json's mtime: failures checkpoint it too.
+Future<bool> backgroundSyncRecentlyCompleted(
+  VaultStorage storage, {
+  DateTime? now,
+}) async {
+  now ??= DateTime.now();
+  try {
+    final lines = (await storage.readText(
+      '.tylog/sync_trace.jsonl',
+    )).split('\n');
+    for (final line in lines.reversed) {
+      if (line.isEmpty) continue;
+      try {
+        final event = jsonDecode(line) as Map<String, dynamic>;
+        if (event['event'] != 'completed' &&
+            event['event'] != 'no-change-shortcut') {
+          continue;
+        }
+        final at = DateTime.tryParse(event['timestamp'] as String);
+        if (at == null) continue;
+        final age = now.difference(at);
+        return !age.isNegative && age < const Duration(minutes: 5);
+      } on FormatException {
+        continue;
+      } on TypeError {
+        continue;
+      }
+    }
+  } catch (_) {
+    // Missing/unreadable diagnostics must not prevent synchronization.
+  }
+  return false;
 }
