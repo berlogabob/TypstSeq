@@ -15,11 +15,12 @@ import 'validation.dart' show isSafeVaultPath;
 /// `assets/modules/<id>/x`. Notes may use these tokens, replaced at install:
 /// `{{id}}` (the pack id) and `{{due:N}}` (start date + N days, ISO).
 class ModulePack {
-  ModulePack._(this.id, this.name, this.version, this.files);
+  ModulePack._(this.id, this.name, this.version, this.unit, this.files);
 
   final String id;
   final String name;
   final String version;
+  final String unit;
 
   /// Pack-relative path -> bytes, already hash-verified.
   final Map<String, Uint8List> files;
@@ -43,6 +44,8 @@ class ModulePack {
     if (id is! String || !_idPattern.hasMatch(id)) {
       throw const FormatException('Pack id must match [a-z0-9-]');
     }
+    final unit = manifest['unit'] ?? 'tasks';
+    if (unit is! String) throw const FormatException('unit must be a string');
     final listed = manifest['files'];
     if (listed is! List) throw const FormatException('files must be a list');
     final files = <String, Uint8List>{};
@@ -74,6 +77,7 @@ class ModulePack {
       id,
       (manifest['name'] as String?) ?? id,
       (manifest['version'] as String?) ?? '0',
+      unit,
       files,
     );
   }
@@ -120,11 +124,17 @@ class ModuleInstallResult {
 String moduleRecordPath(String id) => '_system/modules/$id.json';
 
 class InstalledModule {
-  const InstalledModule({required this.id, required this.name, this.start});
+  const InstalledModule({
+    required this.id,
+    required this.name,
+    this.start,
+    this.unit = 'tasks',
+  });
 
   final String id;
   final String name;
   final DateTime? start;
+  final String unit;
 }
 
 /// Lists installed records, including older records without a name or start.
@@ -139,6 +149,7 @@ Future<List<InstalledModule>> listInstalledModules(VaultStorage storage) async {
       InstalledModule(
         id: id,
         name: (record['name'] as String?) ?? id,
+        unit: (record['unit'] as String?) ?? 'tasks',
         start: DateTime.tryParse((record['start'] as String?) ?? ''),
       ),
     );
@@ -208,6 +219,7 @@ Future<ModuleInstallResult> installModule(
       'id': pack.id,
       'name': pack.name,
       'version': pack.version,
+      'unit': pack.unit,
       'start': _iso(start),
       'files': installed,
     }),

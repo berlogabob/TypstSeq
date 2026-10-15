@@ -3,8 +3,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
+import 'package:tylog/widgets/audio_inline_card.dart';
 
 void main() {
+  testWidgets('sidecar peaks skip loading audio and codec backfill', (tester) async {
+    var reads = 0;
+    var backfills = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AudioInlineCard(
+          label: 'lesson.mp3',
+          peaks: const [],
+          readPeaks: () async => [0, 128, 255],
+          readBytes: () async {
+            reads++;
+            throw StateError('audio should stay unloaded');
+          },
+          extension: 'mp3',
+          onExpand: (_) async {},
+          onPeaks: (_, _) => backfills++,
+        ),
+      ),
+    ));
+    await tester.pump();
+    final wave = tester.widget<WaveformSeekBar>(find.byType(WaveformSeekBar));
+    expect(wave.peaks, [0, 128, 255]);
+    expect(reads, 0);
+    expect(backfills, 0);
+  });
+
   bars();
   tearDown(() => TyLogEditingController.audioBuilder = null);
 

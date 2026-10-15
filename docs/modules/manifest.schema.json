@@ -20,6 +20,16 @@
     "version": {
       "type": "string"
     },
+    "unit": {
+      "type": "string",
+      "default": "tasks"
+    },
+    "lang": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
     "files": {
       "type": "array",
       "items": {

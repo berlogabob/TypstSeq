@@ -6,7 +6,11 @@ import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
-Map<String, Uint8List> archive(Map<String, String> files, {String id = 'p1'}) {
+Map<String, Uint8List> archive(
+  Map<String, String> files, {
+  String id = 'p1',
+  Object? unit,
+}) {
   Uint8List b(String s) => Uint8List.fromList(utf8.encode(s));
   final out = {for (final e in files.entries) e.key: b(e.value)};
   out['manifest.json'] = b(
@@ -15,6 +19,7 @@ Map<String, Uint8List> archive(Map<String, String> files, {String id = 'p1'}) {
       'id': id,
       'name': 'P',
       'version': '1',
+      'unit': ?unit,
       'files': [
         for (final e in out.entries)
           {'path': e.key, 'sha256': sha256.convert(e.value).toString()},
@@ -43,6 +48,44 @@ void main() {
     'notes/1.typ': 'due: "{{due:0}}" next: "{{due:8}}" id {{id}}',
     'assets/a.mp3': 'AUDIO',
   };
+
+  test('unit defaults to tasks in packs and legacy install records', () async {
+    final pack = ModulePack.parse(archive(files));
+    expect(pack.unit, 'tasks');
+    await installModule(storage, pack, DateTime(2026, 1, 1));
+    expect((await listInstalledModules(storage)).single.unit, 'tasks');
+    await storage.writeText(moduleRecordPath('p1'), '{"files":{}}');
+    expect((await listInstalledModules(storage)).single.unit, 'tasks');
+  });
+
+  test('unit survives install, listing, reschedule and upgrade', () async {
+    final pack = ModulePack.parse(archive(files, unit: 'lessons'));
+    expect(pack.unit, 'lessons');
+    await installModule(storage, pack, DateTime(2026, 1, 1));
+    final record = jsonDecode(await storage.readText(moduleRecordPath('p1')));
+    expect(record['unit'], 'lessons');
+    expect((await listInstalledModules(storage)).single.unit, 'lessons');
+    await rescheduleModule(
+      storage,
+      'p1',
+      DateTime(2026, 1, 2),
+      DateTime(2026, 1, 1),
+    );
+    expect((await listInstalledModules(storage)).single.unit, 'lessons');
+    await installModule(
+      storage,
+      ModulePack.parse(archive(files, unit: 'exercises')),
+      DateTime(2026, 1, 2),
+    );
+    expect((await listInstalledModules(storage)).single.unit, 'exercises');
+  });
+
+  test('unit must be a string', () {
+    expect(
+      () => ModulePack.parse(archive(files, unit: 72)),
+      throwsFormatException,
+    );
+  });
 
   test(
     'install maps paths, resolves tokens across month ends, records',

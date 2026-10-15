@@ -32,7 +32,7 @@ extension _ModuleFlow on _HomeScreenState {
                     icon: Icons.school_outlined,
                     title: module.name,
                     subtitle:
-                        '${progress[module.id]!.done}/${progress[module.id]!.total} tasks'
+                        '${progress[module.id]!.done}/${progress[module.id]!.total} ${module.unit}'
                         '${progress[module.id]!.scores.isEmpty ? '' : ' · ${progress[module.id]!.scores.length} scores'}',
                     trailing: PopupMenuButton<String>(
                       tooltip: 'Module actions',
@@ -80,7 +80,10 @@ extension _ModuleFlow on _HomeScreenState {
           confirmText: 'Reschedule',
         );
         if (start == null || !mounted) return;
-        await rescheduleModule(v.storage, module.id, start, oldStart);
+        await _withModuleProgress(
+          'Rescheduling module',
+          () => rescheduleModule(v.storage, module.id, start, oldStart),
+        );
         message = 'Rescheduled ${module.name}';
       } else {
         final confirmed = await showConfirmDialog(
@@ -92,12 +95,14 @@ extension _ModuleFlow on _HomeScreenState {
           destructive: true,
         );
         if (!confirmed || !mounted) return;
-        final result = await uninstallModule(v.storage, module.id);
+        final result = await _withModuleProgress(
+          'Removing module',
+          () => uninstallModule(v.storage, module.id),
+        );
         message =
             'Removed ${result.written.length} files'
             '${result.skipped.isEmpty ? '' : ', ${result.skipped.length} kept (edited)'}';
       }
-      await workspace.refreshIndex(updateStatus: false, always: true);
       if (mounted) showSnack(context, message);
     } catch (error) {
       if (mounted) showSnack(context, 'Module operation failed: $error');
@@ -150,8 +155,10 @@ extension _ModuleFlow on _HomeScreenState {
       );
       if (action == null || !mounted) return;
       if (action == 'uninstall') {
-        final result = await uninstallModule(v.storage, pack.id);
-        await workspace.refreshIndex(updateStatus: false, always: true);
+        final result = await _withModuleProgress(
+          'Removing module',
+          () => uninstallModule(v.storage, pack.id),
+        );
         if (mounted) {
           showSnack(
             context,
@@ -173,21 +180,12 @@ extension _ModuleFlow on _HomeScreenState {
       confirmText: installed ? 'Update' : 'Install',
     );
     if (start == null || !mounted) return;
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const AlertDialog(
-          title: Text('Installing module'),
-          content: LinearProgressIndicator(),
-        ),
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
     String message;
     try {
-      final result = await installModule(v.storage, pack, start);
-      await workspace.refreshIndex(updateStatus: false, always: true);
+      final result = await _withModuleProgress(
+        'Installing module',
+        () => installModule(v.storage, pack, start),
+      );
       message =
           'Installed ${pack.name}: ${result.written.length} files'
           '${result.skipped.isEmpty ? '' : ', ${result.skipped.length} kept (edited)'}';
@@ -195,7 +193,33 @@ extension _ModuleFlow on _HomeScreenState {
       message = 'Install failed: $error';
     }
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
     showSnack(context, message);
+  }
+
+  Future<T> _withModuleProgress<T>(
+    String title,
+    Future<T> Function() operation,
+  ) async {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: Text(title),
+            content: const LinearProgressIndicator(),
+          ),
+        ),
+      ),
+    );
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final result = await operation();
+      await workspace.refreshIndex(updateStatus: false, always: true);
+      return result;
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 }

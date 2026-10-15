@@ -1,10 +1,46 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/audio/audio_note_doc.dart';
 
 void main() {
+  test('peak sidecar lookup uses the audio path and decodes 200 buckets', () async {
+    final peaks = List.generate(200, (i) => i);
+    final paths = <String>[];
+    final result = await readPeakSidecar(
+      'assets/modules/p/audio/a.mp3',
+      (path) async {
+        paths.add(path);
+        return Uint8List.fromList(ascii.encode(encodePeaks(peaks)));
+      },
+    );
+    expect(paths, ['assets/modules/p/audio/a.mp3.peaks']);
+    expect(result, peaks);
+  });
+
+  test('missing or unreadable peak sidecars allow codec fallback', () async {
+    expect(
+      await readPeakSidecar('a.mp3', (_) async => throw StateError('missing')),
+      isEmpty,
+    );
+  });
+
+  test('empty or malformed peak sidecars allow codec fallback', () async {
+    for (final value in ['', ' ', 'zZ', 'abc', '00zz', 'é']) {
+      expect(
+        await readPeakSidecar(
+          'a.mp3',
+          (_) async => Uint8List.fromList(utf8.encode(value)),
+        ),
+        isEmpty,
+        reason: value,
+      );
+    }
+  });
+
   composedNote();
   test('stamp, title and peaks round-trip', () {
     final t = DateTime(2026, 10, 14, 15, 30, 42, 7);

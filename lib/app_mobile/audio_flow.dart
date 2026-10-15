@@ -83,6 +83,7 @@ extension _AudioFlow on _HomeScreenState {
         );
       },
       peaks: pending?.peaks ?? decodePeaks(note?.properties['peaks']),
+      readPeaks: () => readPeakSidecar(assetPath, v.storage.readBytesNow),
       onPeaks: note == null
           ? null
           : (peaks, ms) => unawaited(_storePeaks(note, peaks, ms)),

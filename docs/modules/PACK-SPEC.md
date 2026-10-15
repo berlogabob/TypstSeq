@@ -14,6 +14,9 @@ assets/**        audio, images (anything)
 "files":[{"path":"notes/0001.typ","sha256":"<hex>"}, ...]}`.
 `id` matches `[a-z0-9][a-z0-9-]{0,63}`. Every file except the manifest must be
 listed and hash-verified; unlisted or traversal paths reject the pack.
+Optional strings: `unit` labels progress (e.g. `"lessons"`; default `"tasks"`),
+`lang` identifies the content language, and `description` describes the pack.
+The install record retains `unit`; old records default to `"tasks"`.
 
 ## Install mapping (inside synced vault prefixes only)
 - `notes/x` -> `projects/<id>/x`
@@ -29,6 +32,10 @@ listed and hash-verified; unlisted or traversal paths reject the pack.
 - Notes must be self-contained: the in-app Typst compile has only
   `_system/tylog.typ`, so no custom `#import` or layout macros.
 - Audio: `#tylog.attachment("<path>", kind: "audio")[label]`.
+- Optional waveform sidecars sit beside audio: `assets/audio/a.mp3.peaks`.
+  Include them in `files` with their own hash. Content is ASCII hex, two
+  characters per bucket, 200 buckets (400 characters). The app reads them
+  before decoding audio, falls back if missing/invalid, and never writes them.
 - Stable note/task ids; never reuse an id across packs.
 - Upgrade/uninstall only touch files still identical to what was installed.
 - Validate: `dart run packages/tylog_core/bin/tylog.dart pack-validate x.tylogpack`

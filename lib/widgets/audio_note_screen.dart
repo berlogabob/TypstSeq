@@ -404,6 +404,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       if (_peaks.isEmpty) _peaks = decodePeaks(_props['peaks']);
       final path = audioPathOf(source);
       if (path == null) throw StateError('No audio file in this note');
+      if (_peaks.isEmpty) {
+        _peaks = await readPeakSidecar(path, widget.readBytes);
+      }
       final bytes = await widget.readBytes(path);
       final file = await writeTempAudio(bytes, path.split('.').last);
       _info = audioInfo(

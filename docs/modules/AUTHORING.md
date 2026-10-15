@@ -27,6 +27,7 @@ my-pack/
   "id": "pt-pt-a2b1",
   "name": "Português Europeu A2 → B1",
   "version": "1.0.0",
+  "unit": "lessons",
   "files": [
     { "path": "notes/0001.typ", "sha256": "<64 hex>" },
     { "path": "assets/audio/a.mp3", "sha256": "<64 hex>" }
@@ -40,6 +41,8 @@ Rules:
   across packs.
 - `name` and `version` are free strings; `version` is a normal version like
   `1.0.0`.
+- Optional `unit` is a string used in progress, e.g. `0/72 lessons`; omitted
+  values default to `tasks`. Optional `lang` and `description` are strings.
 - `files[]`: every file except the manifest, each with a `path` and a `sha256`.
   - `path` must start with `notes/` or `assets/`.
   - `sha256` is 64 lowercase hex characters.
@@ -87,6 +90,12 @@ Audio lives under `assets/` and is referenced with `kind: "audio"`:
 ```typst
 #tylog.attachment("assets/modules/{{id}}/audio/a.mp3", kind: "audio")[Audio: a]
 ```
+
+For a precomputed waveform, add `assets/audio/a.mp3.peaks` alongside the
+audio and list/hash it in the manifest. Encode 200 peak buckets (0–255) as
+ASCII hex, two characters each (400 characters total), matching `encodePeaks`.
+The app reads this sidecar before trying the audio codec; missing or invalid
+sidecars fall back to audio decoding. The app never writes sidecars.
 
 ## 5. Building
 

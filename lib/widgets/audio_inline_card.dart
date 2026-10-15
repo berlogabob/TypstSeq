@@ -22,6 +22,7 @@ class AudioInlineCard extends StatefulWidget {
     required this.extension,
     required this.onExpand,
     this.onPeaks,
+    this.readPeaks,
     this.status,
   });
 
@@ -29,6 +30,7 @@ class AudioInlineCard extends StatefulWidget {
   final List<int> peaks;
   final Future<Uint8List> Function() readBytes;
   final String extension;
+  final Future<List<int>> Function()? readPeaks;
 
   /// Opens the full screen on [AudioTab]; completes when it is closed.
   final Future<void> Function(AudioTab tab) onExpand;
@@ -96,6 +98,12 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   /// decoded once and handed back to be saved in its audio note.
   Future<void> _decodePeaks() async {
     try {
+      final sidecar = await widget.readPeaks?.call() ?? const <int>[];
+      if (!mounted) return;
+      if (sidecar.isNotEmpty) {
+        setState(() => _peaks = sidecar);
+        return;
+      }
       await _ensure();
       final file = _temp;
       if (file == null || !mounted) return;

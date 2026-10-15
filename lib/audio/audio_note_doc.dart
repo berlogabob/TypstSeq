@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:tylog_core/values.dart' show escapeMarkup;
 
 /// An audio recording is a normal TyLog note (`kind: audio`): header, one
@@ -37,6 +40,21 @@ List<int> decodePeaks(Object? value) {
     for (var i = 0; i + 1 < value.length; i += 2)
       int.tryParse(value.substring(i, i + 2), radix: 16) ?? 0,
   ];
+}
+
+/// Reads an optional pack-provided sidecar; absent or invalid data falls back
+/// to the audio codec. The app never writes sidecars.
+Future<List<int>> readPeakSidecar(
+  String audioPath,
+  Future<Uint8List> Function(String path) readBytes,
+) async {
+  try {
+    final hex = ascii.decode(await readBytes('$audioPath.peaks')).trim();
+    if (!RegExp(r'^(?:[0-9a-fA-F]{2})+$').hasMatch(hex)) return const [];
+    return decodePeaks(hex);
+  } catch (_) {
+    return const [];
+  }
 }
 
 final _commentLine = RegExp(r'^\s*-\s+(\d{1,3}):([0-5]\d)\s+(.+?)\s*$');
