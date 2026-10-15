@@ -13,6 +13,7 @@ List<int> _vector(double x, double y) =>
     Float32List.fromList([x, y]).buffer.asUint8List().toList(growable: false);
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('not-installed models do not produce vector results', () async {
     final db = TyLogDatabase(NativeDatabase.memory());
     final root = await Directory.systemTemp.createTemp('semantic-test-');
@@ -75,7 +76,7 @@ void main() {
       passageEmbedderFactory: (_, _) {
         factories++;
         return (text) async {
-          started.complete();
+          if (!started.isCompleted) started.complete();
           await release.future;
           return _vector(text.contains('alpha') ? 1 : 0, 0);
         };
@@ -142,7 +143,7 @@ void main() {
     addTearDown(controller.dispose);
     await controller.init();
     await controller.refreshNotes();
-    expect(embedded, hasLength(2));
+    expect(embedded.where((text) => text.startsWith('#show:')), hasLength(2));
 
     embedded.clear();
     await controller.refreshNotes(); // nothing changed

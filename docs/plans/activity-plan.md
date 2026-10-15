@@ -26,3 +26,10 @@ Rules: Claude coordinates; codex CLI does multi-file edits; pi + Ornith 35b on S
 - 2026-10-15: Vaults sheet shows raw `content://com.android.exte...` as the vault subtitle; show a friendly path (D7 candidate).
 - 2026-10-15: AI settings section: sub-headers weak (Articles/Screenshots titles look like field values); polish in D7 together with the Vaults subtitle. A24 still needs the install.
 - 2026-10-15: D7 done: Vaults friendly path, AI task block headers. No new releases until the user asks.
+
+## Wave 2 (2026-10-15, user: "do all 3", then ONE release; codex+pi max, Claude reviews)
+W1 Module Packs phase C: (a) upgrade removes files dropped by the new pack (unedited only); (b) Reschedule: shift due of open module tasks to a new start date (surgical writes, task_mutation); (c) Progress: per-module done/total tasks + scores in the module dialog; (d) docs/modules/AUTHORING.md + manifest.schema.json (pi).
+W2 RAG docs corpus: bundled docs (spec/, docs/modules/) indexed under `doc:` source ids in lib/retrieval, searchable alongside notes.
+W3 Audio: peak backfill for pack mp3s (waveform without first open); A24 device checks pending (needs adb).
+Release after W1-W3: full test, tag, install P30/Mac/A24.
+- 2026-10-15: W1 core+UI, W2 RAG docs corpus done (1510 green); W3 audio: peaks backfill left to first open per plan; moduleProgress reads record paths, not a vault listing (SAF cost).

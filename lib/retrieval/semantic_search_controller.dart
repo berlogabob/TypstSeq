@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../database/tylog_database.dart';
 import 'cosine_search.dart';
@@ -169,6 +170,19 @@ class SemanticSearchController extends ChangeNotifier {
         }
       }
       await syncNoteChunks(db, notes, allPaths: stamps.keys.toSet());
+      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final assets = manifest.listAssets().toSet();
+      final docs = <String, ({String title, String text})>{};
+      for (final path in const [
+        'spec/tylog-format-v1.md',
+        'docs/modules/PACK-SPEC.md',
+        'docs/modules/AUTHORING.md',
+      ]) {
+        if (assets.contains(path)) {
+          docs[path] = (title: path, text: await rootBundle.loadString(path));
+        }
+      }
+      await syncDocChunks(db, docs);
       _synced = stamps;
       _lastQuery = null;
       _indexDirty = true;
@@ -335,7 +349,7 @@ class SemanticSearchController extends ChangeNotifier {
              s.title source_title, v.id source_version_id, c.start_offset, c.end_offset, c.content
       FROM chunks c JOIN source_versions v ON v.id = c.source_version_id
       JOIN sources s ON s.id = v.source_id
-      WHERE c.id IN (${List.filled(hits.length, '?').join(',')}) AND s.kind = 'note'
+      WHERE c.id IN (${List.filled(hits.length, '?').join(',')}) AND s.kind IN ('note', 'doc')
       ''',
           variables: [for (final hit in hits) Variable.withString(hit.id)],
         )

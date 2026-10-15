@@ -31,7 +31,7 @@ void main() {
             onStripImportNoise: () async =>
                 calls.add('Clean up imported notes'),
             onImportVault: () async => calls.add('Import vault'),
-            onInstallModule: () async => calls.add('Install module'),
+            onInstallModule: () async => calls.add('Modules'),
             onProblems: () => calls.add('Problems'),
             onRebuildIndex: () => calls.add('Rebuild index'),
             onRelinkVault: () => calls.add('Relink vault'),
@@ -74,7 +74,7 @@ void main() {
       'Migrate entity types',
       'Clean up imported notes',
       'Import vault',
-      'Install module',
+      'Modules',
       'Semantic search',
       'Check for updates',
       'Typst help',

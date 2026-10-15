@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import 'scanner.dart' show locateTypstCalls, taskField;
 import 'storage.dart';
 import 'validation.dart' show isSafeVaultPath;
 
@@ -108,7 +109,7 @@ String _iso(DateTime d) =>
 class ModuleInstallResult {
   const ModuleInstallResult({required this.written, required this.skipped});
 
-  /// Vault paths written.
+  /// Vault paths written or deleted.
   final List<String> written;
 
   /// Vault paths left alone: the user edited them, or they pre-existed
@@ -117,6 +118,34 @@ class ModuleInstallResult {
 }
 
 String moduleRecordPath(String id) => '_system/modules/$id.json';
+
+class InstalledModule {
+  const InstalledModule({required this.id, required this.name, this.start});
+
+  final String id;
+  final String name;
+  final DateTime? start;
+}
+
+/// Lists installed records, including older records without a name or start.
+Future<List<InstalledModule>> listInstalledModules(VaultStorage storage) async {
+  final modules = <InstalledModule>[];
+  for (final entry in await storage.list(path: '_system/modules')) {
+    if (entry.isDirectory || !entry.path.endsWith('.json')) continue;
+    final id = entry.path.split('/').last.replaceFirst(RegExp(r'\.json$'), '');
+    if (!ModulePack._idPattern.hasMatch(id)) continue;
+    final record = jsonDecode(await storage.readText(entry.path)) as Map;
+    modules.add(
+      InstalledModule(
+        id: id,
+        name: (record['name'] as String?) ?? id,
+        start: DateTime.tryParse((record['start'] as String?) ?? ''),
+      ),
+    );
+  }
+  modules.sort((a, b) => a.id.compareTo(b.id));
+  return modules;
+}
 
 Future<Map<String, String>> _readRecord(VaultStorage s, String id) async {
   final path = moduleRecordPath(id);
@@ -141,6 +170,18 @@ Future<ModuleInstallResult> installModule(
   final installed = <String, String>{};
   final written = <String>[];
   final skipped = <String>[];
+  final targets = pack.files.keys.map(pack.targetOf).toSet();
+  for (final entry in owned.entries) {
+    if (targets.contains(entry.key) || !await storage.exists(entry.key)) {
+      continue;
+    }
+    if (await storage.hash(entry.key) == entry.value) {
+      await storage.delete(entry.key);
+      written.add(entry.key);
+    } else {
+      skipped.add(entry.key);
+    }
+  }
   for (final packPath in pack.files.keys) {
     final target = pack.targetOf(packPath);
     final bytes = pack.render(packPath, start);
@@ -165,6 +206,7 @@ Future<ModuleInstallResult> installModule(
     moduleRecordPath(pack.id),
     jsonEncode({
       'id': pack.id,
+      'name': pack.name,
       'version': pack.version,
       'start': _iso(start),
       'files': installed,
@@ -194,4 +236,112 @@ Future<ModuleInstallResult> uninstallModule(
     await storage.delete(moduleRecordPath(id));
   }
   return ModuleInstallResult(written: written, skipped: skipped);
+}
+
+/// Shifts open-task due dates in owned notes, including user-edited notes.
+/// Only date literals change; the resulting bytes become the recorded version.
+Future<ModuleInstallResult> rescheduleModule(
+  VaultStorage storage,
+  String id,
+  DateTime newStart,
+  DateTime oldStart,
+) async {
+  final recordPath = moduleRecordPath(id);
+  if (!await storage.exists(recordPath)) {
+    return const ModuleInstallResult(written: [], skipped: []);
+  }
+  final record = jsonDecode(await storage.readText(recordPath)) as Map;
+  final owned = (record['files'] as Map).cast<String, String>();
+  final days = DateTime.utc(newStart.year, newStart.month, newStart.day)
+      .difference(DateTime.utc(oldStart.year, oldStart.month, oldStart.day))
+      .inDays;
+  final written = <String>[];
+  for (final path in owned.keys) {
+    if (!path.startsWith('projects/$id/') ||
+        !path.endsWith('.typ') ||
+        !await storage.exists(path)) {
+      continue;
+    }
+    final source = await storage.readText(path);
+    var next = source;
+    for (final call in locateTypstCalls(
+      source,
+      names: const {'tylog.task'},
+    ).reversed) {
+      final status = taskField(call.source, 'status');
+      if (status == 'done' || status == 'cancelled') continue;
+      final due = taskField(call.source, 'due');
+      if (due == null || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(due)) {
+        continue;
+      }
+      final date = DateTime.tryParse(due);
+      if (date == null || _iso(date) != due) continue;
+      final shifted = _iso(
+        DateTime.utc(date.year, date.month, date.day + days),
+      );
+      // Probe candidates through the scanner to avoid strings/comments/nested fields.
+      for (final match in RegExp('"$due"').allMatches(call.source)) {
+        final probe = call.source.replaceRange(
+          match.start,
+          match.end,
+          '"_due_"',
+        );
+        if (taskField(probe, 'due') != '_due_') continue;
+        next = next.replaceRange(
+          call.start + match.start,
+          call.start + match.end,
+          '"$shifted"',
+        );
+        break;
+      }
+    }
+    if (next == source) continue;
+    await storage.writeText(path, next);
+    owned[path] = sha256.convert(utf8.encode(next)).toString();
+    written.add(path);
+  }
+  record['start'] = _iso(newStart);
+  await storage.writeText(recordPath, jsonEncode(record));
+  return ModuleInstallResult(written: written, skipped: []);
+}
+
+class ModuleProgress {
+  const ModuleProgress({
+    required this.total,
+    required this.done,
+    required this.scores,
+  });
+
+  final int total;
+  final int done;
+  final List<({String path, String score})> scores;
+}
+
+/// Reads current progress from all notes under the module's project directory.
+Future<ModuleProgress> moduleProgress(VaultStorage storage, String id) async {
+  var total = 0;
+  var done = 0;
+  final scores = <({String path, String score})>[];
+  // Owned files from the install record: a recursive vault listing is far
+  // too slow on a large SAF vault.
+  final owned = await _readRecord(storage, id);
+  for (final path in owned.keys) {
+    if (!path.startsWith('projects/$id/') ||
+        !path.endsWith('.typ') ||
+        !await storage.exists(path)) {
+      continue;
+    }
+    final source = await storage.readText(path);
+    for (final call in locateTypstCalls(source, names: const {'tylog.task'})) {
+      total++;
+      if (taskField(call.source, 'status') == 'done') done++;
+    }
+    for (final match in RegExp(
+      r'^\s*score::[ \t]*(\d+[ \t]*/[ \t]*\d+)[ \t]*$',
+      multiLine: true,
+    ).allMatches(source)) {
+      scores.add((path: path, score: match[1]!));
+    }
+  }
+  return ModuleProgress(total: total, done: done, scores: scores);
 }

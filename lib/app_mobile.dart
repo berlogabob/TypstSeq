@@ -69,6 +69,13 @@ import 'audio/audio_note_doc.dart';
 import 'audio/processing_policy.dart';
 import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
+import 'package:tylog_core/tylog_core.dart'
+    show
+        InstalledModule,
+        ModuleProgress,
+        listInstalledModules,
+        moduleProgress,
+        rescheduleModule;
 import 'widgets/audio_inline_card.dart';
 import 'widgets/audio_note_screen.dart';
 import 'widgets/audio_shelf.dart';
@@ -2711,7 +2718,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
             onInstallModule: () async {
               Navigator.pop(context);
-              await _installModule();
+              await _showModules();
             },
             onProblems: () {
               Navigator.pop(context);

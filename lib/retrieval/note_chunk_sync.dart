@@ -27,6 +27,19 @@ Future<NoteChunkSyncResult> syncNoteChunks(
   TyLogDatabase db,
   Map<String, ({String title, String text})> notes, {
   Set<String>? allPaths,
+}) => _syncTextChunks(db, notes, kind: 'note', allPaths: allPaths);
+
+/// A full sync of bundled docs; cleanup is scoped to doc sources.
+Future<NoteChunkSyncResult> syncDocChunks(
+  TyLogDatabase db,
+  Map<String, ({String title, String text})> docs,
+) => _syncTextChunks(db, docs, kind: 'doc');
+
+Future<NoteChunkSyncResult> _syncTextChunks(
+  TyLogDatabase db,
+  Map<String, ({String title, String text})> notes, {
+  required String kind,
+  Set<String>? allPaths,
 }) async {
   final keep = allPaths ?? notes.keys.toSet();
   var added = 0;
@@ -38,7 +51,7 @@ Future<NoteChunkSyncResult> syncNoteChunks(
     for (final entry in notes.entries) {
       final path = entry.key;
       final note = entry.value;
-      final sourceId = 'note:$path';
+      final sourceId = '$kind:$path';
       final digest = sha256.convert(utf8.encode(note.text)).toString();
       final versionId = '$sourceId:$digest';
       final source = await (db.select(
@@ -50,7 +63,7 @@ Future<NoteChunkSyncResult> syncNoteChunks(
             .insert(
               SourcesCompanion.insert(
                 id: sourceId,
-                kind: 'note',
+                kind: kind,
                 title: Value(note.title),
                 locator: Value(path),
                 createdAtMs: now,
@@ -111,7 +124,7 @@ Future<NoteChunkSyncResult> syncNoteChunks(
     }
     final existingNotes = await (db.select(
       db.sources,
-    )..where((row) => row.kind.equals('note'))).get();
+    )..where((row) => row.kind.equals(kind))).get();
     for (final source in existingNotes) {
       if (!keep.contains(source.locator)) {
         await _deleteVersions(db, (row) => row.sourceId.equals(source.id));

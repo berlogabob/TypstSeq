@@ -321,8 +321,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ),
             AppTile(
               icon: Icons.extension_outlined,
-              title: 'Install module',
-              subtitle: 'Add a .tylogpack course or content pack',
+              title: 'Modules',
+              subtitle: 'Manage courses or install a .tylogpack',
               onTap: () => unawaited(widget.onInstallModule()),
             ),
             AppTile(

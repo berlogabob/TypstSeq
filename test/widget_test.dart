@@ -1604,7 +1604,7 @@ void main() {
         .singleWhere((s) => s.title == 'Tools');
     expect(tools.children.whereType<AppTile>().map((t) => t.title),
       ['Problems', 'Rebuild index', 'Relink vault', 'Migrate entity types',
-       'Clean up imported notes', 'Import vault', 'Install module', 'Semantic search']);
+       'Clean up imported notes', 'Import vault', 'Modules', 'Semantic search']);
     for (final title in ['Local folder', 'App version']) {
       expect(find.widgetWithText(ListTile, title), findsNothing);
     }
