@@ -24,6 +24,12 @@ their history is in the commit log and the GitHub release notes.
 
 - Light / Best presets for transcription and translation quality.
 - Articles and Screenshots can use a server and model chosen in Settings.
+- Settings > Modules lists installed course packs with task progress and score
+  counts; Reschedule moves open lesson due dates to a new start date. Updating a
+  pack removes files it no longer ships (unedited ones only).
+- Search also covers the bundled format and module-pack documentation.
+- Module authoring guide and manifest JSON schema in `docs/modules/`.
+- Vaults list shows a readable folder path instead of a raw content URI.
 
 ## 0.17.3+149
 
