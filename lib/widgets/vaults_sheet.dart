@@ -36,7 +36,7 @@ class VaultsSheet extends StatelessWidget {
           ),
           title: Text(entry.name),
           subtitle: Text(
-            entry.treeUri ?? entry.path,
+            friendlyVaultPath(entry.treeUri ?? entry.path),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -82,4 +82,17 @@ class VaultsSheet extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// `content://…/tree/primary%3ADownload%2FTyLog` → `Internal storage/Download/TyLog`.
+String friendlyVaultPath(String location) {
+  if (!location.startsWith('content://')) return location;
+  final tree = location.split('/tree/').last.split('/document/').first;
+  final decoded = Uri.decodeComponent(tree);
+  final colon = decoded.indexOf(':');
+  if (colon < 0) return decoded;
+  final volume = decoded.substring(0, colon);
+  final rest = decoded.substring(colon + 1);
+  final root = volume == 'primary' ? 'Internal storage' : 'SD card';
+  return rest.isEmpty ? root : '$root/$rest';
 }

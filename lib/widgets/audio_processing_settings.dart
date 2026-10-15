@@ -264,7 +264,8 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title),
+          const Divider(),
+          Text(title, style: Theme.of(context).textTheme.titleSmall),
           Text(description, style: Theme.of(context).textTheme.bodySmall),
           DropdownButtonFormField<String>(
             key: ValueKey(

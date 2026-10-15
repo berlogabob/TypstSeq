@@ -25,3 +25,4 @@ Rules: Claude coordinates; codex CLI does multi-file edits; pi + Ornith 35b on S
 - 2026-10-15: D6 regression: dropping the app-level `inputDecorationTheme(border: none)` boxed the editor (then underline); restored in tyLogTheme, test pins it. Lesson: always screenshot Today (editor) after any theme change.
 - 2026-10-15: Vaults sheet shows raw `content://com.android.exte...` as the vault subtitle; show a friendly path (D7 candidate).
 - 2026-10-15: AI settings section: sub-headers weak (Articles/Screenshots titles look like field values); polish in D7 together with the Vaults subtitle. A24 still needs the install.
+- 2026-10-15: D7 done: Vaults friendly path, AI task block headers. No new releases until the user asks.
