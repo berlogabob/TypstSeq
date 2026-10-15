@@ -251,7 +251,8 @@ Future<ModuleInstallResult> uninstallModule(
 }
 
 /// Shifts open-task due dates in owned notes, including user-edited notes.
-/// Only date literals change; the resulting bytes become the recorded version.
+/// Only date literals change; an unedited note's new bytes become its recorded
+/// version, an edited note stays marked edited.
 Future<ModuleInstallResult> rescheduleModule(
   VaultStorage storage,
   String id,
@@ -308,8 +309,10 @@ Future<ModuleInstallResult> rescheduleModule(
       }
     }
     if (next == source) continue;
+    // A user-edited note stays "edited" in the record, so uninstall keeps it.
+    final pristine = await storage.hash(path) == owned[path];
     await storage.writeText(path, next);
-    owned[path] = sha256.convert(utf8.encode(next)).toString();
+    if (pristine) owned[path] = sha256.convert(utf8.encode(next)).toString();
     written.add(path);
   }
   record['start'] = _iso(newStart);

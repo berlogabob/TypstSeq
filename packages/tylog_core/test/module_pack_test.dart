@@ -229,9 +229,15 @@ void main() {
       );
       final record = jsonDecode(await storage.readText(recordPath));
       expect(record['start'], '2026-02-05');
-      for (final path in result.written) {
-        expect(record['files'][path], await storage.hash(path));
-      }
+      expect(
+        record['files']['projects/p1/1.typ'],
+        await storage.hash('projects/p1/1.typ'),
+      );
+      // The user-edited note must stay "edited": uninstall may not delete it.
+      expect(
+        record['files']['projects/p1/edited.typ'],
+        isNot(await storage.hash('projects/p1/edited.typ')),
+      );
       await rescheduleModule(
         storage,
         'p1',
