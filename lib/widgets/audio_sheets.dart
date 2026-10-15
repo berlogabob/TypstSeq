@@ -15,9 +15,12 @@ bool isAudioPath(String path) {
   return _audioExtensions.any(lower.endsWith);
 }
 
-/// ~16 kB/s AAC: 25 minutes stays under the 25 MB range where sync switches
-/// to many chunks and a phone upload gets slow.
-const kMaxRecordingSeconds = 25 * 60;
+/// A long take is cut into parts of this length (~5 MB at the speech preset's
+/// ~4 kB/s), each saved as its own audio note while recording continues: sync
+/// stays under its large-file path, a crash loses at most one part, and each
+/// part transcribes on its own.
+const kSegmentSeconds = 20 * 60;
+const kMaxRecordingSeconds = 4 * 60 * 60;
 
 /// A finished take: an `.m4a` when the ADTS stream could be muxed, else the
 /// raw `.aac`/`.wav` the recorder produced.
@@ -27,6 +30,7 @@ class AudioTake {
     this.extension, [
     this.peaks = const [],
     this.durationMs,
+    this.startedAt,
   ]);
   final Uint8List bytes;
   final String extension;
@@ -36,15 +40,22 @@ class AudioTake {
 
   /// Measured before muxing to m4a, which `audioDurationMs` can't read.
   final int? durationMs;
+
+  /// When this part began; names its note so parts sort in order.
+  final DateTime? startedAt;
 }
 
-AudioTake finishTake(Uint8List raw, [List<int> peaks = const []]) {
+AudioTake finishTake(
+  Uint8List raw, [
+  List<int> peaks = const [],
+  DateTime? startedAt,
+]) {
   final ms = audioDurationMs(raw);
   if (AudioNoteRecorder.extension == 'aac') {
     final m4a = m4aFromAdts(raw);
-    if (m4a != null) return AudioTake(m4a, 'm4a', peaks, ms);
+    if (m4a != null) return AudioTake(m4a, 'm4a', peaks, ms, startedAt);
   }
-  return AudioTake(raw, AudioNoteRecorder.extension, peaks, ms);
+  return AudioTake(raw, AudioNoteRecorder.extension, peaks, ms, startedAt);
 }
 
 /// Writes [bytes] to a cache-dir temp file for `just_audio`: the vault may be
@@ -63,19 +74,26 @@ String formatClock(Duration d) {
   return '$m:$s';
 }
 
-/// Records until Stop; null when cancelled or the mic is denied.
-Future<AudioTake?> showAudioRecorder(BuildContext context) {
+/// Records until Stop; null when cancelled or the mic is denied. Every
+/// [kSegmentSeconds] a finished part goes to [onPart] (native only); the
+/// result is the last part.
+Future<AudioTake?> showAudioRecorder(
+  BuildContext context, {
+  Future<void> Function(AudioTake part)? onPart,
+}) {
   return showModalBottomSheet<AudioTake>(
     context: context,
     showDragHandle: false,
     isDismissible: false,
     enableDrag: false,
-    builder: (_) => const _RecorderSheet(),
+    builder: (_) => _RecorderSheet(onPart),
   );
 }
 
 class _RecorderSheet extends StatefulWidget {
-  const _RecorderSheet();
+  const _RecorderSheet(this.onPart);
+
+  final Future<void> Function(AudioTake part)? onPart;
 
   @override
   State<_RecorderSheet> createState() => _RecorderSheetState();
@@ -86,6 +104,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
   late final AudioNoteRecorder _recorder = AudioNoteRecorder(_audio);
   Timer? _ticker;
   int _seconds = 0;
+  DateTime _partStart = DateTime.now();
   final List<double> _recent = []; // 0..1, newest last
   String? _error;
   bool _stopping = false;
@@ -112,13 +131,32 @@ class _RecorderSheetState extends State<_RecorderSheet> {
         });
       };
       await _recorder.start();
+      _partStart = DateTime.now();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
         setState(() => _seconds++);
-        if (_seconds >= kMaxRecordingSeconds) unawaited(_stop());
+        if (_seconds >= kMaxRecordingSeconds) {
+          unawaited(_stop());
+        } else if (_seconds % kSegmentSeconds == 0 && widget.onPart != null) {
+          unawaited(_flushPart());
+        }
       });
     } catch (error) {
       if (mounted) setState(() => _error = 'Could not record: $error');
+    }
+  }
+
+  Future<void> _flushPart() async {
+    final part = _recorder.rotate();
+    final started = _partStart;
+    _partStart = DateTime.now();
+    if (audioDurationMs(part.bytes) == null) return;
+    try {
+      await widget.onPart!(
+        finishTake(part.bytes, peaksFromLevels(part.levels), started),
+      );
+    } catch (_) {
+      // Surfaced by the saver; the take itself keeps recording.
     }
   }
 
@@ -133,7 +171,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
       context,
       audioDurationMs(raw) == null
           ? null
-          : finishTake(raw, peaksFromLevels(_recorder.levels)),
+          : finishTake(raw, peaksFromLevels(_recorder.levels), _partStart),
     );
   }
 

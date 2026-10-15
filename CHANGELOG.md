@@ -3,6 +3,17 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## Unreleased
+
+### Changed
+
+- Audio recording uses a speech preset (16 kHz mono, 32 kbps, ~4 kB/s): a 90 min
+  call is ~22 MB instead of ~86 MB.
+- Recordings can run up to 4 hours. Every 20 minutes the take is cut (gaplessly,
+  on an AAC frame boundary) and saved as its own audio note named by its start
+  time, so each part syncs as a normal file, transcribes on its own and survives
+  a crash.
+
 ## 0.18.1+151
 
 ### Added

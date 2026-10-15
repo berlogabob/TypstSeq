@@ -9,15 +9,19 @@ extension _AudioFlow on _HomeScreenState {
   );
 
   Future<void> _recordAudioNote({bool inline = false}) async {
-    final take = await showAudioRecorder(context);
-    if (take == null || !mounted) return;
-    await _createAudioNote(
+    // Mid-recording parts save quietly; only the last one opens its note.
+    Future<void> save(AudioTake take, {bool open = false}) => _createAudioNote(
       take.bytes,
       take.extension,
       peaks: take.peaks,
       durationMs: take.durationMs,
       inline: inline,
+      at: take.startedAt,
+      open: open,
     );
+    final take = await showAudioRecorder(context, onPart: save);
+    if (take == null || !mounted) return;
+    await save(take, open: true);
   }
 
   /// Magic > Audio: record or import, then drop the player card into the open
@@ -166,10 +170,12 @@ extension _AudioFlow on _HomeScreenState {
     List<int> peaks = const [],
     int? durationMs,
     bool inline = false,
+    DateTime? at,
+    bool open = true,
   }) async {
     final v = vault;
     if (v == null) return;
-    final now = DateTime.now();
+    final now = at ?? DateTime.now();
     final month = now.month.toString().padLeft(2, '0');
     String relative(String stamp) =>
         'assets/audio/${now.year}/$month/$stamp.$extension';
@@ -228,7 +234,7 @@ extension _AudioFlow on _HomeScreenState {
       }
       final path = await persist();
       final note = index?.notesByPath[path];
-      if (note != null && mounted) await _openAudioNote(note);
+      if (open && note != null && mounted) await _openAudioNote(note);
     } catch (error) {
       if (mounted) showSnack(context, 'Could not save recording: $error');
     }

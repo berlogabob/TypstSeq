@@ -9,7 +9,7 @@ import 'package:record/record.dart';
 /// stream, so the editor can always trim it without an ffmpeg-sized dependency.
 ///
 /// - **native**: `aacLc`, which `record` delivers as self-contained ADTS frames
-///   (one per chunk). ~16 kB/s, so a take can run ~26 min under the 25MB
+///   (one per chunk). Speech preset ~4 kB/s, so a 2 h take is ~29 MB under the
 ///   Storage cap and a shared file stays messenger-sized.
 /// - **web**: `pcm16bits` wrapped into WAV on stop — `record_web` refuses every
 ///   stream encoder but PCM. ~88 kB/s, hence the much shorter web cap.
@@ -50,6 +50,11 @@ class AudioNoteRecorder {
       const RecordConfig(
         encoder: kIsWeb ? AudioEncoder.pcm16bits : AudioEncoder.aacLc,
         numChannels: 1,
+        // Speech preset: 16 kHz is what Whisper resamples to anyway, and
+        // 32 kbps (~4 kB/s) keeps a 90 min call near 22 MB. Knob — raise both
+        // for music. Ignored by the web PCM path.
+        sampleRate: 16000,
+        bitRate: 32000,
         // An explicit size bypasses AudioRecord.getMinBufferSize on Android and
         // hard-fails init on devices that need more; only web requires it.
         streamBufferSize: kIsWeb ? 4096 : null,
@@ -79,6 +84,14 @@ class AudioNoteRecorder {
   void _publish(double dbfs) {
     _levels.add(dbfs);
     onLevel?.call(dbfs);
+  }
+
+  /// Hands back the take so far and keeps recording. ADTS chunks are whole
+  /// frames, so the cut is gapless. Native only (the web WAV needs a header).
+  ({Uint8List bytes, List<double> levels}) rotate() {
+    final levels = List<double>.of(_levels);
+    _levels.clear();
+    return (bytes: _buffer.takeBytes(), levels: levels);
   }
 
   /// Stops capture and returns the take: raw ADTS on native, WAV on web.

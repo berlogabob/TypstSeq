@@ -17,6 +17,56 @@ final _configured = [
 ].every((key) => (_env[key] ?? '').isNotEmpty);
 
 void main() {
+  // 2 h of the speech preset (~4 kB/s) is ~29 MB: the recording cap.
+  test(
+    'chunked upload round-trips a 29 MB recording against the real server',
+    () async {
+      final user = _env['NC_USER']!;
+      final auth =
+          'Basic ${base64.encode(utf8.encode('$user:${_env['NC_PW']}'))}';
+      final dav = Uri.parse('${_env['NC_URL']}/remote.php/dav');
+      final name =
+          'tylog-chunk-probe-${DateTime.now().millisecondsSinceEpoch}.aac';
+      final random = Random(2);
+      final bytes = List<int>.generate(
+        29 * 1024 * 1024,
+        (_) => random.nextInt(256),
+      );
+      final client = HttpClient();
+      final target = Uri.parse('$dav/files/$user/$name');
+      Future<HttpClientResponse> send(String method) async {
+        final request = await client.openUrl(method, target);
+        request.headers.set('Authorization', auth);
+        return request.close();
+      }
+
+      try {
+        final started = DateTime.now();
+        final etag = await chunkedUpload(
+          client: client,
+          davBase: dav,
+          user: user,
+          authHeader: auth,
+          destinationPath: name,
+          openRange: (start, end) => Stream.value(bytes.sublist(start, end)),
+          length: bytes.length,
+          uploadId: 'tylog-$name',
+        );
+        // ignore: avoid_print
+        print('29 MB uploaded in ${DateTime.now().difference(started)}');
+        expect(etag, isNotNull);
+        final response = await send('GET');
+        expect(response.statusCode, 200);
+        expect(await sha256.bind(response).first, sha256.convert(bytes));
+      } finally {
+        await (await send('DELETE')).drain<void>();
+        client.close();
+      }
+    },
+    skip: !_configured,
+    timeout: const Timeout(Duration(minutes: 10)),
+  );
+
   test(
     'chunked upload round-trips 12 MB against the real server',
     () async {

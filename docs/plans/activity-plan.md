@@ -60,3 +60,9 @@ Then: tag v0.18.1+151, install everywhere.
 ## Wave 4 (2026-10-15): pack docs + example pack repo (proposal, awaiting user go)
 - docs/modules/AUTHORING.md grows into a step-by-step guide; spec stays in this repo (authoritative); example pack repo `tylog-pack-pt-pt` (from BerloPortuga: sources, tools/pack.py with peaks, CI building the .tylogpack onto a GitHub release) is the worked example the guide links to.
 - 0.18.1+151 released 2026-10-15: pack 1.1.0 attached; installed on P30, A24, Mac.
+
+## Wave 5 (2026-10-15): long recordings (calls, 1-1.5 h)
+- 25 min cap was a sync-size guess (25 MB at ~16 kB/s), not a codec limit. Now: speech preset 16 kHz/32 kbps (~4 kB/s), cap 4 h, rotate every 20 min into separate audio notes (AudioNoteRecorder.rotate, ADTS frame boundary, gapless; parts saved via onPart while recording).
+- Verified: Mac real Nextcloud chunked upload of 29 MB random file in 8.7 s (test/real_account/chunked_upload_real_test.dart); P30 test vault, 30 s segments: parts 29.9-30.0 s at 32.66 kbps, parts survive an app kill (installing over the running app), recording sheet stays on top (parts save with open:false). Full suite 1514 passed.
+- 2026-10-15 ISSUE (pre-existing, reproduced on a build without these changes): a recording made from Library > Audio does not appear in the list and its note screen does not open until the app restarts; files and note are on disk. Cause not found (worker scan after SAF write?).
+- 2026-10-15 OPEN: transcription has no speaker separation (tool/transcribe_worker.py is plain faster-whisper "small"); group calls need diarization (pyannote or Studio-side model). Recording is mic-only: Android does not give apps the remote side of a phone call.
