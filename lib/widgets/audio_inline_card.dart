@@ -95,7 +95,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   }
 
   /// A file without stored peaks (older recording, lesson mp3) gets its wave
-  /// decoded once and handed back to be saved in its audio note.
+  /// decoded once and handed back to be saved in a sidecar.
   Future<void> _decodePeaks() async {
     try {
       final sidecar = await widget.readPeaks?.call() ?? const <int>[];

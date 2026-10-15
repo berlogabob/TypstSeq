@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
+import 'package:tylog/vault_storage.dart';
 import 'package:tylog/audio/audio_note_doc.dart';
 
 void main() {
@@ -19,6 +20,29 @@ void main() {
     );
     expect(paths, ['assets/modules/p/audio/a.mp3.peaks']);
     expect(result, peaks);
+  });
+
+  test('peaks backfill writes a sidecar and preserves note bytes', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_peaks_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    const note = '#show: tylog.note.with(id: "audio", title: "Audio")\n';
+    await storage.writeText('notes/Audio.typ', note);
+    final before = await storage.readBytes('notes/Audio.typ');
+
+    await writePeakSidecar('assets/audio/a.mp3', [
+      0,
+      12,
+      255,
+    ], storage.writeBytes);
+
+    expect(await storage.readText('assets/audio/a.mp3.peaks'), '000cff');
+    expect(await readPeakSidecar('assets/audio/a.mp3', storage.readBytes), [
+      0,
+      12,
+      255,
+    ]);
+    expect(await storage.readBytes('notes/Audio.typ'), before);
   });
 
   test('missing or unreadable peak sidecars allow codec fallback', () async {

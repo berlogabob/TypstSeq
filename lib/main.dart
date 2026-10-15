@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_mobile.dart';
 import 'diagnostics/jank_monitor.dart';
+import 'diagnostics/startup_trace.dart';
 // Not used by the UI: pulls vaultServiceMain into the compiled program so the
 // background engine's entrypoint lookup can find it. @pragma alone cannot save
 // a function in a file the import graph never reaches.
@@ -11,6 +12,7 @@ import 'rich_editor.dart' show debugEnableEditorWindow;
 export 'app_mobile.dart';
 
 void main() {
+  startupClock.start();
   WidgetsFlutterBinding.ensureInitialized();
   startJankMonitor();
   // P12k bounded editing window: off by default until the on-device keyboard

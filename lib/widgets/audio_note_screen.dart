@@ -246,6 +246,7 @@ class AudioNoteScreen extends StatefulWidget {
     required this.note,
     required this.readSource,
     required this.readBytes,
+    required this.writeBytes,
     required this.mutate,
     required this.transcriptStatus,
     required this.requestTranscript,
@@ -268,6 +269,7 @@ class AudioNoteScreen extends StatefulWidget {
   final NoteRef note;
   final Future<String> Function(String path) readSource;
   final Future<Uint8List> Function(String path) readBytes;
+  final Future<void> Function(String path, List<int> bytes) writeBytes;
   final Future<bool> Function(String path, String Function(String) transform)
   mutate;
 
@@ -430,15 +432,12 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   }
 
   /// Imported mp3/m4a files arrive without peaks: decode once, then keep them
-  /// in the note header so the next open (and other devices) skip the work.
+  /// in a sidecar so the next open (and other devices) skip the work.
   Future<void> _backfillPeaks(File file) async {
     final peaks = await peaksFromAudioFile(file);
     if (peaks.isEmpty || !mounted) return;
     setState(() => _peaks = peaks);
-    final ms = _duration.inMilliseconds;
-    _props['peaks'] = encodePeaks(peaks);
-    if (ms > 0 && _props['duration_ms'] == null) _props['duration_ms'] = ms;
-    await _writeHeader();
+    await writePeakSidecar(_audioPath!, peaks, widget.writeBytes);
   }
 
   /// Rewrites the note header from this screen's copy of the metadata.

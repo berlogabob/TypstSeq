@@ -360,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   List<NoteRef>? _pagedLibraryNotes;
   int _pagedLibraryRevision = -1;
+  Vault? _pagedLibraryVault;
   bool _pagedLibraryLoading = false;
   String? get note => workspace.note;
   set note(String? value) => workspace.note = value;
@@ -811,17 +812,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _refreshPagedLibraryNotes() {
+    final opened = vault;
+    if (!identical(opened, _pagedLibraryVault)) {
+      _pagedLibraryVault = opened;
+      _pagedLibraryNotes = null;
+      _pagedLibraryRevision = -1;
+    }
     final revision = workspace.indexRevision;
     if (_pagedLibraryLoading || revision == _pagedLibraryRevision) return;
     _pagedLibraryRevision = revision;
-    _pagedLibraryNotes = null;
     _pagedLibraryLoading = true;
     unawaited(() async {
       final notes = await _pagedPickerNotes();
-      if (mounted && revision == workspace.indexRevision && notes != null) {
+      if (mounted &&
+          identical(opened, vault) &&
+          revision == workspace.indexRevision &&
+          notes != null) {
         setState(() => _pagedLibraryNotes = notes);
       }
       _pagedLibraryLoading = false;
+      if (mounted &&
+          (revision != workspace.indexRevision || !identical(opened, vault))) {
+        _refreshPagedLibraryNotes();
+      }
     }());
   }
 
@@ -930,7 +943,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final clean = path.replaceFirst(RegExp(r'^/+'), '');
       final pending = _pendingAttach[clean];
       if (pending != null) return await pending.readAsBytes();
-      return await v.storage.readBytes(clean);
+      return await v.storage.readBytesNow(clean);
     } catch (_) {
       return null;
     }
@@ -4671,7 +4684,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pagedNotes: _pagedLibraryNotes,
         calendar: workspace.calendar,
         dayMarks: workspace.calendarDayMarks,
-        indexing: workspace.indexing || syncing,
+        indexing: workspace.awaitingIndex,
         // Insertion order stays newest-opened-first — the shelf's
         // continue-reading card takes the first in-progress entry.
         progressByPath: {for (final r in _mergedRecent()) r.path: r.progress},
@@ -5127,7 +5140,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? PageStorage(
             bucket: _todayStorage,
             child: TodayPage(
-              indexing: workspace.indexing,
+              indexing: workspace.awaitingIndex,
               shownDay: currentDaily,
               onOpenDay: (day) => _stepDay(0, target: day),
               events: [

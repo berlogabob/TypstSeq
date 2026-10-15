@@ -142,11 +142,13 @@ class IndexBuiltEvent extends VaultWorkerEvent {
     this.donorPublishError,
     this.parsedNotes = 0,
     this.durationMs = 0,
+    this.fromCache = false,
   });
 
   final VaultIndex index;
   final int parsedNotes;
   final int durationMs;
+  final bool fromCache;
 
   /// What this scan took from other devices' donors, when it consulted them.
   /// Reported so "the laptop did the work" is observable instead of a silent
@@ -249,6 +251,7 @@ class _VaultWorker {
 
   bool _cancelled = false;
   bool _busy = false;
+  bool _indexSent = false;
   bool _shutdownRequested = false;
 
   Future<void> serve() async {
@@ -305,6 +308,13 @@ class _VaultWorker {
     var preloadMillis = 0;
     VaultWorkerEvent terminal = const WorkDoneEvent();
     try {
+      if (!_indexSent) {
+        final cached = await _vault.loadIndex();
+        if (cached != null && cached.version == kVaultIndexVersion) {
+          _send(IndexBuiltEvent(cached, fromCache: true));
+          _indexSent = true;
+        }
+      }
       if (_searchRevision == 0 &&
           await _vault.storage.exists(Vault.searchIndexPath)) {
         final timer = Stopwatch()..start();
@@ -356,6 +366,7 @@ class _VaultWorker {
                 donorPublishError: donorPublishError?.toString(),
               ),
             );
+            _indexSent = true;
             // Derived state is an optimization; the UI degrades to null on
             // failure.
             try {

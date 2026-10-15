@@ -10,6 +10,7 @@ import 'calendar_feeds.dart';
 import 'database/note_persistence.dart';
 import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
+import 'diagnostics/startup_trace.dart';
 import 'models.dart';
 import 'nextcloud_sync.dart';
 import 'nextcloud_sync/push_client.dart';
@@ -240,6 +241,8 @@ class WorkspaceController extends ChangeNotifier {
   bool _indexing = false;
   bool _indexPending = false;
   bool _indexFailed = false;
+  bool get awaitingIndex => vault != null && index == null && !_indexFailed;
+
   bool get indexing =>
       _indexPending ||
       rebuilding ||
@@ -417,6 +420,7 @@ class WorkspaceController extends ChangeNotifier {
     String? trigger,
     VaultStorage? storage,
   }) async {
+    startupMark('open-start', {'trigger': trigger});
     final generation = ++_vaultGeneration;
     _feedFlight = null;
     _eventCreates.clear();
@@ -439,6 +443,7 @@ class WorkspaceController extends ChangeNotifier {
     _indexFailed = false;
     try {
       final opened = Vault.withStorage(storage ?? next.storage);
+      flushStartupTraceWhenReady(opened);
       await opened.ensureCreated(
         createIfMissing:
             next.storageKind != 'android-tree' &&
@@ -544,10 +549,12 @@ class WorkspaceController extends ChangeNotifier {
       lastEditAt = null;
       _setDirty(false);
       final initialRead = await readNoteSnapshot(today);
+      startupMark('today-readable');
       if (initialRead.editRevision == editRevision) source = initialRead.source;
       if (_disposed || generation != _vaultGeneration) return;
       status = 'Vault opened — indexing…';
       notifyListeners();
+      startupMark('fast-path-done');
       if (inspector == null) {
         unawaited(refreshCalendarFeeds(force: true));
         _feedTimer = Timer.periodic(
@@ -570,7 +577,9 @@ class WorkspaceController extends ChangeNotifier {
       }
       // No usable cache on disk: this open faces a full Typst pass over the
       // whole vault unless another device's index donor is already here.
-      final coldIndex = index == null || index!.version != kVaultIndexVersion;
+      final coldIndex = _useWorker
+          ? !await opened.storage.exists(Vault.indexPath)
+          : index == null || index!.version != kVaultIndexVersion;
       Future<void>? firstSync;
       if (next.cloud?.isReady ?? false) {
         if (trigger != null) {
@@ -1024,6 +1033,8 @@ class WorkspaceController extends ChangeNotifier {
         if (!_owns(opened, generation)) throw StateError('Vault changed');
         continue;
       }
+      // Locked read on purpose: an unlocked one can land in a sync write's
+      // rename window and load an empty template over a real note.
       final value = await opened.readText(path);
       if (!_owns(opened, generation)) throw StateError('Vault changed');
       if (emptyDailyTemplate(path) != null &&
@@ -1263,8 +1274,12 @@ class WorkspaceController extends ChangeNotifier {
     bool updateStatus = true,
     void Function(int complete, int total)? onProgress,
   }) async {
+    startupMark('scan-start');
     generation ??= _vaultGeneration;
-    if (!_owns(opened, generation)) return;
+    if (!_owns(opened, generation)) {
+      startupMark('scan-done');
+      return;
+    }
     if (_indexing) {
       // Never drop the trigger. A sync that just downloaded files must get a
       // scan even if one was already running when it landed, or those bytes stay
@@ -1278,7 +1293,11 @@ class WorkspaceController extends ChangeNotifier {
       // fix buttons depend on that — they read the fresh problem list right
       // after refreshIndex(always: true).
       _rescanQueued = true;
-      await _activeScan;
+      try {
+        await _activeScan;
+      } finally {
+        startupMark('scan-done');
+      }
       return;
     }
     _indexing = true;
@@ -1316,6 +1335,7 @@ class WorkspaceController extends ChangeNotifier {
         if (!_disposed) notifyListeners();
       }
       done.complete();
+      startupMark('scan-done');
     }
   }
 
@@ -1364,13 +1384,23 @@ class WorkspaceController extends ChangeNotifier {
             status = 'Rebuilding index: $complete / $total';
             notifyListeners();
           }
-        case IndexBuiltEvent(:final index):
-          indexedEvent = event;
+        case IndexBuiltEvent(:final index, :final fromCache):
+          startupMark('index-published', {
+            'notes': index.notes.length,
+            'durationMs': event.durationMs,
+            'source': fromCache ? 'cache' : 'scan',
+          });
+          flushStartupTraceWhenReady(opened);
           // Publish notes and tasks now, before the much slower validation +
           // search-index build — on SAF vaults that build reads many files and
           // must never gate the notes the UI needs (Journal, Library, Today).
           // _retainIndex builds linkResolver too; communities arrive below.
           this.index = _retainIndex(index);
+          if (fromCache) {
+            notifyListeners();
+            break;
+          }
+          indexedEvent = event;
           indexedRevision = revision;
           opened.clearStaleNotes(stale);
 
@@ -1398,6 +1428,7 @@ class WorkspaceController extends ChangeNotifier {
           }
           notifyListeners();
         case SearchReadyEvent(:final revision):
+          startupMark('search-ready');
           searchReady = true;
           searchRevision = revision;
           notifyListeners();
@@ -1716,14 +1747,32 @@ class WorkspaceController extends ChangeNotifier {
     InitialSyncMode? initialMode,
     bool remoteChanged = false,
   }) {
-    if (_disposed) return Future.value(false);
+    startupMark('sync-start', {'trigger': trigger});
+    if (_disposed) {
+      startupMark('sync-done', {'trigger': trigger, 'ok': false});
+      final opened = vault;
+      if (opened != null) flushStartupTraceWhenReady(opened);
+      return Future.value(false);
+    }
+    final opened = vault;
+    var ok = false;
     late final Future<bool> flight;
-    flight = _syncNow(
-      trigger: trigger,
-      configOverride: configOverride,
-      initialMode: initialMode,
-      remoteChanged: remoteChanged,
-    ).whenComplete(() => _syncFlights.remove(flight));
+    flight =
+        _syncNow(
+              trigger: trigger,
+              configOverride: configOverride,
+              initialMode: initialMode,
+              remoteChanged: remoteChanged,
+            )
+            .then((result) {
+              ok = result;
+              return result;
+            })
+            .whenComplete(() {
+              _syncFlights.remove(flight);
+              startupMark('sync-done', {'trigger': trigger, 'ok': ok});
+              if (opened != null) flushStartupTraceWhenReady(opened);
+            });
     _syncFlights.add(flight);
     return flight;
   }

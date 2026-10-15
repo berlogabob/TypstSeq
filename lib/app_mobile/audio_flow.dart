@@ -88,9 +88,8 @@ extension _AudioFlow on _HomeScreenState {
       },
       peaks: pending?.peaks ?? decodePeaks(note?.properties['peaks']),
       readPeaks: () => readPeakSidecar(assetPath, v.storage.readBytesNow),
-      onPeaks: note == null
-          ? null
-          : (peaks, ms) => unawaited(_storePeaks(note, peaks, ms)),
+      onPeaks: (peaks, ms) =>
+          unawaited(writePeakSidecar(assetPath, peaks, v.storage.writeBytes)),
       readBytes: () async =>
           _pendingAudio[assetPath]?.bytes ??
           await v.storage.readBytesNow(assetPath),
@@ -117,30 +116,6 @@ extension _AudioFlow on _HomeScreenState {
           _pendingAttach.remove(path);
           if (mounted) _refreshNoteAssets(_currentSource());
         });
-  }
-
-  Future<void> _storePeaks(NoteRef n, List<int> peaks, int ms) async {
-    await workspace.mutateNote(
-      n.path,
-      (cur) => replaceNoteHeader(
-        cur,
-        NoteMetadataDraft(
-          id: n.id,
-          title: n.title,
-          kind: n.kind,
-          project: n.project,
-          date: n.date,
-          tags: n.tags,
-          aliases: n.aliases,
-          properties: {
-            ...n.properties,
-            'peaks': encodePeaks(peaks),
-            if (ms > 0 && n.properties['duration_ms'] == null)
-              'duration_ms': ms,
-          },
-        ),
-      ),
-    );
   }
 
   /// A file shared from another app (voice recorder, call recording).
@@ -275,6 +250,7 @@ extension _AudioFlow on _HomeScreenState {
           ),
           readSource: v.storage.readText,
           readBytes: v.storage.readBytesNow,
+          writeBytes: v.storage.writeBytes,
           mutate: workspace.mutateNote,
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
           requestTranscript: (audio, note) =>

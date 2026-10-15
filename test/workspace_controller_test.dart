@@ -902,53 +902,62 @@ void main() {
     },
   );
 
-  test('a warm index rebuilds without waiting for the sync', () async {
-    final previousOverrides = HttpOverrides.current;
-    HttpOverrides.global = null;
-    addTearDown(() => HttpOverrides.global = previousOverrides);
-    final server = await _GatedWebDavServer.start();
-    addTearDown(() => server.server.close(force: true));
-    final storage = _MemoryStorage();
+  test(
+    'worker warm startup scans while sync is pending and stops awaiting index',
+    () async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousOverrides);
+      final server = await _GatedWebDavServer.start();
+      addTearDown(() => server.server.close(force: true));
+      final storage = _MemoryStorage();
 
-    // First open with no cloud: leaves a current index.json behind.
-    final warmup = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    await warmup.openVault(
-      const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
-      storage: storage,
-    );
-    await _waitUntil(() => warmup.index != null);
-    warmup.dispose();
+      // First open with no cloud: leaves a current index.json behind.
+      final warmup = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      await warmup.openVault(
+        const VaultEntry(id: 'warm', name: 'Warm vault', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => warmup.index != null);
+      warmup.dispose();
 
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
 
-    server.armGate();
-    await controller.openVault(
-      VaultEntry(
-        id: 'warm',
-        name: 'Warm vault',
-        path: '/not-used',
-        cloud: server.config,
-      ),
-      storage: storage,
-      trigger: 'resume',
-    );
-    await server.gateReached.future;
+      server.armGate();
+      var awaitedIndex = false;
+      controller.addListener(() {
+        if (controller.awaitingIndex) awaitedIndex = true;
+      });
+      await controller.openVault(
+        VaultEntry(
+          id: 'warm',
+          name: 'Warm vault',
+          path: '/not-used',
+          cloud: server.config,
+        ),
+        storage: storage,
+        trigger: 'resume',
+      );
+      await server.gateReached.future;
 
-    // The cache is current, so there is nothing a donor could add — the
-    // rebuild runs concurrently with the sync exactly as it always did.
-    await _waitUntil(() => controller.index != null);
-    expect(server.releaseGate.isCompleted, isFalse);
-    server.releaseGate.complete();
-  });
+      // The cache is current, so there is nothing a donor could add — the
+      // rebuild runs concurrently with the sync exactly as it always did.
+      await _waitUntil(() => controller.index != null);
+      expect(awaitedIndex, isTrue);
+      expect(controller.syncing, isTrue);
+      expect(controller.awaitingIndex, isFalse);
+      expect(server.releaseGate.isCompleted, isFalse);
+      server.releaseGate.complete();
+    },
+  );
 
   test(
     'startup foreground service has one owner and stops on success/failure',

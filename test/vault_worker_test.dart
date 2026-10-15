@@ -89,6 +89,37 @@ void main() {
   });
 
   test(
+    'cached index is published before search and scanning, only once',
+    () async {
+      final seeded = await seed(3);
+      final vault = Vault(seeded.root);
+      final cached = await vault.rebuildIndex();
+      final search = await PkmsSearchIndex.buildStorage(vault.storage, cached);
+      await search.saveStorage(vault.storage, Vault.searchIndexPath);
+      await vault.saveNote('notes/New.typ', '= New after cache');
+      final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
+      addTearDown(worker.dispose);
+
+      final events = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      final first = events.first as IndexBuiltEvent;
+      expect(first.fromCache, isTrue);
+      expect(first.durationMs, 0);
+      expect(first.parsedNotes, 0);
+      expect(first.index.notesByPath, isNot(contains('notes/New.typ')));
+      final fresh = events.whereType<IndexBuiltEvent>().last;
+      expect(fresh.fromCache, isFalse);
+      expect(fresh.index.notesByPath, contains('notes/New.typ'));
+
+      final again = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      expect(again.whereType<IndexBuiltEvent>().single.fromCache, isFalse);
+    },
+  );
+
+  test(
     'a cold worker serves saved search before its rebuild finishes',
     () async {
       final seeded = await seed(400);

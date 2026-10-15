@@ -42,8 +42,13 @@ List<int> decodePeaks(Object? value) {
   ];
 }
 
-/// Reads an optional pack-provided sidecar; absent or invalid data falls back
-/// to the audio codec. The app never writes sidecars.
+Future<void> writePeakSidecar(
+  String audioPath,
+  List<int> peaks,
+  Future<void> Function(String path, List<int> bytes) writeBytes,
+) => writeBytes('$audioPath.peaks', ascii.encode(encodePeaks(peaks)));
+
+/// Reads an optional sidecar; absent or invalid data falls back to the codec.
 Future<List<int>> readPeakSidecar(
   String audioPath,
   Future<Uint8List> Function(String path) readBytes,
