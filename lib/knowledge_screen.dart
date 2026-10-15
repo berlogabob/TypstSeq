@@ -273,7 +273,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           _citations = citations;
           _searchPending = false;
         });
-      } catch (_) {
+      } catch (error, stack) {
+        debugPrint('search failed: $error\n$stack');
         if (!mounted || generation != _searchGeneration) return;
         setState(() {
           _searchPending = false;

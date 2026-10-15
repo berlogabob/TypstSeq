@@ -1,6 +1,10 @@
-import 'package:typst_flutter/typst_flutter.dart' show embed;
+import 'package:typst_flutter/typst_flutter.dart' show TypstCompiler, embed;
 
 import 'embedding_jobs.dart';
+
+// The query embedder runs on the UI isolate, where nothing else has initialised
+// the native library yet (creating a compiler does that once per isolate).
+Future<void>? _nativeReady;
 
 ChunkEmbedder nativeEmbedder({
   required String modelPath,
@@ -14,6 +18,7 @@ ChunkEmbedder nativeEmbedder({
     throw ArgumentError.value(kind, 'kind', 'must be query or passage');
   }
   return (text) async {
+    await (_nativeReady ??= TypstCompiler.create().then((_) {}));
     final result = await embed(
       modelPath: modelPath,
       tokenizerPath: tokenizerPath,
