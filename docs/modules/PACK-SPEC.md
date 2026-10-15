@@ -2,7 +2,7 @@
 
 A data-only zip. Nothing in a pack executes. Implementation:
 `packages/tylog_core/lib/src/module_pack.dart`; app flow: Settings -> Install module
-(`lib/app_mobile/module_flow.dart`). Reference pack: BerloPortuga `tools/pack.py`.
+(`lib/app_mobile/module_flow.dart`). Reference pack: [tylog-pack-pt-pt](https://github.com/berlogabob/tylog-pack-pt-pt) `tools/pack.py`.
 
 ## Layout
 ```
