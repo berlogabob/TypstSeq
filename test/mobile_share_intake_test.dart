@@ -66,7 +66,7 @@ void main() {
             'name': 'voice.m4a',
             'mime': 'audio/mp4',
           },
-          'Attach to today',
+          'Save as audio note',
           Icons.audiotrack,
         ),
         (

@@ -143,6 +143,11 @@ extension _AudioFlow on _HomeScreenState {
     );
   }
 
+  /// A file shared from another app (voice recorder, call recording).
+  Future<void> _saveSharedAudio(File source) =>
+      _createAudioNote(null, source.path.split('.').last.toLowerCase(),
+          source: source);
+
   Future<void> _importAudioNote({bool inline = false}) async {
     final picked = await FilePicker.pickFiles(type: FileType.audio);
     final source = picked?.files.single.path;
@@ -165,8 +170,9 @@ extension _AudioFlow on _HomeScreenState {
   /// One recording = file under assets/audio + a `kind: audio` note whose id,
   /// title and file name all carry the same timestamp stamp.
   Future<void> _createAudioNote(
-    Uint8List bytes,
+    Uint8List? bytes,
     String extension, {
+    File? source,
     List<int> peaks = const [],
     int? durationMs,
     bool inline = false,
@@ -192,7 +198,13 @@ extension _AudioFlow on _HomeScreenState {
     final title = audioTitle(stamp);
     final id = 'audio-$stamp';
     Future<String> persist() async {
-      await v.storage.writeBytes(asset, bytes);
+      // A shared file is copied from disk (natively on Android) so a long
+      // call never sits in memory; duration and peaks are filled in on open.
+      if (source != null) {
+        await importPlatformFile(v.storage, asset, source);
+      } else {
+        await v.storage.writeBytes(asset, bytes!);
+      }
       final path = await workspace.createPage(title, kind: 'audio', id: id);
       await workspace.mutateNote(path, (current) {
         final header = replaceNoteHeader(
@@ -217,7 +229,7 @@ extension _AudioFlow on _HomeScreenState {
       if (inline) {
         // Chip first: the user sees the take land at once, the slow writes
         // follow in the background.
-        _pendingAudio[asset] = (bytes: bytes, peaks: peaks);
+        _pendingAudio[asset] = (bytes: bytes!, peaks: peaks);
         _applyMagic(
           MagicRequest(
             action: MagicAction.attachment,

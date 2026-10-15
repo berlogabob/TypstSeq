@@ -7,6 +7,10 @@ their history is in the commit log and the GitHub release notes.
 
 ### Changed
 
+- Audio shared into TyLog (voice recorder, call recordings) now offers "Save as audio note"
+  as the default: the file is copied natively without loading it into memory and
+  becomes an audio note, so it is transcribed like a recording. "Attach to today"
+  remains.
 - Audio recording uses a speech preset (16 kHz mono, 32 kbps, ~4 kB/s): a 90 min
   call is ~22 MB instead of ~86 MB.
 - Recordings can run up to 4 hours. Every 20 minutes the take is cut (gaplessly,

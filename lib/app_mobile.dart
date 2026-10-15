@@ -438,6 +438,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final text = data['text'] ?? '';
         final article = SharedArticle.parse(text, title: data['title']);
         final targetVault = vault!;
+        final audioNote =
+            path != null && mime.startsWith('audio/') && isAudioPath(path);
         final choice = await showModalBottomSheet<String>(
           context: context,
           showDragHandle: false,
@@ -453,17 +455,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (audioNote)
+                ListTile(
+                  leading: const Icon(Icons.audiotrack),
+                  title: const Text('Save as audio note'),
+                  subtitle: const Text('Default'),
+                  onTap: () => Navigator.pop(context, 'audio'),
+                ),
               if (path != null)
                 ListTile(
                   leading: Icon(
                     mime.startsWith('image/')
                         ? Icons.image_outlined
-                        : mime.startsWith('audio/')
+                        : mime.startsWith('audio/') && !audioNote
                         ? Icons.audiotrack
                         : Icons.attach_file,
                   ),
                   title: const Text('Attach to today'),
-                  subtitle: const Text('Default'),
+                  subtitle: audioNote ? null : const Text('Default'),
                   onTap: () => Navigator.pop(context, 'attach'),
                 ),
               if (path == null && article != null)
@@ -495,6 +504,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           workspace.queueCloudSync();
           await _refreshArticleJobs();
           if (mounted) showSnack(context, 'Article queued');
+        } else if (choice == 'audio' && path != null) {
+          await _saveSharedAudio(File(path));
         } else if (choice == 'attach' && path != null) {
           if (!await _captureTimestamp()) continue;
           if (!mounted || !identical(vault, targetVault)) continue;
