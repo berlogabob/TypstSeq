@@ -3,6 +3,20 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.18.1+151
+
+### Added
+
+- Module packs can ship waveform peaks next to audio (`<file>.peaks`) so lesson
+  audio shows its waveform on first open.
+- A pack names its progress unit (Settings > Modules shows "0/72 lessons").
+- Reschedule and Uninstall of a module show a progress dialog.
+
+### Fixed
+
+- Reschedule no longer marks a note you edited as untouched, so Uninstall keeps it.
+- Vaults list shows a readable path for folders picked through Downloads.
+
 ## 0.18.0+150
 
 ### Changed
