@@ -9,6 +9,12 @@ void main() {
       ),
       'Internal storage/Download/TyLog',
     );
+    expect(
+      friendlyVaultPath(
+        'content://com.android.providers.downloads.documents/tree/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FTyLogModTest',
+      ),
+      'Internal storage/Download/TyLogModTest',
+    );
     expect(friendlyVaultPath('/Users/a/vault'), '/Users/a/vault');
   });
 }

@@ -93,6 +93,11 @@ String friendlyVaultPath(String location) {
   if (colon < 0) return decoded;
   final volume = decoded.substring(0, colon);
   final rest = decoded.substring(colon + 1);
+  if (volume == 'raw') {
+    // Downloads provider: `raw:/storage/emulated/0/Download/X`.
+    final trimmed = rest.replaceFirst(RegExp(r'^/storage/emulated/\d+/?'), '');
+    return trimmed.isEmpty ? 'Internal storage' : 'Internal storage/$trimmed';
+  }
   final root = volume == 'primary' ? 'Internal storage' : 'SD card';
   return rest.isEmpty ? root : '$root/$rest';
 }
