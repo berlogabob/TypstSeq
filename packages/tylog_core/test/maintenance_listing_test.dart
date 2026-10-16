@@ -91,6 +91,34 @@ void main() {
     expect(storage.indexWrites, 1);
   });
 
+  test(
+    'an abandoned uncommitted dirty marker is cleared after one rescan',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog-stuck-marker-');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = _CountingStorage(root);
+      await storage.writeText('notes/a.typ', '= A\n');
+      final maintenance = VaultMaintenance(storage, publishDonor: false);
+      Future<int> parsed() async =>
+          (await maintenance
+                  .run(validate: false, buildSearch: false, sweep: false)
+                  .toList())
+              .whereType<MaintenanceIndexed>()
+              .single
+              .parsedNotes;
+      await parsed();
+      // A save killed between marker and commit, an hour ago.
+      final old = DateTime.now()
+          .subtract(const Duration(hours: 1))
+          .microsecondsSinceEpoch;
+      final marker = '$indexDirtyPath/$old-1.json';
+      await storage.writeText(marker, '{"path":"notes/a.typ"}');
+      expect(await parsed(), 1);
+      expect(await storage.exists(marker), isFalse);
+      expect(await parsed(), 0);
+    },
+  );
+
   test('one recursive listing is reused by every maintenance stage', () async {
     final root = await Directory.systemTemp.createTemp(
       'tylog-maintenance-listing-',

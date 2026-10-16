@@ -6049,6 +6049,72 @@ void main() {
     },
   );
 
+  for (final cancelAfterFirstFile in [false, true]) {
+    test(
+      'cancellation ${cancelAfterFirstFile ? 'after first file' : 'before file loop'} resumes without duplicate uploads',
+      () async {
+        final remote = <String, _MutableRemoteFile>{};
+        final uploads = <Map<String, Object?>>[];
+        final server = await _mutableWebDavServer(
+          remote,
+          uploads: uploads,
+          transferDelay: const Duration(milliseconds: 40),
+        );
+        final dir = await Directory.systemTemp.createTemp('tylog_cancel_');
+        addTearDown(() async {
+          await server.close(force: true);
+          await dir.delete(recursive: true);
+        });
+        final vault = Vault(dir);
+        for (var i = 0; i < 20; i++) {
+          await vault.storage.writeText('notes/$i.typ', 'note $i');
+        }
+        var cancelled = false;
+        await expectLater(
+          NextcloudSync(
+            _config(server),
+            onProgress: (stage, _) {
+              if (cancelAfterFirstFile
+                  ? stage.startsWith('sync-file 1/')
+                  : stage == 'detect-renames') {
+                cancelled = true;
+              }
+            },
+          ).sync(vault, isCancelled: () => cancelled),
+          throwsA(isA<SyncCancelled>()),
+        );
+        final uploadedBeforeRetry = remote.length;
+        if (cancelAfterFirstFile) {
+          // In-flight files finish, but workers must not pick up more paths.
+          expect(uploadedBeforeRetry, inInclusiveRange(1, 8));
+        } else {
+          expect(uploads, isEmpty);
+          expect(uploadedBeforeRetry, 0);
+        }
+        final state = await loadSyncStateForTesting(
+          NextcloudSync(_config(server)),
+          Vault(dir),
+        );
+        expect(state.cursors.length, uploadedBeforeRetry);
+        expect(state.folders, isEmpty);
+        final events = await _traceEvents(vault);
+        expect(events.last['event'], 'cancelled');
+        expect(events.where((event) => event['event'] == 'failed'), isEmpty);
+        expect(await loadSyncConflicts(vault), isEmpty);
+
+        final result = await NextcloudSync(_config(server)).sync(Vault(dir));
+        expect(result.uploaded, 20 - uploadedBeforeRetry);
+        expect(result.conflicts, 0);
+        expect(remote.length, 20);
+        expect(uploads.length, 20);
+        expect(await loadSyncConflicts(vault), isEmpty);
+        for (var i = 0; i < 20; i++) {
+          expect(utf8.decode(remote['notes/$i.typ']!.bytes), 'note $i');
+        }
+      },
+    );
+  }
+
   test(
     'path transfers use two to eight workers and one MKCOL per parent',
     () async {

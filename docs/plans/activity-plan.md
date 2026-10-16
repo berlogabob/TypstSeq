@@ -107,4 +107,9 @@ Queue (all block the release):
 9. Course audio origin (Qwen vs edge-tts in repo) - needs user answer.
 10. Studio cannot load Qwen3-TTS / Chatterbox (transformers 5.5.0).
 11. Public tylog-pack-pt-pt: IADE mentions + audio licence.
+12. Battery notice layout: title wraps in a narrow column beside the button (P30); put the button under the text.
+13. Sync screen shows "Recovery backup: content://…Download/TyLog" after the backup folder was deleted; hide/clear a backup that no longer exists, friendly path.
+14. One note is re-parsed on every launch (parsedNotes 1 each startup): find which and why.
+Progress 2026-10-16 13:40: 1 (receiver + battery notice), 2 (handover; in-sync cancel with codex), 3 (startup defers walk: startup sync 22 s -> 3.9 s), 4 (unchanged rescan skips encode; scan ~10 s in background), 5 (empty module dirs), 7 (prune marker verified on P30) done at 4f2f278.
+Progress 2026-10-16 14:00: 2 (sync cancel: in-flight files finish, partial checkpoint, UI takes over), 4 (unchanged rescan: re-derived notes compared by JSON, encode/write 0 on P30), 12 (notice layout), 13 (backup line hidden when gone, "App storage"), 14 (abandoned uncommitted dirty marker made one note re-parse every launch; markers >10 min old cleared) done. P30 startup now: today 0.46 s, cached index 1.7 s, startup sync 3.0 s, background rescan done 16 s.
 Then: full suite, device checks, tag 0.19.1.

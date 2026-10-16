@@ -233,6 +233,12 @@ class VaultMaintenance {
             marker['committedAt'] is int &&
             (marker['committedAt'] as int) < scanStarted) {
           committedMarkers.add(entry.path);
+        } else if (_markerMicros(entry.path) case final written?
+            when written < scanStarted - _abandonedMarkerAge.inMicroseconds) {
+          // A write killed before its commit left this marker for good, and
+          // one note was re-parsed and the index re-encoded on every launch
+          // (P30). This scan re-reads the file, which is all it asked for.
+          committedMarkers.add(entry.path);
         }
       }
     }
@@ -300,9 +306,15 @@ class VaultMaintenance {
         previous.version == index.version &&
         previous.queryVersion == index.queryVersion &&
         previous.notesByPath.length == index.notesByPath.length &&
-        index.notesByPath.entries.every(
-          (entry) => identical(previous.notesByPath[entry.key], entry.value),
-        ) &&
+        // Identity is the cheap answer; a note re-derived from cached query
+        // facts is a new but equal object (12 of 9,748 on the P30, which
+        // re-encoded the index every launch), so compare those by JSON.
+        index.notesByPath.entries.every((entry) {
+          final before = previous.notesByPath[entry.key];
+          return identical(before, entry.value) ||
+              (before != null &&
+                  jsonEncode(before) == jsonEncode(entry.value));
+        }) &&
         jsonEncode(previous.tasks) == jsonEncode(index.tasks) &&
         jsonEncode(previous.problems) == jsonEncode(index.problems) &&
         await storage.exists(TylogVaultPaths.index);
@@ -680,3 +692,10 @@ Future<Map<String, String>> _syncedHashes(
     return const {};
   }
 }
+
+/// No note write takes this long; older uncommitted markers were abandoned.
+const _abandonedMarkerAge = Duration(minutes: 10);
+
+/// Write time from a marker name (`<micros>-<random>.json`).
+int? _markerMicros(String path) =>
+    int.tryParse(path.split('/').last.split('-').first);

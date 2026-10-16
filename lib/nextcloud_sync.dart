@@ -239,6 +239,9 @@ class WebDavStatusException extends HttpException {
   final int statusCode;
 }
 
+/// A cooperative stop after saving progress for the next run.
+class SyncCancelled implements Exception {}
+
 class NextcloudSync {
   NextcloudSync(
     this.config, {
@@ -399,6 +402,7 @@ class NextcloudSync {
     InitialSyncMode? initialMode,
     bool pushOnly = false,
     bool remoteChanged = false,
+    bool Function()? isCancelled,
   }) async {
     final key = vault.storage.syncIdentity;
     final previous = _vaultRuns[key] ?? Future<void>.value();
@@ -418,6 +422,7 @@ class NextcloudSync {
         initialMode: initialMode,
         pushOnly: pushOnly,
         remoteChanged: remoteChanged,
+        isCancelled: isCancelled,
       );
     } finally {
       try {
@@ -435,6 +440,7 @@ class NextcloudSync {
     InitialSyncMode? initialMode,
     bool pushOnly = false,
     bool remoteChanged = false,
+    bool Function()? isCancelled,
   }) async {
     _localContentChanged = false;
     final runId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
@@ -518,6 +524,10 @@ class NextcloudSync {
       'event': 'started',
       'trigger': trigger,
     });
+    void checkCancellation() {
+      if (isCancelled?.call() == true) throw SyncCancelled();
+    }
+
     try {
       if (!config.isReady) throw StateError('Nextcloud settings are empty');
       progress('load-local-state');
@@ -533,6 +543,7 @@ class NextcloudSync {
       syncState = initialMode == null
           ? loadedState.cursors
           : <String, SyncCursor>{};
+      checkCancellation();
       final stateRecovered = initialMode == null && loadedState.recovered;
       final canSkipLocalScan =
           (trigger == 'poll' || trigger == 'autosave') &&
@@ -573,6 +584,7 @@ class NextcloudSync {
           scannedListing = await _localFiles(vault.storage);
         }
         for (final path in coveredWrites.toList()) {
+          checkCancellation();
           if (_isSyncInternal(path) || conflicted.contains(nfcPath(path))) {
             continue;
           }
@@ -632,6 +644,7 @@ class NextcloudSync {
           }
           coveredWrites.remove(path);
         }
+        checkCancellation();
         if (pushOnly && !pushRaced) {
           if (_remoteWrites.isNotEmpty) {
             await _refreshWrittenFolders(syncState, loadedState.folders);
@@ -707,6 +720,7 @@ class NextcloudSync {
                       c.path.startsWith('_system/revisions/note-'),
                 ))) {
           final probedEtag = await _retryTransient(_rootEtag);
+          checkCancellation();
           if (canSkipPoll(
             dirty: false,
             lastEtag: loadedState.rootEtag,
@@ -724,6 +738,7 @@ class NextcloudSync {
               scannedListing ??= await _localFiles(vault.storage);
               vault.lastFullSyncScan = DateTime.now();
             }
+            checkCancellation();
             if (useCachedLocal ||
                 _matchesLocalCursorSnapshot(
                   scannedListing!.syncable,
@@ -791,6 +806,7 @@ class NextcloudSync {
       freshRootEtag = remoteResult.rootEtag;
       freshFolders = remoteResult.folders;
       remoteCount = remote.length;
+      checkCancellation();
       final remoteUserCount = remote.keys
           .where((path) => !path.startsWith('_system/'))
           .length;
@@ -881,6 +897,7 @@ class NextcloudSync {
         localEntries = localListing.syncable;
         repaired = await _cleanResolvedConflictCopies(vault, localListing.raw);
       }
+      checkCancellation();
       if (syncState.isNotEmpty && remote.isNotEmpty && localEntries.isEmpty) {
         throw StateError(
           'Local vault listed no syncable files; refusing to propagate deletions.',
@@ -966,6 +983,7 @@ class NextcloudSync {
             final bMissing = syncState.containsKey(b) && !remote.containsKey(b);
             return aMissing == bMissing ? a.compareTo(b) : (aMissing ? -1 : 1);
           });
+      checkCancellation();
       final cursors = syncState;
       var completed = 0;
       var nextPath = 0;
@@ -973,8 +991,14 @@ class NextcloudSync {
       StackTrace? firstStack;
       Future<void> checkpointTail = Future.value();
       var lastCheckpoint = DateTime.now();
+      var cancelled = false;
       Future<void> worker() async {
         while (firstError == null) {
+          // Finish in-flight files before saving the partial checkpoint.
+          if (cancelled || isCancelled?.call() == true) {
+            cancelled = true;
+            return;
+          }
           final index = nextPath++;
           if (index >= allPaths.length) return;
           final path = allPaths[index];
@@ -1085,6 +1109,9 @@ class NextcloudSync {
         Error.throwWithStackTrace(firstError!, firstStack!);
       }
 
+      if (cancelled) throw SyncCancelled();
+      checkCancellation();
+
       if (_remoteWrites.isNotEmpty) {
         progress('verify-remote-writes');
         await _refreshWrittenFolders(syncState, freshFolders);
@@ -1188,7 +1215,7 @@ class NextcloudSync {
       traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,
-        'event': 'failed',
+        'event': error is SyncCancelled ? 'cancelled' : 'failed',
         'stageMillis': stageProfile(),
         'listedFolders': _listedFolders,
         'listedEntries': _listedEntries,

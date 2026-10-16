@@ -3210,10 +3210,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final healthy = storageHealthy ?? await workspace.probeStorage();
     return SyncDashboardData(
       storageName: entry.name,
-      storageLocation: entry.storageKind == 'android-tree'
-          ? entry.treeUri ?? entry.name
-          : entry.path,
-      backupPath: entry.backupPath,
+      storageLocation: switch (entry.storageKind) {
+        'android-tree' => entry.treeUri ?? entry.name,
+        'app-local' => 'App storage',
+        _ => entry.path,
+      },
+      backupPath: await _existingBackup(entry.backupPath),
       cloud: cloud,
       syncing: syncing,
       stage: syncStage == null ? null : syncStageLabel(syncStage!),
@@ -3558,6 +3560,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Reads picker candidates in bounded pages when the SQLite projection is
   /// complete. An incomplete projection falls back to the live index so a
   /// background scan never makes a picker appear empty.
+  /// The move-to-app-storage backup, or null once the user deleted it (the
+  /// sync screen kept showing a folder that no longer existed).
+  Future<String?> _existingBackup(String? location) async {
+    if (location == null) return null;
+    try {
+      final exists = location.startsWith('content://')
+          ? (await AndroidTreeVaultStorage(uri: location, name: '').list())
+                .isNotEmpty
+          : await Directory(location).exists();
+      return exists ? friendlyVaultPath(location) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<NoteRef>?> _pagedPickerNotes({String? kind}) async {
     final activeEntry = workspace.entry;
     if (activeEntry == null) return null;

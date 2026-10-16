@@ -108,9 +108,11 @@ Future<void> _runOnce(DateTime deadline) async {
     }
     await checkHandover();
     if (handover) return;
-    final result = await NextcloudSync(
-      cloud,
-    ).sync(vault, trigger: 'background');
+    final result = await NextcloudSync(cloud).sync(
+      vault,
+      trigger: 'background',
+      isCancelled: () => handover || DateTime.now().isAfter(deadline),
+    );
     if (!result.requiresIndexRefresh) return;
     await checkHandover();
     if (handover) return;
@@ -178,6 +180,8 @@ Future<void> _runOnce(DateTime deadline) async {
     } finally {
       inspector?.dispose();
     }
+  } on SyncCancelled {
+    // Sync saved a partial checkpoint; the UI will resume it.
   } on IndexBuildCancelled {
     // Maintenance stopped at a safe checkpoint; the UI will scan after sync.
   } finally {

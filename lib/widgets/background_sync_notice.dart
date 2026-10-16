@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../vault_storage.dart';
-import 'constants.dart';
 import 'ds/app_tile.dart';
 
 class BackgroundSyncNotice extends StatefulWidget {
@@ -78,25 +77,34 @@ class _BackgroundSyncNoticeState extends State<BackgroundSyncNotice>
         _ignoring != false) {
       return const SizedBox.shrink();
     }
+    final huawei = _manufacturer == 'huawei' || _manufacturer == 'honor';
+    // Button below the text: beside it, the title wrapped to one word per
+    // line on a phone.
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         AppTile(
           icon: Icons.battery_alert_outlined,
-          title: 'Background sync may stop: allow TyLog to run in background',
-          trailing: TextButton(
-            onPressed: _openSettings,
-            child: const Text('Battery settings'),
-          ),
+          title: 'Background sync may stop',
+          subtitle: 'Allow TyLog to run in the background',
+          onTap: _openSettings,
         ),
-        if (_manufacturer == 'huawei' || _manufacturer == 'honor')
+        if (huawei)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: kSpace8),
-            child: Text(
-              'Huawei: Settings > Battery > App launch > TyLog > Manage manually, enable all',
-              style: Theme.of(context).textTheme.bodySmall,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                'Huawei: Settings > Battery > App launch > TyLog > '
+                'Manage manually, enable all',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           ),
+        TextButton(
+          onPressed: _openSettings,
+          child: const Text('Battery settings'),
+        ),
       ],
     );
   }
