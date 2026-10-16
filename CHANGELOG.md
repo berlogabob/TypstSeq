@@ -11,6 +11,14 @@ their history is in the commit log and the GitHub release notes.
   a few startup reads skip the busy queue (A24: lock write 7.6 s -> 10 ms).
   Moving such a vault to app storage is still the big win (A24 startup sync
   9-10 s -> 1.7 s).
+- Startup on the P30 (9.7k notes, app storage): today's note 0.46 s, note list
+  1.7 s, startup sync 3 s (was 22 s); A24: 0.22 s / 0.9 s / 1.7 s. The startup
+  sync checks the server first and leaves the full local check to the first
+  poll, so it no longer competes with the index check.
+- An unchanged vault is no longer re-indexed and rewritten on every launch: a
+  save killed mid-write left a dirty marker that kept one note re-parsing, and
+  12 re-derived notes counted as changed (markers older than 10 min are now
+  cleared; notes compared by content).
 - Startup sync on a large app-storage vault: 22 s -> 7 s (P30, 19.5k files).
   Local file listing runs as one batch in a background isolate (14 s -> 5 s),
   shared revision files already read are skipped across launches (~4 s), and
@@ -28,6 +36,17 @@ their history is in the commit log and the GitHub release notes.
   and Split view now show a back arrow, and the Android back gesture returns to
   where you came from (a note opened from Library goes back to Library, then
   Today) instead of closing the app.
+- Android: if the app opens while a background sync runs, the background run
+  stops between files and hands over, instead of blocking the app's sync.
+- Android: background sync is re-registered after reboot and app updates, and
+  the Sync screen shows a "Background sync may stop" notice with a Battery
+  settings button when Android may stop it (with the Huawei steps).
+- Search: a note whose title contains the whole query is listed first.
+- Sync screen: shows "App storage" instead of an internal path and hides a
+  recovery backup that no longer exists.
+- Uninstalling a module also removes its now-empty folders.
+- Transcription worker: optional speaker labels (`--diarize`, open speechbrain
+  model, no account): "- 00:04 [S2] text" when two or more speakers are found.
 - Android: the background sync job no longer runs while the app is open; an
   overdue job firing at launch held the vault lock and made every app sync
   fail for ~2 min.
