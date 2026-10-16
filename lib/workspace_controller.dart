@@ -1757,7 +1757,8 @@ class WorkspaceController extends ChangeNotifier {
   final Set<Future<bool>> _syncFlights = {};
 
   int _revisionFileGeneration = -1;
-  final Map<String, (int, DateTime)> _seenRevisionFiles = {};
+  static const _seenRevisionsKey = 'seen-revision-files';
+  final Map<String, (int, int)> _seenRevisionFiles = {};
 
   Future<bool> syncNow({
     String trigger = 'manual',
@@ -1950,6 +1951,7 @@ class WorkspaceController extends ChangeNotifier {
           opened.markLocallyWritten(path);
         },
       );
+      startupMark('sync-engine-start', {'trigger': trigger});
       final result = await sync.sync(
         opened,
         trigger: trigger,
@@ -1957,14 +1959,33 @@ class WorkspaceController extends ChangeNotifier {
         pushOnly: pushOnly,
         remoteChanged: remoteChanged,
       );
+      startupMark('sync-engine-done', {'trigger': trigger});
       if (!_owns(opened, generation)) return false;
       final revisionConflicts = <String>{};
       if (revisionDatabase != null) {
         if (_revisionFileGeneration != generation) {
           _seenRevisionFiles.clear();
           _revisionFileGeneration = generation;
+          // Persisted in the same database the envelopes go into, so a fresh
+          // database re-ingests everything; saves ~4 s per launch.
+          try {
+            final saved = await revisionDatabase.readMetadata(
+              _seenRevisionsKey,
+            );
+            if (saved != null) {
+              (jsonDecode(saved) as Map).forEach((path, value) {
+                final stamp = value as List;
+                _seenRevisionFiles[path as String] = (
+                  stamp[0] as int,
+                  stamp[1] as int,
+                );
+              });
+            }
+          } catch (_) {}
         }
+        final seenBefore = Map.of(_seenRevisionFiles);
         final files = await opened.storage.list(path: '_system/revisions');
+        startupMark('revision-files', {'count': files.length});
         if (!_owns(opened, generation)) return false;
         final paths = files.map((file) => file.path).toSet();
         _seenRevisionFiles.removeWhere((path, _) => !paths.contains(path));
@@ -1978,7 +1999,7 @@ class WorkspaceController extends ChangeNotifier {
             final size = file.size ?? metadata?.size;
             final modified = file.modified ?? metadata?.modified;
             final stamp = size != null && modified != null
-                ? (size, modified)
+                ? (size, modified.millisecondsSinceEpoch)
                 : null;
             if (stamp != null && _seenRevisionFiles[file.path] == stamp) {
               continue;
@@ -2016,6 +2037,15 @@ class WorkspaceController extends ChangeNotifier {
           } catch (_) {
             // A malformed or partial envelope is retried on the next sync.
           }
+        }
+        if (!mapEquals(seenBefore, _seenRevisionFiles)) {
+          await revisionDatabase.writeMetadata(
+            _seenRevisionsKey,
+            jsonEncode({
+              for (final e in _seenRevisionFiles.entries)
+                e.key: [e.value.$1, e.value.$2],
+            }),
+          );
         }
       }
       if (revisionPublisher != null &&
@@ -2756,6 +2786,7 @@ String syncStageLabel(String stage) {
     'extract-archive': 'Unpacking download',
     'verify-remote-writes': 'Verifying uploads',
     'save-local-state': 'Finishing sync',
+    'prune-revisions': 'Finishing sync',
     'index-local-changes': 'Updating index',
   }[id];
   return label == null ? stage : '$label$detail';

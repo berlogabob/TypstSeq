@@ -25,6 +25,8 @@ class Vault {
 
   // Session-only: a newly opened vault must always get a full sync scan.
   DateTime? lastFullSyncScan;
+  // ponytail: in-memory, so each process prunes once on its first sync.
+  DateTime? lastRevisionPrune;
 
   bool get syncScanIsFresh =>
       lastFullSyncScan != null &&

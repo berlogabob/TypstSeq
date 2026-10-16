@@ -66,3 +66,9 @@ Then: tag v0.18.1+151, install everywhere.
 - Verified: Mac real Nextcloud chunked upload of 29 MB random file in 8.7 s (test/real_account/chunked_upload_real_test.dart); P30 test vault, 30 s segments: parts 29.9-30.0 s at 32.66 kbps, parts survive an app kill (installing over the running app), recording sheet stays on top (parts save with open:false). Full suite 1514 passed.
 - 2026-10-15 ISSUE (pre-existing, reproduced on a build without these changes): a recording made from Library > Audio does not appear in the list and its note screen does not open until the app restarts; files and note are on disk. Cause not found (worker scan after SAF write?).
 - 2026-10-15 OPEN: transcription has no speaker separation (tool/transcribe_worker.py is plain faster-whisper "small"); group calls need diarization (pyannote or Studio-side model). Recording is mic-only: Android does not give apps the remote side of a phone call.
+
+## Wave 6 (2026-10-16): open items after 0.19.0
+- FIXED: Library > Audio recording not shown / not opening until restart. Save awaited a full index refresh (minutes on a big SAF vault; ~10 s on a fresh app-storage vault) before opening the note. Now the note opens from its own source (scanNote) and the refresh runs in the background; emulator: note opens <1.5 s, row in list on return.
+- FIXED: startup sync 22 s -> 7.3 s on P30 (real vault, app storage). Stage logs (`TYLOG_SYNC` in logcat) showed: LocalVaultStorage.list awaited one stat per entry (scan-local-shortcut 14.4 s -> 4.8 s, sync walk in an isolate); revision files re-ingested every launch (418 files, ~4 s; seen stamps now persisted in the vault database); pruneLocalRevisions ran on every 60 s poll (12.4 s; now once per 6 h per process).
+- DONE: P30 backup folder Download/TyLog deleted (1.9 GB).
+- OPEN: scan-local-shortcut still 4.8 s at startup (full local walk to prove no local change); background full scan at startup 10 s.

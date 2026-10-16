@@ -803,6 +803,19 @@ class TyLogDatabase extends _$TyLogDatabase {
     return revision != null && revision >= 0;
   }
 
+  Future<String?> readMetadata(String key) async => (await (select(
+    databaseMetadata,
+  )..where((t) => t.key.equals(key))).getSingleOrNull())?.value;
+
+  Future<void> writeMetadata(String key, String value) =>
+      into(databaseMetadata).insertOnConflictUpdate(
+        DatabaseMetadataData(
+          key: key,
+          value: value,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+
   Future<void> markNodeProjectionComplete(int revision) async {
     if (revision < 0) throw ArgumentError.value(revision, 'revision');
     await into(databaseMetadata).insertOnConflictUpdate(

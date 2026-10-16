@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -98,6 +99,22 @@ abstract class VaultStorage {
       writeBytes(path, utf8.encode(value));
 }
 
+List<VaultStorageEntry> _listSync(String dir, String root) => [
+  for (final entity in Directory(
+    dir,
+  ).listSync(recursive: true, followLinks: false))
+    if (entity.statSync() case final info
+        when info.type != FileSystemEntityType.notFound)
+      VaultStorageEntry(
+        path: entity.absolute.path
+            .substring(root.length + 1)
+            .replaceAll(Platform.pathSeparator, '/'),
+        isDirectory: entity is Directory,
+        size: entity is File ? info.size : null,
+        modified: info.modified,
+      ),
+];
+
 class LocalVaultStorage extends VaultStorage {
   LocalVaultStorage(Directory root) : _root = root.absolute;
 
@@ -129,6 +146,13 @@ class LocalVaultStorage extends VaultStorage {
   }) async {
     final directory = Directory(_path(path));
     if (!await directory.exists()) return [];
+    if (recursive) {
+      // One awaited stat per entry cost 14 s for a 19.5k-file vault on a
+      // phone; a sync walk off the calling isolate takes well under a second.
+      final dir = directory.path;
+      final root = _root.path;
+      return Isolate.run(() => _listSync(dir, root));
+    }
     final out = <VaultStorageEntry>[];
     await for (final entity in directory.list(
       recursive: recursive,

@@ -17,6 +17,9 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/idea_hub.dart';
 import 'package:tylog/widgets/ds/app_sheet.dart';
 import 'package:tylog/widgets/constants.dart';
+import 'package:tylog/widgets/audio_shelf.dart';
+import 'package:tylog/widgets/audio_sheets.dart';
+import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/screenshot_strip.dart';
 
 Future<void> _emptyStartup() async {}
@@ -62,6 +65,45 @@ void _dirty(dynamic home) {
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  testWidgets('Library recording appears and opens without restarting', (
+    tester,
+  ) async {
+    final storage = _GatedStorage();
+    final home = await _mount(tester, storage);
+    home.workspace.index = VaultIndex(notesByPath: {}, backlinksByTarget: {});
+    home.mode = 'library';
+    home.primaryDestination = 2;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Audio').first);
+    await tester.pumpAndSettle();
+    tester.widget<AudioShelf>(find.byType(AudioShelf)).onRecord();
+    await tester.pumpAndSettle();
+    // Deliver the completed take at the recorder/UI boundary without a mic.
+    Navigator.of(tester.element(find.byType(BottomSheet))).pop(
+      AudioTake(
+        Uint8List.fromList([1, 2, 3]),
+        'aac',
+        const [1, 2],
+        1000,
+        DateTime(2026, 10, 16, 12),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(await storage.exists('notes/Audio 20261016-120000.typ'), isTrue);
+    expect(
+      await storage.exists('assets/audio/2026/10/20261016-120000.aac'),
+      isTrue,
+    );
+    expect(find.byType(AudioNoteScreen), findsOneWidget);
+    Navigator.of(tester.element(find.byType(AudioNoteScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Audio 20261016-120000'), findsOneWidget);
+    await tester.tap(find.text('Audio 20261016-120000'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AudioNoteScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
     'landscape uses an icon rail without overflow and switches screens',
     (tester) async {

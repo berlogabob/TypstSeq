@@ -105,7 +105,8 @@ void main() {
         expect(storage.revisionReads, greaterThan(0));
         expect(await database.select(database.revisions).get(), hasLength(2));
 
-        // Reopening the vault must not reuse the previous pass's cache.
+        // Reopening the vault reuses the stamps persisted in the same
+        // database, so nothing already ingested is read again.
         await controller.openVault(entry, storage: storage);
         await controller.refreshIndex(always: true);
         controller.note = null;
@@ -116,7 +117,7 @@ void main() {
         );
         storage.revisionReads = 0;
         expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, greaterThan(0));
+        expect(storage.revisionReads, 0);
       }, createHttpClient: (_) => client);
     });
   }

@@ -196,7 +196,9 @@ extension _AudioFlow on _HomeScreenState {
         );
         return header + audioNoteBody(asset, '$stamp.$extension');
       });
-      await workspace.refreshIndex(updateStatus: false, always: true);
+      // Not awaited: a full refresh can take minutes on a big vault, and the
+      // note opens from its own source below.
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
       return path;
     }
 
@@ -220,8 +222,11 @@ extension _AudioFlow on _HomeScreenState {
         return;
       }
       final path = await persist();
-      final note = index?.notesByPath[path];
-      if (open && note != null && mounted) await _openAudioNote(note);
+      if (!open || !mounted) return;
+      final note =
+          index?.notesByPath[path] ??
+          scanNote(path, await workspace.readNote(path));
+      if (mounted) await _openAudioNote(note);
     } catch (error) {
       if (mounted) showSnack(context, 'Could not save recording: $error');
     }

@@ -215,6 +215,17 @@ extension _SyncStatePersistence on NextcloudSync {
   }
 
   Future<void> _trace(Vault vault, List<Map<String, Object?>> events) async {
+    // App-storage vaults keep the trace in private storage; logcat is the
+    // only way to read stage timings off a release build.
+    for (final e in events) {
+      if (e['stageMillis'] == null) continue;
+      // ignore: avoid_print
+      print(
+        'TYLOG_SYNC ${e['trigger']} ${e['event']} ${jsonEncode(e['stageMillis'])} '
+        'propfind=${jsonEncode(e['propfindMillis'])} '
+        'folders=${e['listedFolders']} entries=${e['listedEntries']}',
+      );
+    }
     try {
       await _appendTrace(vault, events);
     } catch (_) {

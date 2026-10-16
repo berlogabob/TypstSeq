@@ -1098,7 +1098,15 @@ class NextcloudSync {
         rootEtag: freshRootEtag,
         folders: freshFolders,
       );
-      await vault.pruneLocalRevisions(syncState.keys, knownPaths: allPaths);
+      // Housekeeping: hashes every path and lists every history folder
+      // (~10 s on a 19.5k-file vault), so not on every 60 s poll.
+      final pruned = vault.lastRevisionPrune;
+      if (pruned == null ||
+          DateTime.now().difference(pruned) > const Duration(hours: 6)) {
+        progress('prune-revisions');
+        await vault.pruneLocalRevisions(syncState.keys, knownPaths: allPaths);
+        vault.lastRevisionPrune = DateTime.now();
+      }
       // Only what this pass actually looked at. A save landing mid-pass stays
       // queued for the next one — the same contract the scan cache uses for
       // its own stale set, and the reason both take a snapshot up front rather
