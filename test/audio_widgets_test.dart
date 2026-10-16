@@ -164,14 +164,14 @@ void main() {
     workers = [
       WorkerStatus(
         host: 'Mac',
-        lastSeen: DateTime.now().subtract(const Duration(minutes: 10)),
+        lastSeen: DateTime.now().subtract(const Duration(minutes: 20)),
         connections: const {'studio': (reachable: false, loaded: <String>[])},
       ),
     ];
     await tester.pump(const Duration(seconds: 30));
     await tester.pump();
     expect(reads, 2);
-    expect(find.text('Mac last seen 10 minutes ago (offline)'), findsOneWidget);
+    expect(find.text('Mac last seen 20 minutes ago (offline)'), findsOneWidget);
     expect(find.byIcon(Icons.computer_outlined), findsOneWidget);
     expect(find.text('Server Studio PC: not reachable'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
