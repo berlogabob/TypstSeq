@@ -296,7 +296,18 @@ def write_heartbeat(vault, settings, state, state_path, now, hostname, probe):
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         directory = vault / "_system/workers"
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / (filename + ".json")).write_text(
+        target = directory / (filename + ".json")
+        # Rewrite only on change or every 10 min: each write changes the synced
+        # folder, and phones then run a full sync on every poll.
+        try:
+            previous = json.loads(target.read_text(encoding="utf-8"))
+            seen = datetime.fromisoformat(previous.pop("last_seen"))
+            fresh = {k: v for k, v in heartbeat.items() if k != "last_seen"}
+            if previous == fresh and (now - seen).total_seconds() < 600:
+                return
+        except Exception:
+            pass
+        target.write_text(
             json.dumps(heartbeat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except Exception:
         pass

@@ -316,7 +316,7 @@ class WorkerStatus {
   final Map<String, ({bool reachable, List<String> loaded})> connections;
 
   bool isOnline({
-    Duration within = const Duration(minutes: 5),
+    Duration within = const Duration(minutes: 15),
     required DateTime now,
   }) {
     final seen = lastSeen;
