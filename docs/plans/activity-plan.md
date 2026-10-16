@@ -112,4 +112,7 @@ Queue (all block the release):
 14. One note is re-parsed on every launch (parsedNotes 1 each startup): find which and why.
 Progress 2026-10-16 13:40: 1 (receiver + battery notice), 2 (handover; in-sync cancel with codex), 3 (startup defers walk: startup sync 22 s -> 3.9 s), 4 (unchanged rescan skips encode; scan ~10 s in background), 5 (empty module dirs), 7 (prune marker verified on P30) done at 4f2f278.
 Progress 2026-10-16 14:00: 2 (sync cancel: in-flight files finish, partial checkpoint, UI takes over), 4 (unchanged rescan: re-derived notes compared by JSON, encode/write 0 on P30), 12 (notice layout), 13 (backup line hidden when gone, "App storage"), 14 (abandoned uncommitted dirty marker made one note re-parse every launch; markers >10 min old cleared) done. P30 startup now: today 0.46 s, cached index 1.7 s, startup sync 3.0 s, background rescan done 16 s.
+15. Desktop-managed vaults (Mac + Nextcloud desktop client) never publish or ingest entity revisions: _syncNow returns before the revision steps (all 418 revision files are from phones).
+16. Global Search tab does not find a note synced in from another device (P30: 'TyLog sync test' created on the Mac is in Library > Notes but Search finds neither its title nor its body).
+User answers 2026-10-16: 6 scratch note OK; 9 course audio = edge-tts (document it); 10 enable SSH on Studio (user action, then uv env with qwen-tts/chatterbox-tts); 11 strip IADE + add licence, user reviews before push; 8 diarization with non-gated speechbrain ECAPA (codex).
 Then: full suite, device checks, tag 0.19.1.

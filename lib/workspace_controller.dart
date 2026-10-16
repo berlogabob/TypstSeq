@@ -1802,6 +1802,154 @@ class WorkspaceController extends ChangeNotifier {
     return flight;
   }
 
+  Future<
+    ({TyLogDatabase? database, RevisionPublisher? publisher, List<String> ids})?
+  >
+  _materializeRevisions(Vault opened, int generation) async {
+    final activeEntry = entry;
+    final revisionDatabase = activeEntry != null && databaseForVault != null
+        ? await databaseForVault!(activeEntry)
+        : null;
+    if (!_owns(opened, generation)) return null;
+    final revisionPublisher = revisionDatabase == null
+        ? null
+        : RevisionPublisher(revisionDatabase);
+    final materializedRevisionIds = revisionPublisher == null
+        ? const <String>[]
+        : await revisionPublisher.materialize(write: opened.storage.writeBytes);
+    if (!_owns(opened, generation)) return null;
+    return (
+      database: revisionDatabase,
+      publisher: revisionPublisher,
+      ids: materializedRevisionIds,
+    );
+  }
+
+  Future<Set<String>?> _ingestRevisions(
+    Vault opened,
+    int generation,
+    TyLogDatabase? revisionDatabase,
+  ) async {
+    final revisionConflicts = <String>{};
+    if (revisionDatabase != null) {
+      if (_revisionFileGeneration != generation) {
+        _seenRevisionFiles.clear();
+        _revisionFileGeneration = generation;
+        // Persisted in the same database the envelopes go into, so a fresh
+        // database re-ingests everything; saves ~4 s per launch.
+        try {
+          final saved = await revisionDatabase.readMetadata(_seenRevisionsKey);
+          if (saved != null) {
+            (jsonDecode(saved) as Map).forEach((path, value) {
+              final stamp = value as List;
+              _seenRevisionFiles[path as String] = (
+                stamp[0] as int,
+                stamp[1] as int,
+              );
+            });
+          }
+        } catch (_) {}
+      }
+      final seenBefore = Map.of(_seenRevisionFiles);
+      final files = await opened.storage.list(path: '_system/revisions');
+      startupMark('revision-files', {'count': files.length});
+      if (!_owns(opened, generation)) return null;
+      final paths = files.map((file) => file.path).toSet();
+      _seenRevisionFiles.removeWhere((path, _) => !paths.contains(path));
+      for (final file in files) {
+        if (file.isDirectory || !file.path.endsWith('.json')) continue;
+        try {
+          final metadata = file.size == null || file.modified == null
+              ? await opened.storage.stat(file.path)
+              : file;
+          if (!_owns(opened, generation)) return null;
+          final size = file.size ?? metadata?.size;
+          final modified = file.modified ?? metadata?.modified;
+          final stamp = size != null && modified != null
+              ? (size, modified.millisecondsSinceEpoch)
+              : null;
+          if (stamp != null && _seenRevisionFiles[file.path] == stamp) {
+            continue;
+          }
+          final envelopes = RevisionPublisher.decodeEnvelopes(
+            await opened.storage.readBytes(file.path),
+          ).toList();
+          if (!_owns(opened, generation)) return null;
+          for (final envelope in envelopes) {
+            await revisionDatabase.transaction(() async {
+              final node = envelope.node;
+              if (node != null) {
+                if (await revisionDatabase.receiveRevision(
+                      node: node,
+                      revision: envelope.revision,
+                    ) ==
+                    RevisionReceiveResult.conflict) {
+                  revisionConflicts.add(envelope.revision.entityId);
+                }
+              }
+              final annotation = envelope.annotation;
+              if (annotation != null) {
+                if (await revisionDatabase.receiveAnnotationRevision(
+                      annotation: annotation,
+                      revision: envelope.revision,
+                    ) ==
+                    RevisionReceiveResult.conflict) {
+                  revisionConflicts.add(envelope.revision.entityId);
+                }
+              }
+            });
+            if (!_owns(opened, generation)) return null;
+          }
+          if (stamp != null) _seenRevisionFiles[file.path] = stamp;
+        } catch (_) {
+          // A malformed or partial envelope is retried on the next sync.
+        }
+      }
+      if (!mapEquals(seenBefore, _seenRevisionFiles)) {
+        await revisionDatabase.writeMetadata(
+          _seenRevisionsKey,
+          jsonEncode({
+            for (final e in _seenRevisionFiles.entries)
+              e.key: [e.value.$1, e.value.$2],
+          }),
+        );
+      }
+    }
+    return revisionConflicts;
+  }
+
+  Future<bool> _syncDesktopRevisions(Vault opened, int generation) async {
+    syncing = true;
+    syncError = null;
+    notifyListeners();
+    try {
+      final prepared = await _materializeRevisions(opened, generation);
+      if (prepared == null) return false;
+      final revisionConflicts = await _ingestRevisions(
+        opened,
+        generation,
+        prepared.database,
+      );
+      if (revisionConflicts == null || !_owns(opened, generation)) return false;
+      await prepared.publisher?.acknowledge(prepared.ids);
+      if (!_owns(opened, generation)) return false;
+      status = revisionConflicts.isNotEmpty
+          ? 'Needs attention'
+          : 'Sync handled by Nextcloud Desktop';
+      return true;
+    } catch (error) {
+      if (!_owns(opened, generation)) return false;
+      syncError = friendlySyncError(error);
+      status = syncError!;
+      return false;
+    } finally {
+      if (_owns(opened, generation)) {
+        syncing = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<bool> _syncNow({
     String trigger = 'manual',
     NextcloudConfig? configOverride,
@@ -1836,9 +1984,7 @@ class WorkspaceController extends ChangeNotifier {
     }
     final local = localDirectory;
     if (local != null && isNextcloudManagedVault(local)) {
-      status = 'Sync handled by Nextcloud Desktop';
-      notifyListeners();
-      return true;
+      return _syncDesktopRevisions(opened, generation);
     }
     // A background maintenance pass held this for ~2 min on a P30; yield to UI.
     var acquired = false;
@@ -1918,20 +2064,11 @@ class WorkspaceController extends ChangeNotifier {
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
       final revisionBeforeSync = editRevision;
-      final activeEntry = entry;
-      final revisionDatabase = activeEntry != null && databaseForVault != null
-          ? await databaseForVault!(activeEntry)
-          : null;
-      if (!_owns(opened, generation)) return false;
-      final revisionPublisher = revisionDatabase == null
-          ? null
-          : RevisionPublisher(revisionDatabase);
-      final materializedRevisionIds = revisionPublisher == null
-          ? const <String>[]
-          : await revisionPublisher.materialize(
-              write: opened.storage.writeBytes,
-            );
-      if (!_owns(opened, generation)) return false;
+      final prepared = await _materializeRevisions(opened, generation);
+      if (prepared == null) return false;
+      final revisionDatabase = prepared.database;
+      final revisionPublisher = prepared.publisher;
+      final materializedRevisionIds = prepared.ids;
       final sync = NextcloudSync(
         config,
         onProgress: (stage, path) {
@@ -1972,93 +2109,12 @@ class WorkspaceController extends ChangeNotifier {
       );
       startupMark('sync-engine-done', {'trigger': trigger});
       if (!_owns(opened, generation)) return false;
-      final revisionConflicts = <String>{};
-      if (revisionDatabase != null) {
-        if (_revisionFileGeneration != generation) {
-          _seenRevisionFiles.clear();
-          _revisionFileGeneration = generation;
-          // Persisted in the same database the envelopes go into, so a fresh
-          // database re-ingests everything; saves ~4 s per launch.
-          try {
-            final saved = await revisionDatabase.readMetadata(
-              _seenRevisionsKey,
-            );
-            if (saved != null) {
-              (jsonDecode(saved) as Map).forEach((path, value) {
-                final stamp = value as List;
-                _seenRevisionFiles[path as String] = (
-                  stamp[0] as int,
-                  stamp[1] as int,
-                );
-              });
-            }
-          } catch (_) {}
-        }
-        final seenBefore = Map.of(_seenRevisionFiles);
-        final files = await opened.storage.list(path: '_system/revisions');
-        startupMark('revision-files', {'count': files.length});
-        if (!_owns(opened, generation)) return false;
-        final paths = files.map((file) => file.path).toSet();
-        _seenRevisionFiles.removeWhere((path, _) => !paths.contains(path));
-        for (final file in files) {
-          if (file.isDirectory || !file.path.endsWith('.json')) continue;
-          try {
-            final metadata = file.size == null || file.modified == null
-                ? await opened.storage.stat(file.path)
-                : file;
-            if (!_owns(opened, generation)) return false;
-            final size = file.size ?? metadata?.size;
-            final modified = file.modified ?? metadata?.modified;
-            final stamp = size != null && modified != null
-                ? (size, modified.millisecondsSinceEpoch)
-                : null;
-            if (stamp != null && _seenRevisionFiles[file.path] == stamp) {
-              continue;
-            }
-            final envelopes = RevisionPublisher.decodeEnvelopes(
-              await opened.storage.readBytes(file.path),
-            ).toList();
-            if (!_owns(opened, generation)) return false;
-            for (final envelope in envelopes) {
-              await revisionDatabase.transaction(() async {
-                final node = envelope.node;
-                if (node != null) {
-                  if (await revisionDatabase.receiveRevision(
-                        node: node,
-                        revision: envelope.revision,
-                      ) ==
-                      RevisionReceiveResult.conflict) {
-                    revisionConflicts.add(envelope.revision.entityId);
-                  }
-                }
-                final annotation = envelope.annotation;
-                if (annotation != null) {
-                  if (await revisionDatabase.receiveAnnotationRevision(
-                        annotation: annotation,
-                        revision: envelope.revision,
-                      ) ==
-                      RevisionReceiveResult.conflict) {
-                    revisionConflicts.add(envelope.revision.entityId);
-                  }
-                }
-              });
-              if (!_owns(opened, generation)) return false;
-            }
-            if (stamp != null) _seenRevisionFiles[file.path] = stamp;
-          } catch (_) {
-            // A malformed or partial envelope is retried on the next sync.
-          }
-        }
-        if (!mapEquals(seenBefore, _seenRevisionFiles)) {
-          await revisionDatabase.writeMetadata(
-            _seenRevisionsKey,
-            jsonEncode({
-              for (final e in _seenRevisionFiles.entries)
-                e.key: [e.value.$1, e.value.$2],
-            }),
-          );
-        }
-      }
+      final revisionConflicts = await _ingestRevisions(
+        opened,
+        generation,
+        revisionDatabase,
+      );
+      if (revisionConflicts == null) return false;
       if (revisionPublisher != null &&
           materializedRevisionIds.isNotEmpty &&
           result.conflicts == 0) {

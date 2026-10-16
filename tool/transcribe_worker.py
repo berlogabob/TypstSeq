@@ -26,7 +26,8 @@ def format_ts(seconds):
 
 def render_section(segments):
     return "== Transcript\n\n" + "".join(
-        f"- {format_ts(start)} {escape_markup(text)}\n" for start, text in segments
+        f"- {format_ts(start)} " + (f"[{speaker[0]}] " if speaker else "") +
+        f"{escape_markup(text)}\n" for start, text, *speaker in segments
     )
 
 
@@ -45,7 +46,60 @@ def apply_transcript(note_text, segments):
     return note_text + separator + section
 
 
-def transcribe(audio, model="small", lang=None):
+def speaker_embedder():
+    import torch
+    from speechbrain.inference.speaker import EncoderClassifier
+
+    encoder = EncoderClassifier.from_hparams(
+        source="speechbrain/spkrec-ecapa-voxceleb",
+        savedir=str(Path.home() / ".cache/tylog/spkrec-ecapa-voxceleb"),
+        run_opts={"device": "cpu"})
+
+    def embed(samples):
+        with torch.inference_mode():
+            return encoder.encode_batch(torch.from_numpy(samples).unsqueeze(0)).flatten().numpy()
+    return embed
+
+
+def diarize_segments(samples, segments, embed=None, distance_threshold=0.35):
+    """Return original timestamps/text, adding speakers only for multiple clusters."""
+    import numpy as np
+    from sklearn.cluster import AgglomerativeClustering
+
+    result = [(segment.start, segment.text.strip()) for segment in segments]
+    if len(segments) < 2:
+        return result
+    embed = embed or speaker_embedder()
+    clips = [samples[int(s.start * 16000):int(s.end * 16000)] for s in segments]
+    embeddings = []
+    for index in range(len(segments)):
+        left = right = index
+        size = len(clips[index])
+        # Neighbouring segments supply context only for the embedding, never the text.
+        while size < 1.5 * 16000 and (left > 0 or right < len(clips) - 1):
+            if right < len(clips) - 1:
+                right += 1
+                size += len(clips[right])
+            else:
+                left -= 1
+                size += len(clips[left])
+        embeddings.append(embed(np.concatenate(clips[left:right + 1])))
+    embeddings = np.asarray(embeddings)
+    if not np.isfinite(embeddings).all() or (np.linalg.norm(embeddings, axis=1) == 0).any():
+        raise ValueError("Invalid speaker embedding (non-finite or zero)")
+    clusters = AgglomerativeClustering(
+        n_clusters=None, metric="cosine", linkage="average",
+        distance_threshold=distance_threshold).fit_predict(embeddings)
+    labels = {}
+    for cluster in clusters:
+        if cluster not in labels:
+            labels[cluster] = f"S{len(labels) + 1}"
+    if len(labels) < 2:
+        return result
+    return [(start, text, labels[cluster]) for (start, text), cluster in zip(result, clusters)]
+
+
+def transcribe(audio, model="small", lang=None, *, diarize=False):
     from faster_whisper import WhisperModel, decode_audio
 
     model = WhisperModel(model)
@@ -70,7 +124,11 @@ def transcribe(audio, model="small", lang=None):
                           if language != info.language and weights[language] >= 0.15 * total]
         except Exception:
             languages = [info.language]
-    return [(segment.start, segment.text.strip()) for segment in segments], info.language, languages
+    if diarize:
+        result = diarize_segments(decode_audio(str(audio), sampling_rate=16000), segments)
+    else:
+        result = [(segment.start, segment.text.strip()) for segment in segments]
+    return result, info.language, languages
 
 
 def ensure_model(base, key, prefer, request):
@@ -399,7 +457,7 @@ def sweep(vault, now, state, force=False):
 
 
 def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
-             hostname=None, clock=None, probe=None):
+             hostname=None, clock=None, probe=None, diarize=False):
     vault = Path(vault).resolve()
     clock = clock or (lambda: datetime.now(timezone.utc))
     supplied_now = now
@@ -443,7 +501,9 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     note_text = stream.read()
                 if kind == "transcripts":
                     audio = _vault_path(vault, job["audio"])
-                    segments, language, languages = transcribe(audio, model=model, lang=job.get("lang") or None)
+                    options = {"diarize": True} if diarize or job.get("diarize") is True else {}
+                    segments, language, languages = transcribe(
+                        audio, model=model, lang=job.get("lang") or None, **options)
                     updated_note = apply_transcript(note_text, segments)
                 else:
                     updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
@@ -473,9 +533,10 @@ def main(argv=None):
     parser.add_argument("--vault", required=True, type=Path)
     parser.add_argument("--once", required=True, action="store_true")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--diarize", action="store_true", help="Label speakers using ECAPA embeddings")
     parser.add_argument("--state", type=Path, default=Path.home() / ".tylog-transcribe-state.json")
     args = parser.parse_args(argv)
-    run_once(args.vault, model=args.model, state_path=args.state)
+    run_once(args.vault, model=args.model, state_path=args.state, diarize=args.diarize)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/tylog_database.dart';
+import 'package:tylog/database/revision_publisher.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/task_scheduler.dart';
@@ -15,98 +16,39 @@ import 'package:tylog/workspace_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  for (final omitListMetadata in [false, true]) {
-    test('unchanged revision files are not reread '
-        '(list metadata: ${!omitListMetadata})', () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'revision-cache-',
-      );
-      addTearDown(() => directory.delete(recursive: true));
-      final storage = _CountingStorage(directory, omitListMetadata);
-      final database = TyLogDatabase(NativeDatabase.memory());
-      addTearDown(database.close);
-      final controller = WorkspaceController(
-        taskScheduler: TaskScheduler(),
-        inspector: _FakeInspector(),
-        reconcileTasks: (_) async {},
-        databaseForVault: (_) async => database,
-        useForegroundService: false,
-      );
-      addTearDown(controller.dispose);
-      const entry = VaultEntry(id: 'local', name: 'Local', path: '/unused');
-      await controller.openVault(entry, storage: storage);
-      await controller.refreshIndex(always: true);
-      controller.note = null;
-      controller.cloud = const NextcloudConfig(
-        serverUrl: 'https://example.invalid/remote.php/dav/files/alice/Vault',
-        username: 'alice',
-        password: 'secret',
-      );
-      const path = '_system/revisions/remote.json';
-      final node = NodeData(
-        id: 'remote',
-        type: 'note',
-        title: 'Remote',
-        content: 'first',
-        attributesJson: '{}',
-        eventStartMs: null,
-        eventEndMs: null,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-      );
-      final revision = RevisionData(
-        id: 'remote-1',
-        entityKind: 'node',
-        entityId: 'remote',
-        parentRevisionId: null,
-        payloadJson: '{}',
-        createdAtMs: 1,
-      );
-      Future<void> writeEnvelope(NodeData node, RevisionData revision) =>
-          storage.writeText(
-            path,
-            jsonEncode({'node': node.toJson(), 'revision': revision.toJson()}),
-          );
-      await writeEnvelope(node, revision);
-      final client = _ResolveHttpClient();
-      await HttpOverrides.runZoned(() async {
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, greaterThan(0));
-        expect(await database.select(database.revisions).get(), hasLength(1));
-        storage.revisionReads = 0;
-        storage.revisionStats = 0;
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, 0);
-        if (!omitListMetadata) expect(storage.revisionStats, 0);
-
-        // Size alone must not hide a file whose modification time changed.
-        final file = File('${directory.path}/$path');
-        final modified = (await file.stat()).modified;
-        await file.setLastModified(modified.add(const Duration(seconds: 2)));
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, greaterThan(0));
-        storage.revisionReads = 0;
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, 0);
-
-        // A changed envelope must still reach the receiver.
-        await writeEnvelope(
-          node.copyWith(content: 'second'),
-          RevisionData(
-            id: 'remote-2',
-            entityKind: 'node',
-            entityId: 'remote',
-            parentRevisionId: 'remote-1',
-            payloadJson: '{}',
-            createdAtMs: 2,
-          ),
+  for (final (desktopManaged, omitListMetadata) in [
+    (false, false),
+    (false, true),
+    (true, false),
+    (true, true),
+  ]) {
+    test(
+      'revision sync publishes, ingests and caches files '
+      '(desktop: $desktopManaged, list metadata: ${!omitListMetadata})',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'revision-cache-',
         );
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, greaterThan(0));
-        expect(await database.select(database.revisions).get(), hasLength(2));
-
-        // Reopening the vault reuses the stamps persisted in the same
-        // database, so nothing already ingested is read again.
+        addTearDown(() => directory.delete(recursive: true));
+        final storage = _CountingStorage(directory, omitListMetadata);
+        final database = TyLogDatabase(NativeDatabase.memory());
+        addTearDown(database.close);
+        final controller = WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          inspector: _FakeInspector(),
+          reconcileTasks: (_) async {},
+          databaseForVault: (_) async => database,
+          useForegroundService: false,
+        );
+        addTearDown(controller.dispose);
+        final entry = VaultEntry(
+          id: 'local',
+          name: 'Local',
+          path: desktopManaged
+              ? '${Platform.environment['HOME']}/Nextcloud/revision-test'
+              : '/unused',
+        );
+        expect(isNextcloudManagedVault(Directory(entry.path)), desktopManaged);
         await controller.openVault(entry, storage: storage);
         await controller.refreshIndex(always: true);
         controller.note = null;
@@ -115,11 +57,154 @@ void main() {
           username: 'alice',
           password: 'secret',
         );
-        storage.revisionReads = 0;
-        expect(await controller.syncNow(), isTrue);
-        expect(storage.revisionReads, 0);
-      }, createHttpClient: (_) => client);
-    });
+        if (desktopManaged) {
+          controller.note = 'notes/local.typ';
+          controller.edit(
+            '#show: tylog.note.with(id: "local", title: "Local")\nEdited',
+          );
+          expect(await controller.save(syncAfter: false), isTrue);
+          controller.note = null;
+          expect(await database.pendingRevisionUploads(), isNotEmpty);
+          expect(await controller.syncNow(), isTrue);
+          final files = await storage.list(path: '_system/revisions');
+          expect(files, hasLength(1));
+          final envelope = RevisionPublisher.decodeEnvelope(
+            await storage.readBytes(files.single.path),
+          );
+          expect(envelope.node!.content, endsWith('Edited'));
+          expect(await database.pendingRevisionUploads(), isEmpty);
+          expect(controller.status, 'Sync handled by Nextcloud Desktop');
+        }
+        final localRevisionCount =
+            (await database.select(database.revisions).get()).length;
+        const path = '_system/revisions/remote.json';
+        final node = NodeData(
+          id: 'remote',
+          type: 'note',
+          title: 'Remote',
+          content: 'first',
+          attributesJson: '{}',
+          eventStartMs: null,
+          eventEndMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        );
+        final revision = RevisionData(
+          id: 'remote-1',
+          entityKind: 'node',
+          entityId: 'remote',
+          parentRevisionId: null,
+          payloadJson: '{}',
+          createdAtMs: 1,
+        );
+        Future<void> writeEnvelope(NodeData node, RevisionData revision) =>
+            storage.writeText(
+              path,
+              jsonEncode({
+                'node': node.toJson(),
+                'revision': revision.toJson(),
+              }),
+            );
+        await writeEnvelope(node, revision);
+        final client = _ResolveHttpClient();
+        await HttpOverrides.runZoned(
+          () async {
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, greaterThan(0));
+            expect(
+              await database.select(database.revisions).get(),
+              hasLength(localRevisionCount + 1),
+            );
+            storage.revisionReads = 0;
+            storage.revisionStats = 0;
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, 0);
+            if (!omitListMetadata) expect(storage.revisionStats, 0);
+
+            // Size alone must not hide a file whose modification time changed.
+            final file = File('${directory.path}/$path');
+            final modified = (await file.stat()).modified;
+            await file.setLastModified(
+              modified.add(const Duration(seconds: 2)),
+            );
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, greaterThan(0));
+            storage.revisionReads = 0;
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, 0);
+
+            // A changed envelope must still reach the receiver.
+            await writeEnvelope(
+              node.copyWith(content: 'second'),
+              RevisionData(
+                id: 'remote-2',
+                entityKind: 'node',
+                entityId: 'remote',
+                parentRevisionId: 'remote-1',
+                payloadJson: '{}',
+                createdAtMs: 2,
+              ),
+            );
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, greaterThan(0));
+            expect(
+              await database.select(database.revisions).get(),
+              hasLength(localRevisionCount + 2),
+            );
+
+            expect(
+              (await database.select(database.nodes).get())
+                  .singleWhere((node) => node.id == 'remote')
+                  .content,
+              'second',
+            );
+
+            // Reopening the vault reuses the stamps persisted in the same
+            // database, so nothing already ingested is read again.
+            await controller.openVault(entry, storage: storage);
+            await controller.refreshIndex(always: true);
+            controller.note = null;
+            controller.cloud = const NextcloudConfig(
+              serverUrl:
+                  'https://example.invalid/remote.php/dav/files/alice/Vault',
+              username: 'alice',
+              password: 'secret',
+            );
+            storage.revisionReads = 0;
+            expect(await controller.syncNow(), isTrue);
+            expect(storage.revisionReads, 0);
+            if (desktopManaged) {
+              await writeEnvelope(
+                node.copyWith(content: 'divergent'),
+                RevisionData(
+                  id: 'remote-fork',
+                  entityKind: 'node',
+                  entityId: 'remote',
+                  parentRevisionId: 'missing-parent',
+                  payloadJson: '{}',
+                  createdAtMs: 3,
+                ),
+              );
+              expect(await controller.syncNow(), isTrue);
+              expect(controller.status, 'Needs attention');
+              expect(controller.syncError, isNull);
+              storage.revisionReads = 0;
+              expect(await controller.syncNow(), isTrue);
+              expect(storage.revisionReads, 0);
+              expect(controller.status, 'Sync handled by Nextcloud Desktop');
+            }
+          },
+          createHttpClient: (_) {
+            expect(
+              desktopManaged,
+              isFalse,
+              reason: 'Desktop sync must use local I/O only',
+            );
+            return client;
+          },
+        );
+      },
+    );
   }
 }
 

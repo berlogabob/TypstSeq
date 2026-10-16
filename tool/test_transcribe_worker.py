@@ -36,6 +36,92 @@ def test_render_section():
     )
 
 
+def test_render_section_speakers():
+    assert worker.render_section([(0, "Hello #world", "S1"), (65, "Next", "S2")]) == (
+        "== Transcript\n\n- 00:00 [S1] Hello \\#world\n- 01:05 [S2] Next\n"
+    )
+
+
+@pytest.mark.parametrize("vectors, expected", [
+    ([[1, 0], [0, 1], [1, 0], [-1, 0]], ["S1", "S2", "S1", "S3"]),
+    ([[1, 0], [0.99, 0.01], [1, 0], [1, 0]], None),
+])
+def test_diarize_clustering(vectors, expected):
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("sklearn")
+    segments = [SimpleNamespace(start=i * 2, end=i * 2 + 2, text=f" text {i} ")
+                for i in range(len(vectors))]
+    embeddings = iter(vectors)
+    result = worker.diarize_segments(np.ones(8 * 16000), segments,
+                                     embed=lambda clip: next(embeddings))
+    plain = [(s.start, s.text.strip()) for s in segments]
+    if expected is None:
+        assert result == plain
+        assert worker.render_section(result) == worker.render_section(plain)
+    else:
+        assert result == [(start, text, label) for (start, text), label in zip(plain, expected)]
+
+
+def test_diarize_short_segments_merge_only_for_embedding():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("sklearn")
+    segments = [SimpleNamespace(start=start, end=end, text=text)
+                for start, end, text in [(0, 0.5, "short"), (1, 3, "long"), (4, 4.5, "last")]]
+    samples = np.arange(5 * 16000)
+    clips = []
+
+    def embed(clip):
+        clips.append(clip)
+        return [1, 0]
+
+    result = worker.diarize_segments(samples, segments, embed=embed)
+    assert result == [(0, "short"), (1, "long"), (4, "last")]
+    np.testing.assert_array_equal(clips[0], np.concatenate([samples[:8000], samples[16000:48000]]))
+    np.testing.assert_array_equal(clips[1], samples[16000:48000])
+    np.testing.assert_array_equal(clips[2], np.concatenate([samples[16000:48000], samples[64000:72000]]))
+
+
+@pytest.mark.parametrize("cli, option, enabled", [(False, True, True), (True, False, True),
+                                                (False, False, False), (False, "true", False)])
+def test_diarize_job_and_cli(tmp_path, monkeypatch, cli, option, enabled):
+    jobs = tmp_path / "_system/jobs/transcripts"
+    jobs.mkdir(parents=True)
+    job_path = jobs / "job.json"
+    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ",
+                                    "diarize": option}))
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+
+    def transcribe(audio, model, lang, **kwargs):
+        assert kwargs == ({"diarize": True} if enabled else {})
+        return [(0, "Hello", "S1"), (2, "Hi", "S2")] if enabled else [(0, "Hello")], "en", ["en"]
+
+    monkeypatch.setattr(worker, "transcribe", transcribe)
+    worker.main(["--vault", str(tmp_path), "--once"] + (["--diarize"] if cli else []))
+    assert json.loads(job_path.read_text())["status"] == "done"
+    assert ("[S1]" in note.read_text()) == enabled
+
+
+def test_transcribe_diarize_uses_segment_bounds(monkeypatch):
+    segments = [SimpleNamespace(start=0, end=2, text=" Hello "),
+                SimpleNamespace(start=2, end=4, text=" Hi ")]
+    samples = object()
+    model = SimpleNamespace(transcribe=lambda *args, **kwargs:
+                            (iter(segments), SimpleNamespace(language="en")))
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(
+        WhisperModel=lambda name: model,
+        decode_audio=lambda path, sampling_rate: samples))
+
+    def diarize(audio, actual_segments):
+        assert audio is samples
+        assert actual_segments == segments
+        return [(0, "Hello", "S1"), (2, "Hi", "S2")]
+
+    monkeypatch.setattr(worker, "diarize_segments", diarize)
+    assert worker.transcribe("audio.wav", lang="en", diarize=True) == (
+        [(0, "Hello", "S1"), (2, "Hi", "S2")], "en", ["en"])
+
+
 def test_apply_transcript_append():
     note = "= Note\n\n== Comments\nKeep *this*."
     assert worker.apply_transcript(note, [(65, "Hello")]) == (

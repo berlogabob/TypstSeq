@@ -334,5 +334,29 @@ uv run --with faster-whisper --with av==17.0.1 python tool/transcribe_worker.py 
   --vault ~/Nextcloud/TyLogVault --once --model small
 ```
 
+Optional speaker diarization (no Hugging Face token required):
+
+```
+uv run --with faster-whisper --with av==17.0.1 --with speechbrain --with torchaudio \
+  --with scikit-learn python tool/transcribe_worker.py \
+  --vault ~/Nextcloud/TyLogVault --once --model small --diarize
+```
+
+Use these extra dependencies in the launchd command for diarization. Omit
+`--diarize` to enable it only for transcript jobs containing `"diarize": true`.
+The first use downloads the public `speechbrain/spkrec-ecapa-voxceleb` model
+to the local cache. Embeddings use 16 kHz mono audio on CPU; segments shorter
+than 1.5 seconds include neighbouring segments for embedding only. Average-linkage
+agglomerative clustering uses cosine distance with a 0.35 threshold, without a
+fixed speaker count. With two or more clusters, transcript lines use
+`- MM:SS [S1] text`, with labels in order of first appearance. One speaker keeps
+the original format. Labels are estimates: overlapping speakers or speaker
+changes within a Whisper segment cannot be separated.
+
+Run the worker tests with `uv run --with pytest --with faster-whisper
+--with av==17.0.1 --with scikit-learn pytest tool/test_transcribe_worker.py -q`.
+Clustering tests inject embeddings and never download a model; they skip when
+scikit-learn is absent.
+
 A launchd agent (`~/Library/LaunchAgents/org.tylog.transcribe.plist`, every
 60 s) runs this; its log is `/tmp/tylog-transcribe.log`.
