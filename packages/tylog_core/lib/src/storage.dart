@@ -5,10 +5,15 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+final _tempRandom = Random();
+
 Future<void> writeFileAtomic(File file, List<int> bytes) async {
   await file.parent.create(recursive: true);
+  // Short sibling name: `<name>.<micros>.tmp` overflowed the 255-byte name
+  // limit for long Cyrillic article titles (errno 36).
   final temporary = File(
-    '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    '${file.parent.path}/.tylog-${DateTime.now().microsecondsSinceEpoch}'
+    '${_tempRandom.nextInt(1000).toString().padLeft(3, '0')}.tmp',
   );
   await temporary.writeAsBytes(bytes, flush: true);
   await temporary.rename(file.path);

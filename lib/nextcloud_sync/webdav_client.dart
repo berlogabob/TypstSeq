@@ -510,8 +510,10 @@ extension _WebDavClient on NextcloudSync {
     File file, {
     bool protectNonEmpty = false,
   }) async {
+    // Short sibling name; see writeFileAtomic (255-byte name limit).
     final tmp = File(
-      '${file.path}.download-${DateTime.now().microsecondsSinceEpoch}.tmp',
+      '${file.parent.path}/.tylog-${DateTime.now().microsecondsSinceEpoch}'
+      '${math.Random().nextInt(1000).toString().padLeft(3, '0')}.tmp',
     );
     final request = await _open('GET', _remoteUri(path));
     request.headers.set('X-Hash', 'sha256');
