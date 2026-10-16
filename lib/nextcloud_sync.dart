@@ -1100,12 +1100,25 @@ class NextcloudSync {
       );
       // Housekeeping: hashes every path and lists every history folder
       // (~10 s on a 19.5k-file vault), so not on every 60 s poll.
-      final pruned = vault.lastRevisionPrune;
+      // The background worker builds a fresh Vault per run, so the time is
+      // also kept in a device-local marker (.tylog never syncs).
+      const pruneMarker = '.tylog/revision_prune.stamp';
+      var pruned = vault.lastRevisionPrune;
+      if (pruned == null) {
+        try {
+          pruned = (await vault.storage.stat(pruneMarker))?.modified;
+        } catch (_) {}
+      }
       if (pruned == null ||
           DateTime.now().difference(pruned) > const Duration(hours: 6)) {
         progress('prune-revisions');
         await vault.pruneLocalRevisions(syncState.keys, knownPaths: allPaths);
         vault.lastRevisionPrune = DateTime.now();
+        try {
+          await vault.storage.writeText(pruneMarker, '');
+        } catch (_) {}
+      } else {
+        vault.lastRevisionPrune = pruned;
       }
       // Only what this pass actually looked at. A save landing mid-pass stays
       // queued for the next one — the same contract the scan cache uses for
