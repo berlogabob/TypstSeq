@@ -92,3 +92,19 @@ Status at stop (2026-10-16 09:30, laptop shutting down):
 - New fix in 0.19.1: Journal grey days on Mac = agenda ExpansionTile read a scroll offset from PageStorage (double as bool); now keyed per day, regression test added (fails pre-fix). Full suite 1537 green at 644f9c3.
 - Open: 3 (revisions on devices, only test-covered); 4 (background job: first forced run skipped, likely <5 min since UI sync; retry: `adb shell am kill org.tylog.tylog`, wait 6 min, `adb shell cmd jobscheduler run -f org.tylog.tylog <id>` from `dumpsys jobscheduler | grep tylog`, check TYLOG_SYNC background line and job duration); emulator test vault not yet removed (AVD TyLog_v40_Acceptance, app org.tylog.tylog.debug).
 - Then: tag v0.19.1+153, release workflow, install P30 + Mac (/Applications still 0.19.0).
+
+## Wave 8 (2026-10-16): everything open blocks 0.19.1 (user: "no new release until all tasks and blockers or leftovers" are closed)
+Done since stop: background worker skips while app is foreground (44106e2); revision prune time persisted in `.tylog/revision_prune.stamp` (ea009ff); Journal grey days (644f9c3); emulator test vault removed. Ornith (Studio) failed a 10-line edit in nextcloud_sync.dart (looped, overwrote the file; restored) - Studio only for new/small files.
+Queue (all block the release):
+1. Huawei drops the WorkManager job while the app is dead (no background sync until next launch): re-register on BOOT_COMPLETED / package replaced / network change, document Huawei battery settings.
+2. App returning while a background run holds the lock waits up to ~2 min: UI asks the service to stop (cancel flag file / deadline shortening) and takes over.
+3. Startup scan-local-shortcut 4.8 s (P30) and background scan-local 7 s: skip the full local walk when nothing was written locally since the last sync (persisted listing stamp), or reuse the worker's listing.
+4. Startup background index check 10 s: reuse the sync's no-change result / cached listing so the worker skips the fresh scan.
+5. Empty folders after module uninstall (projects/<id>, assets/modules/<id>): delete empty dirs (SAF + local).
+6. Check 3: revisions Mac -> P30 on devices (needs a note the user allows editing).
+7. Verify on P30: next background run shows no prune-revisions (marker works).
+8. Speaker diarization for transcription (pyannote or Studio model).
+9. Course audio origin (Qwen vs edge-tts in repo) - needs user answer.
+10. Studio cannot load Qwen3-TTS / Chatterbox (transformers 5.5.0).
+11. Public tylog-pack-pt-pt: IADE mentions + audio licence.
+Then: full suite, device checks, tag 0.19.1.
