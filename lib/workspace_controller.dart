@@ -592,8 +592,9 @@ class WorkspaceController extends ChangeNotifier {
           firstSync = syncNow(trigger: trigger);
           unawaited(firstSync);
         }
-        startCloudPolling();
       }
+      // Gates itself: an account, or a Nextcloud Desktop folder (revisions).
+      startCloudPolling();
       // Heavy index + search-index build runs in the background, using the
       // on-disk cache/fingerprints (force: false) so it's much faster than a
       // full rebuild.
@@ -1593,6 +1594,21 @@ class WorkspaceController extends ChangeNotifier {
   void startCloudPolling() {
     if (_disposed || _copyingVault) return;
     stopCloudPolling();
+    // Nextcloud Desktop moves the files; the app still publishes and ingests
+    // entity revisions, and that vault usually has no in-app account at all.
+    final local = localDirectory;
+    if (local != null && isNextcloudManagedVault(local)) {
+      final opened = vault;
+      if (opened != null) {
+        unawaited(_syncDesktopRevisions(opened, _vaultGeneration));
+      }
+      _cloudPoll = Timer.periodic(const Duration(seconds: 60), (_) {
+        final current = vault;
+        if (current == null || syncing || _copyingVault) return;
+        unawaited(_syncDesktopRevisions(current, _vaultGeneration));
+      });
+      return;
+    }
     if (!(cloud?.isReady ?? false)) return;
     _pushClient = NextcloudPushClient(
       cloud!,
@@ -1960,7 +1976,9 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final config = configOverride ?? cloud;
     if (opened == null) return false;
-    if (config == null || !config.isReady) {
+    final desktopManaged = localDirectory != null &&
+        isNextcloudManagedVault(localDirectory!);
+    if (!desktopManaged && (config == null || !config.isReady)) {
       throw const WorkspaceSyncNotConfigured();
     }
     final generation = _vaultGeneration;
@@ -1986,6 +2004,7 @@ class WorkspaceController extends ChangeNotifier {
     if (local != null && isNextcloudManagedVault(local)) {
       return _syncDesktopRevisions(opened, generation);
     }
+    if (config == null) throw const WorkspaceSyncNotConfigured();
     // A background maintenance pass held this for ~2 min on a P30; yield to UI.
     var acquired = false;
     var lockFirstMs = 0, lockTries = 0;

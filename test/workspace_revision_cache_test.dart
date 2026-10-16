@@ -206,6 +206,42 @@ void main() {
       },
     );
   }
+  test('desktop-managed vault without an in-app account still publishes '
+      'revisions from the poll timer', () async {
+    final directory = await Directory.systemTemp.createTemp('desktop-rev-');
+    addTearDown(() => directory.delete(recursive: true));
+    final storage = _CountingStorage(directory, false);
+    final database = TyLogDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      databaseForVault: (_) async => database,
+      useForegroundService: false,
+    );
+    addTearDown(controller.dispose);
+    final entry = VaultEntry(
+      id: 'local',
+      name: 'Local',
+      path: '${Platform.environment['HOME']}/Nextcloud/revision-test',
+    );
+    await controller.openVault(entry, storage: storage);
+    await controller.refreshIndex(always: true);
+    // No controller.cloud: the Mac's Nextcloud Desktop setup has no account.
+    controller.note = 'notes/local.typ';
+    controller.edit('#show: tylog.note.with(id: "local", title: "Local")\nMac');
+    expect(await controller.save(syncAfter: false), isTrue);
+    controller.note = null;
+    expect(await database.pendingRevisionUploads(), isNotEmpty);
+    controller.startCloudPolling();
+    for (var i = 0; i < 50; i++) {
+      if ((await storage.list(path: '_system/revisions')).isNotEmpty) break;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    expect(await storage.list(path: '_system/revisions'), hasLength(1));
+    controller.stopCloudPolling();
+  });
 }
 
 class _CountingStorage extends LocalVaultStorage {

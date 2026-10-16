@@ -21,6 +21,9 @@ their history is in the commit log and the GitHub release notes.
 
 - Journal no longer turns every day into a grey box when a saved scroll
   position collided with the agenda section's open/closed state.
+- Mac with Nextcloud Desktop (no in-app account): the app now publishes and
+  ingests entity revisions every 60 s; before, it never shared or received them
+  (Mac: 99 unpublished revisions shared, 119 phone revisions received).
 - Back navigation: Journal, Library (all tabs), Search, Graph, Preview, Source
   and Split view now show a back arrow, and the Android back gesture returns to
   where you came from (a note opened from Library goes back to Library, then
