@@ -3,6 +3,26 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.19.1+153
+
+### Performance
+
+- Startup sync on a large app-storage vault: 22 s -> 7 s (P30, 19.5k files).
+  Local file listing runs as one batch in a background isolate (14 s -> 5 s),
+  shared revision files already read are skipped across launches (~4 s), and
+  local-history cleanup runs at most every 6 h instead of on every 60 s poll
+  (12 s each).
+
+### Fixed
+
+- Journal no longer turns every day into a grey box when a saved scroll
+  position collided with the agenda section's open/closed state.
+- A recording made from Library > Audio opens at once and shows in the list;
+  before, Save waited for a full index refresh (on large folder vaults it
+  looked like nothing happened until a restart).
+- Machines running the transcription worker stay shown as online for 15 min
+  (the worker now refreshes its status every 4 min).
+
 ## 0.19.0+152
 
 ### Performance

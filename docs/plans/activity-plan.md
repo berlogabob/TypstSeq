@@ -72,3 +72,18 @@ Then: tag v0.18.1+151, install everywhere.
 - FIXED: startup sync 22 s -> 7.3 s on P30 (real vault, app storage). Stage logs (`TYLOG_SYNC` in logcat) showed: LocalVaultStorage.list awaited one stat per entry (scan-local-shortcut 14.4 s -> 4.8 s, sync walk in an isolate); revision files re-ingested every launch (418 files, ~4 s; seen stamps now persisted in the vault database); pruneLocalRevisions ran on every 60 s poll (12.4 s; now once per 6 h per process).
 - DONE: P30 backup folder Download/TyLog deleted (1.9 GB).
 - OPEN: scan-local-shortcut still 4.8 s at startup (full local walk to prove no local change); background full scan at startup 10 s.
+
+## Wave 7 (2026-10-16): 0.19.1 release checklist (user: "add all ... and go")
+Recheck before release:
+1. Mac, real vault: startup sync + first index with the isolate-based LocalVaultStorage.list (only P30-tested so far).
+2. P30, test vault TyLogModTest: recording opens at once; 20-min parts still appear in the Audio list.
+3. Revisions on devices: edit a note on the Mac, P30 picks it up (persisted seen stamps).
+4. P30 background sync: prunes history on every run (fresh Vault, max every 15 min); must not hold vault.lock long enough to block the UI.
+5. Release prep: bump 0.19.1, CHANGELOG, release workflow (also ships the 15-min worker online window).
+6. Decide on the `TYLOG_SYNC` logcat line (one per sync); keep unless the user objects.
+Leftovers (not blocking):
+- Startup scan-local-shortcut 4.8 s + 10 s background index check.
+- Empty folders after module uninstall.
+- Speaker diarization for transcription (pyannote or Studio model).
+- Unresolved: course audio origin (Qwen vs edge-tts in repo); Studio cannot load Qwen3-TTS/Chatterbox; IADE mentions + audio licence in public tylog-pack-pt-pt.
+- Housekeeping: remove baseline worktree (scratchpad); remove emulator test vault; delete /sdcard/Download/TyLogModTest on P30 (backup only).

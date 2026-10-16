@@ -217,34 +217,34 @@ void main() {
       title: title,
       notePath: 'events/$title.typ',
     );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: JournalFeed(
-            vault: vault,
-            index: VaultIndex(
-              notesByPath: {
-                path: NoteRef(
-                  id: yesterday,
-                  path: path,
-                  title: yesterday,
-                  kind: 'daily',
-                  date: yesterday,
-                  outgoingLinks: const [],
-                ),
-              },
-              backlinksByTarget: const {},
-            ),
-            events: [
-              event(yesterday, 'Yesterday class'),
-              event(twoDaysAgo, 'Pageless class'),
-              event(tomorrow, 'Tomorrow lab'),
-            ],
-            onOpenPath: opened.add,
+    Widget app(Key key) => MaterialApp(
+      home: Scaffold(
+        body: JournalFeed(
+          key: key,
+          vault: vault,
+          index: VaultIndex(
+            notesByPath: {
+              path: NoteRef(
+                id: yesterday,
+                path: path,
+                title: yesterday,
+                kind: 'daily',
+                date: yesterday,
+                outgoingLinks: const [],
+              ),
+            },
+            backlinksByTarget: const {},
           ),
+          events: [
+            event(yesterday, 'Yesterday class'),
+            event(twoDaysAgo, 'Pageless class'),
+            event(tomorrow, 'Tomorrow lab'),
+          ],
+          onOpenPath: opened.add,
         ),
       ),
     );
+    await tester.pumpWidget(app(const ValueKey(1)));
     await tester.pumpAndSettle();
     expect(find.text('Coming up'), findsNothing);
     expect(find.text('Tomorrow lab'), findsNothing);
@@ -254,6 +254,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yesterday class'));
     expect(opened, ['events/Yesterday class.typ']);
+
+    // A scroll offset saved in the card's storage slot must not reach the
+    // tile: unkeyed, it cast the double to bool and every day went grey.
+    final card = tester.element(find.byType(Card).first);
+    PageStorage.of(card).writeState(card, 120.0);
+    await tester.pumpWidget(app(const ValueKey(2)));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Agenda · 1'), findsOneWidget);
   });
 
   testWidgets('journal card atom tap wins while its background still opens', (

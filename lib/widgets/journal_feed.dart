@@ -243,6 +243,9 @@ class _JournalFeedState extends State<JournalFeed> {
                   if (_eventsOn(_dayKey(day)) case final events
                       when events.isNotEmpty)
                     ExpansionTile(
+                      // Own storage slot: unkeyed, it read a sibling scroll
+                      // offset (double) as its bool and every day turned grey.
+                      key: PageStorageKey('journal-agenda-${_dayKey(day)}'),
                       dense: true,
                       tilePadding: EdgeInsets.zero,
                       shape: const Border(),
