@@ -244,6 +244,24 @@ Future<ModuleInstallResult> uninstallModule(
       skipped.add(entry.key);
     }
   }
+  final directories = <String>{};
+  for (final path in owned.keys) {
+    if (!isSafeVaultPath(path) ||
+        !(path.startsWith('projects/$id/') ||
+            path.startsWith('assets/modules/$id/'))) {
+      continue;
+    }
+    var parent = path.substring(0, path.lastIndexOf('/'));
+    while (parent != 'projects' && parent != 'assets/modules') {
+      directories.add(parent);
+      parent = parent.substring(0, parent.lastIndexOf('/'));
+    }
+  }
+  final deepestFirst = directories.toList()
+    ..sort((a, b) => b.split('/').length.compareTo(a.split('/').length));
+  for (final path in deepestFirst) {
+    await storage.deleteEmptyDirectory(path);
+  }
   if (await storage.exists(moduleRecordPath(id))) {
     await storage.delete(moduleRecordPath(id));
   }

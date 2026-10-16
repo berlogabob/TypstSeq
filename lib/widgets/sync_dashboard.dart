@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
+import 'background_sync_notice.dart';
 import '../nextcloud_sync.dart';
 import '../vault_registry.dart';
 import 'constants.dart';
@@ -266,6 +267,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(kSpace16),
                 children: [
+                  if (value.cloud != null) const BackgroundSyncNotice(),
                   if ((running || value.syncing) && value.stage != null) ...[
                     LinearProgressIndicator(semanticsLabel: 'Sync progress'),
                     const SizedBox(height: 8),

@@ -98,6 +98,28 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
+  test('service hands the vault over to the UI', () async {
+    expect(await VaultLock.acquire(storage, 'service'), isTrue);
+    expect(await VaultLock.acquire(storage, 'ui'), isFalse);
+    await VaultLock.requestHandover(storage);
+    expect(await VaultLock.handoverRequested(storage), isTrue);
+    await VaultLock.release(storage, 'service');
+    expect(await storage.exists(VaultLock.handoverPath), isFalse);
+    expect(await VaultLock.acquire(storage, 'ui'), isTrue);
+  });
+
+  test('stale handover requests are removed', () async {
+    await storage.writeText(
+      VaultLock.handoverPath,
+      DateTime.now()
+          .subtract(const Duration(minutes: 3))
+          .millisecondsSinceEpoch
+          .toString(),
+    );
+    expect(await VaultLock.handoverRequested(storage), isFalse);
+    expect(await storage.exists(VaultLock.handoverPath), isFalse);
+  });
+
   test('acquire, block the other owner, release, acquire again', () async {
     expect(await VaultLock.acquire(storage, 'ui'), isTrue);
     expect(await VaultLock.acquire(storage, 'service'), isFalse);

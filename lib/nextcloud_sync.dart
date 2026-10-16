@@ -713,8 +713,13 @@ class NextcloudSync {
             currentEtag: probedEtag,
           )) {
             progress('scan-local-shortcut');
+            // Startup: the remote is unchanged and a local-only change can
+            // wait for the first poll. Walking 19.5k files here (~4 s on a
+            // P30) ran alongside the worker's own walk and slowed both.
+            // lastFullSyncScan stays unset, so that poll does the full check.
             final useCachedLocal =
-                canSkipLocalScan && !vault.hasPendingSyncWrites;
+                (canSkipLocalScan || trigger == 'startup') &&
+                !vault.hasPendingSyncWrites;
             if (!useCachedLocal) {
               scannedListing ??= await _localFiles(vault.storage);
               vault.lastFullSyncScan = DateTime.now();
@@ -734,7 +739,10 @@ class NextcloudSync {
                 'event': 'no-change-shortcut',
                 'stageMillis': stageProfile(),
                 'listedFolders': _listedFolders,
-                'listedEntries': _listedEntries,
+                'listedEntries': scannedListing == null
+                    ? _listedEntries
+                    : '${scannedListing.syncable.length}/${scannedListing.raw.length} local '
+                          '(${_topCounts(scannedListing.raw)})',
                 'propfindMillis': Map.of(_propfindMillis),
                 'trigger': trigger,
                 'uploaded': 0,

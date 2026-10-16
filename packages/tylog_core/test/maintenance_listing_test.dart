@@ -11,6 +11,7 @@ class _CountingStorage extends LocalVaultStorage {
   _CountingStorage(super.root);
 
   int recursiveListCalls = 0;
+  int indexWrites = 0;
 
   @override
   Future<List<VaultStorageEntry>> list({
@@ -35,6 +36,7 @@ class _CountingStorage extends LocalVaultStorage {
   @override
   Future<void> writeBytes(String path, List<int> bytes) async {
     if (path == TylogVaultPaths.index) {
+      indexWrites++;
       await Future<void>.delayed(const Duration(milliseconds: 115));
     }
     return super.writeBytes(path, bytes);
@@ -67,6 +69,28 @@ class _Inspector implements TypstInspector, BaseFilesInspector {
 }
 
 void main() {
+  test('a cold unchanged rescan does not rewrite the cached index', () async {
+    final root = await Directory.systemTemp.createTemp('tylog-cold-rescan-');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = _CountingStorage(root);
+    await storage.writeText('notes/a.typ', '= A\n');
+    await VaultMaintenance(
+      storage,
+      publishDonor: false,
+    ).run(validate: false, buildSearch: false, sweep: false).toList();
+    final before = await storage.readBytes(TylogVaultPaths.index);
+    storage.indexWrites = 0;
+
+    final cold = VaultMaintenance(storage, publishDonor: false);
+    await cold.run(validate: false, buildSearch: false, sweep: false).toList();
+    expect(storage.indexWrites, 0);
+    expect(await storage.readBytes(TylogVaultPaths.index), before);
+
+    await storage.writeText('notes/a.typ', '= Changed\n');
+    await cold.run(validate: false, buildSearch: false, sweep: false).toList();
+    expect(storage.indexWrites, 1);
+  });
+
   test('one recursive listing is reused by every maintenance stage', () async {
     final root = await Directory.systemTemp.createTemp(
       'tylog-maintenance-listing-',

@@ -1,16 +1,21 @@
 package org.tylog.tylog
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.os.PowerManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -141,7 +146,7 @@ class SafBridge(
     // (Declared in the companion object — shared across engines.)
 
     private val mutatingMethods = setOf(
-        "createDirectory", "write", "delete", "deleteRoot", "releaseAccess", "import",
+        "createDirectory", "write", "delete", "deleteEmptyDirectory", "deleteRoot", "releaseAccess", "import",
     )
     private val channel = MethodChannel(messenger, CHANNEL)
 
@@ -189,6 +194,43 @@ class SafBridge(
                     null,
                 )
             }
+            return
+        }
+
+        if (call.method == "isIgnoringBatteryOptimizations") {
+            val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            result.success(power.isIgnoringBatteryOptimizations(context.packageName))
+            return
+        }
+        if (call.method == "deviceManufacturer") {
+            result.success(Build.MANUFACTURER)
+            return
+        }
+        if (call.method == "openBatterySettings") {
+            val declared = context.packageManager.getPackageInfo(
+                context.packageName, PackageManager.GET_PERMISSIONS,
+            ).requestedPermissions.orEmpty()
+            val intents = mutableListOf<Intent>()
+            if ("android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" in declared) {
+                intents.add(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}")))
+            }
+            intents.add(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            intents.add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}")))
+            for (intent in intents) {
+                try {
+                    if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    (activity ?: context).startActivity(intent)
+                    result.success(null)
+                    return
+                } catch (_: ActivityNotFoundException) {
+                    // Some manufacturers omit the standard battery settings screen.
+                } catch (_: SecurityException) {
+                    // Fall back when the direct exemption request is restricted.
+                }
+            }
+            result.error("battery_settings_unavailable", "Battery settings are unavailable", null)
             return
         }
 
@@ -315,7 +357,7 @@ class SafBridge(
 
         if (call.method !in setOf(
                 "exists", "createDirectory", "list", "stat", "read", "write",
-                "delete", "deleteRoot", "releaseAccess", "hash", "import",
+                "delete", "deleteEmptyDirectory", "deleteRoot", "releaseAccess", "hash", "import",
                 "materialize", "open",
             )
         ) {
@@ -360,8 +402,22 @@ class SafBridge(
                     if (path(call) == ".nomedia") forgetIndexedMedia(tree)
                     null
                 }
-                "delete" -> resolve(tree, path(call))
-                    ?.let { DocumentsContract.deleteDocument(resolver, it) }
+                "delete", "deleteEmptyDirectory" -> resolve(tree, path(call))
+                    ?.let { document ->
+                        if (call.method == "deleteEmptyDirectory") {
+                            if (!isDirectory(document)) return@let
+                            require(path(call).contains('/')) { "Cannot delete a vault root or top-level folder" }
+                            val children = DocumentsContract.buildChildDocumentsUriUsingTree(
+                                tree, DocumentsContract.getDocumentId(document),
+                            )
+                            query(children).use { cursor ->
+                                if (cursor.moveToFirst()) return@let
+                            }
+                        }
+                        require(DocumentsContract.deleteDocument(resolver, document)) {
+                            "Storage provider could not delete the vault item"
+                        }
+                    }
                     .also { invalidate(tree, path(call)) }
                     .let { null }
                 "deleteRoot" -> {

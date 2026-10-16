@@ -49,6 +49,30 @@ void main() {
     'assets/a.mp3': 'AUDIO',
   };
 
+  test(
+    'uninstall removes empty module folders and preserves unrelated files',
+    () async {
+      final pack = ModulePack.parse(
+        archive({
+          'notes/lessons/1.typ': 'Lesson',
+          'assets/audio/1.mp3': 'AUDIO',
+        }),
+      );
+      await storage.writeText('projects/unrelated.typ', 'Keep');
+      await storage.writeText('assets/modules/other/keep.txt', 'Keep');
+      await installModule(storage, pack, DateTime(2026, 1, 1));
+      await uninstallModule(storage, pack.id);
+
+      expect(await storage.exists('projects/p1'), isFalse);
+      expect(await storage.exists('assets/modules/p1'), isFalse);
+      expect(await storage.exists('projects'), isTrue);
+      expect(await storage.exists('assets/modules'), isTrue);
+      expect(await storage.readText('projects/unrelated.typ'), 'Keep');
+      expect(await storage.readText('assets/modules/other/keep.txt'), 'Keep');
+      expect(await dir.exists(), isTrue);
+    },
+  );
+
   test('unit defaults to tasks in packs and legacy install records', () async {
     final pack = ModulePack.parse(archive(files));
     expect(pack.unit, 'tasks');

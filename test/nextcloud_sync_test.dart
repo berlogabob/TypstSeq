@@ -1037,6 +1037,40 @@ void main() {
   }
 
   test(
+    'startup with an unchanged remote defers the local walk to the next poll',
+    () async {
+      final root = await Directory.systemTemp.createTemp('startup_defer_');
+      final remote = <String, _MutableRemoteFile>{};
+      final uploads = <Map<String, Object?>>[];
+      final server = await _mutableWebDavServer(remote, uploads: uploads);
+      addTearDown(() async {
+        await server.close(force: true);
+        await root.delete(recursive: true);
+      });
+      final vault = Vault(root);
+      await vault.ensureCreated();
+      await vault.storage.writeText('notes/a.typ', '= A\n');
+      await NextcloudSync(_config(server)).sync(vault);
+      await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+      // An edit the last session never uploaded, seen by a fresh process.
+      await File('${root.path}/notes/a.typ').writeAsString('= A edited\n');
+      final restarted = Vault(root);
+      final stages = <String>[];
+      final startup = await NextcloudSync(
+        _config(server),
+        onProgress: (stage, _) => stages.add(stage),
+      ).sync(restarted, trigger: 'startup');
+      expect(stages, contains('probe-root'));
+      expect(startup.uploaded, 0);
+      final poll = await NextcloudSync(
+        _config(server),
+      ).sync(restarted, trigger: 'poll');
+      expect(poll.uploaded, 1);
+      expect(utf8.decode(remote['notes/a.typ']!.bytes), '= A edited\n');
+    },
+  );
+
+  test(
     'revision rewrite between hash and comparison does not record identical snapshots',
     () async {
       final root = await Directory.systemTemp.createTemp('revision_hash_race_');

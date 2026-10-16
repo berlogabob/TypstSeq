@@ -262,7 +262,7 @@ class VaultMaintenance {
     stage.reset();
     var reusedNotes = 0;
     var reusedTasks = 0;
-    final index = await scanVaultStorage(
+    var index = await scanVaultStorage(
       storage,
       entries: entries,
       stageMillis: stageMillis,
@@ -287,16 +287,26 @@ class VaultMaintenance {
         (stageMillis['recover-writes'] ?? 0) -
         (stageMillis['tag-synonyms'] ?? 0) -
         (stageMillis['scan-prepare'] ?? 0) -
-        (stageMillis['scan-finalize'] ?? 0);
+        (stageMillis['scan-finalize'] ?? 0) -
+        (stageMillis['note-hash'] ?? 0) -
+        (stageMillis['note-parse'] ?? 0);
     stage.reset();
-    // Skip the *encode*, not just the write: jsonEncode + gzip of the whole
-    // index ran unconditionally just to compute a digest to compare against.
-    // Comparing note content hashes answers the same question for the price of
-    // one pass over a map already in memory. The existence check keeps an
-    // externally-deleted `_index/` from being treated as already-written.
+    // A cold worker has a disk index but no _lastBuiltIndex. Comparing only
+    // the latter re-encoded/gzipped the cache on the P30's 9–10 s fresh scan.
+    // Identity includes metadata upgrades and fingerprint changes; content
+    // hashes alone would hide those even when the note bytes stayed equal.
     final unchanged =
-        sameIndexedContent(_lastBuiltIndex, index) &&
+        previous != null &&
+        previous.version == index.version &&
+        previous.queryVersion == index.queryVersion &&
+        previous.notesByPath.length == index.notesByPath.length &&
+        index.notesByPath.entries.every(
+          (entry) => identical(previous.notesByPath[entry.key], entry.value),
+        ) &&
+        jsonEncode(previous.tasks) == jsonEncode(index.tasks) &&
+        jsonEncode(previous.problems) == jsonEncode(index.problems) &&
         await storage.exists(TylogVaultPaths.index);
+    if (unchanged) index = previous;
     stageMillis['index-check'] = stage.elapsedMilliseconds;
     stage.reset();
     stageMillis['encode-index'] = 0;
@@ -403,6 +413,8 @@ class VaultMaintenance {
           'tag-synonyms',
           'scan-prepare',
           'scan-finalize',
+          'note-hash',
+          'note-parse',
           'scan',
           'index-check',
           'encode-index',

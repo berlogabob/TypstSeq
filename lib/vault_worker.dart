@@ -143,12 +143,14 @@ class IndexBuiltEvent extends VaultWorkerEvent {
     this.parsedNotes = 0,
     this.durationMs = 0,
     this.fromCache = false,
+    this.stageMillis = const {},
   });
 
   final VaultIndex index;
   final int parsedNotes;
   final int durationMs;
   final bool fromCache;
+  final Map<String, int> stageMillis;
 
   /// What this scan took from other devices' donors, when it consulted them.
   /// Reported so "the laptop did the work" is observable instead of a silent
@@ -301,6 +303,9 @@ class _VaultWorker {
 
   void _send(VaultWorkerEvent event) => _boot.events.send(event);
 
+  VaultIndex? _communitiesIndex;
+  CommunityMap? _communities;
+
   Future<void> _rebuild(RebuildIndexCommand command) async {
     _busy = true;
     _cancelled = false;
@@ -363,6 +368,7 @@ class _VaultWorker {
                 donorReuse: donorReuse,
                 parsedNotes: parsedNotes,
                 durationMs: durationMs,
+                stageMillis: Map.of(_vault.maintenance.stageMillis),
                 donorPublishError: donorPublishError?.toString(),
               ),
             );
@@ -370,7 +376,14 @@ class _VaultWorker {
             // Derived state is an optimization; the UI degrades to null on
             // failure.
             try {
-              _send(CommunitiesBuiltEvent(computeCommunities(index)));
+              final timer = Stopwatch()..start();
+              if (!identical(index, _communitiesIndex)) {
+                _communities = computeCommunities(index);
+                _communitiesIndex = index;
+              }
+              _vault.maintenance.stageMillis['communities'] =
+                  timer.elapsedMilliseconds;
+              _send(CommunitiesBuiltEvent(_communities!));
             } catch (_) {}
           case MaintenanceValidated(:final report):
             _send(PkmsBuiltEvent(report));

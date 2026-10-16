@@ -31,6 +31,29 @@ import 'package:tylog_core/storage.dart';
 /// killed, is a fact rather than an estimate.
 class VaultLock {
   static const path = '.tylog/vault.lock';
+  static const handoverPath = '.tylog/vault.lock.handover';
+  static const handoverMaxAge = Duration(minutes: 2);
+
+  static Future<void> requestHandover(VaultStorage storage) =>
+      storage.writeText(
+        handoverPath,
+        DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
+  static Future<bool> handoverRequested(VaultStorage storage) async {
+    if (!await storage.exists(handoverPath)) return false;
+    try {
+      final requested = DateTime.fromMillisecondsSinceEpoch(
+        int.parse(await storage.readText(handoverPath)),
+      );
+      final age = DateTime.now().difference(requested);
+      if (!age.isNegative && age <= handoverMaxAge) return true;
+    } on FormatException {
+      // An interrupted or stale request must not stop later background runs.
+    }
+    await storage.delete(handoverPath);
+    return false;
+  }
 
   /// How long a holder is believed when it does not say. Also the fallback for
   /// a lock written before deadlines existed.
@@ -77,6 +100,15 @@ class VaultLock {
   static Future<void> release(VaultStorage storage, String owner) async {
     final holder = await _read(storage);
     if (holder?.owner != owner) return;
+    if (owner == 'service') {
+      try {
+        if (await storage.exists(handoverPath)) {
+          await storage.delete(handoverPath);
+        }
+      } catch (_) {
+        // A request expires after 2 min; cleanup must not strand the lock.
+      }
+    }
     try {
       await storage.delete(path);
     } catch (_) {

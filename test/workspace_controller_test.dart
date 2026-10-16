@@ -3083,33 +3083,41 @@ void main() {
     }, createHttpClient: (_) => _ResolveHttpClient());
   });
 
-  test('UI sync gives up a service lock quietly after 15 seconds', () async {
-    final storage = _MemoryStorage();
-    final controller = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      inspector: _FakeInspector(),
-      reconcileTasks: (_) async {},
-    );
-    addTearDown(controller.dispose);
-    await controller.openVault(
-      const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
-      storage: storage,
-    );
-    await controller.refreshIndex(always: true);
-    controller.cloud = const NextcloudConfig(
-      serverUrl: 'https://unused.invalid',
-      username: 'alice',
-      password: 'secret',
-    );
-    await VaultLock.acquire(storage, 'service');
-    final status = controller.status;
-    final elapsed = Stopwatch()..start();
-    expect(await controller.syncNow(), isFalse);
-    expect(elapsed.elapsed, greaterThanOrEqualTo(const Duration(seconds: 15)));
-    expect(controller.status, status);
-    expect(controller.syncError, isNull);
-    expect(await VaultLock.currentOwner(storage), 'service');
-  });
+  test(
+    'UI sync asks the service to hand over, then gives up quietly after 30 seconds',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'local', name: 'Local', path: '/not-used'),
+        storage: storage,
+      );
+      await controller.refreshIndex(always: true);
+      controller.cloud = const NextcloudConfig(
+        serverUrl: 'https://unused.invalid',
+        username: 'alice',
+        password: 'secret',
+      );
+      await VaultLock.acquire(storage, 'service');
+      final status = controller.status;
+      final elapsed = Stopwatch()..start();
+      expect(await controller.syncNow(), isFalse);
+      expect(
+        elapsed.elapsed,
+        greaterThanOrEqualTo(const Duration(seconds: 30)),
+      );
+      expect(controller.status, status);
+      expect(controller.syncError, isNull);
+      expect(await VaultLock.currentOwner(storage), 'service');
+      expect(await VaultLock.handoverRequested(storage), isTrue);
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test(
     'the post-sync reindex goes through the scan driver, not an inline one',

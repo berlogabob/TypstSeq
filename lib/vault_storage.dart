@@ -207,6 +207,12 @@ class AndroidTreeVaultStorage extends VaultStorage {
   );
 
   @override
+  Future<void> deleteEmptyDirectory(String path) => invoke(
+    channel.invokeMethod<void>('deleteEmptyDirectory', args({'path': path})),
+    'deleteEmptyDirectory',
+  );
+
+  @override
   Future<String> hash(String path) async => (await invoke<String?>(
     channel.invokeMethod<String>('hash', args({'path': path})),
     'hash',

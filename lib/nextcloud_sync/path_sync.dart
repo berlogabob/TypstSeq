@@ -205,6 +205,19 @@ extension _PathSync on NextcloudSync {
     return (raw: raw, syncable: syncable);
   }
 
+  // Diagnostics: entries per top-level folder of a local walk.
+  String _topCounts(List<VaultStorageEntry> raw) {
+    final counts = <String, int>{};
+    for (final e in raw) {
+      final parts = e.path.split('/');
+      final top = parts.length > 2 ? '${parts[0]}/${parts[1]}' : parts[0];
+      counts[top] = (counts[top] ?? 0) + 1;
+    }
+    final sorted = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.take(6).map((e) => '${e.key}=${e.value}').join(',');
+  }
+
   /// Unconflicted local paths must match their cursor's mtime+size exactly.
   /// Pending conflicts stay outside this check until the user resolves them.
   bool _matchesLocalCursorSnapshot(

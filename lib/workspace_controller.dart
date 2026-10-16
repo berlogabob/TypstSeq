@@ -1310,6 +1310,7 @@ class WorkspaceController extends ChangeNotifier {
     _indexPending = false;
     _indexFailed = false;
     cancelRebuild = false;
+    var scanStages = const <String, int>{};
     final done = Completer<void>();
     _activeScan = done.future;
     notifyListeners();
@@ -1327,6 +1328,7 @@ class WorkspaceController extends ChangeNotifier {
           showProgress: showProgress,
           updateStatus: updateStatus,
           onProgress: onProgress,
+          onStages: (stages) => scanStages = stages,
         );
         repeat = true;
       } while (_rescanQueued && _owns(opened, generation));
@@ -1341,7 +1343,7 @@ class WorkspaceController extends ChangeNotifier {
         if (!_disposed) notifyListeners();
       }
       done.complete();
-      startupMark('scan-done');
+      startupMark('scan-done', {'stageMillis': scanStages});
     }
   }
 
@@ -1352,6 +1354,7 @@ class WorkspaceController extends ChangeNotifier {
     required bool showProgress,
     required bool updateStatus,
     required void Function(int complete, int total)? onProgress,
+    required void Function(Map<String, int>) onStages,
   }) async {
     final revision = savedRevision;
     final worker = _worker;
@@ -1395,6 +1398,8 @@ class WorkspaceController extends ChangeNotifier {
             'notes': index.notes.length,
             'durationMs': event.durationMs,
             'source': fromCache ? 'cache' : 'scan',
+            'parsedNotes': event.parsedNotes,
+            'stageMillis': event.stageMillis,
           });
           flushStartupTraceWhenReady(opened);
           // Publish notes and tasks now, before the much slower validation +
@@ -1448,6 +1453,7 @@ class WorkspaceController extends ChangeNotifier {
             notifyListeners();
           }
         case WorkDoneEvent():
+          onStages(event.stageMillis);
           final indexed = indexedEvent;
           if (indexed != null) {
             // Every pass records parsing cost, including a zero-reuse fallback.
@@ -1834,15 +1840,20 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       return true;
     }
-    // Give the service a chance to finish before the next poll retries.
+    // A background maintenance pass held this for ~2 min on a P30; yield to UI.
     var acquired = false;
     _acquiringSyncLock = true;
     try {
       final lockWait = Stopwatch()..start();
       acquired = await VaultLock.acquire(opened.storage, 'ui');
-      while (!acquired && lockWait.elapsed < const Duration(seconds: 15)) {
+      var handoverRequested = false;
+      while (!acquired && lockWait.elapsed < const Duration(seconds: 30)) {
         final owner = await VaultLock.currentOwner(opened.storage);
         if (owner != null && owner != 'service') break;
+        if (owner == 'service' && !handoverRequested) {
+          await VaultLock.requestHandover(opened.storage);
+          handoverRequested = true;
+        }
         await Future<void>.delayed(const Duration(milliseconds: 500));
         if (!_owns(opened, generation) || syncing) return false;
         acquired = await VaultLock.acquire(opened.storage, 'ui');

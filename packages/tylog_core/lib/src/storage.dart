@@ -91,6 +91,15 @@ abstract class VaultStorage {
   Stream<List<int>>? openRead(String path, [int? start, int? end]) => null;
   Future<void> writeBytes(String path, List<int> bytes);
   Future<void> delete(String path);
+
+  /// Removes an empty directory, leaving files and non-empty directories alone.
+  Future<void> deleteEmptyDirectory(String path) async {
+    if ((await stat(path))?.isDirectory == true &&
+        (await list(path: path)).isEmpty) {
+      await delete(path);
+    }
+  }
+
   Future<String> hash(String path);
 
   Future<String> readText(String path) async =>
@@ -209,6 +218,14 @@ class LocalVaultStorage extends VaultStorage {
       await Directory(target).delete(recursive: true);
     } else if (type != FileSystemEntityType.notFound) {
       await File(target).delete();
+    }
+  }
+
+  @override
+  Future<void> deleteEmptyDirectory(String path) async {
+    final directory = Directory(_path(path));
+    if (await directory.exists() && (await list(path: path)).isEmpty) {
+      await directory.delete();
     }
   }
 

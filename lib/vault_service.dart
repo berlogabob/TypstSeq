@@ -71,7 +71,25 @@ Future<void> _runOnce(DateTime deadline) async {
     debugPrint('vaultService: UI holds the vault lock, skipping');
     return;
   }
+  var handover = false;
+  Future<void>? handoverCheck;
+  Future<void> checkHandover() async {
+    handover |= await VaultLock.handoverRequested(storage);
+  }
+
+  // The scanner's cancellation hook is synchronous; keep its disk probe off
+  // the per-note path while allowing the UI's 30 s handover window.
+  final handoverTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+    if (handoverCheck != null) return;
+    handoverCheck = checkHandover()
+        .catchError((Object error) {
+          debugPrint('vaultService handover check failed: $error');
+        })
+        .whenComplete(() => handoverCheck = null);
+  });
   try {
+    await checkHandover();
+    if (handover) return;
     if (await backgroundSyncRecentlyCompleted(storage)) return;
     if (!DateTime.now().isBefore(deadline)) return;
     // No conflict gate. This path kept the blanket suspend that the foreground
@@ -88,10 +106,14 @@ Future<void> _runOnce(DateTime deadline) async {
     if (await NextcloudSync(cloud).pollIsUnchanged(vault, dirty: false)) {
       return;
     }
+    await checkHandover();
+    if (handover) return;
     final result = await NextcloudSync(
       cloud,
     ).sync(vault, trigger: 'background');
     if (!result.requiresIndexRefresh) return;
+    await checkHandover();
+    if (handover) return;
 
     FlutterTypstInspector? inspector;
     Object? inspectorError;
@@ -110,6 +132,8 @@ Future<void> _runOnce(DateTime deadline) async {
       // step this context drops, and deliberately: nothing here renders
       // PkmsProblems, so building the report would be work no one reads. The
       // trace below is this process's only channel.
+      await checkHandover();
+      if (handover) return;
       MaintenanceIndexed? indexed;
       await for (final event in vault.maintenance.run(
         inspector: inspector,
@@ -120,7 +144,7 @@ Future<void> _runOnce(DateTime deadline) async {
         // scanner already honours this hook; the service was the one caller
         // that passed nothing, so a cold rebuild was guaranteed to be killed
         // partway on a large vault.
-        isCancelled: () => DateTime.now().isAfter(deadline),
+        isCancelled: () => handover || DateTime.now().isAfter(deadline),
       )) {
         if (event is MaintenanceIndexed) indexed = event;
       }
@@ -154,7 +178,11 @@ Future<void> _runOnce(DateTime deadline) async {
     } finally {
       inspector?.dispose();
     }
+  } on IndexBuildCancelled {
+    // Maintenance stopped at a safe checkpoint; the UI will scan after sync.
   } finally {
+    handoverTimer.cancel();
+    await handoverCheck;
     await VaultLock.release(storage, 'service');
   }
 }

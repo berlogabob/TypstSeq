@@ -500,6 +500,17 @@ Future<VaultIndex> scanVaultStorage(
 
   stageMillis?['scan-prepare'] =
       prepareTimer.elapsedMilliseconds - recoveryMs - synonymsMs;
+  var parseMicros = 0;
+  var hashMicros = 0;
+  Future<String> timedHash(String path) async {
+    final timer = Stopwatch()..start();
+    try {
+      return await storage.hash(path);
+    } finally {
+      hashMicros += timer.elapsedMicroseconds;
+    }
+  }
+
   final notes = <String, NoteRef>{};
   final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
@@ -529,7 +540,7 @@ Future<VaultIndex> scanVaultStorage(
     final donatedNote = localCurrent ? null : donor?.notesByPath[relative];
     final donorHash = donatedNote?.contentHash == null
         ? null
-        : knownHashes[relative] ?? await storage.hash(relative);
+        : knownHashes[relative] ?? await timedHash(relative);
     final donated = donorHash != null && donorHash == donatedNote!.contentHash;
     final cachedIndex = donated ? donor : previous;
     final cached = cachedIndex?.notesByPath[relative];
@@ -565,7 +576,7 @@ Future<VaultIndex> scanVaultStorage(
         matchesDisk = true;
       } else if (cached.contentHash != null) {
         contentHash =
-            donorHash ?? knownHashes[relative] ?? await storage.hash(relative);
+            donorHash ?? knownHashes[relative] ?? await timedHash(relative);
         matchesDisk = contentHash == cached.contentHash;
       }
     }
@@ -667,6 +678,7 @@ Future<VaultIndex> scanVaultStorage(
     // SAF round trips per note; the bytes needed for both are the same bytes.
     // Byte-compatible with storage.hash: LocalVaultStorage and SafBridge both
     // emit lowercase-hex sha256, so cached hashes still match.
+    final parseTimer = Stopwatch()..start();
     onParsed?.call();
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
@@ -848,8 +860,14 @@ Future<VaultIndex> scanVaultStorage(
     // Stamped once here rather than threaded through _queriedNote and
     // _fallbackNote: every branch above has just parsed exactly these bytes.
     notes[relative] = notes[relative]!.copyWith(contentHash: contentHash);
+    parseMicros += parseTimer.elapsedMicroseconds;
     onProgress?.call(fileIndex + 1, files.length);
   }
+  stageMillis?['note-hash'] = hashMicros ~/ 1000;
+  stageMillis?['note-parse'] =
+      parseMicros ~/ 1000 -
+      (stageMillis['support-files'] ?? 0) -
+      (stageMillis['support-publish'] ?? 0);
   stageTimer.reset();
   final index = _buildVaultIndex(notes, problems: problems, tasks: tasks);
   stageMillis?['scan-finalize'] = stageTimer.elapsedMilliseconds;
