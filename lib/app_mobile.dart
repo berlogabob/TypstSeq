@@ -3198,8 +3198,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     const tracePath = '.tylog/sync_trace.jsonl';
     final events = <Map<String, Object?>>[];
-    if (await v.storage.exists(tracePath)) {
-      for (final line in (await v.storage.readText(tracePath)).split('\n')) {
+    final local = await deviceLocalStorage(v.storage);
+    if (await local.exists(tracePath)) {
+      for (final line in (await local.readText(tracePath)).split('\n')) {
         if (line.trim().isEmpty) continue;
         try {
           events.add((jsonDecode(line) as Map).cast<String, Object?>());
@@ -3437,8 +3438,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     if (v == null) return;
     const path = '.tylog/sync_trace.jsonl';
-    final trace = await v.storage.exists(path)
-        ? await v.storage.readText(path)
+    final local = await deviceLocalStorage(v.storage);
+    final trace = await local.exists(path)
+        ? await local.readText(path)
         : 'No sync trace is available.\n';
     // A hung run never finishes, so the trace file is never written for it;
     // surface the live state up front so a stuck sync is still diagnosable.

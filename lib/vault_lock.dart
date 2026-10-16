@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:tylog_core/storage.dart';
+
+import 'vault_storage.dart';
 
 /// Single-owner gate for a sync+reindex pass over one vault.
 ///
@@ -30,17 +31,22 @@ import 'package:tylog_core/storage.dart';
 /// deadline costs nothing extra and, for the one holder that can be hard
 /// killed, is a fact rather than an estimate.
 class VaultLock {
+  /// See [deviceLocalStorage]: on a SAF vault the lock lives in app storage.
+  static Future<VaultStorage> _home(VaultStorage storage) =>
+      deviceLocalStorage(storage);
+
   static const path = '.tylog/vault.lock';
   static const handoverPath = '.tylog/vault.lock.handover';
   static const handoverMaxAge = Duration(minutes: 2);
 
-  static Future<void> requestHandover(VaultStorage storage) =>
-      storage.writeText(
+  static Future<void> requestHandover(VaultStorage storage) async =>
+      (await _home(storage)).writeText(
         handoverPath,
         DateTime.now().millisecondsSinceEpoch.toString(),
       );
 
   static Future<bool> handoverRequested(VaultStorage storage) async {
+    storage = await _home(storage);
     if (!await storage.exists(handoverPath)) return false;
     try {
       final requested = DateTime.fromMillisecondsSinceEpoch(
@@ -68,6 +74,7 @@ class VaultLock {
     Duration validFor = staleAfter,
     DateTime? validUntil,
   }) async {
+    storage = await _home(storage);
     if (await heldByOther(storage, owner)) return false;
     final now = DateTime.now();
     await storage.writeBytes(
@@ -84,6 +91,7 @@ class VaultLock {
   }
 
   static Future<String?> currentOwner(VaultStorage storage) async {
+    storage = await _home(storage);
     final holder = await _read(storage);
     return holder != null && DateTime.now().isBefore(holder.expiresAt)
         ? holder.owner
@@ -91,6 +99,7 @@ class VaultLock {
   }
 
   static Future<bool> heldByOther(VaultStorage storage, String owner) async {
+    storage = await _home(storage);
     final holder = await _read(storage);
     if (holder == null || holder.owner == owner) return false;
     return DateTime.now().isBefore(holder.expiresAt);
@@ -98,6 +107,7 @@ class VaultLock {
 
   /// Releases only a lock [owner] actually holds — never someone else's.
   static Future<void> release(VaultStorage storage, String owner) async {
+    storage = await _home(storage);
     final holder = await _read(storage);
     if (holder?.owner != owner) return;
     if (owner == 'service') {
@@ -120,9 +130,12 @@ class VaultLock {
     VaultStorage storage,
   ) async {
     try {
-      if (!await storage.exists(path)) return null;
+      // Priority reads: on a SAF vault the normal queue sits behind the
+      // startup scan, and the first lock check took 8.3 s on an A24.
+      if (!await storage.existsNow(path)) return null;
       final json =
-          jsonDecode(await storage.readText(path)) as Map<String, Object?>;
+          jsonDecode(utf8.decode(await storage.readBytesNow(path)))
+              as Map<String, Object?>;
       final millis = json['millis'] as int;
       // A lock written before deadlines existed still expires, on the old
       // rule. Absent means "written by an older build", not "never expires".

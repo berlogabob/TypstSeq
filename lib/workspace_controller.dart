@@ -1988,13 +1988,18 @@ class WorkspaceController extends ChangeNotifier {
     }
     // A background maintenance pass held this for ~2 min on a P30; yield to UI.
     var acquired = false;
+    var lockFirstMs = 0, lockTries = 0;
+    String? lockOwner;
     _acquiringSyncLock = true;
     try {
       final lockWait = Stopwatch()..start();
       acquired = await VaultLock.acquire(opened.storage, 'ui');
+      lockFirstMs = lockWait.elapsedMilliseconds;
       var handoverRequested = false;
       while (!acquired && lockWait.elapsed < const Duration(seconds: 30)) {
         final owner = await VaultLock.currentOwner(opened.storage);
+        lockOwner = owner;
+        lockTries++;
         if (owner != null && owner != 'service') break;
         if (owner == 'service' && !handoverRequested) {
           await VaultLock.requestHandover(opened.storage);
@@ -2007,6 +2012,13 @@ class WorkspaceController extends ChangeNotifier {
     } finally {
       _acquiringSyncLock = false;
     }
+    startupMark('sync-lock', {
+      'acquired': acquired,
+      'firstMs': lockFirstMs,
+      'tries': lockTries,
+      'owner': lockOwner,
+      'storage': opened.storage.runtimeType.toString(),
+    });
     if (!acquired) return false;
     if (!_owns(opened, generation)) {
       await VaultLock.release(opened.storage, 'ui');
@@ -2064,6 +2076,7 @@ class WorkspaceController extends ChangeNotifier {
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
       final revisionBeforeSync = editRevision;
+      startupMark('sync-materialize-start');
       final prepared = await _materializeRevisions(opened, generation);
       if (prepared == null) return false;
       final revisionDatabase = prepared.database;

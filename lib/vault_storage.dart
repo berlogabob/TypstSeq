@@ -1,4 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/services.dart';
 import 'package:tylog_core/storage.dart';
@@ -218,3 +223,26 @@ class AndroidTreeVaultStorage extends VaultStorage {
     'hash',
   ))!;
 }
+
+/// Where device-local bookkeeping (vault lock, sync trace) lives. It never
+/// syncs, so on a SAF vault it goes to app storage: there every vault write
+/// queues on one thread, and at startup the lock write took 7.6 s and the
+/// trace append ~8 s behind the scan (A24). Other storages keep it in the
+/// vault's own `.tylog/`.
+Future<VaultStorage> deviceLocalStorage(VaultStorage storage) async {
+  if (storage is! AndroidTreeVaultStorage) return storage;
+  final id = sha1.convert(utf8.encode(storage.uri)).toString();
+  final cached = _deviceLocal[id];
+  if (cached != null) return cached;
+  final Directory support;
+  try {
+    support = await getApplicationSupportDirectory();
+  } on MissingPluginException {
+    return storage; // hosts without path_provider (tests) keep it in-vault
+  }
+  return _deviceLocal[id] = LocalVaultStorage(
+    Directory('${support.path}/vault-local/$id'),
+  );
+}
+
+final _deviceLocal = <String, VaultStorage>{};

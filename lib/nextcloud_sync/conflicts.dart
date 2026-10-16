@@ -37,7 +37,9 @@ extension _SyncConflicts on NextcloudSync {
     final cutoff = DateTime.now()
         .subtract(const Duration(days: 30))
         .microsecondsSinceEpoch;
-    for (final entry in await storage.list(path: '.tylog/undo')) {
+    // listNow: on a SAF vault the queued listing waited ~8 s behind the
+    // startup scan, holding up even a no-change sync (A24).
+    for (final entry in await storage.listNow(path: '.tylog/undo')) {
       final name = entry.path.split('/').last;
       if (!entry.isDirectory || !name.startsWith('sync-')) continue;
       final stamp = int.tryParse(name.substring(5));

@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -35,7 +36,12 @@ class VaultSyncWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
         // The visible app syncs itself; a periodic run that fires on launch
         // (overdue job) held the vault lock and failed every UI sync for ~2 min.
-        if (MainActivity.foreground) return@withContext Result.success()
+        // On a cold launch the job can start a moment before the activity
+        // exists (A24: UI waited 7.6 s for the lock), so give it 3 s to appear.
+        if (!MainActivity.alive) delay(3_000)
+        if (MainActivity.foreground || MainActivity.alive) {
+            return@withContext Result.success()
+        }
         SafBridge.forgetListings()
         val loader = FlutterInjector.instance().flutterLoader()
         if (!loader.initialized()) loader.startInitialization(applicationContext)

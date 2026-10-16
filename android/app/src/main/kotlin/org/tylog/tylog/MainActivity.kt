@@ -17,6 +17,11 @@ class MainActivity : FlutterActivity() {
         /// Read by [VaultSyncWorker]; same process, so a volatile flag is enough.
         @Volatile
         var foreground = false
+
+        /// True from engine setup until destroy: a cold launch is "the app"
+        /// before its first onResume, which a starting worker would miss.
+        @Volatile
+        var alive = false
     }
 
     private lateinit var safBridge: SafBridge
@@ -92,6 +97,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        alive = true
         safBridge = SafBridge(this, flutterEngine.dartExecutor.binaryMessenger, activity = this)
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.tylog.tylog/share")
         shareChannel.setMethodCallHandler { call, result ->
@@ -119,6 +125,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        alive = false
         shareWorker.shutdown()
         if (::safBridge.isInitialized) safBridge.dispose()
         super.onDestroy()

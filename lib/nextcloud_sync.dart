@@ -1710,8 +1710,9 @@ Future<void> appendVaultTrace(
 ) async {
   if (events.isEmpty) return;
   const path = '.tylog/sync_trace.jsonl';
-  var bytes = await vault.storage.exists(path)
-      ? await vault.storage.readBytes(path)
+  final storage = await deviceLocalStorage(vault.storage);
+  var bytes = await storage.exists(path)
+      ? await storage.readBytes(path)
       : <int>[];
   if (bytes.length > 512 * 1024) {
     var start = bytes.length - 256 * 1024;
@@ -1720,7 +1721,7 @@ Future<void> appendVaultTrace(
     }
     bytes = bytes.sublist(start < bytes.length ? start + 1 : bytes.length);
   }
-  await vault.storage.writeBytes(path, [
+  await storage.writeBytes(path, [
     ...bytes,
     for (final event in events) ...utf8.encode('${jsonEncode(event)}\n'),
   ]);

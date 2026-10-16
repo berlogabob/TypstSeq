@@ -154,8 +154,10 @@ void main() {
               case 'releaseSync':
                 return null;
               case 'exists':
+              case 'existsNow':
                 return source.exists(path);
               case 'read':
+              case 'readNow':
                 return source.readBytes(path);
               case 'write':
                 await source.writeBytes(
