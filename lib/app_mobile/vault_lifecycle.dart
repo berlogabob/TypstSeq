@@ -128,6 +128,24 @@ extension _VaultLifecycle on _HomeScreenState {
     if (!mounted) return false;
     if (closeCurrent && Navigator.canPop(context)) Navigator.pop(context);
     if (Platform.isAndroid) {
+      final appStorage = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Add or create vault'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('New vault in app storage (fast, recommended)'),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('External folder (slower)'),
+            ),
+          ],
+        ),
+      );
+      if (appStorage == null || !mounted) return false;
+      if (appStorage) return _createAppLocalVault();
       final selected = await _chooseAndroidVault(allowEmpty: true);
       if (selected == null) return false;
       final selection = selected.selection;
@@ -172,6 +190,115 @@ extension _VaultLifecycle on _HomeScreenState {
       await _openVault(entry);
     }
     return true;
+  }
+
+  Future<bool> _createAppLocalVault() async {
+    final name = TextEditingController(text: 'My vault');
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'New vault in app storage',
+      contentBuilder: (context) => TextField(
+        controller: name,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Vault name'),
+      ),
+      confirmChanges: name,
+      canConfirm: () => name.text.trim().isNotEmpty,
+      confirmLabel: 'Create',
+    );
+    final value = name.text.trim();
+    if (!confirmed || !mounted) return false;
+    try {
+      final registry = vaultRegistry!;
+      final entry = await registry.createAppLocal(value);
+      await registry.select(entry);
+      await _openVault(entry);
+      return true;
+    } catch (error) {
+      if (mounted) _rebuild(() => status = 'Could not create vault: $error');
+      return false;
+    }
+  }
+
+  Future<void> _moveVaultToAppStorage(VaultEntry entry) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Move to app storage?',
+      message:
+          'The vault is copied into app storage and opened from there. '
+          'The original folder is left untouched as a backup. '
+          'Uninstalling TyLog deletes app storage, so keep Nextcloud sync on.'
+          '${entry.cloud == null ? '\nWarning: this vault has no Nextcloud sync configured.' : ''}',
+      confirmLabel: 'Copy and open',
+    );
+    if (!confirmed || !mounted) return;
+    if (dirty && !await _save(syncAfter: false)) return;
+    if (!mounted) return;
+    final progress = ValueNotifier<(int, int)>((0, 0));
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Moving vault'),
+          content: ValueListenableBuilder<(int, int)>(
+            valueListenable: progress,
+            builder: (context, value, _) => Text(
+              value.$2 == 0
+                  ? 'Preparing copy…'
+                  : 'Copying ${value.$1} / ${value.$2}',
+            ),
+          ),
+        ),
+      ),
+    );
+    Object? failure;
+    final previous = vaultRegistry!.active;
+    try {
+      await workspace.pauseForVaultCopy();
+      await vaultRegistry!.moveToAppStorage(
+        entry,
+        onProgress: (done, total) => progress.value = (done, total),
+        onOpen: (moved) async {
+          await _openVault(moved);
+          if (workspace.vault == null || workspace.entry?.path != moved.path) {
+            throw StateError(workspace.status);
+          }
+        },
+      );
+    } catch (error) {
+      failure = error;
+      if (workspace.vault == null ||
+          workspace.entry?.path != previous.path ||
+          workspace.entry?.storageKind != previous.storageKind) {
+        try {
+          await _openVault(previous);
+        } catch (_) {}
+      }
+    } finally {
+      workspace.resumeAfterVaultCopy();
+      navigator.pop();
+      await dialog;
+      progress.dispose();
+    }
+    if (failure != null && mounted) {
+      _rebuild(() => status = 'Move failed; original kept: $failure');
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Move failed; original kept'),
+          content: Text('$failure'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<bool> _migrateAndroidVault(VaultEntry entry) async {

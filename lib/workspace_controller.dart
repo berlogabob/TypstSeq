@@ -307,7 +307,9 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Directory? get localDirectory =>
-      entry?.storageKind == 'local-path' ? Directory(entry!.path) : null;
+      entry != null && entry!.storageKind != 'android-tree'
+      ? Directory(entry!.path)
+      : null;
 
   bool get hasSyncConflicts => syncConflicts.isNotEmpty;
 
@@ -1566,7 +1568,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void queueCloudSync() {
-    if (_disposed) return;
+    if (_disposed || _copyingVault) return;
     _cloudAutosave?.cancel();
     final edited = lastEditAt;
     final elapsed = edited == null ? Duration.zero : _now().difference(edited);
@@ -1583,7 +1585,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void startCloudPolling() {
-    if (_disposed) return;
+    if (_disposed || _copyingVault) return;
     stopCloudPolling();
     if (!(cloud?.isReady ?? false)) return;
     _pushClient = NextcloudPushClient(
@@ -1626,7 +1628,7 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> pollTick({bool remoteChanged = false}) async {
     if (_disposed) return;
     final generation = _vaultGeneration;
-    if (syncing || editingRecently || _pollInFlight) return;
+    if (_copyingVault || syncing || editingRecently || _pollInFlight) return;
     _pollInFlight = true;
     try {
       if (hasSyncConflicts) {
@@ -1799,6 +1801,7 @@ class WorkspaceController extends ChangeNotifier {
     InitialSyncMode? initialMode,
     bool remoteChanged = false,
   }) async {
+    if (_copyingVault) return false;
     final opened = vault;
     final config = configOverride ?? cloud;
     if (opened == null) return false;
@@ -1815,7 +1818,7 @@ class WorkspaceController extends ChangeNotifier {
         return false;
       }
     }
-    if (syncing || _acquiringSyncLock) return false;
+    if (_copyingVault || syncing || _acquiringSyncLock) return false;
     final pushOnly =
         const {'autosave', 'note-close'}.contains(trigger) &&
         _lastAutosaveSyncAt != null &&
@@ -2410,6 +2413,29 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _copyingVault = false;
+
+  Future<void> pauseForVaultCopy() async {
+    _copyingVault = true;
+    cancelPendingWork();
+    stopCloudPolling();
+    while (syncing || _acquiringSyncLock || _pollInFlight) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    await _activeScan;
+    await Future.wait([
+      for (final write in _noteWrites.values) write,
+      for (final mutation in _noteMutations.values) mutation.then((_) {}),
+      ?_mutationRefreshFuture,
+    ]);
+    await flushSearch();
+  }
+
+  void resumeAfterVaultCopy() {
+    _copyingVault = false;
+    startCloudPolling();
+  }
+
   void cancelPendingWork() => _cancelTimers();
 
   Future<void> _startSyncForeground(String detail) => _syncForeground(
@@ -2587,7 +2613,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Future<void> _runIdleMaintenance() async {
-    if (_disposed) return;
+    if (_disposed || _copyingVault) return;
     if (dirty) return;
     if (lastEditAt != null &&
         _now().difference(lastEditAt!) < const Duration(seconds: 3)) {

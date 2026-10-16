@@ -14,6 +14,7 @@ class VaultsSheet extends StatelessWidget {
     required this.onSwitchVault,
     required this.onForgetVault,
     required this.onDeleteVault,
+    this.onMoveToAppStorage,
   });
 
   final List<VaultEntry> vaults;
@@ -22,6 +23,7 @@ class VaultsSheet extends StatelessWidget {
   final ValueChanged<VaultEntry> onSwitchVault;
   final ValueChanged<VaultEntry> onForgetVault;
   final ValueChanged<VaultEntry> onDeleteVault;
+  final ValueChanged<VaultEntry>? onMoveToAppStorage;
 
   @override
   Widget build(BuildContext context) => AppSheet(
@@ -36,7 +38,9 @@ class VaultsSheet extends StatelessWidget {
           ),
           title: Text(entry.name),
           subtitle: Text(
-            friendlyVaultPath(entry.treeUri ?? entry.path),
+            entry.storageKind == 'app-local'
+                ? 'App storage'
+                : friendlyVaultPath(entry.treeUri ?? entry.path),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -51,10 +55,17 @@ class VaultsSheet extends StatelessWidget {
               Navigator.pop(context);
               if (action == 'forget') onForgetVault(entry);
               if (action == 'delete') onDeleteVault(entry);
+              if (action == 'move') onMoveToAppStorage?.call(entry);
             },
             itemBuilder: (context) {
               final errorColor = Theme.of(context).colorScheme.error;
               return [
+                if (entry.storageKind == 'android-tree' &&
+                    onMoveToAppStorage != null)
+                  const PopupMenuItem(
+                    value: 'move',
+                    child: Text('Move to app storage'),
+                  ),
                 const PopupMenuItem(
                   value: 'forget',
                   child: Text('Disconnect (keep files)'),
@@ -74,7 +85,9 @@ class VaultsSheet extends StatelessWidget {
       SettingsTile(
         icon: AppIcons.folderAdd,
         title: 'Add or create vault',
-        subtitle: 'Choose an existing or empty folder',
+        subtitle: Theme.of(context).platform == TargetPlatform.android
+            ? 'App storage or external folder'
+            : 'Choose an existing or empty folder',
         onTap: () {
           Navigator.pop(context);
           onAddVault();

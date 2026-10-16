@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault_registry.dart';
+import 'package:tylog/vault_storage.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,202 @@ void main() {
           },
         );
   });
+  test('app-local round trips and bypasses Android tree migration', () {
+    const entry = VaultEntry(
+      id: 'app',
+      name: 'Private',
+      path: '/app/support/vaults/private',
+      storageKind: 'app-local',
+    );
+    final restored = VaultEntry.fromJson(
+      (jsonDecode(jsonEncode(entry.toJson())) as Map).cast<String, Object?>(),
+    );
+    expect(restored.storageKind, 'app-local');
+    expect(restored.path, entry.path);
+    expect(restored.storage, isA<LocalVaultStorage>());
+    expect(vaultNeedsAndroidTreeMigration(restored, android: true), isFalse);
+  });
+
+  test('new app-local vault uses a safe absolute support path', () async {
+    final base = await Directory.systemTemp.createTemp('app-local-create-');
+    addTearDown(() => base.delete(recursive: true));
+    final registry = VaultRegistry(File('${base.path}/vaults.json'), [], '');
+    final entry = await registry.createAppLocal(
+      '../My vault',
+      supportDirectory: base,
+    );
+    expect(entry.name, '../My vault');
+    expect(entry.storageKind, 'app-local');
+    expect(entry.path, startsWith('${base.path}/vaults/___My_vault-'));
+    expect(await entry.storage.exists('.tylog/settings.json'), isTrue);
+  });
+
+  test(
+    'copy preserves hidden bytes and mtimes, skips index and lock, reports progress',
+    () async {
+      final base = await Directory.systemTemp.createTemp('vault-copy-');
+      addTearDown(() => base.delete(recursive: true));
+      final source = LocalVaultStorage(Directory('${base.path}/source'));
+      final destination = LocalVaultStorage(
+        Directory('${base.path}/destination'),
+      );
+      final modified = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final paths = [
+        'notes/a.typ',
+        '.tylog/sync_state.json',
+        '.other/nested/data',
+      ];
+      for (final path in [...paths, '_index/cache', '.tylog/vault.lock']) {
+        await source.writeText(path, 'original $path');
+        await File('${base.path}/source/$path').setLastModified(modified);
+      }
+      for (final item in await source.list(recursive: true)) {
+        if (!item.isDirectory) {
+          await File(
+            '${base.path}/source/${item.path}',
+          ).setLastModified(modified);
+        }
+      }
+      final expected = (await source.list(recursive: true))
+          .where(
+            (item) =>
+                !item.isDirectory &&
+                !item.path.startsWith('_index/') &&
+                item.path != '.tylog/vault.lock',
+          )
+          .map((item) => item.path)
+          .toSet();
+      final progress = <(int, int)>[];
+      await copyVaultStorage(
+        source,
+        destination,
+        onProgress: (done, total) => progress.add((done, total)),
+      );
+      expect(progress, [
+        for (var i = 0; i <= expected.length; i++) (i, expected.length),
+      ]);
+      expect(
+        (await destination.list(
+          recursive: true,
+        )).where((e) => !e.isDirectory).map((e) => e.path).toSet(),
+        expected,
+      );
+      for (final path in expected) {
+        expect(await destination.readBytes(path), await source.readBytes(path));
+        expect((await destination.stat(path))!.modified, modified);
+      }
+      await verifyMatchingVaultStorage(source, destination);
+      expect(await destination.exists('_index/cache'), isFalse);
+      expect(await destination.exists('.tylog/vault.lock'), isFalse);
+    },
+  );
+
+  for (final failure in ['copy', 'verification', 'open', 'none']) {
+    test('move to app storage transaction: $failure', () async {
+      final base = await Directory.systemTemp.createTemp('vault-move-');
+      addTearDown(() => base.delete(recursive: true));
+      final source = LocalVaultStorage(Directory('${base.path}/source'));
+      await source.writeText('notes/a.typ', 'original');
+      await source.writeText('.tylog/sync_state.json', 'cursor');
+      final before = await source.hash('notes/a.typ');
+      const channel = MethodChannel('org.tylog.tylog/saf');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            final args = (call.arguments as Map).cast<String, Object?>();
+            final path = args['path'] as String? ?? '';
+            Map<String, Object?> encode(VaultStorageEntry e) => {
+              'path': e.path,
+              'isDirectory': e.isDirectory,
+              'size': e.size,
+              'modified': e.modified?.millisecondsSinceEpoch,
+            };
+            switch (call.method) {
+              case 'acquireSync':
+              case 'releaseSync':
+                return null;
+              case 'exists':
+                return source.exists(path);
+              case 'read':
+                return source.readBytes(path);
+              case 'write':
+                await source.writeBytes(
+                  path,
+                  (args['bytes'] as List).cast<int>(),
+                );
+                return null;
+              case 'delete':
+                await source.delete(path);
+                return null;
+              case 'hash':
+                if (failure == 'verification') return 'bad-hash';
+                return source.hash(path);
+              case 'list':
+                return (await source.list(
+                  path: path,
+                  recursive: args['recursive'] as bool,
+                )).map(encode).toList();
+            }
+            throw StateError('Unexpected SAF call: ${call.method}');
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      const cloud = NextcloudConfig(
+        serverUrl: 'https://cloud.example',
+        username: 'alice',
+        password: 'secret',
+      );
+      const entry = VaultEntry(
+        id: 'same-id',
+        name: '../My vault',
+        path: '',
+        storageKind: 'android-tree',
+        treeUri: 'content://test/tree',
+        cloud: cloud,
+      );
+      final registry = VaultRegistry(File('${base.path}/vaults.json'), [
+        entry,
+      ], entry.id);
+      await registry.save();
+      Future<VaultEntry> move() => registry.moveToAppStorage(
+        entry,
+        supportDirectory: Directory('${base.path}/support'),
+        onProgress: (done, total) {
+          if (failure == 'copy' && done == 1) throw StateError('copy failed');
+        },
+        onOpen: (_) async {
+          if (failure == 'open') throw StateError('open failed');
+        },
+      );
+      if (failure == 'none') {
+        final moved = await move();
+        expect(moved.id, entry.id);
+        expect(moved.cloud, same(cloud));
+        expect(moved.backupPath, entry.treeUri);
+        expect(moved.treeUri, isNull);
+        expect(moved.storageKind, 'app-local');
+        expect(moved.path, startsWith('${base.path}/support/vaults/'));
+        await verifyMatchingVaultStorage(source, moved.storage);
+      } else {
+        await expectLater(move(), throwsStateError);
+        expect(registry.active, same(entry));
+        final saved = jsonDecode(await registry.file.readAsString()) as Map;
+        expect(
+          (saved['vaults'] as List).single['storage']['kind'],
+          'android-tree',
+        );
+        expect(
+          await Directory('${base.path}/support/vaults').list().toList(),
+          isEmpty,
+        );
+      }
+      expect(await source.hash('notes/a.typ'), before);
+      expect(await source.readText('.tylog/sync_state.json'), 'cursor');
+      expect(await source.exists('.tylog/vault.lock'), isFalse);
+    });
+  }
+
   test(
     'vault registry switches, keeps cloud settings separate, and forgets',
     () async {

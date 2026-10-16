@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'nextcloud_sync.dart';
+import 'vault_lock.dart';
 import 'vault.dart';
 import 'vault_storage.dart';
 
@@ -144,7 +146,9 @@ class VaultEntry {
 }
 
 bool vaultNeedsAndroidTreeMigration(VaultEntry entry, {bool? android}) =>
-    (android ?? Platform.isAndroid) && entry.storageKind != 'android-tree';
+    (android ?? Platform.isAndroid) &&
+    entry.storageKind != 'android-tree' &&
+    entry.storageKind != 'app-local';
 
 bool shouldCreateDefaultReplacementVault({
   required bool entriesEmpty,
@@ -354,6 +358,114 @@ class VaultRegistry {
     entries.add(entry);
     await save();
     return entry;
+  }
+
+  Future<Directory> _newAppDirectory(String name, Directory? support) async {
+    final root = support ?? await getApplicationSupportDirectory();
+    final parent = await Directory(
+      '${root.absolute.path}/vaults',
+    ).create(recursive: true);
+    final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    return parent.createTemp('${safe.isEmpty ? 'Vault' : safe}-');
+  }
+
+  Future<VaultEntry> createAppLocal(
+    String name, {
+    Directory? supportDirectory,
+  }) async {
+    final directory = await _newAppDirectory(name, supportDirectory);
+    final entry = VaultEntry(
+      id: _id(directory.path),
+      name: name,
+      path: directory.path,
+      storageKind: 'app-local',
+    );
+    try {
+      await Vault.withStorage(entry.storage).ensureCreated();
+      entries.add(entry);
+      await save();
+      return entry;
+    } catch (_) {
+      entries.remove(entry);
+      await directory.delete(recursive: true);
+      rethrow;
+    }
+  }
+
+  Future<VaultEntry> moveToAppStorage(
+    VaultEntry entry, {
+    Directory? supportDirectory,
+    void Function(int done, int total)? onProgress,
+    Future<void> Function(VaultEntry entry)? onOpen,
+  }) async {
+    if (entry.storageKind != 'android-tree') {
+      throw ArgumentError('Only external vaults can be moved');
+    }
+    final index = entries.indexWhere((item) => item.id == entry.id);
+    if (index < 0) throw StateError('Vault is no longer registered');
+    final source = entry.storage as AndroidTreeVaultStorage;
+    Directory? directory;
+    final previousActive = activeId;
+    var replaced = false;
+    var saved = false;
+    var syncAcquired = false;
+    var lockAcquired = false;
+    try {
+      // Serialize with actual SAF sync as well as the cross-engine owner file.
+      await source.acquireSync();
+      syncAcquired = true;
+      if (await VaultLock.currentOwner(source) != null ||
+          !await VaultLock.acquire(
+            source,
+            'ui',
+            // Long enough for a ~20k-file SAF copy; a killed copy must not
+            // block background sync for a day.
+            validFor: const Duration(hours: 2),
+          )) {
+        throw StateError('Vault is busy; try again after sync finishes');
+      }
+      lockAcquired = true;
+      directory = await _newAppDirectory(entry.name, supportDirectory);
+      final destination = LocalVaultStorage(directory);
+      await copyVaultStorage(source, destination, onProgress: onProgress);
+      await verifyMatchingVaultStorage(source, destination);
+      // Release the native gate before committing so release errors also roll back.
+      // The owner file continues to exclude background runs until the move ends.
+      await source.releaseSync();
+      syncAcquired = false;
+      final moved = VaultEntry(
+        id: entry.id,
+        name: entry.name,
+        path: directory.path,
+        storageKind: 'app-local',
+        backupPath: entry.treeUri,
+        cloud: entry.cloud,
+        recent: entry.recent,
+      );
+      entries[index] = moved;
+      activeId = moved.id;
+      replaced = true;
+      await save();
+      saved = true;
+      await onOpen?.call(moved);
+      return moved;
+    } catch (_) {
+      if (replaced) {
+        entries[index] = entry;
+        activeId = previousActive;
+        // Atomic save failures leave the prior registry intact. If opening
+        // failed after commit, restore it before removing the copied files.
+        if (saved) await save();
+      }
+      if (directory != null) await directory.delete(recursive: true);
+      rethrow;
+    } finally {
+      try {
+        if (lockAcquired) await VaultLock.release(source, 'ui');
+      } finally {
+        if (syncAcquired) await source.releaseSync();
+      }
+    }
   }
 
   Future<VaultEntry> addTree(AndroidTreeSelection selection) async {
@@ -574,19 +686,40 @@ class VaultRegistry {
   }
 }
 
+bool _copyableVaultFile(VaultStorageEntry item) =>
+    !item.isDirectory &&
+    !item.path.startsWith('_index/') &&
+    item.path != VaultLock.path;
+
 Future<void> copyVaultStorage(
   VaultStorage source,
-  VaultStorage destination,
-) async {
+  VaultStorage destination, {
+  void Function(int done, int total)? onProgress,
+}) async {
   if ((await destination.list()).isNotEmpty) {
     throw StateError('Choose an empty folder for migration');
   }
-  for (final item in await source.list(recursive: true)) {
-    if (item.isDirectory || item.path.startsWith('_index/')) continue;
-    await destination.writeBytes(item.path, await source.readBytes(item.path));
-    if (await source.hash(item.path) != await destination.hash(item.path)) {
+  final files = (await source.list(
+    recursive: true,
+  )).where(_copyableVaultFile).toList();
+  onProgress?.call(0, files.length);
+  var done = 0;
+  for (final item in files) {
+    validateVaultPath(item.path);
+    final bytes = await source.readBytes(item.path);
+    // Exact type: subclasses may override writeBytes and must keep it.
+    if (destination.runtimeType == LocalVaultStorage) {
+      // Raw atomic writes avoid generating new index-dirty metadata during a copy.
+      final file = File('${destination.syncIdentity}/${item.path}');
+      await writeFileAtomic(file, bytes);
+      if (item.modified != null) await file.setLastModified(item.modified!);
+    } else {
+      await destination.writeBytes(item.path, bytes);
+    }
+    if (sha256.convert(bytes).toString() != await destination.hash(item.path)) {
       throw StateError('Migration verification failed for ${item.path}');
     }
+    onProgress?.call(++done, files.length);
   }
 }
 
@@ -594,14 +727,12 @@ Future<void> verifyMatchingVaultStorage(
   VaultStorage source,
   VaultStorage destination,
 ) async {
-  final sourceFiles = (await source.list(recursive: true))
-      .where((item) => !item.isDirectory && !item.path.startsWith('_index/'))
-      .map((item) => item.path)
-      .toSet();
-  final destinationFiles = (await destination.list(recursive: true))
-      .where((item) => !item.isDirectory && !item.path.startsWith('_index/'))
-      .map((item) => item.path)
-      .toSet();
+  final sourceFiles = (await source.list(
+    recursive: true,
+  )).where(_copyableVaultFile).map((item) => item.path).toSet();
+  final destinationFiles = (await destination.list(
+    recursive: true,
+  )).where(_copyableVaultFile).map((item) => item.path).toSet();
   if (!destinationFiles.containsAll(sourceFiles)) {
     throw StateError('Selected folder is not the existing vault');
   }

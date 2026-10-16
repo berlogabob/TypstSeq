@@ -16,8 +16,46 @@ import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/nextcloud_sync/chunked_upload.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
+import 'package:tylog/vault_registry.dart';
 
 void main() {
+  for (final changeMtime in [false, true]) {
+    test(
+      'moved copy sync transfers nothing (changed mtime: $changeMtime)',
+      () async {
+        final remote = <String, _MutableRemoteFile>{};
+        final uploads = <Map<String, Object?>>[];
+        final server = await _mutableWebDavServer(remote, uploads: uploads);
+        final base = await Directory.systemTemp.createTemp('moved-sync-');
+        addTearDown(() => server.close(force: true));
+        addTearDown(() => base.delete(recursive: true));
+        final original = Vault(Directory('${base.path}/source'));
+        await original.ensureCreated();
+        await original.saveNote('notes/kept.typ', 'unchanged bytes');
+        await NextcloudSync(_config(server)).sync(original);
+        await NextcloudSync(_config(server)).sync(original);
+        final moved = Vault(Directory('${base.path}/moved'));
+        await copyVaultStorage(original.storage, moved.storage);
+        await verifyMatchingVaultStorage(original.storage, moved.storage);
+        if (changeMtime) {
+          for (final item in await moved.storage.list(recursive: true)) {
+            if (!item.isDirectory && !item.path.startsWith('.tylog/')) {
+              await File(
+                '${base.path}/moved/${item.path}',
+              ).setLastModified(DateTime.now().add(const Duration(minutes: 5)));
+            }
+          }
+        }
+        uploads.clear();
+        final result = await NextcloudSync(_config(server)).sync(moved);
+        expect(result.uploaded, 0);
+        expect(result.downloaded, 0);
+        expect(uploads, isEmpty);
+        expect(result.conflicts, 0);
+      },
+    );
+  }
+
   test('A24 interleaved engines never conflict with their own upload', () async {
     const path = 'notes/typing.typ';
     var armed = false;

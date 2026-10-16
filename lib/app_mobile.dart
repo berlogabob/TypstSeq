@@ -2582,6 +2582,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onSwitchVault: (entry) => unawaited(_switchVault(entry)),
         onForgetVault: (entry) => unawaited(_forgetVault(entry)),
         onDeleteVault: (entry) => unawaited(_deleteVault(entry)),
+        onMoveToAppStorage: Platform.isAndroid
+            ? (entry) => unawaited(_moveVaultToAppStorage(entry))
+            : null,
       ),
     );
   }
