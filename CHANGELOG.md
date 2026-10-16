@@ -5,6 +5,21 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+### Performance
+
+- Opening the app shows today's note in under a second and the full note list,
+  agenda and library from the cached index in ~2 s (P30, 9.7k notes: was 36 s).
+  The fresh scan runs in the background and no longer waits for the startup sync.
+- A running sync no longer shows "Indexing…" in the library and agenda.
+- Returning to the app (from a picker, share or another app) polls the server
+  instead of running a full sync; switching notes no longer rescans inline;
+  uploads of your own edits no longer trigger a whole-vault rescan; worker
+  heartbeats from other machines no longer trigger a rescan every minute.
+- Android vaults can live in app storage (plain file access instead of the
+  Storage Access Framework). New vaults default to it; Settings > Vaults >
+  ⋮ > Move to app storage copies an existing folder vault (verified, original
+  kept as backup). P30 test vault: cold start to fresh index 1.0 s.
+
 ### Changed
 
 - Audio shared into TyLog (voice recorder, call recordings) now offers "Save as audio note"
