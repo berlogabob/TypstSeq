@@ -87,3 +87,8 @@ Leftovers (not blocking):
 - Speaker diarization for transcription (pyannote or Studio model).
 - Unresolved: course audio origin (Qwen vs edge-tts in repo); Studio cannot load Qwen3-TTS/Chatterbox; IADE mentions + audio licence in public tylog-pack-pt-pt.
 - Housekeeping: remove baseline worktree (scratchpad); remove emulator test vault; delete /sdcard/Download/TyLogModTest on P30 (backup only).
+Status at stop (2026-10-16 09:30, laptop shutting down):
+- Done: 1 (Mac index OK: cache 0.5 s, fresh scan 1.4 s; Mac has no in-app sync), 2 (P30 test vault: recording opens <1.5 s, row in list), 5 (0.19.1+153 bumped, CHANGELOG written, NOT tagged), housekeeping (baseline worktree removed, TyLogModTest backup deleted on P30).
+- New fix in 0.19.1: Journal grey days on Mac = agenda ExpansionTile read a scroll offset from PageStorage (double as bool); now keyed per day, regression test added (fails pre-fix). Full suite 1537 green at 644f9c3.
+- Open: 3 (revisions on devices, only test-covered); 4 (background job: first forced run skipped, likely <5 min since UI sync; retry: `adb shell am kill org.tylog.tylog`, wait 6 min, `adb shell cmd jobscheduler run -f org.tylog.tylog <id>` from `dumpsys jobscheduler | grep tylog`, check TYLOG_SYNC background line and job duration); emulator test vault not yet removed (AVD TyLog_v40_Acceptance, app org.tylog.tylog.debug).
+- Then: tag v0.19.1+153, release workflow, install P30 + Mac (/Applications still 0.19.0).
