@@ -126,3 +126,10 @@ Status 17:20: current build (95e5edf+) installed on P30 and A24; item 8 Huawei j
 RELEASED 2026-10-16 ~19:00: v0.19.1+153 (workflow ok, 6 assets; APK has libtypst_flutter.so 49.6 MB; Mac zip sha256 matches). Installed: Mac /Applications 0.19.1 (153), P30 + A24 0.19.1 (95e5edf build; later changes are Mac-revision + changelog only). Parked: Portuguese pack (9, 11, 17) and Studio TTS (10).
 User answers 2026-10-16: 6 scratch note OK; 9 course audio = edge-tts (document it); 10 enable SSH on Studio (user action, then uv env with qwen-tts/chatterbox-tts); 11 strip IADE + add licence, user reviews before push; 8 diarization with non-gated speechbrain ECAPA (codex).
 Then: full suite, device checks, tag 0.19.1.
+
+## Screenshots (2026-10-16 evening)
+- Cause of 'recent screenshots missing': no screenshot LaunchAgent was installed (last run a manual backfill 2026-10-08); the app's watch mode also called a local Ollama OCR model that isn't installed.
+- Fix (scripts repo ~/Nextcloud/InstantUpload/Screenshots, local commits d211a52, 7a853d8, 40d4cb2): watcher runs the incremental backfill pipeline (Studio OCR), waits on the backfill lock instead of crashing. LaunchAgents installed: org.tylog.screenshots (watch, KeepAlive) + org.tylog.screenshots.schedule (03:00 backfill); logs next to the scripts.
+- Backfill caught up: 54 processed (to 2026-10-16 08:39), 1 error (2024 telegram jpg), 1 sensitive skip. Watcher test with a duplicate file: picked up in seconds, no note created.
+- Runs in the lab: Mac (AC sleep 0) + Studio on one LAN; Nextcloud on the home Fedora. Risk: Mac restart without auto-login.
+
