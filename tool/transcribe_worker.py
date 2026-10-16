@@ -297,13 +297,13 @@ def write_heartbeat(vault, settings, state, state_path, now, hostname, probe):
         directory = vault / "_system/workers"
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / (filename + ".json")
-        # Rewrite only on change or every 10 min: each write changes the synced
+        # Rewrite only on change or every 4 min (apps treat >5 min as offline): each write changes the synced
         # folder, and phones then run a full sync on every poll.
         try:
             previous = json.loads(target.read_text(encoding="utf-8"))
             seen = datetime.fromisoformat(previous.pop("last_seen"))
             fresh = {k: v for k, v in heartbeat.items() if k != "last_seen"}
-            if previous == fresh and (now - seen).total_seconds() < 600:
+            if previous == fresh and (now - seen).total_seconds() < 240:
                 return
         except Exception:
             pass

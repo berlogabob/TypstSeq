@@ -1019,14 +1019,13 @@ def test_heartbeat_content_and_probe_throttling(tmp_path):
         "host": "host/unsafe", "last_seen": now.isoformat(), "whisper_models": ["large-v3", "small"],
         "connections": {"studio": {"reachable": True, "loaded": ["ornith"]},
                         "offline": {"reachable": False, "loaded": []}}}
-    worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=299)})
+    worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=239)})
     assert len(calls) == 2
-    # Unchanged content within 10 min: the synced file is left alone.
+    # Unchanged content within 4 min: the synced file is left alone.
     assert json.loads(heartbeat_path.read_text())["last_seen"] == now.isoformat()
     worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=300)})
     assert len(calls) == 4
-    worker.run_once(tmp_path, **{**kwargs, "clock": lambda: now + timedelta(seconds=601)})
-    assert json.loads(heartbeat_path.read_text())["last_seen"] == (now + timedelta(seconds=601)).isoformat()
+    assert json.loads(heartbeat_path.read_text())["last_seen"] == (now + timedelta(seconds=300)).isoformat()
     state = json.loads((tmp_path / ".tylog-transcribe-state.json").read_text())
     assert state["connection_probes"]["studio"]["result"]["loaded"] == ["ornith"]
 
