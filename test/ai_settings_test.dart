@@ -448,12 +448,12 @@ void main() {
       expect(const WorkerStatus().isOnline(now: seen), isFalse);
       expect(worker.isOnline(now: seen), isTrue);
       expect(
-        worker.isOnline(now: seen.add(const Duration(minutes: 5))),
+        worker.isOnline(now: seen.add(const Duration(minutes: 15))),
         isTrue,
       );
       expect(
         worker.isOnline(
-          now: seen.add(const Duration(minutes: 5, microseconds: 1)),
+          now: seen.add(const Duration(minutes: 15, microseconds: 1)),
         ),
         isFalse,
       );
