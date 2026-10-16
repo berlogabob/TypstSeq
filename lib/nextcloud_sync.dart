@@ -1702,8 +1702,13 @@ bool isRegenerableCachePath(String path) =>
 /// progress (rewritten on every note open) and the index donor (rewritten
 /// after every scan). Both are per-device by path, so uploading one tells us
 /// only that *we* wrote it — never that the vault's content moved.
+///
+/// Worker heartbeats (`_system/workers/<host>.json`) are the same kind: the
+/// Mac worker rewrites its file every minute, and counting that as content
+/// made every phone poll sync and rescan the whole vault.
 bool isDeviceScopedVaultPath(String path) =>
     path.startsWith('_system/reading/') ||
+    path.startsWith('_system/workers/') ||
     path.startsWith('${Vault.indexDonorsPath}/');
 
 bool isSyncableVaultPath(String path) =>

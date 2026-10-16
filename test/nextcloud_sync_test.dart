@@ -19,6 +19,11 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/vault_registry.dart';
 
 void main() {
+  test('worker heartbeats are device bookkeeping, not vault content', () {
+    expect(isDeviceScopedVaultPath('_system/workers/mac.local.json'), isTrue);
+    expect(isDeviceScopedVaultPath('notes/a.typ'), isFalse);
+  });
+
   for (final changeMtime in [false, true]) {
     test(
       'moved copy sync transfers nothing (changed mtime: $changeMtime)',
