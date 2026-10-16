@@ -17,6 +17,9 @@ their history is in the commit log and the GitHub release notes.
 
 - Journal no longer turns every day into a grey box when a saved scroll
   position collided with the agenda section's open/closed state.
+- Android: the background sync job no longer runs while the app is open; an
+  overdue job firing at launch held the vault lock and made every app sync
+  fail for ~2 min.
 - A recording made from Library > Audio opens at once and shows in the list;
   before, Save waited for a full index refresh (on large folder vaults it
   looked like nothing happened until a restart).

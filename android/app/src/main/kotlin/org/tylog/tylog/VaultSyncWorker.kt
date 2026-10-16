@@ -33,6 +33,9 @@ class VaultSyncWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
+        // The visible app syncs itself; a periodic run that fires on launch
+        // (overdue job) held the vault lock and failed every UI sync for ~2 min.
+        if (MainActivity.foreground) return@withContext Result.success()
         SafBridge.forgetListings()
         val loader = FlutterInjector.instance().flutterLoader()
         if (!loader.initialized()) loader.startInitialization(applicationContext)

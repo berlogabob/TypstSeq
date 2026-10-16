@@ -13,6 +13,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        /// Read by [VaultSyncWorker]; same process, so a volatile flag is enough.
+        @Volatile
+        var foreground = false
+    }
+
     private lateinit var safBridge: SafBridge
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
@@ -103,7 +109,13 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        foreground = true
         SafBridge.forgetListings()
+    }
+
+    override fun onPause() {
+        foreground = false
+        super.onPause()
     }
 
     override fun onDestroy() {
