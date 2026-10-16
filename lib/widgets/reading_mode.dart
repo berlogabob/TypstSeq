@@ -261,6 +261,10 @@ class _ReadingModeState extends State<ReadingMode> {
               if (!didPop) widget.onExit();
             },
             child: Scaffold(
+              appBar: AppBar(
+                leading: BackButton(onPressed: widget.onExit),
+                title: const Text('Read'),
+              ),
               backgroundColor: Theme.of(context).colorScheme.surface,
               body: SafeArea(
                 child: Stack(
@@ -293,15 +297,6 @@ class _ReadingModeState extends State<ReadingMode> {
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 8,
-                      top: 4,
-                      child: IconButton.filledTonal(
-                        tooltip: 'Back to edit',
-                        onPressed: widget.onExit,
-                        icon: const Icon(Icons.arrow_back),
                       ),
                     ),
                     Positioned(

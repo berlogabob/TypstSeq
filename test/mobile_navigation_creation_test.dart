@@ -21,6 +21,9 @@ import 'package:tylog/widgets/audio_shelf.dart';
 import 'package:tylog/widgets/audio_sheets.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/screenshot_strip.dart';
+import 'package:tylog/widgets/sync_dashboard.dart';
+import 'package:tylog/widgets/work_surface.dart';
+import 'package:tylog/widgets/journal_feed.dart';
 
 Future<void> _emptyStartup() async {}
 
@@ -63,8 +66,298 @@ void _dirty(dynamic home) {
   home.workspace.edit('Unsaved edit');
 }
 
+Future<void> _selectLibraryTab(WidgetTester tester, String label) async {
+  final tab = find.widgetWithText(Tab, label);
+  await tester.ensureVisible(tab);
+  await tester.pumpAndSettle();
+  await tester.tap(tab);
+  await tester.pumpAndSettle();
+  final labels = [
+    'Notes',
+    'Articles',
+    'Screenshots',
+    'Tasks',
+    'Calendar',
+    'Audio',
+  ];
+  expect(
+    DefaultTabController.of(tester.element(tab)).index,
+    labels.indexOf(label),
+  );
+}
+
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+  for (final destination in [1, 2, 3]) {
+    testWidgets('system back from destination $destination returns to Today', (
+      tester,
+    ) async {
+      final home = await _mountToday(tester, const Size(400, 800));
+      // Search must return to Today even when opened from Library.
+      final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      if (destination == 3) {
+        nav.onDestinationSelected!(2);
+        await tester.pumpAndSettle();
+      }
+      nav.onDestinationSelected!(destination);
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.primaryDestination, 0);
+      expect(home.mode, 'normal');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  for (final tab in [
+    'Notes',
+    'Articles',
+    'Screenshots',
+    'Tasks',
+    'Calendar',
+    'Audio',
+  ]) {
+    testWidgets('Library $tab system back returns to Today', (tester) async {
+      final home = await _mountToday(tester, const Size(480, 800));
+      tester
+          .widget<NavigationBar>(find.byType(NavigationBar))
+          .onDestinationSelected!(2);
+      await tester.pumpAndSettle();
+      await _selectLibraryTab(tester, tab);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.primaryDestination, 0);
+      expect(home.mode, 'normal');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('Today note editor system back returns to Today', (tester) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    tester
+        .widget<TodayPage>(find.byType(TodayPage))
+        .onOpenPath('notes/current.typ');
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, 'notes/current.typ');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(home.primaryDestination, 0);
+    expect(find.byType(TodayPage), findsOneWidget);
+    expect(home.workspace.note, isNot('notes/current.typ'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final destination in [1, 2]) {
+    testWidgets('note editor system back restores list $destination', (
+      tester,
+    ) async {
+      final home = await _mountToday(tester, const Size(400, 800));
+      tester
+          .widget<NavigationBar>(find.byType(NavigationBar))
+          .onDestinationSelected!(destination);
+      await tester.pumpAndSettle();
+      if (destination == 2) {
+        await _selectLibraryTab(tester, 'Tasks');
+        tester
+            .widget<LibraryView>(find.byType(LibraryView))
+            .onOpenPath('notes/current.typ');
+      } else {
+        tester
+            .widget<JournalFeed>(find.byType(JournalFeed))
+            .onOpenPath('notes/current.typ');
+      }
+      await tester.pumpAndSettle();
+      expect(home.mode, 'normal');
+      final hadBackArrow = find.byType(BackButton).evaluate().isNotEmpty;
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.mode, destination == 2 ? 'library' : 'journal');
+      expect(hadBackArrow, isTrue);
+      expect(home.primaryDestination, destination);
+      if (destination == 2) {
+        expect(
+          DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+          3,
+        );
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.primaryDestination, 0);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('shelf reading system back restores Library tab', (tester) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(2);
+    await tester.pumpAndSettle();
+    await _selectLibraryTab(tester, 'Articles');
+    tester
+        .widget<LibraryView>(find.byType(LibraryView))
+        .onReadPath('notes/current.typ');
+    await tester.pumpAndSettle();
+    expect(home.mode, 'read');
+    final hadBackArrow = find.byType(BackButton).evaluate().isNotEmpty;
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(home.mode, 'library');
+    expect(hadBackArrow, isTrue);
+    expect(
+      DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+      1,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Search result opens editor and back returns to Search', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    tester
+        .widget<KnowledgeScreen>(find.byType(KnowledgeScreen))
+        .onOpenNote('notes/current.typ');
+    await tester.pumpAndSettle();
+    expect(find.byType(KnowledgeScreen), findsNothing);
+    expect(home.workspace.note, 'notes/current.typ');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(KnowledgeScreen), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(home.primaryDestination, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('macOS rail destinations have no back arrow', (tester) async {
+    await _mountToday(tester, const Size(1100, 800));
+    for (final destination in [0, 1, 2]) {
+      tester
+          .widget<NavigationRail>(find.byType(NavigationRail))
+          .onDestinationSelected!(destination);
+      await tester.pumpAndSettle();
+      expect(find.byType(BackButton), findsNothing);
+    }
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  for (final origin in [0, 1, 2]) {
+    testWidgets('Graph system back restores destination $origin', (
+      tester,
+    ) async {
+      final home = await _mountToday(tester, const Size(400, 800));
+      final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      if (origin != 0) {
+        nav.onDestinationSelected!(origin);
+        await tester.pumpAndSettle();
+      }
+      final originalMode = home.mode;
+      nav.onDestinationSelected!(4);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Graph').last);
+      await tester.pumpAndSettle();
+      expect(home.mode, 'graph');
+      final hadBackArrow = find.byType(BackButton).evaluate().isNotEmpty;
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.mode, originalMode);
+      expect(hadBackArrow, isTrue);
+      expect(home.primaryDestination, origin);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  for (final view in ['Read', 'Preview', 'Source', 'Split']) {
+    testWidgets('$view system back restores editor', (tester) async {
+      final home = await _mountToday(tester, const Size(400, 800));
+      await tester.tap(find.byTooltip('View mode'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(view).last);
+      await tester.pumpAndSettle();
+      expect(home.mode, view.toLowerCase());
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(home.mode, 'normal');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('More closes to its origin on system back', (tester) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    nav.onDestinationSelected!(2);
+    await tester.pumpAndSettle();
+    nav.onDestinationSelected!(4);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(home.mode, 'library');
+    expect(home.primaryDestination, 2);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Context shows a back arrow and closes on system back', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(4);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Context'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, 'Context'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, 'Context'), findsNothing);
+    expect(home.primaryDestination, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('nested Split returns to Source before the editor', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    for (final view in ['Source', 'Split']) {
+      await tester.tap(find.byTooltip('View mode'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(view).last);
+      await tester.pumpAndSettle();
+    }
+    home.sourceController.text = 'Edited source';
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(home.mode, 'source');
+    expect(home.sourceController.text, 'Edited source');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(home.mode, 'normal');
+    expect(home.richController.text, contains('Edited source'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Sync dashboard has an arrow and pops on system back', (
+    tester,
+  ) async {
+    await _mountToday(tester, const Size(400, 800));
+    final button = tester.widget<SyncIconButton>(find.byType(SyncIconButton));
+    button.onPressed();
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncDashboardScreen), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncDashboardScreen), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Library recording appears and opens without restarting', (
     tester,
   ) async {
@@ -75,8 +368,7 @@ void main() {
     home.primaryDestination = 2;
     home.workspace.notifyListeners();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Audio').first);
-    await tester.pumpAndSettle();
+    await _selectLibraryTab(tester, 'Audio');
     tester.widget<AudioShelf>(find.byType(AudioShelf)).onRecord();
     await tester.pumpAndSettle();
     // Deliver the completed take at the recorder/UI boundary without a mic.
@@ -96,7 +388,8 @@ void main() {
       isTrue,
     );
     expect(find.byType(AudioNoteScreen), findsOneWidget);
-    Navigator.of(tester.element(find.byType(AudioNoteScreen))).pop();
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.text('Audio 20261016-120000'), findsOneWidget);
     await tester.tap(find.text('Audio 20261016-120000'));
@@ -160,7 +453,10 @@ void main() {
         ),
       );
       expect(handle, findsOneWidget);
-      final grip = find.descendant(of: handle, matching: find.byType(DecoratedBox));
+      final grip = find.descendant(
+        of: handle,
+        matching: find.byType(DecoratedBox),
+      );
       expect(grip.hitTestable(), findsOneWidget);
       expect(tester.getSize(grip), const Size(kMinTapTarget, kSpace4));
       expect(

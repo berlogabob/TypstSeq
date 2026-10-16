@@ -1744,7 +1744,7 @@ void main() {
     await tester.pump();
     expect(find.byType(SelectionArea), findsWidgets);
     expect(find.byTooltip('View mode'), findsNothing);
-    await tester.tap(find.byTooltip('Back to edit'));
+    await tester.tap(find.byType(BackButton));
     await tester.pump();
 
     await setViewMode(tester, 'Preview');
@@ -1806,11 +1806,11 @@ void main() {
     await setViewMode(tester, 'Read');
     await tester.pump();
 
-    expect(find.byType(AppBar), findsNothing);
+    expect(find.widgetWithText(AppBar, 'Read'), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(NavigationRail), findsNothing);
     expect(find.byTooltip('View mode'), findsNothing);
-    expect(find.byTooltip('Back to edit'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
     expect(find.byTooltip('Reading settings'), findsOneWidget);
     expect(find.text('Agenda'), findsNothing);
     expect(

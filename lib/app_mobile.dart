@@ -332,6 +332,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   int primaryDestination = 0;
   int _libraryTab = 0;
+  final _backViews =
+      <
+        ({
+          String mode,
+          int destination,
+          int libraryTab,
+          KnowledgeView? knowledge,
+        })
+      >[];
+
+  void _rememberView({KnowledgeView? knowledge, bool today = false}) {
+    _backViews.add((
+      mode: today ? 'today' : mode,
+      destination: primaryDestination,
+      libraryTab: _libraryTab,
+      knowledge: knowledge,
+    ));
+  }
+
+  void _enterView(String next) {
+    if (mode == next) return;
+    _rememberView();
+    setState(() => mode = next);
+  }
+
+  void _back() {
+    if (_backViews.isEmpty) {
+      unawaited(_showToday());
+      return;
+    }
+    ++_destinationGeneration;
+    ++_openGeneration;
+    if (mode == 'source' || mode == 'split') {
+      richController.loadSource(sourceController.text);
+    }
+    final previous = _backViews.removeLast();
+    if (previous.mode == 'today') {
+      unawaited(_showToday());
+      return;
+    }
+    setState(() {
+      mode = previous.mode;
+      primaryDestination = previous.destination;
+      _libraryTab = previous.libraryTab;
+    });
+    if (previous.knowledge case final view?) {
+      unawaited(_showKnowledge(initialView: view));
+    }
+  }
+
   String? selectedTag;
   VaultRegistry? vaultRegistry;
   final taskScheduler = TaskScheduler();
@@ -487,7 +537,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (path == null)
                 ListTile(
                   leading: const Icon(AppIcons.today),
-                  title: Text(article == null ? 'Add to today' : 'Add link to today'),
+                  title: Text(
+                    article == null ? 'Add to today' : 'Add link to today',
+                  ),
                   subtitle: article == null ? const Text('Default') : null,
                   onTap: () => Navigator.pop(context, 'today'),
                 ),
@@ -1331,6 +1383,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String path, {
     String? heading,
     int? generation,
+    bool rememberView = true,
   }) async {
     final request = generation ??= ++_openGeneration;
     final v = vault;
@@ -1347,7 +1400,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return false;
     }
     if (!mounted || request != _openGeneration || vault != v) return false;
+    final fromToday =
+        mode == 'normal' &&
+        primaryDestination == 0 &&
+        _backViews.isEmpty &&
+        path != note;
     if (!workspace.adoptNoteRead(path, snapshot)) return false;
+    if (rememberView &&
+        (mode == 'library' || mode == 'journal' || mode == 'graph')) {
+      _rememberView();
+    } else if (rememberView && fromToday) {
+      _rememberView(today: true);
+    }
     _loadSource(snapshot.source);
     setState(() {
       mode = 'normal';
@@ -1393,7 +1457,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || generation != _openGeneration || vault != v) return false;
     final path = await workspace.ensureTodayNote();
     if (!mounted || generation != _openGeneration || vault != v) return false;
-    if (!await _openNote(path, generation: generation)) return false;
+    if (!await _openNote(path, generation: generation, rememberView: false)) {
+      return false;
+    }
     _todayNotePath = path;
     _todayOpenedAt = DateTime.now();
     return true;
@@ -1409,6 +1475,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (note != path && !await _openToday()) return false;
       if (!mounted || note != path) return false;
       _timestampCapturePath = path;
+      _backViews.clear();
       _showEditor();
       richController.appendTimestamp(DateTime.now());
       setState(() => primaryDestination = 0);
@@ -1721,6 +1788,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final searchStore = SavedSearchStore(v.storage);
     var savedSearches = <SavedSearch>[];
     final ready = ValueNotifier<bool>(false);
+    final navigator = Navigator.of(context);
     final route = MaterialPageRoute<void>(
       builder: (_) => ValueListenableBuilder<bool>(
         valueListenable: ready,
@@ -1782,7 +1850,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Navigator.of(context).pop();
                       unawaited(_captureTimestamp());
                     },
-                    onOpenNote: _openPath,
+                    onOpenNote: (path) async {
+                      final selection = ++_destinationGeneration;
+                      navigator.pop();
+                      setState(() => primaryDestination = previousDestination);
+                      await workspace.materializeEvent(path);
+                      if (!mounted || selection != _destinationGeneration) {
+                        return;
+                      }
+                      if (await _openNote(path, rememberView: false) &&
+                          mounted) {
+                        // Search is a route; recreate it when leaving its editor.
+                        _rememberView(knowledge: initialView);
+                        setState(() {});
+                      }
+                    },
                     onOpenCitation: _openCitation,
                     onFixProblems: _fixProblems,
                   );
@@ -1794,7 +1876,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
       ),
     );
-    final navigator = Navigator.of(context);
     final closed = navigator.push<void>(route);
     bool current() =>
         mounted && generation == _destinationGeneration && vault == v;
@@ -1817,7 +1898,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Ignore late storage completions once this route has closed.
     if (current()) {
       ++_destinationGeneration;
-      setState(() => primaryDestination = previousDestination);
+      if (initialView == KnowledgeView.search) {
+        await _showToday();
+      } else {
+        setState(() => primaryDestination = previousDestination);
+      }
     }
     // The outgoing route still listens during its reverse transition.
     route.completed.then((_) => ready.dispose());
@@ -2920,7 +3005,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _insertTypstSnippet(String snippet) {
     final source = _currentSource();
     _loadSource('${source.trimRight()}\n\n$snippet\n');
-    setState(() => mode = 'source');
+    _enterView('source');
     _queueAutosave();
   }
 
@@ -2935,6 +3020,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mode == 'source' || mode == 'split') {
       richController.loadSource(sourceController.text);
     }
+    while (_backViews.isNotEmpty &&
+        _backViews.last.knowledge == null &&
+        const {
+          'normal',
+          'read',
+          'preview',
+          'source',
+          'split',
+        }.contains(_backViews.last.mode)) {
+      _backViews.removeLast();
+    }
     setState(() => mode = 'normal');
   }
 
@@ -2943,6 +3039,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showToday() async {
     if (!mounted) return;
     ++_destinationGeneration;
+    _backViews.clear();
     setState(() {
       primaryDestination = 0;
       mode = 'normal';
@@ -2955,7 +3052,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showEditor();
     } else {
       if (mode == 'normal') sourceController.text = _currentSource();
-      setState(() => mode = next);
+      _enterView(next);
     }
   }
 
@@ -3084,10 +3181,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Opens [path] straight into reading mode (the shelf/rail "resume" tap).
   void _readPath(String path) {
-    primaryDestination = 2;
+    final fromList = mode == 'library' || mode == 'journal' || mode == 'graph';
     unawaited(
-      _openPath(path).then((_) {
-        if (mounted) setState(() => mode = 'read');
+      _openNote(path).then((opened) {
+        if (!mounted || !opened) return;
+        if (fromList ||
+            (_backViews.isNotEmpty && _backViews.last.mode == 'today')) {
+          setState(() => mode = 'read');
+        } else {
+          _enterView('read');
+        }
       }),
     );
   }
@@ -3112,7 +3215,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (mounted) showSnack(context, 'Could not save the open article.');
         return;
       }
-      if (mounted) setState(() => mode = 'library');
+      if (mounted) {
+        _backViews.clear();
+        setState(() {
+          primaryDestination = 2;
+          mode = 'library';
+        });
+      }
     }
     try {
       if (!await workspace.deleteNote(ref.path)) {
@@ -3568,8 +3677,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (location == null) return null;
     try {
       final exists = location.startsWith('content://')
-          ? (await AndroidTreeVaultStorage(uri: location, name: '').list())
-                .isNotEmpty
+          ? (await AndroidTreeVaultStorage(
+              uri: location,
+              name: '',
+            ).list()).isNotEmpty
           : await Directory(location).exists();
       return exists ? friendlyVaultPath(location) : null;
     } catch (_) {
@@ -4358,7 +4469,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 if (action == MagicAction.heading)
                                   Text(
                                     'H1',
-                                    style: Theme.of(context).textTheme.titleLarge,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleLarge,
                                   )
                                 else
                                   Icon(display.$1),
@@ -4403,6 +4516,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final generation = ++_destinationGeneration;
     ++_openGeneration;
+    _backViews.clear();
     switch (destination) {
       case 1:
         setState(() {
@@ -4450,7 +4564,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'Create',
               children: [
                 tile(_ShellAction.newPage, Icons.note_add_outlined, 'New page'),
-                tile(_ShellAction.newEntity, Icons.person_add_alt, 'New entity'),
+                tile(
+                  _ShellAction.newEntity,
+                  Icons.person_add_alt,
+                  'New entity',
+                ),
               ],
             ),
             if (vault != null && note != null)
@@ -4463,9 +4581,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             AppSection(
               title: 'Views',
-              children: [
-                tile(_ShellAction.graph, AppIcons.graph, 'Graph'),
-              ],
+              children: [tile(_ShellAction.graph, AppIcons.graph, 'Graph')],
             ),
           ],
         );
@@ -4548,10 +4664,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case _ShellAction.newEntity:
         await _createEntity();
       case _ShellAction.graph:
-        setState(() => mode = 'graph');
+        _enterView('graph');
       case _ShellAction.split:
         sourceController.text = _currentSource();
-        setState(() => mode = 'split');
+        _enterView('split');
       case _ShellAction.backlinks:
         await showDialog<void>(
           context: context,
@@ -4600,7 +4716,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         resolveKind: _resolveKind,
         fontScale: vaultRegistry?.readingFontScale ?? 1,
         nightMode: vaultRegistry?.readingNightMode ?? false,
-        onExit: _showEditor,
+        onExit: _backViews.isEmpty ? _showEditor : _back,
         onPreferencesChanged: _updateReadingPreferences,
         onProgress: _recordReadingProgress,
         onAtomTap: (source) =>
@@ -4701,6 +4817,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         initialTab: _libraryTab,
+        onTabChanged: (tab) => _libraryTab = tab,
         articleJobs: _articleJobs,
         index: index,
         pagedNotes: _pagedLibraryNotes,
@@ -5234,21 +5351,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final failed = openFailed || saveFailed;
         final banner = failed
             ? appBanner(
-              key: const ValueKey('status-error'),
-              backgroundColor: Theme.of(context).colorScheme.errorContainer,
-              content: Text(
-                saveFailed
-                    ? 'Could not save your note. Your edits are still here.'
-                    : status,
-                style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => saveFailed ? unawaited(_save()) : unawaited(_open()),
-                  child: Text(saveFailed ? 'Retry Save' : 'Retry'),
+                key: const ValueKey('status-error'),
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                content: Text(
+                  saveFailed
+                      ? 'Could not save your note. Your edits are still here.'
+                      : status,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
                 ),
-              ],
-            )
+                actions: [
+                  TextButton(
+                    onPressed: () =>
+                        saveFailed ? unawaited(_save()) : unawaited(_open()),
+                    child: Text(saveFailed ? 'Retry Save' : 'Retry'),
+                  ),
+                ],
+              )
             : (v != null && (index == null || rebuildProgress != null))
             ? statusPill(
                 key: const ValueKey('status-progress'),
@@ -5330,268 +5450,294 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final wideNavigation =
         MediaQuery.sizeOf(context).width >= 900 || compactHeight;
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: compactHeight ? 48 : 56,
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        title: mode == 'journal'
-            ? CompactDateTitle(day: currentDaily ?? DateTime.now())
-            : mode == 'library'
-            ? const Text('Library')
-            : mode == 'graph'
-            ? const Text('Graph')
-            : documentModes.contains(mode) && currentDaily != null
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Previous day',
-                    icon: const Icon(Icons.chevron_left),
-                    // Calendar day, not 24h: DST-safe (see [_stepDay]).
-                    onPressed: () => _stepDay(-1),
-                  ),
-                  Flexible(
-                    child: Tooltip(
-                      message: 'Calendar',
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(kRadiusSmall),
-                        onTap: () => unawaited(_showCalendarPicker()),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 48),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: Center(
-                              child: ValueListenableBuilder<bool>(
-                                valueListenable: workspace.dirtyNotifier,
-                                builder: (context, dirty, _) =>
-                                    CompactDateTitle(
-                                      day: currentDaily,
-                                      dirty: dirty,
-                                    ),
+    final canGoBack =
+        _backViews.isNotEmpty || primaryDestination != 0 || mode != 'normal';
+    final desktop =
+        Theme.of(context).platform == TargetPlatform.macOS ||
+        Theme.of(context).platform == TargetPlatform.windows ||
+        Theme.of(context).platform == TargetPlatform.linux;
+    return PopScope<void>(
+      canPop: !canGoBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: compactHeight ? 48 : 56,
+          automaticallyImplyLeading: false,
+          leading:
+              canGoBack &&
+                  (!desktop || _backViews.isNotEmpty || mode == 'graph')
+              ? BackButton(onPressed: _back)
+              : null,
+          centerTitle: false,
+          title: mode == 'journal'
+              ? CompactDateTitle(day: currentDaily ?? DateTime.now())
+              : mode == 'library'
+              ? const Text('Library')
+              : mode == 'graph'
+              ? const Text('Graph')
+              : documentModes.contains(mode) && currentDaily != null
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Previous day',
+                      icon: const Icon(Icons.chevron_left),
+                      // Calendar day, not 24h: DST-safe (see [_stepDay]).
+                      onPressed: () => _stepDay(-1),
+                    ),
+                    Flexible(
+                      child: Tooltip(
+                        message: 'Calendar',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(kRadiusSmall),
+                          onTap: () => unawaited(_showCalendarPicker()),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 48),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              child: Center(
+                                child: ValueListenableBuilder<bool>(
+                                  valueListenable: workspace.dirtyNotifier,
+                                  builder: (context, dirty, _) =>
+                                      CompactDateTitle(
+                                        day: currentDaily,
+                                        dirty: dirty,
+                                      ),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Next day',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () => _stepDay(1),
+                    ),
+                  ],
+                )
+              : ValueListenableBuilder<bool>(
+                  valueListenable: workspace.dirtyNotifier,
+                  builder: (context, dirty, _) => Text(
+                    dirty ? '$currentTitle •' : currentTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  IconButton(
-                    tooltip: 'Next day',
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () => _stepDay(1),
-                  ),
-                ],
-              )
-            : ValueListenableBuilder<bool>(
-                valueListenable: workspace.dirtyNotifier,
-                builder: (context, dirty, _) => Text(
-                  dirty ? '$currentTitle •' : currentTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-        actions: [
-          IconButton(
-            tooltip: 'Timestamped capture',
-            icon: const Icon(Icons.more_time),
-            onPressed: () => unawaited(_captureTimestamp()),
-          ),
-          if (mode == 'journal')
+          actions: [
             IconButton(
-              tooltip: 'Choose journal date',
-              onPressed: () => unawaited(_showCalendarPicker()),
-              icon: const Icon(AppIcons.calendarDate),
+              tooltip: 'Timestamped capture',
+              icon: const Icon(Icons.more_time),
+              onPressed: () => unawaited(_captureTimestamp()),
             ),
-          if (mode == 'graph')
-            PopupMenuButton<String>(
-              tooltip: 'Graph view',
-              icon: Icon(switch (_graphMode) {
-                'conceptMap' => Icons.bubble_chart,
-                'allFiles' => AppIcons.graph,
-                'timeline' => Icons.timeline,
-                'voronoi' => Icons.hive,
-                _ => Icons.center_focus_strong,
-              }),
-              onSelected: (value) => setState(() {
-                _graphMode = value;
-                _graphFocusPath = null;
-              }),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'conceptMap', child: Text('Concept map')),
-                PopupMenuItem(value: 'local', child: Text('Focused')),
-                PopupMenuItem(value: 'allFiles', child: Text('All files')),
-                PopupMenuItem(value: 'timeline', child: Text('Timeline')),
-                PopupMenuItem(value: 'voronoi', child: Text('Voronoi')),
-              ],
-            ),
-          if (mode == 'normal' && _usePlainLongEditor && v != null)
-            ListenableBuilder(
-              listenable: _plainHistoryRevision,
-              builder: (context, _) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Undo',
-                    icon: const Icon(Icons.undo),
-                    onPressed: _plainEditorKey.currentState?.canUndo == true
-                        ? () => _plainEditorKey.currentState?.undo()
-                        : null,
+            if (mode == 'journal')
+              IconButton(
+                tooltip: 'Choose journal date',
+                onPressed: () => unawaited(_showCalendarPicker()),
+                icon: const Icon(AppIcons.calendarDate),
+              ),
+            if (mode == 'graph')
+              PopupMenuButton<String>(
+                tooltip: 'Graph view',
+                icon: Icon(switch (_graphMode) {
+                  'conceptMap' => Icons.bubble_chart,
+                  'allFiles' => AppIcons.graph,
+                  'timeline' => Icons.timeline,
+                  'voronoi' => Icons.hive,
+                  _ => Icons.center_focus_strong,
+                }),
+                onSelected: (value) => setState(() {
+                  _graphMode = value;
+                  _graphFocusPath = null;
+                }),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'conceptMap',
+                    child: Text('Concept map'),
                   ),
-                  IconButton(
-                    tooltip: 'Redo',
-                    icon: const Icon(Icons.redo),
-                    onPressed: _plainEditorKey.currentState?.canRedo == true
-                        ? () => _plainEditorKey.currentState?.redo()
-                        : null,
-                  ),
+                  PopupMenuItem(value: 'local', child: Text('Focused')),
+                  PopupMenuItem(value: 'allFiles', child: Text('All files')),
+                  PopupMenuItem(value: 'timeline', child: Text('Timeline')),
+                  PopupMenuItem(value: 'voronoi', child: Text('Voronoi')),
                 ],
               ),
-            ),
-          if (documentModes.contains(mode))
-            PopupMenuButton<String>(
-              tooltip: 'View mode',
-              icon: Icon(switch (mode) {
-                'read' => Icons.chrome_reader_mode_outlined,
-                'preview' => Icons.preview_outlined,
-                'source' => Icons.code,
-                'split' => Icons.vertical_split,
-                _ => AppIcons.edit,
-              }),
-              onSelected: (value) {
-                if (value == 'split') {
-                  unawaited(_runShellAction(_ShellAction.split, linksPanel));
-                } else {
-                  _setEditorMode(value);
-                }
-              },
-              itemBuilder: (_) => [
-                for (final (value, label, icon) in const [
-                  ('normal', 'Edit', AppIcons.edit),
-                  ('read', 'Read', Icons.chrome_reader_mode_outlined),
-                  ('preview', 'Preview', Icons.preview_outlined),
-                  ('source', 'Source', Icons.code),
-                  ('split', 'Split', Icons.vertical_split),
-                ])
-                  PopupMenuItem(
-                    value: value,
-                    height: 48,
-                    child: Row(
-                      children: [
-                        Icon(icon),
-                        const SizedBox(width: kSpace12),
-                        Expanded(child: Text(label)),
-                        if (mode == value) const Icon(Icons.check),
-                      ],
+            if (mode == 'normal' && _usePlainLongEditor && v != null)
+              ListenableBuilder(
+                listenable: _plainHistoryRevision,
+                builder: (context, _) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Undo',
+                      icon: const Icon(Icons.undo),
+                      onPressed: _plainEditorKey.currentState?.canUndo == true
+                          ? () => _plainEditorKey.currentState?.undo()
+                          : null,
                     ),
-                  ),
-              ],
-            ),
-          ListenableBuilder(
-            listenable: Listenable.merge([
-              workspace,
-              workspace.syncProgressTick,
-            ]),
-            builder: (context, _) => SyncIconButton(
-              syncing: syncing,
-              vaultOpen: v != null,
-              storageHealthy: storageHealthy ?? true,
-              configured: cloud?.isReady ?? false,
-              desktopManaged: desktopManaged,
-              error: syncError,
-              conflicts: syncConflicts.length,
-              result: lastSync,
-              onPressed: _showSyncDashboard,
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton:
-          documentModes.contains(mode) && (mode == 'source' || mode == 'split')
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 52),
-              child: FloatingActionButton.extended(
-                onPressed: _showMagicMenu,
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Add to note'),
-              ),
-            )
-          : null,
-      bottomNavigationBar: wideNavigation
-          ? null
-          : NavigationBar(
-              selectedIndex: primaryDestination,
-              onDestinationSelected: (destination) {
-                if (destination == 4) {
-                  unawaited(_showMoreMenu(linksPanel));
-                } else {
-                  unawaited(_selectDestination(destination));
-                }
-              },
-              destinations: const [
-                NavigationDestination(icon: Icon(AppIcons.today), label: 'Today'),
-                NavigationDestination(
-                  icon: Icon(AppIcons.daily),
-                  label: 'Journal',
-                ),
-                NavigationDestination(
-                  icon: Icon(AppIcons.library),
-                  label: 'Library',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.search),
-                  label: 'Search',
-                ),
-                NavigationDestination(
-                  icon: Icon(AppIcons.overflow),
-                  label: 'More',
-                ),
-              ],
-            ),
-      body: wideNavigation
-          ? Row(
-              children: [
-                NavigationRail(
-                  selectedIndex: primaryDestination,
-                  onDestinationSelected: (destination) {
-                    if (destination == 4) {
-                      unawaited(_showMoreMenu(linksPanel));
-                    } else {
-                      unawaited(_selectDestination(destination));
-                    }
-                  },
-                  scrollable: compactHeight,
-                  labelType: compactHeight
-                      ? NavigationRailLabelType.none
-                      : NavigationRailLabelType.all,
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(AppIcons.today),
-                      label: Text('Today'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(AppIcons.daily),
-                      label: Text('Journal'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(AppIcons.library),
-                      label: Text('Library'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.search),
-                      label: Text('Search'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(AppIcons.overflow),
-                      label: Text('More'),
+                    IconButton(
+                      tooltip: 'Redo',
+                      icon: const Icon(Icons.redo),
+                      onPressed: _plainEditorKey.currentState?.canRedo == true
+                          ? () => _plainEditorKey.currentState?.redo()
+                          : null,
                     ),
                   ],
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: workArea),
-              ],
-            )
-          : workArea,
+              ),
+            if (documentModes.contains(mode))
+              PopupMenuButton<String>(
+                tooltip: 'View mode',
+                icon: Icon(switch (mode) {
+                  'read' => Icons.chrome_reader_mode_outlined,
+                  'preview' => Icons.preview_outlined,
+                  'source' => Icons.code,
+                  'split' => Icons.vertical_split,
+                  _ => AppIcons.edit,
+                }),
+                onSelected: (value) {
+                  if (value == 'split') {
+                    unawaited(_runShellAction(_ShellAction.split, linksPanel));
+                  } else {
+                    _setEditorMode(value);
+                  }
+                },
+                itemBuilder: (_) => [
+                  for (final (value, label, icon) in const [
+                    ('normal', 'Edit', AppIcons.edit),
+                    ('read', 'Read', Icons.chrome_reader_mode_outlined),
+                    ('preview', 'Preview', Icons.preview_outlined),
+                    ('source', 'Source', Icons.code),
+                    ('split', 'Split', Icons.vertical_split),
+                  ])
+                    PopupMenuItem(
+                      value: value,
+                      height: 48,
+                      child: Row(
+                        children: [
+                          Icon(icon),
+                          const SizedBox(width: kSpace12),
+                          Expanded(child: Text(label)),
+                          if (mode == value) const Icon(Icons.check),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                workspace,
+                workspace.syncProgressTick,
+              ]),
+              builder: (context, _) => SyncIconButton(
+                syncing: syncing,
+                vaultOpen: v != null,
+                storageHealthy: storageHealthy ?? true,
+                configured: cloud?.isReady ?? false,
+                desktopManaged: desktopManaged,
+                error: syncError,
+                conflicts: syncConflicts.length,
+                result: lastSync,
+                onPressed: _showSyncDashboard,
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton:
+            documentModes.contains(mode) &&
+                (mode == 'source' || mode == 'split')
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 52),
+                child: FloatingActionButton.extended(
+                  onPressed: _showMagicMenu,
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('Add to note'),
+                ),
+              )
+            : null,
+        bottomNavigationBar: wideNavigation
+            ? null
+            : NavigationBar(
+                selectedIndex: primaryDestination,
+                onDestinationSelected: (destination) {
+                  if (destination == 4) {
+                    unawaited(_showMoreMenu(linksPanel));
+                  } else {
+                    unawaited(_selectDestination(destination));
+                  }
+                },
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(AppIcons.today),
+                    label: 'Today',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(AppIcons.daily),
+                    label: 'Journal',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(AppIcons.library),
+                    label: 'Library',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.search),
+                    label: 'Search',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(AppIcons.overflow),
+                    label: 'More',
+                  ),
+                ],
+              ),
+        body: wideNavigation
+            ? Row(
+                children: [
+                  NavigationRail(
+                    selectedIndex: primaryDestination,
+                    onDestinationSelected: (destination) {
+                      if (destination == 4) {
+                        unawaited(_showMoreMenu(linksPanel));
+                      } else {
+                        unawaited(_selectDestination(destination));
+                      }
+                    },
+                    scrollable: compactHeight,
+                    labelType: compactHeight
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all,
+                    destinations: const [
+                      NavigationRailDestination(
+                        icon: Icon(AppIcons.today),
+                        label: Text('Today'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(AppIcons.daily),
+                        label: Text('Journal'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(AppIcons.library),
+                        label: Text('Library'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.search),
+                        label: Text('Search'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(AppIcons.overflow),
+                        label: Text('More'),
+                      ),
+                    ],
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(child: workArea),
+                ],
+              )
+            : workArea,
+      ),
     );
   }
 

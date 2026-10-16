@@ -3,6 +3,9 @@ part of '../app_mobile.dart';
 extension _VaultLifecycle on _HomeScreenState {
   void _closeVault(String message, {NextcloudConfig? nextCloud}) {
     selectedTag = null;
+    _backViews.clear();
+    primaryDestination = 0;
+    mode = 'normal';
     workspace.close(message, nextCloud: nextCloud);
   }
 
@@ -101,6 +104,8 @@ extension _VaultLifecycle on _HomeScreenState {
     if (mounted) {
       _rebuild(() {
         selectedTag = null;
+        _backViews.clear();
+        primaryDestination = 0;
         mode = 'normal';
       });
     }

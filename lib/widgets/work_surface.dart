@@ -450,6 +450,7 @@ class LibraryView extends StatelessWidget {
     required this.index,
     this.pagedNotes,
     this.initialTab = 0,
+    this.onTabChanged,
     this.articleJobs = const [],
     required this.calendar,
     required this.dayMarks,
@@ -475,6 +476,7 @@ class LibraryView extends StatelessWidget {
 
   final Future<Uint8List?> Function(String)? imageResolver;
   final int initialTab;
+  final ValueChanged<int>? onTabChanged;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
   final List<ArticleJob> articleJobs;
@@ -506,87 +508,101 @@ class LibraryView extends StatelessWidget {
   Widget build(BuildContext context) => DefaultTabController(
     length: audioShelf == null ? 5 : 6,
     initialIndex: initialTab,
-    child: Column(
-      children: [
-        TabBar(
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          tabs: [
-            const Tab(text: 'Notes'),
-            const Tab(text: 'Articles'),
-            const Tab(text: 'Screenshots'),
-            const Tab(text: 'Tasks'),
-            const Tab(text: 'Calendar'),
-            if (audioShelf != null) const Tab(text: 'Audio'),
+    child: Builder(
+      builder: (context) => NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.depth == 0 &&
+              notification is ScrollEndNotification) {
+            onTabChanged?.call(DefaultTabController.of(context).index);
+          }
+          return false;
+        },
+        child: Column(
+          children: [
+            TabBar(
+              onTap: onTabChanged,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                const Tab(text: 'Notes'),
+                const Tab(text: 'Articles'),
+                const Tab(text: 'Screenshots'),
+                const Tab(text: 'Tasks'),
+                const Tab(text: 'Calendar'),
+                if (audioShelf != null) const Tab(text: 'Audio'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _UnifiedNotesView(
+                    index: index,
+                    pagedNotes: pagedNotes,
+                    indexing: indexing,
+                    onOpenPath: onOpenPath,
+                    onCreateNote: onCreateNote,
+                    onCreateEntity: onCreateEntity,
+                  ),
+                  _ArticlesShelf(
+                    articleJobs: articleJobs,
+                    index: index,
+                    pagedNotes: pagedNotes,
+                    indexing: indexing,
+                    progressByPath: progressByPath,
+                    onReadPath: onReadPath,
+                    onSetReadStatus: onSetReadStatus,
+                    onSetRelevance: onSetRelevance,
+                    onDeleteArticle: onDeleteArticle,
+                    onImportMarkdownArticles: onImportMarkdownArticles,
+                    noteToCluster: noteToCluster,
+                    shelfPrefs: shelfPrefs,
+                    onShelfPrefsChanged: onShelfPrefsChanged,
+                  ),
+                  _ArticlesShelf(
+                    kind: 'screenshot',
+                    imageResolver: imageResolver,
+                    index: index,
+                    pagedNotes: pagedNotes,
+                    indexing: indexing,
+                    progressByPath: progressByPath,
+                    onReadPath: onReadPath,
+                    onSetReadStatus: onSetReadStatus,
+                    onSetRelevance: onSetRelevance,
+                    onDeleteArticle: onDeleteArticle,
+                    onImportMarkdownArticles: onImportMarkdownArticles,
+                    noteToCluster: noteToCluster,
+                    shelfPrefs: const {},
+                    onShelfPrefsChanged: null,
+                  ),
+                  _PrimaryTasksView(
+                    tasks: index?.tasks ?? const <TaskRef>[],
+                    notes: index?.notesByPath ?? const <String, NoteRef>{},
+                    indexing: indexing,
+                    onSetStatus: onSetTaskStatus,
+                    onSetField: onSetTaskField,
+                    onOpenPath: onOpenPath,
+                  ),
+                  CalendarTab(
+                    onSetStatus: onSetTaskStatus,
+                    onSetField: onSetTaskField,
+                    imageResolver: imageResolver,
+                    index: index,
+                    calendar: calendar,
+                    dayMarks: dayMarks,
+                    indexing: indexing,
+                    onOpenPath: onOpenPath,
+                    onOpenDay: onOpenDay,
+                  ),
+                  if (audioShelf != null)
+                    audioShelf!(
+                      pagedNotes ?? index?.notes ?? const <NoteRef>[],
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
-        Expanded(
-          child: TabBarView(
-            children: [
-              _UnifiedNotesView(
-                index: index,
-                pagedNotes: pagedNotes,
-                indexing: indexing,
-                onOpenPath: onOpenPath,
-                onCreateNote: onCreateNote,
-                onCreateEntity: onCreateEntity,
-              ),
-              _ArticlesShelf(
-                articleJobs: articleJobs,
-                index: index,
-                pagedNotes: pagedNotes,
-                indexing: indexing,
-                progressByPath: progressByPath,
-                onReadPath: onReadPath,
-                onSetReadStatus: onSetReadStatus,
-                onSetRelevance: onSetRelevance,
-                onDeleteArticle: onDeleteArticle,
-                onImportMarkdownArticles: onImportMarkdownArticles,
-                noteToCluster: noteToCluster,
-                shelfPrefs: shelfPrefs,
-                onShelfPrefsChanged: onShelfPrefsChanged,
-              ),
-              _ArticlesShelf(
-                kind: 'screenshot',
-                imageResolver: imageResolver,
-                index: index,
-                pagedNotes: pagedNotes,
-                indexing: indexing,
-                progressByPath: progressByPath,
-                onReadPath: onReadPath,
-                onSetReadStatus: onSetReadStatus,
-                onSetRelevance: onSetRelevance,
-                onDeleteArticle: onDeleteArticle,
-                onImportMarkdownArticles: onImportMarkdownArticles,
-                noteToCluster: noteToCluster,
-                shelfPrefs: const {},
-                onShelfPrefsChanged: null,
-              ),
-              _PrimaryTasksView(
-                tasks: index?.tasks ?? const <TaskRef>[],
-                notes: index?.notesByPath ?? const <String, NoteRef>{},
-                indexing: indexing,
-                onSetStatus: onSetTaskStatus,
-                onSetField: onSetTaskField,
-                onOpenPath: onOpenPath,
-              ),
-              CalendarTab(
-                onSetStatus: onSetTaskStatus,
-                onSetField: onSetTaskField,
-                imageResolver: imageResolver,
-                index: index,
-                calendar: calendar,
-                dayMarks: dayMarks,
-                indexing: indexing,
-                onOpenPath: onOpenPath,
-                onOpenDay: onOpenDay,
-              ),
-              if (audioShelf != null)
-                audioShelf!(pagedNotes ?? index?.notes ?? const <NoteRef>[]),
-            ],
-          ),
-        ),
-      ],
+      ),
     ),
   );
 }

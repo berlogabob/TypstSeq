@@ -258,10 +258,11 @@ class _ImageCropPageState extends State<ImageCropPage> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Crop image'),
-        leadingWidth: 80,
-        leading: TextButton(
+        leadingWidth: 110,
+        leading: TextButton.icon(
           onPressed: _busy ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          icon: const Icon(Icons.arrow_back),
+          label: const Text('Cancel'),
         ),
         actions: [
           TextButton(

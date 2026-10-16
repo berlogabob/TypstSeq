@@ -7,6 +7,10 @@ their history is in the commit log and the GitHub release notes.
 
 ### Performance
 
+- External-folder (SAF) vaults: the vault lock and sync log moved to app storage and
+  a few startup reads skip the busy queue (A24: lock write 7.6 s -> 10 ms).
+  Moving such a vault to app storage is still the big win (A24 startup sync
+  9-10 s -> 1.7 s).
 - Startup sync on a large app-storage vault: 22 s -> 7 s (P30, 19.5k files).
   Local file listing runs as one batch in a background isolate (14 s -> 5 s),
   shared revision files already read are skipped across launches (~4 s), and
@@ -17,6 +21,10 @@ their history is in the commit log and the GitHub release notes.
 
 - Journal no longer turns every day into a grey box when a saved scroll
   position collided with the agenda section's open/closed state.
+- Back navigation: Journal, Library (all tabs), Search, Graph, Preview, Source
+  and Split view now show a back arrow, and the Android back gesture returns to
+  where you came from (a note opened from Library goes back to Library, then
+  Today) instead of closing the app.
 - Android: the background sync job no longer runs while the app is open; an
   overdue job firing at launch held the vault lock and made every app sync
   fail for ~2 min.
