@@ -79,4 +79,24 @@ void main() {
     );
     expect(merged.single.path, 'notes/a.typ');
   });
+
+  test('a title containing the whole query outranks fused hits', () {
+    PkmsSearchResult r(String id, String title) => PkmsSearchResult(
+      id: id,
+      path: '$id.typ',
+      title: title,
+      kind: 'note',
+      tags: const [],
+      score: 1,
+    );
+    final merged = mergeHybridSearchResults(
+      keywordResults: [
+        r('digest', 'Digest 2026-W34'),
+        r('test', 'TyLog sync test'),
+      ],
+      vectorHits: const [VectorHit(id: 'digest', score: 0.9)],
+      query: 'TyLog sync',
+    );
+    expect(merged.map((result) => result.id), ['test', 'digest']);
+  });
 }

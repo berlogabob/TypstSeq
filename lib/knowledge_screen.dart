@@ -257,6 +257,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             vectorHits: await vectorSearch(query),
             resolveMissing: widget.resolveMissing,
             limit: results.length < 20 ? 20 : results.length,
+            query: query,
           );
         }
         var citations = const <ChunkCitation>[];

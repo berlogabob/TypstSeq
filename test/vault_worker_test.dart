@@ -163,6 +163,44 @@ void main() {
     expect(await worker.search('nothingmatchesthisquery'), isEmpty);
   });
 
+  test(
+    'post-sync rescan makes a new note searchable by title and body',
+    () async {
+      final seeded = await seed(2);
+      final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
+      addTearDown(worker.dispose);
+      final initial = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      final revision = initial.whereType<SearchReadyEvent>().last.revision;
+
+      // A sync download writes directly to storage, without saveNote/staleNotes.
+      const path = 'notes/TyLog sync test.typ';
+      await Vault(seeded.root).storage.writeText(
+        path,
+        '= TyLog sync test\n\nrevision check from mac 1356\n',
+      );
+      final events = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      expect(events.whereType<WorkFailedEvent>(), isEmpty);
+      expect(
+        events.whereType<IndexBuiltEvent>().single.index.notesByPath,
+        contains(path),
+      );
+      expect(
+        events.whereType<SearchReadyEvent>().single.revision,
+        greaterThan(revision),
+      );
+      for (final query in ['sync test', 'revision check']) {
+        expect(
+          (await worker.search(query)).map((hit) => hit.path),
+          contains(path),
+        );
+      }
+    },
+  );
+
   test('run is single-flight and says so instead of cross-talking', () async {
     final vault = await seed(4);
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);

@@ -24,6 +24,57 @@ class _CountingStorage extends LocalVaultStorage {
 
 void main() {
   test(
+    'post-sync rescan indexes a new note and preserves unchanged caches',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog-search-new-');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = _CountingStorage(root);
+      await storage.writeText('notes/a.typ', '= A\n\noriginalword');
+      final maintenance = VaultMaintenance(storage, publishDonor: false);
+      Future<List<VaultMaintenanceEvent>> scan() =>
+          maintenance.run(validate: false, sweep: false).toList();
+      final initial = await scan();
+      final before = initial.whereType<MaintenanceIndexed>().single.index;
+      final beforeSearch = initial
+          .whereType<MaintenanceSearchBuilt>()
+          .single
+          .search;
+
+      const path = 'notes/TyLog sync test.typ';
+      await storage.writeText(
+        path,
+        '= TyLog sync test\n\nrevision check from mac 1356',
+      );
+      final events = await scan();
+      final index = events.whereType<MaintenanceIndexed>().single.index;
+      final search = events.whereType<MaintenanceSearchBuilt>().single.search;
+      expect(index.notesByPath, contains(path));
+      expect(identical(index, before), isFalse);
+      expect(identical(search, beforeSearch), isFalse);
+      for (final query in ['sync test', 'revision check']) {
+        expect(search.search(query).map((hit) => hit.path), contains(path));
+      }
+      expect(search.search('originalword').single.path, 'notes/a.typ');
+
+      final unchanged = await scan();
+      expect(
+        unchanged.whereType<MaintenanceIndexed>().single.index,
+        same(index),
+      );
+      expect(
+        unchanged.whereType<MaintenanceSearchBuilt>().single.search,
+        same(search),
+      );
+      await maintenance.flushSearch();
+      final loaded = await PkmsSearchIndex.loadStorage(
+        storage,
+        TylogVaultPaths.searchIndex,
+      );
+      expect(loaded.search('revision check').single.path, path);
+    },
+  );
+
+  test(
     'one changed note stays in memory until flush; stale disk recovers',
     () async {
       final root = await Directory.systemTemp.createTemp('tylog-search-cache-');

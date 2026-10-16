@@ -79,6 +79,7 @@ List<PkmsSearchResult> mergeHybridSearchResults({
   required Iterable<VectorHit> vectorHits,
   PkmsSearchResult? Function(String id)? resolveMissing,
   int limit = 10,
+  String query = '',
 }) {
   final results = [for (final result in keywordResults) result];
   final byId = <String, PkmsSearchResult>{
@@ -89,10 +90,20 @@ List<PkmsSearchResult> mergeHybridSearchResults({
     vectorHits: vectorHits,
     limit: limit,
   );
-  return fused
+  final merged = fused
       .map((hit) => byId[hit.id] ?? resolveMissing?.call(hit.id))
       .whereType<PkmsSearchResult>()
-      .toList(growable: false);
+      .toList();
+  // A title containing the whole query goes first: rank fusion put "TyLog
+  // sync test" third for the query "TyLog sync", under notes that merely
+  // scored in both lists. Stable, so fused order holds within each group.
+  final needle = query.trim().toLowerCase();
+  if (needle.isEmpty) return List.unmodifiable(merged);
+  bool titled(PkmsSearchResult r) => r.title.toLowerCase().contains(needle);
+  return List.unmodifiable([
+    ...merged.where(titled),
+    ...merged.where((r) => !titled(r)),
+  ]);
 }
 
 /// The SQLite projection can lag synced files; keep live-vault keyword hits.
