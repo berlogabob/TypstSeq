@@ -8,6 +8,8 @@ flutter build apk --profile && \
 ```
 Use this (not `--debug`, which has appId suffix `.debug`) with DevTools or `integration_test/support/editor_frame_metrics.dart` for Flutter frame timings. `dumpsys gfxinfo` measures platform decor and cannot establish Flutter jank. Integration drive must use the isolated optional `.profiletest` suffix, not the production package.
 
+Cold-start measurements: after `adb install -r` Android relaunches an app that was in the foreground, so a following `am start` only reaches the running instance ("intent delivered to currently running top-most instance") and its `TYLOG_STARTUP` marks are not a cold start. Always `adb shell am force-stop org.tylog.tylog` and wait a few seconds before `am start`; enlarge the log buffer first on noisy phones (`adb logcat -G 16M`).
+
 Engineering policies and their local test gates live in [CONTEXT.md → Engineering rules](CONTEXT.md#engineering-rules); read them when changing startup, indexing, editor layout, sync, or release tooling.
 
 ### pxpipe (optional token-cost proxy)
