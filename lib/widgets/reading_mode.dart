@@ -84,6 +84,8 @@ class _ReadingModeState extends State<ReadingMode> {
   }
 
   void _startReveal() {
+    _revealTimer?.cancel();
+    _revealRange = null;
     final query = widget.revealQuery;
     if (query == null) return;
     final controller = TyLogEditingController(
@@ -101,6 +103,16 @@ class _ReadingModeState extends State<ReadingMode> {
     _revealTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) setState(() => _revealRange = null);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ReadingMode oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.source != oldWidget.source ||
+        widget.revealQuery != oldWidget.revealQuery ||
+        widget.revealOffset != oldWidget.revealOffset) {
+      setState(_startReveal);
+    }
   }
 
   void _onRevealPosition(double globalY) {
