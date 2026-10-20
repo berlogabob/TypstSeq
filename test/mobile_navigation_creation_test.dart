@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:tylog/widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/widgets/date_format.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
@@ -363,6 +364,35 @@ void main() {
     await tester.tap(find.text('2023-04-01'));
     await tester.pumpAndSettle();
     expect(home.workspace.note, 'daily/2023/04/2023-04-01.typ');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a past day opened from Search has a readable title on a phone', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(370, 890));
+    await _prepareSearchResult(home);
+    tester.widget<NavigationBar>(find.byType(NavigationBar)).onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText ==
+                'Search notes, tasks, and attachments',
+      ),
+      'пробежка',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2023-04-01'));
+    await tester.pumpAndSettle();
+    final title = find.descendant(
+      of: find.byType(CompactDateTitle),
+      matching: find.byType(Text),
+    );
+    // Each of the two rendered lines must stay at a readable height.
+    expect(tester.getRect(title).height / 2, greaterThanOrEqualTo(12));
     await tester.pumpWidget(const SizedBox());
   });
 

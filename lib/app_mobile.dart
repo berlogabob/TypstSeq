@@ -1838,10 +1838,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ) &&
                         mounted) {
                       // Search is a route; recreate it when leaving its editor.
-                      _rememberView(
-                        knowledge: initialView,
-                        searchQuery: query,
-                      );
+                      _rememberView(knowledge: initialView, searchQuery: query);
                       setState(() {});
                     }
                   }
@@ -5617,6 +5614,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     IconButton(
                       tooltip: 'Previous day',
+                      // Compact arrows leave the date room next to a back
+                      // button and three actions (~32 dp slot otherwise).
+                      visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.chevron_left),
                       // Calendar day, not 24h: DST-safe (see [_stepDay]).
                       onPressed: () => _stepDay(-1),
@@ -5629,19 +5629,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onTap: () => unawaited(_showCalendarPicker()),
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(minHeight: 48),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              child: Center(
-                                child: ValueListenableBuilder<bool>(
-                                  valueListenable: workspace.dirtyNotifier,
-                                  builder: (context, dirty, _) =>
-                                      CompactDateTitle(
-                                        day: currentDaily,
-                                        dirty: dirty,
-                                      ),
-                                ),
+                            child: Center(
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: workspace.dirtyNotifier,
+                                builder: (context, dirty, _) =>
+                                    CompactDateTitle(
+                                      day: currentDaily,
+                                      dirty: dirty,
+                                    ),
                               ),
                             ),
                           ),
@@ -5650,6 +5645,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     IconButton(
                       tooltip: 'Next day',
+                      visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.chevron_right),
                       onPressed: () => _stepDay(1),
                     ),

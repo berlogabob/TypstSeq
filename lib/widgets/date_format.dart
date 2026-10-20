@@ -63,6 +63,10 @@ class CompactDateTitle extends StatelessWidget {
         '$text${dirty ? ' •' : ''}',
         maxLines: 2,
         textAlign: TextAlign.center,
+        // Two lines at the small title size fit the bar without shrinking.
+        style: identical(text, label)
+            ? null
+            : Theme.of(context).textTheme.titleSmall,
       ),
     );
   }
