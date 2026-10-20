@@ -185,6 +185,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       baseOffset: range.start,
       extentOffset: range.end,
     );
+    widget.controller._searchReveal = range;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_taskScroll.hasClients) return;
       final editable = _editableIn(_editorKey.currentContext);
@@ -201,7 +202,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     });
     _revealTimer?.cancel();
     _revealTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) widget.controller.selection = previous;
+      if (!mounted) return;
+      widget.controller.selection = previous;
+      widget.controller._searchReveal = null;
     });
   }
 

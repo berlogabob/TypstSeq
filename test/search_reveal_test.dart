@@ -43,8 +43,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.selectedPlainText, 'Needle');
     expect(controller.selection.isCollapsed, isFalse);
+    // An unfocused TextField paints no selection, so the match must also be
+    // painted as a span background (the phone showed nothing otherwise).
+    TextSpan painted() => controller.buildTextSpan(
+      context: tester.element(find.byType(EditableText)),
+      withComposing: false,
+    );
+    expect(_hasRevealHighlight(painted(), 'Needle'), isTrue);
     await tester.pump(const Duration(seconds: 3));
     expect(controller.selection.isCollapsed, isTrue);
+    expect(_hasRevealHighlight(painted(), 'Needle'), isFalse);
   });
 
   testWidgets('ordinary editor opens do not reveal a match', (tester) async {

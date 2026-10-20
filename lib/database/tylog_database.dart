@@ -839,7 +839,14 @@ class TyLogDatabase extends _$TyLogDatabase {
         )..where((t) => t.id.equals(node.id))).getSingleOrNull();
         if (existing != null) continue;
         await into(nodes).insert(node);
-        await _upsertNodeSearch(node);
+        // New node: no FTS row to delete. The delete in _upsertNodeSearch
+        // scans the whole FTS table (node_id is UNINDEXED), which made a
+        // 9,800-note projection quadratic and held the DB for minutes.
+        await customStatement(
+          'INSERT INTO node_search_fts(node_id, title, content, attributes) '
+          'VALUES (?, ?, ?, ?)',
+          [node.id, node.title, node.content, node.attributesJson],
+        );
       }
     });
   }

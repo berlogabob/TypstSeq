@@ -1222,12 +1222,26 @@ class TyLogEditingController extends TextEditingController {
     if (emit) onSourceChanged(document.toSource());
   }
 
+  /// A search match painted as a span background; set briefly when a search
+  /// result opens (an unfocused field paints no selection).
+  TextRange? searchReveal;
+
+  set _searchReveal(TextRange? range) {
+    searchReveal = range;
+    notifyListeners();
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
     TextStyle? style,
     required bool withComposing,
-  }) => _textSpan(context, style, withComposing: withComposing);
+  }) => _textSpan(
+    context,
+    style,
+    withComposing: withComposing,
+    revealRange: searchReveal,
+  );
 
   TextSpan readTextSpan(
     BuildContext context, {
