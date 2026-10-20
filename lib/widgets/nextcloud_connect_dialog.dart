@@ -32,6 +32,7 @@ class NextcloudConnectDialog extends StatefulWidget {
 }
 
 class _NextcloudConnectDialogState extends State<NextcloudConnectDialog> {
+  late String kind = widget.config?.kind ?? 'nextcloud';
   late final url = TextEditingController(text: widget.config?.serverUrl ?? '');
   late final user = TextEditingController(text: widget.config?.username ?? '');
   late final pass = TextEditingController(text: widget.config?.password ?? '');
@@ -46,6 +47,7 @@ class _NextcloudConnectDialogState extends State<NextcloudConnectDialog> {
     username: user.text,
     password: pass.text,
     remoteFolder: folder.text,
+    kind: kind,
   );
 
   void cancel() {
@@ -69,6 +71,7 @@ class _NextcloudConnectDialogState extends State<NextcloudConnectDialog> {
 
   Future<void> signIn() async {
     final server = url.text.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (kind == 'webdav') return;
     if (!NextcloudConfig(
       serverUrl: server,
       username: 'login',
@@ -151,12 +154,29 @@ class _NextcloudConnectDialogState extends State<NextcloudConnectDialog> {
               hint: 'https://cloud.example.com',
               autofillHints: const [AutofillHints.url],
             ),
-            if (client == null)
+            DropdownButtonFormField<String>(
+              initialValue: kind,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Backend',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'nextcloud', child: Text('Nextcloud')),
+                DropdownMenuItem(
+                  value: 'webdav',
+                  child: Text('WebDAV (any server)'),
+                ),
+              ],
+              onChanged: client == null
+                  ? (value) => setState(() => kind = value ?? 'nextcloud')
+                  : null,
+            ),
+            if (kind == 'nextcloud' && client == null)
               TextButton(
                 onPressed: signIn,
                 child: const Text('Sign in with browser'),
               )
-            else
+            else if (kind == 'nextcloud')
               Row(
                 children: [
                   const Expanded(child: Text('Waiting for approval…')),
@@ -175,12 +195,13 @@ class _NextcloudConnectDialogState extends State<NextcloudConnectDialog> {
               password: true,
               autofillHints: const [AutofillHints.password],
             ),
-            field(
-              folder,
-              'Remote folder',
-              helper: 'Created inside your Nextcloud files.',
-              textInputAction: TextInputAction.done,
-            ),
+            if (kind == 'nextcloud')
+              field(
+                folder,
+                'Remote folder',
+                helper: 'Created inside your Nextcloud files.',
+                textInputAction: TextInputAction.done,
+              ),
           ],
         ),
       ),

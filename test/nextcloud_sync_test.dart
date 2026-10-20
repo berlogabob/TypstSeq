@@ -2592,6 +2592,73 @@ void main() {
     );
   });
 
+  test('generic WebDAV uses the configured URL as its root', () {
+    const config = NextcloudConfig(
+      serverUrl: 'https://dav.example.test/remote.php/dav/files/alice',
+      username: 'alice',
+      password: 'secret',
+      kind: 'webdav',
+    );
+
+    expect(config.isReady, isTrue);
+    expect(
+      config.rootUri.toString(),
+      'https://dav.example.test/remote.php/dav/files/alice/',
+    );
+    expect(NextcloudConfig.fromJson(config.toJson()).kind, 'webdav');
+  });
+
+  test('plain WebDAV URL lists and syncs the fixture vault', () async {
+    final remote = <String, _MutableRemoteFile>{};
+    final server = await _mutableWebDavServer(remote, root: '/dav/vault/');
+    final sourceDir = await Directory.systemTemp.createTemp('webdav-source-');
+    final peerDir = await Directory.systemTemp.createTemp('webdav-peer-');
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => sourceDir.delete(recursive: true));
+    addTearDown(() => peerDir.delete(recursive: true));
+    final source = Vault(sourceDir);
+    await source.ensureCreated();
+    await source.saveNote('notes/plain.typ', 'plain WebDAV');
+
+    await NextcloudSync(_webdavConfig(server)).sync(source);
+    final peer = Vault(peerDir);
+    await peer.ensureCreated();
+    await NextcloudSync(_webdavConfig(server)).sync(peer);
+
+    expect(await peer.storage.readText('notes/plain.typ'), 'plain WebDAV');
+  });
+
+  test(
+    'generic WebDAV sends a large file with one PUT (no chunking endpoint)',
+    () async {
+      final remote = <String, _MutableRemoteFile>{};
+      var largePuts = 0;
+      final server = await _mutableWebDavServer(
+        remote,
+        root: '/dav/vault/',
+        intercept: (request, path) {
+          if (request.method == 'PUT' && path == 'assets/large.bin') {
+            largePuts++;
+          }
+          return false;
+        },
+      );
+      final dir = await Directory.systemTemp.createTemp('webdav-large-');
+      addTearDown(() => server.close(force: true));
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      await vault.ensureCreated();
+      await vault.storage.writeBytes(
+        'assets/large.bin',
+        List.filled(20 * 1024 * 1024, 7),
+      );
+
+      await NextcloudSync(_webdavConfig(server)).sync(vault);
+
+      expect(largePuts, 1);
+    },
+  );
+
   test('Nextcloud remote folder is persisted and used', () {
     const config = NextcloudConfig(
       serverUrl: 'https://cloud.example/',
@@ -6531,6 +6598,13 @@ NextcloudConfig _config(HttpServer server) => NextcloudConfig(
   password: 'secret',
 );
 
+NextcloudConfig _webdavConfig(HttpServer server) => NextcloudConfig(
+  serverUrl: 'http://${server.address.address}:${server.port}/dav/vault',
+  username: 'alice',
+  password: 'secret',
+  kind: 'webdav',
+);
+
 /// Counts recursive tree walks. On the P30's 11,610-file vault one walk is
 /// 9.3s of an 18.1s pass, so a pass must never pay for two.
 class _StreamingUploadStorage extends LocalVaultStorage {
@@ -6905,8 +6979,8 @@ Future<HttpServer> _mutableWebDavServer(
   bool interruptChunk3Once = false,
   bool Function()? serverError,
   FutureOr<bool> Function(HttpRequest request, String path)? intercept,
+  String root = '/remote.php/dav/files/alice/TyLogVault/',
 }) async {
-  const root = '/remote.php/dav/files/alice/TyLogVault/';
   var version = 0;
   var interrupted = false;
   final locked = <String>{};

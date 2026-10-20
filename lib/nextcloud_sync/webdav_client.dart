@@ -1,6 +1,9 @@
 part of '../nextcloud_sync.dart';
 
 extension _WebDavClient on NextcloudSync {
+  // Chunked upload is a Nextcloud API; plain WebDAV servers get one PUT.
+  bool get _supportsChunking => !config.isWebDav;
+
   Future<
     ({
       Map<String, _RemoteFile> files,
@@ -368,7 +371,7 @@ extension _WebDavClient on NextcloudSync {
     required String localHash,
     required _RemoteFile? remote,
   }) async {
-    if (bytes.length > 10 * 1024 * 1024) {
+    if (bytes.length > 10 * 1024 * 1024 && _supportsChunking) {
       return _uploadChunks(
         path,
         bytes.length,
@@ -421,7 +424,7 @@ extension _WebDavClient on NextcloudSync {
       await Vault.withStorage(storage).rememberLocalRevision(path, localHash);
     }
     final length = bytes?.length ?? (await storage.stat(path))?.size ?? 0;
-    if (bytes == null && length > 10 * 1024 * 1024) {
+    if (bytes == null && length > 10 * 1024 * 1024 && _supportsChunking) {
       final source = storage.openRead(path);
       if (source != null) {
         // Stream to a stable snapshot: edits during chunking cannot mix versions.

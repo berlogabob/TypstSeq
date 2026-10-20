@@ -37,12 +37,16 @@ class NextcloudConfig {
     required this.username,
     required this.password,
     this.remoteFolder = 'TyLogVault',
+    this.kind = 'nextcloud',
   });
 
   final String serverUrl;
   final String username;
   final String password;
   final String remoteFolder;
+  final String kind;
+
+  bool get isWebDav => kind == 'webdav';
 
   bool get isReady {
     final server = Uri.tryParse(serverUrl.trim());
@@ -59,7 +63,7 @@ class NextcloudConfig {
         server.host.isNotEmpty &&
         username.trim().isNotEmpty &&
         password.isNotEmpty &&
-        folders.isNotEmpty &&
+        (isWebDav || folders.isNotEmpty) &&
         !folders.any((folder) => folder == '.' || folder == '..');
   }
 
@@ -71,6 +75,11 @@ class NextcloudConfig {
 
   Uri get rootUri {
     final base = Uri.parse(serverUrl.trim().replaceFirst(RegExp(r'/+$'), ''));
+    if (isWebDav) {
+      return base.replace(
+        path: '${base.path.replaceFirst(RegExp(r'/+$'), '')}/',
+      );
+    }
     if (base.path.contains('/remote.php/dav/files/')) {
       return base.path.endsWith('/')
           ? base
@@ -83,6 +92,7 @@ class NextcloudConfig {
   }
 
   bool get usesDirectWebDavUrl =>
+      isWebDav ||
       Uri.parse(serverUrl.trim()).path.contains('/remote.php/dav/files/');
 
   Uri get filesUri {
@@ -99,6 +109,7 @@ class NextcloudConfig {
     username: username,
     password: password,
     remoteFolder: remoteFolder,
+    kind: kind,
   );
 
   // ponytail: password lives in the OS keystore only, never in vaults.json /
@@ -107,6 +118,7 @@ class NextcloudConfig {
     'serverUrl': serverUrl,
     'username': username,
     'remoteFolder': remoteFolder,
+    if (kind != 'nextcloud') 'kind': kind,
   };
 
   static NextcloudConfig fromJson(Map<String, Object?> json) => NextcloudConfig(
@@ -115,6 +127,7 @@ class NextcloudConfig {
     // Legacy inline password (pre-keystore files); migrated out on next load/save.
     password: json['password'] as String? ?? '',
     remoteFolder: json['remoteFolder'] as String? ?? 'TyLogVault',
+    kind: json['kind'] as String? ?? 'nextcloud',
   );
 
   static const _secure = FlutterSecureStorage();
