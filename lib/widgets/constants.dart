@@ -93,6 +93,9 @@ ThemeData tyLogTheme(Brightness brightness) {
 
 /// Black scrims preserve legibility over images regardless of app brightness.
 const kImageGradientScrim = Color(0x99000000);
+
+/// Brief highlight on the text a search result opened at (amber, 55%).
+const kSearchRevealFill = Color(0x8CFFC107);
 const kImageControlScrim = Color(0x66000000);
 
 /// Corner-radius scale. Small = chips/inline chips, medium = list tiles, cards

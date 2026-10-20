@@ -1234,6 +1234,7 @@ class TyLogEditingController extends TextEditingController {
     TextStyle? style,
     bool tappable = false,
     Widget Function(String source)? taskBuilder,
+    TextRange? revealRange,
   }) => _textSpan(
     context,
     style,
@@ -1241,7 +1242,36 @@ class TyLogEditingController extends TextEditingController {
     interactive: false,
     tappable: tappable,
     taskBuilder: taskBuilder,
+    revealRange: revealRange,
   );
+
+  TextRange? searchRevealRange(String query, {int? preferredOffset}) {
+    var offset = 0;
+    for (final (blockIndex, block) in document.blocks.indexed) {
+      if (block.isProtected) {
+        offset++;
+        offset += document.gapAfter(blockIndex).length;
+        continue;
+      }
+      for (final part in block.parts) {
+        final text = part.isAtom ? part.label! : part.text;
+        final hit = findSearchRevealRange(text, query);
+        if (hit != null) {
+          return TextRange(
+            start: offset + (part.isAtom ? 0 : hit.start),
+            end: offset + (part.isAtom ? 1 : hit.end),
+          );
+        }
+        offset += part.text.length;
+      }
+      offset += document.gapAfter(blockIndex).length;
+    }
+    return findSearchRevealRange(
+      text,
+      query,
+      preferredOffset: preferredOffset,
+    );
+  }
 
   /// Spans for visible-text range [start, end): the blocks overlapping it,
   /// sliced to the range with the same span code (P12k editing window and
@@ -1286,6 +1316,7 @@ class TyLogEditingController extends TextEditingController {
     int firstBlock = 0,
     int? lastBlock,
     bool trailingGap = false,
+    TextRange? revealRange,
   }) {
     final children = <InlineSpan>[];
     // An empty document has no blocks: the window then renders nothing.
@@ -1370,6 +1401,10 @@ class TyLogEditingController extends TextEditingController {
                           block.headingLevel,
                           nestedPart.style,
                         ),
+                        highlight:
+                            revealRange != null &&
+                            revealRange.start <= global &&
+                            revealRange.end > global,
                       ),
                     ),
                   );
@@ -1387,6 +1422,7 @@ class TyLogEditingController extends TextEditingController {
                       nestedPart.style,
                     ),
                     composing: TextRange.empty,
+                    revealRange: revealRange,
                   );
                   global += nestedPart.text.length;
                 }
@@ -1438,6 +1474,10 @@ class TyLogEditingController extends TextEditingController {
                 block.headingLevel,
                 part.style,
               ),
+              highlight:
+                  revealRange != null &&
+                  revealRange.start <= global &&
+                  revealRange.end > global,
             );
             children.add(
               WidgetSpan(
@@ -1508,6 +1548,7 @@ class TyLogEditingController extends TextEditingController {
                       2 * stripHeight / (partStyle.fontSize ?? 16),
                 ),
                 composing: withComposing ? value.composing : TextRange.empty,
+                revealRange: revealRange,
               );
             }
             _addTextSpans(
@@ -1516,6 +1557,7 @@ class TyLogEditingController extends TextEditingController {
               global + leading,
               style: partStyle,
               composing: withComposing ? value.composing : TextRange.empty,
+              revealRange: revealRange,
             );
             global += part.text.length;
           }

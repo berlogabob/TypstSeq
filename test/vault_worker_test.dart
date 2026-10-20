@@ -155,8 +155,41 @@ void main() {
     expect(await worker.search('nothingmatchesthisquery'), isEmpty);
   });
 
+  test(
+    'first query persists the v3 search index for the next worker',
+    () async {
+      final seeded = await seed(4);
+      final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
+      final events = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      expect(events.whereType<WorkFailedEvent>(), isEmpty);
+      expect(
+        await File('${seeded.root.path}/${Vault.searchIndexPath}').exists(),
+        isFalse,
+      );
+
+      expect(await worker.search('unit'), isNotEmpty);
+      final searchFile = File('${seeded.root.path}/${Vault.searchIndexPath}');
+      expect(await searchFile.exists(), isTrue);
+      final firstWrite = (await searchFile.stat()).modified;
+      await worker.dispose();
+
+      final relaunched = await VaultWorkerClient.spawn(entry: seeded.entry);
+      addTearDown(relaunched.dispose);
+      final relaunchEvents = await relaunched
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      expect(relaunchEvents.whereType<WorkFailedEvent>(), isEmpty);
+      expect(await relaunched.search('unit'), isNotEmpty);
+      expect((await searchFile.stat()).modified, firstWrite);
+    },
+  );
+
   test('searches Cyrillic ref-note labels in entity and daily notes', () async {
-    final root = await Directory.systemTemp.createTemp('tylog_worker_cyrillic_');
+    final root = await Directory.systemTemp.createTemp(
+      'tylog_worker_cyrillic_',
+    );
     addTearDown(() => root.delete(recursive: true));
     final vault = Vault(root);
     await vault.ensureCreated();
@@ -182,10 +215,10 @@ void main() {
         .run(const RebuildIndexCommand(force: true, stale: {}))
         .toList();
 
-    expect(
-      (await worker.search('пробежка')).map((hit) => hit.path).toList(),
-      ['notes/run.typ', 'daily/2023/04/2023-04-01.typ'],
-    );
+    expect((await worker.search('пробежка')).map((hit) => hit.path).toList(), [
+      'notes/run.typ',
+      'daily/2023/04/2023-04-01.typ',
+    ]);
   });
 
   test(

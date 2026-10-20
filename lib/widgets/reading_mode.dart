@@ -23,6 +23,8 @@ class ReadingMode extends StatefulWidget {
     this.imageResolver,
     this.resolveKind,
     this.onAtomTap,
+    this.revealQuery,
+    this.revealOffset,
   });
 
   final String source;
@@ -30,6 +32,8 @@ class ReadingMode extends StatefulWidget {
   final Future<Uint8List?> Function(String path)? imageResolver;
   final String? Function(String target)? resolveKind;
   final ValueChanged<String>? onAtomTap;
+  final String? revealQuery;
+  final int? revealOffset;
   final double fontScale;
   final bool nightMode;
   final VoidCallback onExit;
@@ -58,11 +62,14 @@ class _ReadingModeState extends State<ReadingMode> {
   bool fullscreen = false;
   DateTime? _lastOverscroll;
   bool _ratingSheetOpen = false;
+  TextRange? _revealRange;
+  Timer? _revealTimer;
 
   @override
   void initState() {
     super.initState();
     scrollController.addListener(_updateProgress);
+    _startReveal();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           widget.initialProgress > 0 &&
@@ -76,6 +83,39 @@ class _ReadingModeState extends State<ReadingMode> {
     });
   }
 
+  void _startReveal() {
+    final query = widget.revealQuery;
+    if (query == null) return;
+    final controller = TyLogEditingController(
+      source: widget.source,
+      onSourceChanged: (_) {},
+      onError: (_) {},
+      onProtectedTap: (_) {},
+    );
+    _revealRange = controller.searchRevealRange(
+      query,
+      preferredOffset: widget.revealOffset,
+    );
+    controller.dispose();
+    if (_revealRange == null) return;
+    _revealTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _revealRange = null);
+    });
+  }
+
+  void _onRevealPosition(double globalY) {
+    if (_revealRange == null || !scrollController.hasClients) return;
+    final render = context.findRenderObject();
+    final viewportTop = render is RenderBox
+        ? render.localToGlobal(Offset.zero).dy
+        : 0.0;
+    final target = viewportTop + MediaQuery.sizeOf(context).height / 3;
+    final max = scrollController.position.maxScrollExtent;
+    scrollController.jumpTo(
+      (scrollController.offset + globalY - target).clamp(0, max).toDouble(),
+    );
+  }
+
   @override
   void dispose() {
     final path = widget.path;
@@ -85,6 +125,7 @@ class _ReadingModeState extends State<ReadingMode> {
     scrollController
       ..removeListener(_updateProgress)
       ..dispose();
+    _revealTimer?.cancel();
     progress.dispose();
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
@@ -294,6 +335,8 @@ class _ReadingModeState extends State<ReadingMode> {
                               imageResolver: widget.imageResolver,
                               resolveKind: widget.resolveKind,
                               onAtomTap: widget.onAtomTap,
+                              revealRange: _revealRange,
+                              onRevealPosition: _onRevealPosition,
                             ),
                           ),
                         ),

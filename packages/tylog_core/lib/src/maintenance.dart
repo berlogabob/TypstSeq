@@ -126,6 +126,20 @@ class VaultMaintenance {
     );
   }
 
+  /// Whether the on-disk cache is a search index this build can consume.
+  Future<bool> hasValidSearchFile() async {
+    if (!await storage.exists(TylogVaultPaths.searchIndex)) return false;
+    try {
+      final bytes = gzip.decode(
+        await storage.readBytes(TylogVaultPaths.searchIndex),
+      );
+      final json = jsonDecode(utf8.decode(bytes)) as Map;
+      return json['version'] == 3 && json['indexVersion'] == kVaultIndexVersion;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<PkmsSearchIndex> buildSearch(
     VaultIndex index, {
     bool rebuildSearch = false,
@@ -179,6 +193,13 @@ class VaultMaintenance {
     } finally {
       _searchFlush = null;
     }
+  }
+
+  /// Release the derived search cache after a background warm build.
+  void discardSearch() {
+    if (_searchDirty) return;
+    _lastSearch = null;
+    _lastSearchWrite = null;
   }
 
   /// When this instance last swept, so a long-lived process does not walk the
@@ -312,8 +333,7 @@ class VaultMaintenance {
         index.notesByPath.entries.every((entry) {
           final before = previous.notesByPath[entry.key];
           return identical(before, entry.value) ||
-              (before != null &&
-                  jsonEncode(before) == jsonEncode(entry.value));
+              (before != null && jsonEncode(before) == jsonEncode(entry.value));
         }) &&
         jsonEncode(previous.tasks) == jsonEncode(index.tasks) &&
         jsonEncode(previous.problems) == jsonEncode(index.problems) &&

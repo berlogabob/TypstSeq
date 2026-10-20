@@ -236,6 +236,8 @@ class _VaultWorker {
   int _indexGeneration = 0;
   int _searchGeneration = -1;
   Future<void>? _searchLoad;
+  Future<void>? _searchWarmup;
+  bool _searchLoaded = false;
 
   final List<SendPort> _flushReplies = [];
 
@@ -383,6 +385,7 @@ class _VaultWorker {
         }
       }
       if (_cancelled) throw const IndexBuildCancelled();
+      if (_searchLoaded) await _ensureSearch();
     } on IndexBuildCancelled {
       terminal = const WorkFailedEvent('cancelled', cancelled: true);
     } catch (error) {
@@ -396,6 +399,7 @@ class _VaultWorker {
           (_vault.maintenance.stageMillis['write-search'] ?? 0) +
           timer.elapsedMilliseconds;
       _busy = false;
+      if (!_shutdownRequested) _scheduleSearchWarmup();
       _send(
         terminal is WorkDoneEvent
             ? WorkDoneEvent(stageMillis: Map.of(_vault.maintenance.stageMillis))
@@ -427,13 +431,23 @@ class _VaultWorker {
     if (_searchGeneration == _indexGeneration) return Future.value();
     final existing = _searchLoad;
     if (existing != null) return existing;
+    final warmup = _searchWarmup;
+    if (warmup != null) {
+      _searchLoaded = true;
+      return warmup.then((_) => _ensureSearch());
+    }
     final generation = _indexGeneration;
     final index = _searchIndexSource;
     final load = () async {
       if (index == null) {
         _search = await _vault.maintenance.loadSearch();
+        _searchLoaded = await _vault.maintenance.hasValidSearchFile();
       } else {
         _search = await _vault.maintenance.buildSearch(index);
+        // A query must make its result durable; otherwise every new worker
+        // pays the full v3 build again before the cache is ever flushed.
+        await _vault.maintenance.flushSearch();
+        _searchLoaded = true;
       }
       _searchGeneration = generation;
       _send(SearchReadyEvent(++_searchRevision));
@@ -441,6 +455,35 @@ class _VaultWorker {
     _searchLoad = load;
     return load.whenComplete(() {
       if (identical(_searchLoad, load)) _searchLoad = null;
+    });
+  }
+
+  void _scheduleSearchWarmup() {
+    if (_searchLoaded || _searchWarmup != null) return;
+    final index = _searchIndexSource;
+    if (index == null) return;
+    final generation = _indexGeneration;
+    final warmup = Future<void>.delayed(const Duration(seconds: 1), () async {
+      try {
+        if (_searchLoaded || await _vault.maintenance.hasValidSearchFile()) {
+          return;
+        }
+        final search = await _vault.maintenance.buildSearch(index);
+        await _vault.maintenance.flushSearch();
+        if (_searchLoaded) {
+          _search = search;
+          _searchGeneration = generation;
+          _send(SearchReadyEvent(++_searchRevision));
+        } else {
+          _vault.maintenance.discardSearch();
+        }
+      } catch (_) {
+        // Search is an optimization; a query can retry the failed warmup.
+      }
+    });
+    _searchWarmup = warmup;
+    warmup.whenComplete(() {
+      if (identical(_searchWarmup, warmup)) _searchWarmup = null;
     });
   }
 

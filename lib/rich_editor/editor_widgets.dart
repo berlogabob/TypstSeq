@@ -11,9 +11,13 @@ class TyLogRichEditor extends StatefulWidget {
     this.onCreateNote,
     this.onSelectMention,
     this.popupBottomY,
+    this.revealQuery,
+    this.revealOffset,
   });
 
   final double? Function()? popupBottomY;
+  final String? revealQuery;
+  final int? revealOffset;
   final TyLogEditingController controller;
   final FocusNode? focusNode;
   final Future<void> Function() onInsert;
@@ -51,9 +55,13 @@ class TyLogReadView extends StatefulWidget {
     this.resolveKind,
     this.onAtomTap,
     this.taskBuilder,
+    this.revealRange,
+    this.onRevealPosition,
   });
 
   final Widget Function(String source)? taskBuilder;
+  final TextRange? revealRange;
+  final ValueChanged<double>? onRevealPosition;
   final String source;
   final Future<Uint8List?> Function(String path)? imageResolver;
   final String? Function(String target)? resolveKind;
@@ -64,6 +72,7 @@ class TyLogReadView extends StatefulWidget {
 }
 
 class _TyLogReadViewState extends State<TyLogReadView> {
+  final _textKey = GlobalKey();
   late final TyLogEditingController controller = TyLogEditingController(
     source: widget.source,
     onSourceChanged: (_) {},
@@ -93,18 +102,32 @@ class _TyLogReadViewState extends State<TyLogReadView> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       controller.imageContentWidth = constraints.maxWidth;
-      return SelectionArea(
-        child: Text.rich(
-          controller.readTextSpan(
-            context,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.55),
-            tappable: widget.onAtomTap != null,
-            taskBuilder: widget.taskBuilder,
-          ),
+      final child = Text.rich(
+        controller.readTextSpan(
+          context,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
+          tappable: widget.onAtomTap != null,
+          taskBuilder: widget.taskBuilder,
+          revealRange: widget.revealRange,
         ),
+        key: _textKey,
       );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final range = widget.revealRange;
+        final paragraph = _textKey.currentContext?.findRenderObject();
+        if (!mounted || range == null) return;
+        if (paragraph is RenderParagraph) {
+          final boxes = paragraph.getBoxesForSelection(
+            TextSelection(baseOffset: range.start, extentOffset: range.end),
+          );
+          if (boxes.isNotEmpty) {
+            widget.onRevealPosition?.call(
+              paragraph.localToGlobal(boxes.first.toRect().topLeft).dy,
+            );
+          }
+        }
+      });
+      return SelectionArea(child: child);
     },
   );
 }
@@ -120,6 +143,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   final ValueNotifier<_AutocompleteState?> _autocomplete = ValueNotifier(null);
   OverlayEntry? _overlayEntry;
   Timer? _debounce;
+  Timer? _revealTimer;
   int _mentionQueryToken = 0;
   final GlobalKey _headingButtonKey = GlobalKey();
   final GlobalKey _highlightButtonKey = GlobalKey();
@@ -145,6 +169,40 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     _dateFocus.onKeyEvent = _handleKey;
     focusNode.addListener(_focusChanged);
     widget.controller.addListener(_handleControllerChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealSearchMatch());
+  }
+
+  void _revealSearchMatch() {
+    final query = widget.revealQuery;
+    if (!mounted || query == null) return;
+    final range = widget.controller.searchRevealRange(
+      query,
+      preferredOffset: widget.revealOffset,
+    );
+    if (range == null) return;
+    final previous = widget.controller.selection;
+    widget.controller.selection = TextSelection(
+      baseOffset: range.start,
+      extentOffset: range.end,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_taskScroll.hasClients) return;
+      final editable = _editableIn(_editorKey.currentContext);
+      if (editable == null) return;
+      final rect = editable.getLocalRectForCaret(
+        TextPosition(offset: range.start),
+      );
+      final target = editable.size.height / 3;
+      _taskScroll.jumpTo(
+        (_taskScroll.offset + rect.top - target)
+            .clamp(0, _taskScroll.position.maxScrollExtent)
+            .toDouble(),
+      );
+    });
+    _revealTimer?.cancel();
+    _revealTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) widget.controller.selection = previous;
+    });
   }
 
   void _focusChanged() {
@@ -858,6 +916,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _window!.dispose();
       _attachWindow();
     }
+    if (widget.revealQuery != oldWidget.revealQuery ||
+        widget.revealOffset != oldWidget.revealOffset) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealSearchMatch());
+    }
   }
 
   void _attachWindow() {
@@ -933,6 +995,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     _windowScroll.dispose();
     _window?.dispose();
     _debounce?.cancel();
+    _revealTimer?.cancel();
     _removeOverlay();
     widget.controller.removeListener(_handleControllerChanged);
     focusNode.removeListener(_focusChanged);
@@ -1445,10 +1508,13 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                                     key: _headingButtonKey,
                                     tooltip: 'Heading 1',
                                     onPressed: widget.controller.setHeading,
-                                    onLongPress: () => _showHeadingMenu(context),
+                                    onLongPress: () =>
+                                        _showHeadingMenu(context),
                                     icon: Text(
                                       'H1',
-                                      style: Theme.of(context).textTheme.titleMedium,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
                                     ),
                                   ),
                                   IconButton(
@@ -1494,9 +1560,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                                     ),
                                   IconButton(
                                     key: _highlightButtonKey,
-                                    tooltip: 'Highlight (long-press for colors)',
-                                    onPressed: widget.controller.toggleHighlight,
-                                    onLongPress: () => _showHighlightMenu(context),
+                                    tooltip:
+                                        'Highlight (long-press for colors)',
+                                    onPressed:
+                                        widget.controller.toggleHighlight,
+                                    onLongPress: () =>
+                                        _showHighlightMenu(context),
                                     icon: const Icon(Icons.border_color),
                                   ),
                                   for (final (tip, press, icon)
@@ -1894,6 +1963,7 @@ class _ProtectedChip extends StatelessWidget {
     required this.icon,
     this.unresolved = false,
     this.textStyle,
+    this.highlight = false,
   });
 
   final String label;
@@ -1908,6 +1978,7 @@ class _ProtectedChip extends StatelessWidget {
   /// back to the Material default and the chip reads as a foreign object
   /// dropped into the sentence. Null for block chips, which stand alone.
   final TextStyle? textStyle;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -1925,7 +1996,9 @@ class _ProtectedChip extends StatelessWidget {
         child: Material(
           // Inline: a tint that sits under the prose rather than an opaque
           // block that interrupts it.
-          color: block
+          color: highlight
+              ? kSearchRevealFill
+              : block
               ? scheme.surfaceContainerHighest
               : scheme.primary.withValues(alpha: 0.08),
           borderRadius: radius,
@@ -2874,15 +2947,22 @@ void _addTextSpans(
   int global, {
   required TextStyle style,
   required TextRange composing,
+  TextRange? revealRange,
 }) {
   final start = math.max(global, composing.start);
   final end = math.min(global + text.length, composing.end);
   if (!composing.isValid || start >= end) {
-    target.add(TextSpan(text: text, style: style));
+    _addRevealTextSpan(target, text, global, style, revealRange);
     return;
   }
   if (start > global) {
-    target.add(TextSpan(text: text.substring(0, start - global), style: style));
+    _addRevealTextSpan(
+      target,
+      text.substring(0, start - global),
+      global,
+      style,
+      revealRange,
+    );
   }
   target.add(
     TextSpan(
@@ -2891,7 +2971,45 @@ void _addTextSpans(
     ),
   );
   if (end < global + text.length) {
-    target.add(TextSpan(text: text.substring(end - global), style: style));
+    _addRevealTextSpan(
+      target,
+      text.substring(end - global),
+      end,
+      style,
+      revealRange,
+    );
+  }
+}
+
+void _addRevealTextSpan(
+  List<InlineSpan> target,
+  String text,
+  int global,
+  TextStyle style,
+  TextRange? revealRange,
+) {
+  if (text.isEmpty ||
+      revealRange == null ||
+      revealRange.end <= global ||
+      revealRange.start >= global + text.length) {
+    target.add(TextSpan(text: text, style: style));
+    return;
+  }
+  final start = math.max(0, revealRange.start - global);
+  final end = math.min(text.length, revealRange.end - global);
+  if (start > 0) {
+    target.add(TextSpan(text: text.substring(0, start), style: style));
+  }
+  target.add(
+    TextSpan(
+      text: text.substring(start, end),
+      style: style.copyWith(
+        backgroundColor: kSearchRevealFill,
+      ),
+    ),
+  );
+  if (end < text.length) {
+    target.add(TextSpan(text: text.substring(end), style: style));
   }
 }
 

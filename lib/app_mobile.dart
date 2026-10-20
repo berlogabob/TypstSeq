@@ -277,6 +277,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
+  String? _searchRevealQuery;
+  int? _searchRevealOffset;
 
   /// Test seam for the asynchronous export path; the production entry point is
   /// the Share as PDF item in the More menu.
@@ -1384,6 +1386,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String? heading,
     int? generation,
     bool rememberView = true,
+    String? searchQuery,
+    int? searchOffset,
   }) async {
     final request = generation ??= ++_openGeneration;
     final v = vault;
@@ -1413,6 +1417,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _rememberView(today: true);
     }
     _loadSource(snapshot.source);
+    _searchRevealQuery = searchQuery;
+    _searchRevealOffset = searchOffset;
     setState(() {
       mode = 'normal';
     });
@@ -1799,6 +1805,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   final ix =
                       index ??
                       VaultIndex(notesByPath: {}, backlinksByTarget: {});
+                  Future<void> openFromSearch(
+                    String path,
+                    String? query,
+                  ) async {
+                    final selection = ++_destinationGeneration;
+                    navigator.pop();
+                    setState(() => primaryDestination = previousDestination);
+                    await workspace.materializeEvent(path);
+                    if (!mounted || selection != _destinationGeneration) {
+                      return;
+                    }
+                    if (await _openNote(
+                          path,
+                          rememberView: false,
+                          searchQuery: query,
+                        ) &&
+                        mounted) {
+                      // Search is a route; recreate it when leaving its editor.
+                      _rememberView(knowledge: initialView);
+                      setState(() {});
+                    }
+                  }
+
                   return KnowledgeScreen(
                     onSetTaskStatus: _setTaskStatus,
                     onSetTaskField: _setTaskField,
@@ -1849,26 +1878,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _queueCloudSync();
                     },
                     problems: _knowledgeProblems(),
+                    // Same close-and-open as a search hit, minus the reveal.
+                    onOpenNote: (path) => unawaited(openFromSearch(path, null)),
                     onCaptureTimestamp: () {
                       Navigator.of(context).pop();
                       unawaited(_captureTimestamp());
                     },
-                    onOpenNote: (path) async {
-                      final selection = ++_destinationGeneration;
-                      navigator.pop();
-                      setState(() => primaryDestination = previousDestination);
-                      await workspace.materializeEvent(path);
-                      if (!mounted || selection != _destinationGeneration) {
-                        return;
-                      }
-                      if (await _openNote(path, rememberView: false) &&
-                          mounted) {
-                        // Search is a route; recreate it when leaving its editor.
-                        _rememberView(knowledge: initialView);
-                        setState(() {});
-                      }
-                    },
-                    onOpenCitation: (citation) async {
+                    onOpenSearchNote: (path, query) =>
+                        openFromSearch(path, query),
+                    onOpenSearchCitation: (citation, query) async {
                       if (citation.sourceKind == 'note') {
                         final path = await _resolveCitationPath(citation, ix);
                         if (path == null) {
@@ -1880,7 +1898,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           }
                           return;
                         }
-                        await _openSearchNote(path, previousDestination);
+                        await _openSearchNote(
+                          path,
+                          previousDestination,
+                          query: query,
+                          offset: citation.startOffset,
+                        );
                         return;
                       }
                       await _openCitation(citation);
@@ -3044,13 +3067,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openSearchNote(String path, int previousDestination) async {
+  Future<void> _openSearchNote(
+    String path,
+    int previousDestination, {
+    required String query,
+    required int offset,
+  }) async {
     final selection = ++_destinationGeneration;
     Navigator.of(context).pop();
     setState(() => primaryDestination = previousDestination);
     await workspace.materializeEvent(path);
     if (!mounted || selection != _destinationGeneration) return;
-    if (await _openNote(path, rememberView: false) && mounted) {
+    if (await _openNote(
+          path,
+          rememberView: false,
+          searchQuery: query,
+          searchOffset: offset,
+        ) &&
+        mounted) {
       _rememberView(knowledge: KnowledgeView.search);
       setState(() {});
     }
@@ -4777,6 +4811,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onProgress: _recordReadingProgress,
         onAtomTap: (source) =>
             unawaited(_handleAtomSource(source, allowEdit: false)),
+        revealQuery: _searchRevealQuery,
+        revealOffset: _searchRevealOffset,
         // A finished article reopens at the top, not the last line.
         initialProgress: savedProgress >= 0.98 ? 0 : savedProgress,
         canRate:
@@ -5080,6 +5116,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
         focusNode: _captureFocus,
         controller: richController,
+        revealQuery: _searchRevealQuery,
+        revealOffset: _searchRevealOffset,
         onInsert: _showMagicMenu,
         onSelectMention: (item) async {
           final event = workspace.feedEvents

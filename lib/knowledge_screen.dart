@@ -34,6 +34,8 @@ class KnowledgeScreen extends StatefulWidget {
     this.resolveMissing,
     this.citedSearch,
     this.onOpenCitation,
+    this.onOpenSearchNote,
+    this.onOpenSearchCitation,
     this.onFixProblems,
     this.savedSearches = const <SavedSearch>[],
     this.onSaveSearch,
@@ -65,6 +67,8 @@ class KnowledgeScreen extends StatefulWidget {
   /// Optional retrieved chunks with a validated source locator and range.
   final Future<List<ChunkCitation>> Function(String query)? citedSearch;
   final Future<void> Function(ChunkCitation)? onOpenCitation;
+  final Future<void> Function(String path, String query)? onOpenSearchNote;
+  final Future<void> Function(ChunkCitation, String)? onOpenSearchCitation;
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
@@ -577,11 +581,19 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            onTap: widget.onOpenCitation == null
+            onTap:
+                widget.onOpenCitation == null &&
+                    widget.onOpenSearchCitation == null
                 ? null
                 : switch (citation.sourceKind) {
-                    'pdf' => () => widget.onOpenCitation!(citation),
-                    'note' => () => widget.onOpenCitation!(citation),
+                    'pdf' =>
+                      () =>
+                          widget.onOpenSearchCitation?.call(citation, query) ??
+                          widget.onOpenCitation?.call(citation),
+                    'note' =>
+                      () =>
+                          widget.onOpenSearchCitation?.call(citation, query) ??
+                          widget.onOpenCitation?.call(citation),
                     _ => null,
                   },
           );
@@ -608,7 +620,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             onSetStatus: widget.onSetTaskStatus,
             onSetField: widget.onSetTaskField,
             onOpenPath: (path) {
-              widget.onOpenNote(path);
+              widget.onOpenSearchNote?.call(path, query) ??
+                  widget.onOpenNote(path);
             },
           );
         }
@@ -629,7 +642,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           onTap: result.kind == 'file'
               ? null
               : () {
-                  widget.onOpenNote(result.path);
+                  widget.onOpenSearchNote?.call(result.path, query) ??
+                      widget.onOpenNote(result.path);
                 },
         );
       },

@@ -15,6 +15,7 @@ import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
+import 'widgets/search_reveal.dart';
 import 'widgets/task_checkbox.dart';
 import 'widgets/task_chip_strip.dart';
 import 'widgets/task_fields.dart';
