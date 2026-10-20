@@ -345,6 +345,55 @@ void main() {
     );
   }
 
+  test('a feed whose URL was cleared is off, cached events included', () async {
+    final storage = _MemoryStorage();
+    final urls = <String>[];
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      now: () => DateTime(2026, 10, 8),
+      fetchFeed: (url) async {
+        urls.add(url);
+        return '[]';
+      },
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'off', name: 'Off', path: '/off'),
+      storage: storage,
+    );
+    await storage.writeText(
+      Vault.settingsPath,
+      jsonEncode({
+        'calendars': {
+          'classesUrl': '',
+          'labUrl': '',
+          'group': 'G1',
+          'cache': {
+            'classes': {
+              'url': _classesUrl,
+              'fetched': '2026-10-08T00:00:00.000',
+              'body': jsonEncode([
+                {
+                  'date': '2026-10-08',
+                  'start': '19:00',
+                  'end': '21:00',
+                  'course': 'Old class',
+                  'groups': ['G1'],
+                },
+              ]),
+            },
+          },
+        },
+      }),
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(urls, isEmpty);
+    expect(controller.feedEvents, isEmpty);
+    await controller.shutdown();
+  });
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   setUp(() {
@@ -4093,9 +4142,38 @@ void main() {
         ),
       ]);
 
+      // An imported file keeps its mapped node id, as in persistNoteSource.
+      await database.into(database.importJobs).insert(
+        const ImportJobData(
+          id: 'job',
+          sourceKind: 'logseq',
+          sourceFingerprint: 'sha',
+          status: 'completed',
+          totalCount: 1,
+          completedCount: 1,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          errorJson: '{}',
+        ),
+      );
+      await database.into(database.importItems).insert(
+        const ImportItemData(
+          jobId: 'job',
+          sourcePath: 'pages/n1.md',
+          sourceSha256: 'x',
+          state: 'written',
+          targetNodeId: 'imported-1',
+          targetPath: 'notes/note-1.typ',
+          errorJson: '{}',
+          updatedAtMs: 2,
+        ),
+      );
+
       await controller.refreshIndex(always: true);
 
       final rows = await database.select(database.nodes).get();
+      expect(rows.map((n) => n.id), contains('imported-1'));
+      expect(rows.map((n) => n.id), isNot(contains('note-1')));
       expect(rows, hasLength(50));
       expect(rows.firstWhere((n) => n.id == 'note-0').title, 'Kept');
       expect(await database.searchNodeIds('note 7'), contains('note-7'));

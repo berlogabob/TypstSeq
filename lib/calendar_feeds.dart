@@ -8,6 +8,13 @@ import 'package:timezone/timezone.dart' as tz;
 import 'editor_autocomplete.dart' show foldAccents;
 import 'models.dart';
 
+/// A blank URL turns the feed off; anything else must be an https URL.
+bool isValidFeedUrl(String url) {
+  if (url.isEmpty) return true;
+  final uri = Uri.tryParse(url);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+}
+
 class FeedEvent {
   FeedEvent(this.id, this.title, this.date, this.properties);
   final String id, title, date;

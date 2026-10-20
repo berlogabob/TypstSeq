@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../calendar_feeds.dart' show isValidFeedUrl;
 
 import 'app_icons.dart';
 import '../ai/ai_settings.dart';
@@ -172,10 +173,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 next[key] = hours;
               }
               for (final key in ['classesUrl', 'labUrl']) {
-                final uri = Uri.tryParse(next[key]);
-                if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
-                  return;
-                }
+                if (!isValidFeedUrl(next[key])) return;
               }
               Navigator.pop(context, true);
             },

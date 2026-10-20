@@ -130,4 +130,11 @@ void main() {
       }
     });
   });
+
+  test('feed URL: blank turns the feed off, otherwise https only', () {
+    expect(isValidFeedUrl(''), isTrue);
+    expect(isValidFeedUrl('https://example.org/lab.ics'), isTrue);
+    expect(isValidFeedUrl('http://example.org/lab.ics'), isFalse);
+    expect(isValidFeedUrl('not a url'), isFalse);
+  });
 }

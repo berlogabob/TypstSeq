@@ -13,11 +13,16 @@ class TyLogRichEditor extends StatefulWidget {
     this.popupBottomY,
     this.revealQuery,
     this.revealOffset,
+    this.revealGeneration = 0,
   });
 
   final double? Function()? popupBottomY;
   final String? revealQuery;
   final int? revealOffset;
+
+  /// Bumped by the host on every search-result open, so opening a second
+  /// result with the same query reveals again.
+  final int revealGeneration;
   final TyLogEditingController controller;
   final FocusNode? focusNode;
   final Future<void> Function() onInsert;
@@ -920,7 +925,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _attachWindow();
     }
     if (widget.revealQuery != oldWidget.revealQuery ||
-        widget.revealOffset != oldWidget.revealOffset) {
+        widget.revealOffset != oldWidget.revealOffset ||
+        widget.revealGeneration != oldWidget.revealGeneration) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _revealSearchMatch());
     }
   }

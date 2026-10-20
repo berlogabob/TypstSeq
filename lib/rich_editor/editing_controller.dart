@@ -103,6 +103,7 @@ class TyLogEditingController extends TextEditingController {
     _imageCache.clear();
     _pendingTasks.clear();
     _rebaseTaskIme = null;
+    searchReveal = null; // offsets belong to the previous note
     document = TyLogDocument.parse(source);
     value = TextEditingValue(
       text: document.visibleText,

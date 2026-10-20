@@ -1601,15 +1601,25 @@ class WorkspaceController extends ChangeNotifier {
       for (final row in await db.customSelect('SELECT id FROM nodes').get())
         row.read<String>('id'),
     };
+    // An imported file keeps its mapped node id (as persistNoteSource does),
+    // so a header id never duplicates the imported node.
+    final mapped = {
+      for (final item in await (db.select(
+        db.importItems,
+      )..where((t) => t.targetNodeId.isNotNull())).get())
+        ?item.targetPath: item.targetNodeId!,
+    };
     final notes = [
       for (final note in built.notes)
-        if (note.id.isNotEmpty && !have.contains(note.id)) note,
+        if ((mapped[note.path] ?? note.id) case final id
+            when id.isNotEmpty && !have.contains(id))
+          (id, note),
     ];
     // ponytail: 200-note chunks bound memory; an interrupted run is finished
     // by the next index build, which only reads notes still missing.
     for (var i = 0; i < notes.length; i += 200) {
       final chunk = <NodeData>[];
-      for (final note in notes.skip(i).take(200)) {
+      for (final (id, note) in notes.skip(i).take(200)) {
         if (!_owns(opened, generation)) return;
         final String source;
         try {
@@ -1620,7 +1630,7 @@ class WorkspaceController extends ChangeNotifier {
         final now = note.modifiedMillis ?? _now().millisecondsSinceEpoch;
         chunk.add(
           NodeData(
-            id: note.id,
+            id: id,
             type: note.kind,
             title: note.title,
             content: source,

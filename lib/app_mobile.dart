@@ -279,6 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String mode = 'normal';
   String? _searchRevealQuery;
   int? _searchRevealOffset;
+  int _searchRevealGeneration = 0;
 
   /// Test seam for the asynchronous export path; the production entry point is
   /// the Share as PDF item in the More menu.
@@ -1427,6 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadSource(snapshot.source);
     _searchRevealQuery = searchQuery;
     _searchRevealOffset = searchOffset;
+    if (searchQuery != null) _searchRevealGeneration++;
     setState(() {
       mode = 'normal';
     });
@@ -5151,6 +5153,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         controller: richController,
         revealQuery: _searchRevealQuery,
         revealOffset: _searchRevealOffset,
+        revealGeneration: _searchRevealGeneration,
         onInsert: _showMagicMenu,
         onSelectMention: (item) async {
           final event = workspace.feedEvents

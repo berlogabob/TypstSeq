@@ -180,6 +180,22 @@ void main() {
     },
   );
 
+  test('queries racing the idle release never get an empty index', () async {
+    final vault = await seed(4);
+    final worker = await VaultWorkerClient.spawn(
+      entry: vault.entry,
+      searchIdleTimeout: const Duration(milliseconds: 1),
+    );
+    addTearDown(worker.dispose);
+    await worker
+        .run(const RebuildIndexCommand(force: true, stale: {}))
+        .toList();
+    for (var i = 0; i < 30; i++) {
+      expect(await worker.search('unit'), isNotEmpty, reason: 'query $i');
+      await Future<void>.delayed(Duration(microseconds: 300 * (i % 7)));
+    }
+  });
+
   test(
     'a note edited after search release is found by the next query',
     () async {

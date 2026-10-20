@@ -55,6 +55,37 @@ void main() {
     expect(_hasRevealHighlight(painted(), 'Needle'), isFalse);
   });
 
+  testWidgets('a second result with the same query reveals again', (
+    tester,
+  ) async {
+    final controller = TyLogEditingController(
+      source: 'Needle first',
+      onSourceChanged: (_) {},
+      onError: (_) {},
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    Widget editor(int generation) => MaterialApp(
+      home: Scaffold(
+        body: TyLogRichEditor(
+          controller: controller,
+          revealQuery: 'needle',
+          revealGeneration: generation,
+          onInsert: () async {},
+        ),
+      ),
+    );
+    await tester.pumpWidget(editor(1));
+    await tester.pumpAndSettle();
+    expect(controller.searchReveal, const TextRange(start: 0, end: 6));
+    controller.loadSource('Other text then Needle');
+    expect(controller.searchReveal, isNull);
+    await tester.pumpWidget(editor(2));
+    await tester.pumpAndSettle();
+    expect(controller.searchReveal, const TextRange(start: 16, end: 22));
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('ordinary editor opens do not reveal a match', (tester) async {
     final controller = TyLogEditingController(
       source: '${List.filled(180, 'padding').join('\n')}\nNeedle here',
