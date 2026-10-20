@@ -561,8 +561,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             ],
           );
         }
-        if (i <= citations.length && i > 0) {
-          final citation = citations[i - 1];
+        // Keyword results (the user's notes) first, related passages after:
+        // passages listed first pushed every note hit below the fold
+        // ('пробежка' showed 7 article passages, 50 note hits unseen).
+        if (i > 0 &&
+            i - 1 >= results.length &&
+            i - 1 - results.length < citations.length) {
+          final citation = citations[i - 1 - results.length];
           return ListTile(
             key: ValueKey('citation-${citation.chunkId}'),
             leading: const Icon(AppIcons.citation),
@@ -581,7 +586,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   },
           );
         }
-        final resultIndex = i - 1 - citations.length;
+        final resultIndex = i - 1;
         if (results.isEmpty || resultIndex >= results.length) {
           if (_searchPending || _searchFailed) return const SizedBox.shrink();
           return ListTile(

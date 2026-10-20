@@ -212,6 +212,50 @@ void main() {
     expect(opened, same(citation));
   });
 
+  testWidgets('keyword note hits are listed above cited passages', (
+    tester,
+  ) async {
+    const citation = ChunkCitation(
+      chunkId: 'c1',
+      sourceId: 'note:articles/a.typ',
+      sourceKind: 'note',
+      sourceLocator: 'articles/a.typ',
+      sourceTitle: 'Some article passage',
+      sourceVersionId: 'v',
+      startOffset: 0,
+      endOffset: 800,
+      content: 'text',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeScreen(
+            index: const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+            search: (_, _, _) async => const [
+              PkmsSearchResult(
+                id: 'run',
+                path: 'notes/Пробежка.typ',
+                title: 'Пробежка',
+                kind: 'note',
+                tags: [],
+                score: 1,
+              ),
+            ],
+            citedSearch: (_) async => const [citation],
+            problems: const [],
+            onOpenNote: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'пробежка');
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(
+      tester.getTopLeft(find.text('Пробежка')).dy,
+      lessThan(tester.getTopLeft(find.text('Some article passage')).dy),
+    );
+  });
+
   for (final width in [400.0, 1100.0]) {
     testWidgets('cited note opens its source at width $width', (tester) async {
       String? openedPath;
