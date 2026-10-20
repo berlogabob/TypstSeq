@@ -47,6 +47,7 @@ class ConnectionProbe {
     String endpoint,
     String? key,
     HttpClient? client, {
+    String kind = 'openai-compatible',
     Map<String, Object?>? body,
   }) async {
     HttpClient? active;
@@ -63,7 +64,10 @@ class ConnectionProbe {
           request!.abort();
           throw TimeoutException('Timed out');
         }
-        if (key != null && key.trim().isNotEmpty) {
+        if (kind == 'anthropic' && key != null && key.trim().isNotEmpty) {
+          request!.headers.set('x-api-key', key.trim());
+          request!.headers.set('anthropic-version', '2023-06-01');
+        } else if (key != null && key.trim().isNotEmpty) {
           request!.headers.set(
             HttpHeaders.authorizationHeader,
             'Bearer ${key.trim()}',
@@ -93,11 +97,12 @@ class ConnectionProbe {
   Future<ProbeResult> probeServer(
     String url, {
     String? key,
+    String kind = 'openai-compatible',
     HttpClient? client,
   }) async {
     final watch = Stopwatch()..start();
     try {
-      final json = await _request(url, 'models', key, client);
+      final json = await _request(url, 'models', key, client, kind: kind);
       if (json is! Map || json['data'] is! List) {
         throw const _ProbeError('Not an OpenAI-compatible server');
       }
@@ -135,18 +140,20 @@ class ConnectionProbe {
     String url,
     String model, {
     String? key,
+    String kind = 'openai-compatible',
     HttpClient? client,
   }) async {
     final watch = Stopwatch()..start();
     try {
       final json = await _request(
         url,
-        'chat/completions',
+        kind == 'anthropic' ? 'messages' : 'chat/completions',
         key,
         client,
+        kind: kind,
         body: {
           'model': model,
-          'temperature': 0,
+          if (kind != 'anthropic') 'temperature': 0,
           'max_tokens': 48,
           'messages': [
             {
@@ -156,13 +163,20 @@ class ConnectionProbe {
           ],
         },
       );
-      if (json is! Map || json['choices'] is! List) {
+      if (json is! Map ||
+          (kind == 'anthropic'
+              ? json['content'] is! List
+              : json['choices'] is! List)) {
         throw const _ProbeError('Not an OpenAI-compatible server');
       }
-      final choices = json['choices'] as List;
-      final first = choices.firstOrNull;
-      final message = first is Map ? first['message'] : null;
-      final content = message is Map ? message['content'] : null;
+      // Anthropic: content[0].text; OpenAI-compatible: choices[0].message.content.
+      final first = (json[kind == 'anthropic' ? 'content' : 'choices'] as List)
+          .firstOrNull;
+      final content = first is! Map
+          ? null
+          : kind == 'anthropic'
+          ? first['text']
+          : (first['message'] is Map ? first['message']['content'] : null);
       final reply = content is String ? content.trim() : '';
       if (reply.isEmpty) {
         throw const _ProbeError(
@@ -199,11 +213,19 @@ String _errorText(Object error) => switch (error) {
 Future<ProbeResult> probeServer(
   String url, {
   String? key,
+  String kind = 'openai-compatible',
   HttpClient? client,
-}) => ConnectionProbe().probeServer(url, key: key, client: client);
+}) => ConnectionProbe().probeServer(url, key: key, kind: kind, client: client);
 Future<ModelTestResult> testModel(
   String url,
   String model, {
   String? key,
+  String kind = 'openai-compatible',
   HttpClient? client,
-}) => ConnectionProbe().testModel(url, model, key: key, client: client);
+}) => ConnectionProbe().testModel(
+  url,
+  model,
+  key: key,
+  kind: kind,
+  client: client,
+);

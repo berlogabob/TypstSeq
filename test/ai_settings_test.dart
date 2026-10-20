@@ -3,7 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tylog/ai/ai_settings.dart';
+import 'package:tylog/ai/api_keys.dart';
+import 'package:tylog/ai/provider_presets.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
@@ -24,15 +27,17 @@ void main() {
               : null,
         );
         expect(
-          settings.copyWith(
-            transcribe: settings.transcribe.copyWith(model: 'custom'),
-          ).preset,
+          settings
+              .copyWith(
+                transcribe: settings.transcribe.copyWith(model: 'custom'),
+              )
+              .preset,
           isNull,
         );
         expect(
-          settings.copyWith(
-            translate: settings.translate.copyWith(model: 'custom'),
-          ).preset,
+          settings
+              .copyWith(translate: settings.translate.copyWith(model: 'custom'))
+              .preset,
           isNull,
         );
       }
@@ -42,7 +47,11 @@ void main() {
   test('applying presets clears models and keeps connections', () {
     const settings = AiSettings(
       connections: [AiConnection(id: 'a', url: 'http://a/v1')],
-      transcribe: AiTask(quality: 'balanced', model: 'whisper', connection: 'a'),
+      transcribe: AiTask(
+        quality: 'balanced',
+        model: 'whisper',
+        connection: 'a',
+      ),
       translate: AiTask(model: 'llm', connection: 'b'),
     );
     for (final preset in AiPreset.values) {
@@ -70,6 +79,29 @@ void main() {
       expect(whisperModelFor(override), 'custom/model');
       expect(translateModelFor(override), 'custom/model');
     }
+  });
+
+  test('provider presets keep local providers before cloud providers', () {
+    var cloudSeen = false;
+    for (final preset in providerPresets) {
+      if (preset.cloud) cloudSeen = true;
+      if (cloudSeen) expect(preset.cloud, isTrue);
+    }
+  });
+
+  test('cloud connections are not the default connection', () {
+    const settings = AiSettings(
+      connections: [
+        AiConnection(
+          id: 'cloud',
+          url: 'https://api.example.com/v1',
+          cloud: true,
+        ),
+        AiConnection(id: 'local', url: 'http://localhost:11434/v1'),
+      ],
+    );
+    expect(settings.defaultConnection?.id, 'local');
+    expect(settings.defaultConnection?.cloud, isFalse);
   });
 
   test('upsert preserves order and remove clears referencing tasks', () {
@@ -116,6 +148,7 @@ void main() {
   late LocalVaultStorage storage;
 
   setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({});
     dir = await Directory.systemTemp.createTemp('tylog_ai_');
     storage = LocalVaultStorage(dir);
     addTearDown(() => dir.delete(recursive: true));
@@ -167,6 +200,23 @@ void main() {
       (await readAiSettings(priority)).toJson(),
       const AiSettings().toJson(),
     );
+  });
+
+  test('api key not written to ai.json', () async {
+    const settings = AiSettings(
+      connections: [
+        AiConnection(
+          id: 'openai',
+          url: 'https://api.openai.com/v1',
+          cloud: true,
+        ),
+      ],
+    );
+    await writeAiSettings(storage, settings);
+    await writeApiKey('openai', 'secret-key');
+    addTearDown(() => writeApiKey('openai', null));
+    final raw = await storage.readBytesNow(aiSettingsPath);
+    expect(utf8.decode(raw), isNot(contains('secret-key')));
   });
 
   test(
@@ -295,20 +345,31 @@ void main() {
     expect(cleared['other'], {'enabled': true});
   });
 
-  test('server tasks round trip, tolerate invalid data and clear overrides', () {
-    const task = AiServerTask(connection: 'studio', model: 'custom/model');
-    expect(AiServerTask.fromJson(task.toJson()).toJson(), task.toJson());
-    expect(task.copyWith().toJson(), task.toJson());
-    expect(task.copyWith(connection: null, model: null).toJson(), isEmpty);
-    for (final value in [null, [], 7, {'connection': false, 'model': 7}]) {
-      expect(AiServerTask.fromJson(value).toJson(), isEmpty);
-    }
-    const settings = AiSettings(articles: task, screenshots: task);
-    expect(settings.copyWith().toJson(), settings.toJson());
-    expect(settings.withPreset(AiPreset.light).articles, same(task));
-    expect(settings.withPreset(AiPreset.light).screenshots, same(task));
-    expect(AiSettings.fromJson(settings.toJson()).toJson(), settings.toJson());
-  });
+  test(
+    'server tasks round trip, tolerate invalid data and clear overrides',
+    () {
+      const task = AiServerTask(connection: 'studio', model: 'custom/model');
+      expect(AiServerTask.fromJson(task.toJson()).toJson(), task.toJson());
+      expect(task.copyWith().toJson(), task.toJson());
+      expect(task.copyWith(connection: null, model: null).toJson(), isEmpty);
+      for (final value in [
+        null,
+        [],
+        7,
+        {'connection': false, 'model': 7},
+      ]) {
+        expect(AiServerTask.fromJson(value).toJson(), isEmpty);
+      }
+      const settings = AiSettings(articles: task, screenshots: task);
+      expect(settings.copyWith().toJson(), settings.toJson());
+      expect(settings.withPreset(AiPreset.light).articles, same(task));
+      expect(settings.withPreset(AiPreset.light).screenshots, same(task));
+      expect(
+        AiSettings.fromJson(settings.toJson()).toJson(),
+        settings.toJson(),
+      );
+    },
+  );
 
   test('copyWith retains values and can clear nullable overrides', () {
     const task = AiTask(quality: 'fast', model: 'small', connection: 'studio');

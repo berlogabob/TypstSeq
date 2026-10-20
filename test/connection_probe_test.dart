@@ -52,6 +52,42 @@ void main() {
     expect(result.latencyMs, greaterThanOrEqualTo(0));
   });
 
+  test('provider-specific model headers are sent', () async {
+    var seen = <String, String?>{};
+    server.listen((request) async {
+      seen = {
+        'authorization': request.headers.value('authorization'),
+        'x-api-key': request.headers.value('x-api-key'),
+        'anthropic-version': request.headers.value('anthropic-version'),
+      };
+      request.response.write('{"data":[]}');
+      await request.response.close();
+    });
+    expect((await probeServer(url, key: 'openai-key')).ok, isTrue);
+    expect(seen['authorization'], 'Bearer openai-key');
+    expect(seen['x-api-key'], isNull);
+
+    await server.close(force: true);
+    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    url = 'http://127.0.0.1:${server.port}/v1';
+    server.listen((request) async {
+      seen = {
+        'authorization': request.headers.value('authorization'),
+        'x-api-key': request.headers.value('x-api-key'),
+        'anthropic-version': request.headers.value('anthropic-version'),
+      };
+      request.response.write('{"data":[]}');
+      await request.response.close();
+    });
+    expect(
+      (await probeServer(url, key: 'anthropic-key', kind: 'anthropic')).ok,
+      isTrue,
+    );
+    expect(seen['authorization'], isNull);
+    expect(seen['x-api-key'], 'anthropic-key');
+    expect(seen['anthropic-version'], '2023-06-01');
+  });
+
   test('401 produces a useful error', () async {
     server.listen((request) async {
       request.response.statusCode = 401;

@@ -143,7 +143,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
 
   String? _serverStatus(AiSettings settings) {
     final connection = settings.translate.connection == null
-        ? settings.connections.firstOrNull
+        ? settings.defaultConnection
         : settings.connections
               .where((c) => c.id == settings.translate.connection)
               .firstOrNull;
@@ -252,7 +252,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     required AiServerTask task,
     required ValueChanged<AiServerTask> onChanged,
   }) {
-    final connection = task.connection ?? ai.connections.firstOrNull?.id;
+    final connection = task.connection ?? ai.defaultConnection?.id;
     final models = <String>{
       ...?_discoveredModels[connection],
       ...?_workerView[connection]?.loaded,

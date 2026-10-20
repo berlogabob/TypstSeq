@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../ai/ai_settings.dart';
+import '../ai/api_keys.dart';
 import '../ai/connection_probe.dart' as connection_probe;
+import '../ai/provider_presets.dart';
 import 'ds/app_sheet.dart';
 import 'dialogs.dart';
 import 'constants.dart';
@@ -12,6 +14,7 @@ typedef ServerProbe =
     Future<connection_probe.ProbeResult> Function(
       String url, {
       String? key,
+      String kind,
       HttpClient? client,
     });
 typedef ModelTest =
@@ -19,6 +22,7 @@ typedef ModelTest =
       String url,
       String model, {
       String? key,
+      String kind,
       HttpClient? client,
     });
 
@@ -61,15 +65,16 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
     return id;
   }
 
-  Future<void> _edit(AiConnection? connection) async {
+  Future<void> _edit(AiConnection? connection, {ProviderPreset? preset}) async {
     connection_probe.ProbeResult? latest;
     String? latestUrl;
-    final saved = await showModalBottomSheet<AiConnection>(
+    final saved = await showModalBottomSheet<_ConnectionEdit>(
       context: context,
       showDragHandle: false,
       isScrollControlled: true,
       builder: (_) => _ConnectionEditor(
         connection: connection,
+        preset: preset,
         initialProbe: connection == null ? null : _probes[connection.id],
         probe: widget.probe,
         testModel: widget.testModel,
@@ -92,9 +97,10 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
       ),
     );
     if (!mounted || saved == null) return;
-    final next = saved.id.isEmpty
-        ? saved.copyWith(id: _newId(saved.label))
-        : saved;
+    final next = saved.connection.id.isEmpty
+        ? saved.connection.copyWith(id: _newId(saved.connection.label))
+        : saved.connection;
+    await writeApiKey(next.id, saved.apiKey);
     if (latest != null && latestUrl == next.url) {
       setState(() => _probes[next.id] = latest!);
       widget.onModelsChanged?.call(next.id, latest!.models);
@@ -110,42 +116,70 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       const ListTile(leading: Icon(Icons.dns_outlined), title: Text('Servers')),
-      for (final connection in widget.settings.connections)
-        ListTile(
-          title: Text(
-            connection.label.isEmpty ? connection.id : connection.label,
+      for (final cloud in [false, true])
+        if (!cloud || widget.settings.connections.any((c) => c.cloud)) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(kSpace16, kSpace8, kSpace16, 0),
+            child: Text(
+              cloud ? 'Cloud (sends your text off-device)' : 'On this network',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
           ),
-          subtitle: Text(connection.url),
-          trailing: Icon(switch (_probes[connection.id]?.ok ??
-              widget.workerView[connection.id]?.reachable) {
-            true => Icons.check_circle,
-            false => Icons.error_outline,
-            null => Icons.help_outline,
-          }),
-          onTap: () => _edit(connection),
-        ),
+          for (final connection in widget.settings.connections.where(
+            (c) => c.cloud == cloud,
+          ))
+            ListTile(
+              title: Text(
+                connection.label.isEmpty ? connection.id : connection.label,
+              ),
+              subtitle: Text(connection.url),
+              trailing: Icon(switch (_probes[connection.id]?.ok ??
+                  widget.workerView[connection.id]?.reachable) {
+                true => Icons.check_circle,
+                false => Icons.error_outline,
+                null => Icons.help_outline,
+              }),
+              onTap: () => _edit(connection),
+            ),
+        ],
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: kSpace16),
-        child: ActionChip(
-          avatar: const Icon(Icons.add),
-          label: const Text('Add server'),
-          onPressed: () => _edit(null),
+        child: PopupMenuButton<ProviderPreset>(
+          tooltip: 'Add server',
+          onSelected: (preset) =>
+              _edit(null, preset: identical(preset, _other) ? null : preset),
+          itemBuilder: (_) => [
+            for (final preset in providerPresets)
+              PopupMenuItem(
+                value: preset,
+                child: Text(
+                  preset.cloud ? '${preset.label} (cloud)' : preset.label,
+                ),
+              ),
+            const PopupMenuItem(value: _other, child: Text('Other server…')),
+          ],
+          child: const Chip(avatar: Icon(Icons.add), label: Text('Add server')),
         ),
       ),
     ],
   );
 }
 
+/// Menu entry for a server without a preset.
+const _other = ProviderPreset('openai-compatible', '', '');
+
 const _kinds = {
   'openai-compatible': 'OpenAI-compatible',
   'ollama': 'Ollama',
   'unsloth-studio': 'Unsloth Studio',
   'lm-studio': 'LM Studio',
+  'anthropic': 'Anthropic',
 };
 
 class _ConnectionEditor extends StatefulWidget {
   const _ConnectionEditor({
     required this.connection,
+    this.preset,
     required this.initialProbe,
     required this.probe,
     required this.testModel,
@@ -153,6 +187,7 @@ class _ConnectionEditor extends StatefulWidget {
     this.onDelete,
   });
   final AiConnection? connection;
+  final ProviderPreset? preset;
   final connection_probe.ProbeResult? initialProbe;
   final ServerProbe probe;
   final ModelTest testModel;
@@ -162,18 +197,43 @@ class _ConnectionEditor extends StatefulWidget {
   State<_ConnectionEditor> createState() => _ConnectionEditorState();
 }
 
+class _ConnectionEdit {
+  const _ConnectionEdit(this.connection, this.apiKey);
+  final AiConnection connection;
+  final String? apiKey;
+}
+
 class _ConnectionEditorState extends State<_ConnectionEditor> {
   final _form = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.connection?.label);
-  late final _url = TextEditingController(text: widget.connection?.url);
+  late final _name = TextEditingController(
+    text: widget.connection?.label ?? widget.preset?.label,
+  );
+  late final _url = TextEditingController(
+    text: widget.connection?.url ?? widget.preset?.url,
+  );
   final _key = TextEditingController();
-  late String _kind = _kinds.containsKey(widget.connection?.kind)
-      ? widget.connection!.kind
-      : 'openai-compatible';
+  late String _kind =
+      widget.preset?.kind ??
+      (_kinds.containsKey(widget.connection?.kind)
+          ? widget.connection!.kind
+          : 'openai-compatible');
+  late final bool _cloud =
+      widget.connection?.cloud ?? widget.preset?.cloud ?? false;
   late connection_probe.ProbeResult? _result = widget.initialProbe;
   connection_probe.ModelTestResult? _test;
   String? _model;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.connection?.id;
+    if (id != null) {
+      readApiKey(id).then((key) {
+        if (mounted && key != null) _key.text = key;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -187,7 +247,7 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     final url = normalizeConnectionUrl(_url.text);
-    final result = await widget.probe(url, key: _key.text);
+    final result = await widget.probe(url, key: _key.text, kind: _kind);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -207,6 +267,7 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
       normalizeConnectionUrl(_url.text),
       _model!,
       key: _key.text,
+      kind: _kind,
     );
     if (!mounted) return;
     setState(() {
@@ -253,8 +314,9 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
                 controller: _name,
                 enabled: !_busy,
                 decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Enter a name' : null,
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a name'
+                    : null,
               ),
               TextFormField(
                 controller: _url,
@@ -282,9 +344,7 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
                 controller: _key,
                 enabled: !_busy,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'API key (used for Test only, not saved)',
-                ),
+                decoration: const InputDecoration(labelText: 'API key'),
               ),
               TextButton(
                 onPressed: _busy ? null : _probe,
@@ -351,11 +411,15 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
                             if (!_form.currentState!.validate()) return;
                             Navigator.pop(
                               context,
-                              AiConnection(
-                                id: widget.connection?.id ?? '',
-                                label: _name.text.trim(),
-                                url: normalizeConnectionUrl(_url.text),
-                                kind: _kind,
+                              _ConnectionEdit(
+                                AiConnection(
+                                  id: widget.connection?.id ?? '',
+                                  label: _name.text.trim(),
+                                  url: normalizeConnectionUrl(_url.text),
+                                  kind: _kind,
+                                  cloud: _cloud,
+                                ),
+                                _key.text,
                               ),
                             );
                           },

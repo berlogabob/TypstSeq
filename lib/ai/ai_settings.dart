@@ -8,23 +8,27 @@ class AiConnection {
     this.kind = 'openai-compatible',
     this.label = '',
     this.url = '',
+    this.cloud = false,
   });
 
   final String id;
   final String kind;
   final String label;
   final String url;
+  final bool cloud;
 
   AiConnection copyWith({
     String? id,
     String? kind,
     String? label,
     String? url,
+    bool? cloud,
   }) => AiConnection(
     id: id ?? this.id,
     kind: kind ?? this.kind,
     label: label ?? this.label,
     url: url ?? this.url,
+    cloud: cloud ?? this.cloud,
   );
 
   Map<String, Object?> toJson() => {
@@ -32,6 +36,7 @@ class AiConnection {
     'kind': kind,
     'label': label,
     'url': url,
+    if (cloud) 'cloud': true,
   };
 
   factory AiConnection.fromJson(Object? json) {
@@ -43,6 +48,7 @@ class AiConnection {
           : 'openai-compatible',
       label: json['label'] is String ? json['label'] as String : '',
       url: json['url'] is String ? json['url'] as String : '',
+      cloud: json['cloud'] == true,
     );
   }
 }
@@ -169,6 +175,11 @@ class AiSettings {
   final AiServerTask articles;
   final AiServerTask screenshots;
 
+  /// The connection a task uses when none is chosen: never a cloud one, so
+  /// text leaves the device only when the user picks a cloud server.
+  AiConnection? get defaultConnection =>
+      connections.where((connection) => !connection.cloud).firstOrNull;
+
   AiPreset? get preset {
     if (transcribe.model != null || translate.model != null) return null;
     if (transcribe.quality == 'fast' && translate.quality == 'fast') {
@@ -216,9 +227,7 @@ class AiSettings {
     translate: translate.connection == id
         ? translate.copyWith(connection: null, model: null)
         : translate,
-    articles: articles.connection == id
-        ? const AiServerTask()
-        : articles,
+    articles: articles.connection == id ? const AiServerTask() : articles,
     screenshots: screenshots.connection == id
         ? const AiServerTask()
         : screenshots,
@@ -252,7 +261,9 @@ class AiSettings {
       transcribe: AiTask.fromJson(tasks is Map ? tasks['transcribe'] : null),
       translate: AiTask.fromJson(tasks is Map ? tasks['translate'] : null),
       articles: AiServerTask.fromJson(tasks is Map ? tasks['articles'] : null),
-      screenshots: AiServerTask.fromJson(tasks is Map ? tasks['screenshots'] : null),
+      screenshots: AiServerTask.fromJson(
+        tasks is Map ? tasks['screenshots'] : null,
+      ),
     );
   }
 }
@@ -286,8 +297,9 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
       if (existing is Map) ...existing.cast<String, Object?>(),
       'connection': task.connection,
       'model': task.model,
-    }..removeWhere((key, value) =>
-        (key == 'connection' || key == 'model') && value == null);
+    }..removeWhere(
+      (key, value) => (key == 'connection' || key == 'model') && value == null,
+    );
   }
 
   all.addAll(settings.toJson());

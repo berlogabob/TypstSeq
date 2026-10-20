@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tylog/ai/api_keys.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog/ai/connection_probe.dart';
@@ -17,6 +19,7 @@ const studio = AiConnection(
 Future<ProbeResult> fakeProbe(
   String url, {
   String? key,
+  String kind = 'openai-compatible',
   HttpClient? client,
 }) async => const ProbeResult(
   ok: true,
@@ -30,6 +33,7 @@ Future<ModelTestResult> fakeTest(
   String url,
   String model, {
   String? key,
+  String kind = 'openai-compatible',
   HttpClient? client,
 }) async => const ModelTestResult(ok: true, reply: 'Bom dia', latencyMs: 25);
 
@@ -79,6 +83,8 @@ Future<void> pumpSection(
 }
 
 void main() {
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
   testWidgets(
     'add validates URL, normalizes, makes unique ids and omits keys',
     (tester) async {
@@ -89,6 +95,7 @@ void main() {
         onChanged: (next) => saved = next,
       );
       await tap(tester, find.text('Add server'));
+      await tap(tester, find.text('Other server…'));
       await tester.enterText(field('Name'), 'Studio');
       await tester.enterText(field('Server URL'), 'ftp://studio');
       await tap(tester, find.text('Save'));
@@ -98,10 +105,7 @@ void main() {
         findsOneWidget,
       );
       await tester.enterText(field('Server URL'), 'http://localhost:8888');
-      await tester.enterText(
-        field('API key (used for Test only, not saved)'),
-        'secret',
-      );
+      await tester.enterText(field('API key'), 'secret');
       await tap(tester, find.text('Save'));
       expect(saved!.connections.last.id, 'studio-2');
       expect(saved!.connections.last.url, 'http://localhost:8888/v1');
@@ -118,18 +122,16 @@ void main() {
         tester,
         initial: const AiSettings(connections: [studio]),
         onChanged: (_) {},
-        testModel: (url, model, {key, client}) async {
-          testedModel = model;
-          testedKey = key;
-          return fakeTest(url, model);
-        },
+        testModel:
+            (url, model, {key, kind = 'openai-compatible', client}) async {
+              testedModel = model;
+              testedKey = key;
+              return fakeTest(url, model);
+            },
       );
       expect(find.byIcon(Icons.help_outline), findsOneWidget);
       await tap(tester, find.text('Studio'));
-      await tester.enterText(
-        field('API key (used for Test only, not saved)'),
-        'test-key',
-      );
+      await tester.enterText(field('API key'), 'test-key');
       await tap(tester, find.text('Test connection'));
       expect(find.text('Reachable · 12 ms'), findsOneWidget);
       expect(find.text('llm · loaded · context 4096'), findsOneWidget);
@@ -145,22 +147,43 @@ void main() {
       await tap(tester, find.text('Studio'));
       expect(find.text('llm · loaded · context 4096'), findsOneWidget);
       expect(
-        tester
-            .widget<TextField>(field('API key (used for Test only, not saved)'))
-            .controller!
-            .text,
-        isEmpty,
+        tester.widget<TextField>(field('API key')).controller!.text,
+        'test-key',
       );
       await tap(tester, find.text('Save'));
     },
   );
+
+  testWidgets('a cloud preset saves a cloud connection, key kept off it', (
+    tester,
+  ) async {
+    AiSettings? saved;
+    await pumpSection(
+      tester,
+      initial: const AiSettings(connections: [studio]),
+      onChanged: (next) => saved = next,
+    );
+    await tap(tester, find.text('Add server'));
+    await tap(tester, find.text('OpenAI (cloud)'));
+    expect(
+      tester.widget<TextField>(field('Server URL')).controller!.text,
+      'https://api.openai.com/v1',
+    );
+    await tester.enterText(field('API key'), 'sk-cloud');
+    await tap(tester, find.text('Save'));
+    final added = saved!.connections.last;
+    expect(added.cloud, isTrue);
+    expect(saved!.toJson().toString(), isNot(contains('sk-cloud')));
+    expect(await readApiKey(added.id), 'sk-cloud');
+    expect(saved!.defaultConnection?.id, 'studio');
+  });
 
   testWidgets('Test failures are visible', (tester) async {
     await pumpSection(
       tester,
       initial: const AiSettings(connections: [studio]),
       onChanged: (_) {},
-      probe: (url, {key, client}) async =>
+      probe: (url, {key, kind = 'openai-compatible', client}) async =>
           const ProbeResult(ok: false, error: 'Timed out'),
     );
     await tap(tester, find.text('Studio'));
