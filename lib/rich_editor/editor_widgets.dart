@@ -1753,10 +1753,14 @@ class _InlineImageState extends State<_InlineImage> {
     final box = _targetKey.currentContext!.findRenderObject()! as RenderBox;
     final overlayBox =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final origin = box.localToGlobal(
-      Offset(0, box.size.height),
-      ancestor: overlayBox,
-    );
+    // A collapsed picture shows only its top strip; anchor below the strip.
+    final folded =
+        widget.assetPath != null &&
+        (FoldStore.instance?.isFolded('asset:${widget.assetPath}') ?? false);
+    final shown = folded
+        ? math.min(box.size.height, kImageFoldHeight)
+        : box.size.height;
+    final origin = box.localToGlobal(Offset(0, shown), ancestor: overlayBox);
     final toolbarWidth = math.min(MediaQuery.sizeOf(context).width - 16, 360.0);
     final dx =
         origin.dx.clamp(
@@ -1768,7 +1772,7 @@ class _InlineImageState extends State<_InlineImage> {
         origin.dy + 148 >
             overlayBox.size.height - MediaQuery.viewInsetsOf(context).bottom
         ? -box.size.height - 148.0
-        : 4.0;
+        : 4.0 - (box.size.height - shown);
     final blocks = widget.controller!.document.blocks;
     final index = blocks.indexWhere(
       (block) => block.parts.any((part) => part.id == widget.id),
@@ -1964,42 +1968,53 @@ class _InlineImageState extends State<_InlineImage> {
         ),
       ),
     );
-    final store = FoldStore.instance;
     final foldKey = widget.assetPath == null
         ? null
         : 'asset:${widget.assetPath}';
-    final shown = store == null || foldKey == null
+    final shown = foldKey == null
         ? selectable
-        : ListenableBuilder(
-            listenable: store,
-            builder: (context, _) {
-              final folded = store.isFolded(foldKey);
-              final picture = folded ? _foldedStrip(selectable) : selectable;
-              // The editor routes taps through selection, so its toggle lives
-              // in the image toolbar; the reading view gets a button.
-              if (widget.controller != null) return picture;
-              return ConstrainedBox(
-                // Min width keeps the button on tiny pictures.
-                constraints: const BoxConstraints(minWidth: kImageFoldHeight),
-                child: Stack(
-                  children: [
-                    picture,
-                    Positioned(
-                      top: kSpace4,
-                      right: kSpace4,
-                      child: IconButton.filledTonal(
-                        visualDensity: VisualDensity.compact,
-                        tooltip: folded ? 'Show image' : 'Collapse image',
-                        icon: Icon(
-                          folded ? AppIcons.expand : AppIcons.collapse,
+        : ValueListenableBuilder<FoldStore?>(
+            valueListenable: FoldStore.current,
+            builder: (context, store, _) => store == null
+                ? selectable
+                : ListenableBuilder(
+                    listenable: store,
+                    builder: (context, _) {
+                      final folded = store.isFolded(foldKey);
+                      final picture = folded
+                          ? _foldedStrip(selectable)
+                          : selectable;
+                      // The editor routes taps through selection, so its toggle lives
+                      // in the image toolbar; the reading view gets a button.
+                      if (widget.controller != null) return picture;
+                      return ConstrainedBox(
+                        // Min width keeps the button on tiny pictures.
+                        constraints: const BoxConstraints(
+                          minWidth: kImageFoldHeight,
                         ),
-                        onPressed: () => unawaited(store.toggle(foldKey)),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                        child: Stack(
+                          children: [
+                            picture,
+                            Positioned(
+                              top: kSpace4,
+                              right: kSpace4,
+                              child: IconButton.filledTonal(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: folded
+                                    ? 'Show image'
+                                    : 'Collapse image',
+                                icon: Icon(
+                                  folded ? AppIcons.expand : AppIcons.collapse,
+                                ),
+                                onPressed: () =>
+                                    unawaited(store.toggle(foldKey)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
           );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: kSpace4),

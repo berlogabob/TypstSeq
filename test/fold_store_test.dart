@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -44,6 +45,43 @@ void main() {
       (await FoldStore.open(file)).isFolded('asset:/assets/a.png'),
       isFalse,
     );
+
+    // Rapid toggles without awaiting: disk ends equal to memory.
+    unawaited(store.toggle('asset:/assets/b.png'));
+    unawaited(store.toggle('asset:/assets/b.png'));
+    await store.toggle('asset:/assets/b.png');
+    expect(store.isFolded('asset:/assets/b.png'), isTrue);
+    expect(
+      (await FoldStore.open(file)).isFolded('asset:/assets/b.png'),
+      isTrue,
+    );
+  });
+
+  testWidgets('pictures built before the store loads pick it up', (
+    tester,
+  ) async {
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('fold-late-'),
+    ))!;
+    addTearDown(() => dir.delete(recursive: true));
+    final tall = (await tester.runAsync(_tallPng))!;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogReadView(
+            source: '#image("/assets/x.png", width: 100%)',
+            imageResolver: (_) async => tall,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Collapse image'), findsNothing);
+    FoldStore.instance = (await tester.runAsync(
+      () => FoldStore.open(File('${dir.path}/fold_state.json')),
+    ))!;
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Collapse image'), findsOneWidget);
   });
 
   testWidgets(
