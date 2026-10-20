@@ -134,7 +134,7 @@ class VaultMaintenance {
         await storage.readBytes(TylogVaultPaths.searchIndex),
       );
       final json = jsonDecode(utf8.decode(bytes)) as Map;
-      return json['version'] == 3 && json['indexVersion'] == kVaultIndexVersion;
+      return json['version'] == 4 && json['indexVersion'] == kVaultIndexVersion;
     } catch (_) {
       return false;
     }

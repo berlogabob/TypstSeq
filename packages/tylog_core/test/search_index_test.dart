@@ -55,11 +55,15 @@ void main() {
     await built.saveStorage(storage, '_index/search-index.json.gz');
 
     // Rewrite the stamp as an older derivation, as an upgrade would leave it.
-    final raw = jsonDecode(
-      utf8.decode(gzip.decode(
-        await storage.readBytes('_index/search-index.json.gz'),
-      )),
-    ) as Map<String, Object?>;
+    final raw =
+        jsonDecode(
+              utf8.decode(
+                gzip.decode(
+                  await storage.readBytes('_index/search-index.json.gz'),
+                ),
+              ),
+            )
+            as Map<String, Object?>;
     expect(raw['indexVersion'], kVaultIndexVersion);
     raw['indexVersion'] = kVaultIndexVersion - 1;
     await storage.writeBytes(
@@ -78,6 +82,47 @@ void main() {
     );
   });
 
+  test('packed save/load preserves 50 generated search results', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_search_packed_');
+    addTearDown(() => root.delete(recursive: true));
+    final built = await _buildIndex(root, {
+      for (var i = 0; i < 240; i++)
+        'n$i':
+            '#show: tylog.note.with(id: "n$i", title: "Project ${i % 17} note $i", tags: ("tag${i % 9}",))\n'
+            'Shared corpus term${i % 13} project${i % 17} unique$i.',
+    });
+    final storage = LocalVaultStorage(root);
+    await built.saveStorage(storage, '_index/search-index.json.gz');
+    final loaded = await PkmsSearchIndex.loadStorage(
+      storage,
+      '_index/search-index.json.gz',
+    );
+
+    List<List<Object?>> signature(List<PkmsSearchResult> results) => [
+      for (final result in results)
+        [
+          result.id,
+          result.path,
+          result.title,
+          result.kind,
+          result.tags,
+          result.score,
+          result.snippet,
+        ],
+    ];
+
+    for (var i = 0; i < 50; i++) {
+      final query = i.isEven
+          ? 'project${i % 17} term${i % 13}'
+          : 'unique${i % 23}';
+      expect(
+        signature(loaded.search(query, limit: 100)),
+        signature(built.search(query, limit: 100)),
+        reason: 'packed index changed results for "$query"',
+      );
+    }
+  });
+
   // The scanner re-stamps every warm note's fingerprint to the new mtime, so
   // keying this cache on the fingerprint meant a sync that only moved
   // timestamps invalidated the WHOLE corpus: the scanner correctly reused every
@@ -90,9 +135,9 @@ void main() {
     final storage = LocalVaultStorage(root);
     final notesDir = await Directory('${root.path}/notes').create();
     for (var i = 0; i < 5; i++) {
-      await File('${notesDir.path}/n$i.typ').writeAsString(
-        _note(id: 'n$i', title: 'Note $i'),
-      );
+      await File(
+        '${notesDir.path}/n$i.typ',
+      ).writeAsString(_note(id: 'n$i', title: 'Note $i'));
     }
 
     final first = await PkmsSearchIndex.buildStorage(
@@ -148,9 +193,9 @@ void main() {
     );
 
     // Any content change must still produce a fresh index.
-    await File('${notesDir.path}/n0.typ').writeAsString(
-      _note(id: 'n0', title: 'Renamed'),
-    );
+    await File(
+      '${notesDir.path}/n0.typ',
+    ).writeAsString(_note(id: 'n0', title: 'Renamed'));
     final third = await PkmsSearchIndex.buildStorage(
       storage,
       await scanVaultStorage(storage),
@@ -291,7 +336,8 @@ void main() {
 
     test('a prefix query over 10k documents stays fast', () async {
       final notes = <String, String>{
-        for (var i = 0; i < 10000; i++) 'n$i': _note(id: 'n$i', title: 'Note $i'),
+        for (var i = 0; i < 10000; i++)
+          'n$i': _note(id: 'n$i', title: 'Note $i'),
         'fernando': _note(id: 'fernando', title: 'FernandoMarson'),
       };
       final index = await _buildIndex(root, notes);

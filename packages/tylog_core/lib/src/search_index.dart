@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'models.dart';
 import 'scanner.dart';
@@ -34,7 +35,9 @@ class _SearchDocument {
     required this.kind,
     required this.tags,
     required this.aliases,
-    required this.terms,
+    required this.termIds,
+    required this.termFrequencies,
+    this.overflowTermFrequencies,
     this.fingerprint,
     this.contentHash,
     this.fileKind,
@@ -49,8 +52,10 @@ class _SearchDocument {
   final List<String> tags;
   final List<String> aliases;
 
-  /// Frequencies keyed by the shared vocabulary id.
-  final Map<int, int> terms;
+  /// Frequencies keyed by the shared vocabulary id, packed by document.
+  final Uint32List termIds;
+  final Uint16List termFrequencies;
+  final Map<int, int>? overflowTermFrequencies;
   final String? fingerprint;
 
   /// Content hash of the note this document was built from.
@@ -66,53 +71,152 @@ class _SearchDocument {
   final String? status;
   final String? snippet;
 
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'path': path,
-    'title': title,
-    'kind': kind,
-    'tags': tags,
-    'aliases': aliases,
-    'terms': [
-      for (final key in (terms.keys.toList()..sort())) key,
-      for (final key in (terms.keys.toList()..sort())) terms[key],
-    ],
-    'fingerprint': fingerprint,
-    if (contentHash != null) 'contentHash': contentHash,
-    if (fileKind != null) 'fileKind': fileKind,
-    if (status != null) 'status': status,
-    if (snippet != null) 'snippet': snippet,
-  };
+  int frequency(int term) {
+    final overflow = overflowTermFrequencies?[term];
+    if (overflow != null) return overflow;
+    var low = 0;
+    var high = termIds.length - 1;
+    while (low <= high) {
+      final middle = (low + high) ~/ 2;
+      final value = termIds[middle];
+      if (value == term) return termFrequencies[middle];
+      if (value < term) {
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return 0;
+  }
 
-  factory _SearchDocument.fromJson(Map<String, Object?> json) =>
-      _SearchDocument(
-        id: json['id'] as String,
-        path: json['path'] as String,
-        title: json['title'] as String,
-        kind: json['kind'] as String,
-        tags: stringList(json['tags']),
-        aliases: stringList(json['aliases']),
-        terms: _decodeTermPairs(json['terms']),
-        fingerprint: json['fingerprint'] as String?,
-        contentHash: json['contentHash'] as String?,
-        fileKind: json['fileKind'] as String?,
-        status: json['status'] as String?,
-        snippet: json['snippet'] as String?,
-      );
+  List<Object?> toJson(String key) => [
+    key,
+    id,
+    path,
+    title,
+    kind,
+    tags,
+    aliases,
+    {
+      'ids': base64Encode(_typedBytes(termIds)),
+      'frequencies': base64Encode(_typedBytes(termFrequencies)),
+      if (overflowTermFrequencies != null)
+        'overflow': [
+          for (final entry in overflowTermFrequencies!.entries) entry.key,
+          for (final entry in overflowTermFrequencies!.entries) entry.value,
+        ],
+    },
+    fingerprint,
+    contentHash,
+    fileKind,
+    status,
+    snippet,
+  ];
+
+  factory _SearchDocument.fromJson(Object value) {
+    final fields = (value as List).cast<Object?>();
+    final packed = _decodeTermPairs(fields[7]);
+    return _SearchDocument(
+      id: fields[1] as String,
+      path: fields[2] as String,
+      title: fields[3] as String,
+      kind: fields[4] as String,
+      tags: stringList(fields[5]),
+      aliases: stringList(fields[6]),
+      termIds: packed.ids,
+      termFrequencies: packed.frequencies,
+      overflowTermFrequencies: packed.overflow,
+      fingerprint: fields[8] as String?,
+      contentHash: fields[9] as String?,
+      fileKind: fields[10] as String?,
+      status: fields[11] as String?,
+      snippet: fields[12] as String?,
+    );
+  }
+}
+
+Uint8List _typedBytes(TypedData value) =>
+    Uint8List.view(value.buffer, value.offsetInBytes, value.lengthInBytes);
+
+class _PackedTerms {
+  const _PackedTerms(this.ids, this.frequencies, this.overflow);
+
+  final Uint32List ids;
+  final Uint16List frequencies;
+  final Map<int, int>? overflow;
 }
 
 class PkmsSearchIndex {
   PkmsSearchIndex._(this._documents, this._vocabulary) {
-    for (final entry in _documents.entries) {
-      for (final term in entry.value.terms.keys) {
-        _postings.putIfAbsent(term, () => {}).add(entry.key);
-      }
-    }
+    _rebuildVocabularySearch();
+    _rebuildPackedPostings();
   }
 
   final Map<String, _SearchDocument> _documents;
-  final Map<String, int> _vocabulary;
-  final Map<int, Set<String>> _postings = {};
+  List<String> _vocabulary;
+  late Uint32List _vocabularyByName;
+  List<String> _documentPaths = const [];
+  Uint32List _postingStarts = Uint32List(0);
+  List<int> _postingDocumentIds = const [];
+
+  void _rebuildVocabularySearch() {
+    final sorted = List<int>.generate(_vocabulary.length, (index) => index)
+      ..sort((a, b) => _vocabulary[a].compareTo(_vocabulary[b]));
+    _vocabularyByName = Uint32List.fromList(sorted);
+  }
+
+  int? _vocabularyIndex(String term) {
+    var low = 0;
+    var high = _vocabularyByName.length - 1;
+    while (low <= high) {
+      final middle = (low + high) ~/ 2;
+      final index = _vocabularyByName[middle];
+      final comparison = _vocabulary[index].compareTo(term);
+      if (comparison == 0) return index;
+      if (comparison < 0) {
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return null;
+  }
+
+  void _rebuildPackedPostings() {
+    _documentPaths = _documents.keys.toList(growable: false);
+    final documentIds = <String, int>{
+      for (var i = 0; i < _documentPaths.length; i++) _documentPaths[i]: i,
+    };
+    final counts = Uint32List(_vocabulary.length);
+    for (final document in _documents.values) {
+      for (final term in document.termIds) {
+        counts[term]++;
+      }
+    }
+    final starts = Uint32List(_vocabulary.length + 1);
+    for (var i = 0; i < counts.length; i++) {
+      starts[i + 1] = starts[i] + counts[i];
+    }
+    final List<int> postings = _documentPaths.length <= 0xffff
+        ? Uint16List(starts.last)
+        : Uint32List(starts.last);
+    final next = Uint32List.fromList(starts.sublist(0, starts.length - 1));
+    for (final entry in _documents.entries) {
+      final documentId = documentIds[entry.key]!;
+      for (final term in entry.value.termIds) {
+        postings[next[term]++] = documentId;
+      }
+    }
+    _postingStarts = starts;
+    _postingDocumentIds = postings;
+  }
+
+  void _addPostings(int term, Set<int> target) {
+    if (term < 0 || term >= _postingStarts.length - 1) return;
+    for (var i = _postingStarts[term]; i < _postingStarts[term + 1]; i++) {
+      target.add(_postingDocumentIds[i]);
+    }
+  }
 
   /// Lightweight, deterministic accounting for benchmark reports. This is a
   /// lower-bound estimate of retained Dart payload bytes, not VM heap usage.
@@ -131,9 +235,9 @@ class PkmsSearchIndex {
             (sum, value) => sum + _textBytes(value),
           ) +
           _textBytes(document.snippet);
-      termPairs += document.terms.length;
+      termPairs += document.termIds.length;
     }
-    final int vocabularyBytes = _vocabulary.keys.fold<int>(
+    final int vocabularyBytes = _vocabulary.fold<int>(
       0,
       (sum, value) => sum + _textBytes(value),
     );
@@ -142,31 +246,28 @@ class PkmsSearchIndex {
         metadata +
         vocabularyBytes +
         termPairs * 40 +
-        _vocabulary.keys.fold<int>(0, (sum, value) => sum + _textBytes(value));
+        _vocabulary.fold<int>(0, (sum, value) => sum + _textBytes(value));
+    final postings = _postingDocumentIds.length;
     return {
+      'notes': _documents.keys.where((key) => !_isDerivedKey(key)).length,
       'documents': _documents.length,
       'vocabulary': _vocabulary.length,
       'termPairs': termPairs,
+      'postings': postings,
       'estimatedCompactBytes': compact,
       'estimatedLegacyBytes': legacy,
     };
   }
 
-  static PkmsSearchIndex empty() => PkmsSearchIndex._({}, {});
+  static PkmsSearchIndex empty() => PkmsSearchIndex._({}, const []);
 
   void replaceWith(PkmsSearchIndex other) {
     _documents
       ..clear()
       ..addAll(other._documents);
-    _postings
-      ..clear()
-      ..addAll({
-        for (final entry in other._postings.entries)
-          entry.key: {...entry.value},
-      });
-    _vocabulary
-      ..clear()
-      ..addAll(other._vocabulary);
+    _vocabulary = other._vocabulary;
+    _rebuildVocabularySearch();
+    _rebuildPackedPostings();
   }
 
   static Future<PkmsSearchIndex> loadStorage(
@@ -177,7 +278,7 @@ class PkmsSearchIndex {
     try {
       final bytes = gzip.decode(await storage.readBytes(path));
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
-      if (json['version'] != 3) return empty();
+      if (json['version'] != 4) return empty();
       // The *derivation* the documents were built from, not the file format.
       // A document is cached against its note's content hash, so a derive-only
       // index bump — which changes tags without touching a byte of any note —
@@ -185,16 +286,14 @@ class PkmsSearchIndex {
       // tag-filtered search silently disagreed with the index it came from.
       // `version: 2` cannot catch that: it describes the envelope.
       if (json['indexVersion'] != kVaultIndexVersion) return empty();
-      final vocabulary = {
-        for (var i = 0; i < (json['vocabulary'] as List).length; i++)
-          (json['vocabulary'] as List)[i] as String: i,
-      };
-      final documents = (json['documents'] as Map).map<String, _SearchDocument>(
-        (key, value) => MapEntry(
-          key.toString(),
-          _SearchDocument.fromJson((value as Map).cast<String, Object?>()),
-        ),
-      );
+      final vocabulary = (json['vocabulary'] as List).cast<String>();
+      final documents = <String, _SearchDocument>{};
+      for (final value in (json['documents'] as List)) {
+        final fields = (value as List).cast<Object?>();
+        final document = _SearchDocument.fromJson(fields);
+        documents[fields[0] as String] = document;
+        fields.fillRange(0, fields.length, null);
+      }
       return PkmsSearchIndex._(documents, vocabulary);
     } catch (_) {
       return empty();
@@ -216,11 +315,15 @@ class PkmsSearchIndex {
     bool Function()? isCancelled,
   }) async {
     final documents = <String, _SearchDocument>{};
-    final vocabulary = <String, int>{...?previous?._vocabulary};
+    final vocabulary = <String, int>{
+      for (var i = 0; i < (previous?._vocabulary.length ?? 0); i++)
+        previous!._vocabulary[i]: i,
+    };
     int intern(String term) =>
         vocabulary.putIfAbsent(term, () => vocabulary.length);
-    Map<int, int> terms(String text) =>
-        _frequencies(text).map((term, count) => MapEntry(intern(term), count));
+    _PackedTerms terms(String text) => _packTermPairs(
+      _frequencies(text).map((term, count) => MapEntry(intern(term), count)),
+    );
     final misses = <NoteRef>[];
     for (final note in vault.notes) {
       final cached = previous?._documents[note.path];
@@ -269,6 +372,9 @@ class PkmsSearchIndex {
     for (final note in misses) {
       final source = sources[note.path];
       if (source == null) continue;
+      final packed = terms(
+        '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} ${jsonEncode(note.properties)} $source',
+      );
       documents[note.path] = _SearchDocument(
         id: note.id,
         path: note.path,
@@ -276,9 +382,9 @@ class PkmsSearchIndex {
         kind: note.kind,
         tags: note.tags,
         aliases: note.aliases,
-        terms: terms(
-          '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} ${jsonEncode(note.properties)} $source',
-        ),
+        termIds: packed.ids,
+        termFrequencies: packed.frequencies,
+        overflowTermFrequencies: packed.overflow,
         fingerprint: note.fingerprint,
         contentHash: note.contentHash,
         snippet: _snippet(source),
@@ -297,6 +403,11 @@ class PkmsSearchIndex {
       if (documents.length == previousNoteDocs) return previous;
     }
     for (final task in vault.tasks) {
+      final packed = terms(
+        '${task.id} ${task.text} ${task.project ?? ''} ${task.status} '
+        '${task.priority} ${task.tags.join(' ')} ${task.assignees.join(' ')} '
+        '${jsonEncode(task.properties)}',
+      );
       documents['task:${task.id}'] = _SearchDocument(
         id: task.id,
         path: task.notePath,
@@ -304,32 +415,32 @@ class PkmsSearchIndex {
         kind: 'task',
         tags: task.tags,
         aliases: task.assignees,
-        terms: terms(
-          '${task.id} ${task.text} ${task.project ?? ''} ${task.status} '
-          '${task.priority} ${task.tags.join(' ')} ${task.assignees.join(' ')} '
-          '${jsonEncode(task.properties)}',
-        ),
+        termIds: packed.ids,
+        termFrequencies: packed.frequencies,
+        overflowTermFrequencies: packed.overflow,
         status: task.status,
         snippet: task.due ?? task.recurrence,
       );
     }
     for (final note in vault.notes) {
       for (final attachment in note.attachments) {
-        documents.putIfAbsent(
-          'attachment:${attachment.path}',
-          () => _SearchDocument(
+        documents.putIfAbsent('attachment:${attachment.path}', () {
+          final packed = terms(
+            '${attachment.path} ${attachment.title ?? ''} ${note.title}',
+          );
+          return _SearchDocument(
             id: attachment.path,
             path: attachment.path,
             title: attachment.title ?? attachment.path.split('/').last,
             kind: 'file',
             tags: note.tags,
             aliases: const [],
-            terms: terms(
-              '${attachment.path} ${attachment.title ?? ''} ${note.title}',
-            ),
+            termIds: packed.ids,
+            termFrequencies: packed.frequencies,
+            overflowTermFrequencies: packed.overflow,
             fileKind: attachment.kind,
-          ),
-        );
+          );
+        });
       }
     }
     // Every note doc came from the cache and the document set (tasks and
@@ -344,24 +455,22 @@ class PkmsSearchIndex {
         documents.keys.every(previous._documents.containsKey)) {
       return previous;
     }
-    return PkmsSearchIndex._(documents, vocabulary);
+    return PkmsSearchIndex._(
+      documents,
+      vocabulary.keys.toList(growable: false),
+    );
   }
 
   Future<void> saveStorage(VaultStorage storage, String path) async {
     final data = utf8.encode(
       jsonEncode({
-        'version': 3,
+        'version': 4,
         'indexVersion': kVaultIndexVersion,
-        'vocabulary': [
-          for (final entry
-              in (_vocabulary.entries.toList()
-                ..sort((a, b) => a.value.compareTo(b.value))))
-            entry.key,
-        ],
-        'documents': {
+        'vocabulary': _vocabulary,
+        'documents': [
           for (final path in (_documents.keys.toList()..sort()))
-            path: _documents[path]!.toJson(),
-        },
+            _documents[path]!.toJson(path),
+        ],
       }),
     );
     await storage.writeBytes(path, gzip.encode(data));
@@ -375,39 +484,38 @@ class PkmsSearchIndex {
     int limit = 50,
   }) {
     final queryTokens = _tokens(query).toSet();
-    final terms = queryTokens
-        .map((term) => _vocabulary[term])
-        .whereType<int>()
-        .toSet();
-    Set<String> candidates;
+    final terms = queryTokens.map(_vocabularyIndex).whereType<int>().toSet();
+    Set<int> candidates;
     if (queryTokens.isEmpty) {
-      candidates = _documents.keys.toSet();
+      candidates = {for (var i = 0; i < _documentPaths.length; i++) i};
     } else {
       // ponytail: scan vocabulary for prefixes; add a prefix index if query latency warrants it.
       final lists = queryTokens.map((token) {
-        final exact = _vocabulary[token];
-        return <String>{
-          if (exact != null) ...?_postings[exact],
-          for (final entry in _vocabulary.entries)
-            if (entry.key.startsWith(token)) ...?_postings[entry.value],
-        };
+        final exact = _vocabularyIndex(token);
+        final values = <int>{};
+        if (exact != null) _addPostings(exact, values);
+        for (var i = 0; i < _vocabulary.length; i++) {
+          if (_vocabulary[i].startsWith(token)) _addPostings(i, values);
+        }
+        return values;
       });
       candidates = lists.any((values) => values.isEmpty)
-          ? <String>{}
-          : lists.skip(1).fold<Set<String>>({
+          ? <int>{}
+          : lists.skip(1).fold<Set<int>>({
               ...lists.first,
             }, (result, values) => result..retainAll(values));
     }
     final normalized = query.trim().toLowerCase();
     final results = <PkmsSearchResult>[];
-    for (final path in candidates) {
+    for (final documentId in candidates) {
+      final path = _documentPaths[documentId];
       final document = _documents[path]!;
       if (tag != null && !document.tags.contains(tag)) continue;
       if (fileKind != null && document.fileKind != fileKind) continue;
       if (status != null && document.status != status) continue;
       var score = terms.fold<int>(
         0,
-        (sum, term) => sum + (document.terms[term] ?? 0),
+        (sum, term) => sum + document.frequency(term),
       );
       if (document.id.toLowerCase() == normalized) score += 1000;
       if (document.title.toLowerCase() == normalized) score += 800;
@@ -502,13 +610,60 @@ Iterable<String> _tokens(String text) => RegExp(
   unicode: true,
 ).allMatches(text.toLowerCase()).map((match) => match.group(0)!);
 
-Map<int, int> _decodeTermPairs(Object? value) {
+_PackedTerms _packTermPairs(Map<int, int> terms) {
+  final entries = terms.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  final ids = Uint32List(entries.length);
+  final frequencies = Uint16List(entries.length);
+  Map<int, int>? overflow;
+  for (var i = 0; i < entries.length; i++) {
+    final entry = entries[i];
+    ids[i] = entry.key;
+    if (entry.value > 0xffff) {
+      (overflow ??= {})[entry.key] = entry.value;
+      frequencies[i] = 0xffff;
+    } else {
+      frequencies[i] = entry.value;
+    }
+  }
+  return _PackedTerms(ids, frequencies, overflow);
+}
+
+_PackedTerms _decodeTermPairs(Object? value) {
+  if (value is Map) {
+    final encoded = value.cast<String, Object?>();
+    final overflowValue = encoded['overflow'];
+    Map<int, int>? overflow;
+    if (overflowValue is List) {
+      final values = overflowValue.cast<Object?>();
+      final midpoint = values.length ~/ 2;
+      overflow = {
+        for (var i = 0; i < midpoint; i++)
+          (values[i] as num).toInt(): (values[midpoint + i] as num).toInt(),
+      };
+    }
+    return _PackedTerms(
+      _decodeUint32(encoded['ids'] as String),
+      _decodeUint16(encoded['frequencies'] as String),
+      overflow,
+    );
+  }
   final values = (value as List).cast<Object?>();
   final midpoint = values.length ~/ 2;
-  return {
+  return _packTermPairs({
     for (var i = 0; i < midpoint; i++)
       (values[i] as num).toInt(): (values[midpoint + i] as num).toInt(),
-  };
+  });
+}
+
+Uint32List _decodeUint32(String encoded) {
+  final bytes = Uint8List.fromList(base64Decode(encoded));
+  return Uint32List.view(bytes.buffer);
+}
+
+Uint16List _decodeUint16(String encoded) {
+  final bytes = Uint8List.fromList(base64Decode(encoded));
+  return Uint16List.view(bytes.buffer);
 }
 
 int _textBytes(String? value) => value == null ? 0 : utf8.encode(value).length;
