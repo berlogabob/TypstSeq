@@ -38,10 +38,9 @@ String compactHumanDate(DateTime day, {DateTime? now, String? locale}) {
     DateFormat.localeExists,
     onFailure: (_) => 'en',
   );
-  final label = DateFormat('EEE d MMM', language).format(day);
   return day.year == (now ?? DateTime.now()).year
-      ? label
-      : '$label ${day.year}';
+      ? DateFormat('EEE d MMM', language).format(day)
+      : DateFormat('d MMM y', language).format(day);
 }
 
 class CompactDateTitle extends StatelessWidget {

@@ -1451,8 +1451,13 @@ class TyLogEditingController extends TextEditingController {
         glyphs[line.start] = false;
       }
     }
-    final sortedGlyphs = glyphs.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    // A glyph inside a hidden range (a folded child that is itself a parent)
+    // is rendered hidden with its line, not as a glyph.
+    final sortedGlyphs = [
+      for (final entry in glyphs.entries)
+        if (!hidden.any((r) => r.start <= entry.key && entry.key < r.end))
+          entry,
+    ]..sort((a, b) => a.key.compareTo(b.key));
     // Parts arrive in text order, so moving pointers keep this linear: each
     // part looks only at the glyphs and hidden ranges it overlaps.
     var glyphAt = 0;

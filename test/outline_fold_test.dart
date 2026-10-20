@@ -246,6 +246,66 @@ void main() {
     expect(span.toPlainText(), isNot(contains('▸')));
   });
 
+  testWidgets('a hidden child that is itself a parent shows no bullet', (
+    tester,
+  ) async {
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('outline-nested-'),
+    ))!;
+    addTearDown(() => dir.delete(recursive: true));
+    FoldStore.instance = (await tester.runAsync(
+      () => FoldStore.open(File('${dir.path}/fold_state.json')),
+    ))!;
+    final controller = TyLogEditingController(
+      source: '- root\n  - mid\n    - leaf\n- after',
+      onSourceChanged: (_) {},
+      onError: (_) {},
+      onProtectedTap: (_) {},
+      foldScope: 'n.typ',
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+    final lines = outlineOf(controller.document);
+    await tester.runAsync(
+      () => FoldStore.instance!.toggle(foldKeyFor('n.typ', lines.first, lines)),
+    );
+    await tester.pump();
+    final hidden = hiddenRanges(controller.document, {lines.first.start});
+    final span = controller.buildTextSpan(
+      context: tester.element(find.byType(EditableText)),
+      withComposing: false,
+    );
+    var at = 0;
+    final visibleGlyphs = <int>[];
+    span.visitChildren((child) {
+      if (child is TextSpan && child.text != null) {
+        final text = child.text!;
+        final tiny = (child.style?.fontSize ?? 14) < 1;
+        for (var i = 0; i < text.length; i++) {
+          if ((text[i] == '•' || text[i] == '▸') && !tiny) {
+            visibleGlyphs.add(at + i);
+          }
+        }
+        at += text.length;
+      } else if (child is WidgetSpan) {
+        at += 1;
+      }
+      return true;
+    });
+    expect(
+      visibleGlyphs.where(
+        (g) => hidden.any((r) => r.start <= g && g < r.end),
+      ),
+      isEmpty,
+    );
+  });
+
   test('search reveal keeps offsets after a folded subtree', () {
     final controller = TyLogEditingController(
       source: _source,

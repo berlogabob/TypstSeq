@@ -12,7 +12,9 @@ void main() {
     expect(compactHumanDate(day, now: day, locale: 'en'), 'Mon 5 Oct');
     expect(
       compactHumanDate(day, now: DateTime(2027), locale: 'en'),
-      'Mon 5 Oct 2026',
+      // Another year drops the weekday: the app-bar slot is ~85 dp and
+      // 'Mon 5 Oct 2026' was scaled down to an unreadable size.
+      '5 Oct 2026',
     );
     expect(compactHumanDate(day, now: day, locale: 'de'), 'Mo. 5 Okt.');
     expect(compactHumanDate(day, now: day, locale: 'unsupported'), 'Mon 5 Oct');
