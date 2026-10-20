@@ -40,6 +40,21 @@ void main() {
       });
       expect(first.added, 2);
       expect((await db.pendingChunks()).isNotEmpty, isTrue);
+      await (db.update(
+        db.sources,
+      )..where((row) => row.id.equals('note:a.md'))).write(
+        const SourcesCompanion(locator: Value('articles/truncated.typ')),
+      );
+      await syncNoteChunks(db, {
+        'a.md': (title: 'A', text: 'first note'),
+        'b.md': (title: 'B', text: 'second note'),
+      });
+      expect(
+        (await (db.select(
+          db.sources,
+        )..where((row) => row.id.equals('note:a.md'))).getSingle()).locator,
+        'a.md',
+      );
       final second = await syncNoteChunks(db, {
         'a.md': (title: 'A', text: 'first note'),
         'b.md': (title: 'B', text: 'second note'),

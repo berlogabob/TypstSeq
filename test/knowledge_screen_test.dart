@@ -200,7 +200,7 @@ void main() {
             citedSearch: (_) async => const [citation],
             problems: const [],
             onOpenNote: (_) {},
-            onOpenCitation: (value) => opened = value,
+            onOpenCitation: (value) async => opened = value,
           ),
         ),
       ),
@@ -211,6 +211,62 @@ void main() {
     await tester.tap(find.text('Example paper'));
     expect(opened, same(citation));
   });
+
+  for (final width in [400.0, 1100.0]) {
+    testWidgets('cited note opens its source at width $width', (tester) async {
+      String? openedPath;
+      const citation = ChunkCitation(
+        chunkId: 'note-chunk',
+        sourceId: 'note:articles/source.typ',
+        sourceKind: 'note',
+        sourceLocator: 'articles/truncated.typ',
+        sourceTitle: 'Source article',
+        sourceVersionId: 'version',
+        startOffset: 0,
+        endOffset: 10,
+        content: 'article',
+      );
+      await tester.binding.setSurfaceSize(Size(width, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: KnowledgeScreen(
+              index: const VaultIndex(
+                notesByPath: {
+                  'articles/source.typ': NoteRef(
+                    id: 'source',
+                    path: 'articles/source.typ',
+                    title: 'Source article',
+                    outgoingLinks: [],
+                  ),
+                },
+                backlinksByTarget: {},
+              ),
+              search: (_, _, _) async => const [],
+              citedSearch: (_) async => const [citation],
+              problems: const [],
+              onOpenNote: (path) => openedPath = path,
+              onOpenCitation: (value) async {
+                openedPath = resolveCitationPath(
+                  sourceId: value.sourceId,
+                  sourceLocator: value.sourceLocator,
+                  sourceTitle: value.sourceTitle,
+                  pathsById: const {},
+                  locatorsById: const {},
+                  titlesByPath: const {'articles/source.typ': 'Source article'},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Source article'));
+      await tester.pump();
+      expect(openedPath, 'articles/source.typ');
+    });
+  }
 
   testWidgets('shows a vector-only note resolved by path', (tester) async {
     await tester.pumpWidget(

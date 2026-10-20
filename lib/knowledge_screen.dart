@@ -64,7 +64,7 @@ class KnowledgeScreen extends StatefulWidget {
 
   /// Optional retrieved chunks with a validated source locator and range.
   final Future<List<ChunkCitation>> Function(String query)? citedSearch;
-  final ValueChanged<ChunkCitation>? onOpenCitation;
+  final Future<void> Function(ChunkCitation)? onOpenCitation;
 
   final List<PkmsProblem> problems;
   final ValueChanged<String> onOpenNote;
@@ -576,12 +576,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ? null
                 : switch (citation.sourceKind) {
                     'pdf' => () => widget.onOpenCitation!(citation),
-                    // A note opens in the main editor, so leave search like a
-                    // keyword result does.
-                    'note' => () {
-                      widget.onOpenCitation!(citation);
-                      Navigator.pop(context);
-                    },
+                    'note' => () => widget.onOpenCitation!(citation),
                     _ => null,
                   },
           );

@@ -695,10 +695,11 @@ class TyLogDatabase extends _$TyLogDatabase {
   }) async {
     final wanted = ids.toList();
     if (wanted.isEmpty) return const [];
-    final rows = await (selectOnly(chunks)
-          ..addColumns([chunks.id, chunks.embedding])
-          ..where(_embeddedWith(model) & chunks.id.isIn(wanted)))
-        .get();
+    final rows =
+        await (selectOnly(chunks)
+              ..addColumns([chunks.id, chunks.embedding])
+              ..where(_embeddedWith(model) & chunks.id.isIn(wanted)))
+            .get();
     return [
       for (final row in rows)
         (id: row.read(chunks.id)!, embedding: row.read(chunks.embedding)!),
@@ -1229,6 +1230,42 @@ class TyLogDatabase extends _$TyLogDatabase {
       variables: [Variable.withString(terms), Variable.withInt(limit)],
     ).get();
     return [for (final row in rows) row.read<String>('node_id')];
+  }
+
+  /// Resolves durable graph IDs back to vault paths for imported notes.
+  Future<Map<String, String>> nodePathsForIds(Iterable<String> nodeIds) async {
+    final ids = nodeIds.toSet().toList();
+    if (ids.isEmpty) return const {};
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    final rows = await customSelect(
+      "SELECT id, json_extract(attributes_json, '\$.path') AS path "
+      'FROM nodes WHERE id IN ($placeholders)',
+      variables: [for (final id in ids) Variable.withString(id)],
+    ).get();
+    final paths = <String, String>{};
+    for (final row in rows) {
+      final path = row.readNullable<String>('path');
+      if (path != null) paths[row.read<String>('id')] = path;
+    }
+    return paths;
+  }
+
+  Future<Map<String, String>> sourceLocatorsForIds(
+    Iterable<String> sourceIds,
+  ) async {
+    final ids = sourceIds.toSet().toList();
+    if (ids.isEmpty) return const {};
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    final rows = await customSelect(
+      'SELECT id, locator FROM sources WHERE id IN ($placeholders)',
+      variables: [for (final id in ids) Variable.withString(id)],
+    ).get();
+    final locators = <String, String>{};
+    for (final row in rows) {
+      final locator = row.readNullable<String>('locator');
+      if (locator != null) locators[row.read<String>('id')] = locator;
+    }
+    return locators;
   }
 
   Future<void> commitImportedNode({

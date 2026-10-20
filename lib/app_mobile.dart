@@ -1868,7 +1868,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         setState(() {});
                       }
                     },
-                    onOpenCitation: _openCitation,
+                    onOpenCitation: (citation) async {
+                      if (citation.sourceKind == 'note') {
+                        final path = await _resolveCitationPath(citation, ix);
+                        if (path == null) {
+                          if (mounted) {
+                            showSnack(
+                              context,
+                              'Could not open ${citation.sourceTitle ?? citation.sourceLocator}',
+                            );
+                          }
+                          return;
+                        }
+                        await _openSearchNote(path, previousDestination);
+                        return;
+                      }
+                      await _openCitation(citation);
+                    },
                     onFixProblems: _fixProblems,
                   );
                 },
@@ -2690,9 +2706,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (db != null && await db.nodeProjectionComplete()) {
           final ids = await db.searchNodeIds(query);
           final byId = {for (final note in fallbackIndex.notes) note.id: note};
+          final pathsById = await db.nodePathsForIds(ids);
           return mergeKeywordResults([
             for (var i = 0; i < ids.length; i++)
-              if (byId[ids[i]] case final NoteRef note)
+              if ((byId[ids[i]] ?? fallbackIndex.notesByPath[pathsById[ids[i]]])
+                  case final NoteRef note)
                 if ((tag == null || note.tags.contains(tag)) &&
                     (status == null || note.properties['status'] == status))
                   PkmsSearchResult(
@@ -2974,7 +2992,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openCitation(ChunkCitation citation) async {
     final v = vault;
     if (citation.sourceKind == 'note') {
-      await _openPath(citation.sourceLocator);
       return;
     }
     if (v == null ||
@@ -3002,6 +3019,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     } catch (error) {
       if (mounted) showSnack(context, 'Could not open citation: $error');
+    }
+  }
+
+  Future<String?> _resolveCitationPath(
+    ChunkCitation citation,
+    VaultIndex ix,
+  ) async {
+    final entry = workspace.entry;
+    final db = entry == null ? null : await _databaseForVault(entry);
+    final pathsById = db == null
+        ? const <String, String>{}
+        : await db.nodePathsForIds([citation.sourceId]);
+    final locatorsById = db == null
+        ? const <String, String>{}
+        : await db.sourceLocatorsForIds([citation.sourceId]);
+    return resolveCitationPath(
+      sourceId: citation.sourceId,
+      sourceLocator: citation.sourceLocator,
+      sourceTitle: citation.sourceTitle,
+      pathsById: pathsById,
+      locatorsById: locatorsById,
+      titlesByPath: {for (final note in ix.notes) note.path: note.title},
+    );
+  }
+
+  Future<void> _openSearchNote(String path, int previousDestination) async {
+    final selection = ++_destinationGeneration;
+    Navigator.of(context).pop();
+    setState(() => primaryDestination = previousDestination);
+    await workspace.materializeEvent(path);
+    if (!mounted || selection != _destinationGeneration) return;
+    if (await _openNote(path, rememberView: false) && mounted) {
+      _rememberView(knowledge: KnowledgeView.search);
+      setState(() {});
     }
   }
 
@@ -4302,7 +4353,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: TextField(
                         key: const Key('citation-search'),
                         autofocus: entries.length > 8,
-                        onChanged: (value) => setSheetState(() => query = value),
+                        onChanged: (value) =>
+                            setSheetState(() => query = value),
                         decoration: const InputDecoration(
                           isDense: true,
                           prefixIcon: Icon(Icons.search),
@@ -4547,11 +4599,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isScrollControlled: true,
       showDragHandle: false,
       builder: (context) {
-        Widget tile(_ShellAction action, IconData icon, String title) => AppTile(
-          icon: icon,
-          title: title,
-          onTap: () => Navigator.pop(context, action),
-        );
+        Widget tile(_ShellAction action, IconData icon, String title) =>
+            AppTile(
+              icon: icon,
+              title: title,
+              onTap: () => Navigator.pop(context, action),
+            );
         return AppSheet(
           title: 'More',
           children: [

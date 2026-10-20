@@ -32,6 +32,33 @@ class ChunkCitation {
   final String content;
 }
 
+/// Resolves citation locators without treating any punctuation in a path or
+/// title as a delimiter.
+String? resolveCitationPath({
+  required String sourceId,
+  required String sourceLocator,
+  String? sourceTitle,
+  required Map<String, String> pathsById,
+  required Map<String, String> locatorsById,
+  required Map<String, String> titlesByPath,
+}) {
+  final candidates = <String?>[
+    pathsById[sourceId],
+    locatorsById[sourceId],
+    sourceLocator,
+    if (sourceId.startsWith('note:')) sourceId.substring('note:'.length),
+  ];
+  for (final path in candidates) {
+    if (path != null && titlesByPath.containsKey(path)) return path;
+  }
+  if (sourceTitle != null) {
+    for (final entry in titlesByPath.entries) {
+      if (entry.value == sourceTitle) return entry.key;
+    }
+  }
+  return null;
+}
+
 /// Merges keyword and vector rankings without comparing incompatible scores.
 /// Reciprocal-rank fusion keeps this query path backend-independent. Keyword
 /// and vector IDs must use the same entity ID namespace for agreement to work.

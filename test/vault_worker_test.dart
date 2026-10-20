@@ -155,6 +155,39 @@ void main() {
     expect(await worker.search('nothingmatchesthisquery'), isEmpty);
   });
 
+  test('searches Cyrillic ref-note labels in entity and daily notes', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_worker_cyrillic_');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    await vault.ensureCreated();
+    await vault.saveNote(
+      'notes/run.typ',
+      '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "run", title: "Пробежка")
+''',
+    );
+    await vault.saveNote(
+      'daily/2023/04/2023-04-01.typ',
+      '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "2023-04-01", title: "2023-04-01", kind: "daily")
+- #tylog.ref-note("Пробежка")[Пробежка]
+''',
+    );
+    final worker = await VaultWorkerClient.spawn(
+      entry: VaultEntry(id: 'cyrillic', name: 'Cyrillic', path: root.path),
+    );
+    addTearDown(worker.dispose);
+
+    await worker
+        .run(const RebuildIndexCommand(force: true, stale: {}))
+        .toList();
+
+    expect(
+      (await worker.search('пробежка')).map((hit) => hit.path).toList(),
+      ['notes/run.typ', 'daily/2023/04/2023-04-01.typ'],
+    );
+  });
+
   test(
     'post-sync rescan makes a new note searchable by title and body',
     () async {

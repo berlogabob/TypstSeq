@@ -90,6 +90,15 @@ Future<void> _selectLibraryTab(WidgetTester tester, String label) async {
 Future<void> _prepareSearchResult(dynamic home) async {
   final storage = home.workspace.vault.storage as _GatedStorage;
   await storage.writeText('notes/cervejaria.typ', 'cervejaria');
+  await storage.writeText(
+    'notes/run.typ',
+    '#show: tylog.note.with(id: "run", title: "Пробежка")\n',
+  );
+  await storage.writeText(
+    'daily/2023/04/2023-04-01.typ',
+    '#show: tylog.note.with(id: "2023-04-01", title: "2023-04-01", kind: "daily")\n'
+    '- #tylog.ref-note("Пробежка")[Пробежка]\n',
+  );
   final index = VaultIndex(
     notesByPath: {
       'notes/cervejaria.typ': const NoteRef(
@@ -97,6 +106,19 @@ Future<void> _prepareSearchResult(dynamic home) async {
         path: 'notes/cervejaria.typ',
         title: 'Cervejaria',
         outgoingLinks: [],
+      ),
+      'notes/run.typ': const NoteRef(
+        id: 'run',
+        path: 'notes/run.typ',
+        title: 'Пробежка',
+        outgoingLinks: [],
+      ),
+      'daily/2023/04/2023-04-01.typ': const NoteRef(
+        id: '2023-04-01',
+        path: 'daily/2023/04/2023-04-01.typ',
+        title: '2023-04-01',
+        kind: 'daily',
+        outgoingLinks: ['Пробежка'],
       ),
     },
     backlinksByTarget: const {},
@@ -107,6 +129,23 @@ Future<void> _prepareSearchResult(dynamic home) async {
   );
   home.workspace.searchReady = true;
   home.workspace.notifyListeners();
+}
+
+Future<void> _showRunSearch(WidgetTester tester, dynamic home) async {
+  await _prepareSearchResult(home);
+  tester.widget<NavigationRail>(find.byType(NavigationRail)).onDestinationSelected!(3);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.hintText ==
+              'Search notes, tasks, and attachments',
+    ),
+    'пробежка',
+  );
+  await tester.pump(const Duration(milliseconds: 200));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _openCervejariaResult(WidgetTester tester, dynamic home) async {
@@ -312,6 +351,30 @@ void main() {
     expect(home.workspace.note, 'notes/cervejaria.typ');
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping a daily Cyrillic Search result opens that daily note', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(1100, 800));
+    await _showRunSearch(tester, home);
+    expect(find.text('2023-04-01'), findsOneWidget);
+    await tester.tap(find.text('2023-04-01'));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, 'daily/2023/04/2023-04-01.typ');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping an entity Cyrillic Search result opens that note', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(1100, 800));
+    await _showRunSearch(tester, home);
+    expect(find.text('Пробежка'), findsOneWidget);
+    await tester.tap(find.text('Пробежка'));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, 'notes/run.typ');
     await tester.pumpWidget(const SizedBox());
   });
 

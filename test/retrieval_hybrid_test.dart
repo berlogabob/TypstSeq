@@ -4,6 +4,32 @@ import 'package:tylog/retrieval/hybrid_search.dart';
 import 'package:tylog_core/search_index.dart';
 
 void main() {
+  test('resolves a long locator and title without splitting semicolons', () {
+    const path = 'articles/long;title.typ';
+    expect(
+      resolveCitationPath(
+        sourceId: 'node-1',
+        sourceLocator: 'articles/truncated.typ',
+        sourceTitle: 'A long; title',
+        pathsById: const {'node-1': path},
+        locatorsById: const {},
+        titlesByPath: const {path: 'A long; title'},
+      ),
+      path,
+    );
+    expect(
+      resolveCitationPath(
+        sourceId: 'note:$path',
+        sourceLocator: 'articles/truncated.typ',
+        sourceTitle: 'A long; title',
+        pathsById: const {},
+        locatorsById: const {},
+        titlesByPath: const {path: 'A long; title'},
+      ),
+      path,
+    );
+  });
+
   test('reciprocal-rank fusion rewards agreement and is deterministic', () {
     final hits = fuseSearchHits(
       keywordIds: const ['b', 'a'],

@@ -70,12 +70,16 @@ Future<NoteChunkSyncResult> _syncTextChunks(
                 updatedAtMs: now,
               ),
             );
-      } else if (source.title != note.title) {
+      } else if (source.title != note.title || source.locator != path) {
         // Unchanged notes must not write: an idle resync is a no-op.
         await (db.update(
           db.sources,
         )..where((row) => row.id.equals(sourceId))).write(
-          SourcesCompanion(title: Value(note.title), updatedAtMs: Value(now)),
+          SourcesCompanion(
+            title: Value(note.title),
+            locator: Value(path),
+            updatedAtMs: Value(now),
+          ),
         );
       }
       final existing = await (db.select(
