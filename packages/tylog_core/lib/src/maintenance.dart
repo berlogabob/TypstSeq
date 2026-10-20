@@ -196,10 +196,11 @@ class VaultMaintenance {
   }
 
   /// Release the derived search cache after a background warm build.
-  void discardSearch() {
-    if (_searchDirty) return;
+  bool discardSearch() {
+    if (_searchDirty) return false;
     _lastSearch = null;
     _lastSearchWrite = null;
+    return true;
   }
 
   /// When this instance last swept, so a long-lived process does not walk the

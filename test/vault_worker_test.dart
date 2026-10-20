@@ -156,6 +156,59 @@ void main() {
   });
 
   test(
+    'releases the search index after idle and reloads it on the next query',
+    () async {
+      final vault = await seed(4);
+      final worker = await VaultWorkerClient.spawn(
+        entry: vault.entry,
+        searchIdleTimeout: const Duration(milliseconds: 20),
+      );
+      addTearDown(worker.dispose);
+      await worker
+          .run(const RebuildIndexCommand(force: true, stale: {}))
+          .toList();
+
+      final expected = [
+        for (final hit in await worker.search('unit')) hit.path,
+      ];
+      expect(expected, isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(await worker.searchResident, isFalse);
+      expect([
+        for (final hit in await worker.search('unit')) hit.path,
+      ], expected);
+    },
+  );
+
+  test(
+    'a note edited after search release is found by the next query',
+    () async {
+      final seeded = await seed(2);
+      final worker = await VaultWorkerClient.spawn(
+        entry: seeded.entry,
+        searchIdleTimeout: const Duration(milliseconds: 20),
+      );
+      addTearDown(worker.dispose);
+      await worker
+          .run(const RebuildIndexCommand(force: true, stale: {}))
+          .toList();
+      expect(await worker.search('unit'), isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(await worker.searchResident, isFalse);
+
+      await Vault(
+        seeded.root,
+      ).saveNote('notes/Edited.typ', '= Unique release search marker');
+      await worker.run(const RebuildIndexCommand(stale: {})).toList();
+
+      expect(
+        (await worker.search('release search marker')).map((hit) => hit.path),
+        contains('notes/Edited.typ'),
+      );
+    },
+  );
+
+  test(
     'first query persists the v3 search index for the next worker',
     () async {
       final seeded = await seed(4);

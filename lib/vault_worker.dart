@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/index_donor.dart';
@@ -38,6 +39,7 @@ class VaultWorkerBoot {
     required this.entry,
     required this.commands,
     required this.events,
+    required this.searchIdleTimeout,
     this.deviceId,
     this.rootIsolateToken,
   });
@@ -48,6 +50,7 @@ class VaultWorkerBoot {
   final SendPort commands;
   final SendPort events;
   final String? deviceId;
+  final Duration searchIdleTimeout;
 
   /// Non-null on every platform — it is a property of being spawned from a root
   /// isolate, not of Android. Only *Android* has anything to use it for: there
@@ -117,6 +120,11 @@ class FlushSearchCommand extends VaultWorkerCommand {
 
 class ShutdownCommand extends VaultWorkerCommand {
   const ShutdownCommand();
+}
+
+class SearchResidentCommand extends VaultWorkerCommand {
+  const SearchResidentCommand(this.replyTo);
+  final SendPort replyTo;
 }
 
 // ── Events (worker → UI) ─────────────────────────────────────────────────────
@@ -237,6 +245,7 @@ class _VaultWorker {
   int _searchGeneration = -1;
   Future<void>? _searchLoad;
   Future<void>? _searchWarmup;
+  Timer? _searchIdleTimer;
   bool _searchLoaded = false;
 
   final List<SendPort> _flushReplies = [];
@@ -277,6 +286,8 @@ class _VaultWorker {
           _cancelled = true;
           _shutdownRequested = true;
           if (!_busy && !_stopped.isCompleted) _stopped.complete();
+        case SearchResidentCommand(:final replyTo):
+          replyTo.send(_searchLoaded);
         case final SearchCommand command:
           // Loading the cache is deliberately async so rebuild startup does
           // not pay that cost. A query may still arrive while a scan runs.
@@ -292,6 +303,7 @@ class _VaultWorker {
       }
     });
     await _stopped.future;
+    _searchIdleTimer?.cancel();
     await _vault.maintenance.flushSearch();
     _commands.close();
     _inspector?.dispose();
@@ -422,9 +434,39 @@ class _VaultWorker {
           limit: command.limit,
         ),
       );
+      _restartSearchIdleTimer();
     } catch (_) {
       command.replyTo.send(const <PkmsSearchResult>[]);
     }
+  }
+
+  void _restartSearchIdleTimer() {
+    _searchIdleTimer?.cancel();
+    _searchIdleTimer = Timer(
+      _boot.searchIdleTimeout,
+      () => unawaited(_releaseSearchIfIdle()),
+    );
+  }
+
+  Future<void> _releaseSearchIfIdle() async {
+    _searchIdleTimer = null;
+    if (_busy || _searchLoad != null || _searchWarmup != null) {
+      _restartSearchIdleTimer();
+      return;
+    }
+    // The persisted file must hold every change before memory is dropped.
+    await _vault.maintenance.flushSearch();
+    if (_busy || _searchLoad != null || _searchWarmup != null) {
+      _restartSearchIdleTimer();
+      return;
+    }
+    if (!_vault.maintenance.discardSearch()) {
+      _restartSearchIdleTimer();
+      return;
+    }
+    _search = PkmsSearchIndex.empty();
+    _searchGeneration = -1;
+    _searchLoaded = false;
   }
 
   Future<void> _ensureSearch() {
@@ -535,6 +577,8 @@ class _VaultWorker {
 class VaultWorkerClient {
   VaultWorkerClient._(this._commands, this._events, this._errors);
 
+  static const searchIdleTimeout = Duration(seconds: 60);
+
   final SendPort _commands;
   final ReceivePort _events;
   final ReceivePort _errors;
@@ -571,6 +615,7 @@ class VaultWorkerClient {
   static Future<VaultWorkerClient> spawn({
     required VaultEntry entry,
     String? deviceId,
+    Duration? searchIdleTimeout,
   }) async {
     final events = ReceivePort('tylog-vault-worker-events');
     final errors = ReceivePort('tylog-vault-worker-errors');
@@ -582,6 +627,8 @@ class VaultWorkerClient {
         commands: handshake.sendPort,
         events: events.sendPort,
         deviceId: deviceId,
+        searchIdleTimeout:
+            searchIdleTimeout ?? VaultWorkerClient.searchIdleTimeout,
         rootIsolateToken: RootIsolateToken.instance,
       ),
       onError: errors.sendPort,
@@ -591,6 +638,17 @@ class VaultWorkerClient {
     final commands = await handshake.first as SendPort;
     handshake.close();
     return VaultWorkerClient._(commands, events, errors).._startRelay();
+  }
+
+  @visibleForTesting
+  Future<bool> get searchResident async {
+    final reply = ReceivePort();
+    try {
+      _commands.send(SearchResidentCommand(reply.sendPort));
+      return await reply.first as bool;
+    } finally {
+      reply.close();
+    }
   }
 
   /// Runs one command, yielding its events until a terminal one.
