@@ -12,6 +12,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/idea_hub.dart';
@@ -84,6 +85,47 @@ Future<void> _selectLibraryTab(WidgetTester tester, String label) async {
     DefaultTabController.of(tester.element(tab)).index,
     labels.indexOf(label),
   );
+}
+
+Future<void> _prepareSearchResult(dynamic home) async {
+  final storage = home.workspace.vault.storage as _GatedStorage;
+  await storage.writeText('notes/cervejaria.typ', 'cervejaria');
+  final index = VaultIndex(
+    notesByPath: {
+      'notes/cervejaria.typ': const NoteRef(
+        id: 'cervejaria',
+        path: 'notes/cervejaria.typ',
+        title: 'Cervejaria',
+        outgoingLinks: [],
+      ),
+    },
+    backlinksByTarget: const {},
+  );
+  home.workspace.index = index;
+  home.workspace.searchIndex.replaceWith(
+    await PkmsSearchIndex.buildStorage(storage, index),
+  );
+  home.workspace.searchReady = true;
+  home.workspace.notifyListeners();
+}
+
+Future<void> _openCervejariaResult(WidgetTester tester, dynamic home) async {
+  await _prepareSearchResult(home);
+  final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+  nav.onDestinationSelected!(3);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.hintText == 'Search notes, tasks, and attachments',
+    ),
+    'cervejaria',
+  );
+  await tester.pump(const Duration(milliseconds: 200));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Cervejaria'));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -231,6 +273,60 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(home.primaryDestination, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping a Search result keeps the mobile shell route alive', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    await _openCervejariaResult(tester, home);
+    expect(home.workspace.note, 'notes/cervejaria.typ');
+    expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping a Search result keeps the rail shell route alive', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(1100, 800));
+    expect(find.byType(NavigationRail), findsOneWidget);
+    final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+    await _prepareSearchResult(home);
+    rail.onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText ==
+                'Search notes, tasks, and attachments',
+      ),
+      'cervejaria',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cervejaria'));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, 'notes/cervejaria.typ');
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('back from a Search result returns to Search, not empty Today', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    await _openCervejariaResult(tester, home);
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget);
+    expect(find.byType(KnowledgeScreen), findsOneWidget);
+    expect(home.primaryDestination, 3);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

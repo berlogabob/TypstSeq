@@ -609,7 +609,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
             onSetField: widget.onSetTaskField,
             onOpenPath: (path) {
               widget.onOpenNote(path);
-              Navigator.pop(context);
             },
           );
         }
@@ -631,7 +630,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
               ? null
               : () {
                   widget.onOpenNote(result.path);
-                  Navigator.pop(context);
                 },
         );
       },

@@ -627,8 +627,10 @@ class VaultWorkerClient {
       // work does not block Dart) — so a reply normally lands in milliseconds
       // even mid-rebuild. This exists only so a worker killed with a query in
       // flight cannot leave the caller hanging forever.
+      // 60 s, not 5: the first query now also loads the search index, which
+      // takes 7-20 s on a phone; 5 s returned an empty first result (A24).
       final results = await reply.first.timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 60),
         onTimeout: () => const <PkmsSearchResult>[],
       );
       return results is List<PkmsSearchResult> ? results : const [];
