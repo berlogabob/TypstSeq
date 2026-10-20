@@ -2283,6 +2283,39 @@ void main() {
       },
     );
 
+    test(
+      'device heartbeat poll pulls without enumerating local tree',
+      () async {
+        final remote = <String, _MutableRemoteFile>{
+          '_system/workers/mac.json': _remoteText('{"heartbeat":1}'),
+        };
+        final server = await _mutableWebDavServer(remote);
+        final root = await Directory.systemTemp.createTemp('tylog_heartbeat_');
+        addTearDown(() async {
+          await server.close(force: true);
+          await root.delete(recursive: true);
+        });
+        final storage = _ListCountingStorage(root);
+        final vault = Vault.withStorage(storage);
+        await vault.ensureCreated();
+        await NextcloudSync(_config(server)).sync(vault);
+        await NextcloudSync(_config(server)).sync(vault, trigger: 'poll');
+
+        remote['_system/workers/mac.json'] = _remoteText('{"heartbeat":2}');
+        storage.recursiveLists = 0;
+        final result = await NextcloudSync(
+          _config(server),
+        ).sync(vault, trigger: 'poll');
+
+        expect(result.downloaded, 1);
+        expect(storage.recursiveLists, 0);
+        expect(
+          await vault.storage.readText('_system/workers/mac.json'),
+          '{"heartbeat":2}',
+        );
+      },
+    );
+
     for (final staleRecord in [false, true]) {
       test(
         'missing machine revision downloads; stale record=$staleRecord',

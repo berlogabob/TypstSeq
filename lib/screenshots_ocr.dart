@@ -40,9 +40,35 @@ String screenshotLaunchAgentPlist({
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>${xml(label)}</string>
+<key>StandardOutPath</key><string>${xml('$home/Nextcloud/InstantUpload/Screenshots/$label.log')}</string>
+<key>StandardErrorPath</key><string>${xml('$home/Nextcloud/InstantUpload/Screenshots/$label.log')}</string>
 <key>ProgramArguments</key><array>${args.map((a) => '<string>${xml(a)}</string>').join()}</array>
 ${mode == 'watch' ? '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>' : '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>'}
 </dict></plist>''';
+}
+
+/// Inspects which LaunchAgents are installed to report the active screenshot
+/// OCR mode. Returns 'both' if both agents exist, 'watch' if only the watch
+/// agent exists and runs ollama OCR, 'schedule' if only the watch agent exists
+/// and runs backfill (or only the schedule agent exists), else 'off'.
+Future<String> installedScreenshotMode({String? home}) async {
+  final homeDir = home ?? Platform.environment['HOME']!;
+  final watch =
+      File('$homeDir/Library/LaunchAgents/org.tylog.screenshots.plist');
+  final schedule =
+      File('$homeDir/Library/LaunchAgents/org.tylog.screenshots.schedule.plist');
+  final watchExists = await watch.exists();
+  final scheduleExists = await schedule.exists();
+  if (watchExists && scheduleExists) return 'both';
+  if (watchExists) {
+    final content = await watch.readAsString();
+    return content.contains('ollama_ocr.py') ? 'watch' : 'schedule';
+  }
+  if (scheduleExists) {
+    final content = await schedule.readAsString();
+    if (content.contains('backfill.py')) return 'schedule';
+  }
+  return 'off';
 }
 
 /// off | watch (on the fly) | schedule (daily) | both (one agent each).
