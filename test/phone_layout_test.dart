@@ -212,4 +212,28 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('another year\'s day title stays readable in a narrow app bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 64,
+            height: 56,
+            child: DefaultTextStyle(
+              style: const TextStyle(fontSize: 22, height: 1.2),
+              child: CompactDateTitle(day: DateTime(2023, 3, 29)),
+            ),
+          ),
+        ),
+      ),
+    );
+    final text = find.byType(Text);
+    final scale = tester.getRect(text).height / tester.getSize(text).height;
+    // The test font draws square glyphs (1 em each), so this reads low; one
+    // line was 0.26 here (unreadable on the P30), two lines 0.48.
+    expect(scale, greaterThan(0.45));
+  });
 }

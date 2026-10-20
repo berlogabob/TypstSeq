@@ -49,10 +49,23 @@ class CompactDateTitle extends StatelessWidget {
   final bool dirty;
 
   @override
-  Widget build(BuildContext context) => FittedBox(
-    fit: BoxFit.scaleDown,
-    child: Text('${compactHumanDate(day)}${dirty ? ' •' : ''}', maxLines: 1),
-  );
+  Widget build(BuildContext context) {
+    final label = compactHumanDate(day);
+    // Another year goes on its own line: the app-bar slot can be ~64 dp, and
+    // one line '29 Mar 2023' scaled down to a quarter of its size.
+    final year = ' ${day.year}';
+    final text = label.endsWith(year)
+        ? '${label.substring(0, label.length - year.length)}\n${day.year}'
+        : label;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        '$text${dirty ? ' •' : ''}',
+        maxLines: 2,
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
 }
 
 String monthYear(DateTime day) => '${_monthNames[day.month - 1]} ${day.year}';
