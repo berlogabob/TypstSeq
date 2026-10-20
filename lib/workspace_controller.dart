@@ -1868,7 +1868,6 @@ class WorkspaceController extends ChangeNotifier {
       }
       final seenBefore = Map.of(_seenRevisionFiles);
       final files = await opened.storage.list(path: '_system/revisions');
-      startupMark('revision-files', {'count': files.length});
       if (!_owns(opened, generation)) return null;
       final paths = files.map((file) => file.path).toSet();
       _seenRevisionFiles.removeWhere((path, _) => !paths.contains(path));
@@ -2007,18 +2006,13 @@ class WorkspaceController extends ChangeNotifier {
     if (config == null) throw const WorkspaceSyncNotConfigured();
     // A background maintenance pass held this for ~2 min on a P30; yield to UI.
     var acquired = false;
-    var lockFirstMs = 0, lockTries = 0;
-    String? lockOwner;
     _acquiringSyncLock = true;
     try {
       final lockWait = Stopwatch()..start();
       acquired = await VaultLock.acquire(opened.storage, 'ui');
-      lockFirstMs = lockWait.elapsedMilliseconds;
       var handoverRequested = false;
       while (!acquired && lockWait.elapsed < const Duration(seconds: 30)) {
         final owner = await VaultLock.currentOwner(opened.storage);
-        lockOwner = owner;
-        lockTries++;
         if (owner != null && owner != 'service') break;
         if (owner == 'service' && !handoverRequested) {
           await VaultLock.requestHandover(opened.storage);
@@ -2031,13 +2025,6 @@ class WorkspaceController extends ChangeNotifier {
     } finally {
       _acquiringSyncLock = false;
     }
-    startupMark('sync-lock', {
-      'acquired': acquired,
-      'firstMs': lockFirstMs,
-      'tries': lockTries,
-      'owner': lockOwner,
-      'storage': opened.storage.runtimeType.toString(),
-    });
     if (!acquired) return false;
     if (!_owns(opened, generation)) {
       await VaultLock.release(opened.storage, 'ui');
@@ -2095,7 +2082,6 @@ class WorkspaceController extends ChangeNotifier {
       final syncedNote = note;
       final sourceBeforeSync = syncedNote == null ? null : source;
       final revisionBeforeSync = editRevision;
-      startupMark('sync-materialize-start');
       final prepared = await _materializeRevisions(opened, generation);
       if (prepared == null) return false;
       final revisionDatabase = prepared.database;
@@ -2131,7 +2117,6 @@ class WorkspaceController extends ChangeNotifier {
           opened.markLocallyWritten(path);
         },
       );
-      startupMark('sync-engine-start', {'trigger': trigger});
       final result = await sync.sync(
         opened,
         trigger: trigger,
@@ -2139,7 +2124,6 @@ class WorkspaceController extends ChangeNotifier {
         pushOnly: pushOnly,
         remoteChanged: remoteChanged,
       );
-      startupMark('sync-engine-done', {'trigger': trigger});
       if (!_owns(opened, generation)) return false;
       final revisionConflicts = await _ingestRevisions(
         opened,

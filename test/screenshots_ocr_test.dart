@@ -84,4 +84,21 @@ void main() {
       expect(await installedScreenshotMode(home: home.path), 'both');
     },
   );
+
+  test('screenshotHealthLine reports current, behind, and invalid health', () {
+    expect(
+      screenshotHealthLine({'checked_at': '12:34', 'ok': true}),
+      'Screenshots up to date (checked 12:34)',
+    );
+    expect(
+      screenshotHealthLine({
+        'checked_at': '12:34',
+        'ok': false,
+        'lag_hours': 2.6,
+        'newest_upload': '2026-10-20',
+      }),
+      'Screenshots behind by 3 h, newest upload 2026-10-20',
+    );
+    expect(screenshotHealthLine(null), isNull);
+  });
 }

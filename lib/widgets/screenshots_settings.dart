@@ -31,6 +31,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   late String mode = widget.mode;
   late String time = widget.time;
   String status = 'Loading status…';
+  String? health;
   bool busy = false;
   Timer? timer;
   @override
@@ -50,6 +51,33 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   }
 
   Future<void> refresh() async {
+    // Real Mac state (installed agents, health file); skipped in tests, which
+    // run on a Mac host and must not read this machine's home folder.
+    if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
+      final home = Platform.environment['HOME'];
+      String? line;
+      try {
+        line = screenshotHealthLine(
+          (jsonDecode(
+                    await File(
+                      '$home/Nextcloud/InstantUpload/Screenshots/screenshots-health.json',
+                    ).readAsString(),
+                  )
+                  as Map)
+              .cast<String, dynamic>(),
+        );
+      } catch (_) {}
+      String? installed;
+      try {
+        installed = await installedScreenshotMode();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          health = line;
+          if (installed != null) mode = installed;
+        });
+      }
+    }
     String next;
     try {
       next = screenshotStatusLine(
@@ -88,7 +116,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
       time: time,
       enabled: editable,
       busy: busy,
-      status: status,
+      status: health == null ? status : '$status\n$health',
       onChanged: (nextFly, nextSched, nextTime) {
         final next = nextSched
             ? 'schedule'

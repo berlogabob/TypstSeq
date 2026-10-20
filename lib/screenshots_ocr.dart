@@ -71,6 +71,21 @@ Future<String> installedScreenshotMode({String? home}) async {
   return 'off';
 }
 
+String? screenshotHealthLine(Map<String, dynamic>? json) {
+  if (json == null || json['checked_at'] is! String) return null;
+  final checkedAt = json['checked_at'] as String;
+  if (checkedAt.isEmpty || json['ok'] is! bool) return null;
+  if (json['ok'] == true) {
+    return 'Screenshots up to date (checked $checkedAt)';
+  }
+  final lagHours = json['lag_hours'];
+  final newestUpload = json['newest_upload'];
+  if (lagHours is! num || newestUpload is! String || newestUpload.isEmpty) {
+    return null;
+  }
+  return 'Screenshots behind by ${lagHours.round()} h, newest upload $newestUpload';
+}
+
 /// off | watch (on the fly) | schedule (daily) | both (one agent each).
 Future<void> configureScreenshotsOcr(
   String vault,
