@@ -1617,12 +1617,16 @@ class _InlineImage extends StatefulWidget {
     required this.fallback,
     required this.onTap,
     required this.id,
+    this.assetPath,
     this.controller,
     this.layout,
     this.contentWidth,
   });
 
   final String id;
+
+  /// Vault path of the picture; keys its fold state in [FoldStore].
+  final String? assetPath;
   final TyLogEditingController? controller;
   final (int, String)? layout;
   final double? contentWidth;
@@ -1835,6 +1839,22 @@ class _InlineImageState extends State<_InlineImage> {
                               widget.onTap?.call();
                             },
                           ),
+                          if (FoldStore.instance case final store?
+                              when widget.assetPath != null)
+                            (
+                              store.isFolded('asset:${widget.assetPath}')
+                                  ? 'Show image'
+                                  : 'Collapse image',
+                              store.isFolded('asset:${widget.assetPath}')
+                                  ? AppIcons.expand
+                                  : AppIcons.collapse,
+                              () {
+                                _dismiss();
+                                unawaited(
+                                  store.toggle('asset:${widget.assetPath}'),
+                                );
+                              },
+                            ),
                         ])
                       IconButton(
                         tooltip: label,
@@ -1935,10 +1955,47 @@ class _InlineImageState extends State<_InlineImage> {
         ),
       ),
     );
+    final store = FoldStore.instance;
+    final foldKey = widget.assetPath == null
+        ? null
+        : 'asset:${widget.assetPath}';
+    final shown = store == null || foldKey == null
+        ? selectable
+        : ListenableBuilder(
+            listenable: store,
+            builder: (context, _) {
+              final folded = store.isFolded(foldKey);
+              final picture = folded ? _foldedStrip(selectable) : selectable;
+              // The editor routes taps through selection, so its toggle lives
+              // in the image toolbar; the reading view gets a button.
+              if (widget.controller != null) return picture;
+              return ConstrainedBox(
+                // Min width keeps the button on tiny pictures.
+                constraints: const BoxConstraints(minWidth: kImageFoldHeight),
+                child: Stack(
+                  children: [
+                    picture,
+                    Positioned(
+                      top: kSpace4,
+                      right: kSpace4,
+                      child: IconButton.filledTonal(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: folded ? 'Show image' : 'Collapse image',
+                        icon: Icon(
+                          folded ? AppIcons.expand : AppIcons.collapse,
+                        ),
+                        onPressed: () => unawaited(store.toggle(foldKey)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: kSpace4),
       child: layout == null
-          ? selectable
+          ? shown
           : SizedBox(
               width: contentWidth,
               child: Align(
@@ -1947,7 +2004,7 @@ class _InlineImageState extends State<_InlineImage> {
                   'right' => Alignment.centerRight,
                   _ => Alignment.center,
                 },
-                child: selectable,
+                child: shown,
               ),
             ),
     );
@@ -2393,6 +2450,19 @@ bool _isReferenceAtom(String source) =>
 }
 
 /// Asset path for a bare image or an image attachment; null for other atoms.
+/// Top strip of a collapsed picture; the text after it moves up.
+Widget _foldedStrip(Widget picture) => SizedBox(
+  key: const ValueKey('image-folded'),
+  height: kImageFoldHeight,
+  child: ClipRect(
+    child: OverflowBox(
+      alignment: Alignment.topCenter,
+      maxHeight: double.infinity,
+      child: picture,
+    ),
+  ),
+);
+
 String? _imageAtomPath(String source) {
   final image = RegExp(r'^#[iI]mage\("((?:\\.|[^"])*)"').firstMatch(source);
   if (image != null) return unescapeTypstString(image.group(1)!);
@@ -3003,9 +3073,7 @@ void _addRevealTextSpan(
   target.add(
     TextSpan(
       text: text.substring(start, end),
-      style: style.copyWith(
-        backgroundColor: kSearchRevealFill,
-      ),
+      style: style.copyWith(backgroundColor: kSearchRevealFill),
     ),
   );
   if (end < text.length) {

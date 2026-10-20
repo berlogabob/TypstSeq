@@ -47,6 +47,8 @@ class AppIcons {
   static const IconData settings = Icons.settings_outlined;
   static const IconData overflow = Icons.more_horiz;
   static const IconData close = Icons.close;
+  static const IconData expand = Icons.unfold_more;
+  static const IconData collapse = Icons.unfold_less;
   static const IconData warning = Icons.warning_amber_rounded;
   static const IconData daily = Icons.event_note_outlined;
   static const IconData today = Icons.today_outlined;

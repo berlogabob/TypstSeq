@@ -1266,11 +1266,7 @@ class TyLogEditingController extends TextEditingController {
       }
       offset += document.gapAfter(blockIndex).length;
     }
-    return findSearchRevealRange(
-      text,
-      query,
-      preferredOffset: preferredOffset,
-    );
+    return findSearchRevealRange(text, query, preferredOffset: preferredOffset);
   }
 
   /// Spans for visible-text range [start, end): the blocks overlapping it,
@@ -1508,6 +1504,7 @@ class TyLogEditingController extends TextEditingController {
                               ? _imageLayout(part.source!)
                               : null,
                           contentWidth: imageContentWidth,
+                          assetPath: imagePath,
                           bytes: imageBytes(imagePath),
                           fallback: chip,
                           onTap: onTap,

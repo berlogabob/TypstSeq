@@ -13,6 +13,7 @@ import 'image_crop.dart';
 import 'widgets/app_icons.dart';
 import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
+import 'widgets/fold_store.dart';
 import 'editor_autocomplete.dart';
 import 'widgets/loading.dart';
 import 'widgets/search_reveal.dart';

@@ -101,6 +101,9 @@ const kImageControlScrim = Color(0x66000000);
 /// Corner-radius scale. Small = chips/inline chips, medium = list tiles, cards
 /// and popovers, large = settings-style container cards.
 const kRadiusSmall = 6.0;
+
+/// Height of a collapsed image's visible strip.
+const kImageFoldHeight = 64.0;
 const kRadiusMedium = 12.0;
 const kRadiusLarge = 20.0;
 
