@@ -1609,6 +1609,14 @@ class WorkspaceController extends ChangeNotifier {
       )..where((t) => t.targetNodeId.isNotNull())).get())
         ?item.targetPath: item.targetNodeId!,
     };
+    // Earlier projections (before the mapping) wrote some imported notes
+    // under their header id too; drop those rows.
+    await db.dropProjectedNodes([
+      for (final note in built.notes)
+        if (mapped[note.path] case final id?
+            when id != note.id && have.contains(note.id))
+          note.id,
+    ]);
     final notes = [
       for (final note in built.notes)
         if ((mapped[note.path] ?? note.id) case final id

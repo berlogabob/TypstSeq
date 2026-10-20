@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 
@@ -826,6 +827,41 @@ class TyLogDatabase extends _$TyLogDatabase {
         updatedAtMs: DateTime.now().millisecondsSinceEpoch,
       ),
     );
+  }
+
+  /// Deletes projection-only rows (no revisions) for [ids]: duplicates an
+  /// earlier projection wrote under an imported note's header id.
+  Future<void> dropProjectedNodes(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    // Batched: node_id is UNINDEXED in the FTS table, so each DELETE scans
+    // it once; per-id deletes would be quadratic on a large vault.
+    for (var i = 0; i < list.length; i += 500) {
+      final chunk = list.sublist(i, math.min(i + 500, list.length));
+      final marks = List.filled(chunk.length, '?').join(', ');
+      final vars = [for (final id in chunk) Variable.withString(id)];
+      await transaction(() async {
+        await _ensureNodeSearch();
+        final drop = [
+          for (final row in await customSelect(
+            'SELECT id FROM nodes WHERE id IN ($marks) AND NOT EXISTS ('
+            "SELECT 1 FROM revisions WHERE entity_kind = 'node' "
+            'AND entity_id = nodes.id)',
+            variables: vars,
+          ).get())
+            row.read<String>('id'),
+        ];
+        if (drop.isEmpty) return;
+        final dropMarks = List.filled(drop.length, '?').join(', ');
+        await customStatement(
+          'DELETE FROM nodes WHERE id IN ($dropMarks)',
+          drop,
+        );
+        await customStatement(
+          'DELETE FROM node_search_fts WHERE node_id IN ($dropMarks)',
+          drop,
+        );
+      });
+    }
   }
 
   /// Inserts nodes that are not in the table yet (search rows included);

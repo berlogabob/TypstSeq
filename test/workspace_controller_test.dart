@@ -4130,6 +4130,19 @@ void main() {
         );
       }
 
+      // A duplicate an earlier projection wrote under the header id of an
+      // imported note; it has no revisions and must be removed.
+      await database.projectNodes([
+        const NodeData(
+          id: 'note-1',
+          type: 'note',
+          title: 'Dup',
+          content: '',
+          attributesJson: '{"path":"notes/note-1.typ"}',
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ),
+      ]);
       await database.projectNodes([
         const NodeData(
           id: 'note-0',
