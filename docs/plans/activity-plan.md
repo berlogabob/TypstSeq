@@ -139,3 +139,16 @@ Then: full suite, device checks, tag 0.19.1.
 - T4/T6/T7 ad4f31f (Mac Settings real mode + health line; prelude marks removed). T5/T6 scripts 592dea7 (blocks of 5, health check nightly).
 - T8 AGENTS.md 971c876 (force-stop before cold-start measurement). T9 Mac disk 17 -> 34 GB free. T10 A24 backup: pending connection.
 
+
+## Wave 11 (2026-10-20): close wave 10 + settings/providers/sync (plan: docs/superpowers/plans/2026-10-20-settings-providers-sync.md)
+- S2 screenshot notes: reading view re-reveals on note change (7f3b37c); editor paints the match as a span background, since an unfocused field paints no selection (b0f34d5); same-query second result reveals again (5b789f8). P30: 'Cervejaria' highlighted.
+- S3 images: collapse to a 64 px strip, per device (fold_state.json, keyed by asset path); editor via image toolbar, reading view via button (dffcf31). P30 verified, note unchanged.
+- S4 list subtrees: OPEN. Codex reading-view version discarded (parallel list renderer lost inline parsing). Needs hidden ranges in the block loop + an editor-side collapsed block.
+- S5 DB projection (a63df5a, b0f34d5, 5b789f8): every index build inserts missing nodes (no revisions published, import mapping respected). Mac 103 -> 9,853 nodes. P30: FTS delete-by-UNINDEXED-id made the first projection quadratic, searches waited 12-13 s; fixed, queries ~1.6 s incl. adb overhead.
+- S6 memory (0a515e8): worker drops the search index after 60 s idle. P30 PSS: 252-318 MB before a search, 570-597 MB right after, 267-270 MB a minute later. '<=350 MB after a search' met only after the idle window.
+- Keep query on back (88d02cb).
+- Settings: calendar feeds have no built-in owner URLs, blank = off (a63df5a, 5b789f8; owner's vault settings now hold the URLs + group explicitly). AI: local-first preset menu + cloud presets (OpenAI, Claude, Gemini, Mistral, OpenRouter), keys in OS secure storage (a2993c2). Screenshots: Mac folder picker, uv lookup (a97a2b3). Scripts already read the Studio URL from ai.json (no change).
+- Sync: 'WebDAV (any server)' backend, single PUT, https-only (ef36c19); device round-trip not done yet.
+- P2P spike: iroh 1.4 endpoint arm64 .so 5.4 MB; Ouisync v0.9.4 pre-1.0, git-only crate. LAN sync timing needs a prototype (own plan).
+- Full suite 1620 pass; codex review: 4 Important fixed/ruled, 3 minors deferred (fold store late load, concurrent fold writes, toolbar position after collapse).
+- Release 0.19.2 blocked by: S4, S6 peak memory.
