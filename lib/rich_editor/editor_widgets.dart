@@ -3087,7 +3087,12 @@ void _addTextSpans(
       }
       target.add(
         TextSpan(
-          text: text.substring(start - global, end - global),
+          // A hidden newline is drawn as a zero-width space (same length, so
+          // offsets hold): a real line break keeps the field's strut height
+          // and left a blank line per hidden line in the editor.
+          text: text
+              .substring(start - global, end - global)
+              .replaceAll('\n', '\u200B'),
           style:
               hiddenStyle ??
               style.copyWith(

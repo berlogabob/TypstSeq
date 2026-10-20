@@ -299,12 +299,66 @@ void main() {
       return true;
     });
     expect(
-      visibleGlyphs.where(
-        (g) => hidden.any((r) => r.start <= g && g < r.end),
-      ),
+      visibleGlyphs.where((g) => hidden.any((r) => r.start <= g && g < r.end)),
       isEmpty,
     );
   });
+
+  for (final source in [
+    '- root\n  - a\n  - b\n  - c\n- after',
+    '- root\n'
+        '  - #tylog.task(id: "t1", text: "a", status: "todo", priority: "normal")\n'
+        '  - #tylog.task(id: "t2", text: "b", status: "todo", priority: "normal")\n'
+        '  - #tylog.task(id: "t3", text: "c", status: "todo", priority: "normal")\n'
+        '- after',
+  ]) {
+    testWidgets('editor: a folded subtree leaves no blank lines behind '
+        '(${source.contains('task') ? 'task blocks' : 'one list block'})', (
+      tester,
+    ) async {
+      final dir = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('outline-gap-'),
+      ))!;
+      addTearDown(() => dir.delete(recursive: true));
+      FoldStore.instance = (await tester.runAsync(
+        () => FoldStore.open(File('${dir.path}/fold_state.json')),
+      ))!;
+      final controller = TyLogEditingController(
+        source: source,
+        onSourceChanged: (_) {},
+        onError: (_) {},
+        onProtectedTap: (_) {},
+        foldScope: 'gap.typ',
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      double top(int offset) => tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable
+          .getLocalRectForCaret(TextPosition(offset: offset))
+          .top;
+      final text = controller.text;
+      final lineHeight = top(text.indexOf('b')) - top(text.indexOf('a'));
+      final lines = outlineOf(controller.document);
+      await tester.runAsync(
+        () => FoldStore.instance!.toggle(
+          foldKeyFor('gap.typ', lines.first, lines),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(top(text.indexOf('after')) - top(0), closeTo(lineHeight, 1));
+    });
+  }
 
   test('search reveal keeps offsets after a folded subtree', () {
     final controller = TyLogEditingController(
