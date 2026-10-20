@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'app_icons.dart';
 import '../screenshots_ocr.dart';
 import 'processing_policy_editor.dart';
@@ -16,10 +17,14 @@ class ScreenshotsSettings extends StatefulWidget {
     required this.onProcessNow,
     required this.readStatus,
     this.editable,
+    this.folder,
+    this.onFolderChanged,
   });
   final String mode;
   final String time;
   final bool? editable;
+  final String? folder;
+  final Future<void> Function(String)? onFolderChanged;
   final Future<void> Function(String, String) onConfigure;
   final Future<void> Function() onProcessNow;
   final Future<String> Function() readStatus;
@@ -55,12 +60,13 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
     // run on a Mac host and must not read this machine's home folder.
     if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
       final home = Platform.environment['HOME'];
-      String? line;
+      final folder = widget.folder ?? defaultScreenshotsFolder(home!);
+      String? line = screenshotScriptsHealth(folder);
       try {
-        line = screenshotHealthLine(
+        line ??= screenshotHealthLine(
           (jsonDecode(
                     await File(
-                      '$home/Nextcloud/InstantUpload/Screenshots/screenshots-health.json',
+                      '$folder/screenshots-health.json',
                     ).readAsString(),
                   )
                   as Map)
@@ -108,34 +114,52 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
     final editable = widget.editable ?? Platform.isMacOS;
     final fly = mode == 'watch';
     final sched = mode == 'schedule' || mode == 'both';
-    return ProcessingPolicyEditor(
-      icon: AppIcons.screenshot,
-      title: 'Screenshots (OCR)',
-      onTheFly: fly,
-      scheduled: sched,
-      time: time,
-      enabled: editable,
-      busy: busy,
-      status: health == null ? status : '$status\n$health',
-      onChanged: (nextFly, nextSched, nextTime) {
-        final next = nextSched
-            ? 'schedule'
-            : nextFly
-            ? 'watch'
-            : 'off';
-        unawaited(
-          perform(() async {
-            await widget.onConfigure(next, nextTime);
-            if (mounted) {
-              setState(() {
-                mode = next;
-                time = nextTime;
-              });
-            }
-          }),
-        );
-      },
-      onProcessNow: () => unawaited(perform(widget.onProcessNow)),
+    return Column(
+      children: [
+        ProcessingPolicyEditor(
+          icon: AppIcons.screenshot,
+          title: 'Screenshots (OCR)',
+          onTheFly: fly,
+          scheduled: sched,
+          time: time,
+          enabled: editable,
+          busy: busy,
+          status: health == null ? status : '$status\n$health',
+          onChanged: (nextFly, nextSched, nextTime) {
+            final next = nextSched
+                ? 'schedule'
+                : nextFly
+                ? 'watch'
+                : 'off';
+            unawaited(
+              perform(() async {
+                await widget.onConfigure(next, nextTime);
+                if (mounted) {
+                  setState(() {
+                    mode = next;
+                    time = nextTime;
+                  });
+                }
+              }),
+            );
+          },
+          onProcessNow: () => unawaited(perform(widget.onProcessNow)),
+        ),
+        if (editable && widget.onFolderChanged != null)
+          ListTile(
+            title: const Text('Screenshot folder'),
+            subtitle: Text(
+              widget.folder ?? '~/Nextcloud/InstantUpload/Screenshots',
+            ),
+            trailing: const Icon(Icons.folder_open),
+            onTap: () async {
+              final path = await FilePicker.getDirectoryPath();
+              if (path != null) {
+                await perform(() => widget.onFolderChanged!(path));
+              }
+            },
+          ),
+      ],
     );
   }
 }

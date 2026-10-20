@@ -416,7 +416,9 @@ void main() {
       ], 'vault');
       await registry.setPdfPaper('a5');
       await registry.setScreenshotsOcr('schedule', '19:45');
+      await registry.setScreenshotsFolder('/x/Shots');
       final loaded = await VaultRegistry.load();
+      expect(loaded.screenshotsFolder, '/x/Shots');
       expect(loaded.screenshotsMode, 'schedule');
       expect(loaded.screenshotsTime, '19:45');
       expect(loaded.pdfPaper, 'a5');

@@ -101,4 +101,40 @@ void main() {
     );
     expect(screenshotHealthLine(null), isNull);
   });
+
+  test('plist uses the chosen scripts folder and uv path', () {
+    final plist = screenshotLaunchAgentPlist(
+      home: '/Users/u',
+      vault: '/v',
+      mode: 'watch',
+      scriptsDir: '/x/Shots',
+      uvPath: '/u/bin/uv',
+    );
+    expect(plist, contains('<string>/x/Shots</string>'));
+    expect(plist, contains('/x/Shots/org.tylog.screenshots.log'));
+    expect(plist, contains('<string>/u/bin/uv</string>'));
+    expect(plist, isNot(contains('Nextcloud')));
+  });
+
+  test('findUv finds uv under the home folder', () async {
+    final home = await Directory.systemTemp.createTemp('uv-home-');
+    addTearDown(() => home.delete(recursive: true));
+    await File('${home.path}/.local/bin/uv').create(recursive: true);
+    expect(
+      await findUv(home: home.path, system: const []),
+      '${home.path}/.local/bin/uv',
+    );
+    expect(await findUv(home: '/nonexistent', system: const []), isNull);
+  });
+
+  test('missing scripts folder gives a health line, not an error', () async {
+    final dir = await Directory.systemTemp.createTemp('shots-');
+    addTearDown(() => dir.delete(recursive: true));
+    expect(
+      screenshotScriptsHealth(dir.path),
+      'Screenshot scripts not found in ${dir.path}',
+    );
+    await File('${dir.path}/ollama_ocr.py').create();
+    expect(screenshotScriptsHealth(dir.path), isNull);
+  });
 }

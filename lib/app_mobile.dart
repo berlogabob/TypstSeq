@@ -2841,12 +2841,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             readScreenshotsStatus: () async =>
                 vault!.storage.readText('_system/screenshots/status.json'),
             onConfigureScreenshots: (mode, time) async {
-              await configureScreenshotsOcr(vaultPath, mode, time);
+              await configureScreenshotsOcr(
+                vaultPath,
+                mode,
+                time,
+                scriptsDir: registry?.screenshotsFolder,
+              );
               await registry?.setScreenshotsOcr(mode, time);
+            },
+            screenshotsFolder: registry?.screenshotsFolder,
+            onScreenshotsFolderChanged: (folder) async {
+              await registry?.setScreenshotsFolder(folder);
+              // Reinstall the agents so they run from the new folder.
+              await configureScreenshotsOcr(
+                vaultPath,
+                registry?.screenshotsMode ?? 'off',
+                registry?.screenshotsTime ?? '03:00',
+                scriptsDir: folder,
+              );
+              if (mounted) setState(() {});
             },
             onProcessScreenshots: () async {
               if (Platform.isMacOS) {
-                await runScreenshotsBackfill(vaultPath);
+                await runScreenshotsBackfill(
+                  vaultPath,
+                  scriptsDir: registry?.screenshotsFolder,
+                );
               } else {
                 await requestScreenshotsRun(vault!.storage);
                 unawaited(_syncNow());

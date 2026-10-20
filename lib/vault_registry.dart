@@ -175,6 +175,7 @@ class VaultRegistry {
     this.pdfPaper = 'a4',
     this.screenshotsMode = 'off',
     this.screenshotsTime = '03:00',
+    this.screenshotsFolder,
     this.shelfPrefs = const {},
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
@@ -192,6 +193,9 @@ class VaultRegistry {
   String pdfPaper;
   String screenshotsMode;
   String screenshotsTime;
+
+  /// This Mac's screenshot scripts folder; null = the default under ~/Nextcloud.
+  String? screenshotsFolder;
 
   /// Article-shelf filter/sort/group choices, persisted so they survive an app
   /// restart (e.g. `{'status': 'unread', 'sort': 'relevance'}`).
@@ -287,10 +291,18 @@ class VaultRegistry {
           themeMode: themeMode,
           pdfPaper: pdfPaper,
           screenshotsMode:
-              ['off', 'watch', 'schedule', 'both'].contains(json['screenshotsMode'])
+              [
+                'off',
+                'watch',
+                'schedule',
+                'both',
+              ].contains(json['screenshotsMode'])
               ? json['screenshotsMode'] as String
               : 'off',
           screenshotsTime: _screenshotsTime(json['screenshotsTime']),
+          screenshotsFolder: json['screenshotsFolder'] is String
+              ? json['screenshotsFolder'] as String
+              : null,
           shelfPrefs:
               (json['shelfPrefs'] as Map?)?.map(
                 (k, v) => MapEntry('$k', '$v'),
@@ -557,6 +569,11 @@ class VaultRegistry {
     return save();
   }
 
+  Future<void> setScreenshotsFolder(String folder) {
+    screenshotsFolder = folder;
+    return save();
+  }
+
   Future<void> setPdfPaper(String paper) {
     pdfPaper = paper;
     return save();
@@ -674,6 +691,7 @@ class VaultRegistry {
         'pdfPaper': pdfPaper,
         'screenshotsMode': screenshotsMode,
         'screenshotsTime': screenshotsTime,
+        if (screenshotsFolder != null) 'screenshotsFolder': screenshotsFolder,
         'shelfPrefs': shelfPrefs,
         'vaults': entries.map((entry) => entry.toJson()).toList(),
       }),

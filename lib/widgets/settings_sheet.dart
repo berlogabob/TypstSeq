@@ -49,6 +49,8 @@ class SettingsSheet extends StatefulWidget {
     this.screenshotsMode = 'off',
     this.screenshotsTime = '03:00',
     this.onConfigureScreenshots,
+    this.screenshotsFolder,
+    this.onScreenshotsFolderChanged,
     this.onProcessScreenshots,
     this.readScreenshotsStatus,
     this.pdfPaper = 'a4',
@@ -66,6 +68,8 @@ class SettingsSheet extends StatefulWidget {
   final String screenshotsMode;
   final String screenshotsTime;
   final Future<void> Function(String, String)? onConfigureScreenshots;
+  final String? screenshotsFolder;
+  final Future<void> Function(String)? onScreenshotsFolderChanged;
   final Future<void> Function()? onProcessScreenshots;
   final Future<String> Function()? readScreenshotsStatus;
   final String pdfPaper;
@@ -262,6 +266,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 onConfigure: widget.onConfigureScreenshots!,
                 onProcessNow: widget.onProcessScreenshots!,
                 readStatus: widget.readScreenshotsStatus!,
+                folder: widget.screenshotsFolder,
+                onFolderChanged: widget.onScreenshotsFolderChanged,
               ),
           ],
         ),
@@ -375,8 +381,9 @@ class _InfoRow extends StatelessWidget {
         const SizedBox(height: kSpace4),
         Text(
           value,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     ),
