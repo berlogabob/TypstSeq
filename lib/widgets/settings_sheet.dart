@@ -112,12 +112,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
   Future<void> _calendars() async {
     final config = widget.calendarSettings;
     final defaults = <String, String>{
-      'classesUrl': 'https://berlogabob.github.io/iade-lab-schedule/all.json',
-      'group': 'MCIA003N01',
+      'classesUrl': '',
+      'group': '',
       'programme': '',
       'degree': '',
       'classesHours': '6',
-      'labUrl': 'https://berlogabob.github.io/openlabtwin/calendar/lab.ics',
+      'labUrl': '',
       'labHours': '6',
     };
     final labels = [

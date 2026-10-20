@@ -828,6 +828,22 @@ class TyLogDatabase extends _$TyLogDatabase {
     );
   }
 
+  /// Inserts nodes that are not in the table yet (search rows included);
+  /// existing nodes are left untouched.
+  Future<void> projectNodes(Iterable<NodeData> projected) async {
+    await transaction(() async {
+      await _ensureNodeSearch();
+      for (final node in projected) {
+        final existing = await (select(
+          nodes,
+        )..where((t) => t.id.equals(node.id))).getSingleOrNull();
+        if (existing != null) continue;
+        await into(nodes).insert(node);
+        await _upsertNodeSearch(node);
+      }
+    });
+  }
+
   Future<void> markImportItem({
     required ImportItemData item,
     required int completedCount,

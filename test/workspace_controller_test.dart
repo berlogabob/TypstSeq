@@ -11,7 +11,6 @@ import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/database/revision_publisher.dart';
 import 'package:tylog/pdf/pdf_reader_store.dart';
 import 'package:tylog/nextcloud_sync.dart';
-import 'package:tylog/calendar_feeds.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault_lock.dart';
@@ -32,6 +31,9 @@ Future<void> _waitUntil(
     await Future.delayed(const Duration(milliseconds: 5));
   }
 }
+
+const _classesUrl = 'https://example.org/classes.json';
+const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -236,7 +238,7 @@ void main() {
         fetchFeed: (url) async {
           calls++;
           if (offline) throw const SocketException('offline');
-          if (url == labUrl) return 'BEGIN:VCALENDAR\nEND:VCALENDAR';
+          if (url == _labUrl) return 'BEGIN:VCALENDAR\nEND:VCALENDAR';
           return jsonEncode([
             {
               'date': '2026-10-08',
@@ -254,6 +256,16 @@ void main() {
       await controller.openVault(
         const VaultEntry(id: 'events', name: 'Events', path: '/events'),
         storage: storage,
+      );
+      await storage.writeText(
+        Vault.settingsPath,
+        jsonEncode({
+          'calendars': {
+            'classesUrl': _classesUrl,
+            'group': 'MCIA003N01',
+            'labUrl': _labUrl,
+          },
+        }),
       );
       await controller.refreshCalendarFeeds();
       expect(calls, 2);
@@ -290,6 +302,48 @@ void main() {
       await controller.shutdown();
     },
   );
+
+  for (final legacy in [false, true]) {
+    test(
+      legacy
+          ? 'calendar feeds keep URLs saved in the feed cache (upgrade)'
+          : 'fresh vault fetches no calendar feeds',
+      () async {
+        final storage = _MemoryStorage();
+        final urls = <String>[];
+        final controller = WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          inspector: _FakeInspector(),
+          reconcileTasks: (_) async {},
+          fetchFeed: (url) async {
+            urls.add(url);
+            return url == _labUrl ? 'BEGIN:VCALENDAR\nEND:VCALENDAR' : '[]';
+          },
+        );
+        addTearDown(controller.dispose);
+        await controller.openVault(
+          const VaultEntry(id: 'feeds', name: 'Feeds', path: '/feeds'),
+          storage: storage,
+        );
+        if (legacy) {
+          await storage.writeText(
+            Vault.settingsPath,
+            jsonEncode({
+              'calendars': {
+                'cache': {
+                  'classes': {'url': _classesUrl, 'body': '[]'},
+                  'lab': {'url': _labUrl, 'body': ''},
+                },
+              },
+            }),
+          );
+        }
+        await controller.refreshCalendarFeeds(force: true);
+        expect(urls, legacy ? [_classesUrl, _labUrl] : isEmpty);
+        await controller.shutdown();
+      },
+    );
+  }
 
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
@@ -4000,6 +4054,54 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'desktop-managed indexing projects every note into its database',
+    () async {
+      final storage = _MemoryStorage();
+      final database = TyLogDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+        databaseForVault: (_) async => database,
+      );
+      addTearDown(controller.dispose);
+      final entry = VaultEntry(
+        id: 'desktop',
+        name: 'Desktop vault',
+        path: '/projection-test',
+      );
+      await controller.openVault(entry, storage: storage);
+      for (var i = 0; i < 50; i++) {
+        await storage.writeText(
+          'notes/note-$i.typ',
+          '#show: tylog.note.with(id: "note-$i", title: "Note $i")\nBody',
+        );
+      }
+
+      await database.projectNodes([
+        const NodeData(
+          id: 'note-0',
+          type: 'note',
+          title: 'Kept',
+          content: '',
+          attributesJson: '{}',
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ),
+      ]);
+
+      await controller.refreshIndex(always: true);
+
+      final rows = await database.select(database.nodes).get();
+      expect(rows, hasLength(50));
+      expect(rows.firstWhere((n) => n.id == 'note-0').title, 'Kept');
+      expect(await database.searchNodeIds('note 7'), contains('note-7'));
+      expect(await database.nodeProjectionComplete(), isTrue);
+    },
+  );
 }
 
 class _GatedStartupSyncController extends WorkspaceController {

@@ -8,9 +8,6 @@ import 'package:timezone/timezone.dart' as tz;
 import 'editor_autocomplete.dart' show foldAccents;
 import 'models.dart';
 
-const timetableUrl = 'https://berlogabob.github.io/iade-lab-schedule/all.json';
-const labUrl = 'https://berlogabob.github.io/openlabtwin/calendar/lab.ics';
-
 class FeedEvent {
   FeedEvent(this.id, this.title, this.date, this.properties);
   final String id, title, date;
@@ -59,7 +56,7 @@ String materializedEventLabel(NoteRef note) {
 
 List<FeedEvent> parseTimetable(
   String body, {
-  String group = 'MCIA003N01',
+  String group = '',
   String programme = '',
   String degree = '',
 }) {

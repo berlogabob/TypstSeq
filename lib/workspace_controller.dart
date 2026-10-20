@@ -749,7 +749,7 @@ class WorkspaceController extends ChangeNotifier {
       List<FeedEvent> parse(String key, String body) => key == 'classes'
           ? parseTimetable(
               body,
-              group: config['group'] as String? ?? 'MCIA003N01',
+              group: config['group'] as String? ?? '',
               programme: config['programme'] as String? ?? '',
               degree: config['degree'] as String? ?? '',
             )
@@ -768,10 +768,13 @@ class WorkspaceController extends ChangeNotifier {
       notifyListeners();
       final events = <FeedEvent>[];
       for (final key in ['classes', 'lab']) {
-        final url =
-            config['${key}Url'] as String? ??
-            (key == 'classes' ? timetableUrl : labUrl);
         final old = previous[key] as Map?;
+        // No built-in feeds: an empty URL means the feed is off. Vaults that
+        // ran on the old built-in URLs keep them through the feed cache.
+        final url =
+            (config['${key}Url'] as String? ?? old?['url'] as String? ?? '')
+                .trim();
+        if (url.isEmpty) continue;
         final fetched = DateTime.tryParse(old?['fetched'] as String? ?? '');
         final hours = (config['${key}Hours'] as num?)?.toInt() ?? 6;
         if (force ||
@@ -1376,6 +1379,7 @@ class WorkspaceController extends ChangeNotifier {
     // once the scan reports back covering it.
     final stale = opened.staleNotes;
     IndexBuiltEvent? indexedEvent;
+    VaultIndex? indexedIndex;
     await for (final event in worker.run(
       RebuildIndexCommand(
         force: force,
@@ -1395,6 +1399,7 @@ class WorkspaceController extends ChangeNotifier {
             notifyListeners();
           }
         case IndexBuiltEvent(:final index, :final fromCache):
+          indexedIndex = index;
           startupMark('index-published', {
             'notes': index.notes.length,
             'durationMs': event.durationMs,
@@ -1483,6 +1488,9 @@ class WorkspaceController extends ChangeNotifier {
           break;
       }
     }
+    if (indexedIndex case final built?) {
+      await _projectIndexToDatabase(opened, built, generation);
+    }
   }
 
   /// Pre-worker path, kept for controllers built with an explicit [inspector]
@@ -1518,6 +1526,7 @@ class WorkspaceController extends ChangeNotifier {
                 notifyListeners();
               },
       );
+      await _projectIndexToDatabase(opened, built, generation);
       if (showProgress) {
         if (!_owns(opened, generation)) return;
         index = _retainIndex(built);
@@ -1572,6 +1581,60 @@ class WorkspaceController extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// Projects indexed notes that have no node yet into the node table, so DB
+  /// search covers notes that were never saved or ingested on this device
+  /// (desktop-client copies, imports). Rows only (no revisions): nothing is
+  /// published. Existing nodes win.
+  Future<void> _projectIndexToDatabase(
+    Vault opened,
+    VaultIndex built,
+    int generation,
+  ) async {
+    final activeEntry = entry;
+    final db = activeEntry != null && databaseForVault != null
+        ? await databaseForVault!(activeEntry)
+        : await database;
+    if (db == null || !_owns(opened, generation)) return;
+    final have = {
+      for (final row in await db.customSelect('SELECT id FROM nodes').get())
+        row.read<String>('id'),
+    };
+    final notes = [
+      for (final note in built.notes)
+        if (note.id.isNotEmpty && !have.contains(note.id)) note,
+    ];
+    // ponytail: 200-note chunks bound memory; an interrupted run is finished
+    // by the next index build, which only reads notes still missing.
+    for (var i = 0; i < notes.length; i += 200) {
+      final chunk = <NodeData>[];
+      for (final note in notes.skip(i).take(200)) {
+        if (!_owns(opened, generation)) return;
+        final String source;
+        try {
+          source = await opened.storage.readText(note.path);
+        } catch (_) {
+          continue;
+        }
+        final now = note.modifiedMillis ?? _now().millisecondsSinceEpoch;
+        chunk.add(
+          NodeData(
+            id: note.id,
+            type: note.kind,
+            title: note.title,
+            content: source,
+            attributesJson: jsonEncode(note.toJson()),
+            eventStartMs: null,
+            eventEndMs: null,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+      }
+      await db.projectNodes(chunk);
+    }
+    if (_owns(opened, generation)) await db.markNodeProjectionComplete(0);
   }
 
   void queueCloudSync() {
@@ -1975,8 +2038,8 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final config = configOverride ?? cloud;
     if (opened == null) return false;
-    final desktopManaged = localDirectory != null &&
-        isNextcloudManagedVault(localDirectory!);
+    final desktopManaged =
+        localDirectory != null && isNextcloudManagedVault(localDirectory!);
     if (!desktopManaged && (config == null || !config.isReady)) {
       throw const WorkspaceSyncNotConfigured();
     }

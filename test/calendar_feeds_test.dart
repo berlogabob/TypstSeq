@@ -54,7 +54,7 @@ void main() {
     },
   );
   test('classes filter and stable identity', () {
-    final event = parseTimetable(body).single;
+    final event = parseTimetable(body, group: 'MCIA003N01').single;
     expect(
       event.id,
       sha1
