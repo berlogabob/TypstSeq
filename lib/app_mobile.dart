@@ -1807,7 +1807,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     search: (query, tag, status) =>
                         _searchNotes(ix, query, tag: tag, status: status),
                     searchState: workspace,
-                    searchReady: () => workspace.searchReady,
+                    // The worker loads its search index on the first query,
+                    // so the screen only waits for the note index itself.
+                    searchReady: () =>
+                        workspace.searchReady || workspace.index != null,
                     searchRevision: () => workspace.searchRevision,
                     // Checked per query: the controller may finish installing or
                     // indexing while the search screen is open.

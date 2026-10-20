@@ -57,14 +57,6 @@ void main() {
       const RebuildIndexCommand(force: true, stale: {}),
     )) {
       events.add(event);
-      if (event is SearchReadyEvent) {
-        final hits = await worker.search('unit');
-        expect(
-          hits,
-          isNotEmpty,
-          reason: 'readiness is published after the worker swap',
-        );
-      }
     }
 
     final failures = events.whereType<WorkFailedEvent>();
@@ -79,17 +71,18 @@ void main() {
     expect(built.notesByPath['notes/Note0.typ']?.metadataSource, 'fallback');
 
     expect(events.whereType<CommunitiesBuiltEvent>(), hasLength(1));
+    expect(events.whereType<SearchReadyEvent>(), isEmpty);
+    expect(await worker.search('unit'), isNotEmpty);
     final report = events.whereType<PkmsBuiltEvent>().single.report;
     expect(
       report.problems.map((p) => p.code),
       contains('typst-engine-unavailable'),
       reason: 'a failed native init must be reported, not swallowed',
     );
-    expect(events.whereType<SearchReadyEvent>().single.revision, 1);
   });
 
   test(
-    'cached index is published before search and scanning, only once',
+    'cached index is published before scanning and search stays lazy',
     () async {
       final seeded = await seed(3);
       final vault = Vault(seeded.root);
@@ -108,6 +101,7 @@ void main() {
       expect(first.durationMs, 0);
       expect(first.parsedNotes, 0);
       expect(first.index.notesByPath, isNot(contains('notes/New.typ')));
+      expect(events.whereType<SearchReadyEvent>(), isEmpty);
       final fresh = events.whereType<IndexBuiltEvent>().last;
       expect(fresh.fromCache, isFalse);
       expect(fresh.index.notesByPath, contains('notes/New.typ'));
@@ -129,21 +123,19 @@ void main() {
       await search.saveStorage(vault.storage, Vault.searchIndexPath);
       final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
       addTearDown(worker.dispose);
-      var cachedReady = false;
+      var scanFinished = false;
       await for (final event in worker.run(
         const RebuildIndexCommand(force: true, stale: {}),
       )) {
-        if (event is SearchReadyEvent) {
-          cachedReady = true;
-          expect(await worker.search('unit'), isNotEmpty);
-        }
         if (event is IndexProgressEvent && event.complete < event.total) {
-          expect(cachedReady, isTrue);
-          expect(await worker.search('unit'), isNotEmpty);
           worker.cancel();
         }
+        if (event is WorkDoneEvent || event is WorkFailedEvent) {
+          scanFinished = true;
+        }
       }
-      expect(cachedReady, isTrue);
+      expect(scanFinished, isTrue);
+      expect(await worker.search('unit'), isNotEmpty);
       expect(await worker.search('unit'), isNotEmpty);
     },
   );
@@ -172,7 +164,7 @@ void main() {
       final initial = await worker
           .run(const RebuildIndexCommand(stale: {}))
           .toList();
-      final revision = initial.whereType<SearchReadyEvent>().last.revision;
+      expect(initial.whereType<SearchReadyEvent>(), isEmpty);
 
       // A sync download writes directly to storage, without saveNote/staleNotes.
       const path = 'notes/TyLog sync test.typ';
@@ -188,10 +180,7 @@ void main() {
         events.whereType<IndexBuiltEvent>().single.index.notesByPath,
         contains(path),
       );
-      expect(
-        events.whereType<SearchReadyEvent>().single.revision,
-        greaterThan(revision),
-      );
+      expect(events.whereType<SearchReadyEvent>(), isEmpty);
       for (final query in ['sync test', 'revision check']) {
         expect(
           (await worker.search(query)).map((hit) => hit.path),

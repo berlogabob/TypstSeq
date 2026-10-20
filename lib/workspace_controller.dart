@@ -2599,7 +2599,19 @@ class WorkspaceController extends ChangeNotifier {
     if (worker == null) {
       return searchIndex.search(query, tag: tag, status: status, limit: limit);
     }
-    return worker.search(query, tag: tag, status: status, limit: limit);
+    final results = await worker.search(
+      query,
+      tag: tag,
+      status: status,
+      limit: limit,
+    );
+    if (!searchReady) {
+      // The worker now loads its search index on the first query. No revision
+      // bump: that made the Search screen re-run and drop this first answer.
+      startupMark('search-ready', {'trigger': 'first-query'});
+      searchReady = true;
+    }
+    return results;
   }
 
   Future<({PkmsValidationReport report, PkmsSearchIndex search})> _readPkms(

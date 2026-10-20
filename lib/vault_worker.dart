@@ -233,6 +233,9 @@ class _VaultWorker {
   PkmsSearchIndex _search = PkmsSearchIndex.empty();
   // Monotonic successful-build generation for this worker lifetime.
   int _searchRevision = 0;
+  int _indexGeneration = 0;
+  int _searchGeneration = -1;
+  Future<void>? _searchLoad;
 
   final List<SendPort> _flushReplies = [];
 
@@ -273,18 +276,9 @@ class _VaultWorker {
           _shutdownRequested = true;
           if (!_busy && !_stopped.isCompleted) _stopped.complete();
         case final SearchCommand command:
-          // Answered even while _busy, like Cancel above and for the same
-          // reason: `search` is synchronous, so handling it never awaits and the
-          // scanner's yield is enough to let it through mid-rebuild. Search must
-          // not wait on a scan that can take minutes.
-          command.replyTo.send(
-            _search.search(
-              command.query,
-              tag: command.tag,
-              status: command.status,
-              limit: command.limit,
-            ),
-          );
+          // Loading the cache is deliberately async so rebuild startup does
+          // not pay that cost. A query may still arrive while a scan runs.
+          unawaited(_answerSearch(command));
         case final RebuildIndexCommand command:
           if (_busy) {
             _send(const WorkFailedEvent('worker busy'));
@@ -305,12 +299,11 @@ class _VaultWorker {
 
   VaultIndex? _communitiesIndex;
   CommunityMap? _communities;
+  VaultIndex? _searchIndexSource;
 
   Future<void> _rebuild(RebuildIndexCommand command) async {
     _busy = true;
     _cancelled = false;
-    PkmsSearchIndex? pendingSearch;
-    var preloadMillis = 0;
     VaultWorkerEvent terminal = const WorkDoneEvent();
     try {
       if (!_indexSent) {
@@ -319,14 +312,6 @@ class _VaultWorker {
           _send(IndexBuiltEvent(cached, fromCache: true));
           _indexSent = true;
         }
-      }
-      if (_searchRevision == 0 &&
-          await _vault.storage.exists(Vault.searchIndexPath)) {
-        final timer = Stopwatch()..start();
-        final cached = await _vault.maintenance.loadSearch();
-        preloadMillis = timer.elapsedMilliseconds;
-        _search = cached;
-        _send(SearchReadyEvent(++_searchRevision));
       }
       _inspector ??= await _createInspector();
       // One routine, shared with the background service and the CLI. What used
@@ -340,6 +325,9 @@ class _VaultWorker {
         deviceId: _boot.deviceId,
         stale: command.stale,
         hashStale: command.hashStale,
+        // The UI answers its first keyword query from SQLite FTS. Keep the
+        // worker cache lazy; the first worker query loads/builds it.
+        buildSearch: false,
         isCancelled: () => _cancelled,
         extraProblems: (index) => [
           // Unparseable task recurrence rules — rrule lives in the app layer,
@@ -373,6 +361,8 @@ class _VaultWorker {
               ),
             );
             _indexSent = true;
+            _indexGeneration++;
+            _searchIndexSource = index;
             // Derived state is an optimization; the UI degrades to null on
             // failure.
             try {
@@ -387,27 +377,12 @@ class _VaultWorker {
             } catch (_) {}
           case MaintenanceValidated(:final report):
             _send(PkmsBuiltEvent(report));
-          case MaintenanceSearchBuilt(:final search):
-            // Keep the candidate private until maintenance completes. A
-            // cancellation or later failure must leave the old queryable
-            // index and readiness revision untouched.
-            pendingSearch = search;
+          case MaintenanceSearchBuilt():
           case MaintenanceSwept():
             break;
         }
       }
       if (_cancelled) throw const IndexBuildCancelled();
-      final ready = pendingSearch;
-      if (ready != null) {
-        // Published to this isolate's own field, not over the port: shipping
-        // it cost ~71 ms of root-isolate time per rebuild on a P30. Swap whole
-        // rather than `replaceWith`-ing; no caller depends on identity.
-        _search = ready;
-        _searchRevision++;
-        _send(SearchReadyEvent(_searchRevision));
-      }
-      _vault.maintenance.stageMillis['load-search'] =
-          (_vault.maintenance.stageMillis['load-search'] ?? 0) + preloadMillis;
     } on IndexBuildCancelled {
       terminal = const WorkFailedEvent('cancelled', cancelled: true);
     } catch (error) {
@@ -430,6 +405,43 @@ class _VaultWorker {
         _stopped.complete();
       }
     }
+  }
+
+  Future<void> _answerSearch(SearchCommand command) async {
+    try {
+      await _ensureSearch();
+      command.replyTo.send(
+        _search.search(
+          command.query,
+          tag: command.tag,
+          status: command.status,
+          limit: command.limit,
+        ),
+      );
+    } catch (_) {
+      command.replyTo.send(const <PkmsSearchResult>[]);
+    }
+  }
+
+  Future<void> _ensureSearch() {
+    if (_searchGeneration == _indexGeneration) return Future.value();
+    final existing = _searchLoad;
+    if (existing != null) return existing;
+    final generation = _indexGeneration;
+    final index = _searchIndexSource;
+    final load = () async {
+      if (index == null) {
+        _search = await _vault.maintenance.loadSearch();
+      } else {
+        _search = await _vault.maintenance.buildSearch(index);
+      }
+      _searchGeneration = generation;
+      _send(SearchReadyEvent(++_searchRevision));
+    }();
+    _searchLoad = load;
+    return load.whenComplete(() {
+      if (identical(_searchLoad, load)) _searchLoad = null;
+    });
   }
 
   List<PkmsProblem>? _engineProblem() {
