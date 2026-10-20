@@ -382,13 +382,28 @@ void main() {
     tester,
   ) async {
     final home = await _mountToday(tester, const Size(400, 800));
-    await _openCervejariaResult(tester, home);
+    await _prepareSearchResult(home);
+    final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    nav.onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    final searchField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.hintText == 'Search notes, tasks, and attachments',
+    );
+    await tester.enterText(searchField, 'cervejaria');
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cervejaria'));
+    await tester.pumpAndSettle();
     expect(find.byType(BackButton), findsOneWidget);
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget);
     expect(find.byType(KnowledgeScreen), findsOneWidget);
     expect(home.primaryDestination, 3);
+    expect(tester.widget<TextField>(searchField).controller!.text, 'cervejaria');
+    expect(find.text('Cervejaria'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

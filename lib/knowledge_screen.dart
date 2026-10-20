@@ -22,6 +22,7 @@ class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({
     super.key,
     this.initialView = KnowledgeView.search,
+    this.initialQuery = '',
     required this.index,
     required this.search,
     required this.problems,
@@ -47,6 +48,7 @@ class KnowledgeScreen extends StatefulWidget {
   final Future<void> Function(TaskRef, String)? onSetTaskStatus;
   final Future<void> Function(TaskRef, String, String)? onSetTaskField;
   final KnowledgeView initialView;
+  final String initialQuery;
   final VaultIndex index;
 
   /// Runs a full-text query. A callback rather than a [PkmsSearchIndex] because
@@ -110,7 +112,7 @@ class KnowledgeScreen extends StatefulWidget {
 
 class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late KnowledgeView view = widget.initialView;
-  String query = '';
+  late String query = widget.initialQuery;
   String? selectedTag;
   String? selectedStatus;
   String? _activePreset;
@@ -176,6 +178,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.text = query;
     _isSearchReady = widget.searchReady?.call() ?? true;
     _observedSearchRevision = widget.searchRevision?.call() ?? 0;
     widget.searchState?.addListener(_searchStateChanged);

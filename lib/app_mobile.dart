@@ -341,15 +341,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           int destination,
           int libraryTab,
           KnowledgeView? knowledge,
+          String? searchQuery,
         })
       >[];
 
-  void _rememberView({KnowledgeView? knowledge, bool today = false}) {
+  void _rememberView({
+    KnowledgeView? knowledge,
+    String? searchQuery,
+    bool today = false,
+  }) {
     _backViews.add((
       mode: today ? 'today' : mode,
       destination: primaryDestination,
       libraryTab: _libraryTab,
       knowledge: knowledge,
+      searchQuery: searchQuery,
     ));
   }
 
@@ -380,7 +386,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _libraryTab = previous.libraryTab;
     });
     if (previous.knowledge case final view?) {
-      unawaited(_showKnowledge(initialView: view));
+      unawaited(
+        _showKnowledge(initialView: view, initialQuery: previous.searchQuery),
+      );
     }
   }
 
@@ -1783,6 +1791,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _showKnowledge({
     KnowledgeView initialView = KnowledgeView.search,
+    String? initialQuery,
   }) async {
     if (!mounted) return;
     final v = vault;
@@ -1823,7 +1832,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ) &&
                         mounted) {
                       // Search is a route; recreate it when leaving its editor.
-                      _rememberView(knowledge: initialView);
+                      _rememberView(
+                        knowledge: initialView,
+                        searchQuery: query,
+                      );
                       setState(() {});
                     }
                   }
@@ -1832,6 +1844,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onSetTaskStatus: _setTaskStatus,
                     onSetTaskField: _setTaskField,
                     initialView: initialView,
+                    initialQuery: initialQuery ?? '',
                     index: ix,
                     search: (query, tag, status) =>
                         _searchNotes(ix, query, tag: tag, status: status),
