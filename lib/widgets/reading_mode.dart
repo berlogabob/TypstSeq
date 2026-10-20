@@ -344,6 +344,7 @@ class _ReadingModeState extends State<ReadingMode> {
                             child: TyLogReadView(
                               key: const Key('reading-document'),
                               source: widget.source,
+                              foldScope: widget.path,
                               imageResolver: widget.imageResolver,
                               resolveKind: widget.resolveKind,
                               onAtomTap: widget.onAtomTap,

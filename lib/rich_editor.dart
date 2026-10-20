@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderEditable, RenderParagraph;
 import 'package:flutter/services.dart';
@@ -33,6 +34,7 @@ export 'editor_autocomplete.dart'
         mentionSubtitle;
 
 part 'rich_editor/document_model.dart';
+part 'rich_editor/outline.dart';
 part 'rich_editor/editing_controller.dart';
 part 'rich_editor/editor_widgets.dart';
 part 'rich_editor/window_controller.dart';

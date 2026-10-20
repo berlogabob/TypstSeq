@@ -60,11 +60,13 @@ class TyLogReadView extends StatefulWidget {
     this.resolveKind,
     this.onAtomTap,
     this.taskBuilder,
+    this.foldScope,
     this.revealRange,
     this.onRevealPosition,
   });
 
   final Widget Function(String source)? taskBuilder;
+  final String? foldScope;
   final TextRange? revealRange;
   final ValueChanged<double>? onRevealPosition;
   final String source;
@@ -86,11 +88,13 @@ class _TyLogReadViewState extends State<TyLogReadView> {
         widget.onAtomTap?.call(controller.protectedSource(id)),
     imageResolver: widget.imageResolver,
     resolveKind: widget.resolveKind,
+    foldScope: widget.foldScope,
   );
 
   @override
   void didUpdateWidget(TyLogReadView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    controller.foldScope = widget.foldScope;
     if (widget.source != oldWidget.source) controller.loadSource(widget.source);
   }
 
@@ -107,7 +111,7 @@ class _TyLogReadViewState extends State<TyLogReadView> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       controller.imageContentWidth = constraints.maxWidth;
-      final child = Text.rich(
+      Widget child() => Text.rich(
         controller.readTextSpan(
           context,
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.55),
@@ -132,7 +136,18 @@ class _TyLogReadViewState extends State<TyLogReadView> {
           }
         }
       });
-      return SelectionArea(child: child);
+      return ValueListenableBuilder<FoldStore?>(
+        valueListenable: FoldStore.current,
+        builder: (context, store, _) {
+          final content = store == null
+              ? child()
+              : ListenableBuilder(
+                  listenable: store,
+                  builder: (context, _) => child(),
+                );
+          return SelectionArea(child: content);
+        },
+      );
     },
   );
 }
@@ -1374,7 +1389,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
               builder: (context, constraints) {
                 widget.controller.imageContentWidth =
                     constraints.maxWidth - (_window == null ? 36 : 0);
-                return ListenableBuilder(
+                Widget editorBody() => ListenableBuilder(
                   listenable: widget.controller,
                   builder: (context, _) => Stack(
                     clipBehavior: Clip.hardEdge,
@@ -1458,6 +1473,15 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
                       ),
                     ],
                   ),
+                );
+                return ValueListenableBuilder<FoldStore?>(
+                  valueListenable: FoldStore.current,
+                  builder: (context, store, _) => store == null
+                      ? editorBody()
+                      : ListenableBuilder(
+                          listenable: store,
+                          builder: (context, _) => editorBody(),
+                        ),
                 );
               },
             ),
@@ -3042,7 +3066,51 @@ void _addTextSpans(
   required TextStyle style,
   required TextRange composing,
   TextRange? revealRange,
+  List<TextRange> hiddenRanges = const [],
+  TextStyle? hiddenStyle,
 }) {
+  if (hiddenRanges.isNotEmpty && text.isNotEmpty) {
+    var cursor = 0;
+    for (final range in hiddenRanges) {
+      final start = math.max(global, range.start);
+      final end = math.min(global + text.length, range.end);
+      if (start >= end) continue;
+      if (start > global + cursor) {
+        _addTextSpans(
+          target,
+          text.substring(cursor, start - global),
+          global + cursor,
+          style: style,
+          composing: composing,
+          revealRange: revealRange,
+        );
+      }
+      target.add(
+        TextSpan(
+          text: text.substring(start - global, end - global),
+          style:
+              hiddenStyle ??
+              style.copyWith(
+                fontSize: 0.01,
+                height: 0,
+                color: style.color?.withValues(alpha: 0),
+              ),
+        ),
+      );
+      cursor = end - global;
+    }
+    if (cursor < text.length) {
+      _addTextSpans(
+        target,
+        text.substring(cursor),
+        global + cursor,
+        style: style,
+        composing: composing,
+        revealRange: revealRange,
+      );
+    }
+    return;
+  }
   final start = math.max(global, composing.start);
   final end = math.min(global + text.length, composing.end);
   if (!composing.isValid || start >= end) {

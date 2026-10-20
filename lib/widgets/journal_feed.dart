@@ -284,6 +284,7 @@ class _JournalFeedState extends State<JournalFeed> {
                       }
                       return TyLogReadView(
                         source: snapshot.data!,
+                        foldScope: day.path,
                         taskBuilder: (source) {
                           final parsed = taskFromSource(
                             source,

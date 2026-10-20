@@ -12,6 +12,7 @@ class TyLogEditingController extends TextEditingController {
     Future<Uint8List?> Function(String path)? imageResolver,
     String? Function(String target)? resolveKind,
     Future<String> Function(String path, Uint8List bytes)? imageWriter,
+    String? foldScope,
   }) : this._(
          TyLogDocument.parse(source),
          onSourceChanged,
@@ -23,6 +24,7 @@ class TyLogEditingController extends TextEditingController {
          imageWriter,
          nextTaskId,
          beforeTaskDoing,
+         foldScope,
        );
 
   TyLogEditingController._(
@@ -36,6 +38,7 @@ class TyLogEditingController extends TextEditingController {
     this.imageWriter,
     this.nextTaskId,
     this.beforeTaskDoing,
+    this.foldScope,
   ) : super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
@@ -64,6 +67,7 @@ class TyLogEditingController extends TextEditingController {
   /// keeps the old path chip.
   final Future<Uint8List?> Function(String path)? imageResolver;
   final Future<String> Function(String path, Uint8List bytes)? imageWriter;
+  String? foldScope;
   final Map<String, Future<Uint8List?>> _imageCache = {};
   double? imageContentWidth;
 
@@ -79,6 +83,7 @@ class TyLogEditingController extends TextEditingController {
   final List<_Snapshot> _undo = [];
   final List<_Snapshot> _redo = [];
   static _RichClipboard? _richClipboard;
+  final Map<int, TapGestureRecognizer> _foldRecognizers = {};
   late TextEditingValue _lastValue;
   _Snapshot? _compositionStart;
   bool _updating = false;
@@ -93,6 +98,10 @@ class TyLogEditingController extends TextEditingController {
 
   @override
   void dispose() {
+    for (final recognizer in _foldRecognizers.values) {
+      recognizer.dispose();
+    }
+    _foldRecognizers.clear();
     _pendingTasks.clear();
     onAutocompleteEnter = null;
     super.dispose();
@@ -119,6 +128,7 @@ class TyLogEditingController extends TextEditingController {
 
   void _handleValue() {
     if (_updating) return;
+    _unfoldSelection();
     final rebased = _rebaseTaskIme?.call(value);
     if (rebased != null && rebased != value) {
       _updating = true;
@@ -1097,6 +1107,85 @@ class TyLogEditingController extends TextEditingController {
       selection = TextSelection.collapsed(offset: range.start + 2);
       return;
     }
+    final lines = outlineOf(document);
+    for (final line in lines) {
+      if (!line.isFoldable || line.blockIndex == null) continue;
+      if (document.blocks[line.blockIndex!].style !=
+          TyLogBlockStyle.bulletList) {
+        continue;
+      }
+      final glyph = line.start + line.text.length - line.text.trimLeft().length;
+      if (offset == glyph || offset == glyph + 1) {
+        toggleFold(line);
+        return;
+      }
+    }
+  }
+
+  Set<int> get foldedParentLineStarts {
+    final scope = foldScope;
+    final store = FoldStore.instance;
+    if (scope == null || store == null) return const {};
+    final keys = foldKeysOf(scope, outlineOf(document));
+    return {
+      for (final MapEntry(:key, :value) in keys.entries)
+        if (store.isFolded(value)) key,
+    };
+  }
+
+  void _syncFoldRecognizers(Iterable<OutlineLine> lines) {
+    final active = {
+      for (final line in lines)
+        if (line.isFoldable) line.start,
+    };
+    for (final start in _foldRecognizers.keys.toList()) {
+      if (active.contains(start)) continue;
+      _foldRecognizers.remove(start)?.dispose();
+    }
+    for (final start in active) {
+      _foldRecognizers.putIfAbsent(
+        start,
+        () => TapGestureRecognizer()..onTap = () => toggleFoldAt(start),
+      );
+    }
+  }
+
+  void toggleFold(OutlineLine line) {
+    final scope = foldScope;
+    final store = FoldStore.instance;
+    if (scope == null || store == null || !line.isFoldable) return;
+    final lines = outlineOf(document);
+    unawaited(store.toggle(foldKeyFor(scope, line, lines)));
+  }
+
+  void toggleFoldAt(int offset) {
+    for (final line in outlineOf(document)) {
+      if (line.start == offset) {
+        toggleFold(line);
+        return;
+      }
+    }
+  }
+
+  void _unfoldSelection() {
+    final scope = foldScope;
+    final store = FoldStore.instance;
+    final selection = this.selection;
+    if (scope == null || store == null || !selection.isValid) return;
+    final folded = foldedParentLineStarts;
+    if (folded.isEmpty) return;
+    final lines = outlineOf(document);
+    for (final line in lines) {
+      if (!folded.contains(line.start)) continue;
+      final ranges = hiddenRanges(document, {line.start});
+      if (ranges.any(
+        (range) =>
+            range.start <= selection.extentOffset &&
+            selection.extentOffset < range.end,
+      )) {
+        toggleFold(line);
+      }
+    }
   }
 
   void undo() {
@@ -1330,6 +1419,112 @@ class TyLogEditingController extends TextEditingController {
     TextRange? revealRange,
   }) {
     final children = <InlineSpan>[];
+    // Folding off (no note scope or store): no outline work per keystroke.
+    final foldOn = foldScope != null && FoldStore.instance != null;
+    final outline = foldOn ? outlineOf(document) : const <OutlineLine>[];
+    final folded = foldOn ? foldedParentLineStarts : const <int>{};
+    final hidden = folded.isEmpty
+        ? const <TextRange>[]
+        : hiddenRanges(document, folded);
+    if (!interactive && foldScope != null && FoldStore.instance != null) {
+      _syncFoldRecognizers(outline.where((line) => line.isFoldable));
+    } else {
+      for (final recognizer in _foldRecognizers.values) {
+        recognizer.dispose();
+      }
+      _foldRecognizers.clear();
+    }
+    final hiddenStyle = (style ?? DefaultTextStyle.of(context).style).copyWith(
+      fontSize: 0.01,
+      height: 0,
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0),
+    );
+    final glyphs = <int, bool>{};
+    for (final line in outline) {
+      if (foldScope == null || FoldStore.instance == null) continue;
+      if (!line.isFoldable || line.blockIndex == null) continue;
+      final block = document.blocks[line.blockIndex!];
+      if (block.style == TyLogBlockStyle.bulletList) {
+        glyphs[line.start + line.text.length - line.text.trimLeft().length] =
+            folded.contains(line.start);
+      } else if (block.style == TyLogBlockStyle.taskLine) {
+        glyphs[line.start] = false;
+      }
+    }
+    final sortedGlyphs = glyphs.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    // Parts arrive in text order, so moving pointers keep this linear: each
+    // part looks only at the glyphs and hidden ranges it overlaps.
+    var glyphAt = 0;
+    var hiddenAt = 0;
+    void addText(
+      String text,
+      int offset,
+      TextStyle textStyle,
+      TextRange composing,
+    ) {
+      final end = offset + text.length;
+      while (hiddenAt < hidden.length && hidden[hiddenAt].end <= offset) {
+        hiddenAt++;
+      }
+      final overlapping = <TextRange>[
+        for (var h = hiddenAt; h < hidden.length && hidden[h].start < end; h++)
+          hidden[h],
+      ];
+      void plain(String piece, int at) => _addTextSpans(
+        children,
+        piece,
+        at,
+        style: textStyle,
+        composing: composing,
+        revealRange: revealRange,
+        hiddenRanges: overlapping,
+        hiddenStyle: hiddenStyle,
+      );
+      while (glyphAt < sortedGlyphs.length &&
+          sortedGlyphs[glyphAt].key < offset) {
+        glyphAt++;
+      }
+      var cursor = 0;
+      while (glyphAt < sortedGlyphs.length && sortedGlyphs[glyphAt].key < end) {
+        final entry = sortedGlyphs[glyphAt++];
+        final relative = entry.key - offset;
+        if (relative > cursor) {
+          plain(text.substring(cursor, relative), offset + cursor);
+        }
+        children.add(
+          TextSpan(
+            text: entry.value ? '▸' : text[relative],
+            style: textStyle,
+            recognizer: !interactive ? _foldRecognizers[entry.key] : null,
+          ),
+        );
+        cursor = relative + 1;
+      }
+      if (cursor < text.length || text.isEmpty) {
+        plain(text.substring(cursor), offset + cursor);
+      }
+    }
+
+    var widgetAt = 0;
+    WidgetSpan widgetSpan({
+      required Widget child,
+      required int offset,
+      PlaceholderAlignment? alignment,
+      TextBaseline? baseline,
+    }) {
+      while (widgetAt < hidden.length && hidden[widgetAt].end <= offset) {
+        widgetAt++;
+      }
+      final isHidden =
+          widgetAt < hidden.length && hidden[widgetAt].start <= offset;
+      return WidgetSpan(
+        alignment: alignment ?? PlaceholderAlignment.bottom,
+        baseline: baseline,
+        child: isHidden ? const SizedBox.shrink() : child,
+      );
+    }
+
     // An empty document has no blocks: the window then renders nothing.
     final last = math.min(
       lastBlock ?? document.blocks.length - 1,
@@ -1345,7 +1540,8 @@ class TyLogEditingController extends TextEditingController {
       final reserveStrip = stripHeight > 0;
       if (taskBuilder != null && block.style == TyLogBlockStyle.taskLine) {
         children.add(
-          WidgetSpan(
+          widgetSpan(
+            offset: global,
             child: SizedBox(
               width: imageContentWidth,
               child: taskBuilder(block.originalSource),
@@ -1355,7 +1551,8 @@ class TyLogEditingController extends TextEditingController {
         global += block.visibleText.length;
       } else if (block.isProtected) {
         children.add(
-          WidgetSpan(
+          widgetSpan(
+            offset: global,
             alignment: PlaceholderAlignment.middle,
             child: Padding(
               padding: EdgeInsets.only(top: stripHeight),
@@ -1393,7 +1590,8 @@ class TyLogEditingController extends TextEditingController {
                     resolveKind,
                   );
                   children.add(
-                    WidgetSpan(
+                    widgetSpan(
+                      offset: global,
                       alignment: PlaceholderAlignment.baseline,
                       baseline: TextBaseline.alphabetic,
                       child: _ProtectedChip(
@@ -1421,19 +1619,17 @@ class TyLogEditingController extends TextEditingController {
                   );
                   global++;
                 } else {
-                  _addTextSpans(
-                    children,
+                  addText(
                     nestedPart.text,
                     global,
-                    style: _styleFor(
+                    _styleFor(
                       context,
                       style,
                       block.style,
                       block.headingLevel,
                       nestedPart.style,
                     ),
-                    composing: TextRange.empty,
-                    revealRange: revealRange,
+                    TextRange.empty,
                   );
                   global += nestedPart.text.length;
                 }
@@ -1445,7 +1641,8 @@ class TyLogEditingController extends TextEditingController {
                 : _audioAtomPath(part.source!);
             if (audioPath != null) {
               children.add(
-                WidgetSpan(
+                widgetSpan(
+                  offset: global,
                   alignment: PlaceholderAlignment.middle,
                   child: SizedBox(
                     width: math.max(240, imageContentWidth ?? 320),
@@ -1491,7 +1688,8 @@ class TyLogEditingController extends TextEditingController {
                   revealRange.end > global,
             );
             children.add(
-              WidgetSpan(
+              widgetSpan(
+                offset: global,
                 // A chip sits on the text baseline like a word; an inline
                 // image is a block and stays centred on the line.
                 alignment: isImage
@@ -1550,27 +1748,45 @@ class TyLogEditingController extends TextEditingController {
             final leading = reserveText ? part.text.characters.first.length : 0;
             if (reserveText) {
               // Leading splits above and below the baseline, so reserve twice the strip height.
-              _addTextSpans(
-                children,
+              addText(
                 part.text.substring(0, leading),
                 global,
-                style: partStyle.copyWith(
+                partStyle.copyWith(
                   height:
                       (partStyle.height ?? 1.55) +
                       2 * stripHeight / (partStyle.fontSize ?? 16),
                 ),
-                composing: withComposing ? value.composing : TextRange.empty,
-                revealRange: revealRange,
+                withComposing ? value.composing : TextRange.empty,
               );
             }
-            _addTextSpans(
-              children,
-              part.text.substring(leading),
-              global + leading,
-              style: partStyle,
-              composing: withComposing ? value.composing : TextRange.empty,
-              revealRange: revealRange,
-            );
+            final foldedTask =
+                block.style == TyLogBlockStyle.taskLine &&
+                folded.contains(global) &&
+                part.text.length > leading + 2;
+            if (foldedTask) {
+              addText(
+                part.text.substring(leading, leading + 2),
+                global + leading,
+                partStyle,
+                withComposing ? value.composing : TextRange.empty,
+              );
+              addText(
+                part.text.substring(leading + 2),
+                global + leading + 2,
+                partStyle.copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationStyle: TextDecorationStyle.dotted,
+                ),
+                withComposing ? value.composing : TextRange.empty,
+              );
+            } else {
+              addText(
+                part.text.substring(leading),
+                global + leading,
+                partStyle,
+                withComposing ? value.composing : TextRange.empty,
+              );
+            }
             global += part.text.length;
           }
         }
@@ -1582,7 +1798,16 @@ class TyLogEditingController extends TextEditingController {
           ? document.gapAfter(i)
           : '';
       if (gap.isNotEmpty) {
-        children.add(TextSpan(text: gap, style: style));
+        if (foldScope == null || FoldStore.instance == null) {
+          children.add(TextSpan(text: gap, style: style));
+        } else {
+          addText(
+            gap,
+            global,
+            style ?? DefaultTextStyle.of(context).style,
+            TextRange.empty,
+          );
+        }
         global += gap.length;
       }
     }

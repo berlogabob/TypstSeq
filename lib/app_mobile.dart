@@ -821,7 +821,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ).map((c) => c.source).toList(),
           );
       sourceController.text = workspace.source;
-      if (changed) richController.loadSource(workspace.source);
+      if (changed) {
+        richController.foldScope = note;
+        richController.loadSource(workspace.source);
+      }
     }
     if (_editorNote != (vault, note)) {
       _editorNote = (vault, note);
@@ -1131,6 +1134,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _loadSource(String source) {
     sourceController.text = source;
+    richController.foldScope = note;
     richController.loadSource(source);
     _refreshNoteAssets(source);
   }
