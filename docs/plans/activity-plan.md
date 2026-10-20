@@ -133,3 +133,9 @@ Then: full suite, device checks, tag 0.19.1.
 - Backfill caught up: 54 processed (to 2026-10-16 08:39), 1 error (2024 telegram jpg), 1 sensitive skip. Watcher test with a duplicate file: picked up in seconds, no note created.
 - Runs in the lab: Mac (AC sleep 0) + Studio on one LAN; Nextcloud on the home Fedora. Risk: Mac restart without auto-login.
 
+## Wave 9 (2026-10-20): fix found problems (plan: ~/.claude/plans/lets-think-how-its-eager-moonbeam.md)
+- T1 no change needed (only the first poll after launch walks; later polls ~128 ms); guard test 234a314.
+- T2/T3 (c-luna + Claude fixes): worker search index lazy. P30 3 cold starts: PSS 576 MB -> 196-249 MB, scan-done 17-30 s -> 8.2-10.9 s, today 0.41 s, list 1.4 s. After the first search PSS returns to ~630 MB: the search index itself is ~400 MB -> follow-up T2b (smaller search index). Codex's "scan waits for startup sync" rejected (delayed note list to 3-15 s).
+- T4/T6/T7 ad4f31f (Mac Settings real mode + health line; prelude marks removed). T5/T6 scripts 592dea7 (blocks of 5, health check nightly).
+- T8 AGENTS.md 971c876 (force-stop before cold-start measurement). T9 Mac disk 17 -> 34 GB free. T10 A24 backup: pending connection.
+
