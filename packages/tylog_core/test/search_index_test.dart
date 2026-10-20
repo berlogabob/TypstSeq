@@ -119,8 +119,6 @@ void main() {
       reason: 'identical bytes must not be re-tokenised because mtime moved',
     );
   });
-
-
   // The warm rebuild used to reconstruct (and re-save) 107k posting sets even
   // when every document hit the cache. Returning the previous instance lets
   // the worker skip both the posting rebuild and the multi-megabyte
@@ -306,5 +304,32 @@ void main() {
       expect(results.single.title, 'FernandoMarson');
       expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 50)));
     });
+  });
+
+  test('unknown query does not return every note', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_search_unknown_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Directory('${dir.path}/notes').create();
+    await File('${dir.path}/notes/unrelated.typ').writeAsString(
+      '#show: tylog.note.with(title: "Unrelated")\n\nBlender project notes',
+    );
+    final index = VaultIndex(
+      notesByPath: {
+        'notes/unrelated.typ': const NoteRef(
+          id: 'unrelated',
+          path: 'notes/unrelated.typ',
+          title: 'Unrelated',
+          outgoingLinks: [],
+          fingerprint: 'unrelated',
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    final search = await PkmsSearchIndex.buildStorage(
+      LocalVaultStorage(dir),
+      index,
+    );
+
+    expect(search.search('пробежка'), isEmpty);
   });
 }

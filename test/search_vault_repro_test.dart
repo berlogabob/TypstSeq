@@ -61,4 +61,31 @@ void main() {
       'shot-7f61352333c11c52',
     );
   });
+
+  test('real copied vault does not return unrelated note for Пробежка', () async {
+    final sample = Platform.environment['TYLOG_SEARCH_SAMPLE'];
+    if (sample == null) return;
+    final root = await Directory.systemTemp.createTemp('tylog_search_repro_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    for (final file in Directory(sample)
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.typ'))) {
+      final path = file.path.substring(sample.length + 1);
+      await storage.writeText(path, await file.readAsString());
+    }
+    final index = await scanVaultStorage(storage, force: true);
+    final search = await PkmsSearchIndex.buildStorage(storage, index);
+    final hits = search.search('пробежка');
+    expect(
+      hits.where(
+        (hit) =>
+            hit.path == 'notes/blender___project___Malinki___13-main stage.typ',
+      ),
+      isEmpty,
+      reason:
+          'false hits: ${hits.map((hit) => '${hit.path} (${hit.score})').join(', ')}',
+    );
+  });
 }

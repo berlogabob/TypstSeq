@@ -48,7 +48,9 @@ class _SearchDocument {
   final String kind;
   final List<String> tags;
   final List<String> aliases;
-  final Map<String, int> terms;
+
+  /// Frequencies keyed by the shared vocabulary id.
+  final Map<int, int> terms;
   final String? fingerprint;
 
   /// Content hash of the note this document was built from.
@@ -71,7 +73,10 @@ class _SearchDocument {
     'kind': kind,
     'tags': tags,
     'aliases': aliases,
-    'terms': {for (final key in (terms.keys.toList()..sort())) key: terms[key]},
+    'terms': [
+      for (final key in (terms.keys.toList()..sort())) key,
+      for (final key in (terms.keys.toList()..sort())) terms[key],
+    ],
     'fingerprint': fingerprint,
     if (contentHash != null) 'contentHash': contentHash,
     if (fileKind != null) 'fileKind': fileKind,
@@ -87,9 +92,7 @@ class _SearchDocument {
         kind: json['kind'] as String,
         tags: stringList(json['tags']),
         aliases: stringList(json['aliases']),
-        terms: (json['terms'] as Map).map<String, int>(
-          (key, value) => MapEntry(key.toString(), (value as num).toInt()),
-        ),
+        terms: _decodeTermPairs(json['terms']),
         fingerprint: json['fingerprint'] as String?,
         contentHash: json['contentHash'] as String?,
         fileKind: json['fileKind'] as String?,
@@ -99,7 +102,7 @@ class _SearchDocument {
 }
 
 class PkmsSearchIndex {
-  PkmsSearchIndex._(this._documents) {
+  PkmsSearchIndex._(this._documents, this._vocabulary) {
     for (final entry in _documents.entries) {
       for (final term in entry.value.terms.keys) {
         _postings.putIfAbsent(term, () => {}).add(entry.key);
@@ -108,9 +111,48 @@ class PkmsSearchIndex {
   }
 
   final Map<String, _SearchDocument> _documents;
-  final Map<String, Set<String>> _postings = {};
+  final Map<String, int> _vocabulary;
+  final Map<int, Set<String>> _postings = {};
 
-  static PkmsSearchIndex empty() => PkmsSearchIndex._({});
+  /// Lightweight, deterministic accounting for benchmark reports. This is a
+  /// lower-bound estimate of retained Dart payload bytes, not VM heap usage.
+  Map<String, int> get debugStats {
+    int metadata = 0;
+    int termPairs = 0;
+    for (final document in _documents.values) {
+      metadata +=
+          _textBytes(document.id) +
+          _textBytes(document.path) +
+          _textBytes(document.title) +
+          _textBytes(document.kind) +
+          document.tags.fold<int>(0, (sum, value) => sum + _textBytes(value)) +
+          document.aliases.fold<int>(
+            0,
+            (sum, value) => sum + _textBytes(value),
+          ) +
+          _textBytes(document.snippet);
+      termPairs += document.terms.length;
+    }
+    final int vocabularyBytes = _vocabulary.keys.fold<int>(
+      0,
+      (sum, value) => sum + _textBytes(value),
+    );
+    final int compact = metadata + vocabularyBytes + termPairs * 12;
+    final int legacy =
+        metadata +
+        vocabularyBytes +
+        termPairs * 40 +
+        _vocabulary.keys.fold<int>(0, (sum, value) => sum + _textBytes(value));
+    return {
+      'documents': _documents.length,
+      'vocabulary': _vocabulary.length,
+      'termPairs': termPairs,
+      'estimatedCompactBytes': compact,
+      'estimatedLegacyBytes': legacy,
+    };
+  }
+
+  static PkmsSearchIndex empty() => PkmsSearchIndex._({}, {});
 
   void replaceWith(PkmsSearchIndex other) {
     _documents
@@ -122,6 +164,9 @@ class PkmsSearchIndex {
         for (final entry in other._postings.entries)
           entry.key: {...entry.value},
       });
+    _vocabulary
+      ..clear()
+      ..addAll(other._vocabulary);
   }
 
   static Future<PkmsSearchIndex> loadStorage(
@@ -132,7 +177,7 @@ class PkmsSearchIndex {
     try {
       final bytes = gzip.decode(await storage.readBytes(path));
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
-      if (json['version'] != 2) return empty();
+      if (json['version'] != 3) return empty();
       // The *derivation* the documents were built from, not the file format.
       // A document is cached against its note's content hash, so a derive-only
       // index bump — which changes tags without touching a byte of any note —
@@ -140,13 +185,17 @@ class PkmsSearchIndex {
       // tag-filtered search silently disagreed with the index it came from.
       // `version: 2` cannot catch that: it describes the envelope.
       if (json['indexVersion'] != kVaultIndexVersion) return empty();
+      final vocabulary = {
+        for (var i = 0; i < (json['vocabulary'] as List).length; i++)
+          (json['vocabulary'] as List)[i] as String: i,
+      };
       final documents = (json['documents'] as Map).map<String, _SearchDocument>(
         (key, value) => MapEntry(
           key.toString(),
           _SearchDocument.fromJson((value as Map).cast<String, Object?>()),
         ),
       );
-      return PkmsSearchIndex._(documents);
+      return PkmsSearchIndex._(documents, vocabulary);
     } catch (_) {
       return empty();
     }
@@ -167,6 +216,11 @@ class PkmsSearchIndex {
     bool Function()? isCancelled,
   }) async {
     final documents = <String, _SearchDocument>{};
+    final vocabulary = <String, int>{...?previous?._vocabulary};
+    int intern(String term) =>
+        vocabulary.putIfAbsent(term, () => vocabulary.length);
+    Map<int, int> terms(String text) =>
+        _frequencies(text).map((term, count) => MapEntry(intern(term), count));
     final misses = <NoteRef>[];
     for (final note in vault.notes) {
       final cached = previous?._documents[note.path];
@@ -222,7 +276,7 @@ class PkmsSearchIndex {
         kind: note.kind,
         tags: note.tags,
         aliases: note.aliases,
-        terms: _frequencies(
+        terms: terms(
           '${note.id} ${note.title} ${note.aliases.join(' ')} ${note.tags.join(' ')} ${jsonEncode(note.properties)} $source',
         ),
         fingerprint: note.fingerprint,
@@ -250,7 +304,7 @@ class PkmsSearchIndex {
         kind: 'task',
         tags: task.tags,
         aliases: task.assignees,
-        terms: _frequencies(
+        terms: terms(
           '${task.id} ${task.text} ${task.project ?? ''} ${task.status} '
           '${task.priority} ${task.tags.join(' ')} ${task.assignees.join(' ')} '
           '${jsonEncode(task.properties)}',
@@ -270,7 +324,7 @@ class PkmsSearchIndex {
             kind: 'file',
             tags: note.tags,
             aliases: const [],
-            terms: _frequencies(
+            terms: terms(
               '${attachment.path} ${attachment.title ?? ''} ${note.title}',
             ),
             fileKind: attachment.kind,
@@ -290,14 +344,20 @@ class PkmsSearchIndex {
         documents.keys.every(previous._documents.containsKey)) {
       return previous;
     }
-    return PkmsSearchIndex._(documents);
+    return PkmsSearchIndex._(documents, vocabulary);
   }
 
   Future<void> saveStorage(VaultStorage storage, String path) async {
     final data = utf8.encode(
       jsonEncode({
-        'version': 2,
+        'version': 3,
         'indexVersion': kVaultIndexVersion,
+        'vocabulary': [
+          for (final entry
+              in (_vocabulary.entries.toList()
+                ..sort((a, b) => a.value.compareTo(b.value))))
+            entry.key,
+        ],
         'documents': {
           for (final path in (_documents.keys.toList()..sort()))
             path: _documents[path]!.toJson(),
@@ -314,20 +374,25 @@ class PkmsSearchIndex {
     String? status,
     int limit = 50,
   }) {
-    final terms = _tokens(query).toSet();
+    final queryTokens = _tokens(query).toSet();
+    final terms = queryTokens
+        .map((term) => _vocabulary[term])
+        .whereType<int>()
+        .toSet();
     Set<String> candidates;
-    if (terms.isEmpty) {
+    if (queryTokens.isEmpty) {
       candidates = _documents.keys.toSet();
     } else {
       // ponytail: scan vocabulary for prefixes; add a prefix index if query latency warrants it.
-      final lists = terms.map(
-        (term) => <String>{
-          ...?_postings[term],
-          for (final entry in _postings.entries)
-            if (entry.key != term && entry.key.startsWith(term)) ...entry.value,
-        },
-      );
-      candidates = lists.isEmpty
+      final lists = queryTokens.map((token) {
+        final exact = _vocabulary[token];
+        return <String>{
+          if (exact != null) ...?_postings[exact],
+          for (final entry in _vocabulary.entries)
+            if (entry.key.startsWith(token)) ...?_postings[entry.value],
+        };
+      });
+      candidates = lists.any((values) => values.isEmpty)
           ? <String>{}
           : lists.skip(1).fold<Set<String>>({
               ...lists.first,
@@ -436,3 +501,14 @@ Iterable<String> _tokens(String text) => RegExp(
   r'[\p{L}\p{N}]+',
   unicode: true,
 ).allMatches(text.toLowerCase()).map((match) => match.group(0)!);
+
+Map<int, int> _decodeTermPairs(Object? value) {
+  final values = (value as List).cast<Object?>();
+  final midpoint = values.length ~/ 2;
+  return {
+    for (var i = 0; i < midpoint; i++)
+      (values[i] as num).toInt(): (values[midpoint + i] as num).toInt(),
+  };
+}
+
+int _textBytes(String? value) => value == null ? 0 : utf8.encode(value).length;
