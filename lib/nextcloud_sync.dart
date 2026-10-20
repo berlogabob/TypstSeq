@@ -354,7 +354,8 @@ class NextcloudSync {
         return false;
       }
       final state = await _loadSyncState(vault);
-      if (state.recovered ||
+      if (config.isWebDav ||
+          state.recovered ||
           state.remoteMismatch ||
           state.rootEtag == null ||
           state.folders[''] == null ||
@@ -721,7 +722,8 @@ class NextcloudSync {
           !pushRaced &&
           syncState.values.every((cursor) => cursor.remoteConfirmed) &&
           loadedState.folders[''] != null &&
-          loadedState.rootEtag != null) {
+          loadedState.rootEtag != null &&
+          !config.isWebDav) {
         progress('probe-root');
         final unresolvedForShortcut = await loadSyncConflicts(vault);
         if (unresolvedForShortcut.isEmpty ||

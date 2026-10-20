@@ -79,7 +79,11 @@ extension _WebDavClient on NextcloudSync {
     Map<String, String?> previousFolders,
     Map<String, SyncConflict> pendingConflicts,
   ) async {
-    if (previousFolders[''] == null) return (await _remoteFiles())!;
+    // Plain WebDAV servers don't propagate a child change into the parent
+    // folder's ETag (Nextcloud does), so only Nextcloud may prune by ETag.
+    if (config.isWebDav || previousFolders[''] == null) {
+      return (await _remoteFiles())!;
+    }
     final files = <String, _RemoteFile>{};
     final folders = <String, String?>{};
     String? rootEtag;
