@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/widgets/agenda_timeline.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog_core/models.dart';
 
@@ -40,6 +41,62 @@ void main() {
     );
     expect(find.text('Indexing…'), findsOneWidget);
     expect(find.text('Agenda · 0'), findsNothing);
+  });
+
+  testWidgets('timed events show on the agenda timeline with time and room', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TodayPage(
+            shownDay: DateTime(2001, 1, 2),
+            events: const [
+              CalendarItem(
+                date: '2001-01-02',
+                start: '2001-01-02T14:00:00',
+                end: '2001-01-02T15:30:00',
+                detail: 'Lab 020',
+                kind: CalendarItemKind.dateRef,
+                title: 'Afternoon lab',
+                notePath: 'events/lab.typ',
+              ),
+              CalendarItem(
+                date: '2001-01-02',
+                start: '09:00',
+                end: '10:30',
+                kind: CalendarItemKind.dateRef,
+                title: 'Morning class',
+                notePath: 'events/class.typ',
+              ),
+            ],
+            tasks: const [],
+            recent: const [],
+            editor: const SizedBox(),
+            onOpenPath: (_) {},
+            onSetStatus: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final agenda = find.text('Agenda · 2');
+    if (agenda.evaluate().isNotEmpty) {
+      await tester.tap(agenda);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(find.byType(AgendaTimeline), findsOneWidget);
+    expect(find.text('09:00'), findsOneWidget);
+    expect(find.text('15:30'), findsOneWidget);
+    expect(find.text('Lab 020'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Morning class')).dy,
+      lessThan(tester.getTopLeft(find.text('Afternoon lab')).dy),
+    );
+    // Not today: no now dot.
+    expect(find.byKey(const ValueKey('agenda-now-dot')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('Agenda lists events and due tasks for the shown day', (

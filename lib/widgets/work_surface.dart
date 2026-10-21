@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'agenda_timeline.dart';
 import 'app_icons.dart';
 import 'screenshot_strip.dart';
 
@@ -123,12 +124,38 @@ class TodayPage extends StatelessWidget {
         : next == null
         ? 'Agenda · ${agenda.length + overdue.length + todayEvents.length}'
         : 'No classes · Next: ${compactHumanDate(nextDay!, now: nextDay)} ${nextStart == null ? '' : '${localTime(nextStart)} '}${next.title}';
+    // Feed times are 'HH:MM' on the event's date or an ISO date-time.
+    DateTime? at(String date, String? value) => value == null
+        ? null
+        : value.contains('T')
+        ? DateTime.tryParse(value)?.toLocal()
+        : DateTime.tryParse('${date}T$value');
+    final timed = [
+      for (final event in todayEvents)
+        if (at(event.date, event.start) case final start?)
+          AgendaEntry(
+            start: start,
+            end: at(event.date, event.end),
+            title: event.title,
+            detail: event.detail,
+            onTap: () => onOpenPath(event.notePath),
+          ),
+    ];
     List<Widget> agendaContent() => [
       for (final event in todayEvents)
-        ListTile(
-          leading: const Icon(AppIcons.calendarEvent),
-          title: Text(event.title),
-          onTap: () => onOpenPath(event.notePath),
+        if (at(event.date, event.start) == null)
+          ListTile(
+            leading: const Icon(AppIcons.calendarEvent),
+            title: Text(event.title),
+            onTap: () => onOpenPath(event.notePath),
+          ),
+      if (timed.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: kSpace8),
+          child: AgendaTimeline(
+            entries: timed,
+            showNow: today == isoDay(DateTime.now()),
+          ),
         ),
       for (final task in agenda) taskRow(task),
       if (overdue.isNotEmpty)

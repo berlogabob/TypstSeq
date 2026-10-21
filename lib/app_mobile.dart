@@ -5498,6 +5498,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   CalendarItem(
                     date: event.date,
                     start: event.properties['start']?.toString(),
+                    end: event.properties['end']?.toString(),
+                    detail: event.properties['rooms']?.toString(),
                     kind: CalendarItemKind.dateRef,
                     title: event.title,
                     notePath: event.path,

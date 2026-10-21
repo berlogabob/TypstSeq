@@ -343,13 +343,21 @@ class CalendarItem {
   const CalendarItem({
     required this.date,
     this.start,
+    this.end,
+    this.detail,
     required this.kind,
     required this.title,
     required this.notePath,
   });
 
   final String date;
+
+  /// 'HH:MM' on [date], or an ISO date-time (feeds keep their own form).
   final String? start;
+  final String? end;
+
+  /// A short second line, e.g. the room.
+  final String? detail;
   final CalendarItemKind kind;
   final String title;
   final String notePath;
