@@ -2234,6 +2234,7 @@ class WorkspaceController extends ChangeNotifier {
     _cloudAutosave?.cancel();
     notifyListeners();
     var localContentChanged = false;
+    var calendarsChanged = false;
     // Inside the try from here on. `_startSyncForeground` swallows its own
     // throws, but a platform channel that never *completes* would strand
     // `syncing` at true with no sync running — and every Sync-dashboard action
@@ -2279,6 +2280,7 @@ class WorkspaceController extends ChangeNotifier {
         onLocalContentChanged: (path) {
           localContentChanged = true;
           opened.markLocallyWritten(path);
+          if (path == calendarsSyncPath) calendarsChanged = true;
         },
       );
       final result = await sync.sync(
@@ -2289,6 +2291,9 @@ class WorkspaceController extends ChangeNotifier {
         remoteChanged: remoteChanged,
       );
       if (!_owns(opened, generation)) return false;
+      // Another device changed the calendar list: show it now, not at the
+      // next launch (the A24 kept an old unfiltered list until a restart).
+      if (calendarsChanged) unawaited(refreshCalendarFeeds(force: true));
       final revisionConflicts = await _ingestRevisions(
         opened,
         generation,
