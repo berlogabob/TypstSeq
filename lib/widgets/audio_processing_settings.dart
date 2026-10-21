@@ -9,6 +9,8 @@ import 'processing_policy_editor.dart';
 import 'snack.dart';
 import 'constants.dart';
 
+enum AiSettingsSection { all, servers, audio, articles, screenshots }
+
 /// Settings section: when audio is transcribed and which languages it is
 /// translated into. Works on any platform because the policy file syncs; the
 /// worker that obeys it runs on the computer.
@@ -18,6 +20,7 @@ class AudioProcessingSettings extends StatefulWidget {
     required this.read,
     required this.write,
     required this.processNow,
+    this.section = AiSettingsSection.all,
     this.readAi,
     this.writeAi,
     this.readWorkers,
@@ -26,6 +29,7 @@ class AudioProcessingSettings extends StatefulWidget {
   final Future<AudioPolicy> Function() read;
   final Future<void> Function(AudioPolicy) write;
   final Future<void> Function() processNow;
+  final AiSettingsSection section;
   final Future<AiSettings> Function()? readAi;
   final Future<void> Function(AiSettings)? writeAi;
   final Future<List<WorkerStatus>> Function()? readWorkers;
@@ -45,6 +49,9 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
   final _discoveredModels = <String, List<String>>{};
 
   bool get _aiEnabled => widget.readAi != null && widget.writeAi != null;
+
+  bool show(AiSettingsSection section) =>
+      widget.section == AiSettingsSection.all || widget.section == section;
 
   @override
   void initState() {
@@ -182,7 +189,10 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
       if (task.model != null) task.model!,
     };
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kSpace16,
+        vertical: kSpace8,
+      ),
       child: Column(
         children: [
           DropdownButtonFormField<String>(
@@ -260,7 +270,10 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     };
     return Padding(
       key: ValueKey(title),
-      padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kSpace16,
+        vertical: kSpace8,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -294,7 +307,9 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
                 : (value) => onChanged(task.copyWith(connection: value)),
           ),
           DropdownButtonFormField<String>(
-            key: ValueKey('$title:model:$connection:${task.model}:${models.join('|')}'),
+            key: ValueKey(
+              '$title:model:$connection:${task.model}:${models.join('|')}',
+            ),
             initialValue: task.model,
             decoration: const InputDecoration(labelText: 'Model'),
             isExpanded: true,
@@ -322,7 +337,10 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
     required ValueChanged<String> onChanged,
     String? serverStatus,
   }) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
+    padding: const EdgeInsets.symmetric(
+      horizontal: kSpace16,
+      vertical: kSpace8,
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -372,13 +390,151 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
   @override
   Widget build(BuildContext context) {
     final p = _policy;
-    if (p == null) {
+    if (p == null || (_aiEnabled && _ai == null)) {
       return const ListTile(
         leading: Icon(Icons.graphic_eq),
         title: Text('Audio'),
         subtitle: Text('Loading…'),
       );
     }
+
+    final aiWidgets = <Widget>[];
+    if (_aiEnabled && _ai != null) {
+      final ai = _ai!;
+      if (show(AiSettingsSection.servers)) {
+        aiWidgets.addAll([
+          _workerStatus(),
+          AiConnectionsSection(
+            settings: ai,
+            workerView: _workerView,
+            onChanged: (next) => unawaited(_saveAi(next)),
+            onModelsChanged: (id, models) => setState(
+              () => _discoveredModels[id] = models.map((m) => m.id).toList(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: kSpace16,
+              vertical: kSpace8,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Preset'),
+                const SizedBox(height: 4),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'light',
+                      label: Text('Light'),
+                      tooltip: 'small + 9b models, fast',
+                    ),
+                    ButtonSegment(
+                      value: 'best',
+                      label: Text('Best'),
+                      tooltip: 'large models',
+                    ),
+                    ButtonSegment(
+                      value: 'custom',
+                      label: Text('Custom'),
+                      enabled: false,
+                    ),
+                  ],
+                  selected: {ai.preset?.name ?? 'custom'},
+                  onSelectionChanged: _aiBusy
+                      ? null
+                      : (values) => unawaited(
+                          _saveAi(
+                            ai.withPreset(
+                              AiPreset.values.byName(values.single),
+                            ),
+                          ),
+                        ),
+                ),
+                Text(
+                  'Light: fastest. Best: most accurate. '
+                  'Servers stay as you set them; model overrides reset.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ]);
+      }
+      if (show(AiSettingsSection.audio)) {
+        aiWidgets.addAll([
+          _qualityRow(
+            title: 'Transcription quality',
+            task: ai.transcribe,
+            model: whisperModelFor(ai.transcribe),
+            onChanged: (quality) => unawaited(
+              _saveAi(
+                ai.copyWith(
+                  transcribe: ai.transcribe.copyWith(quality: quality),
+                ),
+              ),
+            ),
+          ),
+          _qualityRow(
+            title: 'Translation quality',
+            task: ai.translate,
+            model: translateModelFor(ai.translate),
+            serverStatus: _serverStatus(ai),
+            onChanged: (quality) => unawaited(
+              _saveAi(
+                ai.copyWith(translate: ai.translate.copyWith(quality: quality)),
+              ),
+            ),
+          ),
+          _translationOverrides(ai),
+        ]);
+      }
+      if (ai.connections.isEmpty &&
+          (show(AiSettingsSection.articles) ||
+              show(AiSettingsSection.screenshots))) {
+        aiWidgets.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: kSpace16,
+              vertical: kSpace8,
+            ),
+            child: Text('Add a server above to choose where this runs'),
+          ),
+        );
+      } else if (ai.connections.isNotEmpty) {
+        if (show(AiSettingsSection.articles)) {
+          aiWidgets.add(
+            _serverTaskBlock(
+              title: 'Articles',
+              description: 'Fetches pages and writes the article text',
+              ai: ai,
+              task: ai.articles,
+              onChanged: (task) =>
+                  unawaited(_saveAi(ai.copyWith(articles: task))),
+            ),
+          );
+        }
+        if (show(AiSettingsSection.screenshots)) {
+          aiWidgets.add(
+            _serverTaskBlock(
+              title: 'Screenshots',
+              description: 'Reads screenshot text and tags',
+              ai: ai,
+              task: ai.screenshots,
+              onChanged: (task) =>
+                  unawaited(_saveAi(ai.copyWith(screenshots: task))),
+            ),
+          );
+        }
+      }
+    }
+
+    if (widget.section == AiSettingsSection.servers ||
+        widget.section == AiSettingsSection.articles ||
+        widget.section == AiSettingsSection.screenshots) {
+      return Column(children: aiWidgets);
+    }
+
     return ProcessingPolicyEditor(
       icon: Icons.graphic_eq,
       title: 'Audio',
@@ -393,168 +549,69 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
           _save(p.copyWith(onTheFly: fly, scheduled: sched, time: time)),
       onProcessNow: () => unawaited(_processNow()),
       extras: [
-        if (_aiEnabled) ...[
-          _workerStatus(),
-          if (_ai case final ai?) ...[
-            AiConnectionsSection(
-              settings: ai,
-              workerView: _workerView,
-              onChanged: (next) => unawaited(_saveAi(next)),
-              onModelsChanged: (id, models) => setState(
-                () => _discoveredModels[id] = models.map((m) => m.id).toList(),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Preset'),
-                  const SizedBox(height: 4),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 'light',
-                        label: Text('Light'),
-                        tooltip: 'small + 9b models, fast',
-                      ),
-                      ButtonSegment(
-                        value: 'best',
-                        label: Text('Best'),
-                        tooltip: 'large models',
-                      ),
-                      ButtonSegment(
-                        value: 'custom',
-                        label: Text('Custom'),
-                        enabled: false,
-                      ),
-                    ],
-                    selected: {ai.preset?.name ?? 'custom'},
-                    onSelectionChanged: _aiBusy
-                        ? null
-                        : (values) => unawaited(
-                            _saveAi(
-                              ai.withPreset(AiPreset.values.byName(values.single)),
-                            ),
+        ...aiWidgets,
+        if (show(AiSettingsSection.audio)) ...[
+          CheckboxListTile(
+            value: p.transcribe,
+            title: const Text('Transcribe automatically'),
+            onChanged: _busy ? null : (v) => _save(p.copyWith(transcribe: v)),
+          ),
+          CheckboxListTile(
+            value: p.translate,
+            title: const Text('Translate automatically'),
+            onChanged: _busy ? null : (v) => _save(p.copyWith(translate: v)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Full text in each of these languages',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final l in p.translateTo)
+                      InputChip(
+                        label: Text(kLanguageNames[l] ?? l),
+                        onDeleted: () => _save(
+                          p.copyWith(
+                            translateTo: p.translateTo
+                                .where((v) => v != l)
+                                .toList(),
                           ),
-                  ),
-                  Text(
-                    'Light: fastest. Best: most accurate. '
-                    'Servers stay as you set them; model overrides reset.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            _qualityRow(
-              title: 'Transcription quality',
-              task: ai.transcribe,
-              model: whisperModelFor(ai.transcribe),
-              onChanged: (quality) => unawaited(
-                _saveAi(
-                  ai.copyWith(
-                    transcribe: ai.transcribe.copyWith(quality: quality),
-                  ),
-                ),
-              ),
-            ),
-            _qualityRow(
-              title: 'Translation quality',
-              task: ai.translate,
-              model: translateModelFor(ai.translate),
-              serverStatus: _serverStatus(ai),
-              onChanged: (quality) => unawaited(
-                _saveAi(
-                  ai.copyWith(
-                    translate: ai.translate.copyWith(quality: quality),
-                  ),
-                ),
-              ),
-            ),
-            _translationOverrides(ai),
-            if (ai.connections.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: kSpace16, vertical: kSpace8),
-                child: Text('Add a server above to choose where this runs'),
-              )
-            else ...[
-              _serverTaskBlock(
-                title: 'Articles',
-                description: 'Fetches pages and writes the article text',
-                ai: ai,
-                task: ai.articles,
-                onChanged: (task) => unawaited(_saveAi(ai.copyWith(articles: task))),
-              ),
-              _serverTaskBlock(
-                title: 'Screenshots',
-                description: 'Reads screenshot text and tags',
-                ai: ai,
-                task: ai.screenshots,
-                onChanged: (task) => unawaited(_saveAi(ai.copyWith(screenshots: task))),
-              ),
-            ],
-          ],
-        ],
-        CheckboxListTile(
-          value: p.transcribe,
-          title: const Text('Transcribe automatically'),
-          onChanged: _busy ? null : (v) => _save(p.copyWith(transcribe: v)),
-        ),
-        CheckboxListTile(
-          value: p.translate,
-          title: const Text('Translate automatically'),
-          onChanged: _busy ? null : (v) => _save(p.copyWith(translate: v)),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: kSpace16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Full text in each of these languages',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final l in p.translateTo)
-                    InputChip(
-                      label: Text(kLanguageNames[l] ?? l),
-                      onDeleted: () => _save(
-                        p.copyWith(
-                          translateTo: p.translateTo
-                              .where((v) => v != l)
-                              .toList(),
                         ),
                       ),
-                    ),
-                  MenuAnchor(
-                    menuChildren: [
-                      for (final e in kLanguageNames.entries)
-                        if (!p.translateTo.contains(e.key))
-                          MenuItemButton(
-                            onPressed: () => _save(
-                              p.copyWith(
-                                translateTo: [...p.translateTo, e.key],
+                    MenuAnchor(
+                      menuChildren: [
+                        for (final e in kLanguageNames.entries)
+                          if (!p.translateTo.contains(e.key))
+                            MenuItemButton(
+                              onPressed: () => _save(
+                                p.copyWith(
+                                  translateTo: [...p.translateTo, e.key],
+                                ),
                               ),
+                              child: Text(e.value),
                             ),
-                            child: Text(e.value),
-                          ),
-                    ],
-                    builder: (context, controller, child) => ActionChip(
-                      avatar: const Icon(Icons.add),
-                      label: const Text('Add language'),
-                      onPressed: () => controller.isOpen
-                          ? controller.close()
-                          : controller.open(),
+                      ],
+                      builder: (context, controller, child) => ActionChip(
+                        avatar: const Icon(Icons.add),
+                        label: const Text('Add language'),
+                        onPressed: () => controller.isOpen
+                            ? controller.close()
+                            : controller.open(),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
+          const SizedBox(height: 4),
+        ],
       ],
     );
   }

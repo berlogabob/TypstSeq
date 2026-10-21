@@ -6,6 +6,7 @@ import 'package:tylog/models.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/audio_processing_settings.dart';
 import 'package:tylog/widgets/audio_shelf.dart';
+import 'package:tylog/widgets/ai_connections_settings.dart';
 
 NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
     NoteRef(
@@ -19,6 +20,7 @@ NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
 
 Future<void> pumpAudioSettings(
   WidgetTester tester, {
+  AiSettingsSection section = AiSettingsSection.all,
   Future<AiSettings> Function()? readAi,
   Future<void> Function(AiSettings)? writeAi,
   Future<List<WorkerStatus>> Function()? readWorkers,
@@ -28,6 +30,7 @@ Future<void> pumpAudioSettings(
       home: Scaffold(
         body: SingleChildScrollView(
           child: AudioProcessingSettings(
+            section: section,
             read: () async => const AudioPolicy(),
             write: (_) async {},
             processNow: () async {},
@@ -42,7 +45,76 @@ Future<void> pumpAudioSettings(
   await tester.pump();
 }
 
+const _sectionSettings = AiSettings(
+  connections: [
+    AiConnection(id: 'studio', label: 'Studio PC', url: 'http://studio/v1'),
+  ],
+);
+
 void main() {
+  testWidgets('servers section shows connections but not audio quality', (
+    tester,
+  ) async {
+    await pumpAudioSettings(
+      tester,
+      section: AiSettingsSection.servers,
+      readAi: () async => _sectionSettings,
+      writeAi: (_) async {},
+    );
+
+    expect(find.byType(AiConnectionsSection), findsOneWidget);
+    expect(find.text('Transcription quality'), findsNothing);
+  });
+
+  testWidgets('audio section shows transcription and languages, not articles', (
+    tester,
+  ) async {
+    await pumpAudioSettings(
+      tester,
+      section: AiSettingsSection.audio,
+      readAi: () async => _sectionSettings,
+      writeAi: (_) async {},
+    );
+
+    expect(find.text('Transcription quality'), findsOneWidget);
+    expect(find.text('Transcribe automatically'), findsOneWidget);
+    expect(find.text('Full text in each of these languages'), findsOneWidget);
+    expect(find.text('Articles'), findsNothing);
+  });
+
+  testWidgets('articles section shows only the Articles server and model', (
+    tester,
+  ) async {
+    await pumpAudioSettings(
+      tester,
+      section: AiSettingsSection.articles,
+      readAi: () async => _sectionSettings,
+      writeAi: (_) async {},
+    );
+
+    expect(find.byKey(const ValueKey('Articles')), findsOneWidget);
+    expect(find.text('Screenshots'), findsNothing);
+    expect(find.byType(AiConnectionsSection), findsNothing);
+    expect(find.text('Transcription quality'), findsNothing);
+  });
+
+  testWidgets(
+    'screenshots section shows only the Screenshots server and model',
+    (tester) async {
+      await pumpAudioSettings(
+        tester,
+        section: AiSettingsSection.screenshots,
+        readAi: () async => _sectionSettings,
+        writeAi: (_) async {},
+      );
+
+      expect(find.byKey(const ValueKey('Screenshots')), findsOneWidget);
+      expect(find.text('Articles'), findsNothing);
+      expect(find.byType(AiConnectionsSection), findsNothing);
+      expect(find.text('Transcription quality'), findsNothing);
+    },
+  );
+
   testWidgets('AI quality saves immediately and preserves other settings', (
     tester,
   ) async {
@@ -94,21 +166,29 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('Articles server selection saves the task connection', (tester) async {
+  testWidgets('Articles server selection saves the task connection', (
+    tester,
+  ) async {
     AiSettings? saved;
     await pumpAudioSettings(
       tester,
       readAi: () async => const AiSettings(
         connections: [
-          AiConnection(id: 'studio', label: 'Studio PC', url: 'http://studio/v1'),
+          AiConnection(
+            id: 'studio',
+            label: 'Studio PC',
+            url: 'http://studio/v1',
+          ),
         ],
       ),
       writeAi: (next) async => saved = next,
     );
-    final server = find.descendant(
-      of: find.byKey(const ValueKey('Articles')),
-      matching: find.byType(DropdownButtonFormField<String>),
-    ).first;
+    final server = find
+        .descendant(
+          of: find.byKey(const ValueKey('Articles')),
+          matching: find.byType(DropdownButtonFormField<String>),
+        )
+        .first;
     await tester.ensureVisible(server);
     await tester.tap(server);
     await tester.pumpAndSettle();
@@ -120,13 +200,18 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('server task cards show a hint when no servers exist', (tester) async {
+  testWidgets('server task cards show a hint when no servers exist', (
+    tester,
+  ) async {
     await pumpAudioSettings(
       tester,
       readAi: () async => const AiSettings(),
       writeAi: (_) async {},
     );
-    expect(find.text('Add a server above to choose where this runs'), findsOneWidget);
+    expect(
+      find.text('Add a server above to choose where this runs'),
+      findsOneWidget,
+    );
     expect(find.text('Articles'), findsNothing);
     expect(find.text('Screenshots'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -371,26 +456,39 @@ void main() {
     expect(opened?.id, 'audio-20261014-100000');
   });
 
-  testWidgets('audio searches title and aliases and retains actions', (tester) async {
+  testWidgets('audio searches title and aliases and retains actions', (
+    tester,
+  ) async {
     var recorded = false;
     var imported = false;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: AudioShelf(
-        notes: const [
-          NoteRef(
-            id: 'audio-1', path: 'audio/one.typ', title: 'Interview', kind: 'audio',
-            aliases: ['Alice'], outgoingLinks: [],
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioShelf(
+            notes: const [
+              NoteRef(
+                id: 'audio-1',
+                path: 'audio/one.typ',
+                title: 'Interview',
+                kind: 'audio',
+                aliases: ['Alice'],
+                outgoingLinks: [],
+              ),
+              NoteRef(
+                id: 'audio-2',
+                path: 'audio/two.typ',
+                title: 'Lecture',
+                kind: 'audio',
+                outgoingLinks: [],
+              ),
+            ],
+            onOpen: (_) {},
+            onRecord: () => recorded = true,
+            onImport: () => imported = true,
           ),
-          NoteRef(
-            id: 'audio-2', path: 'audio/two.typ', title: 'Lecture', kind: 'audio',
-            outgoingLinks: [],
-          ),
-        ],
-        onOpen: (_) {},
-        onRecord: () => recorded = true,
-        onImport: () => imported = true,
-      )),
-    ));
+        ),
+      ),
+    );
     await tester.enterText(find.byKey(const Key('audio-search')), 'INTERVIEW');
     await tester.pump();
     expect(find.text('Alice'), findsOneWidget);
