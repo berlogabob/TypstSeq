@@ -104,9 +104,11 @@ class _AgendaTimelineState extends State<AgendaTimeline> {
     final entries = [...widget.entries]
       ..sort((a, b) => a.start.compareTo(b.start));
     if (entries.isEmpty) return const SizedBox.shrink();
-    final current = entries.indexWhere(
-      (e) => !now.isBefore(e.start) && e.end != null && now.isBefore(e.end!),
-    );
+    bool running(AgendaEntry e) =>
+        !now.isBefore(e.start) && e.end != null && now.isBefore(e.end!);
+    // Every running event is tinted (classes can overlap); the key marks
+    // the first for tests.
+    final current = entries.indexWhere(running);
     const railX = _timeWidth + kSpace16 / 2;
 
     Widget row(int i) {
@@ -195,8 +197,9 @@ class _AgendaTimelineState extends State<AgendaTimeline> {
         key: i == current ? const ValueKey('agenda-current') : null,
         borderRadius: BorderRadius.circular(kRadiusSmall),
         onTap: entry.onTap,
-        child: i == current
+        child: running(entry)
             ? DecoratedBox(
+                key: ValueKey('agenda-running-$i'),
                 decoration: BoxDecoration(
                   color: scheme.primaryContainer.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(kRadiusSmall),

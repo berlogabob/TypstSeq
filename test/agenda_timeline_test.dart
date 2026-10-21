@@ -60,9 +60,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('before the first event the dot sits at the top', (
-    tester,
-  ) async {
+  testWidgets('before the first event the dot sits at the top', (tester) async {
     await pump(tester, _at(8));
     expect(find.byKey(const ValueKey('agenda-current')), findsNothing);
     expect(dotY(tester), lessThan(h / 2));
@@ -106,6 +104,25 @@ void main() {
         tester.getRect(find.text(long)).height /
         tester.getSize(find.text(long)).height;
     expect(scale, greaterThan(0.9));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('overlapping running events are both tinted', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AgendaTimeline(
+            entries: [
+              AgendaEntry(start: _at(11), end: _at(13), title: 'One'),
+              AgendaEntry(start: _at(11), end: _at(13), title: 'Two'),
+            ],
+            now: () => _at(12),
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('agenda-running-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('agenda-running-1')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }
