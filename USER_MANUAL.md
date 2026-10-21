@@ -58,6 +58,8 @@ Android and macOS are the release platforms. The included iOS host supports deve
 
 Journal lists existing journal pages only, newest first. A day with events has one collapsed Agenda line; expand it to see the events. Events alone do not add empty days or a Coming up card.
 
+The title bar shows the day; tap it to open the calendar and pick another day. A back arrow returns from another day to where you were.
+
 Journal and opened notes show clean, styled blocks by default. Tap a line or block to edit only its exact Typst source; the rest of the document stays covered. Edits autosave atomically. The top view button cycles Editor → Preview → Source → Editor; Split editor remains available for source and output together.
 
 Tapping a note link whose target does not exist offers to create that note (like Logseq/Obsidian). If two notes share the linked title, a picker lists both owners.
@@ -113,13 +115,22 @@ Reports filter project, date range, kind, tags, article status, and task status.
 
 Settings > AI and processing > Servers lists servers on this network first and cloud services second. "Add server" offers Ollama, Unsloth Studio and LM Studio, then OpenAI, Claude (Anthropic), Gemini, Mistral and OpenRouter, or any OpenAI-compatible server. Test connection lists the server's models; Test model sends one short prompt. API keys are kept in the system's secure storage on this device, never in the vault or in `_system/settings/ai.json`. A task without a chosen server uses the first local one, never a cloud one; cloud servers are listed under "Cloud (sends your text off-device)".
 
-## Screenshots (Mac)
+## Screenshots
 
-Settings > AI and processing > Screenshots (OCR) runs the OCR scripts on the Mac on the fly or on a schedule. Choose the folder that holds the scripts (default `~/Nextcloud/InstantUpload/Screenshots`); the setting is kept on this Mac. `uv` is found in Homebrew, `/usr/local/bin`, `~/.local/bin` or `~/.cargo/bin`. The status line shows the pipeline's health, or "Screenshot scripts not found in <folder>".
+Settings > AI and processing > Screenshots (OCR) sets when screenshots are read: only when you ask, right after a screenshot is added, or every day at a set time. The setting syncs, so you can change it on any device; the Mac running the OCR scripts applies it within a minute (a phone shows "Runs on your Mac; changes apply there after sync"). A Mac that runs both the on-the-fly watcher and the daily catch-up shows "On schedule".
+
+On the Mac, choose the folder that holds the scripts (default `~/Nextcloud/InstantUpload/Screenshots`); this setting stays on that Mac. `uv` is found in Homebrew, `/usr/local/bin`, `~/.local/bin` or `~/.cargo/bin`. The status line shows the last run and the pipeline's health, or "Screenshot scripts not found in <folder>".
 
 ## Calendars
 
-Settings > General > Calendars takes a classes feed URL with its group and a lab feed URL. There are no built-in feeds: a blank URL turns a feed off; other URLs must be https.
+Settings > General > Calendars lists your calendars; there are none by default. Add calendar offers:
+
+- **Google Calendar:** paste the secret iCal address (Google Calendar > Settings > your calendar > Integrate calendar > Secret address in iCal format).
+- **Microsoft Outlook:** paste a published calendar's ICS link (Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar).
+- **IADE:** your classes (by group, optionally programme and degree), the lab schedule, or both.
+- **Other (ICS link):** any calendar that publishes an ICS address.
+
+Links must use https. Each calendar refreshes every few hours (6 by default); tap one to edit it, or delete it to remove its events. Sign-in to Google or Microsoft accounts is not supported; use the calendar's ICS link.
 
 ## Sync
 

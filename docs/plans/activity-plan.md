@@ -165,3 +165,9 @@ Then: full suite, device checks, tag 0.19.1.
 - Open: S6 target <=350 MB right after a search missed by 3-21 MB (index cost now ~50 MB; baseline ~317 MB); P2P LAN timing.
 - Memory target revised with the user (2026-10-21, option 2): <=350 MB idle, <=400 MB right after a search; met (P30 270-317 idle, 353-371 after). Baseline profiling (Dart heap ~171 MB idle) moves to the next wave.
 - 0.19.2+154 released (CHANGELOG); A24 install pending its connection.
+
+## After 0.19.2 (2026-10-21, user UI requests)
+- Title bar: day arrows removed (tap the date for the calendar), back-button slot always reserved, so the date no longer jumps or shrinks (893d596). P30 verified (Today vs Tue 20 Oct identical position/size).
+- Calendars: any number of feeds, none by default; Google / Outlook (ICS links), IADE preset (classes, lab or both), Other (fa421b9). Owner's two IADE feeds migrated with ids and cache. P30 verified.
+- Screenshot OCR settable from any device via ai.json; the Mac applies it every minute and publishes its running mode (fa421b9, 9f3aa1c). Readable status times.
+- Found: Mac screenshot agents were broken since 10:09 (schedule agent deleted, watcher not loaded; launchctl bootstrap error 5 race). Fixed (48f0acd); agents restored to watch + 03:00 schedule via the synced setting; verified both loaded.
