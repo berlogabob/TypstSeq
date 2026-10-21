@@ -360,6 +360,65 @@ void main() {
     });
   }
 
+  test('outline is not reused across documents with the same visible text', () {
+    final nested = TyLogDocument.parse(
+      '- root\n  - #tylog.task(id: "t1", text: "x", status: "todo", priority: "normal")',
+    );
+    expect(outlineOf(nested).first.isFoldable, isTrue);
+    final flat = TyLogDocument.parse(
+      '- root\n- #tylog.task(id: "t1", text: "x", status: "todo", priority: "normal")',
+    );
+    expect(flat.visibleText, nested.visibleText);
+    expect(outlineOf(flat).first.isFoldable, isFalse);
+  });
+
+  testWidgets('a selection reaching into a folded subtree unfolds it', (
+    tester,
+  ) async {
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('outline-sel-'),
+    ))!;
+    addTearDown(() => dir.delete(recursive: true));
+    FoldStore.instance = (await tester.runAsync(
+      () => FoldStore.open(File('${dir.path}/fold_state.json')),
+    ))!;
+    const source = '- root\n  - a\n  - b\n- after';
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (_) {},
+      onError: (_) {},
+      onProtectedTap: (_) {},
+      foldScope: 'sel.typ',
+    );
+    addTearDown(controller.dispose);
+    final lines = outlineOf(controller.document);
+    final key = foldKeyFor('sel.typ', lines.first, lines);
+    await tester.runAsync(() => FoldStore.instance!.toggle(key));
+    // From inside 'root' to inside 'after': both ends are visible text, the
+    // folded children lie in between.
+    controller.selection = TextSelection(
+      baseOffset: 3,
+      extentOffset: controller.text.indexOf('after') + 2,
+    );
+    expect(FoldStore.instance!.isFolded(key), isFalse);
+  });
+
+  test('unfolding work stays linear with many folds', () {
+    final source = [
+      for (var i = 0; i < 2000; i++) ...['- item $i', '  - child $i'],
+    ].join('\n');
+    final doc = TyLogDocument.parse(source);
+    final lines = outlineOf(doc);
+    final parents = {
+      for (final line in lines)
+        if (line.isFoldable) line.start,
+    };
+    final watch = Stopwatch()..start();
+    final ranges = subtreeRanges(lines);
+    expect(ranges.length, parents.length);
+    expect(watch.elapsedMilliseconds, lessThan(200));
+  });
+
   test('search reveal keeps offsets after a folded subtree', () {
     final controller = TyLogEditingController(
       source: _source,

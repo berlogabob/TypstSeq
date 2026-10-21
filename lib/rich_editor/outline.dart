@@ -27,12 +27,21 @@ class OutlineLine {
 
 // ponytail: one-entry cache keyed by the visible text; the editor rebuilds
 // its span per keystroke and asks several times per build.
-String? _outlineText;
+// Task depth lives in originalSource, so the key carries it too: equal text
+// with different task indentation must not share an outline.
+String? _outlineKey;
 List<OutlineLine> _outlineLines = const [];
 
 List<OutlineLine> outlineOf(TyLogDocument document) {
   final visible = document.visibleText;
-  if (visible == _outlineText) return _outlineLines;
+  final key = StringBuffer(visible);
+  for (final block in document.blocks) {
+    if (block.style == TyLogBlockStyle.taskLine) {
+      key.write('\u0000${_leadingWhitespace(block.originalSource)}');
+    }
+  }
+  final cacheKey = key.toString();
+  if (cacheKey == _outlineKey) return _outlineLines;
   final ranges = document.blockRanges;
   final lines = <OutlineLine>[];
   var start = 0;
@@ -84,7 +93,7 @@ List<OutlineLine> outlineOf(TyLogDocument document) {
       );
     }
   }
-  _outlineText = visible;
+  _outlineKey = cacheKey;
   return _outlineLines = lines;
 }
 
@@ -99,26 +108,37 @@ Map<int, String> foldKeysOf(String scope, List<OutlineLine> lines) {
   };
 }
 
+/// Each foldable line's subtree as a range: from the end of the parent line
+/// (its newline hidden too) to the end of its last descendant. One pass.
+Map<int, TextRange> subtreeRanges(List<OutlineLine> lines) {
+  final ranges = <int, TextRange>{};
+  final open = <OutlineLine>[];
+  void close(OutlineLine parent, OutlineLine last) {
+    if (parent.end < last.end) {
+      ranges[parent.start] = TextRange(start: parent.end, end: last.end);
+    }
+  }
+
+  OutlineLine? previous;
+  for (final line in lines) {
+    while (open.isNotEmpty && line.depth <= open.last.depth) {
+      close(open.removeLast(), previous!);
+    }
+    if (line.isFoldable) open.add(line);
+    previous = line;
+  }
+  while (open.isNotEmpty) {
+    close(open.removeLast(), previous!);
+  }
+  return ranges;
+}
+
 List<TextRange> hiddenRanges(
   TyLogDocument document,
   Set<int> foldedParentLineStarts,
 ) {
-  final lines = outlineOf(document);
-  final ranges = <TextRange>[];
-  for (var i = 0; i < lines.length; i++) {
-    final parent = lines[i];
-    if (!parent.isFoldable || !foldedParentLineStarts.contains(parent.start)) {
-      continue;
-    }
-    var last = i + 1;
-    while (last < lines.length && lines[last].depth > parent.depth) {
-      last++;
-    }
-    // Start at the parent's end so its trailing newline is hidden too.
-    final start = parent.end;
-    final end = lines[last - 1].end;
-    if (start < end) ranges.add(TextRange(start: start, end: end));
-  }
+  final subtrees = subtreeRanges(outlineOf(document));
+  final ranges = [for (final start in foldedParentLineStarts) ?subtrees[start]];
   ranges.sort((a, b) => a.start.compareTo(b.start));
   final merged = <TextRange>[];
   for (final range in ranges) {

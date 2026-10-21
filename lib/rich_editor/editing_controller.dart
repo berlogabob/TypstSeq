@@ -1175,16 +1175,18 @@ class TyLogEditingController extends TextEditingController {
     final folded = foldedParentLineStarts;
     if (folded.isEmpty) return;
     final lines = outlineOf(document);
-    for (final line in lines) {
-      if (!folded.contains(line.start)) continue;
-      final ranges = hiddenRanges(document, {line.start});
-      if (ranges.any(
-        (range) =>
-            range.start <= selection.extentOffset &&
-            selection.extentOffset < range.end,
-      )) {
-        toggleFold(line);
-      }
+    final subtrees = subtreeRanges(lines);
+    final keys = foldKeysOf(scope, lines);
+    for (final start in folded) {
+      final range = subtrees[start];
+      if (range == null) continue;
+      // A caret right after the parent text is visible; any other position
+      // in the subtree, or a selection overlapping it, is not: unfold, so
+      // nothing invisible gets edited.
+      final touches = selection.isCollapsed
+          ? range.start < selection.start && selection.start <= range.end
+          : selection.start < range.end && selection.end > range.start;
+      if (touches) unawaited(store.toggle(keys[start]!));
     }
   }
 
