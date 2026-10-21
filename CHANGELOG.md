@@ -3,6 +3,47 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.19.2+154
+
+### New
+
+- Fold list subtrees, Logseq-style, in the editor and reading view: tap a
+  bullet to hide everything under it (tasks included); a folded bullet shows
+  ▸. Fold state is kept on this device only; the note is never changed.
+- Collapse an image to a thin strip (image toolbar in the editor, button in
+  the reading view), also per device.
+- Search results open scrolled to the match with a 2 s highlight, in the
+  editor and the reading view, screenshot notes included. Coming back to
+  Search keeps the query and results.
+- AI servers: "Add server" offers local servers first (Ollama, Unsloth
+  Studio, LM Studio), then cloud ones (OpenAI, Claude, Gemini, Mistral,
+  OpenRouter). API keys are kept in the OS secure storage, never in the
+  vault; tasks without a chosen server never use a cloud one.
+- Sync: "WebDAV (any server)" next to Nextcloud (https; large files in one
+  PUT).
+- Screenshots (Mac): pick the scripts folder in Settings; uv is found
+  automatically; the status line shows the pipeline's health.
+
+### Performance
+
+- Search memory on the P30 (9.8k notes): 570-597 MB right after a search ->
+  353-371 MB; ~270-317 MB idle. The index is loaded on the first query,
+  stored in packed arrays (540 -> 175 MB loaded) and released after 60 s
+  without queries. First search ~3 s instead of up to 57 s.
+- Database search covers every note on every device (the Mac had 103 of
+  9.8k); the first fill no longer blocks searches.
+
+### Fixed
+
+- Opening a search result no longer shows a black screen (phone) or Today
+  (Mac); results from imported notes open the right note.
+- Unknown words no longer match every note (false hits for 'пробежка').
+- A past year's date in the title bar was squeezed to a few pixels next to
+  the back button.
+- Calendars have no built-in feeds; a blank URL turns a feed off (existing
+  vaults keep theirs).
+- WebDAV: edits made on another device were missed on plain WebDAV servers.
+
 ## 0.19.1+153
 
 ### Performance

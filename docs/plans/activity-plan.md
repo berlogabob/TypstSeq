@@ -163,3 +163,5 @@ Then: full suite, device checks, tag 0.19.1.
 - P2P: sendme/iroh builds for arm64 (9.4 MB CLI) but aborts on Android outside an app ('android context was not initialized'); LAN timing needs an in-app harness.
 - Full suite 1641, tylog_core 406. Codex review: 1 critical + 4 important, all fixed with tests.
 - Open: S6 target <=350 MB right after a search missed by 3-21 MB (index cost now ~50 MB; baseline ~317 MB); P2P LAN timing.
+- Memory target revised with the user (2026-10-21, option 2): <=350 MB idle, <=400 MB right after a search; met (P30 270-317 idle, 353-371 after). Baseline profiling (Dart heap ~171 MB idle) moves to the next wave.
+- 0.19.2+154 released (CHANGELOG); A24 install pending its connection.
