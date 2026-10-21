@@ -236,7 +236,10 @@ void main() {
       expect(gradientRect.bottom, tile.bottom);
       expect(tile.contains(tester.getRect(subtitleFinder).bottomRight), isTrue);
       final actions = tester.widget<PopupMenuButton<String>>(
-        find.descendant(of: card, matching: find.byType(PopupMenuButton<String>)),
+        find.descendant(
+          of: card,
+          matching: find.byType(PopupMenuButton<String>),
+        ),
       );
       expect(actions.style?.shape?.resolve({}), isA<CircleBorder>());
       expect(
@@ -246,7 +249,10 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Screenshot actions'));
       await tester.pumpAndSettle();
-      expect(find.text(expectedTitle), showTitle ? findsOneWidget : findsNothing);
+      expect(
+        find.text(expectedTitle),
+        showTitle ? findsOneWidget : findsNothing,
+      );
       await tester.tap(find.text('Open screenshot'));
       await tester.pumpAndSettle();
     }
@@ -653,7 +659,14 @@ void main() {
     await tester.ensureVisible(chip);
     await tester.tap(chip);
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(find.descendant(of: chip, matching: find.byType(ChoiceChip))).selected, isFalse);
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.descendant(of: chip, matching: find.byType(ChoiceChip)),
+          )
+          .selected,
+      isFalse,
+    );
     expect(find.byKey(ValueKey(shot.path)), findsOneWidget);
     expect(find.text('Uncategorized · 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -792,7 +805,7 @@ void main() {
       tester
           .widget<RadioGroup<String>>(find.byType(RadioGroup<String>))
           .groupValue,
-      'schedule',
+      'watch',
     );
     for (final radio in tester.widgetList<RadioListTile<String>>(
       find.byType(RadioListTile<String>),
@@ -831,11 +844,11 @@ void main() {
       expect(find.text('Every day at 03:00'), findsOneWidget);
       await tester.tap(find.text('Right after it is added'));
       await tester.pumpAndSettle();
-      expect(configured, ['schedule:03:00', 'watch:03:00']);
+      expect(configured, ['schedule:03:00', 'both:03:00']);
       expect(find.text('Every day at 03:00'), findsNothing);
       await tester.tap(find.text('Only when I ask'));
       await tester.pumpAndSettle();
-      expect(configured, ['schedule:03:00', 'watch:03:00', 'off:03:00']);
+      expect(configured, ['schedule:03:00', 'both:03:00', 'off:03:00']);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -863,7 +876,35 @@ void main() {
     expect(find.text('Every day at 04:15'), findsOneWidget);
     await tester.tap(find.text('Right after it is added'));
     await tester.pumpAndSettle();
-    expect(configured, ['watch:04:15']);
+    expect(configured, ['both:04:15']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a Mac running both shows "Right after it is added"', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotsSettings(
+            mode: 'both',
+            time: '03:00',
+            editable: true,
+            onConfigure: (_, _) async {},
+            onProcessNow: () async {},
+            readStatus: () async => '{}',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Every day at 03:00'), findsNothing);
+    expect(
+      tester
+          .widget<RadioGroup<String>>(find.byType(RadioGroup<String>))
+          .groupValue,
+      'watch',
+    );
     await tester.pumpWidget(const SizedBox());
   });
 }

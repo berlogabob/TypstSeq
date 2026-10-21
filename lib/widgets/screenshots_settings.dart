@@ -134,8 +134,10 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   @override
   Widget build(BuildContext context) {
     final editable = widget.editable ?? Platform.isMacOS;
-    final fly = mode == 'watch';
-    final sched = mode == 'schedule' || mode == 'both';
+    // "Right after it is added" runs the watcher plus the nightly catch-up
+    // (mode both), which retries anything that failed during the day.
+    final fly = mode == 'watch' || mode == 'both';
+    final sched = mode == 'schedule';
     return Column(
       children: [
         ProcessingPolicyEditor(
@@ -148,10 +150,10 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
           busy: busy,
           status: health == null ? status : '$status\n$health',
           onChanged: (nextFly, nextSched, nextTime) {
-            final next = nextSched
+            final next = nextFly
+                ? 'both'
+                : nextSched
                 ? 'schedule'
-                : nextFly
-                ? 'watch'
                 : 'off';
             unawaited(
               perform(() async {
