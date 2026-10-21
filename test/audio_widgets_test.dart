@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog/widgets/audio_inline_card.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/audio_processing_settings.dart';
 import 'package:tylog/widgets/audio_shelf.dart';
@@ -423,6 +424,29 @@ void main() {
     final box = tester.getTopLeft(find.byType(WaveformSeekBar));
     await tester.tapAt(box + const Offset(150, 20));
     expect(seek, closeTo(0.75, 0.01));
+  });
+
+  testWidgets('audio card without waveform uses a progress bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioInlineCard(
+            label: 'recording.m4a',
+            peaks: const [10, 20, 30],
+            readBytes: () async => throw StateError('not needed'),
+            extension: 'm4a',
+            onExpand: (_) async {},
+            waveformAvailable: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(WaveformSeekBar), findsNothing);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
   testWidgets('shelf lists only audio notes, newest id first', (tester) async {

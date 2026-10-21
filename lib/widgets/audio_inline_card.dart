@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../audio/audio_peaks.dart';
-import 'audio_note_screen.dart' show AudioTab, WaveformSeekBar;
+import 'audio_note_screen.dart'
+    show AudioTab, WaveformSeekBar, waveformSupported;
 import 'audio_sheets.dart';
 import 'constants.dart';
 
@@ -24,6 +25,7 @@ class AudioInlineCard extends StatefulWidget {
     this.onPeaks,
     this.readPeaks,
     this.status,
+    this.waveformAvailable,
   });
 
   final String label;
@@ -31,6 +33,7 @@ class AudioInlineCard extends StatefulWidget {
   final Future<Uint8List> Function() readBytes;
   final String extension;
   final Future<List<int>> Function()? readPeaks;
+  final bool? waveformAvailable;
 
   /// Opens the full screen on [AudioTab]; completes when it is closed.
   final Future<void> Function(AudioTab tab) onExpand;
@@ -61,10 +64,12 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
   bool _translated = false;
   String? _alias;
 
+  bool get _waveformAvailable => widget.waveformAvailable ?? waveformSupported;
+
   @override
   void initState() {
     super.initState();
-    if (_peaks.isEmpty) unawaited(_decodePeaks());
+    if (_waveformAvailable && _peaks.isEmpty) unawaited(_decodePeaks());
     unawaited(_loadStatus());
   }
 
@@ -229,7 +234,12 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
         behavior: HitTestBehavior.opaque,
         onLongPress: () => unawaited(_expand(AudioTab.comments)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(kSpace12, kSpace8, kSpace12, kSpace8),
+          padding: const EdgeInsets.fromLTRB(
+            kSpace12,
+            kSpace8,
+            kSpace12,
+            kSpace8,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -306,13 +316,18 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: WaveformSeekBar(
-                      peaks: _peaks,
-                      progress: progress,
-                      markers: const [],
-                      height: 40,
-                      onSeek: (f) => unawaited(_seek(f)),
-                    ),
+                    child: _waveformAvailable
+                        ? WaveformSeekBar(
+                            peaks: _peaks,
+                            progress: progress,
+                            markers: const [],
+                            height: 40,
+                            onSeek: (f) => unawaited(_seek(f)),
+                          )
+                        : LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 8,
+                          ),
                   ),
                 ],
               ),

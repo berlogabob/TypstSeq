@@ -40,7 +40,9 @@ dependencies:
   tylog_audio:
     path: packages/tylog_audio
   just_audio: ^0.10.0
+  just_audio_media_kit: 2.1.0
   just_waveform: ^0.0.7
+  media_kit_libs_windows_audio: 1.0.9
   record: ^7.1.0
   typst_flutter:
     path: packages/typst_flutter

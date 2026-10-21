@@ -23,6 +23,8 @@ import 'constants.dart';
 /// Sections of the expanded audio screen.
 enum AudioTab { comments, transcribe, translate, properties }
 
+bool get waveformSupported => !Platform.isWindows;
+
 /// Waveform with a played portion, comment dots and tap/drag seeking.
 class WaveformSeekBar extends StatelessWidget {
   const WaveformSeekBar({
@@ -183,7 +185,10 @@ class AudioLanguageBar extends StatelessWidget {
     ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: kSpace12, vertical: kSpace4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kSpace12,
+        vertical: kSpace4,
+      ),
       child: Row(
         spacing: 8,
         children: [
@@ -257,6 +262,7 @@ class AudioNoteScreen extends StatefulWidget {
     this.requestTranslation,
     this.initialTab = AudioTab.comments,
     this.onChanged,
+    this.waveformAvailable,
   });
 
   final AudioTab initialTab;
@@ -265,6 +271,7 @@ class AudioNoteScreen extends StatefulWidget {
 
   /// Called after alias/tags are saved so the index and chips can refresh.
   final VoidCallback? onChanged;
+  final bool? waveformAvailable;
 
   final NoteRef note;
   final Future<String> Function(String path) readSource;
@@ -365,6 +372,8 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     _poll = Timer.periodic(const Duration(seconds: 8), (_) => _tick());
   }
 
+  bool get _waveformAvailable => widget.waveformAvailable ?? waveformSupported;
+
   bool get _jobsPending =>
       _transcriptState == 'queued' ||
       _transcriptState == 'processing' ||
@@ -406,7 +415,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       if (_peaks.isEmpty) _peaks = decodePeaks(_props['peaks']);
       final path = audioPathOf(source);
       if (path == null) throw StateError('No audio file in this note');
-      if (_peaks.isEmpty) {
+      if (_waveformAvailable && _peaks.isEmpty) {
         _peaks = await readPeakSidecar(path, widget.readBytes);
       }
       final bytes = await widget.readBytes(path);
@@ -425,7 +434,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         });
       }
       unawaited(_refreshTranscriptState());
-      if (_peaks.isEmpty) unawaited(_backfillPeaks(file));
+      if (_waveformAvailable && _peaks.isEmpty) unawaited(_backfillPeaks(file));
     } catch (error) {
       if (mounted) setState(() => _error = 'Could not load audio: $error');
     }
@@ -599,20 +608,33 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             : Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, 0),
-                    child: WaveformSeekBar(
-                      peaks: _peaks,
-                      progress: totalMs == 0
-                          ? 0
-                          : _position.inMilliseconds / totalMs,
-                      markers: [
-                        if (totalMs > 0)
-                          for (final c in _comments) c.ms / totalMs,
-                      ],
-                      height: 72,
-                      onSeek: (f) =>
-                          _seek(Duration(milliseconds: (f * totalMs).round())),
+                    padding: const EdgeInsets.fromLTRB(
+                      kSpace16,
+                      kSpace4,
+                      kSpace16,
+                      0,
                     ),
+                    child: _waveformAvailable
+                        ? WaveformSeekBar(
+                            peaks: _peaks,
+                            progress: totalMs == 0
+                                ? 0
+                                : _position.inMilliseconds / totalMs,
+                            markers: [
+                              if (totalMs > 0)
+                                for (final c in _comments) c.ms / totalMs,
+                            ],
+                            height: 72,
+                            onSeek: (f) => _seek(
+                              Duration(milliseconds: (f * totalMs).round()),
+                            ),
+                          )
+                        : LinearProgressIndicator(
+                            value: totalMs == 0
+                                ? 0
+                                : _position.inMilliseconds / totalMs,
+                            minHeight: 8,
+                          ),
                   ),
                   _controls(),
                   const Divider(height: 1),

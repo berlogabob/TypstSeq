@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_windows
   flutter_timezone
+  media_kit_libs_windows_audio
   record_windows
   share_plus
   url_launcher_windows

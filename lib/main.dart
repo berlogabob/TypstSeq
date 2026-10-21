@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_mobile.dart';
@@ -19,6 +20,15 @@ export 'app_mobile.dart';
 void main() {
   startupClock.start();
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) {
+    JustAudioMediaKit.ensureInitialized(
+      windows: true,
+      linux: false,
+      macOS: false,
+      iOS: false,
+      android: false,
+    );
+  }
   startJankMonitor();
   // P12k bounded editing window: off by default until the on-device keyboard
   // check passes; `--dart-define=TYLOG_EDITOR_WINDOW=true` turns it on.
