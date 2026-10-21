@@ -18,7 +18,12 @@ flutter pub get
 # flutter_rust_bridge content hash differs from upstream's and RustLib.init()
 # rejects the downloaded library outright ("Content hash Dart vs Rust out of
 # sync"). Anything we actually ship has to be built below.
-dart run typst_flutter:setup
+# Upstream publishes no Windows build (its setup refuses Windows hosts), and
+# Windows is always built from source below.
+case "$(uname -s)" in
+  MINGW*|MSYS*) echo "Windows host: no upstream download; building from source." ;;
+  *) dart run typst_flutter:setup ;;
+esac
 
 # Never claim source-built when we have not built: the stamp is what the release
 # gate trusts, so it starts empty every run.
