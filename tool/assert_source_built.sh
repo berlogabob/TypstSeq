@@ -9,7 +9,7 @@
 # falling back to source parsing. So "the build went green" and even "the app
 # started" are both compatible with shipping something with no Typst engine.
 #
-# Usage: tool/assert_source_built.sh android [linux ...]
+# Usage: tool/assert_source_built.sh android [linux ...] [windows ...]
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)

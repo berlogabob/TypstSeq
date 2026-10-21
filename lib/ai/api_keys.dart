@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../vault_storage.dart' show userHome;
+
 const _storage = FlutterSecureStorage();
 
 Future<String?> readApiKey(String connectionId) =>
@@ -30,7 +32,7 @@ Future<void> mirrorWorkerKey(
   String? key, {
   String? home,
 }) async {
-  final dir = home ?? Platform.environment['HOME'];
+  final dir = home ?? userHome();
   if (dir == null) return;
   final file = File('$dir/.tylog/keys.json');
   var keys = <String, Object?>{};

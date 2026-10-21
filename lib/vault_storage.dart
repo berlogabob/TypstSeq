@@ -16,6 +16,11 @@ export 'package:tylog_core/storage.dart'
         validateVaultPath,
         writeFileAtomic;
 
+String? userHome([Map<String, String>? env]) {
+  final environment = env ?? Platform.environment;
+  return environment['HOME'] ?? environment['USERPROFILE'];
+}
+
 class AndroidTreeSelection {
   const AndroidTreeSelection({required this.uri, required this.name});
 

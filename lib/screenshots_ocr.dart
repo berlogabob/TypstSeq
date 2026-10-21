@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'widgets/date_format.dart' show shortStamp;
 import 'package:tylog_core/storage.dart';
+import 'vault_storage.dart' show userHome;
 
 String screenshotLaunchAgentPlist({
   required String home,
@@ -90,7 +91,7 @@ Future<String?> findUv({
   String? home,
   List<String> system = const ['/opt/homebrew/bin/uv', '/usr/local/bin/uv'],
 }) async {
-  final dir = home ?? Platform.environment['HOME'];
+  final dir = home ?? userHome();
   for (final path in [
     ...system,
     if (dir != null) '$dir/.local/bin/uv',
@@ -112,7 +113,7 @@ String? screenshotScriptsHealth(String folder) =>
 /// agent exists and runs ollama OCR, 'schedule' if only the watch agent exists
 /// and runs backfill (or only the schedule agent exists), else 'off'.
 Future<String> installedScreenshotMode({String? home}) async {
-  final homeDir = home ?? Platform.environment['HOME']!;
+  final homeDir = home ?? userHome()!;
   final watch = File(
     '$homeDir/Library/LaunchAgents/org.tylog.screenshots.plist',
   );
@@ -163,7 +164,7 @@ Future<void> configureScreenshotsOcr(
   if (!['off', 'watch', 'schedule', 'both'].contains(mode)) {
     throw ArgumentError('Invalid screenshot mode');
   }
-  final homeDir = home ?? Platform.environment['HOME']!;
+  final homeDir = home ?? userHome()!;
   final folder = scriptsDir ?? defaultScreenshotsFolder(homeDir);
   final uv = await findUv(home: homeDir);
   if (uv == null) throw StateError('uv not found on PATH');
@@ -225,7 +226,7 @@ Future<void> configureScreenshotsOcr(
 }
 
 Future<void> runScreenshotsBackfill(String vault, {String? scriptsDir}) async {
-  final home = Platform.environment['HOME']!;
+  final home = userHome()!;
   final uv = await findUv();
   if (uv == null) throw StateError('uv not found on PATH');
   // A detached wrapper lets Process.run return immediately while backfill runs.

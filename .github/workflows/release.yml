@@ -121,6 +121,53 @@ jobs:
             TyLog-x86_64.AppImage
             TyLog-linux-x64.tar.gz
 
+  windows:
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+      - uses: actions/cache@v4
+        with:
+          path: packages/typst_flutter/.typst_flutter_prebuilt
+          key: prebuilt-${{ runner.os }}-${{ hashFiles('packages/typst_flutter/pubspec.yaml', 'packages/typst_flutter/rust/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            packages/typst_flutter/.native-build-1.92.0-rustup-windows
+          key: native-windows-${{ hashFiles('packages/typst_flutter/rust/Cargo.lock') }}
+          restore-keys: native-windows-
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+          targets: x86_64-pc-windows-msvc
+      - name: Build Windows native library
+        shell: bash
+        run: TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh
+      - name: Refuse to ship a downloaded native library
+        shell: bash
+        run: ./tool/assert_source_built.sh windows
+      - run: flutter build windows --release
+      - name: Package Windows bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/TyLog-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tylog-windows
+          path: dist/TyLog-windows.zip
+
   apple:
     runs-on: macos-14
     needs: test
@@ -190,7 +237,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [android, linux-appimage, apple]
+    needs: [android, linux-appimage, windows, apple]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
@@ -210,3 +257,4 @@ jobs:
             dist/TyLog-macos.zip
             dist/TyLog-macos.zip.sha256
             dist/TyLog-ios-unsigned.zip
+            dist/TyLog-windows.zip

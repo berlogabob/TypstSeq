@@ -77,7 +77,19 @@ export RUSTUP_TOOLCHAIN="$toolchain"
   aarch64-linux-android armv7-linux-androideabi \
   x86_64-linux-android i686-linux-android
 
-if [ "$(uname -s)" = "Darwin" ]; then
+case "$(uname -s)" in
+  MINGW*|MSYS*)
+  echo "Building typst_flutter for Windows..."
+  cd "$package/rust"
+  CARGO_TARGET_DIR="$package/.native-build-$toolchain-rustup-windows" \
+    RUSTC="$rustc_bin" \
+    "$cargo_bin" build --release --target x86_64-pc-windows-msvc
+  mkdir -p "$prebuilt/windows"
+  cp "$package/.native-build-$toolchain-rustup-windows/x86_64-pc-windows-msvc/release/typst_flutter.dll" \
+    "$prebuilt/windows/typst_flutter.dll"
+  mark_source_built windows
+  ;;
+  Darwin)
   "$rustup" target add --toolchain "$toolchain" \
     aarch64-apple-darwin x86_64-apple-darwin \
     aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
@@ -131,7 +143,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
   done
   rm -rf "$ios_staging"
   mark_source_built ios
-else
+  ;;
+  *)
   # The desktop host we can actually build for here. Bundled and dlopen'd by name
   # (packages/typst_flutter/linux/CMakeLists.txt), not linked, so a plain cdylib
   # build in place is enough.
@@ -144,7 +157,8 @@ else
   cp "$package/.native-build-$toolchain-rustup-linux/release/libtypst_flutter.so" \
     "$prebuilt/linux/libtypst_flutter.so"
   mark_source_built linux
-fi
+  ;;
+esac
 
 # Android, on any host. Previously this sat inside the Darwin branch, so Linux CI
 # shipped the downloaded upstream .so in every published APK — a library whose
