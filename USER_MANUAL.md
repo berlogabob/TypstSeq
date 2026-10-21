@@ -117,17 +117,17 @@ Reports filter project, date range, kind, tags, article status, and task status.
 
 ## AI servers
 
-Settings > AI and processing > Servers lists servers on this network first and cloud services second. "Add server" offers Ollama, Unsloth Studio and LM Studio, then OpenAI, Claude (Anthropic), Gemini, Mistral and OpenRouter, or any OpenAI-compatible server. Test connection lists the server's models; Test model sends one short prompt. API keys are kept in the system's secure storage on this device, never in the vault or in `_system/settings/ai.json`. A task without a chosen server uses the first local one, never a cloud one; cloud servers are listed under "Cloud (sends your text off-device)".
+Settings > AI > Servers lists servers on this network first and cloud services second. "Add server" offers Ollama, Unsloth Studio and LM Studio, then OpenAI, Claude (Anthropic), Gemini, Mistral and OpenRouter, or any OpenAI-compatible server. Test connection lists the server's models; Test model sends one short prompt. API keys are kept in the system's secure storage on this device, never in the vault or in `_system/settings/ai.json`. A task without a chosen server uses the first local one, never a cloud one; cloud servers are listed under "Cloud (sends your text off-device)".
 
 ## Screenshots
 
-Settings > AI and processing > Screenshots (OCR) sets when screenshots are read: only when you ask, right after a screenshot is added, or every day at a set time. The setting syncs, so you can change it on any device; the Mac running the OCR scripts applies it within a minute (a phone shows "Runs on your Mac; changes apply there after sync"). A Mac that runs both the on-the-fly watcher and the daily catch-up shows "On schedule".
+Settings > AI > Screenshots (OCR) sets when screenshots are read: only when you ask, right after a screenshot is added, or every day at a set time. The setting syncs, so you can change it on any device; the Mac running the OCR scripts applies it within a minute (a phone shows "Runs on your Mac; changes apply there after sync"). A Mac that runs both the on-the-fly watcher and the daily catch-up shows "On schedule".
 
 On the Mac, choose the folder that holds the scripts (default `~/Nextcloud/InstantUpload/Screenshots`); this setting stays on that Mac. `uv` is found in Homebrew, `/usr/local/bin`, `~/.local/bin` or `~/.cargo/bin`. The status line shows the last run and the pipeline's health, or "Screenshot scripts not found in <folder>".
 
 ## Calendars
 
-Settings > General > Calendars lists your calendars; there are none by default. Add calendar offers:
+Settings > Calendars lists your calendars; there are none by default. Add calendar offers:
 
 - **Google Calendar:** paste the secret iCal address (Google Calendar > Settings > your calendar > Integrate calendar > Secret address in iCal format).
 - **Microsoft Outlook:** paste a published calendar's ICS link (Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar).
@@ -138,7 +138,7 @@ Links must use https. Each calendar refreshes every few hours (6 by default); ta
 
 ## Sync
 
-Desktop-managed Nextcloud folders continue to work. Embedded sync is configured from Settings > Storage and sync > Sync. Choose the backend:
+Desktop-managed Nextcloud folders continue to work. Embedded sync is configured from Settings > Sync and storage > Sync. Choose the backend:
 
 - **Nextcloud:** server URL, then browser sign-in (or login and an app password), and the remote folder.
 - **WebDAV (any server):** the full WebDAV URL of the vault folder, a login and a password (for example Synology, a Hetzner Storage Box, or `rclone serve webdav`). The URL must use https (plain http only for the same machine). Large files are sent in one upload, and every sync lists the whole folder, because plain WebDAV servers do not mark parent folders as changed.

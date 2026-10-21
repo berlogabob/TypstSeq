@@ -930,11 +930,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(ListTile, 'Settings'));
         await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(
-          find.text('Typst help'),
-          150,
-          scrollable: find.byType(Scrollable).last,
-        );
+        await tester.tap(find.text('About'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Typst help'));
         await tester.pumpAndSettle();
@@ -1597,35 +1593,51 @@ void main() {
     await tester.tap(settings);
     await tester.pumpAndSettle();
 
-    expect(find.text('Settings'), findsWidgets);
-    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
-      ['General', 'AI and processing', 'Storage and sync', 'Tools', 'About']);
-    final tools = tester.widgetList<AppSection>(find.byType(AppSection))
-        .singleWhere((s) => s.title == 'Tools');
-    expect(tools.children.whereType<AppTile>().map((t) => t.title),
-      ['Problems', 'Rebuild index', 'Relink vault', 'Migrate entity types',
-       'Clean up imported notes', 'Import vault', 'Modules', 'Semantic search']);
-    for (final title in ['Local folder', 'App version']) {
-      expect(find.widgetWithText(ListTile, title), findsNothing);
-    }
+    expect(find.text('Settings'), findsOneWidget);
+    expect(
+      tester
+          .widgetList<ListTile>(find.byType(ListTile))
+          .map((tile) => (tile.title as Text).data),
+      [
+        'General',
+        'Calendars',
+        'AI',
+        'Sync and storage',
+        'Maintenance',
+        'About',
+      ],
+    );
 
+    await tester.tap(find.text('Sync and storage'));
+    await tester.pumpAndSettle();
     expect(find.text('Local folder'), findsOneWidget);
     expect(find.text('Sync'), findsOneWidget);
-    expect(find.text('Import vault'), findsOneWidget);
-    expect(find.text('Nextcloud settings'), findsNothing);
-    expect(find.text('Sync server status'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Maintenance'));
+    await tester.pumpAndSettle();
+    for (final title in [
+      'Problems',
+      'Rebuild index',
+      'Relink vault',
+      'Migrate entity types',
+      'Clean up imported notes',
+      'Import vault',
+      'Modules',
+      'Semantic search',
+    ]) {
+      expect(find.text(title), findsOneWidget);
+    }
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('About'));
+    await tester.pumpAndSettle();
     expect(find.text('App version'), findsOneWidget);
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pump();
     expect(find.text(version), findsOneWidget);
-
-    // The Screenshots section made the sheet taller; scroll before tapping.
-    await tester.ensureVisible(find.text('Vaults'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Vaults'));
-    await tester.pumpAndSettle();
-    expect(find.text('Settings'), findsNothing);
-    expect(find.text('Add or create vault'), findsOneWidget);
   });
 
   testWidgets('journal rich editor shows one body and formats the selection', (

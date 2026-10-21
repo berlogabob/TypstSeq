@@ -2789,6 +2789,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Leaves Settings entirely (home and any group page) before an action
+  /// that opens something else; one pop only closed the top page.
+  void _closeSettings(BuildContext context) => Navigator.of(context).popUntil(
+    (route) => !(route.settings.name?.startsWith(kSettingsRoute) ?? false),
+  );
+
   Future<List<PkmsSearchResult>> _searchNotes(
     VaultIndex fallbackIndex,
     String query, {
@@ -2838,192 +2844,208 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? [activeLocation, status].whereType<String>().join('\n')
         : activeLocation ?? status;
 
-    showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: false,
-      builder: (context) => FutureBuilder<bool>(
-        future: storageHealth,
-        initialData: initialStorageHealth,
-        builder: (context, snapshot) {
-          final healthy = snapshot.data;
-          final syncStatusSubtitle = healthy == null
-              ? 'Checking folder access…'
-              : syncStatusTitle(
-                  syncStatusKind(
-                    vaultOpen: vault != null,
-                    storageHealthy: healthy,
-                    cloudConfigured: cloud?.isReady ?? false,
-                    desktopManaged:
-                        _localVaultDirectory != null &&
-                        isNextcloudManagedVault(_localVaultDirectory!),
-                    syncing: syncing,
-                    error: syncError,
-                    conflicts: syncConflicts.length,
-                    result: lastSync,
+    Navigator.of(context)
+        .push<void>(
+          MaterialPageRoute(
+            settings: const RouteSettings(name: kSettingsRoute),
+            builder: (context) => FutureBuilder<bool>(
+              future: storageHealth,
+              initialData: initialStorageHealth,
+              builder: (context, snapshot) {
+                final healthy = snapshot.data;
+                final syncStatusSubtitle = healthy == null
+                    ? 'Checking folder access…'
+                    : syncStatusTitle(
+                        syncStatusKind(
+                          vaultOpen: vault != null,
+                          storageHealthy: healthy,
+                          cloudConfigured: cloud?.isReady ?? false,
+                          desktopManaged:
+                              _localVaultDirectory != null &&
+                              isNextcloudManagedVault(_localVaultDirectory!),
+                          syncing: syncing,
+                          error: syncError,
+                          conflicts: syncConflicts.length,
+                          result: lastSync,
+                        ),
+                        conflicts: syncConflicts.length,
+                      );
+                return SettingsSheet(
+                  calendarSettings: workspace.calendarSettings,
+                  onConfigureCalendars: workspace.configureCalendars,
+                  vaultPath: vaultPath,
+                  cloud: cloud,
+                  syncing: syncing,
+                  syncStatusSubtitle: syncStatusSubtitle,
+                  vaultCount: registry?.entries.length ?? 0,
+                  readAi: vault == null
+                      ? null
+                      : () => readAiSettings(vault!.storage),
+                  writeAi: vault == null
+                      ? null
+                      : (settings) async {
+                          await writeAiSettings(vault!.storage, settings);
+                          unawaited(_syncNow());
+                        },
+                  readWorkers: vault == null
+                      ? null
+                      : () => readWorkers(vault!.storage),
+                  audioPolicyRead: vault == null
+                      ? null
+                      : () => readAudioPolicy(vault!.storage),
+                  audioPolicyWrite: vault == null
+                      ? null
+                      : (policy) async {
+                          await writeAudioPolicy(vault!.storage, policy);
+                          unawaited(_syncNow());
+                        },
+                  onProcessAudio: vault == null
+                      ? null
+                      : () async {
+                          await requestProcessNow(vault!.storage);
+                          unawaited(_syncNow());
+                        },
+                  screenshotsMode: registry?.screenshotsMode ?? 'off',
+                  screenshotsTime: registry?.screenshotsTime ?? '03:00',
+                  readScreenshotsStatus: () async => vault!.storage.readText(
+                    '_system/screenshots/status.json',
                   ),
-                  conflicts: syncConflicts.length,
-                );
-          return SettingsSheet(
-            calendarSettings: workspace.calendarSettings,
-            onConfigureCalendars: workspace.configureCalendars,
-            vaultPath: vaultPath,
-            cloud: cloud,
-            syncing: syncing,
-            syncStatusSubtitle: syncStatusSubtitle,
-            vaultCount: registry?.entries.length ?? 0,
-            readAi: vault == null ? null : () => readAiSettings(vault!.storage),
-            writeAi: vault == null
-                ? null
-                : (settings) async {
-                    await writeAiSettings(vault!.storage, settings);
-                    unawaited(_syncNow());
-                  },
-            readWorkers: vault == null
-                ? null
-                : () => readWorkers(vault!.storage),
-            audioPolicyRead: vault == null
-                ? null
-                : () => readAudioPolicy(vault!.storage),
-            audioPolicyWrite: vault == null
-                ? null
-                : (policy) async {
-                    await writeAudioPolicy(vault!.storage, policy);
-                    unawaited(_syncNow());
-                  },
-            onProcessAudio: vault == null
-                ? null
-                : () async {
-                    await requestProcessNow(vault!.storage);
-                    unawaited(_syncNow());
-                  },
-            screenshotsMode: registry?.screenshotsMode ?? 'off',
-            screenshotsTime: registry?.screenshotsTime ?? '03:00',
-            readScreenshotsStatus: () async =>
-                vault!.storage.readText('_system/screenshots/status.json'),
-            onConfigureScreenshots: (mode, time) async {
-              // The wanted mode syncs in ai.json, so any device can set it;
-              // the Mac applies it to its LaunchAgents.
-              final storage = vault!.storage;
-              final ai = await readAiSettings(storage);
-              await writeAiSettings(
-                storage,
-                ai.copyWith(
-                  screenshots: ai.screenshots.copyWith(mode: mode, time: time),
-                ),
-              );
-              if (Platform.isMacOS) {
-                await configureScreenshotsOcr(
-                  vaultPath,
-                  mode,
-                  time,
-                  scriptsDir: registry?.screenshotsFolder,
-                );
-                await registry?.setScreenshotsOcr(mode, time);
-              } else {
-                unawaited(_syncNow());
-              }
-            },
-            readScreenshotsWanted: () async {
-              final task = (await readAiSettings(vault!.storage)).screenshots;
-              final mode = task.mode;
-              return mode == null ? null : (mode, task.time ?? '03:00');
-            },
-            screenshotsFolder: Platform.isMacOS
-                ? registry?.screenshotsFolder
-                : null,
-            onScreenshotsFolderChanged: !Platform.isMacOS
-                ? null
-                : (folder) async {
-                    await registry?.setScreenshotsFolder(folder);
-                    // Reinstall the agents so they run from the new folder.
-                    await configureScreenshotsOcr(
-                      vaultPath,
-                      registry?.screenshotsMode ?? 'off',
-                      registry?.screenshotsTime ?? '03:00',
-                      scriptsDir: folder,
+                  onConfigureScreenshots: (mode, time) async {
+                    // The wanted mode syncs in ai.json, so any device can set it;
+                    // the Mac applies it to its LaunchAgents.
+                    final storage = vault!.storage;
+                    final ai = await readAiSettings(storage);
+                    await writeAiSettings(
+                      storage,
+                      ai.copyWith(
+                        screenshots: ai.screenshots.copyWith(
+                          mode: mode,
+                          time: time,
+                        ),
+                      ),
                     );
-                    if (mounted) setState(() {});
+                    if (Platform.isMacOS) {
+                      await configureScreenshotsOcr(
+                        vaultPath,
+                        mode,
+                        time,
+                        scriptsDir: registry?.screenshotsFolder,
+                      );
+                      await registry?.setScreenshotsOcr(mode, time);
+                    } else {
+                      unawaited(_syncNow());
+                    }
                   },
-            onProcessScreenshots: () async {
-              if (Platform.isMacOS) {
-                await runScreenshotsBackfill(
-                  vaultPath,
-                  scriptsDir: registry?.screenshotsFolder,
+                  readScreenshotsWanted: () async {
+                    final task = (await readAiSettings(
+                      vault!.storage,
+                    )).screenshots;
+                    final mode = task.mode;
+                    return mode == null ? null : (mode, task.time ?? '03:00');
+                  },
+                  screenshotsFolder: Platform.isMacOS
+                      ? registry?.screenshotsFolder
+                      : null,
+                  onScreenshotsFolderChanged: !Platform.isMacOS
+                      ? null
+                      : (folder) async {
+                          await registry?.setScreenshotsFolder(folder);
+                          // Reinstall the agents so they run from the new folder.
+                          await configureScreenshotsOcr(
+                            vaultPath,
+                            registry?.screenshotsMode ?? 'off',
+                            registry?.screenshotsTime ?? '03:00',
+                            scriptsDir: folder,
+                          );
+                          if (mounted) setState(() {});
+                        },
+                  onProcessScreenshots: () async {
+                    if (Platform.isMacOS) {
+                      await runScreenshotsBackfill(
+                        vaultPath,
+                        scriptsDir: registry?.screenshotsFolder,
+                      );
+                    } else {
+                      await requestScreenshotsRun(vault!.storage);
+                      unawaited(_syncNow());
+                    }
+                  },
+                  pdfPaper: registry?.pdfPaper ?? 'a4',
+                  onPdfPaperChanged: (paper) {
+                    unawaited(registry?.setPdfPaper(paper) ?? Future.value());
+                  },
+                  themeMode: widget.themeMode,
+                  onThemeModeChanged: (mode) {
+                    widget.onThemeModeChanged?.call(mode);
+                    unawaited(
+                      registry?.setThemeMode(themeModeName(mode)) ??
+                          Future.value(),
+                    );
+                  },
+                  onManageVaults: () => Navigator.pop(context, true),
+                  onNextcloud: () {
+                    _closeSettings(context);
+                    unawaited(_showSyncDashboard());
+                  },
+                  onEnableReminders: () async {
+                    await taskScheduler.requestPermission();
+                    await taskScheduler.reconcile(index?.tasks ?? const []);
+                    if (context.mounted) {
+                      showSnack(context, 'Task reminders enabled');
+                    }
+                  },
+                  onMigrateEntityTypes: () async {
+                    _closeSettings(context);
+                    await _migrateEntityTypes();
+                  },
+                  onStripImportNoise: () async {
+                    _closeSettings(context);
+                    await _stripImportNoise();
+                  },
+                  onImportVault: () async {
+                    _closeSettings(context);
+                    await _importVault();
+                  },
+                  onInstallModule: () async {
+                    _closeSettings(context);
+                    await _showModules();
+                  },
+                  onProblems: () {
+                    _closeSettings(context);
+                    unawaited(
+                      _showKnowledge(initialView: KnowledgeView.problems),
+                    );
+                  },
+                  onRebuildIndex: () {
+                    _closeSettings(context);
+                    unawaited(_rebuildIndex(force: true));
+                  },
+                  onRelinkVault: () {
+                    _closeSettings(context);
+                    unawaited(_relinkVault());
+                  },
+                  onSemanticSearch: () {
+                    _closeSettings(context);
+                    unawaited(_showSemanticSearch());
+                  },
+                  onTypstHelp: () {
+                    _closeSettings(context);
+                    unawaited(_showTypstHelp());
+                  },
+                  onCheckForUpdates: Platform.isMacOS
+                      ? () {
+                          _closeSettings(context);
+                          unawaited(_checkForUpdates(silent: false));
+                        }
+                      : null,
                 );
-              } else {
-                await requestScreenshotsRun(vault!.storage);
-                unawaited(_syncNow());
-              }
-            },
-            pdfPaper: registry?.pdfPaper ?? 'a4',
-            onPdfPaperChanged: (paper) {
-              unawaited(registry?.setPdfPaper(paper) ?? Future.value());
-            },
-            themeMode: widget.themeMode,
-            onThemeModeChanged: (mode) {
-              widget.onThemeModeChanged?.call(mode);
-              unawaited(
-                registry?.setThemeMode(themeModeName(mode)) ?? Future.value(),
-              );
-            },
-            onManageVaults: () => Navigator.pop(context, true),
-            onNextcloud: () {
-              Navigator.pop(context);
-              unawaited(_showSyncDashboard());
-            },
-            onEnableReminders: () async {
-              await taskScheduler.requestPermission();
-              await taskScheduler.reconcile(index?.tasks ?? const []);
-              if (context.mounted) showSnack(context, 'Task reminders enabled');
-            },
-            onMigrateEntityTypes: () async {
-              Navigator.pop(context);
-              await _migrateEntityTypes();
-            },
-            onStripImportNoise: () async {
-              Navigator.pop(context);
-              await _stripImportNoise();
-            },
-            onImportVault: () async {
-              Navigator.pop(context);
-              await _importVault();
-            },
-            onInstallModule: () async {
-              Navigator.pop(context);
-              await _showModules();
-            },
-            onProblems: () {
-              Navigator.pop(context);
-              unawaited(_showKnowledge(initialView: KnowledgeView.problems));
-            },
-            onRebuildIndex: () {
-              Navigator.pop(context);
-              unawaited(_rebuildIndex(force: true));
-            },
-            onRelinkVault: () {
-              Navigator.pop(context);
-              unawaited(_relinkVault());
-            },
-            onSemanticSearch: () {
-              Navigator.pop(context);
-              unawaited(_showSemanticSearch());
-            },
-            onTypstHelp: () {
-              Navigator.pop(context);
-              unawaited(_showTypstHelp());
-            },
-            onCheckForUpdates: Platform.isMacOS
-                ? () {
-                    Navigator.pop(context);
-                    unawaited(_checkForUpdates(silent: false));
-                  }
-                : null,
-          );
-        },
-      ),
-    ).then((manageVaults) {
-      if (manageVaults == true && mounted) _showVaults();
-    });
+              },
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) setState(() {});
+        });
   }
 
   Future<void> _showTypstHelp({String? error}) async {

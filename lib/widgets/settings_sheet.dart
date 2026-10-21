@@ -3,19 +3,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
-
 import 'app_icons.dart';
 import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
-import '../vault_registry.dart';
-import 'app_version.dart';
 import '../audio/processing_policy.dart';
-import 'audio_processing_settings.dart';
-import 'screenshots_settings.dart';
 import 'constants.dart';
-import 'ds/app_tile.dart';
-import 'ds/app_section.dart';
-import 'ds/app_sheet.dart';
+import 'settings/about_page.dart';
+import 'settings/ai_page.dart';
+import 'settings/calendars_page.dart';
+import 'settings/general_page.dart';
+import 'settings/maintenance_page.dart';
+import 'settings/sync_storage_page.dart';
+
+/// Route name prefix of Settings and its pages ([_closeSettings] in the app).
+const kSettingsRoute = 'settings';
 
 class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
@@ -111,229 +112,80 @@ class SettingsSheet extends StatefulWidget {
 }
 
 class _SettingsSheetState extends State<SettingsSheet> {
-  String? _selectedPaper;
-  bool get readScreenshotsStatusAvailable =>
-      widget.readScreenshotsStatus != null &&
-      widget.onConfigureScreenshots != null &&
-      widget.onProcessScreenshots != null;
-
-  Future<void> _calendars() async {
-    final feeds = await showModalBottomSheet<List<Map<String, dynamic>>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _CalendarsPage(
-        feeds: [
-          for (final feed
-              in (widget.calendarSettings['feeds'] as List? ?? const []))
-            if (feed is Map) Map<String, dynamic>.from(feed),
-        ],
-        cache:
-            (widget.calendarSettings['cache'] as Map?)
-                ?.cast<String, dynamic>() ??
-            const {},
-      ),
-    );
-    if (feeds != null) {
-      await widget.onConfigureCalendars!({'feeds': feeds});
-    }
-  }
-
+  String? _paperOverride;
+  ThemeMode? _themeOverride;
   @override
   Widget build(BuildContext context) {
-    final readableVaultPath = readableVaultLocation(widget.vaultPath);
-    return AppSheet(
-      title: 'Settings',
-      children: [
-        AppSection(
-          title: 'General',
-          divider: false,
-          children: [
-            _ThemeModeSelector(
-              themeMode: widget.themeMode,
-              onChanged: widget.onThemeModeChanged,
-            ),
-            const SizedBox(height: kSpace8),
-            AppTile(
-              icon: Icons.picture_as_pdf_outlined,
-              title: 'PDF page size',
-              trailing: DropdownButton<String>(
-                value: _selectedPaper ?? widget.pdfPaper,
-                items: const [
-                  DropdownMenuItem(value: 'a4', child: Text('A4')),
-                  DropdownMenuItem(value: 'us-letter', child: Text('Letter')),
-                  DropdownMenuItem(value: 'a5', child: Text('A5')),
-                  DropdownMenuItem(value: 'us-legal', child: Text('Legal')),
-                ],
-                onChanged: (paper) {
-                  if (paper == null) return;
-                  setState(() => _selectedPaper = paper);
-                  widget.onPdfPaperChanged?.call(paper);
-                },
-              ),
-            ),
-            if (widget.onConfigureCalendars != null)
-              AppTile(
-                icon: AppIcons.calendars,
-                title: 'Calendars',
-                subtitle:
-                    ((widget.calendarSettings['feeds'] as List?) ?? const [])
-                        .isEmpty
-                    ? 'None'
-                    : '${((widget.calendarSettings['feeds'] as List?) ?? const []).length} calendars',
-                onTap: _calendars,
-              ),
-            AppTile(
-              icon: Icons.notifications_outlined,
-              title: 'Task reminders',
-              subtitle: 'Enable local scheduled notifications',
-              onTap: () => unawaited(widget.onEnableReminders()),
-            ),
-          ],
+    final groups = <(String, String, Widget)>[
+      (
+        'General',
+        '${_themeLabel(_themeOverride ?? widget.themeMode)} · ${_paperLabel(_paperOverride ?? widget.pdfPaper)}',
+        GeneralPage(
+          settings: widget,
+          onPaperChanged: (paper) => setState(() => _paperOverride = paper),
+          onThemeChanged: (theme) => setState(() => _themeOverride = theme),
         ),
-        AppSection(
-          title: 'AI and processing',
-          children: [
-            if (widget.audioPolicyRead != null)
-              AudioProcessingSettings(
-                read: widget.audioPolicyRead!,
-                write: widget.audioPolicyWrite!,
-                processNow: widget.onProcessAudio!,
-                readAi: widget.readAi,
-                writeAi: widget.writeAi,
-                readWorkers: widget.readWorkers,
+      ),
+      ('Calendars', _calendarSummary, CalendarsPage(settings: widget)),
+      ('AI', 'Servers, audio, articles, screenshots', AiPage(settings: widget)),
+      (
+        'Sync and storage',
+        widget.syncStatusSubtitle,
+        SyncStoragePage(settings: widget),
+      ),
+      (
+        'Maintenance',
+        'Problems, index, import',
+        MaintenancePage(settings: widget),
+      ),
+      ('About', 'Version, updates, help', AboutPage(settings: widget)),
+    ];
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        children: [
+          for (final (title, summary, page) in groups)
+            ListTile(
+              title: Text(title),
+              subtitle: Text(
+                summary,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            if (readScreenshotsStatusAvailable)
-              ScreenshotsSettings(
-                mode: widget.screenshotsMode,
-                time: widget.screenshotsTime,
-                onConfigure: widget.onConfigureScreenshots!,
-                onProcessNow: widget.onProcessScreenshots!,
-                readStatus: widget.readScreenshotsStatus!,
-                folder: widget.screenshotsFolder,
-                onFolderChanged: widget.onScreenshotsFolderChanged,
-                readWanted: widget.readScreenshotsWanted,
-                // Any device can change it: the Mac applies it after sync.
-                editable: true,
-              ),
-          ],
-        ),
-        AppSection(
-          title: 'Storage and sync',
-          children: [
-            _InfoRow(title: 'Local folder', value: readableVaultPath),
-            AppTile(
-              icon: AppIcons.folder,
-              title: 'Vaults',
-              subtitle: '${widget.vaultCount} vaults · manage and switch',
-              onTap: widget.onManageVaults,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    settings: const RouteSettings(name: '$kSettingsRoute/page'),
+                    builder: (_) => page,
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
             ),
-            AppTile(
-              icon: AppIcons.sync,
-              title: 'Sync',
-              subtitle: widget.syncStatusSubtitle,
-              onTap: widget.onNextcloud,
-            ),
-          ],
-        ),
-        AppSection(
-          title: 'Tools',
-          children: [
-            AppTile(
-              icon: AppIcons.warning,
-              title: 'Problems',
-              onTap: widget.onProblems,
-            ),
-            AppTile(
-              icon: Icons.refresh,
-              title: 'Rebuild index',
-              onTap: widget.onRebuildIndex,
-            ),
-            AppTile(
-              icon: Icons.auto_fix_high,
-              title: 'Relink vault',
-              onTap: widget.onRelinkVault,
-            ),
-            AppTile(
-              icon: Icons.build_outlined,
-              title: 'Migrate entity types',
-              subtitle: 'Update older notes to the current format',
-              onTap: () => unawaited(widget.onMigrateEntityTypes()),
-            ),
-            AppTile(
-              icon: Icons.cleaning_services_outlined,
-              title: 'Clean up imported notes',
-              subtitle: 'Remove empty Logseq drawers and trailing blanks',
-              onTap: () => unawaited(widget.onStripImportNoise()),
-            ),
-            AppTile(
-              icon: Icons.drive_folder_upload_outlined,
-              title: 'Import vault',
-              subtitle: 'Convert a whole vault folder into TyLog notes',
-              onTap: () => unawaited(widget.onImportVault()),
-            ),
-            AppTile(
-              icon: Icons.extension_outlined,
-              title: 'Modules',
-              subtitle: 'Manage courses or install a .tylogpack',
-              onTap: () => unawaited(widget.onInstallModule()),
-            ),
-            AppTile(
-              icon: Icons.manage_search,
-              title: 'Semantic search',
-              onTap: widget.onSemanticSearch,
-            ),
-          ],
-        ),
-        AppSection(
-          title: 'About',
-          children: [
-            FutureBuilder<String>(
-              future: appVersion(),
-              builder: (context, snapshot) =>
-                  _InfoRow(title: 'App version', value: snapshot.data ?? '...'),
-            ),
-            if (widget.onCheckForUpdates case final onTap?)
-              AppTile(
-                icon: Icons.system_update,
-                title: 'Check for updates',
-                subtitle: 'Download the latest release from GitHub',
-                onTap: onTap,
-              ),
-            AppTile(
-              icon: Icons.help_outline,
-              title: 'Typst help',
-              onTap: widget.onTypstHelp,
-            ),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
-}
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.title, required this.value});
+  String get _calendarSummary {
+    final count = (widget.calendarSettings['feeds'] as List?)?.length ?? 0;
+    return count == 0 ? 'None' : '$count calendars';
+  }
 
-  final String title;
-  final String value;
+  String _themeLabel(ThemeMode mode) => switch (mode) {
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+    ThemeMode.system => 'Auto',
+  };
 
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(kSpace8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: kSpace4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    ),
-  );
+  String _paperLabel(String paper) => switch (paper) {
+    'us-letter' => 'Letter',
+    'a5' => 'A5',
+    'us-legal' => 'Legal',
+    _ => 'A4',
+  };
 }
 
 class SettingsTile extends StatelessWidget {

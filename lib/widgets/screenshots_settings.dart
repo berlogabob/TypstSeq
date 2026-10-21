@@ -7,6 +7,8 @@ import 'app_icons.dart';
 import '../screenshots_ocr.dart';
 import 'processing_policy_editor.dart';
 import 'snack.dart';
+import 'settings/scope_note.dart';
+import '../vault_storage.dart' show userHome;
 
 class ScreenshotsSettings extends StatefulWidget {
   const ScreenshotsSettings({
@@ -75,7 +77,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
     // Real Mac state (installed agents, health file); skipped in tests, which
     // run on a Mac host and must not read this machine's home folder.
     if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
-      final home = Platform.environment['HOME'];
+      final home = userHome();
       final folder = widget.folder ?? defaultScreenshotsFolder(home!);
       String? line = screenshotScriptsHealth(folder);
       try {
@@ -171,7 +173,10 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
         ),
         if (editable && widget.onFolderChanged != null)
           ListTile(
-            title: const Text('Screenshot folder'),
+            title: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Text('Screenshot folder'), ScopeNote('This Mac')],
+            ),
             subtitle: Text(
               widget.folder ?? '~/Nextcloud/InstantUpload/Screenshots',
             ),
