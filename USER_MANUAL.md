@@ -1,4 +1,4 @@
-# TyLog v5 user handbook (0.12.0)
+# TyLog v5 user handbook (0.19.2)
 
 ## Vault format
 
@@ -64,6 +64,16 @@ Tapping a note link whose target does not exist offers to create that note (like
 
 Search supports saved presets: run a query, press the Save chip, and it appears as a tappable chip on the Search screen. Presets are stored in `_system/saved-searches.json`, so they sync to every device. Long-press a chip to delete it.
 
+A search result opens the note scrolled to the first match, which is highlighted for about two seconds. Going back returns to Search with the same query and results. The first search after launch loads the search index (about 3 s on a phone with 10k notes); the index is released again after a minute without searches.
+
+## Folding
+
+Tap a bullet that has lines under it (nested bullets or tasks) to fold them; a folded bullet shows ▸. Tap it again to unfold. Folding works in the editor and the reading view. If a search result, the caret or a selection reaches into a folded part, it unfolds, so hidden text is never edited unseen.
+
+Images collapse to a thin strip: in the editor tap the image and choose Collapse image (Show image restores it); in the reading view use the button on the image.
+
+Fold state is kept on this device only (`fold_state.json` in the app's private storage). It never changes the note and does not sync.
+
 ## Tasks
 
 At the start of a line, type `TODO `, `[] ` or `[ ] `, or choose `/todo`, to turn it into a task without a dialog. Enter starts the next task. Enter on an empty task returns to plain text. Backspace at the checkbox, including on an empty task (0.12.2), turns the task into plain text; one Undo restores its fields.
@@ -80,7 +90,7 @@ Today, Tasks, Journal, Calendar, Search and saved queries use the same task row,
 
 An attached image splits the paragraph at the cursor and sits on its own line. Tap it for S (33%), M (60%) or Full (100%) width, left/centre/right alignment, move up/down and delete. Size and alignment are saved as Typst and appear in the PDF. Existing images keep their source until changed; images inside list items stay inline.
 
-Crop offers free, 1:1, 4:3 and 16:9 selections. It saves a new PNG beside the original and updates the image reference. The original file is kept.
+Crop offers free, 1:1, 4:3 and 16:9 selections. It saves a new PNG beside the original and updates the image reference. The original file is kept. Collapsing an image is described under [Folding](#folding).
 
 ## Import a Logseq or Obsidian vault
 
@@ -99,9 +109,24 @@ General date and file actions use native pickers; task dates also accept typed w
 
 Reports filter project, date range, kind, tags, article status, and task status. Their reproducible source is stored under `outputs/`; PDF export writes a sibling `.pdf`. Both are syncable.
 
-## Nextcloud
+## AI servers
 
-Desktop-managed Nextcloud folders continue to work. Embedded WebDAV is configured from Settings > Sync with server URL, login, and an app password.
+Settings > AI and processing > Servers lists servers on this network first and cloud services second. "Add server" offers Ollama, Unsloth Studio and LM Studio, then OpenAI, Claude (Anthropic), Gemini, Mistral and OpenRouter, or any OpenAI-compatible server. Test connection lists the server's models; Test model sends one short prompt. API keys are kept in the system's secure storage on this device, never in the vault or in `_system/settings/ai.json`. A task without a chosen server uses the first local one, never a cloud one; cloud servers are listed under "Cloud (sends your text off-device)".
+
+## Screenshots (Mac)
+
+Settings > AI and processing > Screenshots (OCR) runs the OCR scripts on the Mac on the fly or on a schedule. Choose the folder that holds the scripts (default `~/Nextcloud/InstantUpload/Screenshots`); the setting is kept on this Mac. `uv` is found in Homebrew, `/usr/local/bin`, `~/.local/bin` or `~/.cargo/bin`. The status line shows the pipeline's health, or "Screenshot scripts not found in <folder>".
+
+## Calendars
+
+Settings > General > Calendars takes a classes feed URL with its group and a lab feed URL. There are no built-in feeds: a blank URL turns a feed off; other URLs must be https.
+
+## Sync
+
+Desktop-managed Nextcloud folders continue to work. Embedded sync is configured from Settings > Storage and sync > Sync. Choose the backend:
+
+- **Nextcloud:** server URL, then browser sign-in (or login and an app password), and the remote folder.
+- **WebDAV (any server):** the full WebDAV URL of the vault folder, a login and a password (for example Synology, a Hetzner Storage Box, or `rclone serve webdav`). The URL must use https (plain http only for the same machine). Large files are sent in one upload, and every sync lists the whole folder, because plain WebDAV servers do not mark parent folders as changed.
 
 On first launch, Android requires a user-selected device folder and retains access through Android's Storage Access Framework. The selected folder is the authoritative vault and remains outside TyLog's private app container. Existing private vaults are copied and hash-verified before switching; the original is retained as a recovery backup. Nextcloud setup also asks for the remote folder, and nested paths such as `Research/TyLog` are created one segment at a time. Server, login, password, and folder drafts are saved in TyLog's private app storage as they are entered, so switching to a password manager does not clear the form.
 
@@ -117,7 +142,7 @@ Back up the complete vault, including durable `_system/revisions` envelopes. Not
 
 If text looks lost, back up the vault and `.tylog/undo` before further edits or sync. Check the note in Source, then inspect the local undo copies and Sync dashboard conflicts. Sync copies keep the original vault path under `.tylog/undo/sync-…`; copy recovered text into the note after reviewing it. Headerless journal pages are repaired with their text kept and an undo copy taken first. These copies are a safety net, not a complete version history.
 
-A failed database/index save leaves your note file on disk and reports an error; retry the save or rebuild the index. If metadata, search, or backlinks appear stale, choose Rebuild index. If Preview fails, switch to Source and fix the reported Typst range. If folder permission is revoked, reselect the vault when prompted. If sync fails, open the Sync dashboard, inspect the failed stage, and verify HTTPS, credentials, and remote folder permissions.
+A failed database/index save leaves your note file on disk and reports an error; retry the save or rebuild the index. If metadata, search, or backlinks appear stale, choose Rebuild index. A damaged search index file in `_index` is detected, deleted and rebuilt on its own. If Preview fails, switch to Source and fix the reported Typst range. If folder permission is revoked, reselect the vault when prompted. If sync fails, open the Sync dashboard, inspect the failed stage, and verify HTTPS, credentials, and remote folder permissions.
 
 If an iPad run reports that no development certificates are available, open `ios/Runner.xcworkspace`, select Runner > Signing & Capabilities, sign in to Xcode, and choose a team. Then rerun `flutter run -d <device-id>`. This is host signing configuration, not a vault or application-data error.
 

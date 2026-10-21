@@ -1,6 +1,6 @@
 # TyLog
 
-TyLog is a local-first, Typst-first journal and research workspace for Android and macOS. Android vaults live in a user-selected folder with persisted Storage Access Framework permission; optional Nextcloud WebDAV sync remains available. Notes, projects, articles, tasks, dates, citations, attachments, and reports remain ordinary `.typ` files. Whole Logseq and Obsidian vaults can be migrated in-app (Settings → Import): pages, journals, tasks, wikilinks, and assets convert into native TyLog notes. JSON carries settings, sync state, conflict records, diagnostics, rebuildable indexes, and durable revision envelopes in `_system/revisions`. Private SQLite stores note projections, revisions, annotations, and search data; successful note-file writes survive projection failures (see [save recovery](USER_MANUAL.md#backup-and-troubleshooting)). An iOS host is included for iPad testing; iOS is not yet a release platform.
+TyLog is a local-first, Typst-first journal and research workspace for Android and macOS. Android vaults live in app storage or a user-selected folder with persisted Storage Access Framework permission; optional sync uses Nextcloud or any WebDAV server. Notes, projects, articles, tasks, dates, citations, attachments, and reports remain ordinary `.typ` files. Whole Logseq and Obsidian vaults can be migrated in-app (Settings → Import): pages, journals, tasks, wikilinks, and assets convert into native TyLog notes. JSON carries settings, sync state, conflict records, diagnostics, rebuildable indexes, and durable revision envelopes in `_system/revisions`. Private SQLite stores note projections, revisions, annotations, and search data; successful note-file writes survive projection failures (see [save recovery](USER_MANUAL.md#backup-and-troubleshooting)). An iOS host is included for iPad testing; iOS is not yet a release platform.
 
 TyLog is also a small ecosystem: a versioned Typst package defines semantics,
 `tylog_core` provides Flutter-independent indexing and validation, the
@@ -18,9 +18,12 @@ Mac index donor: `tool/launchd/org.tylog.indexer.plist` runs the existing CLI on
 - Image blocks with size, alignment and move controls; crop saves a new asset and keeps the original.
 - Optional offline semantic search uses an explicitly downloaded model; generated answers are outside the app.
 - Journal lists pages only, with events behind a collapsed Agenda line.
-- Nextcloud upload confirmation and complete-listing checks; local sync safety copies in `.tylog/undo`, kept 30 days and excluded from sync.
+- Nextcloud or any WebDAV server; upload confirmation and complete-listing checks; local sync safety copies in `.tylog/undo`, kept 30 days and excluded from sync.
+- Logseq-style folding of bullets and collapsible images, kept per device.
+- Search opens notes at the match with a brief highlight.
+- AI servers: local first (Ollama, Unsloth Studio, LM Studio), optional cloud presets (OpenAI, Claude, Gemini, Mistral, OpenRouter) with keys in secure storage.
 
-The current version is declared in `pubspec.yaml`. Recent behavior changes (0.12.1–0.12.2): Backspace on an empty task returns to plain text; typing during an upload no longer creates a conflict against this device's own earlier upload. Phone verification remains open.
+The current version is declared in `pubspec.yaml`; changes per release are in the [changelog](CHANGELOG.md).
 
 ## View modes and PDF export
 

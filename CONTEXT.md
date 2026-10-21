@@ -18,7 +18,9 @@ headerless daily repair keeps existing text.
 - Large historical revision envelopes remain large; new unpublished local heads coalesce in fixed 60-second windows.
 - EmbeddingGemma phone trial at 256 dimensions before switching models.
 - Deferred: image captions/figure, text wrap and anchors; task session-history view; converting imported checklists to tasks; quick-add date parsing.
-- `wip/incremental-index` is parked; the macOS app is still on an old build.
+- `wip/incremental-index` is parked.
+- Memory: P30 PSS is ~317 MB idle with a ~171 MB Dart heap; profile what holds it (targets: <=350 MB idle, <=400 MB right after a search).
+- P2P sync (iroh / Ouisync) needs an in-app harness: iroh aborts outside an Android app ("android context was not initialized").
 
 ## Engineering rules
 
@@ -29,6 +31,10 @@ headerless daily repair keeps existing text.
 - Use root-isolate and Flutter frame timings for Flutter jank; gfxinfo decor counts do not establish it.
 - Article producers preserve LLM links, use the auto-related marker, read gzip/plain indexes safely, and emit five-stage status.
 - Bump the index version when parsing changes cached semantics.
+- Folded text keeps its characters (tiny, transparent; newlines drawn as zero-width spaces; widgets shrunk): the editor's span length must equal the controller text, and offsets must not move. Never edit text the user cannot see; unfold first.
+- Work done per editor keystroke must be linear in the note size; check long imported pages (2,000 blocks) with `test/outline_perf_test.dart`.
+- Only Nextcloud propagates child changes into folder ETags; plain WebDAV must list fully.
+- Bulk database work must not publish revisions, and FTS deletes by `node_id` (UNINDEXED) scan the whole table: batch them.
 - Normal profile installs preserve the production app only with its release keystore; isolate integration drive with the optional `.profiletest` suffix.
 - Device editor replay includes cold startup and delayed save; report tooling failures instead of suppressing them.
 - Improve existing mechanisms before changing formats, trace every consumer, and review delegated edits.
