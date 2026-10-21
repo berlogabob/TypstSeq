@@ -3,6 +3,37 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.19.4+156
+
+### New
+
+- Windows: a single `TyLog-windows.exe` with nothing to install. The first
+  start of each version unpacks once into your local app data; later
+  starts are instant. It updates itself like the Mac app (checks the latest
+  release, verifies the download, replaces the file and restarts). Windows
+  SmartScreen asks once ("More info" > "Run anyway") because the file is not
+  code-signed. Sync uses the built-in Nextcloud/WebDAV sync.
+- Screenshot notes open in a picture-first view: on wide screens the picture
+  fills the left column and the title, app, tags, Description and Text
+  scroll on the right; on phones the picture fills the screen with a
+  pull-up panel for the text. Edit opens the normal editor.
+- Settings is a short list of groups (General, Calendars, AI, Sync and
+  storage, Maintenance, About) with their own pages and AI subpages
+  (Servers, Audio, Articles, Screenshots). Device-only settings say
+  "This device" or "This Mac".
+
+### Changed
+
+- Screenshots "Right after it is added" also runs the nightly catch-up,
+  which retries anything that failed during the day.
+- An API key saved for a server in the app is also handed to the Mac's
+  background scripts (`~/.tylog/keys.json`).
+
+### Fixed
+
+- Screenshot thumbnails no longer flicker on every sync and index update.
+- A calendar list arriving with a sync is shown at once.
+
 ## 0.19.3+155
 
 ### New

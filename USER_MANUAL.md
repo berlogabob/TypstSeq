@@ -1,4 +1,4 @@
-# TyLog v5 user handbook (0.19.3)
+# TyLog v5 user handbook (0.19.4)
 
 ## Vault format
 
@@ -97,6 +97,14 @@ Today, Tasks, Journal, Calendar, Search and saved queries use the same task row,
 An attached image splits the paragraph at the cursor and sits on its own line. Tap it for S (33%), M (60%) or Full (100%) width, left/centre/right alignment, move up/down and delete. Size and alignment are saved as Typst and appear in the PDF. Existing images keep their source until changed; images inside list items stay inline.
 
 Crop offers free, 1:1, 4:3 and 16:9 selections. It saves a new PNG beside the original and updates the image reference. The original file is kept. Collapsing an image is described under [Folding](#folding).
+
+## Screenshot notes
+
+A screenshot note opens picture-first. On a wide window the picture fills the left column (pinch or scroll to zoom) and the title, capture time, app, tags, Description and Text (the recognised text) scroll on the right. On a phone the picture fills the screen; drag the panel at the bottom up for the text. The pencil opens the normal editor.
+
+## Windows
+
+Download `TyLog-windows.exe` from the latest release and run it from anywhere; nothing is installed. The first start of each version unpacks the app once into `%LOCALAPPDATA%\TyLog\app`; later starts are instant. Windows SmartScreen asks once because the file is not code-signed: choose "More info", then "Run anyway". The app checks for updates at start and in Settings > About; an update replaces the file and restarts it. Connect sync in Settings > Sync and storage > Sync (Nextcloud or any WebDAV server). If it does not start, the reason is in `%LOCALAPPDATA%\TyLog\launcher.log`.
 
 ## Import a Logseq or Obsidian vault
 
