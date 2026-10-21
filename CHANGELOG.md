@@ -3,6 +3,36 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.19.3+155
+
+### New
+
+- Today's Agenda is a timeline: events from all calendars in time order
+  with start and end time and the room, past events dimmed, events running
+  now tinted, and a dot that moves through the day.
+- Calendars: add any number (Google Calendar and Microsoft Outlook via
+  their ICS links, an IADE preset for classes and/or the lab schedule, or
+  any other ICS link). None by default. The calendar list syncs to every
+  device; downloaded events stay on each device.
+- Screenshot OCR can be set from any device; the Mac applies it within a
+  minute and shows what it runs.
+
+### Changed
+
+- The title bar shows only the date (tap it for the calendar); the day
+  arrows are gone and the back button's place is always kept, so the date
+  no longer jumps or shrinks when switching days.
+- Status lines show readable times ("today 03:01").
+
+### Fixed
+
+- The Agenda showed every IADE class of the day (183) on devices where the
+  class group had never been saved.
+- Screenshot processing on the Mac stopped after a mode change: the agents
+  were removed and not reloaded when launchctl reported a spurious error.
+- A calendar list arriving with a sync is shown at once, not after a
+  restart.
+
 ## 0.19.2+154
 
 ### New
