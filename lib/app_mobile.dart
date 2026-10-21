@@ -5596,11 +5596,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: AppBar(
           toolbarHeight: compactHeight ? 48 : 56,
           automaticallyImplyLeading: false,
+          // The slot is always there, so the title never jumps when the
+          // back button appears (e.g. stepping from Today to another day).
           leading:
               canGoBack &&
                   (!desktop || _backViews.isNotEmpty || mode == 'graph')
               ? BackButton(onPressed: _back)
-              : null,
+              : const SizedBox.shrink(),
           centerTitle: false,
           title: mode == 'journal'
               ? CompactDateTitle(day: currentDaily ?? DateTime.now())
@@ -5609,47 +5611,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               : mode == 'graph'
               ? const Text('Graph')
               : documentModes.contains(mode) && currentDaily != null
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Previous day',
-                      // Compact arrows leave the date room next to a back
-                      // button and three actions (~32 dp slot otherwise).
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.chevron_left),
-                      // Calendar day, not 24h: DST-safe (see [_stepDay]).
-                      onPressed: () => _stepDay(-1),
-                    ),
-                    Flexible(
-                      child: Tooltip(
-                        message: 'Calendar',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(kRadiusSmall),
-                          onTap: () => unawaited(_showCalendarPicker()),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 48),
-                            child: Center(
-                              child: ValueListenableBuilder<bool>(
-                                valueListenable: workspace.dirtyNotifier,
-                                builder: (context, dirty, _) =>
-                                    CompactDateTitle(
-                                      day: currentDaily,
-                                      dirty: dirty,
-                                    ),
-                              ),
-                            ),
-                          ),
+              // The date alone (no day arrows): it opens the calendar.
+              ? Tooltip(
+                  message: 'Calendar',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(kRadiusSmall),
+                    onTap: () => unawaited(_showCalendarPicker()),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: workspace.dirtyNotifier,
+                          builder: (context, dirty, _) =>
+                              CompactDateTitle(day: currentDaily, dirty: dirty),
                         ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Next day',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: () => _stepDay(1),
-                    ),
-                  ],
+                  ),
                 )
               : ValueListenableBuilder<bool>(
                   valueListenable: workspace.dirtyNotifier,

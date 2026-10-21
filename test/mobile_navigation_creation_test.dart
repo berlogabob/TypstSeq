@@ -366,6 +366,35 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the day title does not jump between Today and another day', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(360, 800));
+    final title = find.byType(CompactDateTitle);
+    final today = tester.getRect(title);
+    expect(find.byTooltip('Previous day'), findsNothing);
+    expect(find.byTooltip('Next day'), findsNothing);
+    await _prepareSearchResult(home);
+    tester.widget<NavigationBar>(find.byType(NavigationBar)).onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText ==
+                'Search notes, tasks, and attachments',
+      ),
+      'пробежка',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2023-04-01'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BackButton), findsOneWidget);
+    expect(tester.getRect(title).left, closeTo(today.left, 1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a past day opened from Search has a readable title on a phone', (
     tester,
   ) async {
