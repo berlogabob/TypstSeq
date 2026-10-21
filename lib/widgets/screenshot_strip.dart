@@ -33,7 +33,7 @@ String? screenshotAssetPath(NoteRef note) {
   return 'assets/screenshots/${date.substring(0, 4)}/${date.substring(5, 7)}/${note.id}.webp';
 }
 
-class ScreenshotThumbnail extends StatelessWidget {
+class ScreenshotThumbnail extends StatefulWidget {
   const ScreenshotThumbnail({
     super.key,
     required this.note,
@@ -45,26 +45,45 @@ class ScreenshotThumbnail extends StatelessWidget {
   final double? height;
   final NoteRef note;
   final Future<Uint8List?> Function(String)? imageResolver;
+
   @override
-  Widget build(BuildContext context) {
-    final path = screenshotAssetPath(note);
-    return SizedBox(
-      width: width,
-      height: height,
-      child: FutureBuilder<Uint8List?>(
-        future: path == null ? null : imageResolver?.call(path),
-        builder: (context, snapshot) => snapshot.data == null
-            ? const Icon(AppIcons.screenshot)
-            : Image.memory(
-                snapshot.data!,
-                fit: BoxFit.cover,
-                cacheWidth: 216,
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.broken_image_outlined),
-              ),
-      ),
-    );
+  State<ScreenshotThumbnail> createState() => _ScreenshotThumbnailState();
+}
+
+class _ScreenshotThumbnailState extends State<ScreenshotThumbnail> {
+  // Read once per asset: every sync/index update rebuilds the page, and a
+  // fresh read each build blanked every thumbnail (the "flicker").
+  String? _path;
+  Future<Uint8List?>? _bytes;
+
+  Future<Uint8List?>? _load() {
+    final path = screenshotAssetPath(widget.note);
+    if (path != _path || _bytes == null) {
+      _path = path;
+      _bytes = path == null ? null : widget.imageResolver?.call(path);
+    }
+    return _bytes;
   }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: widget.width,
+    height: widget.height,
+    child: FutureBuilder<Uint8List?>(
+      future: _load(),
+      builder: (context, snapshot) => snapshot.data == null
+          ? const Icon(AppIcons.screenshot)
+          : Image.memory(
+              snapshot.data!,
+              fit: BoxFit.cover,
+              cacheWidth: 216,
+              // A changed image keeps the old frame until the new decodes.
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.broken_image_outlined),
+            ),
+    ),
+  );
 }
 
 class ScreenshotStrip extends StatelessWidget {
@@ -97,6 +116,8 @@ class ScreenshotStrip extends StatelessWidget {
             children: [
               for (final note in notes)
                 SizedBox(
+                  // Tiles follow their screenshot when the list changes.
+                  key: ValueKey(note.path),
                   width: 112,
                   child: InkWell(
                     onTap: () => onOpenPath(note.path),
