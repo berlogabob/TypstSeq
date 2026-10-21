@@ -120,10 +120,15 @@ class VaultMaintenance {
     _lastSearchWrite =
         (await storage.stat(TylogVaultPaths.searchIndex))?.modified ??
         DateTime.now();
-    return _lastSearch = await PkmsSearchIndex.loadStorage(
-      storage,
-      TylogVaultPaths.searchIndex,
-    );
+    try {
+      return _lastSearch = await PkmsSearchIndex.loadStorage(
+        storage,
+        TylogVaultPaths.searchIndex,
+      );
+    } on FormatException {
+      await storage.delete(TylogVaultPaths.searchIndex);
+      return _lastSearch = PkmsSearchIndex.empty();
+    }
   }
 
   /// Whether the on-disk cache is a search index this build can consume.
@@ -134,6 +139,8 @@ class VaultMaintenance {
         await storage.readBytes(TylogVaultPaths.searchIndex),
       );
       final json = jsonDecode(utf8.decode(bytes)) as Map;
+      // Header only: a full validating load here would double the first
+      // query's load. loadSearch deletes a file whose body is corrupt.
       return json['version'] == 4 && json['indexVersion'] == kVaultIndexVersion;
     } catch (_) {
       return false;

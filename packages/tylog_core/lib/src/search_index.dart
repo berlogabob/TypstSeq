@@ -113,9 +113,15 @@ class _SearchDocument {
     snippet,
   ];
 
-  factory _SearchDocument.fromJson(Object value) {
+  factory _SearchDocument.fromJson(
+    Object value, {
+    required int vocabularyLength,
+  }) {
     final fields = (value as List).cast<Object?>();
-    final packed = _decodeTermPairs(fields[7]);
+    final packed = _decodeTermPairs(
+      fields[7],
+      vocabularyLength: vocabularyLength,
+    );
     return _SearchDocument(
       id: fields[1] as String,
       path: fields[2] as String,
@@ -290,13 +296,18 @@ class PkmsSearchIndex {
       final documents = <String, _SearchDocument>{};
       for (final value in (json['documents'] as List)) {
         final fields = (value as List).cast<Object?>();
-        final document = _SearchDocument.fromJson(fields);
+        final document = _SearchDocument.fromJson(
+          fields,
+          vocabularyLength: vocabulary.length,
+        );
         documents[fields[0] as String] = document;
         fields.fillRange(0, fields.length, null);
       }
       return PkmsSearchIndex._(documents, vocabulary);
+    } on FormatException {
+      rethrow;
     } catch (_) {
-      return empty();
+      throw const FormatException('Invalid packed search index');
     }
   }
 
@@ -629,31 +640,87 @@ _PackedTerms _packTermPairs(Map<int, int> terms) {
   return _PackedTerms(ids, frequencies, overflow);
 }
 
-_PackedTerms _decodeTermPairs(Object? value) {
+_PackedTerms _decodeTermPairs(Object? value, {required int vocabularyLength}) {
   if (value is Map) {
     final encoded = value.cast<String, Object?>();
     final overflowValue = encoded['overflow'];
     Map<int, int>? overflow;
-    if (overflowValue is List) {
+    if (overflowValue != null) {
+      if (overflowValue is! List || overflowValue.length.isOdd) {
+        throw const FormatException('Malformed search index overflow');
+      }
       final values = overflowValue.cast<Object?>();
       final midpoint = values.length ~/ 2;
-      overflow = {
-        for (var i = 0; i < midpoint; i++)
-          (values[i] as num).toInt(): (values[midpoint + i] as num).toInt(),
-      };
+      overflow = <int, int>{};
+      for (var i = 0; i < midpoint; i++) {
+        final key = values[i];
+        final frequency = values[midpoint + i];
+        if (key is! int ||
+            frequency is! int ||
+            key < 0 ||
+            key >= vocabularyLength ||
+            frequency <= 0xffff ||
+            overflow.containsKey(key)) {
+          throw const FormatException('Malformed search index overflow');
+        }
+        overflow[key] = frequency;
+      }
     }
-    return _PackedTerms(
+    final packed = _PackedTerms(
       _decodeUint32(encoded['ids'] as String),
       _decodeUint16(encoded['frequencies'] as String),
       overflow,
     );
+    _validatePackedTerms(packed, vocabularyLength: vocabularyLength);
+    return packed;
   }
   final values = (value as List).cast<Object?>();
+  if (values.length.isOdd) {
+    throw const FormatException('Malformed search index term pairs');
+  }
   final midpoint = values.length ~/ 2;
-  return _packTermPairs({
-    for (var i = 0; i < midpoint; i++)
-      (values[i] as num).toInt(): (values[midpoint + i] as num).toInt(),
-  });
+  final terms = <int, int>{};
+  for (var i = 0; i < midpoint; i++) {
+    final id = values[i];
+    final frequency = values[midpoint + i];
+    if (id is! int || frequency is! int || terms.containsKey(id)) {
+      throw const FormatException('Malformed search index term pairs');
+    }
+    terms[id] = frequency;
+  }
+  final packed = _packTermPairs(terms);
+  _validatePackedTerms(packed, vocabularyLength: vocabularyLength);
+  return packed;
+}
+
+void _validatePackedTerms(
+  _PackedTerms packed, {
+  required int vocabularyLength,
+}) {
+  if (packed.ids.length != packed.frequencies.length) {
+    throw const FormatException('Mismatched search index term pairs');
+  }
+  final idIndexes = <int, int>{};
+  var previous = -1;
+  for (var i = 0; i < packed.ids.length; i++) {
+    final id = packed.ids[i];
+    if (id <= previous ||
+        id >= vocabularyLength ||
+        packed.frequencies[i] == 0) {
+      throw const FormatException('Invalid search index term pair');
+    }
+    idIndexes[id] = i;
+    previous = id;
+  }
+  for (final entry
+      in packed.overflow?.entries ?? const <MapEntry<int, int>>[]) {
+    final index = idIndexes[entry.key];
+    if (index == null ||
+        packed.frequencies[index] != 0xffff ||
+        entry.value <= 0xffff) {
+      throw const FormatException('Malformed search index overflow');
+    }
+  }
 }
 
 Uint32List _decodeUint32(String encoded) {

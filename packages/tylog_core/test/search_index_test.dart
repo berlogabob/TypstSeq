@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
@@ -29,6 +30,22 @@ String _note({
 }) =>
     '#show: tylog.note.with(id: "$id", title: "$title", aliases: (${aliases.map((value) => '"$value"').join(', ')}))\n'
     'Body of $title.';
+
+Future<Map<String, Object?>> _readSearchJson(VaultStorage storage) async =>
+    jsonDecode(
+          utf8.decode(
+            gzip.decode(await storage.readBytes('_index/search-index.json.gz')),
+          ),
+        )
+        as Map<String, Object?>;
+
+Future<void> _writeSearchJson(
+  VaultStorage storage,
+  Map<String, Object?> json,
+) => storage.writeBytes(
+  '_index/search-index.json.gz',
+  gzip.encode(utf8.encode(jsonEncode(json))),
+);
 
 void main() {
   test('a derive-only index bump invalidates the search documents', () async {
@@ -120,6 +137,71 @@ void main() {
         signature(built.search(query, limit: 100)),
         reason: 'packed index changed results for "$query"',
       );
+    }
+  });
+
+  test('rejects corrupt packed v4 postings and maintenance rebuilds', () async {
+    final corruptions = <String, void Function(Map<String, Object?>)>{
+      'truncated frequencies': (json) {
+        final documents = (json['documents'] as List).cast<List<Object?>>();
+        final terms = (documents.first[7] as Map).cast<String, Object?>();
+        final bytes = base64Decode(terms['frequencies'] as String);
+        terms['frequencies'] = base64Encode(bytes.sublist(0, bytes.length - 2));
+      },
+      'unsorted ids': (json) {
+        final documents = (json['documents'] as List).cast<List<Object?>>();
+        final terms = (documents.first[7] as Map).cast<String, Object?>();
+        final bytes = Uint8List.fromList(base64Decode(terms['ids'] as String));
+        final ids = Uint32List.view(bytes.buffer);
+        ids[1] = ids[0];
+        terms['ids'] = base64Encode(bytes);
+      },
+      'id beyond vocabulary': (json) {
+        final documents = (json['documents'] as List).cast<List<Object?>>();
+        final terms = (documents.first[7] as Map).cast<String, Object?>();
+        final bytes = Uint8List.fromList(base64Decode(terms['ids'] as String));
+        final ids = Uint32List.view(bytes.buffer);
+        ids[0] = (json['vocabulary'] as List).length;
+        terms['ids'] = base64Encode(bytes);
+      },
+    };
+
+    for (final entry in corruptions.entries) {
+      final root = await Directory.systemTemp.createTemp('tylog_search_bad_');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      await storage.writeText('notes/a.typ', _note(id: 'a', title: 'Alpha'));
+      await storage.writeText('notes/b.typ', _note(id: 'b', title: 'Beta'));
+      final vault = await scanVaultStorage(storage);
+      final valid = await PkmsSearchIndex.buildStorage(storage, vault);
+      await valid.saveStorage(storage, '_index/search-index.json.gz');
+      final json = await _readSearchJson(storage);
+      entry.value(json);
+      await _writeSearchJson(storage, json);
+
+      expect(
+        () =>
+            PkmsSearchIndex.loadStorage(storage, '_index/search-index.json.gz'),
+        throwsA(isA<FormatException>()),
+        reason: entry.key,
+      );
+
+      final maintenance = VaultMaintenance(storage, publishDonor: false);
+      // Loading a corrupt body answers empty and drops the file, so the
+      // header-only validity check then reports it missing.
+      expect(
+        (await maintenance.loadSearch()).search('Alpha'),
+        isEmpty,
+        reason: entry.key,
+      );
+      expect(
+        await maintenance.hasValidSearchFile(),
+        isFalse,
+        reason: entry.key,
+      );
+      final rebuilt = await maintenance.buildSearch(vault);
+      expect(rebuilt.search('Alpha'), isNotEmpty, reason: entry.key);
+      expect(rebuilt.search('Beta'), isNotEmpty, reason: entry.key);
     }
   });
 
