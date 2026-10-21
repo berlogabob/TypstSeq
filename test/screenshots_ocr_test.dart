@@ -137,4 +137,13 @@ void main() {
     await File('${dir.path}/ollama_ocr.py').create();
     expect(screenshotScriptsHealth(dir.path), isNull);
   });
+
+  test('the Mac applies the wanted screenshot mode only when it differs', () {
+    expect(screenshotsNeedApply('watch', '03:00', 'off', '03:00'), isTrue);
+    expect(screenshotsNeedApply('schedule', '04:00', 'schedule', '03:00'), isTrue);
+    expect(screenshotsNeedApply('watch', '03:00', 'watch', '03:00'), isFalse);
+    // Nothing wanted yet (older vaults): keep what the Mac has.
+    expect(screenshotsNeedApply(null, null, 'both', '03:00'), isFalse);
+    expect(screenshotsNeedApply('bogus', '03:00', 'off', '03:00'), isFalse);
+  });
 }

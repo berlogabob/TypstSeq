@@ -68,7 +68,7 @@ void main() {
     expect(event.path, 'events/2026/10/${event.id}.typ');
   });
   test('ICS unfolding, escapes, TZID and UTC', () {
-    final events = parseLabCalendar(
+    final events = parseIcsCalendar(
       'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:lab/a\r\nDTSTART;TZID=Europe/Lisbon:20261008T190000\r\nDTEND:20261008T200000Z\r\nSUMMARY:Open\r\n lab\r\nLOCATION:Room\\, 2\r\nDESCRIPTION:One\\nTwo\r\nEND:VEVENT\r\nEND:VCALENDAR',
     );
     final event = events.single;

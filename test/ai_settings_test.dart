@@ -181,6 +181,22 @@ void main() {
     },
   );
 
+  test('screenshot OCR mode and time travel in ai.json', () async {
+    const settings = AiSettings(
+      screenshots: AiServerTask(
+        connection: 'studio',
+        mode: 'watch',
+        time: '02:30',
+      ),
+    );
+    await writeAiSettings(storage, settings);
+    final read = (await readAiSettings(storage)).screenshots;
+    expect(read.mode, 'watch');
+    expect(read.time, '02:30');
+    expect(read.connection, 'studio');
+    expect(read.copyWith(mode: 'off').time, '02:30');
+  });
+
   test('AI settings use priority reads and tolerate corrupt data', () async {
     final priority = _PriorityOnlyStorage(dir);
     expect(

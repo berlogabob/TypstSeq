@@ -398,6 +398,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final taskScheduler = TaskScheduler();
   Timer? _previewDebounceTimer;
   Timer? _semanticRefreshTimer;
+  Timer? _screenshotsApplyTimer;
   SemanticSearchController? _semantic;
   String? _debouncedPreviewSource;
   String? _pendingPreviewSource;
@@ -605,6 +606,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? Future.value(null)
         : openDatabase();
     TyLogEditingController.audioBuilder = _audioCard;
+    if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
+      // Another device may change the wanted screenshot mode (ai.json syncs);
+      // this Mac applies it. One small file read a minute.
+      _screenshotsApplyTimer = Timer.periodic(
+        const Duration(seconds: 60),
+        (_) => unawaited(_applyWantedScreenshots()),
+      );
+    }
     richController = TyLogEditingController(
       source: '',
       onSourceChanged: _acceptRichSource,
@@ -681,6 +690,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _screenshotsApplyTimer?.cancel();
     _openGeneration++;
     _captureFocus.dispose();
     _plainHistoryRevision.dispose();
@@ -2732,6 +2742,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _applyWantedScreenshots() async {
+    final opened = vault;
+    final registry = vaultRegistry;
+    final path = _localVaultDirectory?.path;
+    if (opened == null || registry == null || path == null) return;
+    try {
+      final task = (await readAiSettings(opened.storage)).screenshots;
+      if (!screenshotsNeedApply(
+        task.mode,
+        task.time,
+        registry.screenshotsMode,
+        registry.screenshotsTime,
+      )) {
+        return;
+      }
+      final time = task.time ?? registry.screenshotsTime;
+      await configureScreenshotsOcr(
+        path,
+        task.mode!,
+        time,
+        scriptsDir: registry.screenshotsFolder,
+      );
+      await registry.setScreenshotsOcr(task.mode!, time);
+    } catch (_) {
+      // Retried next minute; the Settings status shows agent problems.
+    }
+  }
+
   Future<List<PkmsSearchResult>> _searchNotes(
     VaultIndex fallbackIndex,
     String query, {
@@ -2844,26 +2882,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             readScreenshotsStatus: () async =>
                 vault!.storage.readText('_system/screenshots/status.json'),
             onConfigureScreenshots: (mode, time) async {
-              await configureScreenshotsOcr(
-                vaultPath,
-                mode,
-                time,
-                scriptsDir: registry?.screenshotsFolder,
+              // The wanted mode syncs in ai.json, so any device can set it;
+              // the Mac applies it to its LaunchAgents.
+              final storage = vault!.storage;
+              final ai = await readAiSettings(storage);
+              await writeAiSettings(
+                storage,
+                ai.copyWith(
+                  screenshots: ai.screenshots.copyWith(mode: mode, time: time),
+                ),
               );
-              await registry?.setScreenshotsOcr(mode, time);
+              if (Platform.isMacOS) {
+                await configureScreenshotsOcr(
+                  vaultPath,
+                  mode,
+                  time,
+                  scriptsDir: registry?.screenshotsFolder,
+                );
+                await registry?.setScreenshotsOcr(mode, time);
+              } else {
+                unawaited(_syncNow());
+              }
             },
-            screenshotsFolder: registry?.screenshotsFolder,
-            onScreenshotsFolderChanged: (folder) async {
-              await registry?.setScreenshotsFolder(folder);
-              // Reinstall the agents so they run from the new folder.
-              await configureScreenshotsOcr(
-                vaultPath,
-                registry?.screenshotsMode ?? 'off',
-                registry?.screenshotsTime ?? '03:00',
-                scriptsDir: folder,
-              );
-              if (mounted) setState(() {});
+            readScreenshotsWanted: () async {
+              final task = (await readAiSettings(vault!.storage)).screenshots;
+              final mode = task.mode;
+              return mode == null ? null : (mode, task.time ?? '03:00');
             },
+            screenshotsFolder: Platform.isMacOS
+                ? registry?.screenshotsFolder
+                : null,
+            onScreenshotsFolderChanged: !Platform.isMacOS
+                ? null
+                : (folder) async {
+                    await registry?.setScreenshotsFolder(folder);
+                    // Reinstall the agents so they run from the new folder.
+                    await configureScreenshotsOcr(
+                      vaultPath,
+                      registry?.screenshotsMode ?? 'off',
+                      registry?.screenshotsTime ?? '03:00',
+                      scriptsDir: folder,
+                    );
+                    if (mounted) setState(() {});
+                  },
             onProcessScreenshots: () async {
               if (Platform.isMacOS) {
                 await runScreenshotsBackfill(

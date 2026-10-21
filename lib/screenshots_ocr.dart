@@ -50,6 +50,22 @@ ${mode == 'watch' ? '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>' : '
 </dict></plist>''';
 }
 
+/// Whether the Mac must reinstall its agents: a valid wanted mode/time
+/// (from the synced ai.json) that differs from what it applied last.
+bool screenshotsNeedApply(
+  String? wantedMode,
+  String? wantedTime,
+  String appliedMode,
+  String appliedTime,
+) {
+  if (wantedMode == null ||
+      !const {'off', 'watch', 'schedule', 'both'}.contains(wantedMode)) {
+    return false;
+  }
+  final time = wantedTime ?? appliedTime;
+  return wantedMode != appliedMode || time != appliedTime;
+}
+
 /// Where the screenshot scripts live when the user has not picked a folder.
 String defaultScreenshotsFolder(String home) =>
     '$home/Nextcloud/InstantUpload/Screenshots';

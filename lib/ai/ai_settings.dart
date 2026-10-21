@@ -115,33 +115,47 @@ class AiTask {
 }
 
 class AiServerTask {
-  const AiServerTask({this.connection, this.model});
+  const AiServerTask({this.connection, this.model, this.mode, this.time});
 
   final String? connection;
   final String? model;
 
+  /// Wanted run mode ('off' | 'watch' | 'schedule' | 'both') and daily time
+  /// ('HH:MM'). Any device may set them; the Mac running the worker applies
+  /// them. Null: never set (older vaults), the Mac keeps what it has.
+  final String? mode;
+  final String? time;
+
   AiServerTask copyWith({
     Object? connection = _unset,
     Object? model = _unset,
+    Object? mode = _unset,
+    Object? time = _unset,
   }) => AiServerTask(
     connection: identical(connection, _unset)
         ? this.connection
         : connection as String?,
     model: identical(model, _unset) ? this.model : model as String?,
+    mode: identical(mode, _unset) ? this.mode : mode as String?,
+    time: identical(time, _unset) ? this.time : time as String?,
   );
 
   Map<String, Object?> toJson() => {
     if (connection != null) 'connection': connection,
     if (model != null) 'model': model,
+    if (mode != null) 'mode': mode,
+    if (time != null) 'time': time,
   };
 
   factory AiServerTask.fromJson(Object? json) {
     if (json is! Map) return const AiServerTask();
+    String? text(String key) =>
+        json[key] is String ? json[key] as String : null;
     return AiServerTask(
-      connection: json['connection'] is String
-          ? json['connection'] as String
-          : null,
-      model: json['model'] is String ? json['model'] as String : null,
+      connection: text('connection'),
+      model: text('model'),
+      mode: text('mode'),
+      time: text('time'),
     );
   }
 }
@@ -297,8 +311,12 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
       if (existing is Map) ...existing.cast<String, Object?>(),
       'connection': task.connection,
       'model': task.model,
+      'mode': task.mode,
+      'time': task.time,
     }..removeWhere(
-      (key, value) => (key == 'connection' || key == 'model') && value == null,
+      (key, value) =>
+          const {'connection', 'model', 'mode', 'time'}.contains(key) &&
+          value == null,
     );
   }
 

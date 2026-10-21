@@ -303,6 +303,183 @@ void main() {
     },
   );
 
+  test('migrates legacy calendar keys without changing event ids', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      fetchFeed: (url) async => url == _labUrl
+          ? 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:lab-1\nDTSTART:20261008T190000\nSUMMARY:Lab\nEND:VEVENT\nEND:VCALENDAR'
+          : jsonEncode([
+              {
+                'date': '2026-10-08',
+                'start': '19:00',
+                'end': '21:00',
+                'course': 'Class',
+                'groups': ['G1'],
+              },
+            ]),
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'migration', name: 'Migration', path: '/migration'),
+      storage: storage,
+    );
+    await storage.writeText(
+      Vault.settingsPath,
+      jsonEncode({
+        'calendars': {
+          'classesUrl': _classesUrl,
+          'group': 'G1',
+          'labUrl': _labUrl,
+        },
+      }),
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    final ids = {for (final event in controller.feedEvents) event.id};
+    expect(controller.calendarSettings['feeds'], hasLength(2));
+    expect(controller.calendarSettings['feeds'][0]['id'], 'classes');
+    expect(controller.calendarSettings['feeds'][1]['id'], 'lab');
+    expect(
+      ids,
+      contains(
+        sha1
+            .convert(utf8.encode('2026-10-08|19:00|Class|G1'))
+            .toString()
+            .substring(0, 16),
+      ),
+    );
+    expect(ids, contains('lab-1'));
+  });
+
+  test('two ICS feeds and one IADE feed are fetched and merged', () async {
+    final storage = _MemoryStorage();
+    final urls = <String>[];
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      fetchFeed: (url) async {
+        urls.add(url);
+        if (url.endsWith('one.ics')) {
+          return 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:one\nDTSTART:20261008T190000\nSUMMARY:One\nEND:VEVENT\nEND:VCALENDAR';
+        }
+        if (url.endsWith('two.ics')) {
+          return 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:two\nDTSTART:20261009T190000\nSUMMARY:Two\nEND:VEVENT\nEND:VCALENDAR';
+        }
+        return jsonEncode([
+          {
+            'date': '2026-10-10',
+            'start': '19:00',
+            'end': '20:00',
+            'course': 'Class',
+            'groups': ['G1'],
+          },
+        ]);
+      },
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'three', name: 'Three', path: '/three'),
+      storage: storage,
+    );
+    await storage.writeText(
+      Vault.settingsPath,
+      jsonEncode({
+        'calendars': {
+          'feeds': [
+            {
+              'id': 'one',
+              'kind': 'ics',
+              'name': 'One',
+              'url': 'https://example.org/one.ics',
+              'hours': 6,
+            },
+            {
+              'id': 'two',
+              'kind': 'ics',
+              'name': 'Two',
+              'url': 'https://example.org/two.ics',
+              'hours': 6,
+            },
+            {
+              'id': 'classes',
+              'kind': 'iade-timetable',
+              'name': 'Classes',
+              'url': _classesUrl,
+              'hours': 6,
+              'group': 'G1',
+            },
+          ],
+        },
+      }),
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(urls, [
+      'https://example.org/one.ics',
+      'https://example.org/two.ics',
+      _classesUrl,
+    ]);
+    expect(
+      controller.feedEvents.map((event) => event.title),
+      containsAll(['One', 'Two', 'Class']),
+    );
+  });
+
+  test('deleting a feed drops its cached events', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      fetchFeed: (url) async =>
+          'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:${url.endsWith('one.ics') ? 'one' : 'two'}\nDTSTART:20261008T190000\nSUMMARY:${url.endsWith('one.ics') ? 'One' : 'Two'}\nEND:VEVENT\nEND:VCALENDAR',
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'delete', name: 'Delete', path: '/delete'),
+      storage: storage,
+    );
+    await storage.writeText(
+      Vault.settingsPath,
+      jsonEncode({
+        'calendars': {
+          'feeds': [
+            {
+              'id': 'one',
+              'kind': 'ics',
+              'name': 'One',
+              'url': 'https://example.org/one.ics',
+              'hours': 6,
+            },
+            {
+              'id': 'two',
+              'kind': 'ics',
+              'name': 'Two',
+              'url': 'https://example.org/two.ics',
+              'hours': 6,
+            },
+          ],
+        },
+      }),
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(controller.feedEvents, hasLength(2));
+    await controller.configureCalendars({
+      'feeds': [
+        {
+          'id': 'one',
+          'kind': 'ics',
+          'name': 'One',
+          'url': 'https://example.org/one.ics',
+          'hours': 6,
+        },
+      ],
+    });
+    expect(controller.feedEvents.map((event) => event.id), ['one:one']);
+  });
+
   for (final legacy in [false, true]) {
     test(
       legacy
@@ -345,7 +522,7 @@ void main() {
     );
   }
 
-  test('a feed whose URL was cleared is off, cached events included', () async {
+  test('a legacy feed whose URL was cleared stays off', () async {
     final storage = _MemoryStorage();
     final urls = <String>[];
     final controller = WorkspaceController(
@@ -4156,31 +4333,35 @@ void main() {
       ]);
 
       // An imported file keeps its mapped node id, as in persistNoteSource.
-      await database.into(database.importJobs).insert(
-        const ImportJobData(
-          id: 'job',
-          sourceKind: 'logseq',
-          sourceFingerprint: 'sha',
-          status: 'completed',
-          totalCount: 1,
-          completedCount: 1,
-          createdAtMs: 1,
-          updatedAtMs: 1,
-          errorJson: '{}',
-        ),
-      );
-      await database.into(database.importItems).insert(
-        const ImportItemData(
-          jobId: 'job',
-          sourcePath: 'pages/n1.md',
-          sourceSha256: 'x',
-          state: 'written',
-          targetNodeId: 'imported-1',
-          targetPath: 'notes/note-1.typ',
-          errorJson: '{}',
-          updatedAtMs: 2,
-        ),
-      );
+      await database
+          .into(database.importJobs)
+          .insert(
+            const ImportJobData(
+              id: 'job',
+              sourceKind: 'logseq',
+              sourceFingerprint: 'sha',
+              status: 'completed',
+              totalCount: 1,
+              completedCount: 1,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+              errorJson: '{}',
+            ),
+          );
+      await database
+          .into(database.importItems)
+          .insert(
+            const ImportItemData(
+              jobId: 'job',
+              sourcePath: 'pages/n1.md',
+              sourceSha256: 'x',
+              state: 'written',
+              targetNodeId: 'imported-1',
+              targetPath: 'notes/note-1.typ',
+              errorJson: '{}',
+              updatedAtMs: 2,
+            ),
+          );
 
       await controller.refreshIndex(always: true);
 

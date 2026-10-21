@@ -740,26 +740,42 @@ class WorkspaceController extends ChangeNotifier {
       final settings =
           jsonDecode(await opened.storage.readText(Vault.settingsPath))
               as Map<String, dynamic>;
-      final config = Map<String, dynamic>.from(
+      var config = Map<String, dynamic>.from(
         settings['calendars'] as Map? ?? {},
       );
+      final feeds = _calendarFeeds(config);
+      if (config['feeds'] is! List && feeds.isNotEmpty) {
+        config = {...config, 'feeds': feeds};
+      }
       if (!_owns(opened, generation)) return;
       calendarSettings = config;
-      final previous = Map<String, dynamic>.from(config['cache'] as Map? ?? {});
-      List<FeedEvent> parse(String key, String body) => key == 'classes'
+      final previous = <String, dynamic>{
+        for (final feed in feeds)
+          if ((config['cache'] as Map?)?[feed['id']] != null)
+            feed['id'] as String: (config['cache'] as Map)[feed['id']],
+      };
+      // Event ids stay stable: the migrated IADE feeds ('classes', 'lab')
+      // keep their original ids; every other ICS feed prefixes its own id,
+      // so two calendars can never collide (event notes are keyed by id).
+      List<FeedEvent> parse(Map<String, dynamic> feed, String body) =>
+          feed['kind'] == 'iade-timetable'
           ? parseTimetable(
               body,
-              group: config['group'] as String? ?? '',
-              programme: config['programme'] as String? ?? '',
-              degree: config['degree'] as String? ?? '',
+              group: feed['group'] as String? ?? '',
+              programme: feed['programme'] as String? ?? '',
+              degree: feed['degree'] as String? ?? '',
             )
-          : parseLabCalendar(body);
+          : parseIcsCalendar(
+              body,
+              idPrefix: feed['id'] == 'lab' ? '' : '${feed['id']}:',
+            );
+
       final cached = <FeedEvent>[];
-      for (final key in ['classes', 'lab']) {
-        final entry = previous[key] as Map?;
-        if (entry != null) {
+      for (final feed in feeds) {
+        final entry = previous[feed['id']] as Map?;
+        if (entry?['body'] is String) {
           try {
-            cached.addAll(parse(key, entry['body'] as String));
+            cached.addAll(parse(feed, entry!['body'] as String));
           } catch (_) {}
         }
       }
@@ -767,23 +783,20 @@ class WorkspaceController extends ChangeNotifier {
       _publishCalendar(index);
       notifyListeners();
       final events = <FeedEvent>[];
-      for (final key in ['classes', 'lab']) {
+      for (final feed in feeds) {
+        final key = feed['id'] as String;
         final old = previous[key] as Map?;
-        // No built-in feeds: an empty URL means the feed is off. Vaults that
-        // ran on the old built-in URLs keep them through the feed cache.
-        final url =
-            (config['${key}Url'] as String? ?? old?['url'] as String? ?? '')
-                .trim();
-        if (url.isEmpty) continue;
+        final url = (feed['url'] as String? ?? '').trim();
+        if (!isValidFeedUrl(url) || url.isEmpty) continue;
         final fetched = DateTime.tryParse(old?['fetched'] as String? ?? '');
-        final hours = (config['${key}Hours'] as num?)?.toInt() ?? 6;
+        final hours = (feed['hours'] as num?)?.toInt() ?? 6;
         if (force ||
             old?['url'] != url ||
             fetched == null ||
             _now().difference(fetched) >= Duration(hours: hours)) {
           try {
             final body = await fetchFeed(url);
-            final next = parse(key, body);
+            final next = parse(feed, body);
             if (!_owns(opened, generation)) return;
             previous[key] = {
               'url': url,
@@ -792,7 +805,7 @@ class WorkspaceController extends ChangeNotifier {
             };
             final byId = {for (final e in next) e.id: e};
             if (old != null && old['url'] == url) {
-              for (final before in parse(key, old['body'] as String)) {
+              for (final before in parse(feed, old['body'] as String)) {
                 final after = byId[before.id];
                 final status = after == null
                     ? 'cancelled'
@@ -812,12 +825,20 @@ class WorkspaceController extends ChangeNotifier {
                 }
               }
             }
-          } catch (_) {
-            /* Keep the last successful feed offline. */
+          } catch (error) {
+            previous[key] = {
+              ...?previous[key] as Map?,
+              'url': url,
+              'error': error.toString(),
+            };
           }
         }
         final entry = previous[key] as Map?;
-        if (entry != null) events.addAll(parse(key, entry['body'] as String));
+        if (entry?['body'] is String) {
+          try {
+            events.addAll(parse(feed, entry!['body'] as String));
+          } catch (_) {}
+        }
       }
       if (!_owns(opened, generation)) return;
       config['cache'] = previous;
@@ -835,6 +856,45 @@ class WorkspaceController extends ChangeNotifier {
     } catch (_) {
       /* A broken cache must not prevent opening the vault. */
     }
+  }
+
+  List<Map<String, dynamic>> _calendarFeeds(Map<String, dynamic> config) {
+    final raw = config['feeds'];
+    if (raw is List) {
+      return [
+        for (final value in raw)
+          if (value is Map) Map<String, dynamic>.from(value),
+      ];
+    }
+    final cache = config['cache'] is Map
+        ? Map<String, dynamic>.from(config['cache'] as Map)
+        : <String, dynamic>{};
+    Map<String, dynamic>? legacy(String id, String kind, String name) {
+      // A saved URL wins even when blank (the feed was turned off); only a
+      // vault that never saved one falls back to the URL in the feed cache.
+      final url = config.containsKey('${id}Url')
+          ? config['${id}Url']?.toString().trim() ?? ''
+          : (cache[id] as Map?)?['url']?.toString().trim() ?? '';
+      if (url.isEmpty) return null;
+      return {
+        'id': id,
+        'kind': kind,
+        'name': name,
+        'url': url,
+        'hours': (config['${id}Hours'] as num?)?.toInt() ?? 6,
+        if (id == 'classes') ...{
+          'group': config['group']?.toString() ?? '',
+          'programme': config['programme']?.toString() ?? '',
+          'degree': config['degree']?.toString() ?? '',
+        },
+      };
+    }
+
+    final migrated = [
+      legacy('classes', 'iade-timetable', 'IADE classes'),
+      legacy('lab', 'ics', 'IADE lab schedule'),
+    ].whereType<Map<String, dynamic>>().toList();
+    return migrated;
   }
 
   /// Creates a page and records its initial source in the durable database.

@@ -19,6 +19,7 @@ class ScreenshotsSettings extends StatefulWidget {
     this.editable,
     this.folder,
     this.onFolderChanged,
+    this.readWanted,
   });
   final String mode;
   final String time;
@@ -28,6 +29,10 @@ class ScreenshotsSettings extends StatefulWidget {
   final Future<void> Function(String, String) onConfigure;
   final Future<void> Function() onProcessNow;
   final Future<String> Function() readStatus;
+
+  /// The mode/time wanted in the synced settings, so a phone shows (and
+  /// changes) what the Mac runs.
+  final Future<(String, String)?> Function()? readWanted;
   @override
   State<ScreenshotsSettings> createState() => _ScreenshotsSettingsState();
 }
@@ -56,6 +61,17 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
   }
 
   Future<void> refresh() async {
+    if (widget.readWanted case final read?) {
+      try {
+        final wanted = await read();
+        if (wanted != null && mounted && !busy) {
+          setState(() {
+            mode = wanted.$1;
+            time = wanted.$2;
+          });
+        }
+      } catch (_) {}
+    }
     // Real Mac state (installed agents, health file); skipped in tests, which
     // run on a Mac host and must not read this machine's home folder.
     if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -83,6 +99,11 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
           if (installed != null) mode = installed;
         });
       }
+    }
+    if (!Platform.isMacOS && mounted) {
+      setState(
+        () => health = 'Runs on your Mac; changes apply there after sync.',
+      );
     }
     String next;
     try {

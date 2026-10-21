@@ -52,6 +52,7 @@ class SettingsSheet extends StatefulWidget {
     this.onConfigureScreenshots,
     this.screenshotsFolder,
     this.onScreenshotsFolderChanged,
+    this.readScreenshotsWanted,
     this.onProcessScreenshots,
     this.readScreenshotsStatus,
     this.pdfPaper = 'a4',
@@ -71,6 +72,7 @@ class SettingsSheet extends StatefulWidget {
   final Future<void> Function(String, String)? onConfigureScreenshots;
   final String? screenshotsFolder;
   final Future<void> Function(String)? onScreenshotsFolderChanged;
+  final Future<(String, String)?> Function()? readScreenshotsWanted;
   final Future<void> Function()? onProcessScreenshots;
   final Future<String> Function()? readScreenshotsStatus;
   final String pdfPaper;
@@ -115,85 +117,23 @@ class _SettingsSheetState extends State<SettingsSheet> {
       widget.onProcessScreenshots != null;
 
   Future<void> _calendars() async {
-    final config = widget.calendarSettings;
-    final defaults = <String, String>{
-      'classesUrl': '',
-      'group': '',
-      'programme': '',
-      'degree': '',
-      'classesHours': '6',
-      'labUrl': '',
-      'labHours': '6',
-    };
-    final labels = [
-      'My classes URL',
-      'Group',
-      'Programme (optional)',
-      'Degree (optional)',
-      'Classes refresh hours',
-      'Lab schedule URL',
-      'Lab refresh hours',
-    ];
-    final controllers = {
-      for (final entry in defaults.entries)
-        entry.key: TextEditingController(
-          text: config[entry.key]?.toString() ?? entry.value,
-        ),
-    };
-    final saved = await showDialog<bool>(
+    final feeds = await showModalBottomSheet<List<Map<String, dynamic>>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Calendars'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (i, key) in defaults.keys.indexed)
-                TextField(
-                  controller: controllers[key],
-                  decoration: InputDecoration(labelText: labels[i]),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final next = <String, dynamic>{
-                for (final key in defaults.keys)
-                  key: controllers[key]!.text.trim(),
-              };
-              for (final key in ['classesHours', 'labHours']) {
-                final hours = int.tryParse(next[key]);
-                if (hours == null || hours < 1) return;
-                next[key] = hours;
-              }
-              for (final key in ['classesUrl', 'labUrl']) {
-                if (!isValidFeedUrl(next[key])) return;
-              }
-              Navigator.pop(context, true);
-            },
-            child: const Text('Save & refresh'),
-          ),
+      isScrollControlled: true,
+      builder: (_) => _CalendarsPage(
+        feeds: [
+          for (final feed
+              in (widget.calendarSettings['feeds'] as List? ?? const []))
+            if (feed is Map) Map<String, dynamic>.from(feed),
         ],
+        cache:
+            (widget.calendarSettings['cache'] as Map?)
+                ?.cast<String, dynamic>() ??
+            const {},
       ),
     );
-    if (saved == true) {
-      final next = <String, dynamic>{
-        ...config,
-        for (final key in defaults.keys)
-          key: key.endsWith('Hours')
-              ? int.parse(controllers[key]!.text.trim())
-              : controllers[key]!.text.trim(),
-      };
-      await widget.onConfigureCalendars!(next);
-    }
-    for (final controller in controllers.values) {
-      controller.dispose();
+    if (feeds != null) {
+      await widget.onConfigureCalendars!({'feeds': feeds});
     }
   }
 
@@ -234,7 +174,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
               AppTile(
                 icon: AppIcons.calendars,
                 title: 'Calendars',
-                subtitle: 'My classes · Lab schedule',
+                subtitle:
+                    ((widget.calendarSettings['feeds'] as List?) ?? const [])
+                        .isEmpty
+                    ? 'None'
+                    : '${((widget.calendarSettings['feeds'] as List?) ?? const []).length} calendars',
                 onTap: _calendars,
               ),
             AppTile(
@@ -266,6 +210,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 readStatus: widget.readScreenshotsStatus!,
                 folder: widget.screenshotsFolder,
                 onFolderChanged: widget.onScreenshotsFolderChanged,
+                readWanted: widget.readScreenshotsWanted,
+                // Any device can change it: the Mac applies it after sync.
+                editable: true,
               ),
           ],
         ),
@@ -499,4 +446,317 @@ class _ThemeModeSelectorState extends State<_ThemeModeSelector> {
       ),
     );
   }
+}
+
+class _CalendarsPage extends StatefulWidget {
+  const _CalendarsPage({required this.feeds, required this.cache});
+  final List<Map<String, dynamic>> feeds;
+  final Map<String, dynamic> cache;
+  @override
+  State<_CalendarsPage> createState() => _CalendarsPageState();
+}
+
+class _CalendarsPageState extends State<_CalendarsPage> {
+  late final _feeds = [...widget.feeds];
+
+  Future<void> _add(String kind) async {
+    if (kind == 'iade') {
+      final choices = await showDialog<List<Map<String, dynamic>>>(
+        context: context,
+        builder: (_) => const _IadeCalendarDialog(),
+      );
+      if (choices != null) setState(() => _feeds.addAll(choices));
+      return;
+    }
+    final feed = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _CalendarEditor(kind: 'ics', preset: kind),
+    );
+    if (feed != null) setState(() => _feeds.add(feed));
+  }
+
+  Future<void> _edit(int index) async {
+    final feed = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _CalendarEditor(feed: _feeds[index]),
+    );
+    if (feed != null) setState(() => _feeds[index] = feed);
+  }
+
+  Future<void> _delete(int index) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete calendar?'),
+        content: Text('Remove ${_feeds[index]['name']} from TyLog?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) setState(() => _feeds.removeAt(index));
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.all(kSpace16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Calendars',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, _feeds),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+          if (_feeds.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(kSpace24),
+              child: Text('No calendars configured'),
+            ),
+          for (final (index, feed) in _feeds.indexed)
+            ListTile(
+              leading: const Icon(AppIcons.calendars),
+              title: Text(feed['name']?.toString() ?? ''),
+              subtitle: Text(_status(feed)),
+              trailing: IconButton(
+                icon: const Icon(AppIcons.delete),
+                onPressed: () => _delete(index),
+              ),
+              onTap: () => _edit(index),
+            ),
+          PopupMenuButton<String>(
+            onSelected: _add,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'google', child: Text('Google Calendar')),
+              PopupMenuItem(value: 'outlook', child: Text('Microsoft Outlook')),
+              PopupMenuItem(value: 'iade', child: Text('IADE')),
+              PopupMenuItem(value: 'other', child: Text('Other (ICS link)')),
+            ],
+            child: const Chip(
+              avatar: Icon(Icons.add),
+              label: Text('Add calendar'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  String _status(Map<String, dynamic> feed) {
+    final cache = widget.cache[feed['id']];
+    if (cache is Map && cache['error'] != null) {
+      return 'Error: ${cache['error']}';
+    }
+    final fetched = cache is Map ? cache['fetched'] : null;
+    return '${feed['kind'] == 'iade-timetable' ? 'IADE timetable' : 'ICS'} · ${fetched == null ? 'Not refreshed' : 'Last refreshed $fetched'}';
+  }
+}
+
+class _CalendarEditor extends StatefulWidget {
+  const _CalendarEditor({this.feed, this.kind = 'ics', this.preset = 'other'});
+  final Map<String, dynamic>? feed;
+  final String kind;
+  final String preset;
+  @override
+  State<_CalendarEditor> createState() => _CalendarEditorState();
+}
+
+class _CalendarEditorState extends State<_CalendarEditor> {
+  late final _name = TextEditingController(
+    text: widget.feed?['name']?.toString() ?? '',
+  );
+  late final _url = TextEditingController(
+    text: widget.feed?['url']?.toString() ?? '',
+  );
+  late final _hours = TextEditingController(
+    text: '${widget.feed?['hours'] ?? 6}',
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.preset == 'google') _name.text = 'Google Calendar';
+    if (widget.preset == 'outlook') _name.text = 'Microsoft Outlook';
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _url.dispose();
+    _hours.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.feed == null ? 'Add calendar' : 'Edit calendar'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+          TextField(
+            controller: _url,
+            decoration: InputDecoration(
+              labelText: 'ICS URL',
+              helperText: widget.preset == 'google'
+                  ? 'Google Calendar > Settings > your calendar > Integrate calendar > Secret address in iCal format'
+                  : widget.preset == 'outlook'
+                  ? 'Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar > ICS link'
+                  : null,
+            ),
+          ),
+          TextField(
+            controller: _hours,
+            decoration: const InputDecoration(labelText: 'Refresh hours'),
+            keyboardType: TextInputType.number,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          final url = _url.text.trim();
+          final hours = int.tryParse(_hours.text.trim());
+          if (_name.text.trim().isEmpty ||
+              url.isEmpty ||
+              !isValidFeedUrl(url) ||
+              hours == null ||
+              hours < 1) {
+            return;
+          }
+          Navigator.pop(context, {
+            ...?widget.feed,
+            'id':
+                widget.feed?['id'] ??
+                'calendar-${DateTime.now().microsecondsSinceEpoch}',
+            'kind': widget.kind,
+            'name': _name.text.trim(),
+            'url': url,
+            'hours': hours,
+          });
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
+}
+
+class _IadeCalendarDialog extends StatefulWidget {
+  const _IadeCalendarDialog();
+  @override
+  State<_IadeCalendarDialog> createState() => _IadeCalendarDialogState();
+}
+
+class _IadeCalendarDialogState extends State<_IadeCalendarDialog> {
+  bool classes = true, lab = true;
+  final group = TextEditingController();
+  final programme = TextEditingController();
+  final degree = TextEditingController();
+  @override
+  void dispose() {
+    group.dispose();
+    programme.dispose();
+    degree.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('IADE calendars'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CheckboxListTile(
+            value: classes,
+            onChanged: (v) => setState(() => classes = v ?? false),
+            title: const Text('My classes'),
+            contentPadding: EdgeInsets.zero,
+          ),
+          if (classes) ...[
+            TextField(
+              controller: group,
+              decoration: const InputDecoration(labelText: 'Group'),
+            ),
+            TextField(
+              controller: programme,
+              decoration: const InputDecoration(
+                labelText: 'Programme (optional)',
+              ),
+            ),
+            TextField(
+              controller: degree,
+              decoration: const InputDecoration(labelText: 'Degree (optional)'),
+            ),
+          ],
+          CheckboxListTile(
+            value: lab,
+            onChanged: (v) => setState(() => lab = v ?? false),
+            title: const Text('Lab schedule'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          Navigator.pop(context, [
+            if (classes)
+              {
+                'id': 'classes-${DateTime.now().microsecondsSinceEpoch}',
+                'kind': 'iade-timetable',
+                'name': 'IADE classes',
+                'url':
+                    'https://berlogabob.github.io/iade-lab-schedule/all.json',
+                'hours': 6,
+                'group': group.text.trim(),
+                'programme': programme.text.trim(),
+                'degree': degree.text.trim(),
+              },
+            if (lab)
+              {
+                'id': 'lab-${DateTime.now().microsecondsSinceEpoch}',
+                'kind': 'ics',
+                'name': 'IADE lab schedule',
+                'url':
+                    'https://berlogabob.github.io/openlabtwin/calendar/lab.ics',
+                'hours': 6,
+              },
+          ]);
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }

@@ -100,7 +100,7 @@ List<FeedEvent> parseTimetable(
   ];
 }
 
-List<FeedEvent> parseLabCalendar(String body) {
+List<FeedEvent> parseIcsCalendar(String body, {String idPrefix = ''}) {
   if (!body.contains('BEGIN:VCALENDAR') && !body.contains('BEGIN:VEVENT')) {
     throw const FormatException('Invalid ICS calendar');
   }
@@ -160,7 +160,7 @@ List<FeedEvent> parseLabCalendar(String body) {
       final end = fields.containsKey('DTEND') ? instant('DTEND') : start;
       result.add(
         FeedEvent(
-          fields['UID']!,
+          '$idPrefix${fields['UID']!}',
           fields['SUMMARY']!,
           start.toIso8601String().substring(0, 10),
           {
@@ -194,6 +194,9 @@ List<FeedEvent> parseLabCalendar(String body) {
   }
   return result;
 }
+
+@Deprecated('Use parseIcsCalendar')
+List<FeedEvent> parseLabCalendar(String body) => parseIcsCalendar(body);
 
 Future<String> fetchCalendarBody(String url) async {
   final uri = Uri.parse(url);

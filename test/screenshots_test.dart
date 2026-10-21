@@ -839,4 +839,31 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('a phone shows and changes the mode the Mac runs', (
+    tester,
+  ) async {
+    final configured = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotsSettings(
+            mode: 'off',
+            time: '03:00',
+            editable: true,
+            readWanted: () async => ('schedule', '04:15'),
+            onConfigure: (m, t) async => configured.add('$m:$t'),
+            onProcessNow: () async {},
+            readStatus: () async => throw const FormatException('missing'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Every day at 04:15'), findsOneWidget);
+    await tester.tap(find.text('Right after it is added'));
+    await tester.pumpAndSettle();
+    expect(configured, ['watch:04:15']);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
