@@ -763,13 +763,12 @@ class WorkspaceController extends ChangeNotifier {
       var config = Map<String, dynamic>.from(
         settings['calendars'] as Map? ?? {},
       );
-      // The synced list wins; a vault without one publishes what this
-      // device had (its local list or the old two-feed settings).
-      final shared = await _readSharedCalendars(opened);
-      final feeds = shared ?? _calendarFeeds(config);
-      if (shared == null && feeds.isNotEmpty) {
-        await _writeSharedCalendars(opened, feeds);
-      }
+      // The synced list wins. Without one this device uses its own (or the
+      // old two-feed settings) and publishes only when the user saves: an
+      // automatic publish could race the first sync and overwrite another
+      // device's list.
+      final feeds =
+          await _readSharedCalendars(opened) ?? _calendarFeeds(config);
       config = {...config, 'feeds': feeds};
       if (!_owns(opened, generation)) return;
       calendarSettings = config;
