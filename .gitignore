@@ -102,3 +102,4 @@ android/app/*.jks
 .codex/
 /2026-*.txt
 .pi-runs/
+/tool/windows_launcher/target/

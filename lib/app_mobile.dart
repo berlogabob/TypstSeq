@@ -683,11 +683,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (Platform.isAndroid) await _handlePendingShares();
       }),
     );
-    // One silent update check per launch on macOS (only prompts if newer).
+    // One silent update check per launch on supported self-updating desktops.
     // Skipped under `flutter test`: it would hit GitHub and leave an unawaited
     // rootBundle/HTTP load pending past teardown, wedging the asset channel for
     // the next test (appVersion hangs).
-    if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
+    if ((Platform.isMacOS || updater.windowsSelfUpdatable()) &&
+        !Platform.environment.containsKey('FLUTTER_TEST')) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => unawaited(_checkForUpdates(silent: true)),
       );
@@ -3036,7 +3037,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _closeSettings(context);
                     unawaited(_showTypstHelp());
                   },
-                  onCheckForUpdates: Platform.isMacOS
+                  onCheckForUpdates:
+                      Platform.isMacOS || updater.windowsSelfUpdatable()
                       ? () {
                           _closeSettings(context);
                           unawaited(_checkForUpdates(silent: false));

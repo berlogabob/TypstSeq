@@ -158,15 +158,24 @@ jobs:
         shell: bash
         run: ./tool/assert_source_built.sh windows
       - run: flutter build windows --release
-      - name: Package Windows bundle
+      # One file: the Rust launcher (tool/windows_launcher) with the app
+      # bundle appended; it unpacks once per version and self-updates.
+      - name: Build Windows launcher
+        shell: bash
+        run: cargo build --release --manifest-path tool/windows_launcher/Cargo.toml
+      - name: Package single-file TyLog-windows.exe
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/TyLog-windows.zip
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/payload.zip
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value
+          python tool/windows_launcher/pack.py tool/windows_launcher/target/release/tylog-windows-launcher.exe dist/payload.zip $version dist/TyLog-windows.exe
       - uses: actions/upload-artifact@v4
         with:
           name: tylog-windows
-          path: dist/TyLog-windows.zip
+          path: |
+            dist/TyLog-windows.exe
+            dist/TyLog-windows.exe.sha256
 
   apple:
     runs-on: macos-14
@@ -257,4 +266,5 @@ jobs:
             dist/TyLog-macos.zip
             dist/TyLog-macos.zip.sha256
             dist/TyLog-ios-unsigned.zip
-            dist/TyLog-windows.zip
+            dist/TyLog-windows.exe
+            dist/TyLog-windows.exe.sha256

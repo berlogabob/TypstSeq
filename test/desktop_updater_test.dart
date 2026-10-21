@@ -7,6 +7,8 @@ String _release({
   required String tag,
   bool withMacAsset = true,
   bool withDigestAsset = true,
+  bool withWindowsAsset = false,
+  bool withWindowsDigestAsset = false,
   String body = 'Notes here',
 }) => jsonEncode({
   'tag_name': tag,
@@ -23,6 +25,16 @@ String _release({
       {
         'name': 'TyLog-macos.zip.sha256',
         'browser_download_url': 'https://x/TyLog-macos.zip.sha256',
+      },
+    if (withWindowsAsset)
+      {
+        'name': 'TyLog-windows.exe',
+        'browser_download_url': 'https://x/TyLog-windows.exe',
+      },
+    if (withWindowsDigestAsset)
+      {
+        'name': 'TyLog-windows.exe.sha256',
+        'browser_download_url': 'https://x/TyLog-windows.exe.sha256',
       },
   ],
 });
@@ -82,7 +94,6 @@ void main() {
     });
   });
 
-
   group('update verification', () {
     // The updater deletes the running bundle and replaces it, so it has to be
     // able to tell a complete download from a truncated or substituted one
@@ -124,6 +135,40 @@ void main() {
 
       expect('$mismatch', contains('expected aaa'));
       expect('$mismatch', contains('got bbb'));
+    });
+  });
+
+  group('Windows updater', () {
+    test('selects the Windows assets', () {
+      final info = parseLatestRelease(
+        _release(
+          tag: 'v0.1.0+91',
+          withWindowsAsset: true,
+          withWindowsDigestAsset: true,
+        ),
+        currentVersion: '0.1.0+90',
+        asset: 'windows',
+      );
+
+      expect(info!.zipUrl, 'https://x/TyLog-windows.exe');
+      expect(info.digestUrl, 'https://x/TyLog-windows.exe.sha256');
+    });
+
+    test('is enabled only for a Windows launcher build', () {
+      expect(windowsSelfUpdatable({}, true), isFalse);
+      expect(
+        windowsSelfUpdatable({'TYLOG_LAUNCHER': r'C:\TyLog.exe'}, true),
+        isTrue,
+      );
+    });
+
+    test('script waits, replaces, relaunches, and deletes itself', () {
+      final script = windowsUpdateScript();
+      expect(script, contains('tasklist /FI "PID eq %1" | find "%1"'));
+      expect(script, contains('move /y "%~2" "%~3"'));
+      expect(script, isNot(contains('timeout')));
+      expect(script, contains('start "" "%~3"'));
+      expect(script, contains('del "%~f0"'));
     });
   });
 }

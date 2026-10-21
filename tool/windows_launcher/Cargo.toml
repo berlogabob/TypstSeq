@@ -1,0 +1,20 @@
+[package]
+name = "tylog-windows-launcher"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+zip = { version = "~2.2.0", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "~0.59.0", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+winresource = { version = "~0.1.0" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1

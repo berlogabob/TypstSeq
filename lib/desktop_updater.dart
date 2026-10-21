@@ -12,15 +12,27 @@ const _repo = 'TypstSeq';
 /// The macOS release asset (a `ditto` zip of `TyLog.app`) — a static name, so it
 /// also has a stable `releases/latest/download/...` URL as a fallback.
 const _macAsset = 'TyLog-macos.zip';
+const _windowsAsset = 'TyLog-windows.exe';
 
 /// Digest of [_macAsset], published beside it by the release workflow.
 const _macDigestAsset = '$_macAsset.sha256';
 
-const _latestApi = 'https://api.github.com/repos/$_owner/$_repo/releases/latest';
+const _latestApi =
+    'https://api.github.com/repos/$_owner/$_repo/releases/latest';
 const _stableMacUrl =
     'https://github.com/$_owner/$_repo/releases/latest/download/$_macAsset';
 const _stableMacDigestUrl =
     'https://github.com/$_owner/$_repo/releases/latest/download/$_macDigestAsset';
+const _stableWindowsUrl =
+    'https://github.com/$_owner/$_repo/releases/latest/download/$_windowsAsset';
+const _stableWindowsDigestUrl =
+    'https://github.com/$_owner/$_repo/releases/latest/download/$_windowsAsset.sha256';
+
+bool windowsSelfUpdatable([Map<String, String>? env, bool? platformIsWindows]) {
+  final environment = env ?? Platform.environment;
+  return (platformIsWindows ?? Platform.isWindows) &&
+      (environment['TYLOG_LAUNCHER']?.isNotEmpty ?? false);
+}
 
 /// A newer release than what's running, ready to download + apply.
 class UpdateInfo {
@@ -38,7 +50,7 @@ class UpdateInfo {
   /// Release notes (may be empty).
   final String notes;
 
-  /// Direct download URL for the macOS asset.
+  /// Direct download URL for the platform asset.
   final String zipUrl;
 
   /// URL of the published SHA-256 for [zipUrl].
@@ -111,6 +123,7 @@ bool isNewer(String candidate, String current) {
 UpdateInfo? parseLatestRelease(
   String jsonBody, {
   required String currentVersion,
+  String asset = _macAsset,
 }) {
   final json = jsonDecode(jsonBody);
   if (json is! Map) return null;
@@ -118,13 +131,23 @@ UpdateInfo? parseLatestRelease(
   if (tag == null || tag.isEmpty) return null;
   if (!isNewer(tag, currentVersion)) return null;
 
+  final selectedAsset = asset == 'windows' ? _windowsAsset : asset;
+  final digestAsset = '$selectedAsset.sha256';
+  final stableUrl = selectedAsset == _windowsAsset
+      ? _stableWindowsUrl
+      : _stableMacUrl;
+  final stableDigestUrl = selectedAsset == _windowsAsset
+      ? _stableWindowsDigestUrl
+      : _stableMacDigestUrl;
   String? zipUrl;
   String? digestUrl;
   if (json['assets'] case final List assets) {
     for (final a in assets) {
       if (a is! Map) continue;
-      if (a['name'] == _macAsset) zipUrl = a['browser_download_url'] as String?;
-      if (a['name'] == _macDigestAsset) {
+      if (a['name'] == selectedAsset) {
+        zipUrl = a['browser_download_url'] as String?;
+      }
+      if (a['name'] == digestAsset) {
         digestUrl = a['browser_download_url'] as String?;
       }
     }
@@ -132,15 +155,15 @@ UpdateInfo? parseLatestRelease(
   return UpdateInfo(
     version: tag.startsWith('v') ? tag.substring(1) : tag,
     notes: (json['body'] as String?)?.trim() ?? '',
-    zipUrl: zipUrl ?? _stableMacUrl,
-    digestUrl: digestUrl ?? _stableMacDigestUrl,
+    zipUrl: zipUrl ?? stableUrl,
+    digestUrl: digestUrl ?? stableDigestUrl,
     htmlUrl:
         (json['html_url'] as String?) ??
         'https://github.com/$_owner/$_repo/releases/latest',
   );
 }
 
-/// Checks GitHub for a newer macOS release. `info` is the newer release (or null
+/// Checks GitHub for a newer desktop release. `info` is the newer release (or null
 /// when already current / off macOS); `failed` is true only when the check
 /// itself couldn't complete (network error or non-200) — distinct from "up to
 /// date" so the caller can report accurately. [currentVersion] defaults to
@@ -149,19 +172,27 @@ Future<({UpdateInfo? info, bool failed})> checkForUpdate({
   HttpClient? client,
   String? currentVersion,
 }) async {
-  if (!Platform.isMacOS) return (info: null, failed: false);
+  final windows = windowsSelfUpdatable();
+  if (!Platform.isMacOS && !windows) return (info: null, failed: false);
   final current = currentVersion ?? await appVersion();
   final http = client ?? HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
   try {
     final request = await http.getUrl(Uri.parse(_latestApi));
     request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers.set(
+      HttpHeaders.acceptHeader,
+      'application/vnd.github+json',
+    );
     final response = await request.close();
     if (response.statusCode != 200) return (info: null, failed: true);
     final body = await response.transform(utf8.decoder).join();
     return (
-      info: parseLatestRelease(body, currentVersion: current),
+      info: parseLatestRelease(
+        body,
+        currentVersion: current,
+        asset: windows ? _windowsAsset : _macAsset,
+      ),
       failed: false,
     );
   } on Exception {
@@ -173,8 +204,8 @@ Future<({UpdateInfo? info, bool failed})> checkForUpdate({
 
 /// Downloads the update, verifies it against the digest published beside it,
 /// then hands off to a detached helper that waits for this process to quit,
-/// swaps the `.app` in place (quarantine stripped), and relaunches — after
-/// which this process exits. macOS only.
+/// swaps the `.app` in place (quarantine stripped), or replaces the Windows
+/// launcher, and relaunches — after which this process exits.
 ///
 /// Throws [UpdateNotWritable] before downloading if the app can't be replaced,
 /// and [UpdateNotVerified] after downloading if the bytes don't match. Nothing
@@ -183,7 +214,58 @@ Future<void> downloadAndApply(
   UpdateInfo info, {
   void Function(double progress)? onProgress,
 }) async {
-  if (!Platform.isMacOS) return;
+  final windows = windowsSelfUpdatable();
+  if (!Platform.isMacOS && !windows) return;
+
+  if (windows) {
+    final launcherPath = Platform.environment['TYLOG_LAUNCHER']!;
+    final newPath =
+        '${Directory.systemTemp.path}/TyLog-update-${info.version}.exe';
+    final helperPath = '${Directory.systemTemp.path}/tylog-update.cmd';
+    final http = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+    try {
+      final request = await http.getUrl(Uri.parse(info.zipUrl));
+      request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
+      final response = await request.close();
+      if (response.statusCode != 200) {
+        throw HttpException(
+          'HTTP ${response.statusCode}',
+          uri: Uri.parse(info.zipUrl),
+        );
+      }
+      final total = response.contentLength;
+      final sink = File(newPath).openWrite();
+      var received = 0;
+      await for (final chunk in response) {
+        received += chunk.length;
+        sink.add(chunk);
+        if (total > 0) onProgress?.call(received / total);
+      }
+      await sink.close();
+      final expected = await _fetchDigest(info.digestUrl, http);
+      final actual = sha256
+          .convert(await File(newPath).readAsBytes())
+          .toString();
+      if (expected == null || expected != actual) {
+        throw UpdateNotVerified(expected: expected, actual: actual);
+      }
+    } catch (_) {
+      final downloaded = File(newPath);
+      if (downloaded.existsSync()) downloaded.deleteSync();
+      rethrow;
+    } finally {
+      http.close(force: true);
+    }
+    onProgress?.call(1);
+    await File(helperPath).writeAsString(windowsUpdateScript());
+    await Process.start(
+      'cmd',
+      ['/c', helperPath, '$pid', newPath, launcherPath],
+      mode: ProcessStartMode.detached,
+      runInShell: false,
+    );
+    exit(0);
+  }
 
   // …/TyLog.app/Contents/MacOS/TyLog → walk up 3 to the bundle root.
   final exe = File(Platform.resolvedExecutable);
@@ -213,7 +295,10 @@ Future<void> downloadAndApply(
     request.headers.set(HttpHeaders.userAgentHeader, 'TyLog-Updater');
     final response = await request.close();
     if (response.statusCode != 200) {
-      throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(info.zipUrl));
+      throw HttpException(
+        'HTTP ${response.statusCode}',
+        uri: Uri.parse(info.zipUrl),
+      );
     }
     final total = response.contentLength;
     final sink = File(zipPath).openWrite();
@@ -266,15 +351,31 @@ fi
 rm -rf "\$STAGE" "\$WORK"
 ''');
 
-  await Process.start(
-    '/bin/bash',
-    [scriptPath, '$pid', zipPath, appPath, work.path],
-    mode: ProcessStartMode.detached,
-  );
+  await Process.start('/bin/bash', [
+    scriptPath,
+    '$pid',
+    zipPath,
+    appPath,
+    work.path,
+  ], mode: ProcessStartMode.detached);
   // Quit so the helper can replace the running bundle.
   await Future<void>.delayed(const Duration(milliseconds: 200));
   exit(0);
 }
+
+// %~2/%~3 strip the quotes the paths arrive with (spaces in user names);
+// `ping` pauses where `timeout` refuses to run (detached: no console).
+String windowsUpdateScript() => r'''@echo off
+:wait
+tasklist /FI "PID eq %1" | find "%1" >nul
+if not errorlevel 1 (
+  ping -n 2 127.0.0.1 >nul
+  goto wait
+)
+move /y "%~2" "%~3"
+start "" "%~3"
+del "%~f0"
+''';
 
 /// Fetches the published SHA-256 for the macOS asset, or null if unavailable.
 ///
