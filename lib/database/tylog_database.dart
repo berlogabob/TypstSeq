@@ -843,9 +843,14 @@ class TyLogDatabase extends _$TyLogDatabase {
         await _ensureNodeSearch();
         final drop = [
           for (final row in await customSelect(
+            // Only rows nothing refers to: no revisions, edges or import
+            // mappings (edges would dangle, mappings point at the node).
             'SELECT id FROM nodes WHERE id IN ($marks) AND NOT EXISTS ('
             "SELECT 1 FROM revisions WHERE entity_kind = 'node' "
-            'AND entity_id = nodes.id)',
+            'AND entity_id = nodes.id) AND NOT EXISTS ('
+            'SELECT 1 FROM edges WHERE from_node_id = nodes.id '
+            'OR to_node_id = nodes.id) AND NOT EXISTS ('
+            'SELECT 1 FROM import_items WHERE target_node_id = nodes.id)',
             variables: vars,
           ).get())
             row.read<String>('id'),
