@@ -48,7 +48,7 @@
 
 ### Task 5: Release job
 **Files:** Modify `.github/workflows/release.yml`: job `windows` (`runs-on: windows-latest`, `needs: test`, Flutter stable, Rust 1.92 with target `x86_64-pc-windows-msvc`, cache like Linux, `shell: bash` for `TYLOG_SKIP_ANDROID=1 ./tool/setup_typst_native.sh` and `./tool/assert_source_built.sh windows`, `flutter build windows --release`, zip `build/windows/x64/runner/Release` to `dist/TyLog-windows.zip`, upload artifact); add `windows` to the release job's `needs` and `dist/TyLog-windows.zip` to its files. Also add `windows` build (no zip) to `.github/workflows/ci.yml` only if it stays under 15 min, else release only.
-- [ ] Push a test tag on a branch fork? No: run the release workflow via `workflow_dispatch` on the branch; confirm the zip contains `TyLog.exe`, `typst_flutter.dll`, `data/`.
+- [ ] Run the release workflow via `workflow_dispatch` on the branch; confirm the zip contains `TyLog.exe`, `typst_flutter.dll` and `data/`.
 - [ ] Commit; next release includes the zip.
 
 ### Task 6: Studio smoke test + docs
