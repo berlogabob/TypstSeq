@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:tylog/app_mobile.dart';
+import 'package:tylog/rich_editor.dart';
 import 'package:tylog/knowledge_screen.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog_core/search_index.dart';
@@ -22,6 +23,7 @@ import 'package:tylog/widgets/audio_shelf.dart';
 import 'package:tylog/widgets/audio_sheets.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/screenshot_strip.dart';
+import 'package:tylog/widgets/screenshot_view.dart';
 import 'package:tylog/widgets/sync_dashboard.dart';
 import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog/widgets/journal_feed.dart';
@@ -169,6 +171,61 @@ Future<void> _openCervejariaResult(WidgetTester tester, dynamic home) async {
 
 void main() {
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+
+  testWidgets('screenshot notes open in ScreenshotView until edited', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    final storage = home.workspace.vault.storage as _GatedStorage;
+    const screenshotPath = 'screenshots/shot.typ';
+    const regularPath = 'notes/regular.typ';
+    await storage.writeText(screenshotPath, '== Description\nA screenshot');
+    await storage.writeText(regularPath, 'A regular note');
+    home.workspace.index = const VaultIndex(
+      notesByPath: {
+        screenshotPath: NoteRef(
+          id: 'shot',
+          path: screenshotPath,
+          title: 'Screenshot',
+          kind: 'screenshot',
+          outgoingLinks: [],
+        ),
+        regularPath: NoteRef(
+          id: 'regular',
+          path: regularPath,
+          title: 'Regular',
+          outgoingLinks: [],
+        ),
+      },
+      backlinksByTarget: {},
+    );
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+
+    tester.widget<TodayPage>(find.byType(TodayPage)).onOpenPath(screenshotPath);
+    await tester.pumpAndSettle();
+    expect(find.byType(ScreenshotView), findsOneWidget);
+    expect(find.byType(TyLogRichEditor), findsNothing);
+
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TyLogRichEditor), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    tester.widget<TodayPage>(find.byType(TodayPage)).onOpenPath(regularPath);
+    await tester.pumpAndSettle();
+    expect(find.byType(ScreenshotView), findsNothing);
+    expect(find.byType(TyLogRichEditor), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    tester.widget<TodayPage>(find.byType(TodayPage)).onOpenPath(screenshotPath);
+    await tester.pumpAndSettle();
+    expect(find.byType(ScreenshotView), findsOneWidget);
+    expect(find.byType(TyLogRichEditor), findsNothing);
+  });
+
   for (final destination in [1, 2, 3]) {
     testWidgets('system back from destination $destination returns to Today', (
       tester,

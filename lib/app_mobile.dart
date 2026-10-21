@@ -65,6 +65,7 @@ import 'widgets/journal_feed.dart';
 import 'widgets/links_panel.dart';
 import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
+import 'widgets/screenshot_view.dart';
 import 'audio/audio_note_doc.dart';
 import 'audio/processing_policy.dart';
 import 'audio/transcript_jobs.dart';
@@ -277,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final WorkspaceController workspace;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
+  bool _editScreenshot = false;
   String? _searchRevealQuery;
   int? _searchRevealOffset;
   int _searchRevealGeneration = 0;
@@ -1431,6 +1433,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return false;
     }
     if (!mounted || request != _openGeneration || vault != v) return false;
+    final noteChanged = path != note;
     final fromToday =
         mode == 'normal' &&
         primaryDestination == 0 &&
@@ -1449,6 +1452,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (searchQuery != null) _searchRevealGeneration++;
     setState(() {
       mode = 'normal';
+      if (noteChanged) _editScreenshot = false;
     });
     if (heading != null) {
       final text = richController.text;
@@ -4928,8 +4932,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final v = vault;
     final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
+    final currentNote = current == null ? null : index?.notesByPath[current];
     if (mode == 'read') {
-      final currentNote = current == null ? null : index?.notesByPath[current];
+      if (currentNote?.kind == 'screenshot' && !_editScreenshot) {
+        return ScreenshotView(
+          note: currentNote!,
+          source: _currentSource(),
+          imageResolver: _readAsset,
+          onEdit: () => setState(() => _editScreenshot = true),
+        );
+      }
       var savedProgress = 0.0;
       for (final r in _mergedRecent()) {
         if (r.path == current) {
@@ -5218,6 +5230,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         );
       }(),
+      'normal' when currentNote?.kind == 'screenshot' && !_editScreenshot =>
+        ScreenshotView(
+          note: currentNote!,
+          source: _currentSource(),
+          imageResolver: _readAsset,
+          onEdit: () => setState(() => _editScreenshot = true),
+        ),
       'normal' when _usePlainLongEditor => VirtualPlainEditor(
         key: _plainEditorKey,
         onHistoryChanged: () => _plainHistoryRevision.value++,
@@ -5411,7 +5430,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // A person/place/… note gets a Logseq-style page: an info header above the
     // body and a linked-references (backlinks) block below it. Any note that is
     // mentioned elsewhere gets the references block too.
-    final currentNote = current == null ? null : index?.notesByPath[current];
     final isEntity =
         currentNote != null && !structuralNoteKinds.contains(currentNote.kind);
     Widget documentContent = content;
