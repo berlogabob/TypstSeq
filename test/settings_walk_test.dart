@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/widgets/audio_processing_settings.dart';
 import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog/widgets/settings_sheet.dart';
@@ -92,6 +93,14 @@ void main() {
         findsWidgets,
         reason: 'Missing AI > $page > $label',
       );
+      if (page == 'Screenshots') {
+        // The OCR server and model live here too, not only the schedule.
+        expect(
+          find.byType(AudioProcessingSettings),
+          findsOneWidget,
+          reason: 'Missing AI > Screenshots > server and model',
+        );
+      }
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.text('AI'), findsOneWidget);

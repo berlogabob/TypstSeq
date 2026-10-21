@@ -42,7 +42,11 @@ class AiPage extends StatelessWidget {
                   settings: const RouteSettings(name: '$kSettingsRoute/ai'),
                   builder: (_) => SettingsPage(
                     title: 'Screenshots',
-                    children: [_screenshots()],
+                    children: [
+                      if (settings.audioPolicyRead != null)
+                        _audio(AiSettingsSection.screenshots),
+                      _screenshots(),
+                    ],
                   ),
                 ),
               ),
