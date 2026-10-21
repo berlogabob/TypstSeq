@@ -613,6 +613,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const Duration(seconds: 60),
         (_) => unawaited(_applyWantedScreenshots()),
       );
+      Timer(
+        const Duration(seconds: 10),
+        () => unawaited(_applyWantedScreenshots()),
+      );
     }
     richController = TyLogEditingController(
       source: '',
@@ -2748,7 +2752,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final path = _localVaultDirectory?.path;
     if (opened == null || registry == null || path == null) return;
     try {
-      final task = (await readAiSettings(opened.storage)).screenshots;
+      final ai = await readAiSettings(opened.storage);
+      final task = ai.screenshots;
+      final publish = screenshotsToPublish(
+        task.mode,
+        await installedScreenshotMode(),
+        registry.screenshotsTime,
+      );
+      if (publish != null) {
+        await writeAiSettings(
+          opened.storage,
+          ai.copyWith(
+            screenshots: task.copyWith(mode: publish.$1, time: publish.$2),
+          ),
+        );
+        return;
+      }
       if (!screenshotsNeedApply(
         task.mode,
         task.time,

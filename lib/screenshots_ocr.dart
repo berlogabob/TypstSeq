@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+
+import 'widgets/date_format.dart' show shortStamp;
 import 'package:tylog_core/storage.dart';
 
 String screenshotLaunchAgentPlist({
@@ -49,6 +51,17 @@ String screenshotLaunchAgentPlist({
 ${mode == 'watch' ? '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>' : '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>'}
 </dict></plist>''';
 }
+
+/// What a Mac writes to the synced ai.json when no mode is wanted there yet:
+/// the mode it runs, so phones show the truth instead of 'off'.
+(String, String)? screenshotsToPublish(
+  String? wantedMode,
+  String installedMode,
+  String time,
+) => wantedMode == null &&
+        const {'off', 'watch', 'schedule', 'both'}.contains(installedMode)
+    ? (installedMode, time)
+    : null;
 
 /// Whether the Mac must reinstall its agents: a valid wanted mode/time
 /// (from the synced ai.json) that differs from what it applied last.
@@ -214,7 +227,7 @@ Future<void> runScreenshotsBackfill(String vault, {String? scriptsDir}) async {
 }
 
 String screenshotStatusLine(Map<String, dynamic> status) =>
-    'Last run: ${status['last_run'] ?? 'Never'} · '
+    'Last run: ${status['last_run'] == null ? 'never' : shortStamp('${status['last_run']}')} · '
     '${status['processed'] ?? 0} processed · '
     '${status['skipped_sensitive'] ?? 0} sensitive · '
     '${status['duplicates'] ?? 0} duplicates · '

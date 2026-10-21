@@ -236,4 +236,14 @@ void main() {
     // line was 0.26 here (unreadable on the P30), two lines 0.48.
     expect(scale, greaterThan(0.45));
   });
+
+  test('timestamps read as today/other day with minutes', () {
+    final now = DateTime(2026, 10, 21, 12);
+    expect(
+      shortStamp('2026-10-21T03:01:34.160019+01:00', now: now),
+      'today ${DateTime.parse('2026-10-21T03:01:34.160019+01:00').toLocal().toString().substring(11, 16)}',
+    );
+    expect(shortStamp('2026-10-08T09:05:00', now: now), '8 Oct 09:05');
+    expect(shortStamp('not a date', now: now), 'not a date');
+  });
 }

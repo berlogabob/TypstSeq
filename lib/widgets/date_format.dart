@@ -43,6 +43,18 @@ String compactHumanDate(DateTime day, {DateTime? now, String? locale}) {
       : DateFormat('d MMM y', language).format(day);
 }
 
+/// A stored timestamp for status lines: 'today 03:01' or '8 Oct 09:05' in
+/// local time; text that is not a timestamp is returned as is.
+String shortStamp(String raw, {DateTime? now}) {
+  final at = DateTime.tryParse(raw)?.toLocal();
+  if (at == null) return raw;
+  final today = now ?? DateTime.now();
+  final hm = DateFormat('HH:mm').format(at);
+  return at.year == today.year && at.month == today.month && at.day == today.day
+      ? 'today $hm'
+      : '${DateFormat('d MMM').format(at)} $hm';
+}
+
 class CompactDateTitle extends StatelessWidget {
   const CompactDateTitle({super.key, required this.day, this.dirty = false});
   final DateTime day;

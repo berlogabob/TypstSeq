@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
 
 import 'app_icons.dart';
@@ -565,7 +566,7 @@ class _CalendarsPageState extends State<_CalendarsPage> {
       return 'Error: ${cache['error']}';
     }
     final fetched = cache is Map ? cache['fetched'] : null;
-    return '${feed['kind'] == 'iade-timetable' ? 'IADE timetable' : 'ICS'} · ${fetched == null ? 'Not refreshed' : 'Last refreshed $fetched'}';
+    return '${feed['kind'] == 'iade-timetable' ? 'IADE timetable' : 'ICS'} · ${fetched == null ? 'Not refreshed' : 'Refreshed ${shortStamp('$fetched')}'}';
   }
 }
 

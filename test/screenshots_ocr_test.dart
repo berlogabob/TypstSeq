@@ -146,4 +146,10 @@ void main() {
     expect(screenshotsNeedApply(null, null, 'both', '03:00'), isFalse);
     expect(screenshotsNeedApply('bogus', '03:00', 'off', '03:00'), isFalse);
   });
+
+  test('a Mac publishes the mode it runs when none is wanted yet', () {
+    expect(screenshotsToPublish(null, 'both', '03:00'), ('both', '03:00'));
+    expect(screenshotsToPublish('watch', 'both', '03:00'), isNull);
+    expect(screenshotsToPublish(null, 'nonsense', '03:00'), isNull);
+  });
 }
