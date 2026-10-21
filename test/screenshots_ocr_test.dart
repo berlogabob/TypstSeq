@@ -152,4 +152,44 @@ void main() {
     expect(screenshotsToPublish('watch', 'both', '03:00'), isNull);
     expect(screenshotsToPublish(null, 'nonsense', '03:00'), isNull);
   });
+
+  test('agents survive launchctl reporting error 5 or a slow bootout', () async {
+    final home = await Directory.systemTemp.createTemp('agents-home-');
+    addTearDown(() => home.delete(recursive: true));
+    await File('${home.path}/.local/bin/uv').create(recursive: true);
+    final calls = <String>[];
+    var printsUntilLoaded = 2;
+    Future<ProcessResult> run(String exe, List<String> args) async {
+      calls.add('${exe.split('/').last} ${args.first}');
+      if (exe.endsWith('id')) return ProcessResult(0, 0, '501', '');
+      if (args.first == 'bootstrap') {
+        // Error 5, as launchctl reports while the agent still loads.
+        return ProcessResult(0, 5, '', 'Bootstrap failed: 5');
+      }
+      if (args.first == 'print') {
+        return ProcessResult(0, printsUntilLoaded-- > 0 ? 113 : 0, '', '');
+      }
+      return ProcessResult(0, 0, '', '');
+    }
+
+    await configureScreenshotsOcr(
+      '/vault',
+      'both',
+      '03:00',
+      home: home.path,
+      run: run,
+      retryDelay: Duration.zero,
+    );
+    for (final label in [
+      'org.tylog.screenshots',
+      'org.tylog.screenshots.schedule',
+    ]) {
+      expect(
+        File('${home.path}/Library/LaunchAgents/$label.plist').existsSync(),
+        isTrue,
+        reason: label,
+      );
+    }
+    expect(calls.where((c) => c == 'launchctl bootstrap').length, greaterThan(2));
+  });
 }

@@ -58,7 +58,8 @@ ${mode == 'watch' ? '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>' : '
   String? wantedMode,
   String installedMode,
   String time,
-) => wantedMode == null &&
+) =>
+    wantedMode == null &&
         const {'off', 'watch', 'schedule', 'both'}.contains(installedMode)
     ? (installedMode, time)
     : null;
@@ -153,14 +154,18 @@ Future<void> configureScreenshotsOcr(
   String mode,
   String time, {
   String? scriptsDir,
+  String? home,
+  Future<ProcessResult> Function(String executable, List<String> args)? run,
+  Duration retryDelay = const Duration(seconds: 1),
 }) async {
   if (!Platform.isMacOS) return;
+  final exec = run ?? Process.run;
   if (!['off', 'watch', 'schedule', 'both'].contains(mode)) {
     throw ArgumentError('Invalid screenshot mode');
   }
-  final home = Platform.environment['HOME']!;
-  final folder = scriptsDir ?? defaultScreenshotsFolder(home);
-  final uv = await findUv();
+  final homeDir = home ?? Platform.environment['HOME']!;
+  final folder = scriptsDir ?? defaultScreenshotsFolder(homeDir);
+  final uv = await findUv(home: homeDir);
   if (uv == null) throw StateError('uv not found on PATH');
   const watchLabel = 'org.tylog.screenshots';
   const scheduleLabel = 'org.tylog.screenshots.schedule';
@@ -176,7 +181,7 @@ Future<void> configureScreenshotsOcr(
       (
         label,
         screenshotLaunchAgentPlist(
-          home: home,
+          home: homeDir,
           vault: vault,
           mode: agentMode,
           time: time,
@@ -186,25 +191,36 @@ Future<void> configureScreenshotsOcr(
         ),
       ),
   ];
-  final uid = (await Process.run('/usr/bin/id', [
-    '-u',
-  ])).stdout.toString().trim();
+  final uid = (await exec('/usr/bin/id', ['-u'])).stdout.toString().trim();
   final domain = 'gui/$uid';
-  File fileFor(String label) => File('$home/Library/LaunchAgents/$label.plist');
+  File fileFor(String label) =>
+      File('$homeDir/Library/LaunchAgents/$label.plist');
   for (final label in [watchLabel, scheduleLabel]) {
-    await Process.run('/bin/launchctl', ['bootout', '$domain/$label']);
+    await exec('/bin/launchctl', ['bootout', '$domain/$label']);
     if (await fileFor(label).exists()) await fileFor(label).delete();
   }
+  // Every file is written before any load, so a failed load can't lose an
+  // agent (a failure here used to leave the schedule agent deleted).
   for (final (label, plist) in plists) {
     final file = fileFor(label);
     await file.parent.create(recursive: true);
     await writeFileAtomic(file, utf8.encode(plist));
-    final result = await Process.run('/bin/launchctl', [
-      'bootstrap',
-      domain,
-      file.path,
-    ]);
-    if (result.exitCode != 0) throw StateError('launchctl: ${result.stderr}');
+  }
+  for (final (label, _) in plists) {
+    for (var attempt = 0; ; attempt++) {
+      final result = await exec('/bin/launchctl', [
+        'bootstrap',
+        domain,
+        fileFor(label).path,
+      ]);
+      if (result.exitCode == 0) break;
+      // launchctl reports error 5 both when the agent loads anyway and while
+      // a just-booted-out instance is still exiting: check, then retry.
+      final loaded = await exec('/bin/launchctl', ['print', '$domain/$label']);
+      if (loaded.exitCode == 0) break;
+      if (attempt >= 5) throw StateError('launchctl: ${result.stderr}');
+      await Future<void>.delayed(retryDelay);
+    }
   }
 }
 
