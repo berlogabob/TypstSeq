@@ -40,8 +40,6 @@ packages/typst_flutter/ios/typst_flutter/.build/
 build/
 /coverage/
 
-# Windows is not a shipped target; Flutter still regenerates windows/ locally.
-windows/
 
 # Symbolication related
 app.*.symbols
