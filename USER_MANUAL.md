@@ -76,6 +76,10 @@ Images collapse to a thin strip: in the editor tap the image and choose Collapse
 
 Fold state is kept on this device only (`fold_state.json` in the app's private storage). It never changes the note and does not sync.
 
+## Agenda
+
+Today's Agenda lists the day's events from all your calendars in time order: start and end time on the left, the room under the title, past events dimmed, and the event running now tinted. A dot on the thin line at the left moves through the day to show where you are. Tap an event to open it. Overdue and due tasks follow below.
+
 ## Tasks
 
 At the start of a line, type `TODO `, `[] ` or `[ ] `, or choose `/todo`, to turn it into a task without a dialog. Enter starts the next task. Enter on an empty task returns to plain text. Backspace at the checkbox, including on an empty task (0.12.2), turns the task into plain text; one Undo restores its fields.
@@ -130,7 +134,7 @@ Settings > General > Calendars lists your calendars; there are none by default. 
 - **IADE:** your classes (by group, optionally programme and degree), the lab schedule, or both.
 - **Other (ICS link):** any calendar that publishes an ICS address.
 
-Links must use https. Each calendar refreshes every few hours (6 by default); tap one to edit it, or delete it to remove its events. Sign-in to Google or Microsoft accounts is not supported; use the calendar's ICS link.
+Links must use https. Each calendar refreshes every few hours (6 by default); tap one to edit it, or delete it to remove its events. The list of calendars syncs to every device (`_system/settings/calendars.json`); downloaded events stay on each device. Sign-in to Google or Microsoft accounts is not supported; use the calendar's ICS link.
 
 ## Sync
 
