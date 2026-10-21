@@ -100,7 +100,8 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
         });
       }
     }
-    if (!Platform.isMacOS && mounted) {
+    // Only where the synced setting is wired (the app); the Mac runs it.
+    if (widget.readWanted != null && !Platform.isMacOS && mounted) {
       setState(
         () => health = 'Runs on your Mac; changes apply there after sync.',
       );
