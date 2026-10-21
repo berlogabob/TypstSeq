@@ -174,3 +174,10 @@ Then: full suite, device checks, tag 0.19.1.
 - Agenda showed 183 items on the P30: calendar settings did not sync (.tylog) and the phone migrated the IADE feed without its group. Calendar list now syncs via _system/settings/calendars.json (14ffafd, 435decc; seeded from the Mac). P30: Agenda 4.
 - Today agenda timeline (17c0e8b + tint fix): times, room, sorted across calendars, moving now dot, running events tinted. P30 verified 11:55. Ornith 1.5 35b (Studio Ollama, 64k) drafted the widget but it did not compile and it edited 10 unrelated files: reverted, rewritten by Claude. Unsloth Studio API key rejected (401); pi provider studio-ollama added.
 - 0.19.3+155 released (2026-10-21). Open: A24 idle PSS 386 MB > 350 idle target (P30 270-317) -> baseline memory profiling next wave; P2P in-app harness.
+
+## Next (2026-10-21, after Settings pages / Windows build)
+- Settings as pages: done (40af289, 3533789); P30 + A24 + Mac verified. Screenshot thumbnails no longer flicker on sync/index updates (0a2f121, P30 14 frames identical).
+- Windows: CI builds a zip with source-built engine (run 39608752041). Waiting: user smoke test on Studio.
+- Windows single file with self-update (user choice, design agreed in chat): `TyLog.exe` = small Rust launcher with the app packed inside; first start per version unpacks to %LOCALAPPDATA%\TyLog\app\<version> and runs it, old versions removed; self-update like the Mac (GitHub latest release, TyLog-windows.exe + sha256, detached helper waits for exit, replaces the single exe, relaunches); no update offered when not started from the single file. Caveats: SmartScreen "unknown publisher" without a code-signing certificate; self-extractors are flagged more often than installers (fallback: Inno Setup installer). Needs a plan, then two releases to test the update on Studio.
+- Screenshot note layout redesign (before the next release): desktop two columns (picture maximised left, text right); phone layout to be decided.
+- Then: release 0.19.4; memory baseline profiling (A24 idle 386 MB > 350); P2P in-app test.
