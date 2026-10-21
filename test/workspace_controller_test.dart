@@ -571,6 +571,67 @@ void main() {
     await controller.shutdown();
   });
 
+  test('the calendar list is shared through the vault, not per device', () async {
+    final storage = _MemoryStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      now: () => DateTime(2026, 10, 8),
+      fetchFeed: (url) async => jsonEncode([
+        for (final group in ['G1', 'G2'])
+          {
+            'date': '2026-10-08',
+            'start': '19:00',
+            'end': '21:00',
+            'course': 'Class $group',
+            'groups': [group],
+          },
+      ]),
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      const VaultEntry(id: 'shared', name: 'Shared', path: '/shared'),
+      storage: storage,
+    );
+    // This device only has an old cache (no group saved): on its own it
+    // would migrate an unfiltered feed. The synced list must win.
+    await storage.writeText(
+      Vault.settingsPath,
+      jsonEncode({
+        'calendars': {
+          'cache': {
+            'classes': {'url': _classesUrl, 'body': '[]'},
+          },
+        },
+      }),
+    );
+    await storage.writeText(
+      '_system/settings/calendars.json',
+      jsonEncode({
+        'feeds': [
+          {
+            'id': 'classes',
+            'kind': 'iade-timetable',
+            'name': 'IADE classes',
+            'url': _classesUrl,
+            'group': 'G1',
+          },
+        ],
+      }),
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(controller.feedEvents.map((e) => e.title), ['Class G1']);
+
+    await controller.configureCalendars({'feeds': const []});
+    final shared = jsonDecode(
+      await storage.readText('_system/settings/calendars.json'),
+    );
+    expect(shared['feeds'], isEmpty);
+    expect(controller.feedEvents, isEmpty);
+    await controller.shutdown();
+  });
+
   final defaultRetryDelays = NextcloudSync.connectionRetryDelays;
   final defaultBusyRetryDelays = NextcloudSync.busyRetryDelays;
   setUp(() {

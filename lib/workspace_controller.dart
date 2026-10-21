@@ -717,12 +717,32 @@ class WorkspaceController extends ChangeNotifier {
         jsonDecode(await opened.storage.readText(Vault.settingsPath))
             as Map<String, dynamic>;
     final previous = settings['calendars'] as Map?;
+    // The list syncs with the vault; downloaded bodies stay on this device.
+    await _writeSharedCalendars(opened, config['feeds'] as List? ?? const []);
     settings['calendars'] = {
-      ...config,
       if (previous?['cache'] != null) 'cache': previous!['cache'],
     };
     await opened.storage.writeText(Vault.settingsPath, jsonEncode(settings));
     await refreshCalendarFeeds(force: true);
+  }
+
+  static const calendarsSyncPath = '_system/settings/calendars.json';
+
+  Future<void> _writeSharedCalendars(Vault opened, List<Object?> feeds) =>
+      opened.storage.writeText(
+        calendarsSyncPath,
+        const JsonEncoder.withIndent('  ').convert({'feeds': feeds}),
+      );
+
+  Future<List<Map<String, dynamic>>?> _readSharedCalendars(Vault opened) async {
+    try {
+      if (!await opened.storage.exists(calendarsSyncPath)) return null;
+      final json = jsonDecode(await opened.storage.readText(calendarsSyncPath));
+      if (json is! Map || json['feeds'] is! List) return null;
+      return _calendarFeeds({'feeds': json['feeds']});
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> refreshCalendarFeeds({bool force = false}) {
@@ -743,10 +763,14 @@ class WorkspaceController extends ChangeNotifier {
       var config = Map<String, dynamic>.from(
         settings['calendars'] as Map? ?? {},
       );
-      final feeds = _calendarFeeds(config);
-      if (config['feeds'] is! List && feeds.isNotEmpty) {
-        config = {...config, 'feeds': feeds};
+      // The synced list wins; a vault without one publishes what this
+      // device had (its local list or the old two-feed settings).
+      final shared = await _readSharedCalendars(opened);
+      final feeds = shared ?? _calendarFeeds(config);
+      if (shared == null && feeds.isNotEmpty) {
+        await _writeSharedCalendars(opened, feeds);
       }
+      config = {...config, 'feeds': feeds};
       if (!_owns(opened, generation)) return;
       calendarSettings = config;
       final previous = <String, dynamic>{
