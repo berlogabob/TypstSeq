@@ -152,3 +152,14 @@ Then: full suite, device checks, tag 0.19.1.
 - P2P spike: iroh 1.4 endpoint arm64 .so 5.4 MB; Ouisync v0.9.4 pre-1.0, git-only crate. LAN sync timing needs a prototype (own plan).
 - Full suite 1620 pass; codex review: 4 Important fixed/ruled, 3 minors deferred (fold store late load, concurrent fold writes, toolbar position after collapse).
 - Release 0.19.2 blocked by: S4, S6 peak memory.
+
+## Wave 12 (2026-10-21): leftovers + new findings
+- S4 list-subtree folding, editor + reading view (d4abe47, bf8b063, 940fef9, 68c2968): tap a bullet to fold; works across task blocks; offsets/source unchanged; selection into a fold unfolds it. P30 2023-03-29 verified (no stray bullet, no leftover blank lines, note mtime unchanged). Span build 2,000 blocks/500 folds: 9 ms (codex v1: 179 ms).
+- S6 memory: packed search index v4 (d3da535, 7d7df67): loaded index 540 -> 175 MB on the Mac; P30 PSS 317 MB before a search, 353-371 MB right after (was 570-597), back to ~270 a minute later. 40 real queries identical before/after. Corrupt v4 files are rejected and rebuilt.
+- Fold minors (26f39d2): late store load, serialized writes, toolbar under a collapsed image.
+- Projection duplicates dropped, skipping nodes used by revisions/edges/import mappings (599b2c0, 2f76b1d).
+- WebDAV against a real server (rclone, 4493638): edits never arrived because plain WebDAV doesn't propagate folder ETags; now full listing in WebDAV mode. Test: 20 notes, 12 MB file, edit, delete.
+- New: day title of another year unreadable next to a back button (459244e, c109fc2): compact arrows, two-line small title; P30 verified.
+- P2P: sendme/iroh builds for arm64 (9.4 MB CLI) but aborts on Android outside an app ('android context was not initialized'); LAN timing needs an in-app harness.
+- Full suite 1641, tylog_core 406. Codex review: 1 critical + 4 important, all fixed with tests.
+- Open: S6 target <=350 MB right after a search missed by 3-21 MB (index cost now ~50 MB; baseline ~317 MB); P2P LAN timing.
