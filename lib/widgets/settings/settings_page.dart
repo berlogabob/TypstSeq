@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
+
 /// One Settings page: a title bar with back arrow and a scrolling list.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.title, required this.children});

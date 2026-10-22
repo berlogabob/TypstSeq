@@ -8,12 +8,7 @@ import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
 import '../audio/processing_policy.dart';
 import 'constants.dart';
-import 'settings/about_page.dart';
-import 'settings/ai_page.dart';
-import 'settings/calendars_page.dart';
-import 'settings/general_page.dart';
-import 'settings/maintenance_page.dart';
-import 'settings/sync_storage_page.dart';
+import 'settings/settings_catalog.dart';
 
 /// Route name prefix of Settings and its pages ([_closeSettings] in the app).
 const kSettingsRoute = 'settings';
@@ -114,59 +109,105 @@ class SettingsSheet extends StatefulWidget {
 class _SettingsSheetState extends State<SettingsSheet> {
   String? _paperOverride;
   ThemeMode? _themeOverride;
+  String _query = '';
+  SettingsSearchEntry? _selected = settingsSearchEntries.first;
+
   @override
   Widget build(BuildContext context) {
-    final groups = <(String, String, Widget)>[
-      (
-        'General',
-        '${_themeLabel(_themeOverride ?? widget.themeMode)} · ${_paperLabel(_paperOverride ?? widget.pdfPaper)}',
-        GeneralPage(
-          settings: widget,
+    final groups = settingsSearchEntries.take(6).toList();
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: wide
+          ? Row(
+              children: [
+                SizedBox(width: 360, child: _home(groups, wide: true)),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child:
+                      _selected?.builder(
+                        widget,
+                        onPaperChanged: (paper) =>
+                            setState(() => _paperOverride = paper),
+                        onThemeChanged: (theme) =>
+                            setState(() => _themeOverride = theme),
+                      ) ??
+                      const SizedBox(),
+                ),
+              ],
+            )
+          : _home(groups),
+    );
+  }
+
+  Widget _home(List<SettingsSearchEntry> groups, {bool wide = false}) {
+    final entries = _query.trim().isEmpty
+        ? groups
+        : settingsSearchEntries
+              .where((entry) => entry.matches(_query.trim()))
+              .toList();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: TextField(
+            key: const ValueKey('settings-search'),
+            decoration: const InputDecoration(
+              hintText: 'Search settings',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (value) => setState(() => _query = value),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final entry in entries)
+                ListTile(
+                  title: Text(entry.title),
+                  subtitle: Text(
+                    _query.trim().isEmpty ? _subtitle(entry) : entry.path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _open(entry, wide: wide),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _subtitle(SettingsSearchEntry entry) => switch (entry.title) {
+    'General' =>
+      '${_themeLabel(_themeOverride ?? widget.themeMode)} · ${_paperLabel(_paperOverride ?? widget.pdfPaper)}',
+    'Calendars' => _calendarSummary,
+    'AI' => 'Servers, audio, articles, screenshots',
+    'Sync and storage' => widget.syncStatusSubtitle,
+    'Maintenance' => 'Problems, index, import',
+    'About' => 'Version, updates, help',
+    _ => entry.path,
+  };
+
+  Future<void> _open(SettingsSearchEntry entry, {required bool wide}) async {
+    if (wide) {
+      setState(() => _selected = entry);
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        settings: RouteSettings(name: entry.routeName),
+        builder: (_) => entry.builder(
+          widget,
           onPaperChanged: (paper) => setState(() => _paperOverride = paper),
           onThemeChanged: (theme) => setState(() => _themeOverride = theme),
         ),
       ),
-      ('Calendars', _calendarSummary, CalendarsPage(settings: widget)),
-      ('AI', 'Servers, audio, articles, screenshots', AiPage(settings: widget)),
-      (
-        'Sync and storage',
-        widget.syncStatusSubtitle,
-        SyncStoragePage(settings: widget),
-      ),
-      (
-        'Maintenance',
-        'Problems, index, import',
-        MaintenancePage(settings: widget),
-      ),
-      ('About', 'Version, updates, help', AboutPage(settings: widget)),
-    ];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          for (final (title, summary, page) in groups)
-            ListTile(
-              title: Text(title),
-              subtitle: Text(
-                summary,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                await Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                    settings: const RouteSettings(name: '$kSettingsRoute/page'),
-                    builder: (_) => page,
-                  ),
-                );
-                if (mounted) setState(() {});
-              },
-            ),
-        ],
-      ),
     );
+    if (mounted) setState(() {});
   }
 
   String get _calendarSummary {

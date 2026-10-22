@@ -40,14 +40,7 @@ class AiPage extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   settings: const RouteSettings(name: '$kSettingsRoute/ai'),
-                  builder: (_) => SettingsPage(
-                    title: 'Screenshots',
-                    children: [
-                      if (settings.audioPolicyRead != null)
-                        _audio(AiSettingsSection.screenshots),
-                      _screenshots(),
-                    ],
-                  ),
+                  builder: (_) => screenshotsPage(settings),
                 ),
               ),
       ),
@@ -69,31 +62,54 @@ class AiPage extends StatelessWidget {
             context,
             MaterialPageRoute(
               settings: const RouteSettings(name: '$kSettingsRoute/ai'),
-              builder: (_) =>
-                  SettingsPage(title: title, children: [_audio(section)]),
+              builder: (_) => aiSectionPage(settings, title, section),
             ),
           ),
   );
-
-  Widget _audio(AiSettingsSection section) => AudioProcessingSettings(
-    section: section,
-    read: settings.audioPolicyRead!,
-    write: settings.audioPolicyWrite!,
-    processNow: settings.onProcessAudio!,
-    readAi: settings.readAi,
-    writeAi: settings.writeAi,
-    readWorkers: settings.readWorkers,
-  );
-
-  Widget _screenshots() => ScreenshotsSettings(
-    mode: settings.screenshotsMode,
-    time: settings.screenshotsTime,
-    onConfigure: settings.onConfigureScreenshots!,
-    onProcessNow: settings.onProcessScreenshots!,
-    readStatus: settings.readScreenshotsStatus!,
-    folder: settings.screenshotsFolder,
-    onFolderChanged: settings.onScreenshotsFolderChanged,
-    readWanted: settings.readScreenshotsWanted,
-    editable: true,
-  );
 }
+
+Widget aiSectionPage(
+  SettingsSheet settings,
+  String title,
+  AiSettingsSection section,
+) => SettingsPage(
+  title: title,
+  children: [
+    AudioProcessingSettings(
+      section: section,
+      read: settings.audioPolicyRead!,
+      write: settings.audioPolicyWrite!,
+      processNow: settings.onProcessAudio!,
+      readAi: settings.readAi,
+      writeAi: settings.writeAi,
+      readWorkers: settings.readWorkers,
+    ),
+  ],
+);
+
+Widget screenshotsPage(SettingsSheet settings) => SettingsPage(
+  title: 'Screenshots',
+  children: [
+    if (settings.audioPolicyRead != null)
+      AudioProcessingSettings(
+        section: AiSettingsSection.screenshots,
+        read: settings.audioPolicyRead!,
+        write: settings.audioPolicyWrite!,
+        processNow: settings.onProcessAudio!,
+        readAi: settings.readAi,
+        writeAi: settings.writeAi,
+        readWorkers: settings.readWorkers,
+      ),
+    ScreenshotsSettings(
+      mode: settings.screenshotsMode,
+      time: settings.screenshotsTime,
+      onConfigure: settings.onConfigureScreenshots!,
+      onProcessNow: settings.onProcessScreenshots!,
+      readStatus: settings.readScreenshotsStatus!,
+      folder: settings.screenshotsFolder,
+      onFolderChanged: settings.onScreenshotsFolderChanged,
+      readWanted: settings.readScreenshotsWanted,
+      editable: true,
+    ),
+  ],
+);

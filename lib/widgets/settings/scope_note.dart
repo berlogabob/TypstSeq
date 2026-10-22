@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 /// Small note under a setting's title saying which devices it applies to.
 class ScopeNote extends StatelessWidget {
   const ScopeNote(this.text, {super.key});
