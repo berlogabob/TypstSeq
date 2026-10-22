@@ -510,12 +510,12 @@ class _GraphViewState extends State<GraphView>
 
   void _fit(Size viewport, Size canvas) {
     if (isTimelineGraph(widget.graph) && canvas.height > canvas.width) {
-      // Vertical timeline: fit the width, start at the newest days (bottom).
+      // Vertical timeline: fit the width, start at the top (newest day).
       final scale = math.min(1.0, viewport.width / canvas.width);
       _transform.value = Matrix4.identity()
         ..translateByDouble(
           (viewport.width - canvas.width * scale) / 2,
-          math.min(0.0, viewport.height - canvas.height * scale),
+          0,
           0,
           1,
         )
@@ -632,8 +632,9 @@ double timelineColumnHeight(NoteGraph graph) {
 }
 
 Map<String, Offset> _timelineColumn(NoteGraph graph) {
+  // Newest day first, like the Journal.
   final days = graph.nodes.where((n) => n.kind == GraphNodeKind.day).toList()
-    ..sort((a, b) => a.title.compareTo(b.title));
+    ..sort((a, b) => b.title.compareTo(a.title));
   final newestDay = <String, String>{};
   for (final e in graph.edges) {
     if (!e.from.startsWith('day:')) continue;
@@ -1326,8 +1327,34 @@ class GraphPainter extends CustomPainter {
       return;
     }
     final cull = _cullRect();
+    // Timeline notes are always labelled; in portrait the label sits to the
+    // right of the node (the vertical timeline reads like a list), each note
+    // is drawn joined only to the day it is listed under, and its other days
+    // go on a second label line instead of long crossing lines.
+    final timeline = isTimelineGraph(graph);
+    final sideLabels = timeline && size.height > size.width;
+    final rowDay = <String, String>{};
+    final dayNotes = <String, List<String>>{};
+    if (sideLabels) {
+      for (final e in graph.edges) {
+        if (!e.from.startsWith('day:')) continue;
+        final current = rowDay[e.to];
+        if (current == null || e.from.compareTo(current) > 0) {
+          rowDay[e.to] = e.from;
+        }
+        final what = switch (e.kind) {
+          GraphEdgeKind.read => 'opened',
+          GraphEdgeKind.finished => 'finished',
+          _ => 'added',
+        };
+        dayNotes
+            .putIfAbsent(e.to, () => [])
+            .add('$what ${e.from.substring(9)}');
+      }
+    }
     for (final edge in graph.edges) {
       if (!visibleEdgeKinds.contains(edge.kind)) continue;
+      if (sideLabels && rowDay[edge.to] != edge.from) continue;
       final from = positions[edge.from];
       final to = positions[edge.to];
       if (from == null || to == null) continue;
@@ -1354,10 +1381,6 @@ class GraphPainter extends CustomPainter {
       if (edge.from == selectedPath) neighbors.add(edge.to);
       if (edge.to == selectedPath) neighbors.add(edge.from);
     }
-    // Timeline notes are always labelled; in portrait the label sits to the
-    // right of the node (the vertical timeline reads like a list).
-    final timeline = isTimelineGraph(graph);
-    final sideLabels = timeline && size.height > size.width;
     for (final node in graph.nodes) {
       final center = positions[node.path];
       if (center == null) continue;
@@ -1430,14 +1453,29 @@ class GraphPainter extends CustomPainter {
         ellipsis: '…',
       );
       if (sideLabels && !isEntity) {
+        final maxWidth = math.max(40.0, size.width - center.dx - radius - 12);
+        final days = (dayNotes[node.path] ?? <String>[])..sort();
+        final daysPainter = TextPainter(
+          text: TextSpan(
+            text: days.join(' · '),
+            style: labelStyle.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: labelStyle.fontSize! * kGraphCountScale,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          ellipsis: '…',
+        )..layout(maxWidth: maxWidth);
         textPainter
           ..textAlign = TextAlign.left
-          ..layout(
-            maxWidth: math.max(40, size.width - center.dx - radius - 12),
-          );
-        textPainter.paint(
+          ..layout(maxWidth: maxWidth);
+        final top = -(textPainter.height + daysPainter.height) / 2;
+        final left = radius + 6;
+        textPainter.paint(canvas, center + Offset(left, top));
+        daysPainter.paint(
           canvas,
-          center + Offset(radius + 6, -textPainter.height / 2),
+          center + Offset(left, top + textPainter.height),
         );
         continue;
       }

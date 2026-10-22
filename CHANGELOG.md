@@ -13,8 +13,9 @@ their history is in the commit log and the GitHub release notes.
   map URL for every kind.
 - Graph > Timeline shows the articles you opened or finished, joined to the
   day each was added, last opened and finished (Opened and Finished filters).
-  Finishing an article now records the day. On phones the timeline reads top
-  to bottom with each article title on its own line.
+  Finishing an article now records the day. On phones the timeline is a list,
+  newest day first, each article on its own line with its added / opened /
+  finished dates under the title.
 - Settings has a search box ("ocr" finds Screenshots), and wide windows show
   the list and the open page side by side.
 - Trashing an article keeps its source link in the reading log line, so it can
@@ -22,8 +23,10 @@ their history is in the commit log and the GitHub release notes.
 
 ### Fixed
 
-- The clock button's `- HH:MM` line no longer joins the Reading list; it goes
-  above the `== Reading` section.
+- The clock button always adds a real `- HH:MM` list item above the
+  `== Reading` section (continuing the journal list there). Before, it joined
+  the Reading list, or, after plain text, was saved as an escaped `\-` line
+  that showed a literal dash.
 - Library > Screenshots no longer loads hundreds of thumbnails at once: on the
   P30 opening the tab went from 646 MB to 279 MB, and scrolling stays near
   330 MB instead of climbing past 800 MB.

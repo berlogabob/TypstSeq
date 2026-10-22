@@ -62,11 +62,11 @@ The title bar shows the day; tap it to open the calendar and pick another day. A
 
 Journal and opened notes show clean, styled blocks by default. Tap a line or block to edit only its exact Typst source; the rest of the document stays covered. Edits autosave atomically. The top view button cycles Editor → Preview → Source → Editor; Split editor remains available for source and output together.
 
-The clock button adds a `- HH:MM` journal line to today's page. It goes above the app-written `== Reading` section, so it never joins the reading list. Finishing an article adds `- Read: <title>` there; rating adds stars, and trashing it adds 🗑 with the article's source link, so a deleted article can still be found by searching.
+The clock button adds a `- HH:MM` list item to today's page, above the app-written `== Reading` section, so it never joins the reading list. Finishing an article adds `- Read: <title>` there; rating adds stars, and trashing it adds 🗑 with the article's source link, so a deleted article can still be found by searching.
 
 More → New entity creates a person, place, organization or any kind you type (typed kinds are offered next time). The fields follow the kind: email for people and organizations, address for places and organizations, and a link or map URL for every kind. Links and emails are tappable in the entity card.
 
-Graph → Timeline shows the articles you opened or finished, each joined to the day it was added, the day you last opened it, and the day you finished it (Opened and Finished filters). On a phone the days run top to bottom with the newest at the bottom.
+Graph → Timeline shows the articles you opened or finished, each joined to the day it was added, the day you last opened it, and the day you finished it (Opened and Finished filters). On a phone it is a list, newest day first, each article on its own line with its added / opened / finished dates.
 
 Tapping a note link whose target does not exist offers to create that note (like Logseq/Obsidian). If two notes share the linked title, a picker lists both owners.
 

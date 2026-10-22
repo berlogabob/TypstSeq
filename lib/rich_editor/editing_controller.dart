@@ -704,29 +704,47 @@ class TyLogEditingController extends TextEditingController {
     }
   }
 
+  /// Adds a `- HH:MM` journal item, edited at the source level: typed into
+  /// the visible text the dash was escaped into a literal `\-` paragraph, and
+  /// at the end of the note it joined the app-written `== Reading` list. It
+  /// goes before that section, continuing a list right above it.
   void appendTimestamp(DateTime now) {
-    // Before the app-written '== Reading' log, so the entry stays a journal
-    // line instead of joining the reading list.
-    var at = text.length;
+    final source = document.toSource();
+    final time = localTime(now);
+    final reading = RegExp(
+      r'^== Reading[ \t]*$',
+      multiLine: true,
+    ).firstMatch(source);
+    final head = (reading == null ? source : source.substring(0, reading.start))
+        .trimRight();
+    final tail = reading == null
+        ? '\n'
+        : '\n\n${source.substring(reading.start)}';
+    final lastLine = head.substring(head.lastIndexOf('\n') + 1);
+    final gap = lastLine.startsWith('- ') ? '\n' : '\n\n';
+    loadSource('$head$gap- $time $tail');
+    // Caret at the end of the new item: the last bullet with this time before
+    // the Reading heading.
     var pos = 0;
+    var caret = text.length;
     for (var i = 0; i < document.blocks.length; i++) {
       final block = document.blocks[i];
       if (block.style == TyLogBlockStyle.heading &&
           block.visibleText.trim() == 'Reading') {
-        at = pos;
-        while (at > 0 && text[at - 1] == '\n') {
-          at--;
-        }
         break;
       }
-      pos += block.visibleText.length + document.gapAfter(i).length;
+      final visible = block.visibleText;
+      if (block.style == TyLogBlockStyle.bulletList && visible.contains(time)) {
+        var end = visible.length;
+        while (end > 0 && visible[end - 1] == '\n') {
+          end--;
+        }
+        caret = pos + end;
+      }
+      pos += visible.length + document.gapAfter(i).length;
     }
-    final prefix = at == 0 || text[at - 1] == '\n' ? '' : '\n';
-    final entry = '$prefix- ${localTime(now)} ';
-    value = TextEditingValue(
-      text: text.replaceRange(at, at, entry),
-      selection: TextSelection.collapsed(offset: at + entry.length),
-    );
+    value = value.copyWith(selection: TextSelection.collapsed(offset: caret));
+    onSourceChanged(document.toSource());
   }
 
   void applyMagic(MagicRequest request) {

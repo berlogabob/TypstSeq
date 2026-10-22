@@ -552,7 +552,7 @@ void main() {
     );
   });
 
-  test('portrait timeline runs days top to bottom', () {
+  test('portrait timeline lists the newest day first', () {
     const graph = NoteGraph(
       nodes: [
         GraphNode(
@@ -572,7 +572,7 @@ void main() {
     final canvas = graphCanvasSize(graph, null, const Size(400, 800));
     expect(canvas.height, greaterThan(canvas.width));
     final pos = timelinePositions(graph, canvas);
-    expect(pos['day:2026-07-01']!.dy, lessThan(pos['day:2026-07-02']!.dy));
+    expect(pos['day:2026-07-02']!.dy, lessThan(pos['day:2026-07-01']!.dy));
     expect(pos['day:2026-07-01']!.dx, pos['day:2026-07-02']!.dx);
     // The note sits on its own line to the right of its day.
     expect(pos['a.typ']!.dx, greaterThan(pos['day:2026-07-01']!.dx));

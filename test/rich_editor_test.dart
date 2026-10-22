@@ -130,30 +130,47 @@ void main() {
       expect(changes, hasLength(1));
       expect(changes.single, contains('09:07'));
       expect(changes.single, contains('id: "today"'));
-      expect(controller.text, 'Unsaved\n- 09:07 ');
-      expect(controller.selection.baseOffset, controller.text.length);
+      expect(controller.text, 'Unsaved\n\n• 09:07 \n');
+      // The caret ends the new item, ready to type.
+      expect(controller.selection.baseOffset, controller.text.length - 1);
       expect(controller.document.toSource(), contains('id: "today"'));
       controller.appendTimestamp(DateTime(2026, 10, 5, 9, 8));
-      expect(controller.text, endsWith('\n- 09:07 \n- 09:08 '));
+      expect(controller.text, endsWith('\n• 09:07\n• 09:08 \n'));
     },
   );
 
-  test('timestamp goes before the Reading log, not into it', () {
-    final controller = TyLogEditingController(
-      source: '${_source.trimRight()}\n\n- 09:00 run\n\n== Reading\n- Read: A\n',
-      onSourceChanged: (_) {},
-      onError: (error) => fail('$error'),
-      onProtectedTap: (_) {},
-    );
-    addTearDown(controller.dispose);
-    controller.appendTimestamp(DateTime(2026, 10, 5, 9, 38));
-    final source = controller.document.toSource();
-    expect(
-      source.indexOf('- 09:38'),
-      lessThan(source.indexOf('== Reading')),
-      reason: controller.text,
-    );
-    expect(source, contains('- Read: A'));
+  group('timestamp', () {
+    String stamp(String body) {
+      final controller = TyLogEditingController(
+        source: '${_source.trimRight()}\n\n$body',
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.appendTimestamp(DateTime(2026, 10, 5, 9, 38));
+      final source = controller.document.toSource();
+      expect(source, isNot(contains(r'\-')), reason: source);
+      return source.substring(_source.trimRight().length);
+    }
+
+    test('continues the journal list above the Reading log', () {
+      expect(
+        stamp('- 09:00 run\n\n== Reading\n- Read: A\n'),
+        '\n\n- 09:00 run\n- 09:38 \n\n== Reading\n- Read: A\n',
+      );
+    });
+
+    test('after a paragraph it starts a list, still before Reading', () {
+      expect(
+        stamp('Text para.\n\n== Reading\n- Read: A\n'),
+        '\n\nText para.\n\n- 09:38 \n\n== Reading\n- Read: A\n',
+      );
+    });
+
+    test('without a Reading log it is a list item at the end', () {
+      expect(stamp('Text para.\n'), '\n\nText para.\n\n- 09:38 \n');
+    });
   });
 
   test(
