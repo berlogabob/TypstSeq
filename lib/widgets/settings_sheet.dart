@@ -149,7 +149,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          padding: const EdgeInsets.fromLTRB(
+            kSpace16,
+            kSpace8,
+            kSpace16,
+            kSpace4,
+          ),
           child: TextField(
             key: const ValueKey('settings-search'),
             decoration: const InputDecoration(
