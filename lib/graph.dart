@@ -146,6 +146,7 @@ class _GraphViewState extends State<GraphView>
     GraphEdgeKind.citation,
     GraphEdgeKind.tag,
     GraphEdgeKind.read,
+    GraphEdgeKind.finished,
   };
   bool _bannerDismissed = false;
   Set<String>? _focusFilter;
@@ -322,7 +323,10 @@ class _GraphViewState extends State<GraphView>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: kSpace12, vertical: 6),
+          padding: const EdgeInsets.symmetric(
+            horizontal: kSpace12,
+            vertical: 6,
+          ),
           child: Wrap(
             spacing: 12,
             runSpacing: 6,
@@ -403,7 +407,8 @@ class _GraphViewState extends State<GraphView>
                           child: const Text('Focused view'),
                         ),
                       TextButton(
-                        onPressed: () => setState(() => _bannerDismissed = true),
+                        onPressed: () =>
+                            setState(() => _bannerDismissed = true),
                         child: const Text('Dismiss'),
                       ),
                     ],
@@ -1085,6 +1090,7 @@ class GraphPainter extends CustomPainter {
       GraphEdgeKind.citation,
       GraphEdgeKind.tag,
       GraphEdgeKind.read,
+      GraphEdgeKind.finished,
     },
     this.communities,
     this.clusters,
@@ -1404,6 +1410,9 @@ Color edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         GraphEdgeKind.citation => const Color(0xFFC5CAE9),
         GraphEdgeKind.tag => const Color(0xFFB2DFDB),
         GraphEdgeKind.read => const Color(0xFF80CBC4), // read-on-day = teal
+        GraphEdgeKind.finished => const Color(
+          0xFFFFB74D,
+        ), // finished-on-day = amber
       }
     : switch (kind) {
         GraphEdgeKind.link => const Color(0xFF757575),
@@ -1412,6 +1421,7 @@ Color edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         // Darker than `tag` so the two teals stay distinguishable now that
         // both had to move to clear 3:1.
         GraphEdgeKind.read => const Color(0xFF00695C),
+        GraphEdgeKind.finished => const Color(0xFFE65100),
       };
 
 void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
@@ -1470,14 +1480,21 @@ class GraphLegend extends StatelessWidget {
         selected: visibleKinds.contains(GraphEdgeKind.tag),
         onToggle: onToggle,
       ),
-      // `read` edges (timeline "read this on day X" graphs) are drawn and
+      // `read` edges (timeline "opened this on day X" graphs) are drawn and
       // togglable via `_visibleKinds` like the other three kinds — without
       // this entry they were visible and filterable but never explained.
       _LegendEntry(
         kind: GraphEdgeKind.read,
         color: edgeColor(GraphEdgeKind.read, Theme.of(context).brightness),
-        label: 'Read',
+        label: 'Opened',
         selected: visibleKinds.contains(GraphEdgeKind.read),
+        onToggle: onToggle,
+      ),
+      _LegendEntry(
+        kind: GraphEdgeKind.finished,
+        color: edgeColor(GraphEdgeKind.finished, Theme.of(context).brightness),
+        label: 'Finished',
+        selected: visibleKinds.contains(GraphEdgeKind.finished),
         onToggle: onToggle,
       ),
     ],

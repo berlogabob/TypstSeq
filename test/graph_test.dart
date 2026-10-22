@@ -431,63 +431,109 @@ void main() {
     expect(graphCanvasSize(g(4), null, const Size.square(900)).width, 900);
   });
 
-  test('buildTimelineGraph links articles to their added and read days', () {
-    final index = VaultIndex(
-      notesByPath: {
-        'articles/a.typ': const NoteRef(
-          id: 'a',
-          path: 'articles/a.typ',
-          title: 'A',
+  test(
+    'buildTimelineGraph links touched notes to their added, opened, and finished days',
+    () {
+      final index = VaultIndex(
+        notesByPath: {
+          'articles/a.typ': const NoteRef(
+            id: 'a',
+            path: 'articles/a.typ',
+            title: 'A',
+            kind: 'article',
+            outgoingLinks: [],
+            date: '2026-07-10',
+            properties: {'finished': '2026-07-16'},
+          ),
+          'articles/b.typ': const NoteRef(
+            id: 'b',
+            path: 'articles/b.typ',
+            title: 'B',
+            kind: 'article',
+            outgoingLinks: [],
+            date: '2026-07-11',
+          ),
+          'notes/n.typ': const NoteRef(
+            id: 'n',
+            path: 'notes/n.typ',
+            title: 'N',
+            kind: 'note',
+            outgoingLinks: [],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
+
+      final graph = buildTimelineGraph(index, {'articles/a.typ': '2026-07-15'});
+
+      final days = graph.nodes
+          .where((n) => n.kind == GraphNodeKind.day)
+          .map((n) => n.title)
+          .toSet();
+      expect(days, {'2026-07-10', '2026-07-15', '2026-07-16'});
+      expect(
+        graph.edges.any(
+          (e) =>
+              e.from == 'day:2026-07-10' &&
+              e.to == 'articles/a.typ' &&
+              e.kind == GraphEdgeKind.link,
+        ),
+        isTrue, // added on 07-10
+      );
+      expect(
+        graph.edges.any(
+          (e) =>
+              e.from == 'day:2026-07-15' &&
+              e.to == 'articles/a.typ' &&
+              e.kind == GraphEdgeKind.read,
+        ),
+        isTrue, // read on 07-15
+      );
+      expect(
+        graph.edges.any(
+          (e) =>
+              e.from == 'day:2026-07-16' &&
+              e.to == 'articles/a.typ' &&
+              e.kind == GraphEdgeKind.finished,
+        ),
+        isTrue,
+      );
+      expect(graph.nodes.any((n) => n.path == 'articles/b.typ'), isFalse);
+      // Daily notes and untouched notes are excluded from the timeline.
+      expect(graph.nodes.any((n) => n.path == 'notes/n.typ'), isFalse);
+    },
+  );
+
+  test('buildTimelineGraph excludes untouched notes before layout bounds', () {
+    final notes = <String, NoteRef>{
+      for (var i = 0; i < 300; i++)
+        'articles/untouched-$i.typ': NoteRef(
+          id: 'untouched-$i',
+          path: 'articles/untouched-$i.typ',
+          title: 'Untouched $i',
           kind: 'article',
-          outgoingLinks: [],
+          outgoingLinks: const [],
           date: '2026-07-10',
         ),
-        'articles/b.typ': const NoteRef(
-          id: 'b',
-          path: 'articles/b.typ',
-          title: 'B',
-          kind: 'article',
-          outgoingLinks: [],
-          date: '2026-07-11',
-        ),
-        'notes/n.typ': const NoteRef(
-          id: 'n',
-          path: 'notes/n.typ',
-          title: 'N',
-          kind: 'note',
-          outgoingLinks: [],
-        ),
-      },
-      backlinksByTarget: const {},
+      'articles/read.typ': const NoteRef(
+        id: 'read',
+        path: 'articles/read.typ',
+        title: 'Read',
+        kind: 'article',
+        outgoingLinks: [],
+        date: '2026-07-10',
+      ),
+    };
+    final graph = buildTimelineGraph(
+      VaultIndex(notesByPath: notes, backlinksByTarget: const {}),
+      {'articles/read.typ': '2026-07-15'},
     );
 
-    final graph = buildTimelineGraph(index, {'articles/a.typ': '2026-07-15'});
-
-    final days = graph.nodes
-        .where((n) => n.kind == GraphNodeKind.day)
-        .map((n) => n.title)
-        .toSet();
-    expect(days, {'2026-07-10', '2026-07-11', '2026-07-15'});
+    expect(graph.nodes.any((node) => node.path == 'articles/read.typ'), isTrue);
     expect(
-      graph.edges.any(
-        (e) =>
-            e.from == 'day:2026-07-10' &&
-            e.to == 'articles/a.typ' &&
-            e.kind == GraphEdgeKind.link,
-      ),
-      isTrue, // added on 07-10
+      graph.nodes.where((node) => node.kind != GraphNodeKind.day),
+      hasLength(1),
     );
-    expect(
-      graph.edges.any(
-        (e) =>
-            e.from == 'day:2026-07-15' &&
-            e.to == 'articles/a.typ' &&
-            e.kind == GraphEdgeKind.read,
-      ),
-      isTrue, // read on 07-15
-    );
-    // Non-articles are excluded from the timeline.
-    expect(graph.nodes.any((n) => n.path == 'notes/n.typ'), isFalse);
   });
 
   test('timelinePositions orders day nodes chronologically on the x-axis', () {

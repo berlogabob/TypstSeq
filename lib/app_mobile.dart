@@ -3351,6 +3351,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         (status == null || status == 'unread' || status == 'reading')) {
       await _logReading(finished.title);
       await _setReadStatus(finished, 'read');
+      await _setNoteProperty(finished, 'finished', isoDay(DateTime.now()));
     }
   }
 

@@ -1,7 +1,7 @@
 import 'models.dart';
 import 'scanner.dart' show normalizeTag;
 
-enum GraphEdgeKind { link, citation, tag, read }
+enum GraphEdgeKind { link, citation, tag, read, finished }
 
 /// A tag on fewer notes than this is a pure leaf (a hub node wired to a single
 /// note connects nothing), so it is not promoted to a concept node in the note
@@ -79,8 +79,7 @@ NoteGraph buildNoteGraph(VaultIndex index) {
 
   final edges = <GraphEdge>[
     for (final entry in index.backlinksByTarget.entries)
-      for (final source in entry.value)
-        GraphEdge(from: source, to: entry.key),
+      for (final source in entry.value) GraphEdge(from: source, to: entry.key),
   ];
   // Tags and citations become their own hub nodes with note->entity spokes,
   // rather than fanning every co-occurring pair of notes into a clique. Single-
@@ -146,7 +145,9 @@ void _addEntityNodes(
       ),
     );
     for (final notePath in notePaths.toList()..sort()) {
-      edges.add(GraphEdge(from: notePath, to: '$idPrefix:$key', kind: edgeKind));
+      edges.add(
+        GraphEdge(from: notePath, to: '$idPrefix:$key', kind: edgeKind),
+      );
     }
   }
 }
@@ -357,11 +358,11 @@ CommunityMap computeCommunities(
 
 final _isoDayPattern = RegExp(r'^\d{4}-\d{2}-\d{2}');
 
-/// A time-perspective projection: day nodes linked to the articles *added* on
-/// that day (`link` edge, from `note.date` or file mtime) and *read* on that day
-/// (`read` edge, from [readDayByPath] — a path→`YYYY-MM-DD` map the app derives
-/// from reading state). Bounded to the most recent [windowDays] active days so
-/// it never becomes the whole corpus.
+/// A time-perspective projection of notes the user touched: any non-daily note
+/// with an entry in [readDayByPath] or a `finished` property matching
+/// `YYYY-MM-DD`. Such notes can have `link`, `read`, and `finished` edges for
+/// their added, opened, and finished days respectively. Bounded to the most
+/// recent [windowDays] days represented by those edges.
 NoteGraph buildTimelineGraph(
   VaultIndex index,
   Map<String, String> readDayByPath, {
@@ -369,7 +370,9 @@ NoteGraph buildTimelineGraph(
 }) {
   String? addedDay(NoteRef note) {
     final date = note.date;
-    if (date != null && _isoDayPattern.hasMatch(date)) return date.substring(0, 10);
+    if (date != null && _isoDayPattern.hasMatch(date)) {
+      return date.substring(0, 10);
+    }
     final millis = note.modifiedMillis;
     if (millis != null) {
       return DateTime.fromMillisecondsSinceEpoch(
@@ -379,58 +382,72 @@ NoteGraph buildTimelineGraph(
     return null;
   }
 
-  final articles = index.notes.where((note) => note.kind == 'article');
-  final addedByPath = <String, String>{};
-  final activity = <String, int>{};
-  for (final note in articles) {
+  final candidateEdges = <String, List<GraphEdge>>{};
+  for (final note in index.notes.where((note) => note.kind != 'daily')) {
     final added = addedDay(note);
-    if (added != null) {
-      addedByPath[note.path] = added;
-      activity[added] = (activity[added] ?? 0) + 1;
-    }
     final read = readDayByPath[note.path];
-    if (read != null) activity[read] = (activity[read] ?? 0) + 1;
+    final finishedValue = note.properties['finished'];
+    final finished =
+        finishedValue is String &&
+            RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(finishedValue)
+        ? finishedValue
+        : null;
+    // Opening counts only for articles; anything else needs a finished day.
+    if (finished == null && (read == null || note.kind != 'article')) continue;
+    candidateEdges[note.path] = [
+      if (added != null) GraphEdge(from: 'day:$added', to: note.path),
+      if (read != null)
+        GraphEdge(from: 'day:$read', to: note.path, kind: GraphEdgeKind.read),
+      if (finished != null)
+        GraphEdge(
+          from: 'day:$finished',
+          to: note.path,
+          kind: GraphEdgeKind.finished,
+        ),
+    ];
   }
-  final allDays = activity.keys.toList()..sort();
+  final allDays = {
+    for (final edges in candidateEdges.values)
+      for (final edge in edges) edge.from.substring(4),
+  }.toList()..sort();
   final window = allDays.length <= windowDays
       ? allDays.toSet()
       : allDays.sublist(allDays.length - windowDays).toSet();
 
   final edges = <GraphEdge>[];
-  final usedDays = <String>{};
-  final usedArticles = <String, NoteRef>{};
-  for (final note in index.notes.where((n) => n.kind == 'article')) {
-    final added = addedByPath[note.path];
-    final read = readDayByPath[note.path];
-    final inAdded = added != null && window.contains(added);
-    final inRead = read != null && window.contains(read);
-    if (!inAdded && !inRead) continue;
-    usedArticles[note.path] = note;
-    if (inAdded) {
-      usedDays.add(added);
-      edges.add(GraphEdge(from: 'day:$added', to: note.path));
-    }
-    if (inRead) {
-      usedDays.add(read);
-      edges.add(
-        GraphEdge(from: 'day:$read', to: note.path, kind: GraphEdgeKind.read),
-      );
-    }
+  final usedNotes = <String, NoteRef>{};
+  for (final note in index.notes.where(
+    (note) => candidateEdges.containsKey(note.path),
+  )) {
+    final noteEdges = candidateEdges[note.path]!
+        .where((edge) => window.contains(edge.from.substring(4)))
+        .toList();
+    if (noteEdges.isEmpty) continue;
+    usedNotes[note.path] = note;
+    edges.addAll(noteEdges);
+  }
+  final dayCounts = <String, int>{};
+  for (final edge in edges) {
+    final day = edge.from.substring(4);
+    dayCounts[day] = (dayCounts[day] ?? 0) + 1;
   }
   final nodes = <GraphNode>[
-    for (final day in usedDays.toList()..sort())
+    for (final day in dayCounts.keys.toList()..sort())
       GraphNode(
         path: 'day:$day',
         title: day,
         kind: GraphNodeKind.day,
-        count: activity[day] ?? 0,
+        count: dayCounts[day]!,
       ),
-    for (final note in usedArticles.values)
+    for (final note
+        in usedNotes.values.toList()..sort((a, b) => a.path.compareTo(b.path)))
       GraphNode(path: note.path, title: note.title),
   ];
   edges.sort((a, b) {
     final byFrom = a.from.compareTo(b.from);
-    return byFrom != 0 ? byFrom : a.to.compareTo(b.to);
+    if (byFrom != 0) return byFrom;
+    final byTo = a.to.compareTo(b.to);
+    return byTo != 0 ? byTo : a.kind.index.compareTo(b.kind.index);
   });
   return NoteGraph(nodes: nodes, edges: edges);
 }
@@ -487,11 +504,12 @@ GraphStats computeGraphStats(NoteGraph graph, {int hubLimit = 5}) {
     degree[edge.from] = (degree[edge.from] ?? 0) + 1;
     degree[edge.to] = (degree[edge.to] ?? 0) + 1;
   }
-  final orphans = degree.entries
-      .where((entry) => entry.value == 0)
-      .map((entry) => entry.key)
-      .toList()
-    ..sort();
+  final orphans =
+      degree.entries
+          .where((entry) => entry.value == 0)
+          .map((entry) => entry.key)
+          .toList()
+        ..sort();
   final ranked = degree.entries.where((entry) => entry.value > 0).toList()
     ..sort((a, b) {
       final byDegree = b.value.compareTo(a.value);
