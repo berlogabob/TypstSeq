@@ -1,4 +1,4 @@
-# TyLog v5 user handbook (0.19.4)
+# TyLog v5 user handbook (0.19.5)
 
 ## Vault format
 

@@ -3,6 +3,33 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.19.5+157
+
+### New
+
+- New entity: Kind is a list of the standard kinds plus every kind already in
+  your vault; type a new one to add it. The fields follow the kind: email for
+  people and organizations, address for places and organizations, a link or
+  map URL for every kind.
+- Graph > Timeline shows the articles you opened or finished, joined to the
+  day each was added, last opened and finished (Opened and Finished filters).
+  Finishing an article now records the day. On phones the timeline reads top
+  to bottom with each article title on its own line.
+- Settings has a search box ("ocr" finds Screenshots), and wide windows show
+  the list and the open page side by side.
+- Trashing an article keeps its source link in the reading log line, so it can
+  still be found.
+
+### Fixed
+
+- The clock button's `- HH:MM` line no longer joins the Reading list; it goes
+  above the `== Reading` section.
+- Library > Screenshots no longer loads hundreds of thumbnails at once: on the
+  P30 opening the tab went from 646 MB to 279 MB, and scrolling stays near
+  330 MB instead of climbing past 800 MB.
+- Read articles no longer disappear from the timeline behind thousands of
+  added ones.
+
 ## 0.19.4+156
 
 ### New
