@@ -1,3 +1,4 @@
+import 'reading_log.dart';
 import 'dart:async';
 import 'widgets/app_icons.dart';
 import 'calendar_feeds.dart';
@@ -3356,18 +3357,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Appends a reading-log line to today's daily note so "what I read"
   /// survives even after the article file itself is deleted. Plain text on
   /// purpose — a link would dangle once the article is gone.
-  Future<void> _logReading(String title, {String? rating}) async {
+  Future<void> _logReading(String title, {String? rating, String? url}) async {
     final v = vault;
     if (v == null || title.trim().isEmpty) return;
     try {
       final dayPath = await workspace.ensureTodayNote();
       final safeTitle = escapeMarkup(title.trim());
-      final stars = int.tryParse(rating ?? '');
-      final line = rating == null
-          ? '- Read: $safeTitle'
-          : stars != null
-          ? '- Read: $safeTitle — ${'★' * stars}${'☆' * (5 - stars)}'
-          : '- Read: $safeTitle — 🗑';
+      final line = readingLogLine(safeTitle, rating: rating, url: url);
       // The daily note may be the currently-open (possibly dirty) document;
       // writing to disk behind the editor's back would be clobbered by the
       // next autosave, so route through the editor buffer in that case.
@@ -3489,10 +3485,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) showSnack(context, 'Could not rate that article: $error');
       return;
     }
-    final title = index?.notesByPath[path]?.title;
-    if (title != null) await _logReading(title, rating: value);
-    if (value != 'shit' || !mounted) return;
     final rated = index?.notesByPath[path];
+    if (rated != null) {
+      await _logReading(
+        rated.title,
+        rating: value,
+        url: rated.properties['url'] as String?,
+      );
+    }
+    if (value != 'shit' || !mounted) return;
     if (rated != null) await _deleteArticle(rated);
   }
 
