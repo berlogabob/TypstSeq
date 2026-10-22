@@ -196,4 +196,6 @@ Screenshot-mode "overwrite" closed: the user changed it by hand while the picker
 | W6 | Flaky `workspace_revision_cache_test` (desktop variant): run it 30x, find the timing dependency, fix | codex | 30/30 passes |
 | W7 | Settings: search box on the Settings home (finds a setting by name and opens its page); two-pane layout on wide windows | codex | widget tests: search "OCR" opens Screenshots; >= 900 px shows list + page side by side |
 
+User answers (2026-10-22): W2 keep the 🗑 line, add the source URL so a deleted article can be found again (today only the title is kept). W1 timeline edges: added, last opened, finished; finish day stored as a `finished` property when an item is finished. W3 cause: the time button appends `- HH:MM` at the end of the daily note, i.e. inside `== Reading`; fix: insert before the Reading section (helper lib/journal_insert.dart). Tasks split small so Ornith output can be judged.
+
 Order: W3 repro and W2 question first (cheap, need the user), then W1, W4, W6 in parallel; W5; W7 last. Release 0.19.5 only after all are verified on the Mac and a phone.

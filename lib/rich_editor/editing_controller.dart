@@ -705,13 +705,27 @@ class TyLogEditingController extends TextEditingController {
   }
 
   void appendTimestamp(DateTime now) {
-    selection = TextSelection.collapsed(offset: text.length);
-    final prefix = text.isEmpty || text.endsWith('\n') ? '' : '\n';
+    // Before the app-written '== Reading' log, so the entry stays a journal
+    // line instead of joining the reading list.
+    var at = text.length;
+    var pos = 0;
+    for (var i = 0; i < document.blocks.length; i++) {
+      final block = document.blocks[i];
+      if (block.style == TyLogBlockStyle.heading &&
+          block.visibleText.trim() == 'Reading') {
+        at = pos;
+        while (at > 0 && text[at - 1] == '\n') {
+          at--;
+        }
+        break;
+      }
+      pos += block.visibleText.length + document.gapAfter(i).length;
+    }
+    final prefix = at == 0 || text[at - 1] == '\n' ? '' : '\n';
+    final entry = '$prefix- ${localTime(now)} ';
     value = TextEditingValue(
-      text: '$text$prefix- ${localTime(now)} ',
-      selection: TextSelection.collapsed(
-        offset: text.length + prefix.length + 8,
-      ),
+      text: text.replaceRange(at, at, entry),
+      selection: TextSelection.collapsed(offset: at + entry.length),
     );
   }
 

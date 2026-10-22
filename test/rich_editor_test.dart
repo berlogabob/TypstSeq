@@ -138,6 +138,24 @@ void main() {
     },
   );
 
+  test('timestamp goes before the Reading log, not into it', () {
+    final controller = TyLogEditingController(
+      source: '${_source.trimRight()}\n\n- 09:00 run\n\n== Reading\n- Read: A\n',
+      onSourceChanged: (_) {},
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.appendTimestamp(DateTime(2026, 10, 5, 9, 38));
+    final source = controller.document.toSource();
+    expect(
+      source.indexOf('- 09:38'),
+      lessThan(source.indexOf('== Reading')),
+      reason: controller.text,
+    );
+    expect(source, contains('- Read: A'));
+  });
+
   test(
     'rich document hides generated title and preserves unchanged source',
     () {
