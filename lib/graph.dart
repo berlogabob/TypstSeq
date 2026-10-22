@@ -615,14 +615,55 @@ bool isTimelineGraph(NoteGraph graph) =>
 /// the day(s) they connect to and staggered vertically to reduce overlap. O(n),
 /// deterministic — no physics needed for a timeline.
 Map<String, Offset> timelinePositions(NoteGraph graph, Size size) {
-  // Portrait (phone): days run top to bottom instead of left to right.
-  if (size.height > size.width) {
-    return {
-      for (final e in _timelineRow(graph, size.flipped).entries)
-        e.key: Offset(e.value.dy, e.value.dx),
-    };
-  }
+  // Portrait (phone): days top to bottom, each note on its own line beside
+  // its newest day, so titles fit.
+  if (size.height > size.width) return _timelineColumn(graph);
   return _timelineRow(graph, size);
+}
+
+const _kTimelineLine = 36.0;
+const _kTimelineDayGap = 48.0;
+
+/// Canvas height [_timelineColumn] needs.
+double timelineColumnHeight(NoteGraph graph) {
+  final days = graph.nodes.where((n) => n.kind == GraphNodeKind.day).length;
+  final notes = graph.nodes.length - days;
+  return 80 + notes * _kTimelineLine + days * _kTimelineDayGap;
+}
+
+Map<String, Offset> _timelineColumn(NoteGraph graph) {
+  final days = graph.nodes.where((n) => n.kind == GraphNodeKind.day).toList()
+    ..sort((a, b) => a.title.compareTo(b.title));
+  final newestDay = <String, String>{};
+  for (final e in graph.edges) {
+    if (!e.from.startsWith('day:')) continue;
+    final current = newestDay[e.to];
+    if (current == null || e.from.compareTo(current) > 0) {
+      newestDay[e.to] = e.from;
+    }
+  }
+  final notesByDay = <String, List<String>>{};
+  for (final node in graph.nodes) {
+    if (node.kind == GraphNodeKind.day) continue;
+    final day = newestDay[node.path];
+    if (day != null) notesByDay.putIfAbsent(day, () => []).add(node.path);
+  }
+  const dayX = 48.0;
+  const noteX = 110.0;
+  final pos = <String, Offset>{};
+  var y = 40.0;
+  for (final day in days) {
+    pos[day.path] = Offset(dayX, y);
+    final notes = notesByDay[day.path] ?? const <String>[];
+    for (var i = 0; i < notes.length; i++) {
+      pos[notes[i]] = Offset(noteX, y + i * _kTimelineLine);
+    }
+    y += math.max(1, notes.length) * _kTimelineLine + _kTimelineDayGap;
+  }
+  for (final node in graph.nodes) {
+    pos.putIfAbsent(node.path, () => Offset(noteX, y));
+  }
+  return pos;
 }
 
 Map<String, Offset> _timelineRow(NoteGraph graph, Size size) {
@@ -884,7 +925,10 @@ Size graphCanvasSize(NoteGraph graph, String? focalPath, Size viewport) {
     final days = graph.nodes.where((x) => x.kind == GraphNodeKind.day).length;
     final length = (days * 150 + 200).toDouble();
     if (viewport.height > viewport.width) {
-      return Size(viewport.width, math.max(viewport.height, length));
+      return Size(
+        viewport.width,
+        math.max(viewport.height, timelineColumnHeight(graph)),
+      );
     }
     return Size(
       math.max(viewport.width, length),
@@ -1310,6 +1354,10 @@ class GraphPainter extends CustomPainter {
       if (edge.from == selectedPath) neighbors.add(edge.to);
       if (edge.to == selectedPath) neighbors.add(edge.from);
     }
+    // Timeline notes are always labelled; in portrait the label sits to the
+    // right of the node (the vertical timeline reads like a list).
+    final timeline = isTimelineGraph(graph);
+    final sideLabels = timeline && size.height > size.width;
     for (final node in graph.nodes) {
       final center = positions[node.path];
       if (center == null) continue;
@@ -1350,7 +1398,7 @@ class GraphPainter extends CustomPainter {
 
       // Note labels appear only near the selection to cut clutter; concept/work
       // hubs are always labelled so the map reads as a set of named topics.
-      if (!related && !isEntity) continue;
+      if (!related && !isEntity && !timeline) continue;
       final title = node.kind == GraphNodeKind.concept
           ? prettyGraphLabel(node.title)
           : node.title;
@@ -1380,7 +1428,20 @@ class GraphPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         maxLines: 1,
         ellipsis: '…',
-      )..layout(maxWidth: 96);
+      );
+      if (sideLabels && !isEntity) {
+        textPainter
+          ..textAlign = TextAlign.left
+          ..layout(
+            maxWidth: math.max(40, size.width - center.dx - radius - 12),
+          );
+        textPainter.paint(
+          canvas,
+          center + Offset(radius + 6, -textPainter.height / 2),
+        );
+        continue;
+      }
+      textPainter.layout(maxWidth: 96);
       textPainter.paint(
         canvas,
         center + Offset(-textPainter.width / 2, radius + 4),

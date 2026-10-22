@@ -574,6 +574,10 @@ void main() {
     final pos = timelinePositions(graph, canvas);
     expect(pos['day:2026-07-01']!.dy, lessThan(pos['day:2026-07-02']!.dy));
     expect(pos['day:2026-07-01']!.dx, pos['day:2026-07-02']!.dx);
+    // The note sits on its own line to the right of its day.
+    expect(pos['a.typ']!.dx, greaterThan(pos['day:2026-07-01']!.dx));
+    expect(pos['a.typ']!.dy, pos['day:2026-07-01']!.dy);
+    expect(canvas.height, greaterThanOrEqualTo(timelineColumnHeight(graph)));
   });
 
   test('timelinePositions orders day nodes chronologically on the x-axis', () {

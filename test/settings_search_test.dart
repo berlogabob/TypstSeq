@@ -45,6 +45,8 @@ void main() {
     await tester.pump();
     expect(find.text('Screenshots'), findsOneWidget);
     expect(find.text('AI › Screenshots'), findsOneWidget);
+    // A top-level match shows its summary, not its own name again.
+    expect(find.text('Servers, audio, articles, screenshots'), findsOneWidget);
 
     await tester.tap(find.text('Screenshots'));
     await tester.pumpAndSettle();

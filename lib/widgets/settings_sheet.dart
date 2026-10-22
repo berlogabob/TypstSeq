@@ -171,7 +171,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 ListTile(
                   title: Text(entry.title),
                   subtitle: Text(
-                    _query.trim().isEmpty ? _subtitle(entry) : entry.path,
+                    // A top-level page's path is just its own name.
+                    _query.trim().isEmpty || entry.path == entry.title
+                        ? _subtitle(entry)
+                        : entry.path,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
