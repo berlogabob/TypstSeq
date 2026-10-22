@@ -182,3 +182,18 @@ Then: full suite, device checks, tag 0.19.1.
 - Screenshot note layout redesign (before the next release): desktop two columns (picture maximised left, text right); phone layout to be decided.
 - Then: release 0.19.4; memory baseline profiling (A24 idle 386 MB > 350); P2P in-app test.
 - 0.19.4+156 released (2026-10-21): Settings pages, screenshot view, steady thumbnails, single-file Windows exe with self-update (Rust launcher tool/windows_launcher). Update test on Studio pending (0.19.3 test exe -> 0.19.4).
+
+## Wave 13 (2026-10-22): open items + user findings (plan; P2P harness moves to its own session)
+Screenshot-mode "overwrite" closed: the user changed it by hand while the picker was broken.
+
+| # | Task | Owner | Done when |
+|---|---|---|---|
+| W1 | Timeline graph misses read books: `buildTimelineGraph` (packages/tylog_core/lib/src/graph.dart) takes only `kind == 'article'` and read days only from recently opened (`_mergedRecent`). Include books (and other read kinds), and take read days from the daily `== Reading` log lines too, so deleted/rated items keep a day | codex | core test: a book read on day X gets a `read` edge; a logged-but-deleted article shows on its day; Mac timeline shows the user's read books |
+| W2 | Reading log: a trashed article is logged as "- Read: <title> — 🗑" (app_mobile.dart `_logReading`). Confirm with the user what it should say (e.g. "Dropped: <title>" or no line) | Claude asks, codex fixes | test for the trash line |
+| W3 | Bullet list: "problem with the dot list" + a leading dash also turns into a dot. Reproduce first on the P30 in a scratch note (never real notes), record exact keystrokes and before/after source, then fix in the rich editor | Claude repro, codex fix | failing editor test reproduces it before the fix; P30 retest |
+| W4 | New entity dialog (`_createEntity`): kind is a dropdown of existing kinds (person, place, organization, event, project, website + every kind already used in the vault) with "add new kind"; default none chosen; fields follow the kind (email for person/organization, link/map URL for place/website, address for place); any entity can add a "link" property | codex (dialog), Ornith (kind list helper + test) | widget test: choose place → link field, no email; new kind appears next time; created header has `link:`; entity header shows the link tappable |
+| W5 | A24 idle memory 386 MB > 350: profile build on the A24, compare Dart heap / native / graphics with the P30 (270-317); fix the biggest difference | codex measures, Claude reads | A24 idle PSS <= 350 MB, numbers in this file |
+| W6 | Flaky `workspace_revision_cache_test` (desktop variant): run it 30x, find the timing dependency, fix | codex | 30/30 passes |
+| W7 | Settings: search box on the Settings home (finds a setting by name and opens its page); two-pane layout on wide windows | codex | widget tests: search "OCR" opens Screenshots; >= 900 px shows list + page side by side |
+
+Order: W3 repro and W2 question first (cheap, need the user), then W1, W4, W6 in parallel; W5; W7 last. Release 0.19.5 only after all are verified on the Mac and a phone.
