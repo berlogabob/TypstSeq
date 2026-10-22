@@ -20,6 +20,11 @@ export 'app_mobile.dart';
 void main() {
   startupClock.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // Thousands of screenshot thumbnails: the default 100 MB / 1000-image cache
+  // (keyed by each file's full bytes) grew a phone past 800 MB while scrolling.
+  PaintingBinding.instance.imageCache
+    ..maximumSizeBytes = 32 << 20
+    ..maximumSize = 200;
   if (Platform.isWindows) {
     JustAudioMediaKit.ensureInitialized(
       windows: true,

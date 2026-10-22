@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'agenda_timeline.dart';
 import 'app_icons.dart';
@@ -700,9 +701,8 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
                 label: kind,
                 count: all.where((note) => note.kind == kind).length,
                 selected: selected == kind,
-                onSelected: (_) => setState(
-                  () => _kind = selected == kind ? null : kind,
-                ),
+                onSelected: (_) =>
+                    setState(() => _kind = selected == kind ? null : kind),
               ),
           ],
         ),
@@ -741,7 +741,8 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
                           ? Text(
                               [
                                 note.kind,
-                                if (note.aliases.isNotEmpty) note.aliases.join(', '),
+                                if (note.aliases.isNotEmpty)
+                                  note.aliases.join(', '),
                               ].join(' · '),
                             )
                           : null,
@@ -945,7 +946,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     note.title.toLowerCase().contains(q) ||
                     note.tags.any((tag) => tag.toLowerCase().contains(q)) ||
                     (_source(note)?.toLowerCase().contains(q) ?? false) ||
-                    (screenshots && _screenshotTitle(note).toLowerCase().contains(q)) ||
+                    (screenshots &&
+                        _screenshotTitle(note).toLowerCase().contains(q)) ||
                     (screenshots &&
                         '${note.properties['source_app']} ${note.properties['keywords']}'
                             .toLowerCase()
@@ -1112,46 +1114,66 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
         ),
         Expanded(
           child: screenshots
-              ? CustomScrollView(
-                  slivers: [
-                    if (filtered.isEmpty)
-                      SliverToBoxAdapter(
-                        child: _emptyState(all),
-                      ),
-                    for (final (header, notes) in groups) ...[
-                      if (header.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              kSpace8,
-                              kSpace12,
-                              kSpace8,
-                              kSpace4,
-                            ),
-                            child: Text(
-                              '$header · ${notes.length}',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    // One lazy list of headers and card rows. A SliverGrid per
+                    // group built every group's first card even off-screen:
+                    // hundreds of groups decoded hundreds of thumbnails (P30
+                    // 290 -> 660 MB just opening the tab).
+                    const spacing = 8.0;
+                    final columns = math.max(
+                      1,
+                      ((constraints.maxWidth - 2 * kSpace4) / (180 + spacing))
+                          .ceil(),
+                    );
+                    final rows = <Object>[
+                      for (final (header, notes) in groups) ...[
+                        if (header.isNotEmpty) '$header · ${notes.length}',
+                        for (var i = 0; i < notes.length; i += columns)
+                          notes.sublist(i, math.min(i + columns, notes.length)),
+                      ],
+                    ];
+                    if (filtered.isEmpty) return _emptyState(all);
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(kSpace4),
+                      itemCount: rows.length,
+                      itemBuilder: (context, i) => switch (rows[i]) {
+                        final String header => Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            kSpace4,
+                            kSpace12,
+                            kSpace4,
+                            kSpace4,
+                          ),
+                          child: Text(
+                            header,
+                            style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ),
-                      SliverPadding(
-                        padding: const EdgeInsets.all(kSpace4),
-                        sliver: SliverGrid(
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 180,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                                childAspectRatio: 1,
-                              ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, i) => _screenshotCard(notes[i]),
-                            childCount: notes.length,
+                        final List<NoteRef> row => Padding(
+                          padding: EdgeInsets.only(
+                            bottom: i + 1 < rows.length ? spacing : 0,
+                          ),
+                          child: Row(
+                            children: [
+                              for (var c = 0; c < columns; c++) ...[
+                                if (c > 0) const SizedBox(width: spacing),
+                                Expanded(
+                                  child: c < row.length
+                                      ? AspectRatio(
+                                          aspectRatio: 1,
+                                          child: _screenshotCard(row[c]),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ],
+                        _ => const SizedBox.shrink(),
+                      },
+                    );
+                  },
                 )
               : ListView(
                   children: [
@@ -1442,23 +1464,31 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     unawaited(widget.onDeleteArticle(note));
                   }
                   if (value.startsWith('status:')) {
-                    unawaited(widget.onSetReadStatus(
-                      note, value.substring('status:'.length),
-                    ));
+                    unawaited(
+                      widget.onSetReadStatus(
+                        note,
+                        value.substring('status:'.length),
+                      ),
+                    );
                   }
                   if (value.startsWith('relevance:')) {
-                    unawaited(widget.onSetRelevance(
-                      note, value.substring('relevance:'.length),
-                    ));
+                    unawaited(
+                      widget.onSetRelevance(
+                        note,
+                        value.substring('relevance:'.length),
+                      ),
+                    );
                   }
                 },
                 itemBuilder: (_) => [
                   const PopupMenuItem(
-                    value: 'open', child: Text('Open screenshot'),
+                    value: 'open',
+                    child: Text('Open screenshot'),
                   ),
                   for (final status in statuses)
                     PopupMenuItem(
-                      value: 'status:$status', child: Text(labels[status]!),
+                      value: 'status:$status',
+                      child: Text(labels[status]!),
                     ),
                   for (final relevance in relevanceOptions)
                     PopupMenuItem(
@@ -1469,7 +1499,9 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                     value: 'delete',
                     child: Text(
                       'Delete screenshot…',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ),
                 ],

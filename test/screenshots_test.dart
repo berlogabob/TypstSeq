@@ -731,7 +731,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        expect(find.byType(SliverGrid), findsOneWidget);
+        expect(find.byType(Card), findsWidgets);
         expect(find.byType(ListTile), findsNothing);
         final first = find.byKey(ValueKey(notes.first.path));
         final second = find.byKey(ValueKey(notes[1].path));
