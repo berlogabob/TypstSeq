@@ -25,6 +25,7 @@ import 'article_jobs.dart';
 import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'editor_autocomplete.dart' show MentionQueryCache;
+import 'entity_kinds.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'saved_searches.dart';
@@ -3957,39 +3958,85 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<NoteRef?> _createEntity() async {
     final title = TextEditingController();
-    final kind = TextEditingController(text: 'person');
+    final kind = TextEditingController();
     final aliases = TextEditingController();
-    final email = TextEditingController();
+    final fieldControllers = <String, TextEditingController>{
+      'email': TextEditingController(),
+      'address': TextEditingController(),
+      'link': TextEditingController(),
+    };
+    var kindListenerAttached = false;
     final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New entity'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _dialogField(title, label: 'Name', autofocus: true),
-            const SizedBox(height: kSpace12),
-            _dialogField(kind, label: 'Kind', hint: 'person, place, castle…'),
-            const SizedBox(height: kSpace12),
-            _dialogField(aliases, label: 'Aliases, comma-separated'),
-            const SizedBox(height: kSpace12),
-            _dialogField(
-              email,
-              label: 'Email (optional)',
-              keyboardType: TextInputType.emailAddress,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          if (!kindListenerAttached) {
+            kindListenerAttached = true;
+            kind.addListener(() => setDialogState(() {}));
+          }
+          final fields = entityFieldsForKind(kind.text);
+          return AlertDialog(
+            title: const Text('New entity'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogField(title, label: 'Name', autofocus: true),
+                const SizedBox(height: kSpace12),
+                DropdownMenu<String>(
+                  key: const ValueKey('entity-kind'),
+                  controller: kind,
+                  label: const Text('Kind'),
+                  requestFocusOnTap: true,
+                  enableFilter: true,
+                  dropdownMenuEntries:
+                      entityKindChoices(
+                            index?.notes.map((n) => n.kind) ?? const <String>[],
+                          )
+                          .map(
+                            (value) =>
+                                DropdownMenuEntry(value: value, label: value),
+                          )
+                          .toList(),
+                ),
+                const SizedBox(height: kSpace12),
+                _dialogField(aliases, label: 'Aliases, comma-separated'),
+                const SizedBox(height: kSpace12),
+                for (final field in fields)
+                  KeyedSubtree(
+                    key: ValueKey('entity-field-$field'),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        bottom: field == fields.last ? 0 : kSpace12,
+                      ),
+                      child: _dialogField(
+                        fieldControllers[field]!,
+                        label: switch (field) {
+                          'email' => 'Email (optional)',
+                          'address' => 'Address (optional)',
+                          _ => 'Link or map URL (optional)',
+                        },
+                        keyboardType: field == 'email'
+                            ? TextInputType.emailAddress
+                            : field == 'link'
+                            ? TextInputType.url
+                            : null,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Create'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Create'),
+              ),
+            ],
+          );
+        },
       ),
     );
     final name = title.text.trim();
@@ -4011,7 +4058,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         aliases: _csvValues(aliases.text),
         properties: {
           ...created.properties,
-          if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
+          for (final field in entityFieldsForKind(entityKind))
+            if (fieldControllers[field]!.text.trim().isNotEmpty)
+              field: fieldControllers[field]!.text.trim(),
         },
       ),
     );

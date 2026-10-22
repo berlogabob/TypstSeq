@@ -69,6 +69,22 @@ void _dirty(dynamic home) {
   home.workspace.edit('Unsaved edit');
 }
 
+Finder _entityField(String label) => find.byWidgetPredicate(
+  (widget) => widget is TextField && widget.decoration?.labelText == label,
+);
+
+Finder _entityKeyedField(String key) => find.descendant(
+  of: find.byKey(ValueKey(key)),
+  matching: find.byType(TextField),
+);
+
+Future<void> _selectEntityKind(WidgetTester tester, String value) async {
+  await tester.tap(find.byKey(const ValueKey('entity-kind')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(value).last);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _selectLibraryTab(WidgetTester tester, String label) async {
   final tab = find.widgetWithText(Tab, label);
   await tester.ensureVisible(tab);
@@ -99,7 +115,7 @@ Future<void> _prepareSearchResult(dynamic home) async {
   await storage.writeText(
     'daily/2023/04/2023-04-01.typ',
     '#show: tylog.note.with(id: "2023-04-01", title: "2023-04-01", kind: "daily")\n'
-    '- #tylog.ref-note("Пробежка")[Пробежка]\n',
+        '- #tylog.ref-note("Пробежка")[Пробежка]\n',
   );
   final index = VaultIndex(
     notesByPath: {
@@ -135,14 +151,15 @@ Future<void> _prepareSearchResult(dynamic home) async {
 
 Future<void> _showRunSearch(WidgetTester tester, dynamic home) async {
   await _prepareSearchResult(home);
-  tester.widget<NavigationRail>(find.byType(NavigationRail)).onDestinationSelected!(3);
+  tester
+      .widget<NavigationRail>(find.byType(NavigationRail))
+      .onDestinationSelected!(3);
   await tester.pumpAndSettle();
   await tester.enterText(
     find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
-          widget.decoration?.hintText ==
-              'Search notes, tasks, and attachments',
+          widget.decoration?.hintText == 'Search notes, tasks, and attachments',
     ),
     'пробежка',
   );
@@ -432,7 +449,9 @@ void main() {
     expect(find.byTooltip('Previous day'), findsNothing);
     expect(find.byTooltip('Next day'), findsNothing);
     await _prepareSearchResult(home);
-    tester.widget<NavigationBar>(find.byType(NavigationBar)).onDestinationSelected!(3);
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(3);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byWidgetPredicate(
@@ -457,7 +476,9 @@ void main() {
   ) async {
     final home = await _mountToday(tester, const Size(370, 890));
     await _prepareSearchResult(home);
-    tester.widget<NavigationBar>(find.byType(NavigationBar)).onDestinationSelected!(3);
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(3);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byWidgetPredicate(
@@ -517,7 +538,10 @@ void main() {
     expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget);
     expect(find.byType(KnowledgeScreen), findsOneWidget);
     expect(home.primaryDestination, 3);
-    expect(tester.widget<TextField>(searchField).controller!.text, 'cervejaria');
+    expect(
+      tester.widget<TextField>(searchField).controller!.text,
+      'cervejaria',
+    );
     expect(find.text('Cervejaria'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -910,14 +934,16 @@ void main() {
         completed = true;
       });
       await tester.pumpAndSettle();
-      final fields = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextField),
+      await tester.enterText(_entityField('Name'), 'Ada');
+      await tester.enterText(_entityKeyedField('entity-kind'), 'person');
+      await tester.enterText(
+        _entityField('Aliases, comma-separated'),
+        'Countess',
       );
-      await tester.enterText(fields.at(0), 'Ada');
-      await tester.enterText(fields.at(1), 'person');
-      await tester.enterText(fields.at(2), 'Countess');
-      await tester.enterText(fields.at(3), 'ada@example.test');
+      await tester.enterText(
+        _entityKeyedField('entity-field-email'),
+        'ada@example.test',
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
       expect(completed, isTrue);
@@ -932,6 +958,61 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('entity kind controls optional fields and stores shown values', (
+    tester,
+  ) async {
+    final home = await _mount(tester, _GatedStorage());
+    final creation = home.createEntityForTesting();
+    await tester.pumpAndSettle();
+    await _selectEntityKind(tester, 'place');
+    expect(find.byKey(const ValueKey('entity-field-address')), findsOneWidget);
+    expect(find.byKey(const ValueKey('entity-field-link')), findsOneWidget);
+    expect(find.byKey(const ValueKey('entity-field-email')), findsNothing);
+    await tester.enterText(_entityField('Name'), 'Lisbon');
+    await tester.enterText(
+      _entityKeyedField('entity-field-address'),
+      'Portugal',
+    );
+    await tester.enterText(
+      _entityKeyedField('entity-field-link'),
+      'https://example.test/lisbon',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+    final result = await creation;
+    expect(result?.kind, 'place');
+    expect(result?.properties['address'], 'Portugal');
+    expect(result?.properties['link'], 'https://example.test/lisbon');
+    expect(result?.properties.containsKey('email'), isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('entity creation accepts a new kind and shows person email', (
+    tester,
+  ) async {
+    final home = await _mount(tester, _GatedStorage());
+    final creation = home.createEntityForTesting();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('entity-field-link')), findsOneWidget);
+    await tester.enterText(_entityField('Name'), 'The Club');
+    await tester.enterText(_entityKeyedField('entity-kind'), 'club');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+    expect((await creation)?.kind, 'club');
+    await tester.pumpWidget(const SizedBox());
+
+    final personHome = await _mount(tester, _GatedStorage());
+    final personCreation = personHome.createEntityForTesting();
+    await tester.pumpAndSettle();
+    await tester.enterText(_entityKeyedField('entity-kind'), 'person');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('entity-field-email')), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(await personCreation, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
