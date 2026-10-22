@@ -2876,10 +2876,11 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(home.workspace.note, await vault.todayNote(DateTime.now()));
-      expect(home.richController.text, matches(r'- \d{2}:\d{2} $'));
+      expect(home.richController.text, matches(r'• \d{2}:\d{2} \n$'));
+      // Caret ends the new item (before the trailing newline).
       expect(
         home.richController.selection.baseOffset,
-        home.richController.text.length,
+        home.richController.text.length - 1,
       );
       expect(home.primaryDestination, 0);
       expect(home.mode, 'normal');
@@ -2984,8 +2985,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     final saved = await storage.readText(path);
-    expect(saved, startsWith(template));
-    expect(saved, matches(r'\\- \d{2}:\d{2} '));
+    expect(saved, startsWith(template.trimRight()));
+    // A real list item, never an escaped literal dash.
+    expect(saved, matches(r'\n- \d{2}:\d{2} '));
+    expect(saved, isNot(contains(r'\-')));
     expect(vault.isPendingSyncWrite(path), isTrue);
     await tester.pumpWidget(const SizedBox());
   });
@@ -3014,11 +3017,11 @@ void main() {
     await tester.pump();
     expect(
       home.richController.text,
-      matches(r'^Unsaved daily text\n- \d{2}:\d{2} $'),
+      matches(r'^Unsaved daily text\n\n• \d{2}:\d{2} \n$'),
     );
     expect(
       home.richController.selection.baseOffset,
-      home.richController.text.length,
+      home.richController.text.length - 1,
     );
     expect(workspace.source, contains('Unsaved daily text'));
     await tester.pump(const Duration(seconds: 1));
