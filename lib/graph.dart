@@ -509,6 +509,19 @@ class _GraphViewState extends State<GraphView>
   }
 
   void _fit(Size viewport, Size canvas) {
+    if (isTimelineGraph(widget.graph) && canvas.height > canvas.width) {
+      // Vertical timeline: fit the width, start at the newest days (bottom).
+      final scale = math.min(1.0, viewport.width / canvas.width);
+      _transform.value = Matrix4.identity()
+        ..translateByDouble(
+          (viewport.width - canvas.width * scale) / 2,
+          math.min(0.0, viewport.height - canvas.height * scale),
+          0,
+          1,
+        )
+        ..scaleByDouble(scale, scale, scale, 1);
+      return;
+    }
     final scale = math.min(
       1.0,
       math.min(viewport.width / canvas.width, viewport.height / canvas.height),
@@ -602,6 +615,17 @@ bool isTimelineGraph(NoteGraph graph) =>
 /// the day(s) they connect to and staggered vertically to reduce overlap. O(n),
 /// deterministic — no physics needed for a timeline.
 Map<String, Offset> timelinePositions(NoteGraph graph, Size size) {
+  // Portrait (phone): days run top to bottom instead of left to right.
+  if (size.height > size.width) {
+    return {
+      for (final e in _timelineRow(graph, size.flipped).entries)
+        e.key: Offset(e.value.dy, e.value.dx),
+    };
+  }
+  return _timelineRow(graph, size);
+}
+
+Map<String, Offset> _timelineRow(NoteGraph graph, Size size) {
   final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
   final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
   const margin = 90.0;
@@ -858,8 +882,12 @@ Size graphCanvasSize(NoteGraph graph, String? focalPath, Size viewport) {
   if (n == 0) return viewport;
   if (isTimelineGraph(graph)) {
     final days = graph.nodes.where((x) => x.kind == GraphNodeKind.day).length;
+    final length = (days * 150 + 200).toDouble();
+    if (viewport.height > viewport.width) {
+      return Size(viewport.width, math.max(viewport.height, length));
+    }
     return Size(
-      math.max(viewport.width, days * 150 + 200),
+      math.max(viewport.width, length),
       math.max(viewport.height, 900),
     );
   }

@@ -4,11 +4,27 @@ import 'package:tylog/graph.dart';
 import 'package:tylog/models.dart';
 
 void main() {
-  testWidgets('dismissing the graph banner leaves canvas bounds unchanged', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GraphView(
-      graph: NoteGraph(nodes: [for (var i = 0; i < 181; i++) GraphNode(path: 'n$i', title: 'N$i')], edges: const []),
-      currentPath: null, onOpenPath: (_) {}, isWholeVault: true,
-    ))));
+  testWidgets('dismissing the graph banner leaves canvas bounds unchanged', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GraphView(
+            graph: NoteGraph(
+              nodes: [
+                for (var i = 0; i < 181; i++)
+                  GraphNode(path: 'n$i', title: 'N$i'),
+              ],
+              edges: const [],
+            ),
+            currentPath: null,
+            onOpenPath: (_) {},
+            isWholeVault: true,
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(MaterialBanner), findsOneWidget);
     final before = tester.getRect(find.byType(InteractiveViewer));
@@ -534,6 +550,30 @@ void main() {
       graph.nodes.where((node) => node.kind != GraphNodeKind.day),
       hasLength(1),
     );
+  });
+
+  test('portrait timeline runs days top to bottom', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(
+          path: 'day:2026-07-02',
+          title: '2026-07-02',
+          kind: GraphNodeKind.day,
+        ),
+        GraphNode(
+          path: 'day:2026-07-01',
+          title: '2026-07-01',
+          kind: GraphNodeKind.day,
+        ),
+        GraphNode(path: 'a.typ', title: 'A'),
+      ],
+      edges: [GraphEdge(from: 'day:2026-07-01', to: 'a.typ')],
+    );
+    final canvas = graphCanvasSize(graph, null, const Size(400, 800));
+    expect(canvas.height, greaterThan(canvas.width));
+    final pos = timelinePositions(graph, canvas);
+    expect(pos['day:2026-07-01']!.dy, lessThan(pos['day:2026-07-02']!.dy));
+    expect(pos['day:2026-07-01']!.dx, pos['day:2026-07-02']!.dx);
   });
 
   test('timelinePositions orders day nodes chronologically on the x-axis', () {

@@ -3984,6 +3984,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 const SizedBox(height: kSpace12),
                 DropdownMenu<String>(
                   key: const ValueKey('entity-kind'),
+                  expandedInsets: EdgeInsets.zero,
                   controller: kind,
                   label: const Text('Kind'),
                   requestFocusOnTap: true,
