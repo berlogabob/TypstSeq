@@ -159,7 +159,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(SliverGrid), findsOneWidget);
+      expect(find.byType(Card), findsWidgets);
       expect(find.text('Screenshot_20261005.png'), findsNothing);
       expect(find.text('Useful Flutter layout.'), findsOneWidget);
       expect(find.text('Screenshot'), findsNothing);
