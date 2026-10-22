@@ -199,3 +199,11 @@ Screenshot-mode "overwrite" closed: the user changed it by hand while the picker
 User answers (2026-10-22): W2 keep the 🗑 line, add the source URL so a deleted article can be found again (today only the title is kept). W1 timeline edges: added, last opened, finished; finish day stored as a `finished` property when an item is finished. W3 cause: the time button appends `- HH:MM` at the end of the daily note, i.e. inside `== Reading`; fix: insert before the Reading section (helper lib/journal_insert.dart). Tasks split small so Ornith output can be judged.
 
 Order: W3 repro and W2 question first (cheap, need the user), then W1, W4, W6 in parallel; W5; W7 last. Release 0.19.5 only after all are verified on the Mac and a phone.
+Wave 13 results (2026-10-22):
+- W3 done (5dff5a1): the time button inserts before `== Reading`. Ornith's raw-text helper had a wrong spec (the editor shows the heading as "Reading", not "== Reading"), so it was dropped and the lookup uses document blocks.
+- W2 done (bd9d808): the trash line keeps the source link. Ornith wrote readingLogLine; the test caught its null-rating bug.
+- W1 done (96a2c20, 2e8e043): the timeline shows only articles you opened or finished (cause: 200-node bound vs thousands of pipeline articles); added/opened/finished edges; finish stores `finished:`; phones get a vertical timeline (newest at the bottom). P30 verified.
+- W4 done (ad182e5, 2e8e043): kind dropdown (standard kinds + vault kinds, type to add), fields per kind (email / address / link). Ornith wrote entity_kinds.dart (6/6 correct first try). P30 verified (place -> address + link).
+- W7 done (a41c7cf, 32feb57): Settings search and two-pane >= 900 px. P30 verified ("ocr" -> Screenshots).
+- W6: not reproducible (30/30 alone, 10/10 with the workspace tests); codex's speculative sync change reverted. Watch the full-suite runs.
+- W5: A24 idle 242-246 MB, P30 250-324 MB over 30 min (both under 350). The 665 MB P30 reading came after ~1 h of use plus an install; a post-install launch scans in ~35 s CPU and settles at ~300 MB. Peak-after-use profiling stays open.

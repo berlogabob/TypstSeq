@@ -62,6 +62,12 @@ The title bar shows the day; tap it to open the calendar and pick another day. A
 
 Journal and opened notes show clean, styled blocks by default. Tap a line or block to edit only its exact Typst source; the rest of the document stays covered. Edits autosave atomically. The top view button cycles Editor → Preview → Source → Editor; Split editor remains available for source and output together.
 
+The clock button adds a `- HH:MM` journal line to today's page. It goes above the app-written `== Reading` section, so it never joins the reading list. Finishing an article adds `- Read: <title>` there; rating adds stars, and trashing it adds 🗑 with the article's source link, so a deleted article can still be found by searching.
+
+More → New entity creates a person, place, organization or any kind you type (typed kinds are offered next time). The fields follow the kind: email for people and organizations, address for places and organizations, and a link or map URL for every kind. Links and emails are tappable in the entity card.
+
+Graph → Timeline shows the articles you opened or finished, each joined to the day it was added, the day you last opened it, and the day you finished it (Opened and Finished filters). On a phone the days run top to bottom with the newest at the bottom.
+
 Tapping a note link whose target does not exist offers to create that note (like Logseq/Obsidian). If two notes share the linked title, a picker lists both owners.
 
 Search supports saved presets: run a query, press the Save chip, and it appears as a tappable chip on the Search screen. Presets are stored in `_system/saved-searches.json`, so they sync to every device. Long-press a chip to delete it.
@@ -122,6 +128,10 @@ The persistent Magic button and `/` palette can insert or transform:
 General date and file actions use native pickers; task dates also accept typed words. Citations come from `_system/bibliography.yml`. Generated text is escaped Typst.
 
 Reports filter project, date range, kind, tags, article status, and task status. Their reproducible source is stored under `outputs/`; PDF export writes a sibling `.pdf`. Both are syncable.
+
+## Settings
+
+Settings has a search box: type a word (for example "ocr") to list the matching pages and subpages, then tap one to open it. In a window at least 900 px wide, Settings shows the page list and the open page side by side.
 
 ## AI servers
 
