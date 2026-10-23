@@ -142,3 +142,33 @@ def test_content_sha_ignores_trailing_blanks_like_the_app():
     assert enrich.content_sha(body) == enrich.content_sha(with_block)
     # Pinned in packages/tylog_core/test/enrich_test.dart too.
     assert enrich.content_sha(body) == "98e4ab71821ed482817f51df3f49becd38aea18e74b37327571cc5b29397e91a"
+
+
+def test_second_worker_exits_while_one_runs(tmp_path, monkeypatch):
+    import fcntl
+    calls = []
+    monkeypatch.setattr(enrich, "run_once", lambda *a, **k: calls.append(1))
+    with open(tmp_path / ".tylog-enrich.lock", "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        enrich.main(["--vault", str(tmp_path), "--once"])
+    assert calls == []
+    enrich.main(["--vault", str(tmp_path), "--once"])
+    assert calls == [1]
+
+
+def test_notes_only_with_include_notes(tmp_path):
+    vault, _ = vault_with(tmp_path)
+    page = vault / "notes/Logseq page.typ"
+    page.parent.mkdir(parents=True)
+    page.write_text("= Page\n\nmet André\n", encoding="utf-8")
+    os.utime(page, (0, 0))
+    chat = lambda messages: (json.dumps({"mentions": [], "keywords": []}), "m", "c")
+    assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
+    assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json", include_notes=True) == 1
+    assert (vault / "_system/enrich/mentions/notes/Logseq page.json").exists()
+
+
+def test_long_pages_are_cut_to_fit_the_context():
+    lines = [(i, "x" * 1000) for i in range(1, 100)]
+    content = enrich.build_messages(lines, [])[1]["content"]
+    assert len(content) < enrich.MAX_CHARS + 1000

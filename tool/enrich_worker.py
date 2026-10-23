@@ -5,6 +5,7 @@ resolves against the vault and turns into links.
 """
 
 import argparse
+import fcntl
 from datetime import datetime, timedelta, timezone
 import gzip
 import hashlib
@@ -132,8 +133,19 @@ Rules:
 No commentary."""
 
 
+MAX_CHARS = 30000  # ~12k tokens of Cyrillic: fits the 64k context with room to answer
+
+
 def build_messages(lines, entities):
-    numbered = "\n".join(f"{number}: {line}" for number, line in lines)
+    # ponytail: long imported pages are cut at MAX_CHARS; chunk them if their
+    # tails turn out to matter.
+    numbered, size = [], 0
+    for number, line in lines:
+        size += len(line) + 8
+        if size > MAX_CHARS:
+            break
+        numbered.append(f"{number}: {line}")
+    numbered = "\n".join(numbered)
     known = json.dumps(entities, ensure_ascii=False)
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"KNOWN ENTITIES: {known}\n\nJOURNAL:\n{numbered}"}]
@@ -203,7 +215,7 @@ def mentions_path(vault, note):
 
 
 def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=time.time,
-             since_days=90):
+             since_days=90, include_notes=False):
     vault = Path(vault).resolve()
     now = now or datetime.now(timezone.utc)
     state_path = Path(state_path or Path.home() / ".tylog-enrich-state.json")
@@ -217,14 +229,17 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     entities = known_entities(read_index(vault))
     failures = state.setdefault("failures", {})
     done = 0
-    notes = sorted((vault / "daily").glob("*/*/*.typ"), reverse=True)  # newest day first
     # Older days only on "process now": a full backfill is ~80 s per note on a
     # 35b model, about a day of compute for a few years of journal.
     oldest = (now.astimezone().date() - timedelta(days=since_days)).isoformat()
+    notes = [note for note in sorted((vault / "daily").glob("*/*/*.typ"), reverse=True)
+             if force or note.stem >= oldest]  # newest day first
+    if include_notes:
+        # Pages (Logseq imports included) after the journal. Articles and
+        # screenshots are machine text about other people: never enriched.
+        notes += sorted((vault / "notes").rglob("*.typ"))
     for note in notes:
         if done >= limit:
-            break
-        if not force and note.stem < oldest:
             break
         if clock() - note.stat().st_mtime < SETTLE_SECONDS:
             continue  # still being typed
@@ -276,8 +291,20 @@ def main(argv=None):
     parser.add_argument("--since-days", type=int, default=90,
                         help="Days covered without a process-now request")
     parser.add_argument("--state", type=Path, default=Path.home() / ".tylog-enrich-state.json")
+    parser.add_argument("--wait", action="store_true",
+                        help="Wait for a running worker instead of exiting (manual backfill)")
+    parser.add_argument("--include-notes", action="store_true",
+                        help="Also read notes/ (pages, Logseq imports) after the journal")
     args = parser.parse_args(argv)
-    run_once(args.vault, state_path=args.state, limit=args.limit, since_days=args.since_days)
+    # One worker per Mac: a manual backfill and the LaunchAgent would
+    # otherwise pay the model twice for the same notes.
+    with open(Path.home() / ".tylog-enrich.lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            return
+        run_once(args.vault, state_path=args.state, limit=args.limit, since_days=args.since_days,
+                 include_notes=args.include_notes)
 
 
 if __name__ == "__main__":
