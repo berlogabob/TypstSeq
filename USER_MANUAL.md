@@ -1,4 +1,4 @@
-# TyLog v5 user handbook (0.19.5)
+# TyLog v5 user handbook (0.20.0)
 
 ## Vault format
 
@@ -136,6 +136,19 @@ Settings has a search box: type a word (for example "ocr") to list the matching 
 ## AI servers
 
 Settings > AI > Servers lists servers on this network first and cloud services second. "Add server" offers Ollama, Unsloth Studio and LM Studio, then OpenAI, Claude (Anthropic), Gemini, Mistral and OpenRouter, or any OpenAI-compatible server. Test connection lists the server's models; Test model sends one short prompt. API keys are kept in the system's secure storage on this device, never in the vault or in `_system/settings/ai.json`. A task without a chosen server uses the first local one, never a cloud one; cloud servers are listed under "Cloud (sends your text off-device)".
+
+## Links from your day log
+
+Settings > AI > Links lets a model read your day notes and find the people, places, projects and topics you mention; TyLog then decides which of your pages each one means. Choose the server, model and when it runs: off, a few minutes after you stop writing, or every night at 03:00. A second server can take over when the first is down. It needs the worker on your Mac (`tool/launchd/org.tylog.enrich.plist`); days older than 90 are only read when you ask.
+
+Your own text is never changed without you. What TyLog is sure about goes into a block at the end of the day, `// tylog:auto-entities` with `== Mentions`, as links and as tags you already use. Under the day note a Mentions strip shows:
+
+- a link chip for each linked page; remove it to unlink, and that name is never linked to that page again;
+- "Катя → katiazhavoronkova?" when a name could be someone you know: tap to link it (the name in your text becomes a link and is added to the page's aliases), or remove it to see the next match;
+- "+ Рома" for someone new: tap to create the page;
+- tag chips; removing one stops that tag from being added.
+
+Each decision is kept in `_system/enrich/feedback/<device>.jsonl` and teaches TyLog: a first name you confirmed once is linked next time, and who appears with which project or place tells two people with the same name apart. Phones show the strip and write only when you tap; the Mac writes the blocks.
 
 ## Screenshots
 

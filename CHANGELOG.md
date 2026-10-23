@@ -3,10 +3,21 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
-## 0.19.5+157
+## 0.20.0+158
 
 ### New
 
+- Links from your day log: a model on your server reads each day and lists
+  the people, places, projects and topics you mention; TyLog decides which of
+  your pages each one means and adds the sure ones as links (and tags you
+  already use) in a `Mentions` block at the end of the day. A strip under the
+  day note confirms ambiguous names ("Катя → katiazhavoronkova?"), unlinks,
+  removes tags, and creates pages for new people. Your text changes only when
+  you tap. Every decision is remembered: a confirmed first name links by
+  itself next time, and who appears with which project or place tells two
+  people with the same name apart. Settings > AI > Links picks the server,
+  model, a fallback server and when it runs. Needs the Mac worker
+  (`tool/enrich_worker.py`); phones only write when you tap.
 - New entity: Kind is a list of the standard kinds plus every kind already in
   your vault; type a new one to add it. The fields follow the kind: email for
   people and organizations, address for places and organizations, a link or
