@@ -12,6 +12,9 @@ class EnrichReview extends StatelessWidget {
     super.key,
     required this.decisions,
     this.tags = const [],
+    this.markers = const [],
+    this.onAcceptMarker,
+    this.onRejectMarker,
     required this.onAccept,
     required this.onReject,
     required this.onCreate,
@@ -23,13 +26,20 @@ class EnrichReview extends StatelessWidget {
   /// Tags the block adds from the day's keywords; removing one is remembered.
   final List<String> tags;
   final ValueChanged<String>? onRejectTag;
+
+  /// Lines that look like ones the user files under a marker page (fixit).
+  final List<EnrichMarkerOffer> markers;
+  final ValueChanged<EnrichMarkerOffer>? onAcceptMarker;
+  final ValueChanged<EnrichMarkerOffer>? onRejectMarker;
   final void Function(EnrichMention mention, NoteRef target) onAccept;
   final void Function(EnrichMention mention, NoteRef target) onReject;
   final void Function(EnrichMention mention) onCreate;
 
   @override
   Widget build(BuildContext context) {
-    if (decisions.isEmpty && tags.isEmpty) return const SizedBox.shrink();
+    if (decisions.isEmpty && tags.isEmpty && markers.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final small = Theme.of(context).textTheme.bodySmall;
     return Padding(
       padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, kSpace8),
@@ -40,6 +50,27 @@ class EnrichReview extends StatelessWidget {
         children: [
           Text('Mentions', style: small),
           for (final decision in decisions) _chip(context, decision),
+          for (final offer in markers)
+            InputChip(
+              key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
+              avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: Text(
+                  '${offer.marker.title}? ${offer.text}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              tooltip: 'Tap to file this line under ${offer.marker.title}',
+              onPressed: onAcceptMarker == null
+                  ? null
+                  : () => onAcceptMarker!(offer),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: onRejectMarker == null
+                  ? null
+                  : () => onRejectMarker!(offer),
+              deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
+            ),
           for (final tag in tags)
             InputChip(
               key: ValueKey('enrich-tag-$tag'),

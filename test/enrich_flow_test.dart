@@ -49,6 +49,11 @@ Future<(dynamic, _MemoryStorage)> _mount(
         '#show: tylog.note.with(id: "kz", title: "katiazhavoronkova", kind: "person")\n',
   );
   await storage.writeText(
+    'notes/fixit.typ',
+    '#import "/_system/tylog.typ" as tylog\n\n'
+        '#show: tylog.note.with(id: "fx", title: "fixit")\n',
+  );
+  await storage.writeText(
     'notes/iade.typ',
     '#import "/_system/tylog.typ" as tylog\n\n'
         '#show: tylog.note.with(id: "iade", title: "IADE", kind: "organization")\n',
@@ -75,6 +80,9 @@ Future<(dynamic, _MemoryStorage)> _mount(
         {'surface': 'Рома', 'type': 'person', 'line': 7},
       ],
       'keywords': ['design'],
+      'markers': [
+        {'line': 7, 'marker': 'fx'},
+      ],
     }),
   );
   await tester.pumpWidget(
@@ -104,6 +112,7 @@ Future<(dynamic, _MemoryStorage)> _mount(
         'person',
       ),
       'notes/iade.typ': _note('iade', 'notes/iade.typ', 'IADE', 'organization'),
+      'notes/fixit.typ': _note('fx', 'notes/fixit.typ', 'fixit', 'note'),
       'notes/x.typ': NoteRef(
         id: 'x',
         path: 'notes/x.typ',
@@ -222,6 +231,30 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
     await tester.pumpAndSettle();
     expect(home.workspace.source, contains(autoEntitiesMarker));
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
+  testWidgets('a fixit chip files the line under fixit and learns', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    final chip = find.byKey(const ValueKey('enrich-marker-fx-7'));
+    expect(chip, findsOneWidget);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(
+      home.workspace.source,
+      contains('#tylog.ref-note("fx")[fixit] Катя приехала'),
+    );
+    final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
+    expect(jsonDecode(ledger.trim()), containsPair('entity', 'marker:fx'));
+    expect(find.byKey(const ValueKey('enrich-marker-fx-7')), findsNothing);
+    final mentions =
+        jsonDecode(await storage.readText(enrichMentionsPath(_dayPath))) as Map;
+    expect(
+      mentions['content_sha'],
+      enrichContentSha(home.workspace.source as String),
+    );
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 

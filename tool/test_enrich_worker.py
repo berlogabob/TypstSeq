@@ -62,7 +62,7 @@ def test_parse_reply_drops_hallucinated_surfaces():
         {"surface": "Barbara", "type": "person", "line": 13},
         {"surface": "IADE", "type": "university", "line": 18, "entity": "iade"},
     ], "keywords": ["метро", ""]})
-    mentions, keywords = enrich.parse_reply("```json\n" + reply + "\n```", lines)
+    mentions, keywords, _ = enrich.parse_reply("```json\n" + reply + "\n```", lines)
     assert [(m["surface"], m["type"]) for m in mentions] == [
         ("Катя", "person"), ("andre", "person"), ("IADE", "topic")]
     assert mentions[2]["entity"] == "iade"
@@ -172,3 +172,41 @@ def test_long_pages_are_cut_to_fit_the_context():
     lines = [(i, "x" * 1000) for i in range(1, 100)]
     content = enrich.build_messages(lines, [])[1]["content"]
     assert len(content) < enrich.MAX_CHARS + 1000
+
+
+def test_markers_learn_from_tagged_lines_and_are_validated(tmp_path):
+    vault, note = vault_with(tmp_path)
+    (vault / "_index").mkdir()
+    (vault / "_index/index.json").write_text(json.dumps({"notes": [
+        {"id": "fx", "title": "fixit", "kind": "note", "aliases": []}]}))
+    old = vault / "daily/2026/10/2026-10-07.typ"
+    old.write_text('\\- 21:50 #tylog.ref-note("fx")[fixit] search jumps to today\n'
+                   '#tylog.ref-note("fixit")[fixit] paste loses the image\n', encoding="utf-8")
+    markers = enrich.load_markers(vault, {"markers": ["fixit"]}, enrich.read_index(vault))
+    assert markers[0]["examples"] == ["search jumps to today", "paste loses the image"]
+    assert enrich.load_markers(vault, {}, enrich.read_index(vault)) == []
+    lines = enrich.body_lines(DAY)
+    reply = json.dumps({"mentions": [], "keywords": [], "markers": [
+        {"line": 18, "marker": "fx"}, {"line": 18, "marker": "fx"},
+        {"line": 99, "marker": "fx"}, {"line": 13, "marker": "other"}]})
+    assert enrich.parse_reply(reply, lines, markers)[2] == [{"line": 18, "marker": "fx"}]
+    system = enrich.build_messages(lines, [], markers)[0]["content"]
+    assert "MARKERS" in system
+
+
+def test_old_prompt_version_is_read_again(tmp_path):
+    vault, note = vault_with(tmp_path)
+    calls = []
+
+    def chat(messages):
+        calls.append(1)
+        return json.dumps({"mentions": [], "keywords": []}), "m", "c"
+
+    enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json")
+    target = vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json"
+    data = json.loads(target.read_text())
+    assert data["prompt"] == enrich.PROMPT_VERSION and data["markers"] == []
+    data["prompt"] = 1
+    target.write_text(json.dumps(data))
+    enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json")
+    assert len(calls) == 2

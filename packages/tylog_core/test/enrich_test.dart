@@ -310,6 +310,83 @@ void main() {
     );
   });
 
+  group('markers', () {
+    final fixit = entity('fx', 'fixit', kind: 'note');
+    const day20 =
+        '= 2026-10-20\n\n'
+        '\\- 13:34 решаем проблему поиска\n'
+        '+ поиск не работает корректно\n'
+        '#tylog.ref-note("fixit")[fixit] уже помечено\n';
+    final markerIndex = indexOf([fixit]);
+    final found = EnrichMentions(
+      note: 'd',
+      contentSha: 'x',
+      markers: const [(3, 'fx'), (4, 'fx'), (5, 'fx'), (99, 'fx'), (4, 'nope')],
+    );
+
+    test('offers unmarked, existing, not rejected lines', () {
+      final offers = enrichMarkerOffers(
+        found,
+        day20,
+        markerIndex,
+        EnrichMemory.build(markerIndex, [
+          EnrichFeedback(
+            surface: 'решаем проблему поиска',
+            entity: enrichMarkerEntity('fx'),
+            accepted: false,
+            note: 'd',
+            at: 't',
+          ),
+        ]),
+      );
+      expect(offers.map((o) => (o.line, o.text)), [
+        (4, 'поиск не работает корректно'),
+      ]);
+    });
+
+    test('marking puts the link after list marker and time, once', () {
+      final once = markLine(day20, 3, fixit);
+      expect(
+        once.split('\n')[2],
+        r'\- 13:34 #tylog.ref-note("fx")[fixit] решаем проблему поиска',
+      );
+      expect(markLine(once, 3, fixit), once);
+      expect(
+        markLine(day20, 4, fixit).split('\n')[3],
+        '+ #tylog.ref-note("fx")[fixit] поиск не работает корректно',
+      );
+      expect(markLine(day20, 5, fixit), day20); // marked by title already
+      expect(
+        enrichPlainLine(r'\- 21:50 #tylog.ref-note("fx")[fixit] text'),
+        'fixit text',
+      );
+    });
+
+    test('marked lines compile', () {
+      if (Process.runSync('which', ['typst']).exitCode != 0) {
+        markTestSkipped('typst not on PATH');
+        return;
+      }
+      final root = Directory.current.path.endsWith('packages/tylog_core')
+          ? Directory.current.parent.parent.path
+          : Directory.current.path;
+      final dir = Directory('$root/.dart_tool/tylog_marker_test')
+        ..createSync(recursive: true);
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final source =
+          '#import "/typst/tylog/lib.typ" as tylog\n${markLine(markLine(day20, 3, fixit), 4, fixit)}';
+      final file = File('${dir.path}/m.typ')..writeAsStringSync(source);
+      final result = Process.runSync('typst', [
+        'compile',
+        '--root',
+        root,
+        file.path,
+        '${file.path}.pdf',
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stderr}\n$source');
+    });
+  });
+
   group('writing', () {
     const header =
         '#import "/_system/tylog.typ" as tylog\n\n'

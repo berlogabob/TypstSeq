@@ -1,5 +1,14 @@
 part of '../app_mobile.dart';
 
+/// What the Mentions strip shows for one day.
+typedef _EnrichView = ({
+  List<EnrichDecision> decisions,
+  List<String> tags,
+  List<EnrichMarkerOffer> markers,
+});
+
+const _EnrichView _noEnrich = (decisions: [], tags: [], markers: []);
+
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], writes the `// tylog:auto-entities`
 /// block, and records the user's decisions in this device's ledger.
@@ -49,18 +58,17 @@ extension _EnrichFlow on _HomeScreenState {
           await _applyEnrichment(path, memory, write: true);
         }
       }
-      final (decisions, tags) = isDay
+      final view = isDay
           ? await _applyEnrichment(path, memory, write: write)
-          : (const <EnrichDecision>[], const <String>[]);
+          : _noEnrich;
       _enrichTrace(
-        '$path write=$write decisions=${decisions.length} '
-        'tags=${tags.length} memoryMs=$memoryMs '
+        '$path write=$write decisions=${view.decisions.length} '
+        'tags=${view.tags.length} markers=${view.markers.length} '
+        'memoryMs=$memoryMs '
         'ms=${clock.elapsedMilliseconds}',
       );
       if (!mounted || note != path) return;
-      _rebuild(
-        () => _enrichDecisions = path == null ? null : (path, decisions, tags),
-      );
+      _rebuild(() => _enrichDecisions = path == null ? null : (path, view));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
       _enrichTrace('$path error $error');
@@ -115,12 +123,12 @@ extension _EnrichFlow on _HomeScreenState {
 
   /// Rewrites [path]'s block (when [write]) if its mentions were computed
   /// from exactly the text it has now. Returns what the review strip shows.
-  Future<(List<EnrichDecision>, List<String>)> _applyEnrichment(
+  Future<_EnrichView> _applyEnrichment(
     String path,
     EnrichMemory memory, {
     required bool write,
   }) async {
-    const none = (<EnrichDecision>[], <String>[]);
+    const none = _noEnrich;
     final v = vault;
     final ref = index?.notesByPath[path];
     if (v == null || ref == null) return none;
@@ -154,14 +162,15 @@ extension _EnrichFlow on _HomeScreenState {
     }
     // Links the user typed are theirs: no chip offering to unlink them.
     final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
-    final result = (
-      [
+    final _EnrichView result = (
+      decisions: [
         for (final decision in decisions)
           if (decision.status != EnrichStatus.linked ||
               !typed.contains(decision.target!.id))
             decision,
       ],
-      tags,
+      tags: tags,
+      markers: enrichMarkerOffers(mentions, source, index!, memory),
     );
     // Not after a write: the rewritten note must be looked at again.
     if (!(write && updated != source)) _enrichMemo = (memoKey, result);
@@ -264,6 +273,48 @@ extension _EnrichFlow on _HomeScreenState {
     await _recordEnrichFeedback(
       EnrichMention(surface: tag, type: 'topic', line: 0),
       enrichTagEntity(tag),
+      accepted: false,
+    );
+    await _refreshEnrichment(userAction: true);
+  }
+
+  /// Files the line under the marker page (the user's own convention, e.g.
+  /// fixit) and remembers it; the line text goes to the ledger so the worker
+  /// can learn from it.
+  Future<void> _acceptEnrichMarker(EnrichMarkerOffer offer) async {
+    final v = vault;
+    final path = note;
+    if (v == null || path == null) return;
+    await _recordEnrichFeedback(
+      EnrichMention(surface: offer.text, type: 'topic', line: offer.line),
+      enrichMarkerEntity(offer.marker.id),
+      accepted: true,
+    );
+    final source = workspace.source;
+    final mentions = await _readMentions(v, path);
+    final marked = markLine(source, offer.line, offer.marker);
+    if (marked != source &&
+        await workspace.mutateNote(
+          path,
+          (current) => current == source ? marked : current,
+        ) &&
+        workspace.source == marked &&
+        mentions != null &&
+        enrichContentSha(source) == mentions.contentSha) {
+      // Same lines: keep the worker from re-reading what the user just filed.
+      final file = enrichMentionsPath(path);
+      final json = (jsonDecode(await v.storage.readText(file)) as Map)
+          .cast<String, Object?>();
+      json['content_sha'] = enrichContentSha(marked);
+      await v.storage.writeText(file, '${jsonEncode(json)}\n');
+    }
+    await _refreshEnrichment(userAction: true);
+  }
+
+  Future<void> _rejectEnrichMarker(EnrichMarkerOffer offer) async {
+    await _recordEnrichFeedback(
+      EnrichMention(surface: offer.text, type: 'topic', line: offer.line),
+      enrichMarkerEntity(offer.marker.id),
       accepted: false,
     );
     await _refreshEnrichment(userAction: true);

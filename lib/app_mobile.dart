@@ -606,8 +606,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Object? _enrichRevision;
   Vault? _enrichPassVault;
   (Vault, DateTime, EnrichMemory)? _enrichMemoryCache;
-  (Object, (List<EnrichDecision>, List<String>))? _enrichMemo;
-  (String, List<EnrichDecision>, List<String>)? _enrichDecisions;
+  (Object, _EnrichView)? _enrichMemo;
+  (String, _EnrichView)? _enrichDecisions;
 
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
@@ -5544,13 +5544,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mode == 'normal' &&
         enrichDay != null &&
         enrichDay.$1 == current &&
-        (enrichDay.$2.isNotEmpty || enrichDay.$3.isNotEmpty)) {
+        (enrichDay.$2.decisions.isNotEmpty ||
+            enrichDay.$2.tags.isNotEmpty ||
+            enrichDay.$2.markers.isNotEmpty)) {
       documentContent = Column(
         children: [
           Expanded(child: documentContent),
           EnrichReview(
-            decisions: enrichDay.$2,
-            tags: enrichDay.$3,
+            decisions: enrichDay.$2.decisions,
+            tags: enrichDay.$2.tags,
+            markers: enrichDay.$2.markers,
+            onAcceptMarker: (offer) => unawaited(_acceptEnrichMarker(offer)),
+            onRejectMarker: (offer) => unawaited(_rejectEnrichMarker(offer)),
             onRejectTag: (tag) => unawaited(_rejectEnrichTag(tag)),
             onAccept: (mention, target) =>
                 unawaited(_acceptEnrich(mention, target)),

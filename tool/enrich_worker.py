@@ -5,6 +5,7 @@ resolves against the vault and turns into links.
 """
 
 import argparse
+from collections import defaultdict
 import fcntl
 from datetime import datetime, timedelta, timezone
 import gzip
@@ -25,6 +26,9 @@ AUTO_MARKER = "// tylog:auto-entities"
 ENTITY_KINDS = ("person", "organization", "place", "event", "website", "project")
 MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
 SETTLE_SECONDS = 300
+# Bump when the prompt or reply shape changes: older mentions files are
+# re-read once so every day carries the same fields.
+PROMPT_VERSION = 2
 
 
 def strip_auto_block(text):
@@ -87,7 +91,52 @@ def _fold(text):
                    if not unicodedata.combining(c))
 
 
-def parse_reply(reply, lines):
+def _plain(line):
+    """A journal line as the user reads it: no list marker, time or markup."""
+    line = re.sub(r"#tylog\.[\w-]+\([^)]*\)(\[([^\]]*)\])?", r"\2", line)
+    line = re.sub(r"^\s*(?:\\-|[-+*]|\d+\.)\s+", "", line)
+    return re.sub(r"^\d{1,2}:\d{2}\s+", "", line).strip()
+
+
+def load_markers(vault, task, index):
+    """Marker pages from tasks.enrich.markers, each with up to 8 lines the user
+    tagged with it (examples) and up to 4 they rejected (counter-examples).
+
+    More tagged lines, better examples: this is how detection improves.
+    """
+    wanted = {name for name in task.get("markers") or [] if isinstance(name, str)}
+    markers = [{"id": note["id"], "title": note["title"]} for note in index.get("notes", [])
+               if wanted & {note["id"], note["title"], *(note.get("aliases") or [])}]
+    if not markers:
+        return []
+    days = sorted((vault / "daily").glob("*/*/*.typ"), reverse=True)
+    rejected = defaultdict(list)
+    for ledger in (vault / "_system/enrich/feedback").glob("*.jsonl"):
+        for row in ledger.read_text(encoding="utf-8").splitlines():
+            try:
+                event = json.loads(row)
+            except ValueError:
+                continue
+            if event.get("decision") == "reject" and str(event.get("entity", "")).startswith("marker:"):
+                rejected[event["entity"][7:]].append(event.get("surface", ""))
+    for marker in markers:
+        # Linked by id or by title: both resolve to the page.
+        needle = re.compile(r'#tylog\.ref-note\("(?:%s|%s)"\)(\[[^\]]*\])?'
+                            % (re.escape(marker["id"]), re.escape(marker["title"])))
+        examples = []
+        for day in days:
+            if len(examples) >= 8:
+                break
+            for line in day.read_text(encoding="utf-8").splitlines():
+                # The marker itself is not part of the example.
+                if needle.search(line) and (text := _plain(needle.sub("", line))):
+                    examples.append(text[:200])
+        marker["examples"] = examples[:8]
+        marker["not"] = [text[:200] for text in rejected[marker["id"]][-4:]]
+    return markers
+
+
+def parse_reply(reply, lines, markers=()):
     """Validate the model reply; drop mentions whose surface is not on that line."""
     reply = reply.strip()
     if reply.startswith("```"):
@@ -114,7 +163,18 @@ def parse_reply(reply, lines):
         mentions.append(mention)
     keywords = [word.strip() for word in value.get("keywords") or []
                 if isinstance(word, str) and word.strip()][:10]
-    return mentions, keywords
+    ids = {marker["id"]: marker["title"] for marker in markers}
+    marked = []
+    for item in value.get("markers") or []:
+        if not isinstance(item, dict) or item.get("marker") not in ids:
+            continue
+        line = item.get("line")
+        if line not in by_number or any(f'ref-note("{name}")' in by_number[line]
+                                        for name in (item["marker"], ids[item["marker"]])):
+            continue  # unknown line, or already tagged by the user
+        if {"line": line, "marker": item["marker"]} not in marked:
+            marked.append({"line": line, "marker": item["marker"]})
+    return mentions, keywords, marked
 
 
 SYSTEM_PROMPT = """You read one day of a personal journal and list what it mentions.
@@ -136,7 +196,7 @@ No commentary."""
 MAX_CHARS = 30000  # ~12k tokens of Cyrillic: fits the 64k context with room to answer
 
 
-def build_messages(lines, entities):
+def build_messages(lines, entities, markers=()):
     # ponytail: long imported pages are cut at MAX_CHARS; chunk them if their
     # tails turn out to matter.
     numbered, size = [], 0
@@ -147,7 +207,17 @@ def build_messages(lines, entities):
         numbered.append(f"{number}: {line}")
     numbered = "\n".join(numbered)
     known = json.dumps(entities, ensure_ascii=False)
-    return [{"role": "system", "content": SYSTEM_PROMPT},
+    system = SYSTEM_PROMPT
+    if markers:
+        system += """
+MARKERS: the user starts some lines with a marker page to file them (e.g. "fixit" for a
+problem to fix). Also return "markers": [{"line": int, "marker": id}] for each line the
+user would file under that marker, judging by the examples; skip lines that already
+carry it, and lines like the counter-examples. Return [] when none fit."""
+        guide = json.dumps([{"id": m["id"], "title": m["title"], "examples": m["examples"],
+                             "counter_examples": m["not"]} for m in markers], ensure_ascii=False)
+        known = f"{known}\n\nMARKERS: {guide}"
+    return [{"role": "system", "content": system},
             {"role": "user", "content": f"KNOWN ENTITIES: {known}\n\nJOURNAL:\n{numbered}"}]
 
 
@@ -182,8 +252,22 @@ def make_chat(task, connections):
                 headers["Authorization"] = f"Bearer {key}"
             try:
                 model = os.environ.get("TYLOG_LLM_MODEL") or (
-                    task.get("model") if connection is chosen[0] else task.get("fallback_model")
-                ) or tw.probe_connection(base, key)["loaded"][0]
+                    task.get("model") if connection is chosen[0] else task.get("fallback_model"))
+                loaded = tw.probe_connection(base, key)["loaded"]
+                if not model:
+                    if not loaded:
+                        raise ValueError("no model loaded")
+                    model = loaded[0]
+                elif model not in loaded:
+                    # Another job swapped the server's model: load ours back
+                    # (64k context) rather than answer with whatever is there.
+                    def request(route, body=None):
+                        url = route if route.startswith("http") else base.rstrip("/") + route
+                        data = json.dumps(body).encode("utf-8") if body is not None else None
+                        with urlopen(Request(url, data=data, headers=headers),
+                                     timeout=900 if route.endswith("/load") else 60) as response:
+                            return json.load(response)
+                    tw.ensure_model(base, key, model, request)
                 payload = json.dumps({"model": model, "temperature": 0, "messages": messages}).encode("utf-8")
                 with urlopen(Request(base.rstrip("/") + "/chat/completions", data=payload,
                                      headers=headers), timeout=900) as response:  # long days on a 35b model
@@ -226,7 +310,9 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     if not due(task, state, now, force):
         return 0
     chat = chat or make_chat(task, connections)
-    entities = known_entities(read_index(vault))
+    index = read_index(vault)
+    entities = known_entities(index)
+    markers = load_markers(vault, task, index)
     failures = state.setdefault("failures", {})
     done = 0
     # Older days only on "process now": a full backfill is ~80 s per note on a
@@ -250,25 +336,27 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         # A failure (server down, timeout) waits for the note to change or for
         # tomorrow: retrying every run would hammer a broken server.
         today = now.astimezone().date().isoformat()
-        if tw._read_json(target).get("content_sha") == sha or failures.get(relative) == [sha, today]:
+        previous = tw._read_json(target)
+        if (previous.get("content_sha") == sha and previous.get("prompt") == PROMPT_VERSION) \
+                or failures.get(relative) == [sha, today]:
             continue
         lines = body_lines(text)
         try:
             if lines:
-                reply, model, connection = chat(build_messages(lines, entities))
-                mentions, keywords = parse_reply(reply, lines)
+                reply, model, connection = chat(build_messages(lines, entities, markers))
+                mentions, keywords, marked = parse_reply(reply, lines, markers)
             else:
-                mentions, keywords, model, connection = [], [], None, None
+                mentions, keywords, marked, model, connection = [], [], [], None, None
         except Exception as error:
             failures[relative] = [sha, today]
             print(f"enrich: {relative}: {error}", file=sys.stderr)
             done += 1
             continue
         failures.pop(relative, None)
-        result = {"schema": 1, "note": relative, "content_sha": sha,
+        result = {"schema": 1, "prompt": PROMPT_VERSION, "note": relative, "content_sha": sha,
                   "extracted_at": now.astimezone(timezone.utc).isoformat(),
                   "model": model, "connection": connection,
-                  "mentions": mentions, "keywords": keywords}
+                  "mentions": mentions, "keywords": keywords, "markers": marked}
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

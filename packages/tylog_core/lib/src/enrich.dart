@@ -88,12 +88,17 @@ class EnrichMentions {
     required this.contentSha,
     this.mentions = const [],
     this.keywords = const [],
+    this.markers = const [],
   });
 
   final String note;
   final String contentSha;
   final List<EnrichMention> mentions;
   final List<String> keywords;
+
+  /// Lines the model would file under a marker page (e.g. fixit), as
+  /// (line, marker note id).
+  final List<(int, String)> markers;
 
   /// Null when [json] is not a schema-1 mentions file.
   static EnrichMentions? tryParse(Object? json) {
@@ -107,6 +112,11 @@ class EnrichMentions {
             if (item is Map) EnrichMention.fromJson(item.cast()),
         ],
         keywords: stringList(json['keywords']),
+        markers: [
+          for (final item in json['markers'] as List? ?? const [])
+            if (item case {'line': final int line, 'marker': final String id})
+              (line, id),
+        ],
       );
     } catch (_) {
       return null;
@@ -518,5 +528,69 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   lines[i] =
       '$before#tylog.ref-note(${typstString(target.id)})'
       '[${mention.surface}]${line.substring(at + mention.surface.length)}';
+  return lines.join('\n');
+}
+
+/// Ledger `entity` for filing a line under a marker page.
+String enrichMarkerEntity(String markerId) => 'marker:$markerId';
+
+/// A line as the user reads it: no list marker, time or markup. Also what the
+/// ledger stores, so the worker can show rejected lines as counter-examples.
+String enrichPlainLine(String line) => line
+    .replaceAllMapped(
+      RegExp(r'#tylog\.[\w-]+\([^)]*\)(\[([^\]]*)\])?'),
+      (m) => m.group(2) ?? '',
+    )
+    .replaceFirst(RegExp(r'^\s*(?:\\-|[-+*]|\d+\.)\s+'), '')
+    .replaceFirst(RegExp(r'^\d{1,2}:\d{2}\s+'), '')
+    .trim();
+
+class EnrichMarkerOffer {
+  const EnrichMarkerOffer(this.marker, this.line, this.text);
+  final NoteRef marker;
+  final int line;
+  final String text;
+}
+
+/// Marker suggestions still worth asking about: the line still exists, does
+/// not carry the marker yet, and was not rejected before.
+List<EnrichMarkerOffer> enrichMarkerOffers(
+  EnrichMentions mentions,
+  String source,
+  VaultIndex index,
+  EnrichMemory memory,
+) {
+  final lines = source.split('\n');
+  final byId = {for (final note in index.notesByPath.values) note.id: note};
+  return [
+    for (final (line, id) in mentions.markers)
+      if (byId[id] case final marker?)
+        if (line >= 1 && line <= lines.length)
+          if (!_carries(lines[line - 1], marker))
+            if (enrichPlainLine(lines[line - 1]) case final text
+                when text.isNotEmpty &&
+                    !memory.isRejected(text, enrichMarkerEntity(id)))
+              EnrichMarkerOffer(marker, line, text),
+  ];
+}
+
+bool _carries(String line, NoteRef marker) =>
+    line.contains('ref-note(${typstString(marker.id)})') ||
+    line.contains('ref-note(${typstString(marker.title)})');
+
+/// Files [line] under [marker] the way the user does by hand: the link goes
+/// after the list marker and time ("- 21:50 #tylog.ref-note(...)[fixit] ...").
+String markLine(String source, int line, NoteRef marker) {
+  final lines = source.split('\n');
+  if (line < 1 || line > lines.length || _carries(lines[line - 1], marker)) {
+    return source;
+  }
+  final text = lines[line - 1];
+  final prefix = RegExp(
+    r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?',
+  ).firstMatch(text)!.end;
+  lines[line - 1] =
+      '${text.substring(0, prefix)}#tylog.ref-note(${typstString(marker.id)})'
+      '[${escapeMarkup(marker.title)}] ${text.substring(prefix)}';
   return lines.join('\n');
 }
