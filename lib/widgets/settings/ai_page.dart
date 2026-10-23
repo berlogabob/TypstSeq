@@ -30,6 +30,12 @@ class AiPage extends StatelessWidget {
         'Article extraction server and model',
         AiSettingsSection.articles,
       ),
+      _row(
+        context,
+        'Links',
+        'People, places and topics found in your day log',
+        AiSettingsSection.enrich,
+      ),
       ListTile(
         title: const Text('Screenshots'),
         subtitle: const Text('OCR model, schedule, and folder'),

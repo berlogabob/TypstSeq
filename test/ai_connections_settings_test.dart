@@ -272,6 +272,7 @@ void main() {
       expect(saved!.toJson()['tasks'], {
         'articles': {},
         'screenshots': {},
+        'enrich': {},
         'transcribe': {'quality': 'best'},
         'translate': {
           'quality': 'best',

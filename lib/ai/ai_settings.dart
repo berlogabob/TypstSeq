@@ -181,6 +181,8 @@ class AiSettings {
     this.translate = const AiTask(),
     this.articles = const AiServerTask(),
     this.screenshots = const AiServerTask(),
+    this.enrich = const AiServerTask(),
+    this.enrichFallback,
   });
 
   final List<AiConnection> connections;
@@ -188,6 +190,15 @@ class AiSettings {
   final AiTask translate;
   final AiServerTask articles;
   final AiServerTask screenshots;
+
+  /// Day-log enrichment: finds people, places and topics for linking
+  /// (tool/enrich_worker.py). Mode 'schedule' runs at [AiServerTask.time],
+  /// default 03:00.
+  final AiServerTask enrich;
+
+  /// Connection id tried when [enrich]'s server fails
+  /// (`tasks.enrich.fallback_connection`); its model is auto-picked.
+  final String? enrichFallback;
 
   /// The connection a task uses when none is chosen: never a cloud one, so
   /// text leaves the device only when the user picks a cloud server.
@@ -219,12 +230,18 @@ class AiSettings {
     AiTask? translate,
     AiServerTask? articles,
     AiServerTask? screenshots,
+    AiServerTask? enrich,
+    Object? enrichFallback = _unset,
   }) => AiSettings(
     connections: connections ?? this.connections,
     transcribe: transcribe ?? this.transcribe,
     translate: translate ?? this.translate,
     articles: articles ?? this.articles,
     screenshots: screenshots ?? this.screenshots,
+    enrich: enrich ?? this.enrich,
+    enrichFallback: identical(enrichFallback, _unset)
+        ? this.enrichFallback
+        : enrichFallback as String?,
   );
 
   AiSettings upsertConnection(AiConnection connection) => copyWith(
@@ -245,6 +262,8 @@ class AiSettings {
     screenshots: screenshots.connection == id
         ? const AiServerTask()
         : screenshots,
+    enrich: enrich.connection == id ? const AiServerTask() : enrich,
+    enrichFallback: enrichFallback == id ? null : enrichFallback,
   );
 
   Map<String, Object?> toJson() => {
@@ -255,6 +274,7 @@ class AiSettings {
       'translate': translate.toJson(),
       'articles': articles.toJson(),
       'screenshots': screenshots.toJson(),
+      'enrich': {...enrich.toJson(), 'fallback_connection': ?enrichFallback},
     },
   };
 
@@ -278,6 +298,11 @@ class AiSettings {
       screenshots: AiServerTask.fromJson(
         tasks is Map ? tasks['screenshots'] : null,
       ),
+      enrich: AiServerTask.fromJson(tasks is Map ? tasks['enrich'] : null),
+      enrichFallback: switch (tasks is Map ? tasks['enrich'] : null) {
+        {'fallback_connection': final String id} => id,
+        _ => null,
+      },
     );
   }
 }
@@ -327,6 +352,13 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
     'translate': settings.translate.toJson(),
     'articles': mergeServerTask('articles', settings.articles),
     'screenshots': mergeServerTask('screenshots', settings.screenshots),
+    'enrich':
+        {
+          ...mergeServerTask('enrich', settings.enrich),
+          'fallback_connection': settings.enrichFallback,
+        }..removeWhere(
+          (key, value) => key == 'fallback_connection' && value == null,
+        ),
   };
   await storage.createDirectory('_system/settings');
   await storage.writeText(aiSettingsPath, jsonEncode(all));

@@ -8,7 +8,8 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, listEquals;
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:crypto/crypto.dart';
@@ -17,6 +18,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 import 'package:tylog_audio/tylog_audio.dart'
     show audioDurationMs, peaksFromWav;
+import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -60,6 +62,7 @@ import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
+import 'widgets/enrich_review.dart';
 import 'widgets/linked_references.dart';
 import 'widgets/dialogs.dart';
 import 'widgets/editor_panel.dart';
@@ -108,6 +111,7 @@ export 'widgets/work_surface.dart'
     show TodayPage, continueReadingEligible, isTaskInTodayAgenda, isTaskOverdue;
 
 part 'app_mobile/desktop_update_flow.dart';
+part 'app_mobile/enrich_flow.dart';
 part 'app_mobile/audio_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
 part 'app_mobile/module_flow.dart';
@@ -597,6 +601,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Last (vault, note, index revision) enrichment ran for, the vault whose
+  /// recent days got their blocks, and the open day's decisions.
+  Object? _enrichRevision;
+  Vault? _enrichPassVault;
+  (Vault, DateTime, EnrichMemory)? _enrichMemoryCache;
+  (Object, (List<EnrichDecision>, List<String>))? _enrichMemo;
+  (String, List<EnrichDecision>, List<String>)? _enrichDecisions;
+
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
   void _rebuild(VoidCallback fn) => setState(fn);
@@ -858,6 +870,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_jobsRevision != jobsRevision) {
       _jobsRevision = jobsRevision;
       unawaited(_refreshArticleJobs());
+    }
+    if (index != null) {
+      _queueEnrichRefresh();
     }
     if (Platform.isAndroid) unawaited(_handlePendingShares());
     _maybeSnackNewSyncTrouble();
@@ -3956,9 +3971,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @visibleForTesting
   Future<NoteRef?> createEntityForTesting() => _createEntity();
 
-  Future<NoteRef?> _createEntity() async {
-    final title = TextEditingController();
-    final kind = TextEditingController();
+  Future<NoteRef?> _createEntity({
+    String? initialName,
+    String? initialKind,
+  }) async {
+    final title = TextEditingController(text: initialName);
+    final kindField = TextEditingController(text: initialKind);
     final aliases = TextEditingController();
     final fieldControllers = <String, TextEditingController>{
       'email': TextEditingController(),
@@ -3972,9 +3990,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (context, setDialogState) {
           if (!kindListenerAttached) {
             kindListenerAttached = true;
-            kind.addListener(() => setDialogState(() {}));
+            kindField.addListener(() => setDialogState(() {}));
           }
-          final fields = entityFieldsForKind(kind.text);
+          final fields = entityFieldsForKind(kindField.text);
           return AlertDialog(
             title: const Text('New entity'),
             content: Column(
@@ -3985,7 +4003,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 DropdownMenu<String>(
                   key: const ValueKey('entity-kind'),
                   expandedInsets: EdgeInsets.zero,
-                  controller: kind,
+                  controller: kindField,
                   label: const Text('Kind'),
                   requestFocusOnTap: true,
                   enableFilter: true,
@@ -4041,7 +4059,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     final name = title.text.trim();
-    final entityKind = kind.text.trim();
+    final entityKind = kindField.text.trim();
     final v = vault;
     if (save != true || name.isEmpty || entityKind.isEmpty || v == null) {
       return null;
@@ -5519,6 +5537,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
               onOpenPath: _openPath,
             ),
+        ],
+      );
+    }
+    final enrichDay = _enrichDecisions;
+    if (mode == 'normal' &&
+        enrichDay != null &&
+        enrichDay.$1 == current &&
+        (enrichDay.$2.isNotEmpty || enrichDay.$3.isNotEmpty)) {
+      documentContent = Column(
+        children: [
+          Expanded(child: documentContent),
+          EnrichReview(
+            decisions: enrichDay.$2,
+            tags: enrichDay.$3,
+            onRejectTag: (tag) => unawaited(_rejectEnrichTag(tag)),
+            onAccept: (mention, target) =>
+                unawaited(_acceptEnrich(mention, target)),
+            onReject: (mention, target) =>
+                unawaited(_rejectEnrich(mention, target)),
+            onCreate: (mention) => unawaited(_createFromEnrich(mention)),
+          ),
         ],
       );
     }

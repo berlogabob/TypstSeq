@@ -30,6 +30,7 @@ headerless daily repair keeps existing text.
 - Measure CPU, exact bytes, and sync decisions before diagnosing hangs or lost text; external-vault claims require observations.
 - Use root-isolate and Flutter frame timings for Flutter jank; gfxinfo decor counts do not establish it.
 - Article producers preserve LLM links, use the auto-related marker, read gzip/plain indexes safely, and emit five-stage status.
+- Day-log enrichment (`tool/enrich_worker.py`, `ai.json` `tasks.enrich`) only writes `_system/enrich/mentions/<note path>.json`, keyed by `content_sha` (the note with its `// tylog:auto-entities` block stripped). The model's `entity` id is a hint the app's resolver must verify, never a link; only the app writes into notes.
 - Bump the index version when parsing changes cached semantics.
 - Folded text keeps its characters (tiny, transparent; newlines drawn as zero-width spaces; widgets shrunk): the editor's span length must equal the controller text, and offsets must not move. Never edit text the user cannot see; unfold first.
 - Work done per editor keystroke must be linear in the note size; check long imported pages (2,000 blocks) with `test/outline_perf_test.dart`.

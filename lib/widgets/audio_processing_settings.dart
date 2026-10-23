@@ -9,7 +9,7 @@ import 'processing_policy_editor.dart';
 import 'snack.dart';
 import 'constants.dart';
 
-enum AiSettingsSection { all, servers, audio, articles, screenshots }
+enum AiSettingsSection { all, servers, audio, articles, screenshots, enrich }
 
 /// Settings section: when audio is transcribed and which languages it is
 /// translated into. Works on any platform because the policy file syncs; the
@@ -491,7 +491,8 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
       }
       if (ai.connections.isEmpty &&
           (show(AiSettingsSection.articles) ||
-              show(AiSettingsSection.screenshots))) {
+              show(AiSettingsSection.screenshots) ||
+              show(AiSettingsSection.enrich))) {
         aiWidgets.add(
           const Padding(
             padding: EdgeInsets.symmetric(
@@ -526,12 +527,88 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
             ),
           );
         }
+        if (show(AiSettingsSection.enrich)) {
+          void save(AiServerTask task) =>
+              unawaited(_saveAi(ai.copyWith(enrich: task)));
+          aiWidgets.add(
+            _serverTaskBlock(
+              title: 'Links',
+              description:
+                  'Finds people, places and topics in your day log and '
+                  'suggests links. Your text is never changed without you.',
+              ai: ai,
+              task: ai.enrich,
+              onChanged: save,
+            ),
+          );
+          aiWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('enrich:mode:${ai.enrich.mode}'),
+                initialValue: ai.enrich.mode ?? 'off',
+                decoration: const InputDecoration(labelText: 'Run'),
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(value: 'off', child: Text('Off')),
+                  DropdownMenuItem(
+                    value: 'watch',
+                    child: Text('A few minutes after you stop writing'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'schedule',
+                    child: Text('Every night at 03:00'),
+                  ),
+                ],
+                onChanged: _aiBusy
+                    ? null
+                    : (value) => save(ai.enrich.copyWith(mode: value)),
+              ),
+            ),
+          );
+          aiWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+              child: DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'enrich:fallback:${ai.enrichFallback}:${ai.connections.map((c) => c.id).join('|')}',
+                ),
+                initialValue:
+                    ai.connections.any((c) => c.id == ai.enrichFallback)
+                    ? ai.enrichFallback
+                    : null,
+                decoration: const InputDecoration(
+                  labelText: 'If that server is down',
+                ),
+                isExpanded: true,
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Wait')),
+                  for (final connection in ai.connections)
+                    if (connection.id !=
+                        (ai.enrich.connection ?? ai.defaultConnection?.id))
+                      DropdownMenuItem(
+                        value: connection.id,
+                        child: Text(
+                          'Use ${connection.label.isEmpty ? connection.id : connection.label}',
+                        ),
+                      ),
+                ],
+                onChanged: _aiBusy
+                    ? null
+                    : (value) => unawaited(
+                        _saveAi(ai.copyWith(enrichFallback: value)),
+                      ),
+              ),
+            ),
+          );
+        }
       }
     }
 
     if (widget.section == AiSettingsSection.servers ||
         widget.section == AiSettingsSection.articles ||
-        widget.section == AiSettingsSection.screenshots) {
+        widget.section == AiSettingsSection.screenshots ||
+        widget.section == AiSettingsSection.enrich) {
       return Column(children: aiWidgets);
     }
 

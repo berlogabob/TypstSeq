@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.tylog.enrich</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Same launch shape as org.tylog.transcribe; enrich_worker imports transcribe_worker from its folder.
+         Mode and time come from _system/settings/ai.json tasks.enrich, so this agent just polls. -->
+    <string>/opt/homebrew/bin/uv</string>
+    <string>run</string>
+    <string>python</string>
+    <string>/Users/berloga/Documents/GitHub/TypstSeq/tool/enrich_worker.py</string>
+    <string>--vault</string>
+    <string>/Users/berloga/Nextcloud/TyLogVault</string>
+    <string>--once</string>
+  </array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>/Users/berloga/Library/Logs/tylog-enrich.log</string>
+  <key>StandardErrorPath</key><string>/Users/berloga/Library/Logs/tylog-enrich.log</string>
+</dict>
+</plist>

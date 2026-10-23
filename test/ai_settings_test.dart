@@ -113,12 +113,21 @@ void main() {
       translate: AiTask(connection: 'b', model: 'llm'),
       articles: AiServerTask(connection: 'a', model: 'article/model'),
       screenshots: AiServerTask(connection: 'b', model: 'vision/model'),
+      enrich: AiServerTask(connection: 'a', mode: 'watch'),
     ).upsertConnection(b).upsertConnection(a.copyWith(label: 'Updated'));
     expect(settings.connections.map((c) => c.id), ['a', 'b']);
     expect(settings.connections.first.label, 'Updated');
     final removed = settings.removeConnection('a');
     expect(removed.connections.single.id, 'b');
     expect(removed.articles.toJson(), isEmpty);
+    expect(removed.enrich.toJson(), isEmpty);
+    final withFallback = settings.copyWith(enrichFallback: 'b');
+    expect(AiSettings.fromJson(withFallback.toJson()).enrichFallback, 'b');
+    expect(withFallback.removeConnection('b').enrichFallback, isNull);
+    expect(AiSettings.fromJson(settings.toJson()).enrich.toJson(), {
+      'connection': 'a',
+      'mode': 'watch',
+    });
     expect(removed.screenshots.toJson(), settings.screenshots.toJson());
     expect(settings.removeConnection('b').screenshots.toJson(), isEmpty);
     expect(removed.transcribe.toJson(), {'quality': 'fast'});
@@ -165,6 +174,7 @@ void main() {
           'translate': {'quality': 'best'},
           'articles': {},
           'screenshots': {},
+          'enrich': {},
         },
       });
       await storage.createDirectory('_system/settings');
@@ -348,6 +358,7 @@ void main() {
           'model': 'vision/model',
           'custom': true,
         },
+        'enrich': {},
         'future_task': {'enabled': true},
         'transcribe': {'quality': 'fast', 'model': 'small'},
         'translate': {'quality': 'best', 'connection': 'studio'},
