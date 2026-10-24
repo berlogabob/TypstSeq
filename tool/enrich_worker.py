@@ -397,6 +397,75 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     return done
 
 
+_URL = re.compile(r'https?://[^\s<>\]\)"]+')
+# Pages that are never articles: sign-ins, searches, access errors, images.
+_NOT_ARTICLES = re.compile(
+    r"//(?:login|accounts|auth)\.|google\.[a-z.]+/search|/_layouts/|AccessDenied"
+    r"|\.(?:png|jpe?g|gif|webp|svg|zip)(?:[?#]|$)", re.IGNORECASE)
+LINK_DAYS = 7  # the automatic link collector looks this far back
+
+
+def _unescape(text):
+    """Same as unescapeMarkup in tylog_core: job ids must agree with the app's."""
+    return re.sub(r"\\([\\#$*_`<>@\[\]~=\-+/])", r"\1", text)
+
+
+def bare_links(text):
+    """Web links typed as plain text (not in a call or on a comment line)."""
+    urls = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("//"):
+            continue
+        for match in _URL.finditer(line):
+            before = line[:match.start()]
+            call = before.rfind("#")
+            if call >= 0 and re.match(r"#[\w.-]+[(\[]", before[call:]) and "]" not in before[call:]:
+                continue
+            urls.append(_unescape(re.sub(r"[.,;:!?]+$", "", match.group(0))))
+    return urls
+
+
+def collect_links(vault, now=None, state=None, clock=time.time):
+    """Queue the bare links of recent days as article jobs, when
+    tasks.articles.mode says so (watch: soon after writing; schedule: nightly).
+
+    Writes only job files; the app turns each link into a link to its article
+    once the article pipeline is done.
+    """
+    vault = Path(vault).resolve()
+    now = now or datetime.now(timezone.utc)
+    state = {} if state is None else state
+    settings = tw._read_json(vault / "_system/settings/ai.json")
+    tasks = settings.get("tasks") if isinstance(settings.get("tasks"), dict) else {}
+    task = tasks.get("articles") if isinstance(tasks.get("articles"), dict) else {}
+    links_state = state.setdefault("links", {})
+    if not due(task, links_state, now):
+        return 0
+    oldest = (now.astimezone().date() - timedelta(days=LINK_DAYS)).isoformat()
+    jobs = vault / "_system/jobs/articles"
+    queued = 0
+    for note in sorted((vault / "daily").glob("*/*/*.typ"), reverse=True):
+        if note.stem < oldest:
+            break
+        if clock() - note.stat().st_mtime < SETTLE_SECONDS:
+            continue
+        for url in bare_links(note.read_text(encoding="utf-8")):
+            if _NOT_ARTICLES.search(url):
+                continue
+            path = jobs / (hashlib.sha1(url.encode("utf-8")).hexdigest() + ".json")
+            if path.exists():
+                continue
+            jobs.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({
+                "url": url, "shared_at": now.astimezone(timezone.utc).isoformat(),
+                "status": "queued", "origin": note.relative_to(vault).as_posix()}) + "\n",
+                encoding="utf-8")
+            queued += 1
+    if task.get("mode") == "schedule":
+        links_state["last_scheduled_date"] = now.astimezone().date().isoformat()
+    return queued
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", required=True, type=Path)
@@ -417,6 +486,10 @@ def main(argv=None):
             fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.wait else fcntl.LOCK_NB))
         except BlockingIOError:
             return
+        state = tw._read_json(args.state)
+        collect_links(args.vault, state=state)
+        args.state.parent.mkdir(parents=True, exist_ok=True)
+        args.state.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         run_once(args.vault, state_path=args.state, limit=args.limit, since_days=args.since_days,
                  include_notes=args.include_notes)
 

@@ -112,6 +112,7 @@ export 'widgets/work_surface.dart'
 
 part 'app_mobile/desktop_update_flow.dart';
 part 'app_mobile/enrich_flow.dart';
+part 'app_mobile/article_links_flow.dart';
 part 'app_mobile/audio_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
 part 'app_mobile/module_flow.dart';
@@ -609,6 +610,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   (Object, _EnrichView)? _enrichMemo;
   (String, _EnrichView)? _enrichDecisions;
   bool _enrichBusy = false;
+  DateTime? _articleRelinkAt;
 
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
@@ -874,6 +876,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (index != null) {
       _queueEnrichRefresh();
+      _queueArticleRelink();
     }
     if (Platform.isAndroid) unawaited(_handlePendingShares());
     _maybeSnackNewSyncTrouble();
@@ -3972,6 +3975,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @visibleForTesting
   Future<NoteRef?> createEntityForTesting() => _createEntity();
 
+  @visibleForTesting
+  Future<void> saveLinksAsArticlesForTesting() => _saveLinksAsArticles();
+
+  @visibleForTesting
+  Future<int> relinkArticlesForTesting() => _relinkArticles(vault!);
+
   Future<NoteRef?> _createEntity({
     String? initialName,
     String? initialKind,
@@ -4324,6 +4333,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       case MagicAction.report:
         await _createReport();
+        return;
+      case MagicAction.articles:
+        await _saveLinksAsArticles();
         return;
     }
   }

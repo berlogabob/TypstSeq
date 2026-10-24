@@ -5,10 +5,14 @@ import 'package:tylog_core/storage.dart';
 
 /// A shared web URL, preserving its exact spelling for the worker's job id.
 class SharedArticle {
-  const SharedArticle(this.url, {this.title});
+  const SharedArticle(this.url, {this.title, this.origin});
 
   final String url;
   final String? title;
+
+  /// The note the link was written in: when the article is done, that note's
+  /// bare link becomes a link to the article.
+  final String? origin;
 
   static SharedArticle? parse(String text, {String? title}) {
     for (final match in RegExp(r'https?://[^\s<>]+').allMatches(text)) {
@@ -36,6 +40,7 @@ class SharedArticle {
       jsonEncode({
         'url': url,
         if (title != null) 'title': title,
+        if (origin != null) 'origin': origin,
         'shared_at': (now ?? DateTime.now()).toUtc().toIso8601String(),
         'status': 'queued',
       }),

@@ -186,7 +186,8 @@ ControlledBlock _block(String source, int start, int end) {
   final kind = switch (trimmed) {
     String value when _startsCall(value, '#tylog.task(') =>
       ControlledBlockKind.task,
-    String value when _startsCall(value, '#table(') => ControlledBlockKind.table,
+    String value when _startsCall(value, '#table(') =>
+      ControlledBlockKind.table,
     String value when value.startsWith(r'$') && value.endsWith(r'$') =>
       ControlledBlockKind.equation,
     String value when RegExp(r'^=+\s').hasMatch(value) =>
@@ -385,6 +386,7 @@ enum MagicAction {
   table,
   equation,
   report,
+  articles,
 }
 
 String? deterministicTypstFix(String error, String source) {
@@ -449,8 +451,7 @@ SourceEdit applyMagicEdit(
   final end = selection.isValid ? selection.end : source.length;
   // Under replaceSelection the selected text is the trigger being replaced,
   // not content — snippet bodies must come from the request's value.
-  final selected =
-      request.replaceSelection ? '' : source.substring(start, end);
+  final selected = request.replaceSelection ? '' : source.substring(start, end);
   final value = request.value?.trim();
   final replacement = switch (request.action) {
     MagicAction.noteLink || MagicAction.project =>
@@ -493,6 +494,7 @@ SourceEdit applyMagicEdit(
     MagicAction.table => _tableSnippet(request.rows, request.columns),
     MagicAction.equation => '\$${selected.isEmpty ? value ?? '' : selected}\$',
     MagicAction.report => '',
+    MagicAction.articles => '',
   };
   if (request.action == MagicAction.attachment &&
       (request.kind == 'image' || request.kind == 'audio')) {
@@ -559,11 +561,13 @@ SourceEdit applyMagicEdit(
     // Prefix length must match whatever branch above actually emitted — a
     // `fill:` argument makes '#highlight[' the wrong length and would leave
     // the caret inside the argument list instead of the (empty) body.
-    MagicAction.highlight when selected.isEmpty => start + switch (value) {
-      null || '' => '#highlight['.length,
-      kHighlightNone => 0,
-      _ => '#highlight(fill: $value)['.length,
-    },
+    MagicAction.highlight when selected.isEmpty =>
+      start +
+          switch (value) {
+            null || '' => '#highlight['.length,
+            kHighlightNone => 0,
+            _ => '#highlight(fill: $value)['.length,
+          },
     _ => start + replacement.length,
   };
   return SourceEdit(

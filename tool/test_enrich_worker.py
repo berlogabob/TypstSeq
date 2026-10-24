@@ -232,3 +232,35 @@ def test_markers_are_discovered_from_line_starts(tmp_path):
     assert markers[0]["examples"][0] == "сенча 0"
     explicit = enrich.load_markers(vault, {"markers": ["fixit"]}, enrich.read_index(vault))
     assert explicit[0]["examples"] == ["crash"]  # inline mentions are not filings
+
+
+def test_collect_links_queues_bare_links_of_recent_days(tmp_path):
+    vault, note = vault_with(tmp_path)
+    settings = json.loads((vault / "_system/settings/ai.json").read_text())
+    settings["tasks"]["articles"] = {"mode": "watch"}
+    (vault / "_system/settings/ai.json").write_text(json.dumps(settings))
+    now = enrich.datetime(2026, 10, 24, 12, tzinfo=enrich.timezone.utc)
+    note.write_text(
+        "+ https://www.reddit.com/r/x/google\\_releases/\n"
+        "+ see https://github.com/VERT-sh/VERT.\n"
+        "+ https://www.google.com/search?q=x\n"
+        "+ https://login.microsoftonline.com/common\n"
+        '+ #link("https://kept.example/")[k]\n', encoding="utf-8")
+    os.utime(note, (0, 0))
+    assert enrich.collect_links(vault, now=now) == 2
+    jobs = [json.loads(p.read_text()) for p in (vault / "_system/jobs/articles").glob("*.json")]
+    assert [j["url"] for j in sorted(jobs, key=lambda j: j["url"])] == [
+        "https://github.com/VERT-sh/VERT", "https://www.reddit.com/r/x/google_releases/"]
+    assert {j["origin"] for j in jobs} == {"daily/2026/10/2026-10-22.typ"}
+    # Same id as the app's SharedArticle: sha1 of the exact URL.
+    import hashlib
+    assert (vault / "_system/jobs/articles" /
+            (hashlib.sha1(b"https://github.com/VERT-sh/VERT").hexdigest() + ".json")).exists()
+    assert enrich.collect_links(vault, now=now) == 0  # never re-queued
+
+
+def test_collect_links_off_by_default(tmp_path):
+    vault, note = vault_with(tmp_path)
+    note.write_text("+ https://github.com/x/y\n", encoding="utf-8")
+    os.utime(note, (0, 0))
+    assert enrich.collect_links(vault) == 0

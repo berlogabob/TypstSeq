@@ -514,6 +514,49 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
                   unawaited(_saveAi(ai.copyWith(articles: task))),
             ),
           );
+          aiWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('articles:mode:${ai.articles.mode}'),
+                initialValue: switch (ai.articles.mode) {
+                  'watch' || 'schedule' => ai.articles.mode,
+                  _ => 'off',
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Links in your day log',
+                  helperText:
+                      'Saved as articles; each link then points to its article. '
+                      'Magic > Save links as articles does it right now.',
+                  helperMaxLines: 3,
+                ),
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'off',
+                    child: Text('Only when I ask'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'watch',
+                    child: Text('A few minutes after you stop writing'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'schedule',
+                    child: Text('Every night at 03:00'),
+                  ),
+                ],
+                onChanged: _aiBusy
+                    ? null
+                    : (value) => unawaited(
+                        _saveAi(
+                          ai.copyWith(
+                            articles: ai.articles.copyWith(mode: value),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          );
         }
         if (show(AiSettingsSection.screenshots)) {
           aiWidgets.add(

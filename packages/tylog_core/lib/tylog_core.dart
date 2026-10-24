@@ -1,6 +1,7 @@
 library;
 
 export 'src/cli_typst_inspector.dart';
+export 'src/article_links.dart';
 export 'src/date_words.dart';
 export 'src/enrich.dart';
 export 'src/graph.dart';

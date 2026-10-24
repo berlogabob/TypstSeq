@@ -2,3 +2,5 @@
 library;
 
 export 'src/enrich.dart';
+
+export 'src/article_links.dart';

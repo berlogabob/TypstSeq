@@ -809,6 +809,7 @@ class TyLogEditingController extends TextEditingController {
             request.value?.split('/').last ?? 'Attachment',
           MagicAction.table => 'Table',
           MagicAction.report => 'Report',
+          MagicAction.articles => 'Articles',
           _ => request.value ?? selected,
         };
         final before = _snapshot();

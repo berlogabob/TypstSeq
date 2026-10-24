@@ -131,7 +131,9 @@ class _NativeMagicHarnessState extends State<_NativeMagicHarness> {
         ],
       ),
     );
-    if (request != null && request.action != MagicAction.report) {
+    if (request != null &&
+        request.action != MagicAction.report &&
+        request.action != MagicAction.articles) {
       controller.applyMagic(request);
     }
   }
@@ -207,6 +209,7 @@ MagicRequest _requestFor(MagicAction action) => switch (action) {
     value: 'x + 1',
   ),
   MagicAction.report => const MagicRequest(action: MagicAction.report),
+  MagicAction.articles => const MagicRequest(action: MagicAction.articles),
 };
 
 void _typeComposing(TyLogEditingController controller, String text) {
@@ -241,4 +244,5 @@ String _sourceMarker(MagicAction action) => switch (action) {
   MagicAction.table => '#table(columns: 3',
   MagicAction.equation => r'$x + 1$',
   MagicAction.report => '|тест-report|',
+  MagicAction.articles => '|тест-articles|',
 };

@@ -26,6 +26,7 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.table: (Icons.table_chart, 'Table'),
   MagicAction.equation: (Icons.functions, 'Equation'),
   MagicAction.report: (Icons.picture_as_pdf, 'Report'),
+  MagicAction.articles: (Icons.article_outlined, 'Save links as articles'),
 };
 
 const Map<String, List<MagicAction>> kMagicActionGroups = {
@@ -54,6 +55,7 @@ const Map<String, List<MagicAction>> kMagicActionGroups = {
     MagicAction.heading,
     MagicAction.table,
     MagicAction.report,
+    MagicAction.articles,
   ],
 };
 
