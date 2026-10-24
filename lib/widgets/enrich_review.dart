@@ -76,13 +76,34 @@ class EnrichReview extends StatelessWidget {
               key: ValueKey('enrich-tag-$tag'),
               avatar: const Icon(Icons.tag, size: 16),
               label: Text(tag),
-              tooltip: 'Tag added from this day. Remove to stop adding it.',
+              tooltip: 'Tag added from this day',
+              onPressed: onRejectTag == null
+                  ? null
+                  : () => _confirmRemoveTag(context, tag),
               deleteIcon: const Icon(Icons.close, size: 16),
               onDeleted: onRejectTag == null ? null : () => onRejectTag!(tag),
             ),
         ],
       ),
     );
+  }
+
+  /// The whole chip opens this, not only the small x: a tap on the word did
+  /// nothing before, and people read that as "can't remove".
+  Future<void> _confirmRemoveTag(BuildContext context, String tag) async {
+    final remove = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListTile(
+          key: const ValueKey('enrich-tag-remove'),
+          leading: const Icon(Icons.delete_outline),
+          title: Text('Remove tag "$tag"'),
+          subtitle: const Text('It will not be added from your days again'),
+          onTap: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (remove == true) onRejectTag?.call(tag);
   }
 
   Widget _chip(BuildContext context, EnrichDecision decision) {

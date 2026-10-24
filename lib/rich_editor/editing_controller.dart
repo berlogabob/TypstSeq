@@ -1612,6 +1612,11 @@ class TyLogEditingController extends TextEditingController {
             block.style == TyLogBlockStyle.taskLine &&
             (block.visibleText.startsWith(taskCheckedGlyph) ||
                 block.visibleText.startsWith(taskCancelledGlyph));
+        // A Typst comment (e.g. the `// tylog:auto-entities` marker) never
+        // reaches the PDF: drawn small and faint, still there to edit.
+        final comment =
+            block.style == TyLogBlockStyle.paragraph &&
+            block.visibleText.trimLeft().startsWith('//');
         for (final part in block.parts) {
           if (part.isAtom) {
             // Read mode never writes back to source, so an unknown wrapper
@@ -1778,6 +1783,12 @@ class TyLogEditingController extends TextEditingController {
               partStyle = partStyle.copyWith(
                 decoration: TextDecoration.lineThrough,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
+              );
+            }
+            if (comment) {
+              partStyle = partStyle.copyWith(
+                fontSize: (partStyle.fontSize ?? 16) * 0.7,
+                color: Theme.of(context).colorScheme.outline,
               );
             }
             final reserveText =

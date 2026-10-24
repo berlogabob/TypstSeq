@@ -258,6 +258,36 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('tapping the tag word offers removal too', (tester) async {
+    final (home, storage) = await _mount(tester);
+    await tester.tap(find.byKey(const ValueKey('enrich-tag-design')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('enrich-tag-remove')));
+    await tester.pumpAndSettle();
+    expect(home.workspace.source, isNot(contains('#tylog.tag("design")')));
+    expect(
+      await storage.readText('$enrichFeedbackDir/dev1.jsonl'),
+      contains('tag:design'),
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
+  testWidgets('one decision at a time: a double tap records one accept', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    final chip = find.byKey(const ValueKey('enrich-review-Катя'));
+    await tester.tap(chip);
+    await tester.tap(chip, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
+    expect(
+      ledger.trim().split('\n').where((l) => l.contains('"kz"')),
+      hasLength(1),
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets('a note edited since extraction is left alone', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, contains(autoEntitiesMarker));

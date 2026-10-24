@@ -162,11 +162,13 @@ extension _EnrichFlow on _HomeScreenState {
     }
     // Links the user typed are theirs: no chip offering to unlink them.
     final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
+    final lines = source.split('\n');
     final _EnrichView result = (
       decisions: [
         for (final decision in decisions)
-          if (decision.status != EnrichStatus.linked ||
-              !typed.contains(decision.target!.id))
+          if ((decision.status != EnrichStatus.linked ||
+                  !typed.contains(decision.target!.id)) &&
+              !enrichLinkedOnLine(decision.mention, lines))
             decision,
       ],
       tags: tags,
@@ -214,6 +216,8 @@ extension _EnrichFlow on _HomeScreenState {
     final v = vault;
     final path = note;
     if (v == null || path == null) return;
+    // The new or renamed page must be in the memory for the next pass.
+    _enrichMemoryCache = null;
     await _recordEnrichFeedback(mention, target.id, accepted: true);
     final mentions = await _readMentions(v, path);
     final source = workspace.source;
@@ -318,6 +322,18 @@ extension _EnrichFlow on _HomeScreenState {
       accepted: false,
     );
     await _refreshEnrichment(userAction: true);
+  }
+
+  /// One decision at a time: a second tap while the first is still writing
+  /// recorded the same accept twice.
+  Future<void> _enrichOnce(Future<void> Function() action) async {
+    if (_enrichBusy) return;
+    _enrichBusy = true;
+    try {
+      await action();
+    } finally {
+      _enrichBusy = false;
+    }
   }
 
   Future<void> _createFromEnrich(EnrichMention mention) async {

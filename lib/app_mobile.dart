@@ -608,6 +608,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   (Vault, DateTime, EnrichMemory)? _enrichMemoryCache;
   (Object, _EnrichView)? _enrichMemo;
   (String, _EnrichView)? _enrichDecisions;
+  bool _enrichBusy = false;
 
   // setState is @protected; this shim lets the flow extensions in
   // app_mobile/*.dart trigger rebuilds without tripping the analyzer.
@@ -5554,14 +5555,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             decisions: enrichDay.$2.decisions,
             tags: enrichDay.$2.tags,
             markers: enrichDay.$2.markers,
-            onAcceptMarker: (offer) => unawaited(_acceptEnrichMarker(offer)),
-            onRejectMarker: (offer) => unawaited(_rejectEnrichMarker(offer)),
-            onRejectTag: (tag) => unawaited(_rejectEnrichTag(tag)),
+            onAcceptMarker: (offer) =>
+                unawaited(_enrichOnce(() => _acceptEnrichMarker(offer))),
+            onRejectMarker: (offer) =>
+                unawaited(_enrichOnce(() => _rejectEnrichMarker(offer))),
+            onRejectTag: (tag) =>
+                unawaited(_enrichOnce(() => _rejectEnrichTag(tag))),
             onAccept: (mention, target) =>
-                unawaited(_acceptEnrich(mention, target)),
+                unawaited(_enrichOnce(() => _acceptEnrich(mention, target))),
             onReject: (mention, target) =>
-                unawaited(_rejectEnrich(mention, target)),
-            onCreate: (mention) => unawaited(_createFromEnrich(mention)),
+                unawaited(_enrichOnce(() => _rejectEnrich(mention, target))),
+            onCreate: (mention) =>
+                unawaited(_enrichOnce(() => _createFromEnrich(mention))),
           ),
         ],
       );

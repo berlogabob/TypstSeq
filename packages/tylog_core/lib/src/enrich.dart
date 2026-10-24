@@ -594,3 +594,13 @@ String markLine(String source, int line, NoteRef marker) {
       '[${escapeMarkup(marker.title)}] ${text.substring(prefix)}';
   return lines.join('\n');
 }
+
+/// Whether [mention]'s name is already a link on its line: settled, whatever
+/// a (possibly stale) index says. A page created a moment ago is not in the
+/// memory yet, and its "+ name" chip came back and got tapped twice.
+bool enrichLinkedOnLine(EnrichMention mention, List<String> lines) =>
+    mention.line >= 1 &&
+    mention.line <= lines.length &&
+    RegExp(
+      r'#tylog\.ref-note\([^)]*\)\[' + RegExp.escape(mention.surface) + r'\]',
+    ).hasMatch(lines[mention.line - 1]);

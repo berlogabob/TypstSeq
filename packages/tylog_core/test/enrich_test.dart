@@ -310,6 +310,16 @@ void main() {
     );
   });
 
+  test('a name linked on its line is settled', () {
+    const roma = EnrichMention(surface: 'Рома', type: 'person', line: 2);
+    expect(enrichLinkedOnLine(roma, ['x', 'с Ромой и Рома']), isFalse);
+    expect(
+      enrichLinkedOnLine(roma, ['x', 'с #tylog.ref-note("new")[Рома] тут']),
+      isTrue,
+    );
+    expect(enrichLinkedOnLine(roma, ['x']), isFalse);
+  });
+
   group('markers', () {
     final fixit = entity('fx', 'fixit', kind: 'note');
     const day20 =
