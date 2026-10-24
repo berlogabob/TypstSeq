@@ -46,14 +46,33 @@ def apply_transcript(note_text, segments):
     return note_text + separator + section
 
 
+def offline_first(load):
+    """Load from the local Hugging Face cache, online only when it is missing.
+
+    Even with the model on disk, a plain load asks the hub for updates; when
+    the network dropped mid-request that call hung for 8 hours with no
+    timeout, and the job behind it never finished.
+    """
+    import huggingface_hub.constants as hub
+
+    previous, hub.HF_HUB_OFFLINE = hub.HF_HUB_OFFLINE, True
+    try:
+        return load()
+    except Exception:
+        hub.HF_HUB_OFFLINE = previous
+        return load()
+    finally:
+        hub.HF_HUB_OFFLINE = previous
+
+
 def speaker_embedder():
     import torch
     from speechbrain.inference.speaker import EncoderClassifier
 
-    encoder = EncoderClassifier.from_hparams(
+    encoder = offline_first(lambda: EncoderClassifier.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb",
         savedir=str(Path.home() / ".cache/tylog/spkrec-ecapa-voxceleb"),
-        run_opts={"device": "cpu"})
+        run_opts={"device": "cpu"}))
 
     def embed(samples):
         with torch.inference_mode():
@@ -102,7 +121,11 @@ def diarize_segments(samples, segments, embed=None, distance_threshold=0.35):
 def transcribe(audio, model="small", lang=None, *, diarize=False):
     from faster_whisper import WhisperModel, decode_audio
 
-    model = WhisperModel(model)
+    name = model
+    try:
+        model = WhisperModel(name, local_files_only=True)
+    except Exception:
+        model = WhisperModel(name)  # not downloaded yet
     segments, info = model.transcribe(str(audio), language=lang or None,
                                       **({"multilingual": True} if not lang else {}))
     segments = list(segments)
@@ -456,6 +479,21 @@ def sweep(vault, now, state, force=False):
     return created
 
 
+STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hung
+
+
+def _stale_claim(job, now):
+    """A "processing" job its worker abandoned (killed, hung, Mac asleep)."""
+    if job.get("status") != "processing":
+        return False
+    since = job.get("processing_at") or job.get("requested_at")
+    try:
+        started = datetime.fromisoformat(since)
+    except (TypeError, ValueError):
+        return True
+    return (now - started).total_seconds() > STALE_CLAIM_HOURS * 3600
+
+
 def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
              hostname=None, clock=None, probe=None, diarize=False):
     vault = Path(vault).resolve()
@@ -491,10 +529,11 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
         for kind, job_path in jobs:
             job = json.loads(job_path.read_text(encoding="utf-8"))
-            if job.get("status") != "queued":
+            if job.get("status") != "queued" and not _stale_claim(job, now):
                 continue
             try:
                 job["status"] = "processing"
+                job["processing_at"] = now.astimezone(timezone.utc).isoformat()
                 job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 note = _vault_path(vault, job["note"])
                 with note.open(encoding="utf-8", newline="") as stream:

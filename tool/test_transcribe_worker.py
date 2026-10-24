@@ -1162,3 +1162,31 @@ def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
     job = json.loads(path.read_text())
     assert job["status"] == "done"
     assert job["llm"] == "ollama/ornith-1.5:9b"
+
+
+def test_abandoned_processing_job_is_taken_again(tmp_path, monkeypatch):
+    # The worker hung for 8 hours on a model download and was killed: its job
+    # stayed "processing" and nothing would ever pick it up again.
+    jobs = tmp_path / "_system/jobs/transcripts"
+    jobs.mkdir(parents=True)
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+    now = datetime(2026, 10, 24, 20, 0, tzinfo=worker.timezone.utc)
+    stale = jobs / "stale.json"
+    stale.write_text(json.dumps({"status": "processing", "audio": "a.wav", "note": "note.typ",
+                                 "requested_at": "2026-10-24T10:36:10+00:00"}))
+    fresh = jobs / "fresh.json"
+    fresh.write_text(json.dumps({"status": "processing", "audio": "b.wav", "note": "note.typ",
+                                 "processing_at": "2026-10-24T19:30:00+00:00"}))
+    calls = []
+
+    def fake_transcribe(audio, model, lang):
+        calls.append(audio.name)
+        return [(0, "Hi")], "en", ["en"]
+
+    monkeypatch.setattr(worker, "transcribe", fake_transcribe)
+    worker.run_once(tmp_path, now=now, state_path=tmp_path / "s.json",
+                    hostname=lambda: "h", probe=lambda *a: {"reachable": False, "loaded": []})
+    assert calls == ["a.wav"]  # the 30-minute-old claim is left to its worker
+    assert json.loads(stale.read_text())["status"] == "done"
+    assert json.loads(fresh.read_text())["status"] == "processing"
