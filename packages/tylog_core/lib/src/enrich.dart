@@ -564,7 +564,10 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
   final byId = {for (final note in index.notesByPath.values) note.id: note};
   return [
     for (final (line, id) in mentions.markers)
-      if (byId[id] case final marker?)
+      // A marker with no page yet ("Купить") links by name, as the user does.
+      if (byId[id] ??
+              NoteRef(id: id, path: '', title: id, outgoingLinks: const [])
+          case final marker)
         if (line >= 1 && line <= lines.length)
           if (!_carries(lines[line - 1], marker))
             if (enrichPlainLine(lines[line - 1]) case final text

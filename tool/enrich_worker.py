@@ -28,7 +28,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 3
+PROMPT_VERSION = 4
 
 
 def strip_auto_block(text):
@@ -98,18 +98,52 @@ def _plain(line):
     return re.sub(r"^\d{1,2}:\d{2}\s+", "", line).strip()
 
 
-def load_markers(vault, task, index):
-    """Marker pages from tasks.enrich.markers, each with up to 8 lines the user
-    tagged with it (examples) and up to 4 they rejected (counter-examples).
+# A page that starts at least this many journal lines is a marker the user
+# files lines under ("- 21:50 @fixit ..."). Most used first, at most MAX.
+MIN_MARKER_USES = 5
+MAX_MARKERS = 12
+MARKER_RECENT_DAYS = 365  # a marker not used for a year has gone stale
+_LINE_START_LINK = re.compile(
+    r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?#tylog\.ref-note\("([^"]+)"\)(\[[^\]]*\])?')
 
-    More tagged lines, better examples: this is how detection improves.
+
+def load_markers(vault, task, index):
+    """Marker pages, each with lines the user filed under it (examples) and
+    lines they rejected (counter-examples).
+
+    By default the markers are discovered: pages that start at least
+    MIN_MARKER_USES journal lines. tasks.enrich.markers (names) overrides.
+    Start more lines with a page and it becomes a marker; file more lines and
+    its examples get better: this is how detection improves.
     """
-    wanted = {name for name in task.get("markers") or [] if isinstance(name, str)}
-    markers = [{"id": note["id"], "title": note["title"]} for note in index.get("notes", [])
-               if wanted & {note["id"], note["title"], *(note.get("aliases") or [])}]
-    if not markers:
+    by_name = {}
+    for note in index.get("notes", []):
+        for name in (note["id"], note["title"], *(note.get("aliases") or [])):
+            by_name.setdefault(name, note)
+    filed = defaultdict(list)  # note id -> filed lines, newest day first
+    last_used = {}
+    for day in sorted((vault / "daily").glob("*/*/*.typ"), reverse=True):
+        for line in day.read_text(encoding="utf-8").splitlines():
+            match = _LINE_START_LINK.match(line)
+            if not match:
+                continue
+            # A link to a page that does not exist yet ("Чай") is a marker too:
+            # its name is its id.
+            id = by_name[match.group(1)]["id"] if match.group(1) in by_name else match.group(1)
+            last_used.setdefault(id, day.stem)
+            if text := _plain(line[match.end():]):
+                filed[id].append(text[:200])
+    wanted = task.get("markers")
+    if isinstance(wanted, list):
+        ids = [by_name[name]["id"] if name in by_name else name
+               for name in wanted if isinstance(name, str)]
+    else:
+        recent = (datetime.now().date() - timedelta(days=MARKER_RECENT_DAYS)).isoformat()
+        ids = sorted((id for id, lines in filed.items()
+                      if len(lines) >= MIN_MARKER_USES and last_used[id] >= recent),
+                     key=lambda id: -len(filed[id]))[:MAX_MARKERS]
+    if not ids:
         return []
-    days = sorted((vault / "daily").glob("*/*/*.typ"), reverse=True)
     rejected = defaultdict(list)
     for ledger in (vault / "_system/enrich/feedback").glob("*.jsonl"):
         for row in ledger.read_text(encoding="utf-8").splitlines():
@@ -119,21 +153,11 @@ def load_markers(vault, task, index):
                 continue
             if event.get("decision") == "reject" and str(event.get("entity", "")).startswith("marker:"):
                 rejected[event["entity"][7:]].append(event.get("surface", ""))
-    for marker in markers:
-        # Linked by id or by title: both resolve to the page.
-        needle = re.compile(r'#tylog\.ref-note\("(?:%s|%s)"\)(\[[^\]]*\])?'
-                            % (re.escape(marker["id"]), re.escape(marker["title"])))
-        examples = []
-        for day in days:
-            if len(examples) >= 8:
-                break
-            for line in day.read_text(encoding="utf-8").splitlines():
-                # The marker itself is not part of the example.
-                if needle.search(line) and (text := _plain(needle.sub("", line))):
-                    examples.append(text[:200])
-        marker["examples"] = examples[:8]
-        marker["not"] = [text[:200] for text in rejected[marker["id"]][-4:]]
-    return markers
+    titles = {note["id"]: note["title"] for note in by_name.values()}
+    # Fewer examples each when there are many markers: the prompt stays small.
+    per = 8 if len(ids) <= 2 else 4
+    return [{"id": id, "title": titles.get(id, id), "examples": filed[id][:per],
+             "not": [text[:200] for text in rejected[id][-4:]]} for id in ids]
 
 
 def parse_reply(reply, lines, markers=()):

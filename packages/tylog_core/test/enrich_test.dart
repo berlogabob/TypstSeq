@@ -331,7 +331,13 @@ void main() {
     final found = EnrichMentions(
       note: 'd',
       contentSha: 'x',
-      markers: const [(3, 'fx'), (4, 'fx'), (5, 'fx'), (99, 'fx'), (4, 'nope')],
+      markers: const [
+        (3, 'fx'),
+        (4, 'fx'),
+        (5, 'fx'),
+        (99, 'fx'),
+        (4, 'Купить'),
+      ],
     );
 
     test('offers unmarked, existing, not rejected lines', () {
@@ -349,9 +355,14 @@ void main() {
           ),
         ]),
       );
-      expect(offers.map((o) => (o.line, o.text)), [
-        (4, 'поиск не работает корректно'),
+      expect(offers.map((o) => (o.line, o.marker.id, o.text)), [
+        (4, 'fx', 'поиск не работает корректно'),
+        (4, 'Купить', 'поиск не работает корректно'),
       ]);
+      expect(
+        markLine(day20, 4, offers.last.marker).split('\n')[3],
+        '+ #tylog.ref-note("Купить")[Купить] поиск не работает корректно',
+      );
     });
 
     test('marking puts the link after list marker and time, once', () {

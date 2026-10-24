@@ -212,3 +212,23 @@ def test_old_prompt_version_is_read_again(tmp_path):
     target.write_text(json.dumps(data))
     enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json")
     assert len(calls) == 2
+
+
+def test_markers_are_discovered_from_line_starts(tmp_path):
+    vault, _ = vault_with(tmp_path)
+    (vault / "_index").mkdir()
+    (vault / "_index/index.json").write_text(json.dumps({"notes": [
+        {"id": "fx", "title": "fixit", "kind": "note", "aliases": []}]}))
+    recent = enrich.datetime.now().date() - enrich.timedelta(days=30)  # inside the window
+    day = vault / f"daily/{recent:%Y/%m}/{recent.isoformat()}.typ"
+    day.parent.mkdir(parents=True)
+    day.write_text("\n".join(
+        [f'\\- 0{i}:00 #tylog.ref-note("Чай")[Чай] сенча {i}' for i in range(5)]
+        + ['#tylog.ref-note("fx")[fixit] crash', 'text with #tylog.ref-note("fx")[fixit] inline']),
+        encoding="utf-8")
+    markers = enrich.load_markers(vault, {}, enrich.read_index(vault))
+    # "Чай" has no page, only links: still a marker. fixit: 1 filed line, below the bar.
+    assert [(m["id"], m["title"]) for m in markers] == [("Чай", "Чай")]
+    assert markers[0]["examples"][0] == "сенча 0"
+    explicit = enrich.load_markers(vault, {"markers": ["fixit"]}, enrich.read_index(vault))
+    assert explicit[0]["examples"] == ["crash"]  # inline mentions are not filings
