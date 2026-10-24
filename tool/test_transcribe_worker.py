@@ -109,7 +109,7 @@ def test_transcribe_diarize_uses_segment_bounds(monkeypatch):
     model = SimpleNamespace(transcribe=lambda *args, **kwargs:
                             (iter(segments), SimpleNamespace(language="en")))
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(
-        WhisperModel=lambda name: model,
+        WhisperModel=lambda name, **options: model,
         decode_audio=lambda path, sampling_rate: samples))
 
     def diarize(audio, actual_segments):
@@ -219,7 +219,9 @@ def test_transcribe_detected_language(monkeypatch):
     calls = []
 
     class Model:
-        def __init__(self, model):
+        def __init__(self, model, **options):
+            # int8 on the CPU: float32 large-v3 was 6.6 GB and paged out.
+            assert options["compute_type"] == "int8"
             assert model == "small"
             calls.append("load")
 
@@ -252,7 +254,7 @@ def test_transcribe_language_windows_and_threshold(monkeypatch, fail_detection):
     calls = []
 
     class Model:
-        def __init__(self, model):
+        def __init__(self, model, **options):
             calls.append("load")
 
         def transcribe(self, audio, **kwargs):
@@ -282,7 +284,7 @@ def test_transcribe_language_windows_and_threshold(monkeypatch, fail_detection):
 
 def test_transcribe_forced_language_skips_detection(monkeypatch):
     class Model:
-        def __init__(self, model):
+        def __init__(self, model, **options):
             assert model == "small"
 
         def transcribe(self, audio, **kwargs):

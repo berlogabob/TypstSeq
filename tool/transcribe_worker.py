@@ -122,10 +122,14 @@ def transcribe(audio, model="small", lang=None, *, diarize=False):
     from faster_whisper import WhisperModel, decode_audio
 
     name = model
+    # int8 on the CPU: the default turned large-v3 into float32 (6.6 GB) on a
+    # Mac without fast float16, and under memory pressure macOS paged it out
+    # until a 3.5-minute note sat "stuck" at 2% CPU. int8 is ~1.6 GB and faster.
+    options = {"device": "cpu", "compute_type": "int8"}
     try:
-        model = WhisperModel(name, local_files_only=True)
-    except Exception:
-        model = WhisperModel(name)  # not downloaded yet
+        model = WhisperModel(name, local_files_only=True, **options)
+    except OSError:  # not downloaded yet (LocalEntryNotFoundError)
+        model = WhisperModel(name, **options)
     segments, info = model.transcribe(str(audio), language=lang or None,
                                       **({"multilingual": True} if not lang else {}))
     segments = list(segments)
