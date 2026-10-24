@@ -41,49 +41,61 @@ class EnrichReview extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final small = Theme.of(context).textTheme.bodySmall;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, kSpace8),
-      child: Wrap(
-        spacing: kSpace8,
-        runSpacing: kSpace4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text('Mentions', style: small),
-          for (final decision in decisions) _chip(context, decision),
-          for (final offer in markers)
-            InputChip(
-              key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
-              avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
-              label: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: Text(
-                  '${offer.marker.title}? ${offer.text}',
-                  overflow: TextOverflow.ellipsis,
+    // At most a fifth of the screen, scrolling inside: five chips on the P30
+    // took half the height and left the note a few lines.
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.2,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          kSpace16,
+          kSpace4,
+          kSpace16,
+          kSpace8,
+        ),
+        child: Wrap(
+          spacing: kSpace8,
+          runSpacing: kSpace4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('Mentions', style: small),
+            for (final decision in decisions) _chip(context, decision),
+            for (final offer in markers)
+              InputChip(
+                key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
+                avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
+                label: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: Text(
+                    '${offer.marker.title}? ${offer.text}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                tooltip: 'Tap to file this line under ${offer.marker.title}',
+                onPressed: onAcceptMarker == null
+                    ? null
+                    : () => onAcceptMarker!(offer),
+                deleteIcon: const Icon(Icons.close, size: 16),
+                onDeleted: onRejectMarker == null
+                    ? null
+                    : () => onRejectMarker!(offer),
+                deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
               ),
-              tooltip: 'Tap to file this line under ${offer.marker.title}',
-              onPressed: onAcceptMarker == null
-                  ? null
-                  : () => onAcceptMarker!(offer),
-              deleteIcon: const Icon(Icons.close, size: 16),
-              onDeleted: onRejectMarker == null
-                  ? null
-                  : () => onRejectMarker!(offer),
-              deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
-            ),
-          for (final tag in tags)
-            InputChip(
-              key: ValueKey('enrich-tag-$tag'),
-              avatar: const Icon(Icons.tag, size: 16),
-              label: Text(tag),
-              tooltip: 'Tag added from this day',
-              onPressed: onRejectTag == null
-                  ? null
-                  : () => _confirmRemoveTag(context, tag),
-              deleteIcon: const Icon(Icons.close, size: 16),
-              onDeleted: onRejectTag == null ? null : () => onRejectTag!(tag),
-            ),
-        ],
+            for (final tag in tags)
+              InputChip(
+                key: ValueKey('enrich-tag-$tag'),
+                avatar: const Icon(Icons.tag, size: 16),
+                label: Text(tag),
+                tooltip: 'Tag added from this day',
+                onPressed: onRejectTag == null
+                    ? null
+                    : () => _confirmRemoveTag(context, tag),
+                deleteIcon: const Icon(Icons.close, size: 16),
+                onDeleted: onRejectTag == null ? null : () => onRejectTag!(tag),
+              ),
+          ],
+        ),
       ),
     );
   }

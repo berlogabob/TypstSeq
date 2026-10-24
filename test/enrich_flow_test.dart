@@ -11,6 +11,7 @@ import 'package:tylog/models.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
+import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/enrich.dart';
 
 Future<void> _emptyStartup() async {}
@@ -284,6 +285,22 @@ void main() {
     expect(
       ledger.trim().split('\n').where((l) => l.contains('"kz"')),
       hasLength(1),
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
+  testWidgets('on a phone-width screen the strip stays a fifth of the height', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _mount(tester);
+    expect(find.byType(EnrichReview), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(EnrichReview)).height,
+      lessThanOrEqualTo(160),
     );
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
