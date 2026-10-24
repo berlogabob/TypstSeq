@@ -3,6 +3,31 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.1+159
+
+### New
+
+- Markers: Links learns which journal lines you file under a marker page,
+  such as `@fixit` for problems to fix. Set `markers` in Settings > AI >
+  Links' task (`tasks.enrich.markers`, e.g. `["fixit"]`); the model sees your
+  latest filed lines as examples and the ones you rejected as
+  counter-examples, and the Mentions strip offers "fixit? <line>". A tap puts
+  the link after the dash and time, the way you write it; x teaches it.
+- The worker can also read `notes/` (Logseq pages), cuts very long pages to
+  fit the model, waits instead of doubling up with a running worker, and
+  `tool/enrich_report.py` summarizes what the whole vault mentions.
+
+### Fixed
+
+- Tag chips: tapping the word opens "Remove tag" (the small x was easy to
+  miss and the word did nothing).
+- The `// tylog:auto-entities` line is drawn small and faint in the editor.
+- A page just created from "+ name" no longer comes back as a chip, and a
+  double tap records one decision.
+- The Mentions strip takes at most a fifth of the screen and scrolls.
+- Worker: a model another job swapped out on the server is loaded back;
+  markers named by title are kept; failed days retry the next day.
+
 ## 0.20.0+158
 
 ### New

@@ -1,4 +1,4 @@
-# TyLog v5 user handbook (0.20.0)
+# TyLog v5 user handbook (0.20.1)
 
 ## Vault format
 
@@ -147,6 +147,8 @@ Your own text is never changed without you. What TyLog is sure about goes into a
 - "Катя → katiazhavoronkova?" when a name could be someone you know: tap to link it (the name in your text becomes a link and is added to the page's aliases), or remove it to see the next match;
 - "+ Рома" for someone new: tap to create the page;
 - tag chips; removing one stops that tag from being added.
+
+Marker pages file whole lines. With `"markers": ["fixit"]` in the Links task of `_system/settings/ai.json`, the model is shown your latest lines that start with `@fixit` and suggests "fixit? …" for lines that read the same way; a tap adds `@fixit` after the dash and time, x says "not this one" and becomes a counter-example.
 
 Each decision is kept in `_system/enrich/feedback/<device>.jsonl` and teaches TyLog: a first name you confirmed once is linked next time, and who appears with which project or place tells two people with the same name apart. Phones show the strip and write only when you tap; the Mac writes the blocks.
 
