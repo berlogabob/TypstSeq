@@ -188,8 +188,10 @@ def test_markers_learn_from_tagged_lines_and_are_validated(tmp_path):
     lines = enrich.body_lines(DAY)
     reply = json.dumps({"mentions": [], "keywords": [], "markers": [
         {"line": 18, "marker": "fx"}, {"line": 18, "marker": "fx"},
-        {"line": 99, "marker": "fx"}, {"line": 13, "marker": "other"}]})
-    assert enrich.parse_reply(reply, lines, markers)[2] == [{"line": 18, "marker": "fx"}]
+        {"line": 99, "marker": "fx"}, {"line": 13, "marker": "other"},
+        {"line": 13, "marker": "fixit"}]})  # Ornith often answers with the title
+    assert enrich.parse_reply(reply, lines, markers)[2] == [
+        {"line": 18, "marker": "fx"}, {"line": 13, "marker": "fx"}]
     system = enrich.build_messages(lines, [], markers)[0]["content"]
     assert "MARKERS" in system
 

@@ -28,7 +28,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 
 
 def strip_auto_block(text):
@@ -164,16 +164,18 @@ def parse_reply(reply, lines, markers=()):
     keywords = [word.strip() for word in value.get("keywords") or []
                 if isinstance(word, str) and word.strip()][:10]
     ids = {marker["id"]: marker["title"] for marker in markers}
+    # Models answer with the title as often as with the id: accept both.
+    by_name = {**{title: id for id, title in ids.items()}, **{id: id for id in ids}}
     marked = []
     for item in value.get("markers") or []:
-        if not isinstance(item, dict) or item.get("marker") not in ids:
+        if not isinstance(item, dict) or item.get("marker") not in by_name:
             continue
-        line = item.get("line")
+        marker, line = by_name[item["marker"]], item.get("line")
         if line not in by_number or any(f'ref-note("{name}")' in by_number[line]
-                                        for name in (item["marker"], ids[item["marker"]])):
+                                        for name in (marker, ids[marker])):
             continue  # unknown line, or already tagged by the user
-        if {"line": line, "marker": item["marker"]} not in marked:
-            marked.append({"line": line, "marker": item["marker"]})
+        if {"line": line, "marker": marker} not in marked:
+            marked.append({"line": line, "marker": marker})
     return mentions, keywords, marked
 
 
