@@ -27,7 +27,9 @@ List<int> bucketPeaks(
 /// where the OS supports it), via MediaCodec on Android and AVFoundation on
 /// iOS/macOS. Empty on any failure: the screen then draws a flat placeholder.
 Future<List<int>> peaksFromAudioFile(File audio, {int buckets = 200}) async {
-  final dir = await getTemporaryDirectory();
+  final dir = await getTemporaryDirectory().then(
+    (d) => d.create(recursive: true),
+  );
   final out = File(
     '${dir.path}/peaks-${DateTime.now().microsecondsSinceEpoch}.wave',
   );

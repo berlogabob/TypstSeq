@@ -45,17 +45,22 @@ class ScreenshotView extends StatelessWidget {
     required this.source,
     required this.imageResolver,
     this.onEdit,
+    this.onBack,
   });
   final NoteRef note;
   final String source;
   final Future<Uint8List?> Function(String path) imageResolver;
   final VoidCallback? onEdit;
 
+  /// Shown as an arrow over the picture when this view fills the screen
+  /// (read mode has no app bar of its own).
+  final VoidCallback? onBack;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final details = _detailsChildren(context);
-    return LayoutBuilder(
+    final body = LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth >= 720) {
           return Row(
@@ -127,6 +132,27 @@ class ScreenshotView extends StatelessWidget {
           ],
         );
       },
+    );
+    if (onBack == null) return body;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        body,
+        SafeArea(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: EdgeInsets.all(kSpace8),
+              child: IconButton.filledTonal(
+                key: const ValueKey('screenshot-back'),
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: onBack,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

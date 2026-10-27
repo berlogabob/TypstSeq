@@ -37,16 +37,16 @@ void main() {
       // then expands through a 150ms AnimatedSize from height zero. A single
       // pump leaves the button either absent or unhittable.
       await tester.pumpAndSettle();
-      if (find.byTooltip('Insert').evaluate().isEmpty) {
+      if (find.byTooltip('Add to note').evaluate().isEmpty) {
         await tester.drag(find.byType(ListView), const Offset(-1000, 0));
         await tester.pumpAndSettle();
       }
       expect(
-        find.byTooltip('Insert'),
+        find.byTooltip('Add to note'),
         findsOneWidget,
         reason: 'magic dock should be open for ${action.name}',
       );
-      await tester.tap(find.byTooltip('Insert'));
+      await tester.tap(find.byTooltip('Add to note'));
       await tester.pumpAndSettle();
 
       final choice = find.byKey(Key('native-magic-${action.name}'));

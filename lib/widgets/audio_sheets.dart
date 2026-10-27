@@ -61,7 +61,10 @@ AudioTake finishTake(
 /// Writes [bytes] to a cache-dir temp file for `just_audio`: the vault may be
 /// an Android SAF tree with no real path to open.
 Future<File> writeTempAudio(Uint8List bytes, String extension) async {
-  final dir = await getTemporaryDirectory();
+  // macOS can clear ~/Library/Caches/<app id>; writeAsBytes won't recreate it.
+  final dir = await getTemporaryDirectory().then(
+    (d) => d.create(recursive: true),
+  );
   final file = File(
     '${dir.path}/tylog-audio-${DateTime.now().microsecondsSinceEpoch}.$extension',
   );

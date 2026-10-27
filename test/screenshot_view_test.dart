@@ -149,4 +149,27 @@ void main() {
 
     expect(edited, isTrue);
   });
+
+  testWidgets('onBack shows a back arrow that fires', (tester) async {
+    var back = false;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotView(
+            note: note,
+            source: source,
+            imageResolver: (_) async => png,
+            onBack: () => back = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('screenshot-back')));
+    expect(back, isTrue);
+  });
 }

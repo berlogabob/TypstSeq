@@ -3,6 +3,20 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.2+160
+
+### New
+
+- Links in the day log become articles, and each link then points to its
+  article.
+
+### Fixed
+
+- Screenshot notes opened in Read mode have a back arrow again (the view had
+  no app bar of its own, so there was no way back).
+- Audio notes open on the Mac again when the app's cache folder was cleared
+  ("Could not load audio: PathNotFoundException"); waveforms too.
+
 ## 0.20.1+159
 
 ### New

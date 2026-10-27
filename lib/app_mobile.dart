@@ -5025,6 +5025,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           source: _currentSource(),
           imageResolver: _readAsset,
           onEdit: () => setState(() => _editScreenshot = true),
+          onBack: _backViews.isEmpty ? _showEditor : _back,
         );
       }
       var savedProgress = 0.0;
