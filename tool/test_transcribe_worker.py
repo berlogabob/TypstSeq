@@ -226,7 +226,7 @@ def test_transcribe_detected_language(monkeypatch):
             calls.append("load")
 
         def transcribe(self, audio, language, multilingual):
-            assert (audio, language, multilingual) == ("audio.wav", None, True)
+            assert (audio, language, multilingual) == (range(30 * 16000), None, True)
             return iter([SimpleNamespace(start=1, end=4, text=" Hello ")]), SimpleNamespace(language="en")
 
         def detect_language(self, audio):
@@ -295,7 +295,7 @@ def test_transcribe_forced_language_skips_detection(monkeypatch):
             pytest.fail("Forced language must skip detection")
 
     def decode(*args, **kwargs):
-        pytest.fail("Forced language must skip decoding")
+        return SimpleNamespace(size=1)  # decoded once up front; detection still skipped
 
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model, decode_audio=decode))
     assert worker.transcribe("audio.wav", lang="pt") == ([(1, "Olá")], "pt", ["pt"])
@@ -1192,3 +1192,18 @@ def test_abandoned_processing_job_is_taken_again(tmp_path, monkeypatch):
     assert calls == ["a.wav"]  # the 30-minute-old claim is left to its worker
     assert json.loads(stale.read_text())["status"] == "done"
     assert json.loads(fresh.read_text())["status"] == "processing"
+
+
+def test_decode_nonempty_retries_via_ffmpeg_then_fails(monkeypatch, tmp_path):
+    empty, full = SimpleNamespace(size=0), SimpleNamespace(size=5)
+    calls = []
+
+    def decode(path, sampling_rate):
+        calls.append(path)
+        return full if path.endswith(".wav") else empty
+
+    monkeypatch.setattr(worker.subprocess, "run", lambda *a, **k: None)
+    assert worker.decode_nonempty("a.aac", decode) is full
+    assert calls[0] == "a.aac" and calls[1].endswith(".wav")
+    with pytest.raises(ValueError, match="0 seconds"):
+        worker.decode_nonempty("a.aac", lambda path, sampling_rate: empty)

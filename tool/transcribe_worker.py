@@ -7,7 +7,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
+import subprocess
+import tempfile
 import time
 from urllib.request import Request, urlopen
 
@@ -118,6 +121,25 @@ def diarize_segments(samples, segments, embed=None, distance_threshold=0.35):
     return [(start, text, labels[cluster]) for (start, text), cluster in zip(result, clusters)]
 
 
+def decode_nonempty(audio, decode_audio):
+    """16 kHz samples; PyAV returns 0 s for some raw .aac, so retry via ffmpeg."""
+    samples = decode_audio(str(audio), sampling_rate=16000)
+    if getattr(samples, "size", 1):
+        return samples
+    ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"  # launchd PATH is minimal
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = Path(tmp) / "audio.wav"
+        try:
+            subprocess.run([ffmpeg, "-v", "error", "-i", str(audio), "-ar", "16000", "-ac", "1", str(wav)],
+                           check=True, timeout=600)
+            samples = decode_audio(str(wav), sampling_rate=16000)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if not getattr(samples, "size", 1):
+        raise ValueError("Audio decoded to 0 seconds (unreadable file?)")
+    return samples
+
+
 def transcribe(audio, model="small", lang=None, *, diarize=False):
     from faster_whisper import WhisperModel, decode_audio
 
@@ -130,7 +152,8 @@ def transcribe(audio, model="small", lang=None, *, diarize=False):
         model = WhisperModel(name, local_files_only=True, **options)
     except OSError:  # not downloaded yet (LocalEntryNotFoundError)
         model = WhisperModel(name, **options)
-    segments, info = model.transcribe(str(audio), language=lang or None,
+    samples = decode_nonempty(audio, decode_audio)
+    segments, info = model.transcribe(samples, language=lang or None,
                                       **({"multilingual": True} if not lang else {}))
     segments = list(segments)
     languages = [lang] if lang else [info.language]
@@ -140,7 +163,6 @@ def transcribe(audio, model="small", lang=None, *, diarize=False):
             for segment in segments:
                 window = int(segment.start // 30)
                 windows[window] = windows.get(window, 0) + segment.end - segment.start
-            samples = decode_audio(str(audio), sampling_rate=16000)
             weights = {}
             for window, duration in windows.items():
                 detected, _, _ = model.detect_language(
@@ -152,7 +174,7 @@ def transcribe(audio, model="small", lang=None, *, diarize=False):
         except Exception:
             languages = [info.language]
     if diarize:
-        result = diarize_segments(decode_audio(str(audio), sampling_rate=16000), segments)
+        result = diarize_segments(samples, segments)
     else:
         result = [(segment.start, segment.text.strip()) for segment in segments]
     return result, info.language, languages
