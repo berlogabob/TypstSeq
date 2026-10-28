@@ -13,6 +13,7 @@ class MonthCalendar extends StatefulWidget {
     required this.onOpenDay,
     this.screenshotDays = const {},
     this.initialMonth,
+    this.currentDay,
     this.onDaySelected,
   });
 
@@ -23,6 +24,9 @@ class MonthCalendar extends StatefulWidget {
   final ValueChanged<DateTime> onOpenDay;
   final Set<String> screenshotDays;
   final DateTime? initialMonth;
+
+  /// The day that is open now: outlined, so it reads differently from today.
+  final DateTime? currentDay;
 
   /// When set, tapping a day selects it (calls this) instead of opening it;
   /// the header keeps a direct "open" affordance per day via double tap.
@@ -122,6 +126,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
         day.year == selected!.year &&
         day.month == selected!.month &&
         day.day == selected!.day;
+    final isCurrent =
+        widget.currentDay != null && isoDay(widget.currentDay!) == iso;
     final hasDaily = marks.daily.contains(iso);
     final hasRefs = marks.refs.contains(iso);
     return InkWell(
@@ -140,9 +146,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
           : () => widget.onOpenDay(day),
       child: Container(
         alignment: Alignment.center,
-        decoration: isSelected
+        decoration: isSelected || isCurrent
             ? BoxDecoration(
-                color: scheme.secondaryContainer,
+                color: isSelected ? scheme.secondaryContainer : null,
+                border: isCurrent
+                    ? Border.all(color: scheme.primary, width: 2)
+                    : null,
                 borderRadius: BorderRadius.circular(kRadiusSmall),
               )
             : null,

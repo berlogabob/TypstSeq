@@ -1612,7 +1612,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  double _swipeDx = 0;
+
+  /// Swiping the date in the app bar steps the journal a day (left = next).
+  /// By distance, not velocity: a slow drag has none worth reading.
+  Widget _swipeDay(Widget child) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onHorizontalDragStart: (_) => _swipeDx = 0,
+    onHorizontalDragUpdate: (details) => _swipeDx += details.delta.dx,
+    onHorizontalDragEnd: (_) {
+      if (_swipeDx.abs() >= 48) _stepDay(_swipeDx < 0 ? 1 : -1);
+      _swipeDx = 0;
+    },
+    child: child,
+  );
+
   Future<void> _showCalendarPicker() async {
+    final open = _navDay ?? _dailyDateOf(vault == null ? null : note);
     final day = await showDialog<DateTime>(
       context: context,
       builder: (context) => Dialog(
@@ -1626,9 +1642,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (n.kind == 'screenshot' && n.date != null) n.date!,
               },
               dayMarks: workspace.calendarDayMarks,
-              initialMonth: _dailyDateOf(
-                vault == null || note == null ? null : note!,
-              ),
+              initialMonth: open,
+              currentDay: open,
               onOpenDay: (day) => Navigator.pop(context, day),
             ),
           ),
@@ -5847,26 +5862,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               : const SizedBox.shrink(),
           centerTitle: false,
           title: mode == 'journal'
-              ? CompactDateTitle(day: currentDaily ?? DateTime.now())
+              ? _swipeDay(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: CompactDateTitle(
+                        day: currentDaily ?? DateTime.now(),
+                      ),
+                    ),
+                  ),
+                )
               : mode == 'library'
               ? const Text('Library')
               : mode == 'graph'
               ? const Text('Graph')
               : documentModes.contains(mode) && currentDaily != null
               // The date alone (no day arrows): it opens the calendar.
-              ? Tooltip(
-                  message: 'Calendar',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(kRadiusSmall),
-                    onTap: () => unawaited(_showCalendarPicker()),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: ValueListenableBuilder<bool>(
-                          valueListenable: workspace.dirtyNotifier,
-                          builder: (context, dirty, _) =>
-                              CompactDateTitle(day: currentDaily, dirty: dirty),
+              ? _swipeDay(
+                  Tooltip(
+                    message: 'Calendar',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(kRadiusSmall),
+                      onTap: () => unawaited(_showCalendarPicker()),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: workspace.dirtyNotifier,
+                            builder: (context, dirty, _) => CompactDateTitle(
+                              day: currentDaily,
+                              dirty: dirty,
+                            ),
+                          ),
                         ),
                       ),
                     ),

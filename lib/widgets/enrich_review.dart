@@ -64,11 +64,14 @@ class EnrichReview extends StatelessWidget {
             for (final offer in markers)
               InputChip(
                 key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
+                // Tinted like a button: a pale "fixit?" read as a note, not a
+                // suggestion, and the line was never filed.
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                 avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
                 label: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 240),
                   child: Text(
-                    '${offer.marker.title}? ${offer.text}',
+                    'Tap to link as ${offer.marker.title}: ${offer.text}',
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

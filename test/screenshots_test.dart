@@ -59,6 +59,7 @@ VaultIndex get index => VaultIndex(
 );
 
 void main() {
+  monthCalendarCurrentDayTests();
   TestWidgetsFlutterBinding.ensureInitialized();
   test('screenshot Description is extracted, cached and rederived', () {
     const source =
@@ -906,5 +907,39 @@ void main() {
       'watch',
     );
     await tester.pumpWidget(const SizedBox());
+  });
+}
+
+void monthCalendarCurrentDayTests() {
+  testWidgets('the open day is outlined, today is not', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 350,
+            child: MonthCalendar(
+              dayMarks: (daily: <String>{}, refs: <String>{}),
+              initialMonth: DateTime(2026, 10),
+              currentDay: DateTime(2026, 10, 14),
+              onOpenDay: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    bool outlined(String iso) => tester
+        .widgetList<Container>(
+          find.descendant(
+            of: find.byKey(Key('calendar-day-$iso')),
+            matching: find.byType(Container),
+          ),
+        )
+        .any(
+          (c) =>
+              c.decoration is BoxDecoration &&
+              (c.decoration! as BoxDecoration).border != null,
+        );
+    expect(outlined('2026-10-14'), isTrue);
+    expect(outlined('2026-10-15'), isFalse);
   });
 }

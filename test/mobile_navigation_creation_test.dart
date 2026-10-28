@@ -440,6 +440,38 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('swiping the date title steps the journal a day', (tester) async {
+    final home = await _mountToday(tester, const Size(360, 800));
+    final start = home.workspace.note!;
+    final day = RegExp(r'(\d{4})-(\d{2})-(\d{2})\.typ$').firstMatch(start)!;
+    final next = DateTime(
+      int.parse(day[1]!),
+      int.parse(day[2]!),
+      int.parse(day[3]!) + 1,
+    );
+    String path(DateTime d) =>
+        'daily/${d.year}/${d.month.toString().padLeft(2, '0')}/'
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}.typ';
+    await tester.fling(
+      find.byType(CompactDateTitle),
+      const Offset(-200, 0),
+      800,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, path(next));
+    await tester.fling(
+      find.byType(CompactDateTitle),
+      const Offset(200, 0),
+      800,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(home.workspace.note, start);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('the day title does not jump between Today and another day', (
     tester,
   ) async {
