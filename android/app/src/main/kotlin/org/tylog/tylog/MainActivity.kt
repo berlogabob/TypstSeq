@@ -22,12 +22,24 @@ class MainActivity : FlutterActivity() {
         /// before its first onResume, which a starting worker would miss.
         @Volatile
         var alive = false
+
+        const val RECORD_ACTION = "org.tylog.tylog.RECORD"
     }
 
     private lateinit var safBridge: SafBridge
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
     private val shareWorker = Executors.newSingleThreadExecutor()
+    private var pendingRecord = false
+
+    /// Power-button assistant (ASSIST) or `am start -a org.tylog.tylog.RECORD`:
+    /// the Dart side opens the recorder, which starts recording at once.
+    private fun receiveRecord(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_ASSIST && intent?.action != RECORD_ACTION) return
+        intent.action = null
+        pendingRecord = true
+        if (::shareChannel.isInitialized) shareChannel.invokeMethod("shareAvailable", null)
+    }
 
     @Suppress("DEPRECATION")
     private fun receiveShare(intent: Intent?) {
@@ -93,6 +105,7 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         receiveShare(intent)
+        receiveRecord(intent)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -102,9 +115,13 @@ class MainActivity : FlutterActivity() {
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.tylog.tylog/share")
         shareChannel.setMethodCallHandler { call, result ->
             if (call.method == "getPendingShare") result.success(pendingShares.poll())
-            else result.notImplemented()
+            else if (call.method == "getPendingRecord") {
+                result.success(pendingRecord)
+                pendingRecord = false
+            } else result.notImplemented()
         }
         receiveShare(intent)
+        receiveRecord(intent)
         BackgroundSync.schedulePeriodic(this)
     }
 
