@@ -28,7 +28,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 4
+PROMPT_VERSION = 5
 
 
 def strip_auto_block(text):
@@ -200,6 +200,18 @@ def parse_reply(reply, lines, markers=()):
             continue  # unknown line, or already tagged by the user
         if {"line": line, "marker": marker} not in marked:
             marked.append({"line": line, "marker": marker})
+    # The model skips lines that "already carry" the word, so a line that starts
+    # with the marker's name as plain text ("- 23:08 fixit crash") is found here.
+    for marker in markers:
+        name = _fold(marker["title"])
+        for number, text in lines:
+            plain = _plain(text)
+            if (len(name) < 3 or "ref-note" in text or plain[:200] in marker["not"]
+                    or not _fold(plain).startswith(name)
+                    or _fold(plain)[len(name):len(name) + 1].isalnum()):
+                continue
+            if {"line": number, "marker": marker["id"]} not in marked:
+                marked.append({"line": number, "marker": marker["id"]})
     return mentions, keywords, marked
 
 

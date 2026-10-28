@@ -264,3 +264,13 @@ def test_collect_links_off_by_default(tmp_path):
     note.write_text("+ https://github.com/x/y\n", encoding="utf-8")
     os.utime(note, (0, 0))
     assert enrich.collect_links(vault) == 0
+
+
+def test_plain_text_marker_prefix_is_found_without_the_model():
+    markers = [{"id": "fx", "title": "fixit", "examples": [], "not": ["fixit rejected line"]}]
+    lines = [(1, "\\- 23:08 fixit search is slow"), (2, "- Fixit: paste fails"),
+             (3, "fixity of the theory"), (4, "- fixit rejected line"),
+             (5, '#tylog.ref-note("fx")[fixit] already linked'), (6, "see fixit later")]
+    reply = json.dumps({"mentions": [], "keywords": [], "markers": []})
+    assert enrich.parse_reply(reply, lines, markers)[2] == [
+        {"line": 1, "marker": "fx"}, {"line": 2, "marker": "fx"}]
