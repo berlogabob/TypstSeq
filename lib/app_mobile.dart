@@ -5537,6 +5537,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // mentioned elsewhere gets the references block too.
     final isEntity =
         currentNote != null && !structuralNoteKinds.contains(currentNote.kind);
+    // While typing the editor gets the screen: the screenshot strip, linked
+    // references and mentions step aside. Placeholders keep every child's slot,
+    // so the editor is not rebuilt (and the keyboard not dropped) on the switch.
+    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
     Widget documentContent = content;
     if (mode == 'normal' &&
         currentNote != null &&
@@ -5552,24 +5556,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           Expanded(child: content),
           if (backlinks.isNotEmpty && v != null)
-            LinkedReferences(
-              imageResolver: _readAsset,
-              backlinks: backlinks,
-              index: index,
-              targets: {
-                currentNote.id,
-                currentNote.title,
-                ...currentNote.aliases,
-              }.map((t) => t.toLowerCase()).toSet(),
-              readSource: (path) async {
-                try {
-                  return await v.storage.readText(path);
-                } catch (_) {
-                  return '';
-                }
-              },
-              onOpenPath: _openPath,
-            ),
+            if (keyboardUp)
+              const SizedBox.shrink()
+            else
+              LinkedReferences(
+                imageResolver: _readAsset,
+                backlinks: backlinks,
+                index: index,
+                targets: {
+                  currentNote.id,
+                  currentNote.title,
+                  ...currentNote.aliases,
+                }.map((t) => t.toLowerCase()).toSet(),
+                readSource: (path) async {
+                  try {
+                    return await v.storage.readText(path);
+                  } catch (_) {
+                    return '';
+                  }
+                },
+                onOpenPath: _openPath,
+              ),
         ],
       );
     }
@@ -5583,23 +5590,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       documentContent = Column(
         children: [
           Expanded(child: documentContent),
-          EnrichReview(
-            decisions: enrichDay.$2.decisions,
-            tags: enrichDay.$2.tags,
-            markers: enrichDay.$2.markers,
-            onAcceptMarker: (offer) =>
-                unawaited(_enrichOnce(() => _acceptEnrichMarker(offer))),
-            onRejectMarker: (offer) =>
-                unawaited(_enrichOnce(() => _rejectEnrichMarker(offer))),
-            onRejectTag: (tag) =>
-                unawaited(_enrichOnce(() => _rejectEnrichTag(tag))),
-            onAccept: (mention, target) =>
-                unawaited(_enrichOnce(() => _acceptEnrich(mention, target))),
-            onReject: (mention, target) =>
-                unawaited(_enrichOnce(() => _rejectEnrich(mention, target))),
-            onCreate: (mention) =>
-                unawaited(_enrichOnce(() => _createFromEnrich(mention))),
-          ),
+          if (keyboardUp)
+            const SizedBox.shrink()
+          else
+            EnrichReview(
+              decisions: enrichDay.$2.decisions,
+              tags: enrichDay.$2.tags,
+              markers: enrichDay.$2.markers,
+              onAcceptMarker: (offer) =>
+                  unawaited(_enrichOnce(() => _acceptEnrichMarker(offer))),
+              onRejectMarker: (offer) =>
+                  unawaited(_enrichOnce(() => _rejectEnrichMarker(offer))),
+              onRejectTag: (tag) =>
+                  unawaited(_enrichOnce(() => _rejectEnrichTag(tag))),
+              onAccept: (mention, target) =>
+                  unawaited(_enrichOnce(() => _acceptEnrich(mention, target))),
+              onReject: (mention, target) =>
+                  unawaited(_enrichOnce(() => _rejectEnrich(mention, target))),
+              onCreate: (mention) =>
+                  unawaited(_enrichOnce(() => _createFromEnrich(mention))),
+            ),
         ],
       );
     }
@@ -5640,23 +5650,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         !(isTodayDocument && compactHeight)) {
       documentContent = Column(
         children: [
-          IdeaHubStrip(
-            key: ValueKey((
-              vault,
-              workspace.indexRevision,
-              isoDay(currentDaily),
-            )),
-            index: index,
-            day: isoDay(currentDaily),
-            readSource: (path) => vault!.storage.readText(path),
-            onOpenPath: _openPath,
-          ),
-          ScreenshotStrip(
-            index: index,
-            day: isoDay(currentDaily),
-            onOpenPath: _openPath,
-            imageResolver: _readAsset,
-          ),
+          if (keyboardUp)
+            const SizedBox.shrink()
+          else
+            IdeaHubStrip(
+              key: ValueKey((
+                vault,
+                workspace.indexRevision,
+                isoDay(currentDaily),
+              )),
+              index: index,
+              day: isoDay(currentDaily),
+              readSource: (path) => vault!.storage.readText(path),
+              onOpenPath: _openPath,
+            ),
+          if (keyboardUp)
+            const SizedBox.shrink()
+          else
+            ScreenshotStrip(
+              index: index,
+              day: isoDay(currentDaily),
+              onOpenPath: _openPath,
+              imageResolver: _readAsset,
+            ),
           Expanded(child: documentContent),
         ],
       );
@@ -5793,7 +5809,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       },
     );
-    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final typing = keyboardUp;
     final workArea = WorkSurface(
       child: Stack(
         children: [

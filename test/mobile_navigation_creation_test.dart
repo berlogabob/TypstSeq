@@ -440,6 +440,24 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the keyboard hides the screenshot strip, not the editor', (
+    tester,
+  ) async {
+    await _mountToday(tester, const Size(360, 800));
+    expect(find.byType(ScreenshotStrip), findsOneWidget);
+    final editor = find.byType(TyLogRichEditor);
+    final before = tester.element(editor);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump();
+    expect(find.byType(ScreenshotStrip), findsNothing);
+    expect(tester.element(editor), same(before));
+    tester.view.resetViewInsets();
+    await tester.pump();
+    expect(find.byType(ScreenshotStrip), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('swiping the date title steps the journal a day', (tester) async {
     final home = await _mountToday(tester, const Size(360, 800));
     final start = home.workspace.note!;
