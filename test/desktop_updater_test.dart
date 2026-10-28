@@ -162,13 +162,18 @@ void main() {
       );
     });
 
-    test('script waits, replaces, relaunches, and deletes itself', () {
-      final script = windowsUpdateScript();
-      expect(script, contains('tasklist /FI "PID eq %1" | find "%1"'));
-      expect(script, contains('move /y "%~2" "%~3"'));
-      expect(script, isNot(contains('timeout')));
-      expect(script, contains('start "" "%~3"'));
-      expect(script, contains('del "%~f0"'));
-    });
+    test(
+      'script waits, kills a stuck process, replaces, relaunches, deletes',
+      () {
+        final script = windowsUpdateScript();
+        expect(script, contains('tasklist /FI "PID eq %1" /FO CSV /NH'));
+        expect(script, contains('taskkill /F /PID %1'));
+        expect(script, contains('move /y "%~2" "%~3"'));
+        expect(script, isNot(contains('timeout')));
+        expect(script, contains('start "" "%~3"'));
+        expect(script, contains('del "%~f0"'));
+        expect(script, contains('tylog-update.log'));
+      },
+    );
   });
 }

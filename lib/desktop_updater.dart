@@ -366,13 +366,31 @@ rm -rf "\$STAGE" "\$WORK"
 // %~2/%~3 strip the quotes the paths arrive with (spaces in user names);
 // `ping` pauses where `timeout` refuses to run (detached: no console).
 String windowsUpdateScript() => r'''@echo off
+title TyLog update
+set LOG=%TEMP%\tylog-update.log
+echo %date% %time% waiting for pid %1 >> "%LOG%"
+set /a n=0
 :wait
-tasklist /FI "PID eq %1" | find "%1" >nul
-if not errorlevel 1 (
-  ping -n 2 127.0.0.1 >nul
-  goto wait
-)
-move /y "%~2" "%~3"
+tasklist /FI "PID eq %1" /FO CSV /NH | find """%1""" >nul
+if errorlevel 1 goto gone
+set /a n+=1
+rem A process that ignores exit() is ended after a few seconds; give up at 2 min.
+if %n% GEQ 8 taskkill /F /PID %1 >> "%LOG%" 2>&1
+if %n% GEQ 60 goto gone
+ping -n 2 127.0.0.1 >nul
+goto wait
+:gone
+set /a m=0
+:swap
+move /y "%~2" "%~3" >> "%LOG%" 2>&1 && goto done
+set /a m+=1
+if %m% GEQ 20 goto failed
+ping -n 2 127.0.0.1 >nul
+goto swap
+:failed
+echo %date% %time% could not replace %~3 >> "%LOG%"
+:done
+echo %date% %time% starting %~3 >> "%LOG%"
 start "" "%~3"
 del "%~f0"
 ''';
