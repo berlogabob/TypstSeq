@@ -152,6 +152,10 @@ Marker pages file whole lines. With `"markers": ["fixit"]` in the Links task of 
 
 Each decision is kept in `_system/enrich/feedback/<device>.jsonl` and teaches TyLog: a first name you confirmed once is linked next time, and who appears with which project or place tells two people with the same name apart. Phones show the strip and write only when you tap; the Mac writes the blocks.
 
+## Record from anywhere (Android)
+
+Choose TyLog under Settings > Apps > Default apps > Digital assistant app, then set the power button long press to the assistant (on some phones: Settings > System > Gestures). It opens the recorder and starts recording at once. Without being the assistant, add the "Record audio" Quick Settings tile or long-press the TyLog icon. From the lock screen Android may ask to unlock first.
+
 ## Screenshots
 
 Settings > AI > Screenshots (OCR) sets when screenshots are read: only when you ask, right after a screenshot is added, or every day at a set time. The setting syncs, so you can change it on any device; the Mac running the OCR scripts applies it within a minute (a phone shows "Runs on your Mac; changes apply there after sync"). A Mac that runs both the on-the-fly watcher and the daily catch-up shows "On schedule".

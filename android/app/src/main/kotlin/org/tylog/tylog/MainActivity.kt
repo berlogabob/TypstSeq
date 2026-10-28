@@ -30,15 +30,13 @@ class MainActivity : FlutterActivity() {
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
     private val shareWorker = Executors.newSingleThreadExecutor()
-    private var pendingRecord = false
 
     /// Power-button assistant (ASSIST) or `am start -a org.tylog.tylog.RECORD`:
     /// the Dart side opens the recorder, which starts recording at once.
     private fun receiveRecord(intent: Intent?) {
         if (intent?.action != Intent.ACTION_ASSIST && intent?.action != RECORD_ACTION) return
         intent.action = null
-        pendingRecord = true
-        if (::shareChannel.isInitialized) shareChannel.invokeMethod("shareAvailable", null)
+        enqueueShare(mapOf("action" to "record"))
     }
 
     @Suppress("DEPRECATION")
@@ -115,10 +113,7 @@ class MainActivity : FlutterActivity() {
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.tylog.tylog/share")
         shareChannel.setMethodCallHandler { call, result ->
             if (call.method == "getPendingShare") result.success(pendingShares.poll())
-            else if (call.method == "getPendingRecord") {
-                result.success(pendingRecord)
-                pendingRecord = false
-            } else result.notImplemented()
+            else result.notImplemented()
         }
         receiveShare(intent)
         receiveRecord(intent)

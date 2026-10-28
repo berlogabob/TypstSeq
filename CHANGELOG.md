@@ -3,6 +3,26 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.3+161
+
+### New
+
+- TyLog can be your Android digital assistant: pick it under Settings >
+  Apps > Default apps > Digital assistant app, and a long press on the power
+  button (or the assistant gesture) opens the recorder and starts an audio
+  note. The same action is a Quick Settings tile ("Record audio") and a
+  long-press shortcut on the launcher icon.
+- An audio note whose transcript came back empty says so and offers
+  "Transcribe again".
+
+### Fixed
+
+- Transcribing a raw `.aac` recording produced an empty transcript marked
+  done (the decoder read it as 0 seconds and the language was guessed as
+  "nn"). The worker now converts through ffmpeg when that happens and fails
+  the job with a message if the audio is still unreadable. The worker runs from
+  the repository checkout, so each machine that runs it needs a `git pull`.
+
 ## 0.20.2+160
 
 ### New

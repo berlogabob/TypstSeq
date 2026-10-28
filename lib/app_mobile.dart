@@ -500,15 +500,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_handlingShare || vault == null || !mounted) return;
     _handlingShare = true;
     try {
-      if (await _shareChannel.invokeMethod<bool>('getPendingRecord') == true &&
-          mounted) {
-        await _recordAudioNote();
-      }
       while (mounted && vault != null) {
         final data = await _shareChannel.invokeMapMethod<String, String>(
           'getPendingShare',
         );
         if (data == null || !mounted || vault == null) break;
+        if (data['action'] == 'record') {
+          await _recordAudioNote();
+          continue;
+        }
         final path = data['path'];
         final mime = data['mime'] ?? '';
         final text = data['text'] ?? '';
