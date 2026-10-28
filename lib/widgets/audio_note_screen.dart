@@ -838,21 +838,18 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Widget _transcribeView() {
     if (_transcript.isEmpty) {
       final waiting =
-          _transcriptState == 'queued' ||
-          _transcriptState == 'processing' ||
-          _transcriptState == 'done';
+          _transcriptState == 'queued' || _transcriptState == 'processing';
+      final done = _transcriptState == 'done';
       return Center(
         child: waiting
-            ? Text(
-                _transcriptState == 'done'
-                    ? 'Transcript ready, waiting for it to sync…'
-                    : 'Transcription $_transcriptState…',
-              )
+            ? Text('Transcription $_transcriptState…')
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _transcriptState == 'failed'
+                    done
+                        ? 'No speech found, or the transcript is still syncing'
+                        : _transcriptState == 'failed'
                         ? 'Last transcription failed'
                         : 'No transcript yet',
                   ),
@@ -860,7 +857,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   OutlinedButton.icon(
                     onPressed: () => unawaited(_requestTranscript()),
                     icon: const Icon(Icons.subtitles_outlined),
-                    label: const Text('Request transcription'),
+                    label: Text(
+                      done ? 'Transcribe again' : 'Request transcription',
+                    ),
                   ),
                 ],
               ),

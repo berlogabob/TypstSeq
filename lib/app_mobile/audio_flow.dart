@@ -119,9 +119,11 @@ extension _AudioFlow on _HomeScreenState {
   }
 
   /// A file shared from another app (voice recorder, call recording).
-  Future<void> _saveSharedAudio(File source) =>
-      _createAudioNote(null, source.path.split('.').last.toLowerCase(),
-          source: source);
+  Future<void> _saveSharedAudio(File source) => _createAudioNote(
+    null,
+    source.path.split('.').last.toLowerCase(),
+    source: source,
+  );
 
   Future<void> _importAudioNote({bool inline = false}) async {
     final picked = await FilePicker.pickFiles(type: FileType.audio);
@@ -258,8 +260,12 @@ extension _AudioFlow on _HomeScreenState {
           writeBytes: v.storage.writeBytes,
           mutate: workspace.mutateNote,
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
-          requestTranscript: (audio, note) =>
-              enqueueTranscript(v.storage, audioPath: audio, notePath: note),
+          requestTranscript: (audio, note) => enqueueTranscript(
+            v.storage,
+            audioPath: audio,
+            notePath: note,
+            retryDone: true,
+          ),
           transcriptLang: (audio) => transcriptJobLang(v.storage, audio),
           translationStatus: (audio, target) =>
               translationJobStatus(v.storage, audio, target),

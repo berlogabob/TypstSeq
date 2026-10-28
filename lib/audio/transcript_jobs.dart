@@ -89,15 +89,21 @@ Future<void> enqueueTranslation(
 }
 
 /// Re-requesting never resets a claimed or finished job; only a failed one is
-/// queued again.
+/// queued again. [retryDone] also re-queues a finished job, for a transcript
+/// that came back empty.
 Future<void> enqueueTranscript(
   VaultStorage storage, {
   required String audioPath,
   required String notePath,
   DateTime? now,
+  bool retryDone = false,
 }) async {
   final status = await transcriptJobStatus(storage, audioPath);
-  if (status != null && status != 'failed') return;
+  if (status != null &&
+      status != 'failed' &&
+      !(retryDone && status == 'done')) {
+    return;
+  }
   await storage.createDirectory('_system/jobs/transcripts');
   await storage.writeText(
     transcriptJobPath(audioPath),

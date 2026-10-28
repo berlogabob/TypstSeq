@@ -80,6 +80,27 @@ void main() {
     expect(await transcriptJobStatus(storage, audio), 'queued');
   });
 
+  test('a done job is queued again only with retryDone', () async {
+    const audio = '/assets/clips/voice.mp3';
+    const note = '/notes/voice.typ';
+    await storage.createDirectory('_system/jobs/transcripts');
+    await storage.writeText(
+      transcriptJobPath(audio),
+      jsonEncode({'audio': audio, 'note': note, 'status': 'done'}),
+    );
+
+    await enqueueTranscript(storage, audioPath: audio, notePath: note);
+    expect(await transcriptJobStatus(storage, audio), 'done');
+
+    await enqueueTranscript(
+      storage,
+      audioPath: audio,
+      notePath: note,
+      retryDone: true,
+    );
+    expect(await transcriptJobStatus(storage, audio), 'queued');
+  });
+
   test(
     'transcriptJobStatus is null when no job exists and transcriptJobPath is stable',
     () async {
