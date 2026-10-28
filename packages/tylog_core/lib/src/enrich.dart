@@ -592,9 +592,19 @@ String markLine(String source, int line, NoteRef marker) {
   final prefix = RegExp(
     r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?',
   ).firstMatch(text)!.end;
-  lines[line - 1] =
-      '${text.substring(0, prefix)}#tylog.ref-note(${typstString(marker.id)})'
-      '[${escapeMarkup(marker.title)}] ${text.substring(prefix)}';
+  // "fixit crash": the typed word becomes the link instead of doubling it.
+  final typed = RegExp(
+    '^${RegExp.escape(marker.title)}(?![\\p{L}\\p{N}])',
+    caseSensitive: false,
+    unicode: true,
+  ).firstMatch(text.substring(prefix));
+  final link =
+      '#tylog.ref-note(${typstString(marker.id)})'
+      '[${escapeMarkup(marker.title)}]';
+  lines[line - 1] = typed == null
+      ? '${text.substring(0, prefix)}$link ${text.substring(prefix)}'
+      : '${text.substring(0, prefix)}$link'
+            '${text.substring(prefix + typed.end)}';
   return lines.join('\n');
 }
 

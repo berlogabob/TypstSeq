@@ -365,6 +365,16 @@ void main() {
       );
     });
 
+    test('a typed marker word becomes the link instead of doubling', () {
+      const source = '- 23:08 Fixit: нет очереди\n- fixity of the theory';
+      final marked = markLine(source, 1, fixit).split('\n');
+      expect(marked[0], '- 23:08 #tylog.ref-note("fx")[fixit]: нет очереди');
+      expect(
+        markLine(source, 2, fixit).split('\n')[1],
+        '- #tylog.ref-note("fx")[fixit] fixity of the theory',
+      );
+    });
+
     test('marking puts the link after list marker and time, once', () {
       final once = markLine(day20, 3, fixit);
       expect(

@@ -80,14 +80,11 @@
             android:name=".TyLogSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <!-- Named by voice_interaction_service.xml only: no RecognitionService
+             intent filter, or TyLog would be offered as a voice-input app. -->
         <service
             android:name=".TyLogRecognitionService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.speech.RecognitionService"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-            </intent-filter>
-        </service>
+            android:exported="true" />
         <service
             android:name=".RecordTile"
             android:exported="true"

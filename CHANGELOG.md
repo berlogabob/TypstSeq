@@ -3,6 +3,23 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.4+162
+
+### New
+
+- Swipe the date in the app bar to step to the next or previous day.
+- The calendar outlines the day you have open, so it reads differently from
+  today.
+- While you type, the screenshot strip, linked references and mentions step
+  aside so the editor has the screen; they return when the keyboard closes.
+
+### Fixed
+
+- A journal line that starts with a marker's name as plain text ("fixit ...")
+  is now offered for filing, and accepting it turns that word into the link
+  instead of writing "fixit fixit". The suggestion reads "Tap to link as fixit".
+- TyLog is no longer offered as a speech-recognition app in Android settings.
+
 ## 0.20.3+161
 
 ### New

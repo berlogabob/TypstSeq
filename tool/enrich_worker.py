@@ -28,7 +28,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 5
+PROMPT_VERSION = 4
 
 
 def strip_auto_block(text):
