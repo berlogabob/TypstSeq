@@ -120,6 +120,9 @@ class TodayPage extends StatelessWidget {
       onOpenPath: onOpenPath,
     );
     final compactHeight = MediaQuery.sizeOf(context).height < 480;
+    // Typing gives the editor the screen; the key keeps its element (and the
+    // keyboard) alive while the rows above it come and go.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     final agendaTitle = indexing && tasks.isEmpty
         ? 'Indexing…'
         : next == null
@@ -204,7 +207,7 @@ class TodayPage extends StatelessWidget {
           // a bounded, scroll-if-tall region capped at 45% of the page —
           // that leaves the editor >=55%, and a long recent list still can't
           // starve it or overflow.
-          if (hasTopContent) ...[
+          if (hasTopContent && !typing) ...[
             if (compactHeight)
               ListTile(
                 leading: const Icon(AppIcons.agenda),
@@ -265,7 +268,7 @@ class TodayPage extends StatelessWidget {
               ),
             const Divider(height: 1),
           ],
-          Expanded(child: editor),
+          Expanded(key: const ValueKey('today-editor'), child: editor),
         ],
       ),
     );

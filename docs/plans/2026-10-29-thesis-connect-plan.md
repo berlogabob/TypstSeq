@@ -18,7 +18,8 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [x] Record from power button lands in today's log (bbb7782, checked on Nothing Phone 3)
 - [ ] Push branch; release 0.20.5+163 (Windows updater helper 20f0679 + record-to-day-log): CHANGELOG, version, full test
 - [ ] Power-button long-press and lock screen on the Nothing Phone 3
-- [ ] Keyboard up: hide Agenda row too; Screenshots and Linked references collapsed under More
+- [x] Keyboard up: Agenda row hides too (code + tests green; device check pending). 
+- [ ] Screenshots and Linked references collapsed under More
 - [ ] Add `docs/audio-transcription.md` to bundled RAG doc lists
 - [ ] `graphify update .`
 
@@ -67,3 +68,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 2026-10-29: Portuguese pack repo has uncommitted lesson edits; built pack may be stale.
 
 ## Tick log
+- 19:50 T1: Agenda row hides while typing (`work_surface.dart`, editor keyed). Tests 64 green. Next: device check, then enrichment/graph slices. Release waits for user.
