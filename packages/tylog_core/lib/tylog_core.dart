@@ -7,6 +7,7 @@ export 'src/enrich.dart';
 export 'src/eval_links.dart';
 export 'src/graph.dart';
 export 'src/index_donor.dart';
+export 'src/import_contacts.dart';
 export 'src/maintenance.dart';
 export 'src/models.dart';
 export 'src/module_pack.dart';

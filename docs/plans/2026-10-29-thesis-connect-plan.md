@@ -57,7 +57,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 
 ### P8 Calendar and people
 - [x] Outlook calendar: an ICS feed already works (P30 lists the OLT lab ICS beside the timetable); paste Outlook's published ICS link in Settings > Calendars
-- [ ] Contacts via vCard/CSV import for autocomplete
+- [x] Contacts: `tylog import-contacts --vault V --file X.vcf|csv [--write]` creates person notes (idempotent id `contact-<hash>`, dedupe by title/alias; dry run default). Verified on a scratch vault; not yet run on the real vault (your export file needed)
 
 ### P9 Evidence for the thesis
 - [x] Gold-set evaluation CLI: `tylog eval-links --vault V --gold G.jsonl` (resolver with vs without ledger, leave-one-out); `--sample N --out T.jsonl` writes a labelling template
@@ -80,3 +80,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 21:50 T8: P30 device checks done: graph source chips (Article 15, Daily 1, Note 17; toggle hides), Calendars 'This device only' switch present. P8 calendar half needs no code (ICS feed already listed). Open: contacts import, P9 gold-set CLI, P5 inputs, release, screenshot-enrichment decision.
 - 22:10 T9: P9 CLI via codex (`eval_links.dart`, `tylog eval-links`); sampled 40 mentions from the real vault; 5 tests green. Not checked: that the test fails when the ledger is ignored. Next: you label the gold set; contacts import; P5 inputs.
 - 22:35 T10: P9 shown-log via codex; found it would poison older builds (non-accept = reject), moved to a separate folder; 10 app-flow, 27 core, 4 python tests green. Next: contacts import, then P5 inputs.
+- 22:55 T11: P8 contacts import via codex; 11 tests, dedupe guards proven by tests; scratch-vault run created 2, then skipped 2 on re-run. Next: P5 (your inputs); nothing else unblocked except cluster-by-source and tags from transcripts.

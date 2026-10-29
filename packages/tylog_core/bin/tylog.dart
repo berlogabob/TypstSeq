@@ -29,6 +29,7 @@ Future<int> runTylog(List<String> arguments) async {
   final args = arguments.skip(1).toList();
   return switch (command) {
     'init' => _init(args),
+    'import-contacts' => _importContacts(args),
     'index' => _index(args),
     'eval-links' => _evalLinks(args),
     'doctor' => _doctor(args),
@@ -37,6 +38,37 @@ Future<int> runTylog(List<String> arguments) async {
     'pack-validate' => _packValidate(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _importContacts(List<String> args) async {
+  final write = args.remove('--write');
+  final options = <String, String>{};
+  for (var i = 0; i < args.length; i += 2) {
+    if (!const {'--vault', '--file'}.contains(args[i]) ||
+        i + 1 >= args.length ||
+        args[i + 1].startsWith('--') ||
+        options.containsKey(args[i])) {
+      throw _UsageException('Invalid import-contacts option: ${args[i]}');
+    }
+    options[args[i]] = args[i + 1];
+  }
+  if (options.length != 2) {
+    throw _UsageException('import-contacts requires --vault and --file');
+  }
+  final vault = Directory(options['--vault']!).absolute;
+  if ((await inspectVaultStorage(LocalVaultStorage(vault))).kind !=
+      VaultStorageKind.validVault) {
+    throw StateError('TyLog vault marker is missing or invalid');
+  }
+  final result = await importContacts(
+    vault,
+    File(options['--file']!),
+    write: write,
+  );
+  stdout.writeln(
+    '${write ? 'Created' : 'Would create'} ${result.created}; skipped ${result.skipped}',
+  );
+  return 0;
 }
 
 Future<int> _evalLinks(List<String> args) async {
@@ -626,6 +658,7 @@ const _usage = '''TyLog repository CLI
 
 Usage:
   tylog init [vault=.]
+  tylog import-contacts --vault <dir> --file <contacts.vcf|contacts.csv> [--write]
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
   tylog dedupe <vault> [--apply]
