@@ -24,6 +24,7 @@ class GraphNode {
     required this.path,
     required this.title,
     this.kind = GraphNodeKind.note,
+    this.source = '',
     this.problemCount = 0,
     this.count = 0,
   });
@@ -31,6 +32,7 @@ class GraphNode {
   final String path;
   final String title;
   final GraphNodeKind kind;
+  final String source;
   final int problemCount;
 
   /// For concept/work hubs: how many notes carry this tag/citekey (drives the
@@ -73,6 +75,7 @@ NoteGraph buildNoteGraph(VaultIndex index) {
       GraphNode(
         path: note.path,
         title: note.title,
+        source: note.kind,
         problemCount: problemCounts[note.path] ?? 0,
       ),
   ];
@@ -441,7 +444,7 @@ NoteGraph buildTimelineGraph(
       ),
     for (final note
         in usedNotes.values.toList()..sort((a, b) => a.path.compareTo(b.path)))
-      GraphNode(path: note.path, title: note.title),
+      GraphNode(path: note.path, title: note.title, source: note.kind),
   ];
   edges.sort((a, b) {
     final byFrom = a.from.compareTo(b.from);

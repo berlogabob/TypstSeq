@@ -29,9 +29,9 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [x] One-page novelty statement + what is measured (user review with supervisor pending)
 
 ### P2 Graph source filter
-- [ ] Source on every node (daily, note, screenshot, audio, article, event, external)
-- [ ] Filter chips beside the edge-kind legend; cluster by source option
-- [ ] Tests + device check
+- [x] Source on every note node (`GraphNode.source` = note kind)
+- [x] Filter chips beside the edge-kind legend (cluster by source: later)
+- [x] Tests (core + widget, 23 + 430 green); [ ] device check
 
 ### P3 Extraction coverage
 - [ ] Decide: enrich audio transcripts (yes) and screenshots (user decision)
@@ -70,3 +70,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 ## Tick log
 - 19:50 T1: Agenda row hides while typing (`work_surface.dart`, editor keyed). Tests 64 green. Next: device check, then enrichment/graph slices. Release waits for user.
 - 20:05 T2: Device check blocked (Nothing Phone 3 left adb). P1 conceptual model written: docs/thesis/conceptual-model.md. Next: P2 graph source filter via codex.
+- 20:20 T3: P2 graph source filter via codex (GraphNode.source, source chips with counts, composed with focus filter). analyze clean, graph tests green. Next: P3 transcript enrichment.

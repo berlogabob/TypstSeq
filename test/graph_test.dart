@@ -4,6 +4,70 @@ import 'package:tylog/graph.dart';
 import 'package:tylog/models.dart';
 
 void main() {
+  testWidgets('source chips hide nodes and edges and compose with focus', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GraphView(
+            graph: const NoteGraph(
+              nodes: [
+                GraphNode(path: 'a', title: 'Article', source: 'article'),
+                GraphNode(path: 'b', title: 'Audio', source: 'audio'),
+                GraphNode(path: 'c', title: 'Orphan', source: 'article'),
+              ],
+              edges: [GraphEdge(from: 'a', to: 'b')],
+            ),
+            currentPath: 'a',
+            onOpenPath: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    GraphPainter painter() =>
+        tester
+                .widget<CustomPaint>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is CustomPaint && widget.painter is GraphPainter,
+                  ),
+                )
+                .painter!
+            as GraphPainter;
+
+    final chips = tester
+        .widgetList<FilterChip>(find.byType(FilterChip))
+        .where((chip) => (chip.label as Text).data!.contains('('))
+        .toList();
+    expect(chips.map((chip) => (chip.label as Text).data), [
+      'Article (2)',
+      'Audio (1)',
+    ]);
+    expect(chips.every((chip) => chip.selected), isTrue);
+    expect(painter().graph.nodes, hasLength(3));
+    await tester.tap(find.text('Article (2)'));
+    await tester.pumpAndSettle();
+    expect(painter().graph.nodes.map((node) => node.path), ['b']);
+    expect(painter().graph.edges, isEmpty);
+    expect(find.text('Article'), findsNothing);
+
+    await tester.tap(find.text('Article (2)'));
+    await tester.pumpAndSettle();
+    expect(painter().graph.nodes, hasLength(3));
+    expect(painter().graph.edges, hasLength(1));
+    await tester.tap(find.text('1 orphan notes'));
+    await tester.pumpAndSettle();
+    expect(painter().graph.nodes.map((node) => node.path), ['c']);
+    await tester.tap(find.text('Article (2)'));
+    await tester.pumpAndSettle();
+    expect(painter().graph.nodes, isEmpty);
+    await tester.tap(find.text('Article (2)'));
+    await tester.pumpAndSettle();
+    expect(painter().graph.nodes.map((node) => node.path), ['c']);
+  });
+
   testWidgets('dismissing the graph banner leaves canvas bounds unchanged', (
     tester,
   ) async {

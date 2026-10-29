@@ -149,6 +149,7 @@ class _GraphViewState extends State<GraphView>
     GraphEdgeKind.finished,
   };
   bool _bannerDismissed = false;
+  final Set<String> _hiddenSources = {};
   Set<String>? _focusFilter;
   int _hubCycleIndex = 0;
 
@@ -309,9 +310,21 @@ class _GraphViewState extends State<GraphView>
       return const Center(child: Text('Graph is empty'));
     }
     final stats = computeGraphStats(widget.graph);
-    final displayGraph = _focusFilter == null
+    final sourceCounts = <String, int>{};
+    for (final node in widget.graph.nodes) {
+      if (node.source.isEmpty) continue;
+      sourceCounts.update(node.source, (count) => count + 1, ifAbsent: () => 1);
+    }
+    final sources = sourceCounts.keys.toList()..sort();
+    final displayGraph = _focusFilter == null && _hiddenSources.isEmpty
         ? widget.graph
-        : restrictNoteGraph(widget.graph, _focusFilter!);
+        : restrictNoteGraph(widget.graph, {
+            for (final node in widget.graph.nodes)
+              if ((_focusFilter == null || _focusFilter!.contains(node.path)) &&
+                  (node.kind != GraphNodeKind.note ||
+                      !_hiddenSources.contains(node.source)))
+                node.path,
+          });
     final selected = displayGraph.nodes
         .where((node) => node.path == _selectedPath)
         .firstOrNull;
@@ -381,6 +394,29 @@ class _GraphViewState extends State<GraphView>
             ],
           ),
         ),
+        if (sources.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: kSpace12),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final source in sources)
+                  FilterChip(
+                    label: Text(
+                      '${source[0].toUpperCase()}${source.substring(1)} '
+                      '(${sourceCounts[source]})',
+                    ),
+                    selected: !_hiddenSources.contains(source),
+                    onSelected: (_) => setState(() {
+                      if (!_hiddenSources.remove(source)) {
+                        _hiddenSources.add(source);
+                      }
+                      _invalidateLayout();
+                    }),
+                  ),
+              ],
+            ),
+          ),
         // The advisory banner and the selected-node bar float over the
         // canvas: appearing in the Column reflowed (and re-laid-out) the
         // whole graph on every node tap or dismiss.
