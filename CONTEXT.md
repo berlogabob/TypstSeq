@@ -63,7 +63,20 @@ _Avoid_: Link record, diagram line
 
 **Source**:
 External evidence with a stable identity, such as a document, book, article, recording, or dataset. Changes to its bytes create source versions without changing that identity.
+The provenance field named `source` in code (GraphNode.source, note kind) means origin, not this term.
 _Avoid_: Attachment, note
+
+**Item**:
+Anything that arrives in the vault or the app: a note, day, screenshot, voice note, article, idea, event, or an external booking or mail. Carries origin and derivation.
+_Avoid_: entry, record
+
+**Attention**:
+Where an Item stands for the human: new, kept, acted, archived. Separate from domain progress.
+_Avoid_: status, inbox state
+
+**Decision**:
+One human action on an Item or a suggested link, written as one append-only row; ignoring counts.
+_Avoid_: feedback, event
 
 **Revision**:
 An immutable record of a change to an authoritative entity. Parent revisions express history and concurrency; wall-clock time does not choose a winner.
