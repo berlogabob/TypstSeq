@@ -54,10 +54,12 @@ def body_lines(text):
     (the `== Reading` section has no end marker; user text follows it).
     """
     lines = strip_auto_block(text).split("\n")
-    kept, in_header = [], False
+    kept, in_header, in_translation = [], False, False
     for number, line in enumerate(lines, 1):
         stripped = line.strip()
-        if stripped.startswith("#import"):
+        if stripped.startswith("="):
+            in_translation = stripped.startswith("== Translation")  # audio: same words in another language
+        if in_translation or stripped.startswith(("#import", "#tylog.attachment")):
             continue
         if stripped.startswith("#show: tylog.note.with("):
             in_header = not stripped.endswith(")")
@@ -358,10 +360,13 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     oldest = (now.astimezone().date() - timedelta(days=since_days)).isoformat()
     notes = [note for note in sorted((vault / "daily").glob("*/*/*.typ"), reverse=True)
              if force or note.stem >= oldest]  # newest day first
+    # Voice notes (transcripts) join the journal: speech is where mentions hide.
+    notes += [path for path in sorted((vault / "notes").glob("Audio *.typ"))
+              if 'kind: "audio"' in path.read_text(encoding="utf-8")[:800] and path not in notes]
     if include_notes:
         # Pages (Logseq imports included) after the journal. Articles and
         # screenshots are machine text about other people: never enriched.
-        notes += sorted((vault / "notes").rglob("*.typ"))
+        notes += [path for path in sorted((vault / "notes").rglob("*.typ")) if path not in notes]
     for note in notes:
         if done >= limit:
             break

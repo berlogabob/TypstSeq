@@ -34,8 +34,8 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [x] Tests (core + widget, 23 + 430 green); [ ] device check
 
 ### P3 Extraction coverage
-- [ ] Decide: enrich audio transcripts (yes) and screenshots (user decision)
-- [ ] Audio notes get tags/aliases from transcript; enrichment runs on `kind: audio`
+- [x] Audio transcripts enriched (23 voice notes in the real vault); [ ] screenshots: user decision, stay excluded until then
+- [x] Enrichment runs on `kind: audio` notes, transcript only (translations skipped); tags/aliases from transcript: later
 - [ ] Re-queue backlog without a PROMPT_VERSION bump (2 h of Studio compute)
 
 ### P4 Settings sharing
@@ -71,3 +71,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 19:50 T1: Agenda row hides while typing (`work_surface.dart`, editor keyed). Tests 64 green. Next: device check, then enrichment/graph slices. Release waits for user.
 - 20:05 T2: Device check blocked (Nothing Phone 3 left adb). P1 conceptual model written: docs/thesis/conceptual-model.md. Next: P2 graph source filter via codex.
 - 20:20 T3: P2 graph source filter via codex (GraphNode.source, source chips with counts, composed with focus filter). analyze clean, graph tests green. Next: P3 transcript enrichment.
+- 20:35 T4: P3 worker change (`enrich_worker.py`): voice notes join the run, translations and attachment line skipped; test fails pre-fix, 17 pass. Next: backlog re-queue needs a run on the Studio (compute) then P4 `.local.json`.

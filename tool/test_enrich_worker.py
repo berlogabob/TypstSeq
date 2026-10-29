@@ -274,3 +274,12 @@ def test_plain_text_marker_prefix_is_found_without_the_model():
     reply = json.dumps({"mentions": [], "keywords": [], "markers": []})
     assert enrich.parse_reply(reply, lines, markers)[2] == [
         {"line": 1, "marker": "fx"}, {"line": 2, "marker": "fx"}]
+
+
+def test_body_lines_voice_note_keeps_transcript_not_translations():
+    text = (
+        '#show: tylog.note.with(\n  kind: "audio",\n)\n= Audio\n\n'
+        '#tylog.attachment("/assets/a.m4a", kind: "audio")[a.m4a]\n\n== Transcript\n\n'
+        '- 00:00 Привет, Анна!\n== Translation en\n\n- 00:00 Hello, Anna!\n'
+    )
+    assert [line for _, line in enrich.body_lines(text)] == ["- 00:00 Привет, Анна!"]
