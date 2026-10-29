@@ -451,6 +451,7 @@ void main() {
     addTearDown(tester.view.resetViewInsets);
     await tester.pump();
     expect(find.byType(ScreenshotStrip), findsNothing);
+    expect(tester.widget<TodayPage>(find.byType(TodayPage)).typing, isTrue);
     expect(tester.element(editor), same(before));
     tester.view.resetViewInsets();
     await tester.pump();

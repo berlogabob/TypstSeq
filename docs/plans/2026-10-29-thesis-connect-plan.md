@@ -18,7 +18,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [x] Record from power button lands in today's log (bbb7782, checked on Nothing Phone 3)
 - [ ] Push branch; release 0.20.5+163 (Windows updater helper 20f0679 + record-to-day-log): CHANGELOG, version, full test
 - [ ] Power-button long-press and lock screen on the Nothing Phone 3
-- [x] Keyboard up: Agenda row hides too (code + tests green; device check pending). 
+- [x] Keyboard up: Agenda row hides too (verified on P30: Agenda, Screenshots, Linked refs gone, editor has the screen). 
 - [ ] Screenshots and Linked references collapsed under More
 - [x] Add `docs/audio-transcription.md` to bundled RAG doc lists (pubspec + semantic_search_controller)
 - [ ] `graphify update .`
@@ -74,3 +74,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 20:35 T4: P3 worker change (`enrich_worker.py`): voice notes join the run, translations and attachment line skipped; test fails pre-fix, 17 pass. Next: backlog re-queue needs a run on the Studio (compute) then P4 `.local.json`.
 - 20:55 T5: P4 via codex. Full suite 1729 green except codex's flaky widget test, which I dropped (round trip covered in settings_path_test). analyze clean. Next: commit, then P5 needs your inputs.
 - 21:10 T6: P5 still waits for your inputs; did the unblocked P0 item (RAG doc). Next unblocked: collapse Screenshots/Linked references under More, then P8 ICS, P9 gold-set CLI.
+- 21:30 T7: P30 back on adb. Device check found the Agenda row still visible (Scaffold consumes the inset); fixed by passing `typing: keyboardUp` into TodayPage; re-verified on P30; test asserts it. Graph chips and settings switch device checks still open. Next: P8 ICS check, P9 gold-set CLI.

@@ -57,9 +57,14 @@ class TodayPage extends StatelessWidget {
     this.onAllTasks,
     this.notes = const {},
     this.indexing = false,
+    this.typing = false,
   });
 
   final bool indexing;
+
+  /// The keyboard is up: the editor gets the screen (the caller reads the
+  /// inset above the Scaffold, which consumes it for its body).
+  final bool typing;
   final VoidCallback? onAllTasks;
   final Map<String, NoteRef> notes;
   final List<CalendarItem> events;
@@ -120,9 +125,6 @@ class TodayPage extends StatelessWidget {
       onOpenPath: onOpenPath,
     );
     final compactHeight = MediaQuery.sizeOf(context).height < 480;
-    // Typing gives the editor the screen; the key keeps its element (and the
-    // keyboard) alive while the rows above it come and go.
-    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     final agendaTitle = indexing && tasks.isEmpty
         ? 'Indexing…'
         : next == null

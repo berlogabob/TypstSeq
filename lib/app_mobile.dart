@@ -5690,6 +5690,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? PageStorage(
             bucket: _todayStorage,
             child: TodayPage(
+              typing: keyboardUp,
               indexing: workspace.awaitingIndex,
               shownDay: currentDaily,
               onOpenDay: (day) => _stepDay(0, target: day),
