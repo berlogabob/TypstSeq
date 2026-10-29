@@ -24,9 +24,9 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [ ] `graphify update .`
 
 ### P1 Conceptual data model (supervisor's ask) -> `docs/thesis/conceptual-model.md`
-- [ ] Entities: Item, Mention, Entity, Link, Source; attributes `source` (typed, OCR, ASR, OLT, ICS, contacts) and `derivation` (typed, extracted, confirmed)
-- [ ] ER diagram (Mermaid) with real vault field names; OLT table mapping
-- [ ] One-page "novelty" statement + what is measured (accept rate, gold set)
+- [x] Entities: Item, Mention, Entity, Link, Source; attributes `source` and `derivation` (docs/thesis/conceptual-model.md)
+- [x] ER diagram (Mermaid) with real vault field names; OLT table mapping
+- [x] One-page novelty statement + what is measured (user review with supervisor pending)
 
 ### P2 Graph source filter
 - [ ] Source on every node (daily, note, screenshot, audio, article, event, external)
@@ -69,3 +69,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 
 ## Tick log
 - 19:50 T1: Agenda row hides while typing (`work_surface.dart`, editor keyed). Tests 64 green. Next: device check, then enrichment/graph slices. Release waits for user.
+- 20:05 T2: Device check blocked (Nothing Phone 3 left adb). P1 conceptual model written: docs/thesis/conceptual-model.md. Next: P2 graph source filter via codex.
