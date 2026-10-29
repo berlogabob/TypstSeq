@@ -622,6 +622,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   (Object, _EnrichView)? _enrichMemo;
   (String, _EnrichView)? _enrichDecisions;
   bool _enrichBusy = false;
+  final _enrichShown = <(Vault, String, String, String)>{};
+  Future<void> _enrichLedgerWrite = Future.value();
   DateTime? _articleRelinkAt;
 
   // setState is @protected; this shim lets the flow extensions in

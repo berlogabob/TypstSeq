@@ -143,6 +143,27 @@ void main() {
     },
   );
 
+  test(
+    'shown ledger is excluded from feedback, eval-links and samples',
+    () async {
+      final report = await evaluateLinks(storage, index, gold);
+      final samples = await sampleLinks(storage, index, 3);
+      await storage.writeText(
+        '$enrichShownDir/device.jsonl',
+        jsonEncode({
+          'note': 'daily/other.typ',
+          'surface': 'André',
+          'entity': 'silva',
+          'decision': 'shown',
+        }),
+      );
+      expect(await loadEnrichFeedback(storage), isEmpty);
+      expect((await loadEnrichShown(storage)).single.shown, isTrue);
+      expect(await evaluateLinks(storage, index, gold), report);
+      expect(await sampleLinks(storage, index, 3), samples);
+    },
+  );
+
   test('none, proposals, empty gold and unlabelled rows', () async {
     final rows = [
       {'note': notePath, 'surface': 'Nobody', 'entity': 'none'},

@@ -41,8 +41,10 @@ NoteRef _note(
 Future<(dynamic, _MemoryStorage)> _mount(
   WidgetTester tester, {
   String dayPath = _dayPath,
+  String shown = '',
 }) async {
   final storage = _MemoryStorage();
+  await storage.writeText('$enrichShownDir/dev1.jsonl', shown);
   await storage.writeText(dayPath, _day);
   await storage.writeText(
     'notes/kz.typ',
@@ -183,6 +185,44 @@ void main() {
       mentions['content_sha'],
       enrichContentSha(home.workspace.source as String),
     );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
+  testWidgets('offers are shown once across refreshes and ledger reloads', (
+    tester,
+  ) async {
+    final (_, storage) = await _mount(tester);
+    Future<List<EnrichFeedback>> shown() async => EnrichFeedback.parseLedger(
+      await storage.readText('$enrichShownDir/dev1.jsonl'),
+    );
+    final events = await shown();
+    expect(
+      events.map((e) => (e.surface, e.entity)),
+      unorderedEquals([
+        ('Катя', 'kz'),
+        ('Рома', ''),
+        ('Катя приехала, обсудили IADE.', 'marker:fx'),
+      ]),
+    );
+    expect(events.every((e) => e.note == _dayPath && e.shown), isTrue);
+    expect(await storage.exists('$enrichFeedbackDir/dev1.jsonl'), isFalse);
+    // A tap recomputes the view without re-logging the remaining offers.
+    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    expect(await shown(), hasLength(3));
+    final feedback = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
+    expect(jsonDecode(feedback.trim()), containsPair('decision', 'accept'));
+    expect(feedback, isNot(contains('"decision":"shown"')));
+    final ledger = events.map((e) => jsonEncode(e)).join('\n');
+    await tester.pumpWidget(const SizedBox());
+    await _mount(tester, shown: ledger);
+    await tester.pumpAndSettle();
+    // This is a fresh session whose note still contains all the offers.
+    final dynamic fresh = tester.state(find.byType(HomeScreen));
+    final freshLedger = await (fresh.workspace.vault as Vault).storage.readText(
+      '$enrichShownDir/dev1.jsonl',
+    );
+    expect(EnrichFeedback.parseLedger(freshLedger), hasLength(3));
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 

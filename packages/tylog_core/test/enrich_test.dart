@@ -78,6 +78,33 @@ void main() {
     );
   });
 
+  test('shown ledger events do not change mention resolution', () {
+    final mentions = mentionsOf([andre, iadeMention]);
+    final note = day('2026-10-01');
+    final baseline = resolveMentions(mentions, note, EnrichMemory.build(index));
+    final events = EnrichFeedback.parseLedger(
+      '{"decision":"shown","surface":"André","entity":"andre-silva",'
+      '"note":"d","at":"t","context":["e:iade"]}\n'
+      '{"decision":"shown","surface":"IADE","entity":"iade"}\n'
+      '{"decision":"unknown","surface":"André","entity":"andre-costa"}',
+    );
+    expect(events, hasLength(2));
+    expect(events.first.toJson()['decision'], 'shown');
+    final actual = resolveMentions(
+      mentions,
+      note,
+      EnrichMemory.build(index, events),
+    );
+    for (var i = 0; i < baseline.length; i++) {
+      expect(actual[i].status, baseline[i].status);
+      expect(actual[i].target?.id, baseline[i].target?.id);
+      expect(
+        actual[i].candidates.map((c) => (c.note.id, c.score)),
+        baseline[i].candidates.map((c) => (c.note.id, c.score)),
+      );
+    }
+  });
+
   test('context picks the right André, and an accept makes it a link', () {
     final mentions = mentionsOf([andre, iadeMention]);
     final memory = EnrichMemory.build(index);

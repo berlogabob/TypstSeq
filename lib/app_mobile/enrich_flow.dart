@@ -67,8 +67,9 @@ extension _EnrichFlow on _HomeScreenState {
         'memoryMs=$memoryMs '
         'ms=${clock.elapsedMilliseconds}',
       );
-      if (!mounted || note != path) return;
+      if (!mounted || vault != v || note != path) return;
       _rebuild(() => _enrichDecisions = path == null ? null : (path, view));
+      if (path != null) unawaited(_recordEnrichShown(v, path, view, memory));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
       _enrichTrace('$path error $error');
@@ -96,6 +97,11 @@ extension _EnrichFlow on _HomeScreenState {
       return cached.$3;
     }
     final events = await loadEnrichFeedback(v.storage);
+    _enrichShown.addAll(
+      (await loadEnrichShown(
+        v.storage,
+      )).map((e) => (v, e.note, e.surface, e.entity)),
+    );
     final memory = EnrichMemory.build(currentIndex, events);
     _enrichMemoryCache = (v, DateTime.now(), memory);
     return memory;
@@ -195,13 +201,67 @@ extension _EnrichFlow on _HomeScreenState {
           ? const []
           : enrichFeatures(ref, memory.entityIdByTarget).toList(),
     );
-    final ledger = '$enrichFeedbackDir/$device.jsonl';
-    await v.storage.createDirectory(enrichFeedbackDir);
-    final existing = await v.storage.exists(ledger)
-        ? await v.storage.readText(ledger)
-        : '';
-    await v.storage.writeText(ledger, '$existing${jsonEncode(event)}\n');
+    await _appendEnrichLedger(v, enrichFeedbackDir, device, [event]);
     _enrichMemoryCache = null;
+  }
+
+  Future<void> _recordEnrichShown(
+    Vault v,
+    String path,
+    _EnrichView view,
+    EnrichMemory memory,
+  ) async {
+    final device = vaultRegistry?.deviceId;
+    if (device == null) return;
+    final ref = index?.notesByPath[path];
+    final offers = [
+      for (final d in view.decisions)
+        if (d.status == EnrichStatus.review || d.status == EnrichStatus.propose)
+          (d.mention.surface, d.target?.id ?? ''),
+      for (final m in view.markers) (m.text, enrichMarkerEntity(m.marker.id)),
+    ];
+    final events = <EnrichFeedback>[];
+    for (final (surface, entity) in offers) {
+      if (!_enrichShown.add((v, path, surface, entity))) continue;
+      events.add(
+        EnrichFeedback(
+          surface: surface,
+          entity: entity,
+          accepted: false,
+          shown: true,
+          note: path,
+          at: DateTime.now().toUtc().toIso8601String(),
+          context: ref == null
+              ? const []
+              : enrichFeatures(ref, memory.entityIdByTarget).toList(),
+        ),
+      );
+    }
+    if (events.isNotEmpty) {
+      await _appendEnrichLedger(v, enrichShownDir, device, events);
+    }
+  }
+
+  Future<void> _appendEnrichLedger(
+    Vault v,
+    String directory,
+    String device,
+    List<EnrichFeedback> events,
+  ) {
+    // Serialize read/modify/write appends to the device ledgers.
+    return _enrichLedgerWrite = _enrichLedgerWrite.then((_) async {
+      try {
+        final ledger = '$directory/$device.jsonl';
+        await v.storage.createDirectory(directory);
+        final existing = await v.storage.exists(ledger)
+            ? await v.storage.readText(ledger)
+            : '';
+        await v.storage.writeText(
+          ledger,
+          '$existing${events.map(jsonEncode).join('\n')}\n',
+        );
+      } catch (_) {}
+    });
   }
 
   Future<void> _acceptEnrich(EnrichMention mention, NoteRef target) async {

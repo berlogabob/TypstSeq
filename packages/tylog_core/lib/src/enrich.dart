@@ -21,6 +21,7 @@ import 'values.dart';
 const autoEntitiesMarker = '// tylog:auto-entities';
 const enrichMentionsDir = '_system/enrich/mentions';
 const enrichFeedbackDir = '_system/enrich/feedback';
+const enrichShownDir = '_system/enrich/shown';
 
 /// Ledger `entity` for a decision about an auto-added tag.
 String enrichTagEntity(String tag) => 'tag:$tag';
@@ -125,7 +126,7 @@ class EnrichMentions {
   }
 }
 
-/// One user decision, as a line of `_system/enrich/feedback/<device>.jsonl`.
+/// One display or user decision in the per-device shown or feedback ledger.
 /// The ledger is append-only and per device, so sync never has to merge it.
 class EnrichFeedback {
   const EnrichFeedback({
@@ -135,11 +136,13 @@ class EnrichFeedback {
     required this.note,
     required this.at,
     this.context = const [],
+    this.shown = false,
   });
 
   final String surface;
   final String entity;
   final bool accepted;
+  final bool shown;
   final String note;
   final String at;
 
@@ -148,7 +151,7 @@ class EnrichFeedback {
 
   Map<String, Object?> toJson() => {
     'at': at,
-    'decision': accepted ? 'accept' : 'reject',
+    'decision': shown ? 'shown' : (accepted ? 'accept' : 'reject'),
     'surface': surface,
     'entity': entity,
     'note': note,
@@ -163,10 +166,14 @@ class EnrichFeedback {
   static EnrichFeedback? _tryLine(String line) {
     try {
       final json = jsonDecode(line) as Map;
+      if (!['accept', 'reject', 'shown'].contains(json['decision'])) {
+        return null;
+      }
       return EnrichFeedback(
         surface: json['surface'] as String,
         entity: json['entity'] as String,
         accepted: json['decision'] == 'accept',
+        shown: json['decision'] == 'shown',
         note: json['note'] as String? ?? '',
         at: json['at'] as String? ?? '',
         context: stringList(json['context']),
@@ -178,13 +185,26 @@ class EnrichFeedback {
 }
 
 /// Reads device ledgers with the app's best-effort handling of unavailable files.
-Future<List<EnrichFeedback>> loadEnrichFeedback(VaultStorage storage) async {
+Future<List<EnrichFeedback>> loadEnrichFeedback(VaultStorage storage) =>
+    _loadEnrichLedger(storage, enrichFeedbackDir, shown: false);
+
+/// Reads displays separately so older apps only see decisions in feedback.
+Future<List<EnrichFeedback>> loadEnrichShown(VaultStorage storage) =>
+    _loadEnrichLedger(storage, enrichShownDir, shown: true);
+
+Future<List<EnrichFeedback>> _loadEnrichLedger(
+  VaultStorage storage,
+  String directory, {
+  required bool shown,
+}) async {
   final events = <EnrichFeedback>[];
   try {
-    for (final file in await storage.list(path: enrichFeedbackDir)) {
+    for (final file in await storage.list(path: directory)) {
       if (file.isDirectory || !file.path.endsWith('.jsonl')) continue;
       events.addAll(
-        EnrichFeedback.parseLedger(await storage.readText(file.path)),
+        EnrichFeedback.parseLedger(
+          await storage.readText(file.path),
+        ).where((event) => event.shown == shown),
       );
     }
   } catch (_) {}
@@ -281,6 +301,7 @@ class EnrichMemory {
     // index catches up its context counts twice; harmless while counts only
     // rank candidates, revisit if scores get calibrated into probabilities.
     for (final event in feedback) {
+      if (event.shown) continue;
       final key = '${enrichKey(event.surface)}\n${event.entity}';
       if (event.accepted) {
         final counts = memory._accepted.putIfAbsent(
