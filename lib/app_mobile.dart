@@ -506,7 +506,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         if (data == null || !mounted || vault == null) break;
         if (data['action'] == 'record') {
-          await _recordAudioNote();
+          // The take lands in today's log as a player card.
+          _navDebounce?.cancel();
+          _navDay = null;
+          final inToday = await _openToday();
+          if (inToday && mounted) {
+            _showEditor();
+            setState(() => primaryDestination = 0);
+          }
+          await _recordAudioNote(inline: inToday);
           continue;
         }
         final path = data['path'];
