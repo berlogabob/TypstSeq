@@ -95,15 +95,7 @@ extension _EnrichFlow on _HomeScreenState {
         DateTime.now().difference(cached.$2) < const Duration(minutes: 10)) {
       return cached.$3;
     }
-    final events = <EnrichFeedback>[];
-    try {
-      for (final file in await v.storage.list(path: enrichFeedbackDir)) {
-        if (file.isDirectory || !file.path.endsWith('.jsonl')) continue;
-        events.addAll(
-          EnrichFeedback.parseLedger(await v.storage.readText(file.path)),
-        );
-      }
-    } catch (_) {}
+    final events = await loadEnrichFeedback(v.storage);
     final memory = EnrichMemory.build(currentIndex, events);
     _enrichMemoryCache = (v, DateTime.now(), memory);
     return memory;

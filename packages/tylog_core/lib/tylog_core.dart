@@ -4,6 +4,7 @@ export 'src/cli_typst_inspector.dart';
 export 'src/article_links.dart';
 export 'src/date_words.dart';
 export 'src/enrich.dart';
+export 'src/eval_links.dart';
 export 'src/graph.dart';
 export 'src/index_donor.dart';
 export 'src/maintenance.dart';

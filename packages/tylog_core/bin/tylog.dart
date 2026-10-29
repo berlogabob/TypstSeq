@@ -30,12 +30,58 @@ Future<int> runTylog(List<String> arguments) async {
   return switch (command) {
     'init' => _init(args),
     'index' => _index(args),
+    'eval-links' => _evalLinks(args),
     'doctor' => _doctor(args),
     'dedupe' => _dedupe(args),
     'export' => _export(args),
     'pack-validate' => _packValidate(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _evalLinks(List<String> args) async {
+  final options = <String, String>{};
+  for (var i = 0; i < args.length; i += 2) {
+    if (!const {'--vault', '--gold', '--sample', '--out'}.contains(args[i]) ||
+        i + 1 >= args.length ||
+        args[i + 1].startsWith('--') ||
+        options.containsKey(args[i])) {
+      throw _UsageException('Invalid eval-links option: ${args[i]}');
+    }
+    options[args[i]] = args[i + 1];
+  }
+  final sample = options['--sample'];
+  final count = sample == null ? null : int.tryParse(sample);
+  if (options['--vault'] == null ||
+      (sample == null &&
+          (options['--gold'] == null || options['--out'] != null)) ||
+      (sample != null &&
+          (count == null || count <= 0 || options['--out'] == null))) {
+    throw _UsageException(
+      'eval-links requires --vault and --gold, or --sample N --out',
+    );
+  }
+  final storage = LocalVaultStorage(Directory(options['--vault']!).absolute);
+  final index = await loadVaultIndex(storage);
+  if (index == null) {
+    throw StateError('No readable vault index; run tylog index first');
+  }
+  if (count != null) {
+    final rows = await sampleLinks(storage, index, count);
+    await File(
+      options['--out']!,
+    ).writeAsString('${rows.map(jsonEncode).join('\n')}\n');
+    stdout.writeln('Wrote ${rows.length} mentions to ${options['--out']}');
+  } else {
+    stdout.write(
+      await evaluateLinks(
+        storage,
+        index,
+        await File(options['--gold']!).readAsString(),
+      ),
+    );
+  }
+  return 0;
 }
 
 /// Checks a `.tylogpack` against docs/modules/PACK-SPEC.md: manifest, hashes,
@@ -148,7 +194,8 @@ Future<String> _cliDeviceId(VaultStorage storage) async {
   }
   // Host-derived, so a machine keeps its identity even if `.tylog/` is wiped.
   final seed = '${Platform.localHostname}|${Platform.operatingSystem}';
-  final id = 'cli-${sha256.convert(utf8.encode(seed)).toString().substring(0, 12)}';
+  final id =
+      'cli-${sha256.convert(utf8.encode(seed)).toString().substring(0, 12)}';
   try {
     await storage.createDirectory('.tylog');
     await storage.writeText(path, id);
@@ -359,10 +406,7 @@ Future<int> _dedupe(List<String> args) async {
     // ids that moved — and the donor *syncs*, so leaving them stale propagates
     // the lie to every phone. Every other mutating path in the app reindexes
     // after writing; this one returned straight to the shell.
-    await _republishIndexArtifacts(
-      storage,
-      Directory(args.single).absolute,
-    );
+    await _republishIndexArtifacts(storage, Directory(args.single).absolute);
   }
   return 0;
 }
@@ -586,4 +630,6 @@ Usage:
   tylog doctor [vault=.]
   tylog dedupe <vault> [--apply]
   tylog export <file.typ> [output.pdf]
-  tylog pack-validate <file.tylogpack>''';
+  tylog pack-validate <file.tylogpack>
+  tylog eval-links --vault <dir> --gold <file.jsonl>
+  tylog eval-links --vault <dir> --sample N --out <file.jsonl>''';

@@ -60,7 +60,8 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [ ] Contacts via vCard/CSV import for autocomplete
 
 ### P9 Evidence for the thesis
-- [ ] Gold-set evaluation: Dart resolver CLI, 100-200 labelled mentions, resolver with vs without ledger
+- [x] Gold-set evaluation CLI: `tylog eval-links --vault V --gold G.jsonl` (resolver with vs without ledger, leave-one-out); `--sample N --out T.jsonl` writes a labelling template
+- [ ] Label 100-200 mentions by hand (template of 40 at the scratchpad `gold-template.jsonl`)
 - [ ] Log ignored suggestions too (ledger has decisions only)
 
 ## Issue log
@@ -77,3 +78,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 21:10 T6: P5 still waits for your inputs; did the unblocked P0 item (RAG doc). Next unblocked: collapse Screenshots/Linked references under More, then P8 ICS, P9 gold-set CLI.
 - 21:30 T7: P30 back on adb. Device check found the Agenda row still visible (Scaffold consumes the inset); fixed by passing `typing: keyboardUp` into TodayPage; re-verified on P30; test asserts it. Graph chips and settings switch device checks still open. Next: P8 ICS check, P9 gold-set CLI.
 - 21:50 T8: P30 device checks done: graph source chips (Article 15, Daily 1, Note 17; toggle hides), Calendars 'This device only' switch present. P8 calendar half needs no code (ICS feed already listed). Open: contacts import, P9 gold-set CLI, P5 inputs, release, screenshot-enrichment decision.
+- 22:10 T9: P9 CLI via codex (`eval_links.dart`, `tylog eval-links`); sampled 40 mentions from the real vault; 5 tests green. Not checked: that the test fails when the ledger is ignored. Next: you label the gold set; contacts import; P5 inputs.

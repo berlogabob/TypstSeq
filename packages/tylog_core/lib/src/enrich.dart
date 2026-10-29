@@ -15,6 +15,7 @@ import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'models.dart';
 import 'scanner.dart';
+import 'storage.dart';
 import 'values.dart';
 
 const autoEntitiesMarker = '// tylog:auto-entities';
@@ -174,6 +175,20 @@ class EnrichFeedback {
       return null;
     }
   }
+}
+
+/// Reads device ledgers with the app's best-effort handling of unavailable files.
+Future<List<EnrichFeedback>> loadEnrichFeedback(VaultStorage storage) async {
+  final events = <EnrichFeedback>[];
+  try {
+    for (final file in await storage.list(path: enrichFeedbackDir)) {
+      if (file.isDirectory || !file.path.endsWith('.jsonl')) continue;
+      events.addAll(
+        EnrichFeedback.parseLedger(await storage.readText(file.path)),
+      );
+    }
+  } catch (_) {}
+  return events;
 }
 
 /// What a note says about its surroundings: the entities it links, its
