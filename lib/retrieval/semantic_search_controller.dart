@@ -177,6 +177,7 @@ class SemanticSearchController extends ChangeNotifier {
         'spec/tylog-format-v1.md',
         'docs/modules/PACK-SPEC.md',
         'docs/modules/AUTHORING.md',
+        'docs/audio-transcription.md',
       ]) {
         if (assets.contains(path)) {
           docs[path] = (title: path, text: await rootBundle.loadString(path));

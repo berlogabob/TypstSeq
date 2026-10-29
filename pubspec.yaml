@@ -93,6 +93,7 @@ flutter:
     - spec/tylog-format-v1.md
     - docs/modules/PACK-SPEC.md
     - docs/modules/AUTHORING.md
+    - docs/audio-transcription.md
     - typst/tylog/
     - typst/vault/
 

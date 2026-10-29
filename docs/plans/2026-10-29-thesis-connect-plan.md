@@ -20,7 +20,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [ ] Power-button long-press and lock screen on the Nothing Phone 3
 - [x] Keyboard up: Agenda row hides too (code + tests green; device check pending). 
 - [ ] Screenshots and Linked references collapsed under More
-- [ ] Add `docs/audio-transcription.md` to bundled RAG doc lists
+- [x] Add `docs/audio-transcription.md` to bundled RAG doc lists (pubspec + semantic_search_controller)
 - [ ] `graphify update .`
 
 ### P1 Conceptual data model (supervisor's ask) -> `docs/thesis/conceptual-model.md`
@@ -73,3 +73,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 20:20 T3: P2 graph source filter via codex (GraphNode.source, source chips with counts, composed with focus filter). analyze clean, graph tests green. Next: P3 transcript enrichment.
 - 20:35 T4: P3 worker change (`enrich_worker.py`): voice notes join the run, translations and attachment line skipped; test fails pre-fix, 17 pass. Next: backlog re-queue needs a run on the Studio (compute) then P4 `.local.json`.
 - 20:55 T5: P4 via codex. Full suite 1729 green except codex's flaky widget test, which I dropped (round trip covered in settings_path_test). analyze clean. Next: commit, then P5 needs your inputs.
+- 21:10 T6: P5 still waits for your inputs; did the unblocked P0 item (RAG doc). Next unblocked: collapse Screenshots/Linked references under More, then P8 ICS, P9 gold-set CLI.
