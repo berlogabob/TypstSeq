@@ -283,3 +283,9 @@ def test_body_lines_voice_note_keeps_transcript_not_translations():
         '- 00:00 Привет, Анна!\n== Translation en\n\n- 00:00 Hello, Anna!\n'
     )
     assert [line for _, line in enrich.body_lines(text)] == ["- 00:00 Привет, Анна!"]
+
+
+def test_body_lines_screenshot_keeps_description_and_text_not_image():
+    text = ('#show: tylog.note.with(\n  kind: "screenshot",\n)\n\n'
+            '#image("/assets/s.webp", width: 100%)\n\n== Description\n\nA map.\n\n== Text\n\nCafé Dias\n')
+    assert [line for _, line in enrich.body_lines(text)] == ["A map.", "Café Dias"]

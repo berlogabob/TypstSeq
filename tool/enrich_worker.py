@@ -59,7 +59,7 @@ def body_lines(text):
         stripped = line.strip()
         if stripped.startswith("="):
             in_translation = stripped.startswith("== Translation")  # audio: same words in another language
-        if in_translation or stripped.startswith(("#import", "#tylog.attachment")):
+        if in_translation or stripped.startswith(("#import", "#tylog.attachment", "#image(")):
             continue
         if stripped.startswith("#show: tylog.note.with("):
             in_header = not stripped.endswith(")")
@@ -363,9 +363,11 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     # Voice notes (transcripts) join the journal: speech is where mentions hide.
     notes += [path for path in sorted((vault / "notes").glob("Audio *.typ"))
               if 'kind: "audio"' in path.read_text(encoding="utf-8")[:800] and path not in notes]
+    # Screenshots (OCR text + description), newest first, after the journal.
+    notes += sorted((vault / "screenshots").rglob("shot-*.typ"), reverse=True)
     if include_notes:
-        # Pages (Logseq imports included) after the journal. Articles and
-        # screenshots are machine text about other people: never enriched.
+        # Pages (Logseq imports included) after the journal. Articles are
+        # machine text about other people: never enriched.
         notes += [path for path in sorted((vault / "notes").rglob("*.typ")) if path not in notes]
     for note in notes:
         if done >= limit:
