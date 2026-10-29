@@ -31,7 +31,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 ### P2 Graph source filter
 - [x] Source on every note node (`GraphNode.source` = note kind)
 - [x] Filter chips beside the edge-kind legend (cluster by source: later)
-- [x] Tests (core + widget, 23 + 430 green); [ ] device check
+- [x] Tests (core + widget, 23 + 430 green); device check done on P30 (switch visible on Calendars, left off)
 
 ### P3 Extraction coverage
 - [x] Audio transcripts enriched (23 voice notes in the real vault); [ ] screenshots: user decision, stay excluded until then
@@ -40,7 +40,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 
 ### P4 Settings sharing
 - [x] `*.local.json` never syncs (`isSyncableVaultPath`, tylog_core `sync_paths.dart`); whole-file override, local wins (no merge); Python workers read it too
-- [x] "This device only" switch on AI, Audio processing and Calendars pages; [ ] device check
+- [x] "This device only" switch on AI, Audio processing and Calendars pages; device check done on P30 (switch visible on Calendars, left off)
 - [ ] Later: P2P pairing for secrets (iroh in-app harness first)
 
 ### P5 OLT login spike
@@ -56,7 +56,8 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [ ] Create booking (`activities`), move/issue (`movements`), stocktake tick; server rules stay authoritative; offline = queue, no local edit of cached rows
 
 ### P8 Calendar and people
-- [ ] Outlook calendar via ICS feed (existing `calendar_feeds.dart`); contacts via vCard/CSV import for autocomplete
+- [x] Outlook calendar: an ICS feed already works (P30 lists the OLT lab ICS beside the timetable); paste Outlook's published ICS link in Settings > Calendars
+- [ ] Contacts via vCard/CSV import for autocomplete
 
 ### P9 Evidence for the thesis
 - [ ] Gold-set evaluation: Dart resolver CLI, 100-200 labelled mentions, resolver with vs without ledger
@@ -75,3 +76,4 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 20:55 T5: P4 via codex. Full suite 1729 green except codex's flaky widget test, which I dropped (round trip covered in settings_path_test). analyze clean. Next: commit, then P5 needs your inputs.
 - 21:10 T6: P5 still waits for your inputs; did the unblocked P0 item (RAG doc). Next unblocked: collapse Screenshots/Linked references under More, then P8 ICS, P9 gold-set CLI.
 - 21:30 T7: P30 back on adb. Device check found the Agenda row still visible (Scaffold consumes the inset); fixed by passing `typing: keyboardUp` into TodayPage; re-verified on P30; test asserts it. Graph chips and settings switch device checks still open. Next: P8 ICS check, P9 gold-set CLI.
+- 21:50 T8: P30 device checks done: graph source chips (Article 15, Daily 1, Note 17; toggle hides), Calendars 'This device only' switch present. P8 calendar half needs no code (ICS feed already listed). Open: contacts import, P9 gold-set CLI, P5 inputs, release, screenshot-enrichment decision.
