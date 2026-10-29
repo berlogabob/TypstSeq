@@ -16,6 +16,7 @@ import 'nextcloud_sync.dart';
 import 'nextcloud_sync/push_client.dart';
 import 'package:tylog_core/validation.dart';
 import 'scanner.dart';
+import 'settings_path.dart';
 import 'package:tylog_core/search_index.dart';
 import 'task_scheduler.dart';
 import 'tylog_assets.dart';
@@ -728,16 +729,19 @@ class WorkspaceController extends ChangeNotifier {
 
   static const calendarsSyncPath = '_system/settings/calendars.json';
 
-  Future<void> _writeSharedCalendars(Vault opened, List<Object?> feeds) =>
+  Future<void> _writeSharedCalendars(Vault opened, List<Object?> feeds) async =>
       opened.storage.writeText(
-        calendarsSyncPath,
+        await settingsPathFor(opened.storage, calendarsSyncPath),
         const JsonEncoder.withIndent('  ').convert({'feeds': feeds}),
       );
 
   Future<List<Map<String, dynamic>>?> _readSharedCalendars(Vault opened) async {
     try {
-      if (!await opened.storage.exists(calendarsSyncPath)) return null;
-      final json = jsonDecode(await opened.storage.readText(calendarsSyncPath));
+      final path = await settingsPathFor(opened.storage, calendarsSyncPath);
+      if (!await opened.storage.existsNow(path)) return null;
+      final json = jsonDecode(
+        utf8.decode(await opened.storage.readBytesNow(path)),
+      );
       if (json is! Map || json['feeds'] is! List) return null;
       return _calendarFeeds({'feeds': json['feeds']});
     } catch (_) {

@@ -262,7 +262,7 @@ carry it, and lines like the counter-examples. Return [] when none fit."""
 
 
 def load_task(vault):
-    settings = tw._read_json(vault / "_system/settings/ai.json")
+    settings = tw._read_json(tw._settings_path_for(vault / "_system/settings/ai.json"))
     tasks = settings.get("tasks") if isinstance(settings.get("tasks"), dict) else {}
     task = tasks.get("enrich") if isinstance(tasks.get("enrich"), dict) else {}
     connections = [entry for entry in settings.get("connections") or [] if isinstance(entry, dict)
@@ -452,7 +452,7 @@ def collect_links(vault, now=None, state=None, clock=time.time):
     vault = Path(vault).resolve()
     now = now or datetime.now(timezone.utc)
     state = {} if state is None else state
-    settings = tw._read_json(vault / "_system/settings/ai.json")
+    settings = tw._read_json(tw._settings_path_for(vault / "_system/settings/ai.json"))
     tasks = settings.get("tasks") if isinstance(settings.get("tasks"), dict) else {}
     task = tasks.get("articles") if isinstance(tasks.get("articles"), dict) else {}
     links_state = state.setdefault("links", {})

@@ -2924,6 +2924,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         conflicts: syncConflicts.length,
                       );
                 return SettingsSheet(
+                  storage: vault?.storage,
                   calendarSettings: workspace.calendarSettings,
                   onConfigureCalendars: workspace.configureCalendars,
                   vaultPath: vaultPath,

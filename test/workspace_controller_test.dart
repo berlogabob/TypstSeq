@@ -571,7 +571,7 @@ void main() {
     await controller.shutdown();
   });
 
-  test('the calendar list is shared through the vault, not per device', () async {
+  test('calendar settings prefer local files', () async {
     final storage = _MemoryStorage();
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
@@ -620,6 +620,25 @@ void main() {
         ],
       }),
     );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(controller.feedEvents.map((e) => e.title), ['Class G1']);
+
+    final original = await storage.readText('_system/settings/calendars.json');
+    await storage.writeText(
+      '_system/settings/calendars.local.json',
+      '{"feeds":[]}',
+    );
+    await controller.refreshCalendarFeeds(force: true);
+    expect(controller.feedEvents, isEmpty);
+    await controller.configureCalendars({'feeds': const []});
+    expect(await storage.readText('_system/settings/calendars.json'), original);
+    expect(
+      jsonDecode(
+        await storage.readText('_system/settings/calendars.local.json'),
+      )['feeds'],
+      isEmpty,
+    );
+    await storage.delete('_system/settings/calendars.local.json');
     await controller.refreshCalendarFeeds(force: true);
     expect(controller.feedEvents.map((e) => e.title), ['Class G1']);
 

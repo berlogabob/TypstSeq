@@ -1207,3 +1207,17 @@ def test_decode_nonempty_retries_via_ffmpeg_then_fails(monkeypatch, tmp_path):
     assert calls[0] == "a.aac" and calls[1].endswith(".wav")
     with pytest.raises(ValueError, match="0 seconds"):
         worker.decode_nonempty("a.aac", lambda path, sampling_rate: empty)
+
+
+@pytest.mark.parametrize("name", ["ai.json", "processing.json"])
+def test_settings_path_prefers_whole_local_file(tmp_path, name):
+    shared = tmp_path / name
+    local = shared.with_suffix(".local.json")
+    assert worker._settings_path_for(shared) == shared
+    shared.write_text('{"shared": true, "other": 7}')
+    local.write_text('{"local": true}')
+    assert worker._read_json(worker._settings_path_for(shared)) == {"local": True}
+    local.write_text('{bad')
+    assert worker._read_json(worker._settings_path_for(shared)) == {}
+    local.unlink()
+    assert worker._read_json(worker._settings_path_for(shared)) == {"shared": True, "other": 7}

@@ -316,10 +316,15 @@ def _read_json(path):
         return {}
 
 
+def _settings_path_for(shared_path):
+    local_path = shared_path.with_suffix(".local.json")
+    return local_path if local_path.exists() else shared_path
+
+
 def load_ai_settings(vault):
     """Read the supported settings schema, ignoring malformed/unknown fields."""
     try:
-        value = _read_json(Path(vault) / "_system/settings/ai.json")
+        value = _read_json(_settings_path_for(Path(vault) / "_system/settings/ai.json"))
     except OSError:
         return {}
     if value.get("schema") != 1:
@@ -430,7 +435,7 @@ def _has_pending_jobs(vault):
 
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
-    audio_settings = _read_json(vault / "_system/settings/processing.json").get("audio", {})
+    audio_settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
     transcribe_enabled = audio_settings.get("transcribe", False)
     targets = audio_settings.get("translate_to", [])
     translate_enabled = audio_settings.get("translate", bool(targets))

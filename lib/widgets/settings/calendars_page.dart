@@ -4,6 +4,8 @@ import '../../calendar_feeds.dart' show isValidFeedUrl;
 import '../date_format.dart' show shortStamp;
 import '../settings_sheet.dart';
 import 'settings_page.dart';
+import 'device_only_switch.dart';
+import '../../workspace_controller.dart';
 
 class CalendarsPage extends StatefulWidget {
   const CalendarsPage({super.key, required this.settings});
@@ -27,6 +29,11 @@ class _CalendarsPageState extends State<CalendarsPage> {
   Widget build(BuildContext context) => SettingsPage(
     title: 'Calendars',
     children: [
+      if (widget.settings.storage case final storage?)
+        DeviceOnlySwitch(
+          storage: storage,
+          sharedPath: WorkspaceController.calendarsSyncPath,
+        ),
       Align(
         alignment: Alignment.centerRight,
         child: TextButton(onPressed: _done, child: const Text('Done')),

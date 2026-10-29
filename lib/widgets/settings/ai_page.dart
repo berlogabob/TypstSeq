@@ -3,6 +3,9 @@ import '../audio_processing_settings.dart';
 import '../screenshots_settings.dart';
 import '../settings_sheet.dart';
 import 'settings_page.dart';
+import 'device_only_switch.dart';
+import '../../ai/ai_settings.dart';
+import '../../audio/processing_policy.dart';
 
 class AiPage extends StatelessWidget {
   const AiPage({super.key, required this.settings});
@@ -12,6 +15,8 @@ class AiPage extends StatelessWidget {
   Widget build(BuildContext context) => SettingsPage(
     title: 'AI',
     children: [
+      if (settings.storage case final storage?)
+        DeviceOnlySwitch(storage: storage, sharedPath: aiSettingsPath),
       _row(
         context,
         'Servers',
@@ -81,6 +86,11 @@ Widget aiSectionPage(
 ) => SettingsPage(
   title: title,
   children: [
+    if (section == AiSettingsSection.audio && settings.storage != null)
+      DeviceOnlySwitch(
+        storage: settings.storage!,
+        sharedPath: processingSettingsPath,
+      ),
     AudioProcessingSettings(
       section: section,
       read: settings.audioPolicyRead!,

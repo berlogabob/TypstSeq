@@ -1,10 +1,12 @@
 import 'dart:async';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:tylog_core/image_identity.dart';
+import 'package:tylog_core/sync_paths.dart' as sync_paths;
 import 'package:tylog_core/maintenance.dart';
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
@@ -1707,6 +1709,7 @@ class _RemoteChanged implements Exception {
 }
 
 bool isSyncInternalPath(String path) =>
+    !isSyncableVaultPath(path) ||
     path.startsWith('.tylog/') ||
     path.startsWith('_index/') ||
     path.contains('.remote-conflict-') ||
@@ -1783,29 +1786,7 @@ bool isDeviceScopedVaultPath(String path) =>
     path.startsWith('_system/workers/') ||
     path.startsWith('${Vault.indexDonorsPath}/');
 
-bool isSyncableVaultPath(String path) =>
-    !path
-        .split('/')
-        .any(
-          (name) =>
-              const [
-                '.DS_Store',
-                'Thumbs.db',
-                'desktop.ini',
-                '.directory',
-              ].contains(name) ||
-              name.startsWith('._'),
-        ) &&
-    const [
-      'daily/',
-      'notes/',
-      'projects/',
-      'articles/',
-      'screenshots/',
-      'assets/',
-      'outputs/',
-      '_system/',
-    ].any((prefix) => path.startsWith(prefix));
+bool isSyncableVaultPath(String path) => sync_paths.isSyncableVaultPath(path);
 
 bool isNextcloudManagedVault(
   Directory vault, {

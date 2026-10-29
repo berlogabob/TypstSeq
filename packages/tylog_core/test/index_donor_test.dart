@@ -89,6 +89,14 @@ void main() {
     '${root.path}/${path(id)}',
   ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 31)));
 
+  test('local JSON donors are neither read nor pruned', () async {
+    await storage.writeText(path('desktop.local'), _donorJson());
+    expect(await donors.load('phone'), isNull);
+    age('desktop.local');
+    expect(await donors.pruneUnusable('phone'), 0);
+    expect(await storage.exists(path('desktop.local')), isTrue);
+  });
+
   test('publishing writes a donor a peer can read back', () async {
     await donors.publish('desktop', _index());
 

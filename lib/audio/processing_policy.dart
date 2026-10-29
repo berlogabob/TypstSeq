@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:tylog_core/storage.dart';
 
+import '../settings_path.dart';
+
 /// Languages offered for translation (ISO code -> native name).
 const kLanguageNames = {
   'ru': 'Русский',
@@ -93,12 +95,11 @@ const processNowPath = '_system/jobs/process-now.json';
 
 Future<AudioPolicy> readAudioPolicy(VaultStorage storage) async {
   try {
-    if (!await storage.existsNow(processingSettingsPath)) {
+    final path = await settingsPathFor(storage, processingSettingsPath);
+    if (!await storage.existsNow(path)) {
       return const AudioPolicy();
     }
-    final data = jsonDecode(
-      utf8.decode(await storage.readBytesNow(processingSettingsPath)),
-    );
+    final data = jsonDecode(utf8.decode(await storage.readBytesNow(path)));
     return AudioPolicy.fromJson(data is Map ? data['audio'] : null);
   } catch (_) {
     return const AudioPolicy();
@@ -107,17 +108,18 @@ Future<AudioPolicy> readAudioPolicy(VaultStorage storage) async {
 
 /// Replaces only the `audio` key so other pipelines' settings survive.
 Future<void> writeAudioPolicy(VaultStorage storage, AudioPolicy policy) async {
+  final path = await settingsPathFor(storage, processingSettingsPath);
   Map<String, Object?> all = {};
   try {
-    if (await storage.exists(processingSettingsPath)) {
-      final data = jsonDecode(await storage.readText(processingSettingsPath));
+    if (await storage.exists(path)) {
+      final data = jsonDecode(await storage.readText(path));
       if (data is Map) all = data.cast<String, Object?>();
     }
   } catch (_) {}
   all['schema'] = 1;
   all['audio'] = policy.toJson();
   await storage.createDirectory('_system/settings');
-  await storage.writeText(processingSettingsPath, jsonEncode(all));
+  await storage.writeText(path, jsonEncode(all));
 }
 
 /// "Process now": the worker sweeps once with the schedule gate forced open.

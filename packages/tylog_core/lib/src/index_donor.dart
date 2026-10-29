@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../sync_paths.dart';
+
 import 'models.dart';
 import 'storage.dart';
 import 'vault.dart';
@@ -227,6 +229,7 @@ class IndexDonorStore {
       )) {
         if (file.isDirectory ||
             !file.path.endsWith('.json') ||
+            !isSyncableVaultPath(file.path) ||
             file.path == own) {
           continue;
         }
@@ -294,6 +297,7 @@ class IndexDonorStore {
     for (final file in files) {
       if (file.isDirectory ||
           !file.path.endsWith('.json') ||
+          !isSyncableVaultPath(file.path) ||
           file.path == own) {
         continue;
       }

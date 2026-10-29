@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:tylog_core/storage.dart';
 
+import '../settings_path.dart';
+
 class AiConnection {
   const AiConnection({
     this.id = '',
@@ -311,9 +313,10 @@ const aiSettingsPath = '_system/settings/ai.json';
 
 Future<AiSettings> readAiSettings(VaultStorage storage) async {
   try {
-    if (!await storage.existsNow(aiSettingsPath)) return const AiSettings();
+    final path = await settingsPathFor(storage, aiSettingsPath);
+    if (!await storage.existsNow(path)) return const AiSettings();
     return AiSettings.fromJson(
-      jsonDecode(utf8.decode(await storage.readBytesNow(aiSettingsPath))),
+      jsonDecode(utf8.decode(await storage.readBytesNow(path))),
     );
   } catch (_) {
     return const AiSettings();
@@ -322,10 +325,11 @@ Future<AiSettings> readAiSettings(VaultStorage storage) async {
 
 /// Replaces known settings so other top-level keys and tasks survive.
 Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
+  final path = await settingsPathFor(storage, aiSettingsPath);
   Map<String, Object?> all = {};
   try {
-    if (await storage.exists(aiSettingsPath)) {
-      final data = jsonDecode(await storage.readText(aiSettingsPath));
+    if (await storage.exists(path)) {
+      final data = jsonDecode(await storage.readText(path));
       if (data is Map) all = data.cast<String, Object?>();
     }
   } catch (_) {}
@@ -361,7 +365,7 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
         ),
   };
   await storage.createDirectory('_system/settings');
-  await storage.writeText(aiSettingsPath, jsonEncode(all));
+  await storage.writeText(path, jsonEncode(all));
 }
 
 class WorkerStatus {

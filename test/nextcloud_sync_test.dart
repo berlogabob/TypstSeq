@@ -3483,6 +3483,15 @@ void main() {
   });
 
   test('sync excludes operational state and keeps durable v5 roots', () {
+    for (final path in [
+      '_system/settings/ai.local.json',
+      'notes/x.local.json',
+      '_system/settings/calendars.local.json',
+      '_system/settings/processing.local.json',
+    ]) {
+      expect(isSyncableVaultPath(path), isFalse);
+      expect(isSyncInternalPath(path), isTrue);
+    }
     expect(isSyncInternalPath('_index/index.json'), isTrue);
     expect(isSyncInternalPath('_index/search-index.json.gz'), isTrue);
     expect(isSyncInternalPath('.tylog/settings.json'), isTrue);
