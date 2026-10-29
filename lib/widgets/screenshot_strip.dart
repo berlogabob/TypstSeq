@@ -4,6 +4,9 @@ import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
 import '../controlled_editor.dart' show localTime;
+import 'package:tylog_core/enrich.dart' show autoEntitiesMarker;
+import 'package:tylog_core/tylog_core.dart' show attentionOf;
+import 'ds/app_sheet.dart';
 
 DateTime? screenshotCapturedAt(NoteRef note) =>
     DateTime.tryParse('${note.properties['captured_at'] ?? ''}')?.toLocal();
@@ -22,6 +25,43 @@ List<NoteRef> screenshotsOnDay(VaultIndex? index, String day) =>
             : first.compareTo(second);
         return order == 0 ? a.path.compareTo(b.path) : order;
       });
+
+/// Appends a user line above the generated entities block, never inside it.
+String appendAboveAutoBlock(String source, String line) {
+  final auto = source.indexOf(autoEntitiesMarker);
+  if (auto < 0) return '${source.trimRight()}\n$line\n';
+  return '${source.substring(0, auto).trimRight()}\n$line\n\n'
+      '${source.substring(auto)}';
+}
+
+List<NoteRef> incomingOnDay(VaultIndex? index, String day) {
+  final notes = (index?.notes ?? const <NoteRef>[]).where((note) {
+    if (attentionOf(note) != 'new') return false;
+    if (note.date == day) return true;
+    if (note.kind != 'audio' || note.date != null) return false;
+    final stamp = RegExp(r'^audio-(\d{8})-').firstMatch(note.id)?.group(1);
+    if (stamp == null) return false;
+    final derived =
+        '${stamp.substring(0, 4)}-${stamp.substring(4, 6)}-${stamp.substring(6, 8)}';
+    return derived == day;
+  }).toList();
+  notes.sort((a, b) {
+    if (a.kind == 'screenshot' && b.kind != 'screenshot') return -1;
+    if (a.kind != 'screenshot' && b.kind == 'screenshot') return 1;
+    if (a.kind == 'screenshot') {
+      final first = screenshotCapturedAt(a);
+      final second = screenshotCapturedAt(b);
+      final order = first == null
+          ? (second == null ? 0 : 1)
+          : second == null
+          ? -1
+          : first.compareTo(second);
+      if (order != 0) return order;
+    }
+    return a.path.compareTo(b.path);
+  });
+  return notes;
+}
 
 String? screenshotAssetPath(NoteRef note) {
   final date = note.date;
@@ -93,21 +133,29 @@ class ScreenshotStrip extends StatelessWidget {
     required this.day,
     required this.onOpenPath,
     this.imageResolver,
+    this.incoming = false,
+    this.onDecide,
   });
   final VaultIndex? index;
   final String day;
   final ValueChanged<String> onOpenPath;
   final Future<Uint8List?> Function(String)? imageResolver;
+  final bool incoming;
+  final void Function(NoteRef note, String action)? onDecide;
   @override
   Widget build(BuildContext context) {
-    final notes = screenshotsOnDay(index, day);
+    final notes = incoming
+        ? incomingOnDay(index, day)
+        : screenshotsOnDay(index, day);
     if (notes.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.all(kSpace8),
-          child: Text('Screenshots (${notes.length})'),
+          child: Text(
+            '${incoming ? 'Incoming' : 'Screenshots'} (${notes.length})',
+          ),
         ),
         SizedBox(
           height: 116,
@@ -121,14 +169,45 @@ class ScreenshotStrip extends StatelessWidget {
                   width: 112,
                   child: InkWell(
                     onTap: () => onOpenPath(note.path),
+                    onLongPress: incoming && onDecide != null
+                        ? () async {
+                            final action = await showModalBottomSheet<String>(
+                              context: context,
+                              builder: (context) => AppSheet(
+                                title: note.title,
+                                children: [
+                                  for (final (label, value) in [
+                                    ('Add to today', 'added-to-today'),
+                                    ('Schedule…', 'scheduled'),
+                                    ('Dismiss', 'dismissed'),
+                                  ])
+                                    ListTile(
+                                      title: Text(label),
+                                      onTap: () =>
+                                          Navigator.pop(context, value),
+                                    ),
+                                ],
+                              ),
+                            );
+                            if (action != null) onDecide!(note, action);
+                          }
+                        : null,
                     child: Column(
                       children: [
-                        ScreenshotThumbnail(
-                          note: note,
-                          imageResolver: imageResolver,
-                        ),
-                        if (screenshotCapturedAt(note) case final time?)
-                          Text(localTime(time)),
+                        if (note.kind == 'screenshot')
+                          ScreenshotThumbnail(
+                            note: note,
+                            imageResolver: imageResolver,
+                          ),
+                        if (note.kind == 'screenshot')
+                          if (screenshotCapturedAt(note) case final time?)
+                            Text(localTime(time)),
+                        if (note.kind != 'screenshot')
+                          Icon(
+                            note.kind == 'audio'
+                                ? Icons.mic
+                                : Icons.lightbulb_outline,
+                          ),
                         Text(
                           note.title,
                           maxLines: 1,

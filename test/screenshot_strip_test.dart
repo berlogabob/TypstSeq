@@ -21,6 +21,21 @@ NoteRef _shot(String id) => NoteRef(
   properties: const {'captured_at': '2026-10-21T09:07:00'},
 );
 
+NoteRef _note(
+  String id,
+  String kind, {
+  String? date,
+  Map<String, Object?> properties = const {},
+}) => NoteRef(
+  id: id,
+  path: '$kind/$id.typ',
+  title: id,
+  kind: kind,
+  date: date,
+  outgoingLinks: const [],
+  properties: properties,
+);
+
 VaultIndex _index(List<NoteRef> notes) => VaultIndex(
   notesByPath: {for (final n in notes) n.path: n},
   backlinksByTarget: const {},
@@ -28,6 +43,49 @@ VaultIndex _index(List<NoteRef> notes) => VaultIndex(
 );
 
 void main() {
+  test('incomingOnDay selects new notes for that day', () {
+    final screenshot = _shot('shot-aaaaaaaaaaaaaaaa');
+    final idea = _note('idea', 'idea', date: '2026-10-21');
+    final audio = _note('audio-20261021-153042', 'audio');
+    final archived = _note(
+      'old-idea',
+      'idea',
+      date: '2026-10-21',
+      properties: const {'attention': 'archived'},
+    );
+    final other = _note('other', 'idea', date: '2026-10-22');
+    expect(
+      incomingOnDay(
+        _index([idea, audio, archived, other, screenshot]),
+        '2026-10-21',
+      ),
+      [screenshot, audio, idea],
+    );
+  });
+
+  testWidgets('long press dismiss calls onDecide', (tester) async {
+    final note = _shot('shot-aaaaaaaaaaaaaaaa');
+    (NoteRef?, String?)? decision;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotStrip(
+            index: _index([note]),
+            day: '2026-10-21',
+            onOpenPath: (_) {},
+            incoming: true,
+            onDecide: (n, action) => decision = (n, action),
+          ),
+        ),
+      ),
+    );
+    await tester.longPress(find.text(note.title));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(decision, (note, 'dismissed'));
+  });
+
   testWidgets('an index update keeps thumbnails: no reread, no placeholder', (
     tester,
   ) async {
@@ -67,5 +125,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads.length, 3);
     expect(reads.values, everyElement(1));
+  });
+
+  test('appendAboveAutoBlock keeps user text out of the entities block', () {
+    expect(appendAboveAutoBlock('= Day\n- a\n', '- b'), '= Day\n- a\n- b\n');
+    expect(
+      appendAboveAutoBlock('- a\n\n// tylog:auto-entities\n#x\n', '- b'),
+      '- a\n- b\n\n// tylog:auto-entities\n#x\n',
+    );
   });
 }

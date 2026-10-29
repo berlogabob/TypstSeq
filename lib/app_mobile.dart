@@ -19,6 +19,8 @@ import 'package:typst_flutter/typst_flutter.dart';
 import 'package:tylog_audio/tylog_audio.dart'
     show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/enrich.dart';
+import 'package:tylog_core/tylog_core.dart'
+    show Decision, decisionsDir, encodeDecisions;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -112,6 +114,7 @@ export 'widgets/work_surface.dart'
 
 part 'app_mobile/desktop_update_flow.dart';
 part 'app_mobile/enrich_flow.dart';
+part 'app_mobile/incoming_flow.dart';
 part 'app_mobile/article_links_flow.dart';
 part 'app_mobile/audio_flow.dart';
 part 'app_mobile/markdown_import_flow.dart';
@@ -5683,6 +5686,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               day: isoDay(currentDaily),
               onOpenPath: _openPath,
               imageResolver: _readAsset,
+              incoming: true,
+              onDecide: (note, action) =>
+                  unawaited(_decideIncoming(note, action)),
             ),
           Expanded(child: documentContent),
         ],
