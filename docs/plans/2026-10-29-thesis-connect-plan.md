@@ -64,6 +64,16 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [ ] Label 100-200 mentions by hand (template of 40 at the scratchpad `gold-template.jsonl`)
 - [x] Log shown suggestions in `_system/enrich/shown/<device>.jsonl` (separate folder: older builds read every non-accept line in `feedback/` as a reject); `enrich_learning.py` prints shown, decided, ignored, ignore rate
 
+### P10 Incoming (inbox of external events)
+- [ ] Event log `_system/incoming/<device>.jsonl` (append-only: seen / added-to-today / scheduled / dismissed / ignored); content cache stays outside the vault
+- [ ] Incoming icon + badge; sources: OLT bookings and ideas (P6), Microsoft calendar invites, tasks, mail (P11)
+- [ ] Actions: add to today's page, add to agenda/calendar on a chosen day, dismiss; no action is still logged
+
+### P11 Microsoft 365 (Graph)
+- [ ] Account: andrey.dyakov@universidadeeuropeia.pt (OLT staff login; andre.berloga@gmail.com stays as backup)
+- [ ] Azure app registration (device-code flow, read-only: Calendars, Contacts, Tasks, Mail); tenant admin consent may be needed
+- [ ] Sync calendar, contacts (replaces import-contacts), tasks into Incoming; Copilot only if the licence has it
+
 ## Issue log
 - 2026-10-29: P30 not on adb; Nothing Phone 3 (A024, serial 000251565001005) is the test device now.
 - 2026-10-29: Windows updater hang cause unconfirmed; ask for `%TEMP%\tylog-update.log` after the next update.
