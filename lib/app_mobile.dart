@@ -36,6 +36,8 @@ import 'saved_searches.dart';
 import 'markdown_article_import.dart';
 import 'screenshots_ocr.dart';
 import 'widgets/screenshot_strip.dart';
+import 'olt/olt_client.dart';
+import 'olt/olt_cache.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
@@ -427,6 +429,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _lastSnackedSyncError;
   int _lastSnackedConflictCount = 0;
   bool _newPageInFlight = false;
+  final _oltClient = OltClient();
+  Map<String, List> _oltCache = const {};
+  Set<String> _oltDecided = <String>{};
+  DateTime? _oltLastSync;
+  bool _oltCacheLoading = false;
+
+  void _loadOltForToday() {
+    if (_oltCacheLoading) return;
+    if (_oltLastSync != null &&
+        DateTime.now().difference(_oltLastSync!) <
+            const Duration(minutes: 15)) {
+      return;
+    }
+    _oltLastSync = DateTime.now();
+    _oltCacheLoading = true;
+    unawaited(() async {
+      try {
+        final session = await _oltClient.session;
+        if (session == null) return;
+        final dir = await oltCacheDirectory();
+        final cached = await loadOltCache(dir);
+        final decided = await readDecidedOltIds(dir);
+        if (mounted) {
+          setState(() {
+            _oltCache = cached;
+            _oltDecided = decided;
+          });
+        }
+        try {
+          await syncOltCache(_oltClient, dir);
+          final updated = await loadOltCache(dir);
+          if (mounted) setState(() => _oltCache = updated);
+        } catch (_) {}
+      } catch (_) {
+      } finally {
+        _oltCacheLoading = false;
+      }
+    }());
+  }
+
+  void _markOltDecided(String id) {
+    setState(() => _oltDecided = {..._oltDecided, id});
+  }
 
   Vault? get vault => workspace.vault;
   VaultIndex? get index => workspace.index;
@@ -5115,6 +5160,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // The pending step wins so the arrows feel instant; it clears when the
     // open lands (see [_stepDay]).
     final currentDaily = _navDay ?? _dailyDateOf(current);
+    if (currentDaily != null) _loadOltForToday();
     final dayItems = currentDaily == null
         ? const <CalendarItem>[]
         : workspace.calendar
@@ -5687,6 +5733,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onOpenPath: _openPath,
               imageResolver: _readAsset,
               incoming: true,
+              external: oltIncomingOnDay(
+                _oltCache,
+                _oltDecided,
+                isoDay(currentDaily),
+              ),
               onDecide: (note, action) =>
                   unawaited(_decideIncoming(note, action)),
             ),

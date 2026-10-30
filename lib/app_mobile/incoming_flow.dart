@@ -16,6 +16,7 @@ extension _IncomingFlow on _HomeScreenState {
       if (selected == null || !mounted) return;
       targetDay = isoDay(selected);
     }
+    final external = note.path.startsWith('olt:');
     if (action == 'added-to-today' || action == 'scheduled') {
       final day = action == 'added-to-today'
           ? DateTime.now()
@@ -27,6 +28,50 @@ extension _IncomingFlow on _HomeScreenState {
         if (source.contains('ref-note(${typstString(note.id)})')) return source;
         return appendAboveAutoBlock(source, line);
       });
+    }
+    if (external && (action == 'added-to-today' || action == 'scheduled')) {
+      final props = <String, Object?>{
+        'source': 'openlabtwin',
+        'derivation': 'institutional',
+        'attention': 'acted',
+        if (note.properties['starts_at'] != null)
+          'starts_at': note.properties['starts_at'],
+        if (note.properties['ends_at'] != null)
+          'ends_at': note.properties['ends_at'],
+      };
+      final path = await workspace.createPage(
+        note.title,
+        kind: note.kind,
+        id: note.id,
+      );
+      await workspace.mutateNote(
+        path,
+        (source) => replaceNoteHeader(
+          source,
+          NoteMetadataDraft(
+            id: note.id,
+            title: note.title,
+            kind: note.kind,
+            properties: props,
+          ),
+        ),
+      );
+    }
+    if (external) {
+      final dir = await oltCacheDirectory();
+      await addDecidedOltId(dir, note.id);
+      if (mounted) _markOltDecided(note.id);
+      final row = Decision(
+        at: DateTime.now().toIso8601String(),
+        device: device,
+        item: note.id,
+        source: 'openlabtwin',
+        action: action,
+        target: action == 'scheduled' ? targetDay : null,
+      );
+      await _appendIncomingDecision(v, device, row);
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+      return;
     }
     final newAttention = action == 'dismissed' ? 'archived' : 'acted';
     await workspace.mutateNote(note.path, (source) {

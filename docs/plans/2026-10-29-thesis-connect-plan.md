@@ -100,3 +100,6 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 22:55 T11: P8 contacts import via codex; 11 tests, dedupe guards proven by tests; scratch-vault run created 2, then skipped 2 on re-run. Next: P5 (your inputs); nothing else unblocked except cluster-by-source and tags from transcripts.
 - 23:10 T12: nothing unblocked is left in order. Loop paused (cron deleted). Waiting on: P5 inputs (OLT staff email, Supabase URL + anon key, `{{ .Token }}` in the email template), your 0.20.5 release go-ahead, screenshot-enrichment decision, gold-set labels, a contacts export. Deferred without owner: cluster by source, tags/aliases from transcripts, P2P secrets sync.
 - 00:05 T13: P12 steps 1-3 done (docs, core, Incoming strip); full suite 1733 green; P30 Dismiss verified. Next: P5 OLT login.
+- 00:15 T14: STATUS running / DONE Incoming verified on P30 / NEXT OLT email-code login (codex) / BLOCKED none
+- 00:40 T15: OLT sign-in built (f29822c). University address has no OLT account ('Signups not allowed for otp'); code sent to the gmail backup. Waiting for the user to enter the code on the P30.
+- 01:00 T16: STATUS running / DONE OLT sign-in page / NEXT OLT bookings+ideas into Incoming (codex) / BLOCKED OLT code entry on P30 (gmail)

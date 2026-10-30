@@ -63,13 +63,6 @@ const settingsSearchEntries = <SettingsSearchEntry>[
     builder: _calendars,
   ),
   SettingsSearchEntry(
-    title: 'OpenLabTwin',
-    keywords: 'olt lab booking places staff account login',
-    path: 'OpenLabTwin',
-    routeName: '$kSettingsRoute/page',
-    builder: _olt,
-  ),
-  SettingsSearchEntry(
     title: 'AI',
     keywords: 'servers audio articles screenshots ocr',
     path: 'AI',
@@ -96,6 +89,13 @@ const settingsSearchEntries = <SettingsSearchEntry>[
     path: 'About',
     routeName: '$kSettingsRoute/page',
     builder: _about,
+  ),
+  SettingsSearchEntry(
+    title: 'OpenLabTwin',
+    keywords: 'olt lab booking places staff account login',
+    path: 'OpenLabTwin',
+    routeName: '$kSettingsRoute/page',
+    builder: _olt,
   ),
   SettingsSearchEntry(
     title: 'Servers',

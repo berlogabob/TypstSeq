@@ -86,6 +86,37 @@ void main() {
     expect(decision, (note, 'dismissed'));
   });
 
+  testWidgets('external booking renders and tap does not open a vault path', (
+    tester,
+  ) async {
+    var opened = false;
+    final booking = NoteRef(
+      id: 'olt-activity-4',
+      path: 'olt:activities/4',
+      title: 'Lab booking',
+      kind: 'booking',
+      outgoingLinks: const [],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotStrip(
+            index: _index(const []),
+            day: '2026-10-21',
+            onOpenPath: (_) => opened = true,
+            incoming: true,
+            external: [booking],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Lab booking'), findsOneWidget);
+    expect(find.byIcon(Icons.event_available), findsOneWidget);
+    await tester.tap(find.text('Lab booking'));
+    await tester.pumpAndSettle();
+    expect(opened, isFalse);
+  });
+
   testWidgets('an index update keeps thumbnails: no reread, no placeholder', (
     tester,
   ) async {

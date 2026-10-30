@@ -135,6 +135,7 @@ class ScreenshotStrip extends StatelessWidget {
     this.imageResolver,
     this.incoming = false,
     this.onDecide,
+    this.external = const [],
   });
   final VaultIndex? index;
   final String day;
@@ -142,10 +143,11 @@ class ScreenshotStrip extends StatelessWidget {
   final Future<Uint8List?> Function(String)? imageResolver;
   final bool incoming;
   final void Function(NoteRef note, String action)? onDecide;
+  final List<NoteRef> external;
   @override
   Widget build(BuildContext context) {
     final notes = incoming
-        ? incomingOnDay(index, day)
+        ? [...incomingOnDay(index, day), ...external]
         : screenshotsOnDay(index, day);
     if (notes.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -168,7 +170,36 @@ class ScreenshotStrip extends StatelessWidget {
                   key: ValueKey(note.path),
                   width: 112,
                   child: InkWell(
-                    onTap: () => onOpenPath(note.path),
+                    onTap: () {
+                      if (note.path.startsWith('olt:')) {
+                        showModalBottomSheet<void>(
+                          context: context,
+                          builder: (context) => AppSheet(
+                            title: note.title,
+                            children: [
+                              if (note.properties['starts_at'] != null)
+                                ListTile(
+                                  title: Text(
+                                    '${localTime(DateTime.parse('${note.properties['starts_at']}').toLocal())}${note.properties['ends_at'] == null ? '' : ' – ${localTime(DateTime.parse('${note.properties['ends_at']}').toLocal())}'}',
+                                  ),
+                                ),
+                              if ('${note.properties['places'] ?? ''}'
+                                  .isNotEmpty)
+                                ListTile(
+                                  title: Text('${note.properties['places']}'),
+                                ),
+                              if ('${note.properties['summary'] ?? ''}'
+                                  .isNotEmpty)
+                                ListTile(
+                                  title: Text('${note.properties['summary']}'),
+                                ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        onOpenPath(note.path);
+                      }
+                    },
                     onLongPress: incoming && onDecide != null
                         ? () async {
                             final action = await showModalBottomSheet<String>(
@@ -204,7 +235,9 @@ class ScreenshotStrip extends StatelessWidget {
                             Text(localTime(time)),
                         if (note.kind != 'screenshot')
                           Icon(
-                            note.kind == 'audio'
+                            note.kind == 'booking'
+                                ? Icons.event_available
+                                : note.kind == 'audio'
                                 ? Icons.mic
                                 : Icons.lightbulb_outline,
                           ),
