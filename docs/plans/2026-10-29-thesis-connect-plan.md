@@ -107,3 +107,5 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 01:45 T18: STATUS running / DONE OLT Incoming slice / NEXT thesis metrics script (pi on Studio) / BLOCKED OLT sign-in on P30
 - 02:00 T19: decision_metrics.py (pi, 2 fixes: real header regex, test index); real vault: screenshot 2467 new, ignore 100% (no decisions older than 7 days yet). Audio notes have no date: not counted yet.
 - 02:15 T20: STATUS running / DONE metrics script / NEXT OLT approved bookings on the agenda + CalendarItem.source (codex) / BLOCKED OLT sign-in on P30
+- 02:35 T21: OLT approved bookings on the agenda, CalendarItem.source (codex + review: showSnack, rrule shortcut noted); full suite 1741 green. Device check waits on OLT sign-in.
+- 02:45 T22: STATUS blocked / DONE P12 steps 1-4 + OLT read side / NEXT device check of OLT slices, Microsoft 365 / BLOCKED OLT sign-in on P30; Azure app registration for Microsoft. Cron paused to save tokens.
