@@ -12,9 +12,7 @@ class OltPage extends StatefulWidget {
 
 class _OltPageState extends State<OltPage> {
   final _client = OltClient();
-  final _email = TextEditingController(
-    text: 'andrey.dyakov@universidadeeuropeia.pt',
-  );
+  final _email = TextEditingController();
   final _code = TextEditingController();
   String? _message;
   int? _places;
