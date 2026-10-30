@@ -233,6 +233,7 @@ Rules:
 No commentary."""
 
 
+MAX_REPLY_TOKENS = 4000  # a long day lists ~400 tokens of mentions
 MAX_CHARS = 30000  # ~12k tokens of Cyrillic: fits the 64k context with room to answer
 
 
@@ -308,7 +309,12 @@ def make_chat(task, connections):
                                      timeout=900 if route.endswith("/load") else 60) as response:
                             return json.load(response)
                     tw.ensure_model(base, key, model, request)
-                payload = json.dumps({"model": model, "temperature": 0, "messages": messages}).encode("utf-8")
+                # Thinking off + JSON-constrained: ~3 s per day instead of ~80 s on
+                # Ornith 35b (2026-10-30 bench, 20 days); the cap stops runaway replies.
+                payload = json.dumps({"model": model, "temperature": 0, "messages": messages,
+                                      "max_tokens": MAX_REPLY_TOKENS,
+                                      "chat_template_kwargs": {"enable_thinking": False},
+                                      "response_format": {"type": "json_object"}}).encode("utf-8")
                 with urlopen(Request(base.rstrip("/") + "/chat/completions", data=payload,
                                      headers=headers), timeout=900) as response:  # long days on a 35b model
                     reply = json.load(response)["choices"][0]["message"]["content"]

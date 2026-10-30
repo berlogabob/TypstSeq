@@ -289,3 +289,26 @@ def test_body_lines_screenshot_keeps_description_and_text_not_image():
     text = ('#show: tylog.note.with(\n  kind: "screenshot",\n)\n\n'
             '#image("/assets/s.webp", width: 100%)\n\n== Description\n\nA map.\n\n== Text\n\nCafé Dias\n')
     assert [line for _, line in enrich.body_lines(text)] == ["A map.", "Café Dias"]
+
+
+def test_chat_asks_for_short_json_without_thinking(monkeypatch):
+    # Thinking on made a day take ~80 s instead of ~3 s on Ornith 35b.
+    sent = {}
+
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode()
+
+    def urlopen(request, timeout):
+        sent.update(json.loads(request.data))
+        return Reply()
+
+    monkeypatch.setattr(enrich, "urlopen", urlopen)
+    monkeypatch.setattr(enrich.tw, "connection_credentials", lambda connection: ("http://studio/v1", ""))
+    monkeypatch.setattr(enrich.tw, "probe_connection", lambda base, key: {"loaded": ["m"]})
+    connection = {"id": "studio", "url": "http://studio/v1"}
+    enrich.make_chat({"connection": "studio", "model": "m"}, [connection])([])
+    assert sent["chat_template_kwargs"] == {"enable_thinking": False}
+    assert sent["response_format"] == {"type": "json_object"}
+    assert sent["max_tokens"] == enrich.MAX_REPLY_TOKENS
