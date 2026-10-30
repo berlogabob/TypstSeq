@@ -6,6 +6,48 @@ import 'package:path_provider/path_provider.dart';
 import '../models.dart';
 import 'olt_client.dart';
 
+// shortcut: first occurrence only (rrule/exdates ignored), expand when
+// recurring bookings matter.
+List<CalendarItem> oltCalendarOnDay(Map<String, List> cache, String day) {
+  DateTime? localDate(Object? value) => DateTime.tryParse('$value')?.toLocal();
+  String time(DateTime? value) => value == null
+      ? ''
+      : '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  String localDay(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  final places = {
+    for (final row in cache['places'] ?? const [])
+      '${row['id']}': '${row['name']}',
+  };
+  final result = <CalendarItem>[];
+  for (final row in cache['activities'] ?? const []) {
+    final start = localDate(row['starts_at']);
+    if (row['status'] != 'approved' ||
+        start == null ||
+        localDay(start) != day) {
+      continue;
+    }
+    final names = (row['place_ids'] as List? ?? const [])
+        .map((value) => places['$value'])
+        .whereType<String>()
+        .join(', ');
+    result.add(
+      CalendarItem(
+        date: day,
+        start: time(start),
+        end: time(localDate(row['ends_at'])),
+        detail: names.isNotEmpty ? names : row['location_text']?.toString(),
+        kind: CalendarItemKind.dateRef,
+        title: '${row['title'] ?? ''}',
+        notePath: 'olt:activities/${row['id']}',
+        source: 'openlabtwin',
+      ),
+    );
+  }
+  return result;
+}
+
 Future<Directory> oltCacheDirectory() async =>
     Directory('${(await getApplicationSupportDirectory()).path}/olt');
 

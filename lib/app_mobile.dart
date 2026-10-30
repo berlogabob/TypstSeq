@@ -5760,17 +5760,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     start: event.properties['start']?.toString(),
                     end: event.properties['end']?.toString(),
                     detail: event.properties['rooms']?.toString(),
+                    source: 'ics',
                     kind: CalendarItemKind.dateRef,
                     title: event.title,
                     notePath: event.path,
                   ),
+                ...oltCalendarOnDay(_oltCache, isoDay(currentDaily)),
               ],
               tasks: index?.tasks ?? const [],
               notes: index?.notesByPath ?? const {},
               onAllTasks: () => unawaited(_selectDestination(2, libraryTab: 3)),
               recent: _recentNotes(),
               editor: documentContent,
-              onOpenPath: _openPath,
+              onOpenPath: (path) {
+                if (path.startsWith('olt:')) {
+                  final item = oltCalendarOnDay(
+                    _oltCache,
+                    isoDay(currentDaily),
+                  ).where((event) => event.notePath == path).firstOrNull;
+                  showSnack(
+                    context,
+                    item == null
+                        ? path
+                        : '${item.title} · ${item.start ?? ''} · ${item.detail ?? ''}',
+                  );
+                  return;
+                }
+                unawaited(_openPath(path));
+              },
               onSetStatus: _setTaskStatus,
               onSetField: _setTaskField,
               onReadPath: _readPath,

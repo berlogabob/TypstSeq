@@ -345,6 +345,7 @@ class CalendarItem {
     this.start,
     this.end,
     this.detail,
+    this.source,
     required this.kind,
     required this.title,
     required this.notePath,
@@ -358,6 +359,7 @@ class CalendarItem {
 
   /// A short second line, e.g. the room.
   final String? detail;
+  final String? source;
   final CalendarItemKind kind;
   final String title;
   final String notePath;

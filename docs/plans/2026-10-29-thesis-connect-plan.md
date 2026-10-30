@@ -103,3 +103,7 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 00:15 T14: STATUS running / DONE Incoming verified on P30 / NEXT OLT email-code login (codex) / BLOCKED none
 - 00:40 T15: OLT sign-in built (f29822c). University address has no OLT account ('Signups not allowed for otp'); code sent to the gmail backup. Waiting for the user to enter the code on the P30.
 - 01:00 T16: STATUS running / DONE OLT sign-in page / NEXT OLT bookings+ideas into Incoming (codex) / BLOCKED OLT code entry on P30 (gmail)
+- 01:25 T17: OLT bookings/ideas into Incoming (e8ef475); full suite 1740 green; installed on P30. Device check needs the OLT sign-in (code in gmail).
+- 01:45 T18: STATUS running / DONE OLT Incoming slice / NEXT thesis metrics script (pi on Studio) / BLOCKED OLT sign-in on P30
+- 02:00 T19: decision_metrics.py (pi, 2 fixes: real header regex, test index); real vault: screenshot 2467 new, ignore 100% (no decisions older than 7 days yet). Audio notes have no date: not counted yet.
+- 02:15 T20: STATUS running / DONE metrics script / NEXT OLT approved bookings on the agenda + CalendarItem.source (codex) / BLOCKED OLT sign-in on P30
