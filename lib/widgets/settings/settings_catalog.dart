@@ -7,6 +7,7 @@ import 'ai_page.dart';
 import 'calendars_page.dart';
 import 'general_page.dart';
 import 'maintenance_page.dart';
+import 'olt_page.dart';
 import 'sync_storage_page.dart';
 
 typedef SettingsPageBuilder =
@@ -60,6 +61,13 @@ const settingsSearchEntries = <SettingsSearchEntry>[
     path: 'Calendars',
     routeName: '$kSettingsRoute/page',
     builder: _calendars,
+  ),
+  SettingsSearchEntry(
+    title: 'OpenLabTwin',
+    keywords: 'olt lab booking places staff account login',
+    path: 'OpenLabTwin',
+    routeName: '$kSettingsRoute/page',
+    builder: _olt,
   ),
   SettingsSearchEntry(
     title: 'AI',
@@ -124,6 +132,11 @@ Widget _calendars(
   ValueChanged<String>? onPaperChanged,
   ValueChanged<ThemeMode>? onThemeChanged,
 }) => CalendarsPage(settings: s);
+Widget _olt(
+  SettingsSheet s, {
+  ValueChanged<String>? onPaperChanged,
+  ValueChanged<ThemeMode>? onThemeChanged,
+}) => const OltPage();
 Widget _ai(
   SettingsSheet s, {
   ValueChanged<String>? onPaperChanged,
