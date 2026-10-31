@@ -262,7 +262,7 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T29 ru after T28: failed 10 -> 5 (1.0%), mean score 4.06 (target met); en 0 failed, 3.93
 - [x] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process; toggle read-only (analyze clean, 1755 tests)
 - [x] T27 P30 release build on real vault: parallel original/ru, Summary + Scenes in ru, RU/EN chips work
-- [ ] T30 '+ PT' add-translation chip shown for the source language (pt); hide it for the transcript language
+- [x] T30 no add-translation chip for the source language (1756 tests)
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
