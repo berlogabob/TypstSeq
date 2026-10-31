@@ -221,7 +221,7 @@ def test_markers_are_discovered_from_line_starts(tmp_path):
         {"id": "fx", "title": "fixit", "kind": "note", "aliases": []}]}))
     recent = enrich.datetime.now().date() - enrich.timedelta(days=30)  # inside the window
     day = vault / f"daily/{recent:%Y/%m}/{recent.isoformat()}.typ"
-    day.parent.mkdir(parents=True)
+    day.parent.mkdir(parents=True, exist_ok=True)
     day.write_text("\n".join(
         [f'\\- 0{i}:00 #tylog.ref-note("Чай")[Чай] сенча {i}' for i in range(5)]
         + ['#tylog.ref-note("fx")[fixit] crash', 'text with #tylog.ref-note("fx")[fixit] inline']),
