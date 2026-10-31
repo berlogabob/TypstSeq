@@ -246,6 +246,14 @@ def ensure_model(base, key, prefer, request):
         raise ValueError(f"Could not load preferred translation model {prefer}: {error}") from error
 
 
+_REPEAT = re.compile(r"(\S.{0,60}?[.!?…])(?:\s+\1){2,}")
+
+
+def collapse_repeats(text):
+    """A phrase repeated three or more times in a row is kept once, then '…'."""
+    return _REPEAT.sub(r"\1 …", text)
+
+
 def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     translate.last_model = None
     settings = settings or {}
@@ -265,7 +273,7 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         url = route if route.startswith(("http://", "https://")) else base.rstrip("/") + route
         with urlopen(Request(url, data=data, headers=headers),
-                     timeout=900 if route.endswith("/load") else 120) as response:
+                     timeout=900 if route.endswith("/load") else 300) as response:
             return json.load(response)
 
     model = os.environ.get("TYLOG_LLM_MODEL") or task.get("model")
@@ -274,6 +282,9 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
                              ("ollama/ornith-1.5:9b" if task.get("quality") == "fast"
                               else "ollama/ornith-1.5:35b"),
                              request)
+    # Whisper loops on music and applause ("É isso aí! É isso aí! ..."); the
+    # model copies the loop until the reply cap and the batch fails.
+    texts = [collapse_repeats(text) for text in texts]
     translated = []
     # Thinking off and 10 lines per request: with reasoning on, 40 theatre
     # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
@@ -282,7 +293,7 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
         reply = request("/chat/completions", {
             "model": model,
             "temperature": 0,
-            "max_tokens": 8000,
+            "max_tokens": 3000,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": [
                 {"role": "system", "content": (

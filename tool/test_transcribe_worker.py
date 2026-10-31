@@ -524,7 +524,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
 
     def fake(request, timeout):
         assert request.get_header("Authorization") == "Bearer test-key"
-        assert timeout == 120
+        assert timeout == 300
         if request.full_url.endswith("/models"):
             assert request.get_method() == "GET"
             result = {"data": [{"id": "unloaded", "loaded": False},
@@ -1337,3 +1337,8 @@ def test_settings_path_prefers_whole_local_file(tmp_path, name):
     assert worker._read_json(worker._settings_path_for(shared)) == {}
     local.unlink()
     assert worker._read_json(worker._settings_path_for(shared)) == {"shared": True, "other": 7}
+
+
+def test_collapse_repeats_keeps_one_copy():
+    assert worker.collapse_repeats("Olá. É isso aí! É isso aí! É isso aí! É isso aí! Fim.") == "Olá. É isso aí! … Fim."
+    assert worker.collapse_repeats("Sim! Sim! Não.") == "Sim! Sim! Não."
