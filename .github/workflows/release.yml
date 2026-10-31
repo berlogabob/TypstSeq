@@ -178,7 +178,7 @@ jobs:
             dist/TyLog-windows.exe.sha256
 
   apple:
-    runs-on: macos-14
+    runs-on: macos-15
     needs: test
     steps:
       - uses: actions/checkout@v4
