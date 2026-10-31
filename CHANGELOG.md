@@ -3,6 +3,18 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.7+165
+
+### Changed
+
+- Audio notes: Summary, Scenes and References exist in Portuguese, Russian
+  and English and follow the language you pick on the note screen; picking
+  the original language (PT) shows the original text alone.
+- Scenes and References fold into one line each, so the transcript starts
+  right under the header; the side-by-side switch is a chip aligned with the
+  language chips. (In 0.20.6 the switch and language chips seemed to do
+  nothing because their effect was below the scene list.)
+
 ## 0.20.6+164
 
 ### New

@@ -270,7 +270,7 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T34 (1761 tests) user on 0.20.6: split toggle and RU/EN/PT seem to do nothing, 'transcribe doesn't work': controls work, but Summary + 25 Scenes + References fill the screen above the transcript, so the change is off-screen. Collapse Scenes/References to one line with count (Summary already collapsed); transcript starts under the header. Split toggle misaligned (32 px filled circle vs chips) -> same chip shape/height
 - [x] T35 (602c628, 290 tests) worker: Summary/Scenes/References in every language (source + ru/en/pt targets) as '== Summary <lang>' etc.; legacy unsuffixed sections removed on re-run
 - [x] T36 (f675cfe, 1765 tests) app: sections follow the selected language chip; source chip (PT) selectable = original only + its sections; legacy unsuffixed sections as fallback
-- [ ] Release 0.20.7 with T34-T36 after P30 check (needs user go)
+- [ ] Release 0.20.7 with T34-T36: P30 checked 23:52 (EN/PT switch summary + text, sections collapsed, toggle aligned); version + changelog committed; waiting for user go
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
