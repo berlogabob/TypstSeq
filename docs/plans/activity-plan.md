@@ -245,13 +245,22 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T9 theatre re-run: 3 min transcript + ~2 min per translation; loops 40->0, mid-cut 51->19, ru untranslated 66->13, en 0; readable sentences; agent reloaded
 - [x] T10 translation target-script check + retry + marker (443cefa)
 - [x] T11 doubtful from disagreement (348412e, 226 tests): threshold 0.01 = 13% chunks, i.e. only zero-overlap chunks; name errors sit in agreeing chunks -> T12 arbitrates every chunk with agreement < 0.95
-- [ ] T13 context pass: == Context in, Summary/Scenes/References/glossary out
-- [ ] T12 arbitration of doubtful lines with glossary (no words absent from both hypotheses)
+- [x] T13 context pass (04558db, 249 tests); shared llm_chat
+- [x] T12 arbitration (cfb3313, 253 tests): 0.95 -> 142/151 chunks get an LLM call
+- [x] T15 ensure_model reloads Ornith at 64k when loaded at 8k; empty reply -> clear error (c7dc4c8, 256 tests)
+- [x] T15b (3e74906, 257 tests) T15 checked the wrong field: Studio max_context_length stays 8192 even at 64k (context_length shows the loaded value, but native on default loads) -> worker looped reloading. Fix: drop the field check; empty reply -> reload at 64k with force_cancel_active, retry once
+- [x] T14 theatre re-run with context + arbitration: 3 min; 30 chunks fixed well (aristocratas, Barreiro, Hermano José), Summary/Scenes(23)/References(9) written
+- [ ] T16 context sections in the first target language (ru), not the transcript's; glossary gives corrected spelling of misheard names (heard -> spelling), arbitration may use spelling
+- [ ] T17 (?) only when arbitration says doubtful AND engine agreement < 0.3 (59 doubtful chunks -> 12; now 30% of lines carry (?), most read fine)
+- [ ] T18 re-run theatre (reset context + arbitration stages), metrics, then Phase 4 plan
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
 - T6: pinned-span rule not implemented -> T6b; legacy lines survive merge as user lines -> T7 clears them after backup
 - T7: translate toggle in lib/widgets/audio_processing_settings.dart is now a no-op (ru/en/pt invariant) -> Phase 5 app: remove or relabel it
+- T14 run 1: context pass failed, 'not JSON' = empty reply; Studio had ornith-1.5:35b at max_context_length 8192 -> T15
+- T14: references partly invented by the local model (Paulo as 'Hades/Padre'); marked (AI); user Context or a cloud model is the lever (user: tune local now)
+- T13: translations may run before the context pass (sweep queues them once lang is set) -> Phase 4 translation must wait for context
 - T7: legacy Translation sections not cleared; translation path reads note too early -> T7b/T8b
 
 ## Open items audit (2026-10-31, whole file re-read)
