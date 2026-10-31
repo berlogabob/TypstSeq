@@ -556,9 +556,9 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
             assert "Translate faithfully into ru" in prompt
             assert "Segments that are already in the target language must be returned unchanged" in prompt
             assert "The source may mix these languages: " + ", ".join(source_langs or ["en"]) in prompt
-            batch = json.loads(payload["messages"][1]["content"])
+            batch = window_of(payload["messages"])
             batches.append(batch)
-            reply = json.dumps(["ру " + text for text in batch])
+            reply = json.dumps({key: "ру " + text for key, text in batch.items()})
             if fenced:
                 reply = "```json\n" + reply + "\n```"
             result = {"choices": [{"message": {"content": reply}}]}
@@ -567,7 +567,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
     monkeypatch.setattr(worker, "urlopen", fake)
     texts = [f"segment {index}" for index in range(81)]
     assert worker.translate(texts, "en", "ru", source_langs) == ["ру " + text for text in texts]
-    assert [len(batch) for batch in batches] == [10] * 8 + [1]
+    assert [len(batch) for batch in batches] == [40, 40, 1]
 
 
 @pytest.mark.parametrize("reply", ['[]', '{}', '[1]', 'not JSON'])
@@ -595,7 +595,7 @@ def test_translation_backend_studio_fallback(tmp_path, monkeypatch):
         assert request.get_header("Authorization") == "Bearer studio-key"
         result = ({"data": [{"id": "Ornith", "loaded": True}]}
                   if request.full_url.endswith("/models") else
-                  {"choices": [{"message": {"content": '["Привет"]'}}]})
+                  {"choices": [{"message": {"content": '{"0": "Привет"}'}}]})
         return BytesIO(json.dumps(result).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
@@ -644,7 +644,7 @@ def test_translation_loads_preferred_model(monkeypatch):
         else:
             assert request.full_url == "https://studio.example/v1/chat/completions"
             assert json.loads(request.data)["model"] == "custom-translator"
-            result = {"choices": [{"message": {"content": '["Привет"]'}}]}
+            result = {"choices": [{"message": {"content": '{"0": "Привет"}'}}]}
         return BytesIO(json.dumps(result).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
@@ -782,7 +782,7 @@ def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
     def fake(request, timeout):
         assert request.full_url == "https://studio.example/v1/chat/completions"
         assert json.loads(request.data)["model"] == "exact/custom-model"
-        return BytesIO(json.dumps({"choices": [{"message": {"content": '["Привет"]'}}]}).encode())
+        return BytesIO(json.dumps({"choices": [{"message": {"content": '{"0": "Привет"}'}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
     worker.run_once(tmp_path)
@@ -1183,6 +1183,52 @@ def test_finished_transcript_requeues_done_translations(sweep_vault):
     assert json.loads(job_path(vault, "translations", audio + "\nen").read_text())["status"] == "queued"
 
 
+def write_v2_transcript(vault, audio, context=None):
+    """A v2 transcript done in pt, with its sidecar: the transcript stage done, and the context pass when given."""
+    write_job(vault, "transcripts", audio, status="done", audio=audio, lang="pt", langs=["pt"])
+    data = {"lines": [], "stages": {"transcript": "done"}}
+    if context is not None:
+        data["context"] = context
+    audio_v2.save_sidecar(audio_v2.sidecar_path(vault, audio), data)
+
+
+def test_translation_waits_for_context(sweep_vault, monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    audio, _ = add_audio_note(vault, body="\n== Transcript\n\n- 00:00 Olá tudo bem.\n")
+    write_v2_transcript(vault, audio)  # the transcript is written; its context pass has not run
+    assert worker.sweep(vault, NOW, {}) == 0
+    assert not list((vault / "_system/jobs/translations").glob("*.json"))
+    write_v2_transcript(vault, audio, context=CONTEXT_JSON)
+    assert worker.sweep(vault, NOW, {}) == 2  # ru and en
+
+
+def test_translation_does_not_wait_without_llm_endpoint(sweep_vault):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    audio, _ = add_audio_note(vault, body="\n== Transcript\n\n- 00:00 Olá tudo bem.\n")
+    write_v2_transcript(vault, audio)
+    assert worker.sweep(vault, NOW, {}) == 2
+
+
+def test_translation_job_passes_context_to_translate(tmp_path):
+    write_job(tmp_path, "translations", "audio\nru", status="queued", audio="audio", note="note.typ",
+              source_lang="pt", target="ru")
+    (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Olá tudo bem.\n")
+    audio_v2.save_sidecar(audio_v2.sidecar_path(tmp_path, "audio"),
+                          {"lines": [], "stages": {"transcript": "done"}, "context": CONTEXT_JSON})
+    calls = []
+
+    def fake(texts, source_lang, target, source_langs, context=None):
+        calls.append(context)
+        return ["Привет, как дела."]
+
+    worker.run_once(tmp_path, translate=fake, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert json.loads(job_path(tmp_path, "translations", "audio\nru").read_text())["status"] == "done"
+    assert calls == [{"summary": "Resumo da peça.", "glossary": CONTEXT_JSON["glossary"]}]
+
+
 def write_ai(vault, **fields):
     path = vault / "_system/settings/ai.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1264,7 +1310,7 @@ def test_translation_ai_precedence(tmp_path, monkeypatch, quality, explicit, env
         assert request.full_url == "https://configured/v1/chat/completions"
         assert request.get_header("Authorization") == "Bearer local-key"
         assert json.loads(request.data)["model"] == expected
-        return BytesIO('{"choices": [{"message": {"content": "[\\"переведено\\"]"}}]}'.encode())
+        return BytesIO('{"choices": [{"message": {"content": "{\\"0\\": \\"переведено\\"}"}}]}'.encode())
 
     monkeypatch.setattr(worker, "ensure_model", ensure)
     monkeypatch.setattr(worker, "urlopen", http)
@@ -1348,7 +1394,7 @@ def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypa
         if failed and request.full_url.endswith("/chat/completions"):
             raise OSError("Backend rejected key " + secret)
         result = ({"data": [{"id": "translator"}]} if request.full_url.endswith("/models") else
-                  {"choices": [{"message": {"content": '["переведено"]'}}]})
+                  {"choices": [{"message": {"content": '{"0": "переведено"}'}}]})
         return BytesIO(json.dumps(result).encode())
 
     monkeypatch.setattr(worker, "urlopen", http)
@@ -1443,7 +1489,7 @@ def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
 
     monkeypatch.setattr(worker, "ensure_model", ensure)
     monkeypatch.setattr(worker, "urlopen", lambda request, timeout:
-                        BytesIO('{"choices": [{"message": {"content": "[\\"переведено\\"]"}}]}'.encode()))
+                        BytesIO('{"choices": [{"message": {"content": "{\\"0\\": \\"переведено\\"}"}}]}'.encode()))
     worker.run_once(tmp_path, probe=lambda base, key: {"reachable": True, "loaded": []})
     job = json.loads(path.read_text())
     assert job["status"] == "done"
@@ -1517,11 +1563,11 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
 
     def fake(request, timeout):
-        batch = json.loads(json.loads(request.data)["messages"][1]["content"])
-        if len(batch) > 1 or batch == ["loop"]:
-            reply = '["unterminated'
+        batch = window_of(json.loads(request.data)["messages"])
+        if len(batch) > 1 or "loop" in batch.values():
+            reply = '{"0": "unterminated'
         else:
-            reply = json.dumps(["ру " + batch[0]])
+            reply = json.dumps({key: "ру " + text for key, text in batch.items()})
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
@@ -1546,11 +1592,11 @@ def test_failed_line_is_marked_not_source(monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
 
     def fake(request, timeout):
-        batch = json.loads(json.loads(request.data)["messages"][1]["content"])
-        if "loop" in batch:
-            reply = '["unterminated'
+        batch = window_of(json.loads(request.data)["messages"])
+        if "loop" in batch.values():
+            reply = '{"0": "unterminated'
         else:
-            reply = json.dumps(["ру " + text for text in batch])
+            reply = json.dumps({key: "ру " + text for key, text in batch.items()})
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
@@ -1581,7 +1627,7 @@ def is_line_prompt(messages):
 
 def test_portuguese_reply_for_ru_is_retried(monkeypatch):
     def reply(messages):
-        return "Привет, мир" if is_line_prompt(messages) else json.dumps(["Olá, mundo"])
+        return "Привет, мир" if is_line_prompt(messages) else json.dumps({"0": "Olá, mundo"})
 
     sent = chat_fake(monkeypatch, reply)
     assert worker.translate(["Hello, world"], "en", "ru") == ["Привет, мир"]
@@ -1596,13 +1642,58 @@ def test_retry_failure_marks_line(monkeypatch):
     def reply(messages):
         if is_line_prompt(messages):
             return "Olá de novo"  # still Portuguese when asked alone
-        batch = json.loads(messages[1]["content"])
-        return json.dumps(["Olá, mundo" if text == "Hello, world" else "Доброе утро всем" for text in batch])
+        batch = window_of(messages)
+        return json.dumps({key: "Olá, mundo" if text == "Hello, world" else "Доброе утро всем"
+                           for key, text in batch.items()})
 
     sent = chat_fake(monkeypatch, reply)
     assert worker.translate(["Hello, world", "Good morning all"], "en", "ru") == [
         worker.FAILED_TRANSLATION, "Доброе утро всем"]
     assert [is_line_prompt(messages) for messages in sent] == [False, True]
+
+
+def window_of(messages):
+    """The JSON {id: text} window a translation request carries: the last line of its user message."""
+    return json.loads(messages[1]["content"].splitlines()[-1])
+
+
+def test_window_prompt_contains_summary_glossary_and_previous_pairs(monkeypatch):
+    texts = [f"line {index}" for index in range(45)]
+    context = {"summary": "Monólogo de Medeia.", "glossary": [{"heard": "Medeia", "spelling": "Medeia", "ru": "Медея"}]}
+    sent = chat_fake(monkeypatch, lambda messages: json.dumps({key: f"Строка {key}" for key in window_of(messages)}))
+    assert worker.translate(texts, "pt", "ru", ["pt"], context=context) == [f"Строка {i}" for i in range(45)]
+    first, second = sent
+    assert "Monólogo de Medeia." in first[0]["content"]
+    assert "Medeia -> Medeia -> Медея" in first[0]["content"]
+    assert list(window_of(first)) == [str(i) for i in range(40)]
+    assert "Monólogo de Medeia." in second[0]["content"]
+    assert list(window_of(second)) == [str(i) for i in range(40, 45)]
+    # The ten lines before the window, as source and translation, marked as context only.
+    assert '{"source": "line 30", "translation": "Строка 30"}' in second[1]["content"]
+    assert '{"source": "line 39", "translation": "Строка 39"}' in second[1]["content"]
+    assert '"line 29"' not in second[1]["content"]
+
+
+def test_reply_by_id_maps_back_to_lines(monkeypatch):
+    def reply(messages):
+        return json.dumps({key: f"Строка {key}" for key in reversed(list(window_of(messages)))})
+
+    chat_fake(monkeypatch, reply)
+    assert worker.translate(["one line", "two lines", "three more lines"], "en", "ru") == [
+        "Строка 0", "Строка 1", "Строка 2"]
+
+
+def test_missing_id_retried_alone(monkeypatch):
+    def reply(messages):
+        window = window_of(messages)
+        if len(window) == 3:
+            window.pop("1")  # the window's reply leaves line 1 out
+        return json.dumps({key: f"Строка {key}" for key in window})
+
+    sent = chat_fake(monkeypatch, reply)
+    assert worker.translate(["one line", "two lines", "three more lines"], "en", "ru") == [
+        "Строка 0", "Строка 1", "Строка 2"]
+    assert [list(window_of(messages)) for messages in sent] == [["0", "1", "2"], ["1"]]
 
 
 def test_short_identical_line_ok_for_en():

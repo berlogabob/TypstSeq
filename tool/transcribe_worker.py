@@ -26,6 +26,8 @@ PROBE_DEADLINE = 30
 MAC_FALLBACK_MIN_FREE = 4 * 1024**3
 LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever the settings say
 FAILED_TRANSLATION = "[sem tradução]"  # written for a line the model could not translate
+TRANSLATION_WINDOW = 40  # lines per translation call; each call also carries the summary and glossary
+TRANSLATION_PREVIOUS = 10  # source/translation pairs before a window, shown as context only
 LANGUAGE_NAMES = {"ru": "Russian", "en": "English", "pt": "Portuguese"}
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 # Ordered by size; a name not listed here counts as the largest.
@@ -436,33 +438,65 @@ def _context_note(request, model):
     return f" (max_context_length {context})" if context is not None else ""
 
 
-def translate(texts, source_lang, target, source_langs=None, *, settings=None):
+def _glossary_lines(glossary, target):
+    """Glossary items as "heard -> spelling", plus " -> rendering" when the context pass rendered it in `target`."""
+    lines = []
+    for item in glossary:
+        heard = item.get("heard") or item.get("term")  # sidecars from before `heard` hold `term`
+        if not heard:
+            continue
+        rendering = item.get(target)
+        lines.append(f"{heard} -> {item.get('spelling') or heard}" + (f" -> {rendering}" if rendering else ""))
+    return lines
+
+
+def _translation_system(target, source_langs, context):
+    """Translation instructions; with a context (summary and glossary from the context pass), both are added."""
+    system = (
+        f"Translate faithfully into {target}. Keep names. "
+        "Segments that are already in the target language must be returned unchanged. "
+        f"The source may mix these languages: {', '.join(source_langs)}. "
+        "No commentary. Input is a JSON object mapping line ids to source lines; return only a JSON object "
+        "with the same ids, each mapped to the translation of its line."
+    )
+    if context:
+        glossary = _glossary_lines(context.get("glossary") or [], target)
+        system += (f"\n\nSummary of the recording, in the source language: {context.get('summary') or '(none)'}"
+                   f"\n\nGlossary, heard -> spelling -> {target}:\n" + ("\n".join(glossary) or "(none)"))
+    return system
+
+
+def _window_user(texts, indices, pairs):
+    """The previous source/translation pairs (context only), then the window as JSON {id: text} on the last line."""
+    before = json.dumps([{"source": source, "translation": text} for source, text in pairs], ensure_ascii=False)
+    window = json.dumps({str(index): texts[index] for index in indices}, ensure_ascii=False)
+    return (f"Previous lines, for context only; do not translate or repeat them:\n{before if pairs else '(none)'}\n\n"
+            f"Lines to translate, JSON {{id: text}}:\n{window}")
+
+
+def translate(texts, source_lang, target, source_langs=None, *, settings=None, context=None):
+    """Translates `texts` in windows of TRANSLATION_WINDOW lines. A window's reply is a JSON object {id: translation},
+    the id being the line's index in `texts`. `context` is {"summary", "glossary"} from the transcript's context pass."""
     translate.last_model = None
     model, chat = llm_chat(settings or {})
     # Whisper loops on music and applause ("É isso aí! É isso aí! ..."); the
     # model copies the loop until the reply cap and the batch fails.
     texts = [collapse_repeats(text) for text in texts]
 
-    def ask(batch):
+    def ask(indices, pairs):
+        """{id: translation} for the lines the reply covers; a line it leaves out is absent. A reply that is not
+        a JSON object raises."""
         reply = chat([
-            {"role": "system", "content": (
-                f"Translate faithfully into {target}. Keep names. "
-                "Segments that are already in the target language must be returned unchanged. "
-                f"The source may mix these languages: {', '.join(source_langs or [source_lang])}. "
-                "No commentary. Input is a JSON array of strings; return only a JSON "
-                "array of translated strings of the same length, in the same order."
-            )},
-            {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
+            {"role": "system", "content": _translation_system(target, source_langs or [source_lang], context)},
+            {"role": "user", "content": _window_user(texts, indices, pairs)},
         ])
         if reply.startswith("```"):
             reply = re.sub(r"^```[^\n]*\n", "", reply)
             reply = re.sub(r"\s*```$", "", reply)
         result = json.loads(reply)
-        if not isinstance(result, list) or len(result) != len(batch) or not all(
-            isinstance(text, str) for text in result
-        ):
-            raise ValueError("Translation reply must be a JSON array of strings with the same length")
-        return result
+        if not isinstance(result, dict):
+            raise ValueError("Translation reply must be a JSON object keyed by line id")
+        return {key: value for key, value in result.items() if isinstance(value, str)}
 
     def settle(text, reply):
         """The reply when it is in the target language; else one plain retry of the line alone; None if that fails too."""
@@ -484,37 +518,46 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
         last_error = ValueError(f"Reply is not a translation into {target}")
         return None
 
-    # A bad batch (broken JSON from a looping line) is retried line by line. A reply in
-    # the wrong language (Portuguese for ru, the source copied for en/pt) gets one plain
-    # retry. A line that still fails is marked FAILED_TRANSLATION, never copied from
-    # the source. Only a job where nothing translates fails, so one noisy minute cannot
-    # sink a 2-hour recording.
-    results = []
-    for start in range(0, len(texts), 10):
-        batch = texts[start:start + 10]
+    # A window whose reply is broken is asked line by line; a line the reply leaves out is
+    # asked alone. A reply in the wrong language (Portuguese for ru, the source copied for
+    # en/pt) gets one plain retry. A line that still fails is marked FAILED_TRANSLATION, never
+    # copied from the source. Only a job where nothing translates fails, so one noisy minute
+    # cannot sink a 2-hour recording.
+    results = [None] * len(texts)
+
+    def prior_pairs(index):
+        """Up to TRANSLATION_PREVIOUS settled (source, translation) pairs just before line `index`."""
+        return [(texts[i], results[i]) for i in range(max(0, index - TRANSLATION_PREVIOUS), index)
+                if results[i] is not None]
+
+    for first in range(0, len(texts), TRANSLATION_WINDOW):
+        window = list(range(first, min(first + TRANSLATION_WINDOW, len(texts))))
         try:
-            replies = ask(batch)
+            replies = ask(window, prior_pairs(first))
         except (ValueError, OSError) as error:  # bad JSON, timeout
             last_error = error
             replies = None
-        for index, text in enumerate(batch):
-            if replies is not None:
-                results.append(settle(text, replies[index]))
+        for index in window:
+            if replies is not None and str(index) in replies:
+                results[index] = settle(texts[index], replies[str(index)])
                 continue
+            if replies is None and len(window) == 1:
+                continue  # the one-line window already failed: nothing smaller to ask
             try:
-                if len(batch) == 1:
-                    raise last_error  # nothing smaller to retry
-                results.append(settle(text, ask([text])[0]))
+                reply = ask([index], prior_pairs(index)).get(str(index))
+                if reply is None:
+                    raise ValueError(f"Translation reply has no line {index}")
+                results[index] = settle(texts[index], reply)
             except (ValueError, OSError) as error:
                 last_error = error
-                results.append(None)
     if texts and all(result is None for result in results):
         raise last_error
     translate.last_model = model
     return [FAILED_TRANSLATION if result is None else result for result in results]
 
 
-def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None, reread=None):
+def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None, reread=None,
+                      context=None):
     """Writes `== Translation <target>` from the Transcript section. Returns (note_text, lines).
 
     One translation line per transcript line, same mm:ss. `[—]` gap lines are copied
@@ -522,7 +565,7 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
     (kept in the job sidecar); merge_section keeps a line the user edited. None means
     the first run or a legacy section: the old section is replaced. `reread`, when given,
     returns the note as it is now; the lines are merged into that text, so edits made
-    while the model ran survive.
+    while the model ran survive. `context` ({"summary", "glossary"}) goes to translate.
     """
     from audio_v2 import DOUBTFUL_PREFIX, GAP_TEXT, merge_section
 
@@ -557,7 +600,9 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
             segments.append({"start": start, "kind": "speech", "text": text, "status": "ok", "doubt_mark": False})
 
     speech = [segment["text"] for segment in segments if segment["kind"] == "speech"]
-    translated = translate(speech, source_lang, target, source_langs or [source_lang]) if speech else []
+    # Context is passed only when the transcript has one, so translate stand-ins with four arguments still work.
+    extra = {} if context is None else {"context": context}
+    translated = translate(speech, source_lang, target, source_langs or [source_lang], **extra) if speech else []
     if len(translated) != len(speech):
         raise ValueError("Translation reply must have the same length as the transcript")
     if reread is not None:
@@ -774,6 +819,31 @@ def requeue_translations(vault, transcript):
             path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _llm_configured(settings):
+    """Whether the translate task has an LLM endpoint. An unknown connection counts as none: its job reports it."""
+    try:
+        return bool(connection_credentials(translate_connection(settings))[0])
+    except ValueError:
+        return False
+
+
+def _context_pending(vault, audio):
+    """A v2 transcript whose context pass has not run: its sidecar has the transcript stage done and no `context`.
+    The pass runs inside the transcript job, after the transcript is written."""
+    import audio_v2
+
+    data = _read_json(audio_v2.sidecar_path(vault, audio))
+    return data.get("stages", {}).get("transcript") == "done" and "context" not in data
+
+
+def translation_context(sidecar):
+    """The summary and glossary of a v2 transcript's context pass, for the translation prompt; None without one."""
+    context = sidecar.get("context")
+    if not isinstance(context, dict):
+        return None
+    return {"summary": context.get("summary") or "", "glossary": context.get("glossary") or []}
+
+
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
     audio_settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
@@ -788,6 +858,7 @@ def sweep(vault, now, state, force=False):
                      and state.get("last_scheduled_date") != today)
     if not (force or audio_settings.get("on_the_fly") or scheduled):
         return 0
+    llm = _llm_configured(load_ai_settings(vault))
 
     def section(text, heading):
         match = re.search(r"^" + re.escape(heading) + r"\r?$(.*?)(?=^== |\Z)",
@@ -834,7 +905,8 @@ def sweep(vault, now, state, force=False):
                             (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".json"))
         source_lang = source.get("lang")
         source_langs = source.get("langs", [source_lang])
-        if source_lang:
+        # With an LLM endpoint, a v2 transcript's translations wait for its context (summary, glossary).
+        if source_lang and not (llm and _context_pending(vault, audio)):
             for target in translation_targets(source_langs, targets):
                 if section(text, f"== Translation {target}") is None:
                     enqueue("translations", audio + "\n" + target,
@@ -1025,13 +1097,14 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
     settings = load_ai_settings(vault)
     model = resolve_whisper_model(settings, model)
     if translate is None:
-        def translate(texts, source_lang, target, source_langs):
+        def translate(texts, source_lang, target, source_langs, context=None):
             identifier = settings.get("tasks", {}).get("translate", {}).get("connection")
             connection = next((entry for entry in settings.get("connections", [])
                                if entry["id"] == identifier), None)
             _, key = connection_credentials(connection)
             try:
-                result = globals()["translate"](texts, source_lang, target, source_langs, settings=settings)
+                result = globals()["translate"](texts, source_lang, target, source_langs, settings=settings,
+                                                context=context)
             except Exception as error:
                 message = str(error).replace(key, "[redacted]") if key else str(error)
                 raise ValueError(message) from None
@@ -1101,7 +1174,8 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                             note_text, job["source_lang"], job["target"], translate,
                             job.get("source_langs", [job["source_lang"]]),
                             previous=translations.get(job["target"]),
-                            reread=lambda: read_note(note))
+                            reread=lambda: read_note(note),
+                            context=translation_context(sidecar))
                 with note.open("w", encoding="utf-8", newline="") as stream:
                     stream.write(updated_note)
                 if finish is not None:
