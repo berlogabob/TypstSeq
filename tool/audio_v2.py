@@ -1,21 +1,36 @@
 """Pure pieces of the audio-notes v2 transcript pipeline.
 
-Speech map (voice activity -> chunks), hallucination filter and sentence lines.
-The worker (tool/transcribe_worker.py) owns I/O; nothing here loads a model
-except speech_regions, which is only called on the Studio side.
+Speech map (voice activity -> chunks), hallucination filter, sentence lines, sidecar
+merge, and the v2 passes. Studio is reached only through StudioSTT (every call under
+a deadline); MacSTT is the guarded Mac fallback and the only local model load. The
+worker (tool/transcribe_worker.py) owns jobs and note I/O.
 """
 
+import base64
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
+import subprocess
+import tempfile
+import time
+import urllib.parse
 import zlib
 from pathlib import Path
+from urllib.request import Request, urlopen
 
+import transcribe_worker as worker
 from transcribe_worker import collapse_repeats, escape_markup, format_ts
 
 SAMPLE_RATE = 16000
+# Studio STT passes (Task 3 decision). Engine and model ids as /api/inference/audio/stt/* expects them.
+PRIMARY = "whisper-large-v3-turbo"  # transformers engine; punctuated text
+SECONDARY = "qwen3-asr-1.7b"        # mtmd engine; a different architecture
+STUDIO_MODELS = {PRIMARY: ("transformers", "large-v3-turbo"), SECONDARY: ("mtmd", "qwen3-asr-1.7b")}
+STUDIO_DEVICE = "gpu"
+LOAD_CAP_S = 600
 MAX_COMPRESSION = 2.4  # zlib ratio above this is looping text
 MIN_CHARS_FOR_RATIO = 40
 BLOCKLIST = re.compile(r"^(legendas?\b|subtitles? by|amara\.org|obrigad[oa]\.?$)", re.IGNORECASE)
@@ -31,7 +46,7 @@ def speech_regions(audio_path, min_silence_ms=2000):
     from faster_whisper import decode_audio
     from faster_whisper.vad import VadOptions, get_speech_timestamps
 
-    audio = decode_audio(str(audio_path), sampling_rate=SAMPLE_RATE)
+    audio = worker.decode_nonempty(audio_path, decode_audio)  # PyAV reads some raw .aac as 0 s
     stamps = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=min_silence_ms),
                                    sampling_rate=SAMPLE_RATE)
     return [(s["start"] / SAMPLE_RATE, s["end"] / SAMPLE_RATE) for s in stamps]
@@ -132,9 +147,15 @@ def save_sidecar(path, data):
 
 def backup_legacy(vault, audio, note_text):
     """Saves a note written before sidecars existed as <sha1>.v1.typ. Returns the path, or None if nothing was written."""
-    sidecar = sidecar_path(vault, audio)
-    if sidecar.exists():
+    if sidecar_path(vault, audio).exists():
         return None
+    return backup_legacy_note(vault, audio, note_text)
+
+
+def backup_legacy_note(vault, audio, note_text):
+    """Writes <sha1>.v1.typ once, whatever the sidecar holds (v1 translations write one too).
+    Returns the path, or None if the backup exists."""
+    sidecar = sidecar_path(vault, audio)
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     backup = sidecar.with_name(sidecar.stem + ".v1.typ")
     try:
@@ -258,3 +279,241 @@ def _write_section(note_text, heading, body):
     start, end = found
     tail = "".join(chunks[end:])
     return "".join(chunks[:start]) + block + ("\n" if tail else "") + tail
+
+
+def section_has_lines(note_text, heading):
+    chunks = note_text.splitlines(keepends=True)
+    found = _section_range(chunks, heading)
+    return found is not None and any(NOTE_LINE.match(chunk.rstrip("\r\n")) for chunk in chunks[found[0] + 1:found[1]])
+
+
+def clear_section(note_text, heading):
+    """Empties `== heading` (kept as a heading). A note without the section is returned unchanged."""
+    if _section_range(note_text.splitlines(keepends=True), heading) is None:
+        return note_text
+    return _write_section(note_text, heading, [])
+
+
+def remove_section_lines(note_text, heading, raws):
+    """Drops the note lines in `== heading` whose text equals one of raws exactly."""
+    chunks = note_text.splitlines(keepends=True)
+    found = _section_range(chunks, heading)
+    if found is None or not raws:
+        return note_text
+    start, end = found
+    return "".join(chunk for index, chunk in enumerate(chunks)
+                   if not (start < index < end and chunk.rstrip("\r\n") in raws))
+
+
+# Transcript lines (v2)
+
+def audio_seconds(audio):
+    ffprobe = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"  # launchd PATH is minimal
+    out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                          str(audio)], capture_output=True, text=True, check=True,
+                         stdin=subprocess.DEVNULL, timeout=60).stdout
+    return float(out.strip())
+
+
+def cut_chunk(audio, start, end, out):
+    """Writes audio[start:end] (seconds) to out as 16 kHz mono WAV."""
+    ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+    subprocess.run([ffmpeg, "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(audio),
+                    "-t", f"{end - start:.3f}", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                    str(out)], check=True, stdin=subprocess.DEVNULL, timeout=300)
+
+
+def _gap_line(start):
+    return {"start": float(start), "kind": "gap", "text": "", "status": "ok"}
+
+
+def lines_from_chunks(chunks):
+    """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines."""
+    lines = []
+    for chunk in chunks:
+        start = float(chunk["start"])
+        text = (chunk.get("asr") or "").strip()
+        if chunk["kind"] == "gap" or not text or is_hallucination(text):
+            lines.append(_gap_line(start))
+            continue
+        lines += [{"start": at, "kind": "speech", "text": sentence, "status": "ok"}
+                  for at, sentence in sentence_lines(start, chunk["end"], text)]
+    return lines
+
+
+def transcribe_v2(audio, sidecar, stt, *, engines=(PRIMARY, SECONDARY)):
+    """Runs the speech chunks through each engine as one pass; returns the Transcript lines.
+
+    The speech map is planned once and stored in the sidecar. A pass calls
+    stt(wav_path, engine) for each speech chunk that has no text for that engine yet
+    (`asr` for PRIMARY, `asr_alt` for SECONDARY), saving the sidecar after every chunk.
+    A stopped run resumes at the first chunk without text.
+    """
+    data = load_sidecar(sidecar)
+    if "chunks" not in data:
+        data["chunks"] = plan_chunks(speech_regions(audio), audio_seconds(audio))
+        save_sidecar(sidecar, data)
+    with tempfile.TemporaryDirectory() as tmp:
+        for engine in engines:
+            field = "asr" if engine == PRIMARY else "asr_alt"
+            for index, chunk in enumerate(data["chunks"]):
+                if chunk["kind"] != "speech" or field in chunk:
+                    continue
+                wav = Path(tmp) / f"chunk{index:05d}.wav"
+                cut_chunk(audio, chunk["start"], chunk["end"], wav)
+                chunk[field] = stt(wav, engine) or ""
+                save_sidecar(sidecar, data)
+    return lines_from_chunks(data["chunks"])
+
+
+def reconcile_lines(previous, fresh):
+    """Fresh chunk lines against the lines the last merge left (they carry `rendered`).
+
+    A fresh line at the start of a machine line refreshes that line and keeps its rendered
+    state, so merge_section rewrites it. A fresh line at the start of a user or deleted line
+    is dropped. Other fresh lines are new. Returns (lines for merge_section, stale): stale
+    are machine lines no fresh line replaces; their note lines must go before the merge,
+    or they would come back as user lines.
+    """
+    by_key = {}
+    for index, old in enumerate(previous):
+        by_key.setdefault((old["start"], old["kind"]), []).append(index)
+    claimed, lines = set(), []
+    for new in fresh:
+        pending = [i for i in by_key.get((new["start"], new["kind"]), []) if i not in claimed]
+        if not pending:
+            lines.append(dict(new, rendered={}))
+            continue
+        claimed.add(pending[0])
+        old = previous[pending[0]]
+        if old.get("status") in ("user", "deleted"):
+            lines.append(dict(old, rendered=dict(old.get("rendered", {}))))
+        else:
+            lines.append(dict(old, text=new["text"], status=new["status"],
+                              rendered=dict(old.get("rendered", {}))))
+    stale = []
+    for index, old in enumerate(previous):
+        if index in claimed:
+            continue
+        if old.get("status") in ("user", "deleted"):
+            lines.append(dict(old, rendered=dict(old.get("rendered", {}))))
+        else:
+            stale.append(old)
+    return lines, stale
+
+
+def finish_transcript(sidecar, lines):
+    """Records the merged lines and marks the transcript stage done. Call after the note is written."""
+    data = load_sidecar(sidecar)
+    data["lines"] = lines
+    data.setdefault("stages", {})["transcript"] = "done"
+    save_sidecar(sidecar, data)
+
+
+def _studio_request(root, key, method, path, body=None, *, seconds):
+    """One Studio HTTP call under a wall-clock deadline as well as the socket timeout."""
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(root + path, data=data, method=method, headers=headers)
+    with worker.deadline(seconds), urlopen(request, timeout=seconds) as response:
+        raw = response.read()
+    try:
+        return json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+
+
+class StudioSTT:
+    """Studio speech-to-text for the v2 passes (request shape from tool/asr_bakeoff.py).
+
+    One engine is resident at a time: asking for another unloads the first. close() unloads
+    the resident one; the caller closes after each pass.
+    """
+
+    def __init__(self, root, key, lang):
+        self.root = root.rstrip("/")
+        self.key = key
+        self.lang = lang
+        self.loaded = None
+        self.language = None  # Studio's detection, used when the job has no language
+
+    def _call(self, method, path, body=None, *, seconds):
+        return _studio_request(self.root, self.key, method, path, body, seconds=seconds)
+
+    def _status(self, engine):
+        return self._call("GET", "/api/inference/audio/stt/status", seconds=30)[STUDIO_MODELS[engine][0]]
+
+    def _load(self, engine):
+        name, model = STUDIO_MODELS[engine]
+        if model not in self._status(engine)["downloaded_models"]:
+            raise RuntimeError(f"{model} is not downloaded on Studio")
+        self._call("POST", "/api/inference/audio/stt/load",
+                   {"engine": name, "model": model, "device": STUDIO_DEVICE}, seconds=LOAD_CAP_S)
+        self.loaded = engine  # set before polling, so close() unloads it even if the wait fails
+        started = time.monotonic()
+        while True:
+            status = self._status(engine)
+            if status["loaded_model"] == model and not status["loading"]:
+                return
+            if not status["loading"]:
+                raise RuntimeError(f"load finished, loaded_model={status['loaded_model']}")
+            if time.monotonic() - started > LOAD_CAP_S:
+                raise TimeoutError(f"{model} not loaded after {LOAD_CAP_S} s")
+            time.sleep(5)
+
+    def __call__(self, wav, engine):
+        if self.loaded != engine:
+            self.close()
+            self._load(engine)
+        name, model = STUDIO_MODELS[engine]
+        reply = self._call("POST", "/api/inference/audio/transcribe", {
+            "audio": base64.b64encode(Path(wav).read_bytes()).decode("ascii"),
+            "engine": name, "model": model, "language": self.lang, "device": STUDIO_DEVICE,
+        }, seconds=worker.STUDIO_DEADLINE)
+        self.language = self.language or reply.get("language")
+        return str(reply.get("text", "")).strip()
+
+    def close(self):
+        if self.loaded is None:
+            return
+        name, model = STUDIO_MODELS[self.loaded]
+        self.loaded = None
+        query = urllib.parse.urlencode({"engine": name, "model": model, "wait": "true"})
+        self._call("POST", f"/api/inference/audio/stt/unload?{query}", seconds=120)
+
+
+class MacSTT:
+    """Mac fallback for the primary pass when Studio is missing or failed.
+
+    faster-whisper on the CPU, model capped at small, loaded once, and only when free memory
+    allows (checked at load). Runs niced. No secondary pass.
+    """
+
+    def __init__(self, model, lang, *, studio_failed=False):
+        self.model_name = worker.min_model(model, worker.LOCAL_MODEL_CAP)
+        self.lang = lang
+        self.studio_failed = studio_failed
+        self.model = None
+        self.language = None
+
+    def __call__(self, wav, engine):
+        if engine != PRIMARY:
+            return None
+        if self.model is None:
+            if not worker.mac_fallback_allowed():
+                prefix = "Studio unreachable; " if self.studio_failed else ""
+                raise RuntimeError(prefix + "Mac fallback refused (low memory)")
+            worker.lower_priority()
+            from faster_whisper import WhisperModel
+
+            options = {"device": "cpu", "compute_type": "int8"}
+            try:
+                self.model = WhisperModel(self.model_name, local_files_only=True, **options)
+            except OSError:
+                self.model = WhisperModel(self.model_name, **options)
+        segments, info = self.model.transcribe(str(wav), language=self.lang)
+        self.language = self.language or info.language
+        return " ".join(segment.text.strip() for segment in segments)

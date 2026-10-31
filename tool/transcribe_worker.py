@@ -1,7 +1,7 @@
 """Process queued audio transcription jobs in a vault."""
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 import functools
 import hashlib
@@ -631,14 +631,25 @@ def _has_pending_jobs(vault):
     return False
 
 
+TRANSLATION_LANGS = ("ru", "en", "pt")  # every recording gets all three; not switchable off
+
+
+def translation_targets(source_langs, settings_targets):
+    """ru, en, pt always, then any extra targets from settings. A transcript that is only one of
+    these languages skips that language; a mixed transcript gets all three."""
+    targets = []
+    for lang in (*TRANSLATION_LANGS, *settings_targets):
+        if lang in targets or source_langs == [lang]:
+            continue
+        targets.append(lang)
+    return targets
+
+
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
     audio_settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
     transcribe_enabled = audio_settings.get("transcribe", False)
-    targets = audio_settings.get("translate_to", [])
-    translate_enabled = audio_settings.get("translate", bool(targets))
-    if not (transcribe_enabled or translate_enabled):
-        return 0
+    targets = audio_settings.get("translate_to", [])  # extra targets; the processing "translate" flag is ignored
     local_now = now.astimezone()
     today = local_now.date().isoformat()
     scheduled = False
@@ -694,9 +705,9 @@ def sweep(vault, now, state, force=False):
                             (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".json"))
         source_lang = source.get("lang")
         source_langs = source.get("langs", [source_lang])
-        if translate_enabled and source_lang:
-            for target in targets:
-                if source_langs != [target] and section(text, f"== Translation {target}") is None:
+        if source_lang:
+            for target in translation_targets(source_langs, targets):
+                if section(text, f"== Translation {target}") is None:
                     enqueue("translations", audio + "\n" + target,
                             {**job, "target": target, "source_lang": source_lang,
                              "source_langs": source_langs})
@@ -706,6 +717,90 @@ def sweep(vault, now, state, force=False):
     if scheduled and created == 0 and not _has_pending_jobs(vault):
         state["last_scheduled_date"] = today
     return created
+
+
+def studio_root(base):
+    """Studio API root from a connection URL, which ends in /v1 for the OpenAI-style routes."""
+    return base.rstrip("/").rsplit("/v1", 1)[0]
+
+
+def _redacted(error, key):
+    return str(error).replace(key, "[redacted]") if key else str(error)
+
+
+def _release(studio):
+    """Unloads the pass's Studio model. A failed unload does not fail a finished pass;
+    the next load replaces the resident model."""
+    with suppress(Exception):
+        studio.close()
+
+
+def transcribe_v2_job(vault, job, note, model, settings):
+    """v2 transcript job: speech chunks through the Studio passes, then sentence lines merged into the note.
+
+    The primary pass runs on Studio; if Studio fails, the Mac fallback (guarded, small model) runs the
+    remaining chunks. The secondary pass runs on Studio only and its failure is not fatal. Every chunk
+    is saved to the sidecar as it finishes, so a failed run resumes from there.
+
+    Returns (note text, sidecar path, lines, language). The caller writes the note, then calls
+    audio_v2.finish_transcript with the sidecar path and lines.
+    """
+    import audio_v2
+
+    audio = _vault_path(vault, job["audio"])
+    sidecar = audio_v2.sidecar_path(vault, job["audio"])
+    state = audio_v2.load_sidecar(sidecar)
+    legacy = state.get("stages", {}).get("transcript") != "done"
+    job.pop("studio_error", None)
+    with note.open(encoding="utf-8", newline="") as stream:
+        note_text = stream.read()
+    if legacy and audio_v2.section_has_lines(note_text, "Transcript"):
+        audio_v2.backup_legacy_note(vault, job["audio"], note_text)  # before the first v2 write to the sidecar
+    lang = job.get("lang") or None
+    identifier = settings.get("tasks", {}).get("transcribe", {}).get("connection") or "studio"
+    connection = next((entry for entry in settings.get("connections", []) if entry["id"] == identifier), None)
+    studio = key = None
+    if connection:
+        base, key = connection_credentials(connection)
+        studio = audio_v2.StudioSTT(studio_root(base), key, lang)
+    job["engine"] = "local"
+    result = None
+    primary_failed = False
+    if studio is not None:
+        try:
+            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.PRIMARY,))
+            job["engine"] = "studio"
+        except Exception as error:
+            job["studio_error"] = _redacted(error, key)
+            primary_failed = True
+        _release(studio)
+    mac = None
+    if studio is None or primary_failed:
+        mac = audio_v2.MacSTT(model, lang, studio_failed=primary_failed)
+        result = audio_v2.transcribe_v2(audio, sidecar, mac, engines=(audio_v2.PRIMARY,))
+    if job["engine"] == "studio":
+        try:
+            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.SECONDARY,))
+        except Exception as error:
+            job["studio_error"] = _redacted(error, key)
+        _release(studio)
+    language = lang
+    if language is None and studio is not None:
+        language = studio.language
+    if language is None and mac is not None:
+        language = mac.language
+    # Re-read right before the write: a user edit made while the passes ran is part of the note now.
+    with note.open(encoding="utf-8", newline="") as stream:
+        note_text = stream.read()
+    previous = [] if legacy else state.get("lines", [])
+    if legacy:
+        note_text = audio_v2.clear_section(note_text, "Transcript")
+    merged, stale = audio_v2.reconcile_lines(previous, result)
+    note_text = audio_v2.remove_section_lines(
+        note_text, "Transcript", {line["rendered"]["Transcript"] for line in stale
+                                  if "Transcript" in line.get("rendered", {})})
+    note_text, lines = audio_v2.merge_section(note_text, "Transcript", merged)
+    return note_text, sidecar, lines, language
 
 
 STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hung
@@ -766,44 +861,53 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 job["processing_at"] = now.astimezone(timezone.utc).isoformat()
                 job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 note = _vault_path(vault, job["note"])
-                with note.open(encoding="utf-8", newline="") as stream:
-                    note_text = stream.read()
-                if kind == "transcripts":
-                    audio = _vault_path(vault, job["audio"])
-                    identifier = settings.get("tasks", {}).get("transcribe", {}).get("connection") or "studio"
-                    connection = next((entry for entry in settings.get("connections", [])
-                                       if entry["id"] == identifier), None)
-                    job["engine"] = "local"
-                    job.pop("studio_error", None)
-                    if connection:
-                        key = None
-                        try:
-                            base, key = connection_credentials(connection)
-                            segments, language, languages = transcribe_studio(
-                                audio, base, key, lang=job.get("lang") or None)
-                            job["engine"] = "studio"
-                        except Exception as error:
-                            job["studio_error"] = str(error).replace(key, "[redacted]") if key else str(error)
-                    if job["engine"] == "local":
-                        segments, language, languages = transcribe_local(
-                            audio, model, lang=job.get("lang") or None,
-                            diarize=diarize or job.get("diarize") is True,
-                            studio_failed=connection is not None)
-                    updated_note = apply_transcript(note_text, segments)
+                finish = None
+                if kind == "transcripts" and job.get("engine") != "v1":
+                    updated_note, sidecar_path, lines, language = transcribe_v2_job(
+                        vault, job, note, model, settings)
+                    finish = (sidecar_path, lines)
+                    job["lang"] = language
+                    job["langs"] = [language] if language else []
                 else:
-                    segments_sidecar = audio_v2.sidecar_path(vault, job["audio"])
-                    sidecar = audio_v2.load_sidecar(segments_sidecar)
-                    translations = sidecar.setdefault("translations", {})
-                    updated_note, translations[job["target"]] = apply_translation(
-                        note_text, job["source_lang"], job["target"], translate,
-                        job.get("source_langs", [job["source_lang"]]),
-                        previous=translations.get(job["target"]))
+                    with note.open(encoding="utf-8", newline="") as stream:
+                        note_text = stream.read()
+                    if kind == "transcripts":
+                        audio = _vault_path(vault, job["audio"])
+                        identifier = settings.get("tasks", {}).get("transcribe", {}).get("connection") or "studio"
+                        connection = next((entry for entry in settings.get("connections", [])
+                                           if entry["id"] == identifier), None)
+                        job["engine"] = "local"
+                        job.pop("studio_error", None)
+                        if connection:
+                            key = None
+                            try:
+                                base, key = connection_credentials(connection)
+                                segments, language, languages = transcribe_studio(
+                                    audio, base, key, lang=job.get("lang") or None)
+                                job["engine"] = "studio"
+                            except Exception as error:
+                                job["studio_error"] = str(error).replace(key, "[redacted]") if key else str(error)
+                        if job["engine"] == "local":
+                            segments, language, languages = transcribe_local(
+                                audio, model, lang=job.get("lang") or None,
+                                diarize=diarize or job.get("diarize") is True,
+                                studio_failed=connection is not None)
+                        updated_note = apply_transcript(note_text, segments)
+                        job["lang"] = language
+                        job["langs"] = languages
+                    else:
+                        segments_sidecar = audio_v2.sidecar_path(vault, job["audio"])
+                        sidecar = audio_v2.load_sidecar(segments_sidecar)
+                        translations = sidecar.setdefault("translations", {})
+                        updated_note, translations[job["target"]] = apply_translation(
+                            note_text, job["source_lang"], job["target"], translate,
+                            job.get("source_langs", [job["source_lang"]]),
+                            previous=translations.get(job["target"]))
                 with note.open("w", encoding="utf-8", newline="") as stream:
                     stream.write(updated_note)
-                if kind == "transcripts":
-                    job["lang"] = language
-                    job["langs"] = languages
-                else:
+                if finish is not None:
+                    audio_v2.finish_transcript(*finish)
+                if kind == "translations":
                     audio_v2.save_sidecar(segments_sidecar, sidecar)
                     if getattr(translate, "last_model", None) is not None:
                         job["llm"] = translate.last_model

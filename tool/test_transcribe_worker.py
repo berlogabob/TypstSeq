@@ -1,3 +1,4 @@
+import base64
 import json
 import hashlib
 import signal
@@ -8,11 +9,13 @@ from email import policy
 from email.parser import BytesParser
 from types import SimpleNamespace
 from io import BytesIO
+from urllib.parse import parse_qs
 from urllib.error import HTTPError
 import wave
 
 import pytest
 
+import audio_v2
 import transcribe_worker as worker
 
 real_free_memory_bytes = worker._free_memory_bytes
@@ -101,7 +104,7 @@ def test_diarize_job_and_cli(tmp_path, monkeypatch, cli, option, enabled):
     jobs.mkdir(parents=True)
     job_path = jobs / "job.json"
     job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ",
-                                    "diarize": option}))
+                                    "diarize": option, "engine": "v1"}))
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
 
@@ -161,7 +164,8 @@ def test_cli_core(tmp_path, monkeypatch):
     jobs = tmp_path / "_system/jobs/transcripts"
     jobs.mkdir(parents=True)
     job_path = jobs / "job.json"
-    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ", "lang": "pt"}))
+    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ", "lang": "pt",
+                                    "engine": "v1"}))
     note = tmp_path / "note.typ"
     note.write_bytes(b"= Note\r\n== Comments\r\nKeep me\r\n")
 
@@ -189,7 +193,7 @@ def test_failed_transcription_keeps_note(tmp_path, monkeypatch):
     jobs = tmp_path / "_system/jobs/transcripts"
     jobs.mkdir(parents=True)
     job_path = jobs / "job.json"
-    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ"}))
+    job_path.write_text(json.dumps({"status": "queued", "audio": "audio.wav", "note": "note.typ", "engine": "v1"}))
     note = tmp_path / "note.typ"
     note.write_bytes(b"Original\r\n")
 
@@ -208,7 +212,7 @@ def test_failed_transcription_keeps_note(tmp_path, monkeypatch):
 def test_job_language(tmp_path, monkeypatch, requested):
     jobs = tmp_path / "_system/jobs/transcripts"
     jobs.mkdir(parents=True)
-    original = {"status": "queued", "audio": "audio.wav", "note": "note.typ",
+    original = {"status": "queued", "audio": "audio.wav", "note": "note.typ", "engine": "v1",
                 "lang": requested, "requested_at": "yesterday", "extra": 42}
     job_path = jobs / "job.json"
     job_path.write_text(json.dumps(original))
@@ -374,7 +378,7 @@ def test_studio_job_uses_selected_connection(tmp_path, monkeypatch, selected):
              tasks={"transcribe": {"connection": selected, "model": "small"}})
     monkeypatch.setenv("TYLOG_KEY_" + (selected or "studio").upper(), "secret")
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ", lang="pt", diarize=True, studio_error="old failure")
+                     note="note.typ", lang="pt", diarize=True, studio_error="old failure", engine="v1")
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
 
@@ -400,7 +404,7 @@ def test_studio_failure_falls_back_to_local(tmp_path, monkeypatch, error):
              tasks={"transcribe": {"quality": "fast"}})
     monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ", lang="pt", diarize=True)
+                     note="note.typ", lang="pt", diarize=True, engine="v1")
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
     calls = []
@@ -487,7 +491,7 @@ def test_transcription_before_translation(tmp_path, monkeypatch):
     for kind in ("transcripts", "translations"):
         jobs = tmp_path / "_system/jobs" / kind
         jobs.mkdir(parents=True)
-        job = {"status": "queued", "audio": "audio.wav", "note": "note.typ"}
+        job = {"status": "queued", "audio": "audio.wav", "note": "note.typ", "engine": "v1"}
         if kind == "translations":
             job.update(source_lang="en", target="ru")
         (jobs / "job.json").write_text(json.dumps(job))
@@ -700,6 +704,25 @@ def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
     assert job["llm"] == "exact/custom-model"
 
 
+class FakeMac:
+    """Stands in for audio_v2.MacSTT: every speech chunk is "Hello"; the primary pass only."""
+    text = "Hello"
+
+    def __init__(self, model, lang, *, studio_failed=False):
+        self.language = lang or "en"
+
+    def __call__(self, wav, engine):
+        return self.text if engine == audio_v2.PRIMARY else None
+
+
+def fake_v2_audio(monkeypatch, mac=FakeMac):
+    """VAD, duration, ffmpeg cut and the Mac model replaced: one 4 s speech chunk per recording."""
+    monkeypatch.setattr(audio_v2, "speech_regions", lambda audio: [(0.0, 4.0)])
+    monkeypatch.setattr(audio_v2, "audio_seconds", lambda audio: 4.0)
+    monkeypatch.setattr(audio_v2, "cut_chunk", lambda audio, start, end, out: out.write_bytes(b"wav"))
+    monkeypatch.setattr(audio_v2, "MacSTT", mac)
+
+
 @pytest.fixture
 def sweep_vault(tmp_path, monkeypatch):
     settings_path = tmp_path / "_system/settings/processing.json"
@@ -707,6 +730,7 @@ def sweep_vault(tmp_path, monkeypatch):
     (tmp_path / "notes").mkdir()
     (tmp_path / "assets/audio").mkdir(parents=True)
     monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: ([(0, "Hello")], "en", ["en"]))
+    fake_v2_audio(monkeypatch)
     return tmp_path
 
 
@@ -741,17 +765,19 @@ def write_job(vault, kind, key, **fields):
 NOW = datetime(2026, 10, 14, 9)
 
 
-@pytest.mark.parametrize("settings", [None, {}, {"transcribe": False, "on_the_fly": True},
-                                      {"transcribe": False, "scheduled": True}])
-def test_sweep_closed(sweep_vault, settings):
+@pytest.mark.parametrize("settings, state", [
+    (None, {}), ({}, {}), ({"transcribe": False, "on_the_fly": True}, {}),
+    ({"transcribe": False, "scheduled": True}, {"last_scheduled_date": "2026-10-14"}),
+])
+def test_sweep_closed(sweep_vault, settings, state):
     vault = sweep_vault
     add_audio_note(vault)
     if settings is not None:
         set_audio_settings(vault, **settings)
-    state = {}
-    assert worker.sweep(vault, NOW, state) == 0
+    state_now = {}
+    assert worker.sweep(vault, NOW, state_now) == 0
     assert not list((vault / "_system/jobs").rglob("*.json"))
-    assert state == {}
+    assert state_now == state
 
 
 def test_on_the_fly_processes_then_translates_next_sweep(sweep_vault):
@@ -779,25 +805,37 @@ def test_on_the_fly_processes_then_translates_next_sweep(sweep_vault):
     assert worker.sweep(vault, NOW, {}) == 0
 
 
+def echo_translate(texts, source_lang, target, source_langs):
+    return [target] * len(texts)
+
+
 def test_scheduled_catch_up_once_per_local_day(sweep_vault):
     vault = sweep_vault
     set_audio_settings(vault, scheduled=True)
     first, _ = add_audio_note(vault)
     state_path = vault / "state.json"
-    worker.run_once(vault, now=NOW.replace(hour=2, minute=59), state_path=state_path)
+
+    def run(when):
+        worker.run_once(vault, now=when, state_path=state_path, translate=echo_translate)
+
+    run(NOW.replace(hour=2, minute=59))
     assert not job_path(vault, "transcripts", first).exists()
-    worker.run_once(vault, now=NOW, state_path=state_path)
+    run(NOW)
     assert job_path(vault, "transcripts", first).exists()
-    # The scheduled run stays open until a sweep finds nothing left to do.
+    # The scheduled run stays open until a sweep finds nothing left to do: the ru and pt
+    # translations of the new transcript are queued by the next sweep, then done.
     assert "last_scheduled_date" not in json.loads(state_path.read_text())
-    worker.run_once(vault, now=NOW, state_path=state_path)
+    run(NOW)
+    assert "last_scheduled_date" not in json.loads(state_path.read_text())
+    run(NOW)
     assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
     second, _ = add_audio_note(vault, "second.wav")
-    worker.run_once(vault, now=NOW, state_path=state_path)
+    run(NOW)
     assert not job_path(vault, "transcripts", second).exists()
-    worker.run_once(vault, now=NOW + timedelta(days=1), state_path=state_path)
+    run(NOW + timedelta(days=1))
     assert job_path(vault, "transcripts", second).exists()
-    worker.run_once(vault, now=NOW + timedelta(days=1), state_path=state_path)
+    run(NOW + timedelta(days=1))
+    run(NOW + timedelta(days=1))
     assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-15"
 
 
@@ -830,12 +868,13 @@ def test_process_now_forces_once_per_request(sweep_vault):
     assert json.loads(state_path.read_text())["last_process_now"] == "2026-10-14T01:01:00Z"
 
 
-def test_force_respects_both_features_disabled(sweep_vault):
+def test_force_translates_with_both_flags_off(sweep_vault):
     set_audio_settings(sweep_vault, transcribe=False, translate=False, translate_to=["ru"])
     audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
     write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
-    assert worker.sweep(sweep_vault, NOW, {}, force=True) == 0
-    assert not list((sweep_vault / "_system/jobs/translations").glob("*.json"))
+    assert worker.sweep(sweep_vault, NOW, {}, force=True) == 2
+    assert sorted(path.name for path in (sweep_vault / "_system/jobs/translations").glob("*.json")) == sorted(
+        [job_path(sweep_vault, "translations", audio + "\n" + lang).name for lang in ("ru", "pt")])
 
 
 @pytest.mark.parametrize("status", ["queued", "processing", "done", "failed"])
@@ -848,8 +887,9 @@ def test_existing_jobs_block_recreation(sweep_vault, status):
     write_job(vault, "transcripts", complete, status="done", lang="en")
     translation = write_job(vault, "translations", complete + "\nru", status=status)
     originals = [path.read_bytes() for path in (transcript, translation)]
-    assert worker.sweep(vault, NOW, {}) == 0
+    assert worker.sweep(vault, NOW, {}) == 1  # only the missing pt translation of "complete"
     assert [path.read_bytes() for path in (transcript, translation)] == originals
+    assert job_path(vault, "translations", complete + "\npt").exists()
 
 
 def test_translation_only_missing_targets(sweep_vault):
@@ -867,10 +907,10 @@ def test_translation_only_missing_targets(sweep_vault):
 
 
 @pytest.mark.parametrize("flag, targets, expected", [
-    (None, ["ru"], 1), (None, [], 0),
-    (False, ["ru"], 0), (True, ["ru"], 1), (True, [], 0),
+    (None, ["ru"], ["ru", "pt"]), (None, [], ["ru", "pt"]),
+    (False, ["ru"], ["ru", "pt"]), (True, ["de"], ["ru", "pt", "de"]), (True, [], ["ru", "pt"]),
 ])
-def test_translate_setting_independent_of_transcribe(sweep_vault, flag, targets, expected):
+def test_translate_flag_is_ignored_and_extra_targets_follow(sweep_vault, flag, targets, expected):
     settings = {"transcribe": False, "on_the_fly": True, "translate_to": targets}
     if flag is not None:
         settings["translate"] = flag
@@ -879,10 +919,11 @@ def test_translate_setting_independent_of_transcribe(sweep_vault, flag, targets,
     add_audio_note(sweep_vault, "untranscribed.wav")
     transcript_job = write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
     original = transcript_job.read_bytes()
-    assert worker.sweep(sweep_vault, NOW, {}) == expected
+    assert worker.sweep(sweep_vault, NOW, {}) == len(expected)
     assert list((sweep_vault / "_system/jobs/transcripts").glob("*.json")) == [transcript_job]
     assert transcript_job.read_bytes() == original
-    assert len(list((sweep_vault / "_system/jobs/translations").glob("*.json"))) == expected
+    assert sorted(path.name for path in (sweep_vault / "_system/jobs/translations").glob("*.json")) == sorted(
+        job_path(sweep_vault, "translations", audio + "\n" + lang).name for lang in expected)
 
 
 def test_transcribe_enabled_translate_disabled(sweep_vault):
@@ -890,9 +931,10 @@ def test_transcribe_enabled_translate_disabled(sweep_vault):
     missing, _ = add_audio_note(sweep_vault)
     complete, _ = add_audio_note(sweep_vault, "complete.wav", body="== Transcript\n- 00:00 Hello\n")
     write_job(sweep_vault, "transcripts", complete, lang="en", status="done")
-    assert worker.sweep(sweep_vault, NOW, {}) == 1
+    assert worker.sweep(sweep_vault, NOW, {}) == 3  # one transcript, then ru and pt for "complete"
     assert job_path(sweep_vault, "transcripts", missing).exists()
-    assert not list((sweep_vault / "_system/jobs/translations").glob("*.json"))
+    assert job_path(sweep_vault, "translations", complete + "\nru").exists()
+    assert job_path(sweep_vault, "translations", complete + "\npt").exists()
 
 
 @pytest.mark.parametrize("langs, expected", [(["pt"], ["ru", "en"]),
@@ -929,7 +971,7 @@ def test_translation_only_preserves_sweep_gate(sweep_vault, gate):
                        on_the_fly=gate == "on_the_fly", scheduled=gate == "scheduled")
     audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
     write_job(sweep_vault, "transcripts", audio, lang="en", status="done")
-    assert worker.sweep(sweep_vault, NOW, {}, force=gate == "force") == (0 if gate == "closed" else 1)
+    assert worker.sweep(sweep_vault, NOW, {}, force=gate == "force") == (0 if gate == "closed" else 2)
 
 
 def test_translate_enabled_without_targets_completes_scheduled_sweep(sweep_vault):
@@ -976,9 +1018,10 @@ def test_corrupt_state_is_empty(sweep_vault, contents):
     audio, _ = add_audio_note(sweep_vault)
     state_path = sweep_vault / "state.json"
     state_path.write_text(contents)
-    worker.run_once(sweep_vault, now=NOW, state_path=state_path)
+    worker.run_once(sweep_vault, now=NOW, state_path=state_path, translate=echo_translate)
     assert job_path(sweep_vault, "transcripts", audio).exists()
-    worker.run_once(sweep_vault, now=NOW, state_path=state_path)
+    for _ in range(2):  # translations come with the next sweep
+        worker.run_once(sweep_vault, now=NOW, state_path=state_path, translate=echo_translate)
     assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
 
 
@@ -1004,11 +1047,11 @@ def test_on_the_fly_continues_after_scheduled_sweep(sweep_vault):
     assert worker.sweep(sweep_vault, NOW, state) == 1
 
 
-def test_empty_translation_targets(sweep_vault):
+def test_no_extra_targets_still_translates_ru_en_pt(sweep_vault):
     set_audio_settings(sweep_vault, on_the_fly=True, translate_to=[])
     audio, _ = add_audio_note(sweep_vault, body="== Transcript\n- 00:00 Hello\n")
     write_job(sweep_vault, "transcripts", audio, status="done", lang="en")
-    assert worker.sweep(sweep_vault, NOW, {}) == 0
+    assert worker.sweep(sweep_vault, NOW, {}) == 2  # ru and pt; en is the source
 
 
 def test_scheduled_run_stays_open_until_translations_exist(sweep_vault):
@@ -1063,9 +1106,13 @@ def test_whisper_precedence(tmp_path, quality, expected):
 def test_run_resolves_settings_each_time(sweep_vault, monkeypatch):
     set_audio_settings(sweep_vault, on_the_fly=True)
     calls = []
-    monkeypatch.setattr(worker, "transcribe", lambda audio, model, lang:
-                        (calls.append(model) or [], "en", ["en"]))
-    # Local transcription is capped at small whatever the settings or CLI ask for.
+
+    class Recording(FakeMac):
+        def __init__(self, model, lang, *, studio_failed=False):
+            super().__init__(model, lang)
+            calls.append(model)
+
+    fake_v2_audio(monkeypatch, mac=Recording)
     for index, (task, cli) in enumerate([
         ({"quality": "fast"}, None),
         ({"quality": "best", "model": "explicit"}, None),
@@ -1074,7 +1121,7 @@ def test_run_resolves_settings_each_time(sweep_vault, monkeypatch):
         write_ai(sweep_vault, tasks={"transcribe": task})
         add_audio_note(sweep_vault, f"{index}.wav")
         worker.run_once(sweep_vault, model=cli, now=NOW)
-        assert calls[-1] == "small"
+    assert calls == ["small", "explicit", "cli"]  # MacSTT applies the small cap itself
 
 
 @pytest.mark.parametrize("quality, explicit, env_model, prefer, expected, automatic", [
@@ -1304,7 +1351,7 @@ def test_abandoned_processing_job_is_taken_again(tmp_path, monkeypatch):
     note.write_text("= Note\n")
     now = datetime(2026, 10, 24, 20, 0, tzinfo=worker.timezone.utc)
     stale = jobs / "stale.json"
-    stale.write_text(json.dumps({"status": "processing", "audio": "a.wav", "note": "note.typ",
+    stale.write_text(json.dumps({"status": "processing", "audio": "a.wav", "note": "note.typ", "engine": "v1",
                                  "requested_at": "2026-10-24T10:36:10+00:00"}))
     fresh = jobs / "fresh.json"
     fresh.write_text(json.dumps({"status": "processing", "audio": "b.wav", "note": "note.typ",
@@ -1491,7 +1538,7 @@ def test_fallback_refused_when_memory_low(tmp_path, monkeypatch):
     write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}])
     monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ")
+                     note="note.typ", engine="v1")
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
 
@@ -1514,7 +1561,7 @@ def test_local_fallback_caps_model_at_small(tmp_path, monkeypatch):
              tasks={"transcribe": {"model": "large-v3"}})
     monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ")
+                     note="note.typ", engine="v1")
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
     calls, nice = [], []
@@ -1541,7 +1588,7 @@ def test_local_fallback_caps_model_at_small(tmp_path, monkeypatch):
 def test_local_transcription_without_studio_is_capped_and_niced(tmp_path, monkeypatch):
     write_ai(tmp_path, tasks={"transcribe": {"model": "large-v3"}})
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ")
+                     note="note.typ", engine="v1")
     (tmp_path / "note.typ").write_text("= Note\n")
     calls, nice = [], []
 
@@ -1561,7 +1608,7 @@ def test_local_transcription_without_studio_is_capped_and_niced(tmp_path, monkey
 def test_local_transcription_without_studio_refused_when_memory_low(tmp_path, monkeypatch):
     write_ai(tmp_path, tasks={"transcribe": {"model": "large-v3"}})
     path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
-                     note="note.typ")
+                     note="note.typ", engine="v1")
     note = tmp_path / "note.typ"
     note.write_text("= Note\n")
     monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 2 * 1024**3)
@@ -1571,3 +1618,373 @@ def test_local_transcription_without_studio_refused_when_memory_low(tmp_path, mo
     assert job["status"] == "failed"
     assert job["error"] == "Mac fallback refused (low memory)"
     assert note.read_text() == "= Note\n"
+
+
+# Task 7: v2 transcript jobs. Studio is replaced by FakeStudio; no test reaches the network or loads a model.
+
+LOOP = "É isso aí! " * 40
+PRIMARY, SECONDARY = audio_v2.PRIMARY, audio_v2.SECONDARY
+
+
+class FakeStudio:
+    """In-memory Studio STT on the routes tool/asr_bakeoff.py uses. Text depends on the chunk start only."""
+
+    def __init__(self, texts=None, fail_on=()):
+        self.texts = texts or {}
+        self.fail_on = set(fail_on)  # 1-based transcribe attempts that raise
+        self.calls = []              # (method, route) in order, status polls included
+        self.bodies = []             # transcribe request bodies
+        self.uploads = []            # (engine, chunk start) per transcribe attempt
+        self.loaded = {}             # engine -> model
+
+    def __call__(self, root, key, method, path, body=None, *, seconds):
+        route, _, query = path.partition("?")
+        self.calls.append((method, route))
+        if route == "/api/inference/audio/stt/status":
+            return {engine: {"downloaded_models": [model], "loaded_model": self.loaded.get(engine),
+                             "loading": False}
+                    for engine, model in (("transformers", "large-v3-turbo"), ("mtmd", "qwen3-asr-1.7b"))}
+        if route == "/api/inference/audio/stt/load":
+            assert body["device"] == "gpu"
+            self.loaded[body["engine"]] = body["model"]
+            return {}
+        if route == "/api/inference/audio/stt/unload":
+            params = parse_qs(query)
+            assert params["wait"] == ["true"]
+            self.loaded.pop(params["engine"][0], None)
+            return {}
+        if route == "/api/inference/audio/transcribe":
+            assert body["device"] == "gpu"
+            assert self.loaded.get(body["engine"]) == body["model"], "transcribe on a model that is not resident"
+            self.bodies.append(body)
+            start = float(base64.b64decode(body["audio"]))
+            self.uploads.append((body["engine"], start))
+            if len(self.uploads) in self.fail_on:
+                raise OSError("Studio dropped")
+            return {"text": self.texts.get(start, "Olá."), "language": "pt"}
+        raise AssertionError(f"unexpected {method} {route}")
+
+
+def v2_media(tmp_path, monkeypatch, regions, seconds):
+    """A recording with the given VAD regions. The ffmpeg cut writes its start time, so a fake
+    engine can tell which chunk it was sent."""
+    (tmp_path / "audio.wav").write_bytes(b"recording")
+    monkeypatch.setattr(audio_v2, "speech_regions", lambda audio: list(regions))
+    monkeypatch.setattr(audio_v2, "audio_seconds", lambda audio: seconds)
+    monkeypatch.setattr(audio_v2, "cut_chunk",
+                        lambda audio, start, end, out: out.write_bytes(str(float(start)).encode()))
+
+
+def v2_job(tmp_path, **fields):
+    if not (tmp_path / "note.typ").exists():
+        (tmp_path / "note.typ").write_text("= Note\n")
+    return write_job(tmp_path, "transcripts", "audio.wav",
+                     **{"status": "queued", "audio": "audio.wav", "note": "note.typ", **fields})
+
+
+def scripted_mac(monkeypatch, texts=None):
+    """audio_v2.MacSTT stand-in: primary text by chunk start (default "Olá."), nothing for the secondary."""
+    class Scripted:
+        def __init__(self, model, lang, *, studio_failed=False):
+            self.language = lang or "pt"
+
+        def __call__(self, wav, engine):
+            if engine != PRIMARY:
+                return None
+            return (texts or {}).get(float(wav.read_bytes()), "Olá.")
+
+    monkeypatch.setattr(audio_v2, "MacSTT", Scripted)
+
+
+def studio_connection(tmp_path, monkeypatch):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "http://studio.test:8888/v1"}])
+    monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
+
+
+def quiet_probe(*args):
+    return {"reachable": True, "loaded": []}
+
+
+def read_job(tmp_path, key="audio.wav"):
+    return json.loads(job_path(tmp_path, "transcripts", key).read_text())
+
+
+def test_v2_marks_music_chunks_and_keeps_speech(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 10), (30, 40), (60, 70)], seconds=80)
+    texts = {0.0: "Olá tudo bem com você?", 30.0: "Nasci no seio de uma família.", 60.0: LOOP}
+
+    def stt(wav, engine):
+        return texts.get(float(wav.read_bytes()), "") if engine == PRIMARY else ""
+
+    lines = audio_v2.transcribe_v2(tmp_path / "audio.wav", audio_v2.sidecar_path(tmp_path, "audio.wav"),
+                                   stt, engines=(PRIMARY,))
+    assert [(line["start"], line["kind"], line["text"]) for line in lines] == [
+        (0.0, "speech", "Olá tudo bem com você?"), (10.0, "gap", ""),
+        (30.0, "speech", "Nasci no seio de uma família."), (40.0, "gap", ""),
+        (60.0, "gap", ""), (70.0, "gap", ""),
+    ]
+
+
+def test_v2_resumes_from_sidecar_without_resending(tmp_path, monkeypatch):
+    monkeypatch.setattr(audio_v2, "speech_regions", lambda audio: pytest.fail("VAD ran again"))
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    chunks = [{"start": s, "end": s + 4, "kind": "speech", "asr": f"Texto {s}."} for s in (0, 10, 20)]
+    chunks += [{"start": s, "end": s + 4, "kind": "speech"} for s in (30, 40)]
+    audio_v2.save_sidecar(sidecar, {"chunks": chunks, "lines": [], "stages": {}})
+    monkeypatch.setattr(audio_v2, "cut_chunk",
+                        lambda audio, start, end, out: out.write_bytes(str(float(start)).encode()))
+    sent = []
+
+    def stt(wav, engine):
+        sent.append(float(wav.read_bytes()))
+        return "Novo."
+
+    audio_v2.transcribe_v2(tmp_path / "audio.wav", sidecar, stt, engines=(PRIMARY,))
+    assert sent == [30.0, 40.0]
+
+
+def test_v2_all_music_recording_is_done_not_failed(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 10), (20, 30)], seconds=30)
+    scripted_mac(monkeypatch, {0.0: LOOP, 20.0: LOOP})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert (job["status"], job["lang"]) == ("done", "pt")
+    assert "error" not in job
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 [—]\n- 00:10 [—]\n- 00:20 [—]\n")
+
+
+def test_no_speech_at_all_is_one_gap_line(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [], seconds=300)
+    scripted_mac(monkeypatch, {})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert (tmp_path / "note.typ").read_text() == "= Note\n\n== Transcript\n\n- 00:00 [—]\n"
+
+
+def test_v2_secondary_engine_text_stored_as_asr_alt(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4), (10, 14)], seconds=20)
+    order = []
+
+    def stt(wav, engine):
+        order.append(engine)
+        return "Olá." if engine == PRIMARY else "Ola!"
+
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    lines = audio_v2.transcribe_v2(tmp_path / "audio.wav", sidecar, stt)
+    assert order == [PRIMARY, PRIMARY, SECONDARY, SECONDARY]  # one pass per engine, not interleaved
+    speech = [chunk for chunk in audio_v2.load_sidecar(sidecar)["chunks"] if chunk["kind"] == "speech"]
+    assert [(chunk["asr"], chunk["asr_alt"]) for chunk in speech] == [("Olá.", "Ola!"), ("Olá.", "Ola!")]
+    assert [line["text"] for line in lines if line["kind"] == "speech"] == ["Olá.", "Olá."]
+
+
+def test_note_reread_before_write_keeps_midrun_edit(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem."})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    note = tmp_path / "note.typ"
+    assert "- 00:00 Olá tudo bem.\n" in note.read_text()
+
+    # Re-process: the ASR runs again, and the user corrects the line while it does.
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    data = audio_v2.load_sidecar(sidecar)
+    for chunk in data["chunks"]:
+        chunk.pop("asr", None)
+    audio_v2.save_sidecar(sidecar, data)
+
+    class Editing:
+        def __init__(self, model, lang, *, studio_failed=False):
+            self.language = "pt"
+
+        def __call__(self, wav, engine):
+            if engine == PRIMARY:
+                note.write_text(note.read_text().replace("Olá tudo bem.", "Olá, tudo bem com você."))
+                return "Olá tudo bem."
+            return None
+
+    monkeypatch.setattr(audio_v2, "MacSTT", Editing)
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert note.read_text() == "= Note\n\n== Transcript\n\n- 00:00 Olá, tudo bem com você.\n- 00:04 [—]\n"
+
+
+def test_rerun_replaces_machine_line_that_became_a_gap(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4), (30, 34)], seconds=34)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem.", 30.0: "Até amanhã."})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert "- 00:30 Até amanhã.\n" in (tmp_path / "note.typ").read_text()
+
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    data = audio_v2.load_sidecar(sidecar)
+    for chunk in data["chunks"]:
+        chunk.pop("asr", None)
+    audio_v2.save_sidecar(sidecar, data)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem.", 30.0: LOOP})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:30 [—]\n")
+
+
+def test_legacy_note_backed_up_then_replaced(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem."})
+    legacy = "= Note\n\n== Transcript\n\n- 00:00 Old thirty second blob\n- 00:30 Old two\n\n== Comments\nKeep me\n"
+    (tmp_path / "note.typ").write_text(legacy)
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    assert sidecar.with_name(sidecar.stem + ".v1.typ").read_text() == legacy
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n\n== Comments\nKeep me\n")
+
+
+def test_legacy_backup_kept_when_v1_translation_already_wrote_a_sidecar(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem."})
+    legacy = "= Note\n\n== Transcript\n\n- 00:00 Old blob\n"
+    (tmp_path / "note.typ").write_text(legacy)
+    audio_v2.save_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"),
+                          {"lines": [], "stages": {}, "translations": {"ru": []}})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    assert sidecar.with_name(sidecar.stem + ".v1.typ").read_text() == legacy
+    assert read_job(tmp_path)["status"] == "done"
+
+
+def test_studio_run_uses_passes_and_unloads_after_each(tmp_path, monkeypatch):
+    studio_connection(tmp_path, monkeypatch)
+    v2_media(tmp_path, monkeypatch, [(0, 4), (10, 14)], seconds=20)
+    v2_job(tmp_path)  # no language: Studio's detection becomes the job language
+    studio = FakeStudio({0.0: "Olá tudo bem.", 10.0: "Até amanhã."})
+    monkeypatch.setattr(audio_v2, "_studio_request", studio)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert (job["status"], job["engine"], job["lang"], job["langs"]) == ("done", "studio", "pt", ["pt"])
+    assert "studio_error" not in job
+    assert studio.uploads == [("transformers", 0.0), ("transformers", 10.0),
+                              ("mtmd", 0.0), ("mtmd", 10.0)]
+    assert studio.loaded == {}
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:10 Até amanhã.\n- 00:14 [—]\n")
+
+
+def test_studio_request_shape(tmp_path, monkeypatch):
+    studio = FakeStudio({0.0: "Olá."})
+    monkeypatch.setattr(audio_v2, "_studio_request", studio)
+    wav = tmp_path / "chunk.wav"
+    wav.write_bytes(b"0.0")
+    stt = audio_v2.StudioSTT("http://desktop-vdsrh2e:8888/", "secret", "pt")
+    assert stt(wav, PRIMARY) == "Olá."
+    stt(wav, SECONDARY)
+    stt.close()
+    status, load = ("GET", "/api/inference/audio/stt/status"), ("POST", "/api/inference/audio/stt/load")
+    transcribe, unload = ("POST", "/api/inference/audio/transcribe"), ("POST", "/api/inference/audio/stt/unload")
+    assert studio.calls == [
+        status, load, status, transcribe,  # downloaded check, load, poll until resident, transcribe
+        unload,                            # switching to the secondary unloads the primary
+        status, load, status, transcribe,
+        unload,                            # close() after the call
+    ]
+    assert studio.bodies[0] == {"audio": base64.b64encode(b"0.0").decode("ascii"), "engine": "transformers",
+                                "model": "large-v3-turbo", "language": "pt", "device": "gpu"}
+    assert studio.bodies[1]["engine"] == "mtmd" and studio.bodies[1]["model"] == "qwen3-asr-1.7b"
+
+
+def test_studio_failure_keeps_sidecar_and_next_run_resumes(tmp_path, monkeypatch):
+    studio_connection(tmp_path, monkeypatch)
+    v2_media(tmp_path, monkeypatch, [(0, 4), (10, 14), (20, 24)], seconds=30)
+    v2_job(tmp_path, lang="pt")
+    studio = FakeStudio({0.0: "Um.", 10.0: "Dois.", 20.0: "Três."}, fail_on={2})
+    monkeypatch.setattr(audio_v2, "_studio_request", studio)
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 2 * 1024**3)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert job["status"] == "failed"
+    assert job["error"] == "Studio unreachable; Mac fallback refused (low memory)"
+    assert job["studio_error"] == "Studio dropped"
+    assert (tmp_path / "note.typ").read_text() == "= Note\n"
+    saved = [chunk.get("asr") for chunk in audio_v2.load_sidecar(
+        audio_v2.sidecar_path(tmp_path, "audio.wav"))["chunks"] if chunk["kind"] == "speech"]
+    assert saved == ["Um.", None, None]
+    assert studio.loaded == {}  # unloaded even though the pass failed
+
+    studio.fail_on = set()
+    studio.uploads.clear()
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 16 * 1024**3)
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert (job["status"], job["engine"]) == ("done", "studio")
+    assert "studio_error" not in job
+    assert [start for engine, start in studio.uploads if engine == "transformers"] == [10.0, 20.0]
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Um.\n- 00:04 [—]\n- 00:10 Dois.\n- 00:14 [—]\n"
+        "- 00:20 Três.\n- 00:24 [—]\n")
+
+
+def test_studio_failure_falls_back_to_mac_when_memory_allows(tmp_path, monkeypatch):
+    studio_connection(tmp_path, monkeypatch)
+    v2_media(tmp_path, monkeypatch, [(0, 4), (10, 14), (20, 24)], seconds=30)
+    scripted_mac(monkeypatch, {10.0: "Mac dois.", 20.0: "Mac três."})
+    v2_job(tmp_path, lang="pt")
+    studio = FakeStudio({0.0: "Um."}, fail_on={2})
+    monkeypatch.setattr(audio_v2, "_studio_request", studio)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert (job["status"], job["engine"], job["studio_error"]) == ("done", "local", "Studio dropped")
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Um.\n- 00:04 [—]\n- 00:10 Mac dois.\n- 00:14 [—]\n"
+        "- 00:20 Mac três.\n- 00:24 [—]\n")
+
+
+def test_studio_call_is_cut_by_deadline(monkeypatch):
+    def hang(request, timeout):
+        time.sleep(10)
+
+    monkeypatch.setattr(audio_v2, "urlopen", hang)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        audio_v2._studio_request("http://studio.test", "secret", "GET", "/p", seconds=0.3)
+    assert time.monotonic() - started < 5
+
+
+def test_mac_fallback_refused_when_memory_low_and_never_loads(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(
+        WhisperModel=lambda *args, **options: pytest.fail("model loaded under low memory")))
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 2 * 1024**3)
+    mac = audio_v2.MacSTT("large-v3", "pt", studio_failed=True)
+    with pytest.raises(RuntimeError, match=r"^Studio unreachable; Mac fallback refused \(low memory\)$"):
+        mac(tmp_path / "chunk.wav", PRIMARY)
+    assert mac(tmp_path / "chunk.wav", SECONDARY) is None
+
+
+def test_mac_fallback_loads_small_once_for_all_chunks(tmp_path, monkeypatch):
+    loads = []
+
+    class Model:
+        def __init__(self, name, **options):
+            loads.append((name, options))
+
+        def transcribe(self, path, language=None):
+            return iter([SimpleNamespace(text=" Olá ")]), SimpleNamespace(language="pt")
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model))
+    mac = audio_v2.MacSTT("large-v3", None)
+    assert [mac(tmp_path / "chunk.wav", PRIMARY) for _ in range(3)] == ["Olá"] * 3
+    assert loads == [("small", {"local_files_only": True, "device": "cpu", "compute_type": "int8"})]
+    assert mac.language == "pt"
+
+
+def test_three_languages_always_enqueued():
+    assert worker.translation_targets(["pt"], ["ru"]) == ["ru", "en"]
+    assert worker.translation_targets(["ru"], []) == ["en", "pt"]
+    assert worker.translation_targets(["es"], ["de"]) == ["ru", "en", "pt", "de"]
+    assert worker.translation_targets(["pt", "ru"], []) == ["ru", "en", "pt"]
+    assert worker.translation_targets(["en"], ["en", "de", "de"]) == ["ru", "pt", "de"]
