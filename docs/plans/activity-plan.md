@@ -250,9 +250,11 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T15 ensure_model reloads Ornith at 64k when loaded at 8k; empty reply -> clear error (c7dc4c8, 256 tests)
 - [x] T15b (3e74906, 257 tests) T15 checked the wrong field: Studio max_context_length stays 8192 even at 64k (context_length shows the loaded value, but native on default loads) -> worker looped reloading. Fix: drop the field check; empty reply -> reload at 64k with force_cancel_active, retry once
 - [x] T14 theatre re-run with context + arbitration: 3 min; 30 chunks fixed well (aristocratas, Barreiro, Hermano José), Summary/Scenes(23)/References(9) written
-- [ ] T16 context sections in the first target language (ru), not the transcript's; glossary gives corrected spelling of misheard names (heard -> spelling), arbitration may use spelling
-- [ ] T17 (?) only when arbitration says doubtful AND engine agreement < 0.3 (59 doubtful chunks -> 12; now 30% of lines carry (?), most read fine)
-- [ ] T18 re-run theatre (reset context + arbitration stages), metrics, then Phase 4 plan
+- [x] T16 (9b8e2b4) context sections in the first target language (ru), not the transcript's; glossary gives corrected spelling of misheard names (heard -> spelling), arbitration may use spelling
+- [x] T17 (e462376, 263 tests) (?) only when arbitration says doubtful AND engine agreement < 0.3 (59 doubtful chunks -> 12; now 30% of lines carry (?), most read fine)
+- [x] T18 re-run: (?) 154 -> 18 lines (3.6%), glossary corrects Deméter/elefantes/Moçambique/Yorick; ru failed 10 (2%), en 1
+- [ ] T19 Summary/Scenes/References still Portuguese (Ornith ignores the language instruction): generate in source language, then translate the section lines into ru through the validated translate path
+- [ ] T20 Phase 4 plan + tasks: translation windows with Summary + glossary + previous lines, review pass; translations wait for the context pass
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
