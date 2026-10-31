@@ -206,6 +206,29 @@ def test_two_lines_same_second_keep_order():
         "- 00:05 first, edited", "- 00:05 second"]
 
 
+def test_rerun_drops_new_lines_inside_user_span():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(60.0, "A"), _seg(80.0, "B")])
+    note = note.replace("- 01:00 A", "- 01:00 A, corrigido")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    lines[1]["text"] = "B2"  # the next line is re-run and written as usual
+    lines += [_seg(60.0, "fresh 1"), _seg(65.0, "fresh 2"), _seg(72.0, "fresh 3")]
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert [line for line in note.splitlines() if line.startswith("- ")] == [
+        "- 01:00 A, corrigido", "- 01:20 B2"]
+
+
+def test_rerun_keeps_lines_outside_user_span():
+    note, lines = v2.merge_section("= Note\n", "Transcript",
+                                   [_seg(30.0, "pre"), _seg(60.0, "A"), _seg(80.0, "B")])
+    note = note.replace("- 01:00 A", "- 01:00 A, corrigido")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    lines += [_seg(50.0, "before"), _seg(80.0, "boundary"), _seg(85.0, "after")]
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert [line for line in note.splitlines() if line.startswith("- ")] == [
+        "- 00:30 pre", "- 00:50 before", "- 01:00 A, corrigido", "- 01:20 B",
+        "- 01:20 boundary", "- 01:25 after"]
+
+
 def test_special_chars_escaped_and_parse_back():
     text = "#tag [x] $5 *a* _b_ @c"
     note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(3.0, text)])

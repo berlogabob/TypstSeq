@@ -152,7 +152,8 @@ def merge_section(note_text, heading, lines):
     note line changed in place (same mm:ss) was edited: its note text becomes the
     ground truth, status "user". A rendered line with no note line was deleted and
     stays deleted. A note line nothing claims is a user addition. Lines never
-    rendered before are new and get written.
+    rendered before are new and get written, except those starting inside a span
+    pinned by a user line (see Edit protection): they are left out of this run.
     """
     lines = [dict(line, rendered=dict(line.get("rendered", {}))) for line in lines]
     chunks = note_text.splitlines(keepends=True)
@@ -183,6 +184,11 @@ def merge_section(note_text, heading, lines):
             matched.add(i)
             line.update(status="user", text=_unescape(NOTE_LINE.match(entries[j])[3]))
             line["rendered"][heading] = entries[j]
+    # A note line the user owns (edited, or typed by them) pins [its start, next note line's start).
+    user_raw = {line["rendered"][heading] for line in lines
+                if line.get("status") == "user" and heading in line["rendered"]}
+    pins = [(_seconds(raw), _seconds(entries[j + 1]) if j + 1 < len(entries) else math.inf)
+            for j, raw in enumerate(entries) if j not in taken or raw in user_raw]
     for i, line in enumerate(lines):
         if line.get("status") == "deleted":
             continue
@@ -190,6 +196,8 @@ def merge_section(note_text, heading, lines):
             if heading in line["rendered"]:
                 line["status"] = "deleted"
                 continue
+            if any(lo <= line["start"] < hi for lo, hi in pins):
+                continue  # fresh machine line inside a user span: dropped on this run
         elif line.get("status") == "user":
             continue  # the note line is the user's text, kept verbatim
         line["rendered"][heading] = _render(line)
@@ -199,7 +207,8 @@ def merge_section(note_text, heading, lines):
                           "text": _unescape(NOTE_LINE.match(raw)[3]), "status": "user",
                           "rendered": {heading: raw}})
 
-    order = sorted((i for i, line in enumerate(lines) if line.get("status") != "deleted"),
+    order = sorted((i for i, line in enumerate(lines)
+                    if line.get("status") != "deleted" and heading in line["rendered"]),
                    key=lambda i: (lines[i]["start"], i))
     body = [lines[i]["rendered"][heading] for i in order]
     return _write_section(note_text, heading, body), lines
