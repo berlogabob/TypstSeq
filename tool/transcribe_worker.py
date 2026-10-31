@@ -304,36 +304,34 @@ def transcribe_studio(audio, base, key, lang=None, model="unsloth/whisper-large-
 LLM_CONTEXT = 65536  # the long prompts (context pass, translation batches) overflow Studio's 8k default
 
 
-def _usable(entry):
-    """A loaded model below LLM_CONTEXT is reloaded: Studio returns empty replies past its loaded context. No field = usable."""
-    context = entry.get("max_context_length")
-    return context is None or context >= LLM_CONTEXT
+def _load(base, request, model):
+    """Load `model` at LLM_CONTEXT and wait until Studio lists it loaded. Raises ValueError on failure."""
+    root = base.rstrip("/").rsplit("/v1", 1)[0]
+    local = request(root + "/api/models/local")["models"]
+    reference = next((entry["id"] for entry in local if entry.get("model_id") == model), model)
+    result = request(base.rstrip("/") + "/load",
+                     {"model_path": reference, "max_seq_length": LLM_CONTEXT, "force_cancel_active": True})
+    if result.get("error") or result.get("success") is False:
+        raise ValueError(f"Studio rejected load: {result}")
+    deadline = time.monotonic() + 15 * 60
+    while time.monotonic() < deadline:
+        if any(entry["id"] == model and entry.get("loaded") is True for entry in request("/models")["data"]):
+            return
+        time.sleep(min(5, max(0, deadline - time.monotonic())))
+    raise ValueError("not loaded after 15 minutes")
 
 
 def ensure_model(base, key, prefer, request):
     """Select Ornith or load the preferred model using the authenticated request."""
     try:
-        loaded = [entry["id"] for entry in request("/models")["data"]
-                  if entry.get("loaded") is True and _usable(entry)]
+        loaded = [entry["id"] for entry in request("/models")["data"] if entry.get("loaded") is True]
         if prefer in loaded:
             return prefer
         ornith = next((model for model in loaded if "ornith" in model.lower()), None)
         if ornith:
             return ornith
-        root = base.rstrip("/").rsplit("/v1", 1)[0]
-        local = request(root + "/api/models/local")["models"]
-        reference = next((entry["id"] for entry in local
-                          if entry.get("model_id") == prefer), prefer)
-        result = request(base.rstrip("/") + "/load", {"model_path": reference, "max_seq_length": LLM_CONTEXT})
-        if result.get("error") or result.get("success") is False:
-            raise ValueError(f"Studio rejected load: {result}")
-        deadline = time.monotonic() + 15 * 60
-        while time.monotonic() < deadline:
-            if any(entry["id"] == prefer and entry.get("loaded") is True and _usable(entry)
-                   for entry in request("/models")["data"]):
-                return prefer
-            time.sleep(min(5, max(0, deadline - time.monotonic())))
-        raise ValueError("not loaded after 15 minutes")
+        _load(base, request, prefer)
+        return prefer
     except Exception as error:
         raise ValueError(f"Could not load preferred translation model {prefer}: {error}") from error
 
@@ -400,16 +398,27 @@ def llm_chat(settings, *, max_tokens=3000):
                               else "ollama/ornith-1.5:35b"),
                              request)
 
-    def chat(messages):
+    def complete(messages):
         # Thinking off and 10 lines per request: with reasoning on, 40 theatre
         # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
-        reply = request("/chat/completions", {
+        return request("/chat/completions", {
             "model": model,
             "temperature": 0,
             "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": messages,
         })["choices"][0]["message"]["content"] or ""
+
+    def chat(messages):
+        reply = complete(messages)
+        if not reply.strip():
+            # Studio answers an empty reply once a prompt outgrows the context it loaded with, and
+            # its context fields do not show which one that is. Reload at LLM_CONTEXT, retry once.
+            try:
+                _load(base, request, model)
+            except Exception as error:
+                raise ValueError(f"Could not reload {model} at {LLM_CONTEXT} after an empty reply: {error}") from error
+            reply = complete(messages)
         if not reply.strip():
             raise ValueError(f"LLM {model} returned an empty reply{_context_note(request, model)}")
         return reply.strip()

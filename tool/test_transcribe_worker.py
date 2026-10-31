@@ -638,7 +638,8 @@ def test_translation_loads_preferred_model(monkeypatch):
         elif request.full_url == "https://studio.example/v1/load":
             assert request.get_method() == "POST"
             assert timeout == 900
-            assert json.loads(request.data) == {"model_path": "studio-reference", "max_seq_length": 65536}
+            assert json.loads(request.data) == {"model_path": "studio-reference", "max_seq_length": 65536,
+                                                "force_cancel_active": True}
             result = {"success": True}
         else:
             assert request.full_url == "https://studio.example/v1/chat/completions"
@@ -669,7 +670,8 @@ def test_ensure_model_load_failure_has_no_fallback(monkeypatch, failure):
         if route.endswith("/api/models/local"):
             return {"models": []}
         assert route == "https://studio.example/v1/load"
-        assert payload == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536}
+        assert payload == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
+                           "force_cancel_active": True}
         if failure == "http":
             raise OSError("load unavailable")
         return {"success": failure != "rejected"}
@@ -681,63 +683,89 @@ def test_ensure_model_load_failure_has_no_fallback(monkeypatch, failure):
         assert now[0] == 900
 
 
-def test_loaded_model_with_8k_context_is_reloaded_at_64k(monkeypatch):
-    sleeps = []
-    monkeypatch.setattr(worker.time, "sleep", sleeps.append)
-    # Studio lists 8k on the first poll after the load (still reloading), then 64k.
-    contexts = iter([8192, 8192, 65536])
-    calls = []
+def test_load_sends_force_cancel_active(monkeypatch):
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    loads = []
 
     def request(route, payload=None):
-        calls.append((route, payload))
         if route == "/models":
-            return {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True,
-                              "max_context_length": next(contexts)}]}
-        if route == "https://studio.example/api/models/local":
+            return {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True}] if loads else []}
+        if route.endswith("/api/models/local"):
             return {"models": []}
         assert route == "https://studio.example/v1/load"
+        loads.append(payload)
         return {"success": True}
 
     assert worker.ensure_model("https://studio.example/v1", "key", "ollama/ornith-1.5:35b", request) \
         == "ollama/ornith-1.5:35b"
-    assert calls == [
-        ("/models", None),
-        ("https://studio.example/api/models/local", None),
-        ("https://studio.example/v1/load", {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536}),
-        ("/models", None),
-        ("/models", None),
-    ]
-    assert sleeps == [5]
+    assert loads == [{"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
+                      "force_cancel_active": True}]
 
 
-def test_loaded_model_with_64k_context_is_used():
+def studio_stub(replies, calls):
+    """urlopen stand-in: each chat call takes the next reply. Every request is appended to `calls` as (url, payload)."""
+    def fake(request, timeout):
+        payload = json.loads(request.data) if request.data else None
+        calls.append((request.full_url, payload))
+        if request.full_url.endswith("/chat/completions"):
+            result = {"choices": [{"message": {"content": next(replies)}}]}
+        elif request.full_url.endswith("/api/models/local"):
+            result = {"models": []}
+        elif request.full_url.endswith("/load"):
+            result = {"success": True}
+        else:
+            result = {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True}]}
+        return BytesIO(json.dumps(result).encode())
+
+    return fake
+
+
+def test_empty_reply_reloads_at_64k_and_retries_once(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "ollama/ornith-1.5:35b")
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
     calls = []
+    monkeypatch.setattr(worker, "urlopen", studio_stub(iter(["", '["Привет"]']), calls))
 
-    def request(route, payload=None):
-        calls.append(route)
-        assert route == "/models"
-        return {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True, "max_context_length": 65536}]}
+    _, chat = worker.llm_chat({})
+    assert chat([{"role": "user", "content": "hi"}]) == '["Привет"]'
+    assert [url for url, _ in calls] == [
+        "https://studio.example/v1/chat/completions",
+        "https://studio.example/api/models/local",
+        "https://studio.example/v1/load",
+        "https://studio.example/v1/models",
+        "https://studio.example/v1/chat/completions",
+    ]
+    assert calls[2][1] == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
+                           "force_cancel_active": True}
+    assert calls[4][1] == calls[0][1]
 
-    assert worker.ensure_model("https://studio.example/v1", "key", "ollama/ornith-1.5:35b", request) \
-        == "ollama/ornith-1.5:35b"
-    assert calls == ["/models"]
+
+def test_second_empty_reply_raises(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "ollama/ornith-1.5:35b")
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    calls = []
+    monkeypatch.setattr(worker, "urlopen", studio_stub(iter(["", ""]), calls))
+
+    _, chat = worker.llm_chat({})
+    with pytest.raises(ValueError, match=r"ollama/ornith-1\.5:35b returned an empty reply"):
+        chat([{"role": "user", "content": "hi"}])
+    urls = [url for url, _ in calls]
+    assert urls.count("https://studio.example/v1/load") == 1
+    assert urls.count("https://studio.example/v1/chat/completions") == 2
 
 
 def test_empty_llm_reply_raises_clear_error(monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
     monkeypatch.setenv("TYLOG_LLM_MODEL", "ollama/ornith-1.5:35b")
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(worker, "urlopen", studio_stub(iter(["", ""]), []))
 
-    def fake(request, timeout):
-        if request.full_url.endswith("/models"):
-            result = {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True, "max_context_length": 8192}]}
-        else:
-            result = {"choices": [{"message": {"content": ""}}]}
-        return BytesIO(json.dumps(result).encode())
-
-    monkeypatch.setattr(worker, "urlopen", fake)
     _, chat = worker.llm_chat({})
-    with pytest.raises(ValueError, match=r"ollama/ornith-1\.5:35b returned an empty reply \(max_context_length 8192\)"):
+    with pytest.raises(ValueError) as error:
         chat([{"role": "user", "content": "hi"}])
+    assert str(error.value) == "LLM ollama/ornith-1.5:35b returned an empty reply"
 
 
 def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
