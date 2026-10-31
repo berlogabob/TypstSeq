@@ -274,3 +274,20 @@ def test_three_languages_always_enqueued():
 - **Phase 3, context:** `== Context` section read from the note; one LLM pass -> Summary, Scenes, glossary, References (in ru, marked AI), incoherent ids; runs before Phase 2's arbitration on re-runs. App parses the new sections.
 - **Phase 4, translation v2:** translation as a stage of the job; windows by scene, glossary + previous 10 pairs; review pass 1-5, retranslate < 3 once; model bake-off among Studio models on 40 clean lines. Gate: untranslated 0, failed < 2%, mean score >= 4. Then the user's Russian test recording.
 - **Phase 5, app:** parallel view, marker styling, scenes/references jump lists, Re-process action; verify on the P30.
+
+## Phase 1 gate result (2026-10-31)
+Theatre re-run: transcript 188 s, 542 lines, loops 40 -> 0, mid-cut 51 -> 19, 100 non-speech lines; ru 136 s, untranslated 66 -> 13 (lines returned in Portuguese), en 0. Sentences read as sentences; remaining errors are misheard names (Paulo for Baubo, alfantes, Goçambique). Order kept: Phase 2/3 next, plus one cheap Phase 4 item first.
+
+## Phase 2-3 tasks (same conventions as Tasks 1-8)
+
+### Task 10: Translation target-script check
+`tool/transcribe_worker.py` translate path. `looks_translated(source: str, text: str, target: str) -> bool`: ru needs >= 1 Cyrillic letter per 3 source words (min 1) unless the source has no letters; en/pt: text != source unless the source is <= 2 words. A failing line is retried alone with the prompt "Translate this line into <language name>. Reply with the translation only."; still failing -> `[sem tradução]`. Tests: `test_portuguese_reply_for_ru_is_retried`, `test_retry_failure_marks_line`, `test_short_identical_line_ok_for_en`.
+
+### Task 11: Doubtful lines from engine disagreement
+`tool/audio_v2.py`: `agreement(a: str, b: str) -> float` = `difflib.SequenceMatcher` ratio on lowercased words with punctuation stripped. A speech chunk with `agreement(asr, asr_alt) < DOUBT_THRESHOLD` marks its lines `status: "doubtful"` (rendered with `(?) `). `DOUBT_THRESHOLD` is set from the theatre sidecar so 10-15% of speech chunks flag (compute on the real sidecar read-only, put the value and the measured rate in a comment). Chunks without `asr_alt` never flag. Tests: `test_agreement_ignores_case_and_punctuation`, `test_low_agreement_marks_chunk_lines_doubtful`, `test_missing_alt_not_doubtful`.
+
+### Task 13: Context pass
+`== Context` section (user text, never written by the worker). After the transcript (and before Task 12's arbitration), one LLM call (same connection/model resolution as `translate`, thinking off, JSON reply, deadline 900 s) over Context + numbered transcript lines (non-gap) returns `{"summary": str, "scenes": [{"line": int, "title": str}], "glossary": [{"term": str, "spelling": str, "ru": str}], "references": [{"line": int, "term": str, "explanation": str}]}` in the first target language (ru). Saved in the sidecar under `context`; rendered via `merge_section` as `== Summary` (plain lines, no timestamps -> use `- 00:00` for the single summary line), `== Scenes` and `== References` (`- mm:ss` of the referenced line; references text ends with ` (AI)`). Over-long transcripts are sent in windows of 400 lines and merged (summary of summaries). Tests with a fake LLM: `test_context_sections_written`, `test_context_section_never_written`, `test_reference_lines_marked_ai`, `test_bad_json_leaves_note_unchanged`.
+
+### Task 12: Arbitration of doubtful lines
+For each doubtful chunk: LLM call with hypotheses A (`asr`) and B (`asr_alt`), 3 lines before/after, glossary from the sidecar, Context; reply JSON `{"text": str, "status": "ok"|"fixed"|"doubtful"}`. Guard: every word of `text` (lowercased, punctuation stripped) must appear in A, B or a glossary `spelling`; otherwise keep A and status `doubtful`. Accepted text replaces the chunk's lines (re-split with `sentence_lines`), status `fixed` lines render without `(?)`. Tests: `test_guard_rejects_invented_words`, `test_glossary_spelling_allowed`, `test_fixed_lines_lose_marker`, `test_user_edited_lines_untouched`.
