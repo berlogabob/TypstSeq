@@ -227,6 +227,33 @@ Cause of the slow run: Ornith 35b reasoned before every answer (57 s/day, 12/20 
 - [x] Error check: 9 log errors; 7 old-code screenshot errors and shot-09ddd22b succeeded on reruns, 2022-07-19 hit the 4000 cap -> rerun at 12000 (33 mentions); cap now 8000 (33bbca8), date-flaky test fixed (3a75387). All 995 days + 2519 screenshots have results.
 - [ ] Optional later: thinking-on second pass only for days where the fast run finds nothing
 
+## Audio notes v2 (2026-10-31, user: "run the work", loop, status every 5 min, max token save)
+Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/superpowers/plans/2026-10-31-audio-notes-v2.md. Haiku subagents + pi/Ornith (when Studio GPU is free); Claude at gates. Text in ru+en+pt always (critical). Mac: no models > small, 4 GB guard.
+- [x] T2 metrics script + baseline (f094597): 205 lines, 40 loops, 51 mid-cut, ru 66 untranslated
+- [x] T1 hard deadline on Studio calls + guarded Mac fallback (4422241, 158 tests); free mem = free+inactive+speculative
+- [x] T1b guard + small cap on every local transcription (5a97cc3, 181 tests); tiny language probe stays unguarded (tiny < small, allowed)
+- [x] T3 STT bake-off: primary whisper-large-v3-turbo, secondary qwen3-asr-1.7b (best on names, no punctuation); large-v3 too slow (72 s/clip); parakeet silent on music (Phase 2 music gate option)
+- [x] T4 speech map (26267f6; regions merge only across pauses < mark_gap)
+- [x] T5 hallucination filter + sentence lines (95b9177, 181 tests)
+- [x] T6 sidecar + edit-protected rendering; Dart stable same-second order (0c52630, 192 py + dart green)
+- [x] T6b pinned span on re-run (6143966, 194 tests)
+- [x] T6c last user-edited line pins at most +20 s (3a1b44e, 195 tests)
+- [x] T7 v2 path in worker, ru/en/pt always (a579f58, 216 tests)
+- [x] T7b/T8b legacy Translation sections removed on first v2 run; translation merges into a fresh read (657b86d, 218 tests)
+- [x] T7c a finished transcript re-queues its translations (00f98f4, 219 tests)
+- [x] T8 translation lines follow transcript lines; failures marked (039b076, 199 tests; state in sidecar translations[target])
+- [x] T9 theatre re-run: 3 min transcript + ~2 min per translation; loops 40->0, mid-cut 51->19, ru untranslated 66->13, en 0; readable sentences; agent reloaded
+- [ ] T10 translation validation: target script check -> single-line retry -> [sem tradução] (13 ru lines came back in pt)
+- [ ] T11 doubtful lines from primary/secondary disagreement, (?) marker
+- [ ] T13 context pass: == Context in, Summary/Scenes/References/glossary out
+- [ ] T12 arbitration of doubtful lines with glossary (no words absent from both hypotheses)
+- [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
+Issues found during the run:
+- T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
+- T6: pinned-span rule not implemented -> T6b; legacy lines survive merge as user lines -> T7 clears them after backup
+- T7: translate toggle in lib/widgets/audio_processing_settings.dart is now a no-op (ru/en/pt invariant) -> Phase 5 app: remove or relabel it
+- T7: legacy Translation sections not cleared; translation path reads note too early -> T7b/T8b
+
 ## Open items audit (2026-10-31, whole file re-read)
 Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 #5), startup scan (W8 #3-4), diarization (W8 #8), smaller search index (W12 v4), WebDAV round trip (W12 rclone), fold minors (26f39d2), A24 idle memory (W13 W5: 242-246 MB), screenshot layout (0.19.4).
 - [x] 2026-10-15 adb junk-text incident: real-vault daily 2026-10-15 has no 'п' / 'р-н' lines (checked 2026-10-31).

@@ -1,1 +1,3 @@
 {"phase": "baseline", "lines": 205, "loops": 40, "mid_cut": 51, "nonspeech": 0, "doubtful": 0, "translations": {"ru": {"lines": 205, "untranslated": 66, "failed": 0}}}
+{"phase": "1-transcript", "lines": 542, "loops": 0, "mid_cut": 19, "nonspeech": 100, "doubtful": 0, "transcribe_s": 188, "mac_max_rss_gb": 1.76}
+{"phase": "1", "lines": 542, "loops": 0, "mid_cut": 19, "nonspeech": 100, "doubtful": 0, "translations": {"ru": {"lines": 542, "untranslated": 13, "failed": 0}, "en": {"lines": 542, "untranslated": 0, "failed": 0}}, "transcribe_s": 188, "translate_ru_s": 136, "notes": "readable sentences; ru: some lines returned in pt; ASR names still wrong (Paulo=Baubo, alfantes, Goçambique)"}
