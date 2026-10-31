@@ -262,7 +262,6 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [ ] T29 re-run theatre ru translation after T28 (queued 20:47); target failed < 2%, mean >= 4
 - [x] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process; toggle read-only (analyze clean, 1755 tests)
 - [ ] T27 GUI check of the audio note screen on Mac + P30 (Mac screen locked now; needs user or unlocked Mac)
-- [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
 - T6: pinned-span rule not implemented -> T6b; legacy lines survive merge as user lines -> T7 clears them after backup
