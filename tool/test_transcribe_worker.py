@@ -558,7 +558,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
             assert "The source may mix these languages: " + ", ".join(source_langs or ["en"]) in prompt
             batch = json.loads(payload["messages"][1]["content"])
             batches.append(batch)
-            reply = json.dumps(["ru " + text for text in batch])
+            reply = json.dumps(["ру " + text for text in batch])
             if fenced:
                 reply = "```json\n" + reply + "\n```"
             result = {"choices": [{"message": {"content": reply}}]}
@@ -566,7 +566,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
 
     monkeypatch.setattr(worker, "urlopen", fake)
     texts = [f"segment {index}" for index in range(81)]
-    assert worker.translate(texts, "en", "ru", source_langs) == ["ru " + text for text in texts]
+    assert worker.translate(texts, "en", "ru", source_langs) == ["ру " + text for text in texts]
     assert [len(batch) for batch in batches] == [10] * 8 + [1]
 
 
@@ -1177,11 +1177,11 @@ def test_translation_ai_precedence(tmp_path, monkeypatch, quality, explicit, env
         assert request.full_url == "https://configured/v1/chat/completions"
         assert request.get_header("Authorization") == "Bearer local-key"
         assert json.loads(request.data)["model"] == expected
-        return BytesIO(b'{"choices": [{"message": {"content": "[\\"translated\\"]"}}]}')
+        return BytesIO('{"choices": [{"message": {"content": "[\\"переведено\\"]"}}]}'.encode())
 
     monkeypatch.setattr(worker, "ensure_model", ensure)
     monkeypatch.setattr(worker, "urlopen", http)
-    assert worker.translate(["hello"], "en", "ru", settings=worker.load_ai_settings(tmp_path)) == ["translated"]
+    assert worker.translate(["hello"], "en", "ru", settings=worker.load_ai_settings(tmp_path)) == ["переведено"]
     assert calls == ([expected] if automatic else [])
 
 
@@ -1261,7 +1261,7 @@ def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypa
         if failed and request.full_url.endswith("/chat/completions"):
             raise OSError("Backend rejected key " + secret)
         result = ({"data": [{"id": "translator"}]} if request.full_url.endswith("/models") else
-                  {"choices": [{"message": {"content": '["translated"]'}}]})
+                  {"choices": [{"message": {"content": '["переведено"]'}}]})
         return BytesIO(json.dumps(result).encode())
 
     monkeypatch.setattr(worker, "urlopen", http)
@@ -1356,7 +1356,7 @@ def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
 
     monkeypatch.setattr(worker, "ensure_model", ensure)
     monkeypatch.setattr(worker, "urlopen", lambda request, timeout:
-                        BytesIO(b'{"choices": [{"message": {"content": "[\\"translated\\"]"}}]}'))
+                        BytesIO('{"choices": [{"message": {"content": "[\\"переведено\\"]"}}]}'.encode()))
     worker.run_once(tmp_path, probe=lambda base, key: {"reachable": True, "loaded": []})
     job = json.loads(path.read_text())
     assert job["status"] == "done"
@@ -1434,11 +1434,11 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
         if len(batch) > 1 or batch == ["loop"]:
             reply = '["unterminated'
         else:
-            reply = json.dumps(["ru " + batch[0]])
+            reply = json.dumps(["ру " + batch[0]])
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
-    assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ru a", "[sem tradução]", "ru b"]
+    assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ру a", "[sem tradução]", "ру b"]
 
 
 def test_gap_lines_not_sent_to_model():
@@ -1463,13 +1463,77 @@ def test_failed_line_is_marked_not_source(monkeypatch):
         if "loop" in batch:
             reply = '["unterminated'
         else:
-            reply = json.dumps(["ru " + text for text in batch])
+            reply = json.dumps(["ру " + text for text in batch])
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
     note = "= Note\n\n== Transcript\n\n- 00:00 a\n- 00:05 loop\n- 00:10 b\n"
     updated, _ = worker.apply_translation(note, "pt", "ru", worker.translate)
-    assert "== Translation ru\n\n- 00:00 ru a\n- 00:05 \\[sem tradução\\]\n- 00:10 ru b\n" in updated
+    assert "== Translation ru\n\n- 00:00 ру a\n- 00:05 \\[sem tradução\\]\n- 00:10 ру b\n" in updated
+
+
+def chat_fake(monkeypatch, reply_for):
+    """LLM endpoint stand-in: reply_for(messages) gives the reply text. Returns the messages of every request."""
+    sent = []
+
+    def fake(request, timeout):
+        messages = json.loads(request.data)["messages"]
+        sent.append(messages)
+        content = reply_for(messages)
+        return BytesIO(json.dumps({"choices": [{"message": {"content": content}}]}).encode())
+
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
+    monkeypatch.setattr(worker, "urlopen", fake)
+    return sent
+
+
+def is_line_prompt(messages):
+    return messages[0]["content"].startswith("Translate this line into")
+
+
+def test_portuguese_reply_for_ru_is_retried(monkeypatch):
+    def reply(messages):
+        return "Привет, мир" if is_line_prompt(messages) else json.dumps(["Olá, mundo"])
+
+    sent = chat_fake(monkeypatch, reply)
+    assert worker.translate(["Hello, world"], "en", "ru") == ["Привет, мир"]
+    assert len(sent) == 2
+    assert sent[1] == [
+        {"role": "system", "content": "Translate this line into Russian. Reply with the translation only."},
+        {"role": "user", "content": "Hello, world"},
+    ]
+
+
+def test_retry_failure_marks_line(monkeypatch):
+    def reply(messages):
+        if is_line_prompt(messages):
+            return "Olá de novo"  # still Portuguese when asked alone
+        batch = json.loads(messages[1]["content"])
+        return json.dumps(["Olá, mundo" if text == "Hello, world" else "Доброе утро всем" for text in batch])
+
+    sent = chat_fake(monkeypatch, reply)
+    assert worker.translate(["Hello, world", "Good morning all"], "en", "ru") == [
+        worker.FAILED_TRANSLATION, "Доброе утро всем"]
+    assert [is_line_prompt(messages) for messages in sent] == [False, True]
+
+
+def test_short_identical_line_ok_for_en():
+    assert worker.looks_translated("Okay then", "Okay then", "en")
+    assert worker.looks_translated("Good morning everyone", "Bom dia a todos", "en")
+    assert not worker.looks_translated("Good morning everyone", "Good morning everyone", "en")
+    assert not worker.looks_translated("Bom dia a todos", "Bom dia a todos", "pt")
+    assert not worker.looks_translated("Hello world", "Olá mundo", "ru")
+    assert worker.looks_translated("Hello world", "Привет мир", "ru")
+    assert not worker.looks_translated("Hello world", "  ", "en")
+
+
+def test_ru_needs_one_cyrillic_letter_per_three_words():
+    nine = "one two three four five six seven eight nine"
+    assert worker.looks_translated(nine, "Раз", "ru")
+    assert not worker.looks_translated(nine, "Ра", "ru")
+    assert worker.looks_translated("Hi", "Ок", "ru")
+    assert worker.looks_translated("123 !!", "Ок", "ru")
 
 
 def test_translation_line_count_equals_transcript():

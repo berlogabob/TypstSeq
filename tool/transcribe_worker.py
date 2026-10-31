@@ -25,6 +25,8 @@ PROBE_DEADLINE = 30
 MAC_FALLBACK_MIN_FREE = 4 * 1024**3
 LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever the settings say
 FAILED_TRANSLATION = "[sem tradução]"  # written for a line the model could not translate
+LANGUAGE_NAMES = {"ru": "Russian", "en": "English", "pt": "Portuguese"}
+CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 # Ordered by size; a name not listed here counts as the largest.
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v2", "large-v3", "large")
 
@@ -334,6 +336,22 @@ def collapse_repeats(text):
     return _REPEAT.sub(r"\1 …", text)
 
 
+def looks_translated(source, text, target):
+    """Whether `text` can be a translation of `source` into `target`. A script and identity check, not a quality check.
+
+    ru: at least one Cyrillic letter per three source words (min 1), unless the source has no letters.
+    Other targets: the reply must differ from the source, unless the source is two words or fewer.
+    An empty reply never counts.
+    """
+    if not text.strip():
+        return False
+    if target == "ru":
+        if not any(char.isalpha() for char in source):
+            return True
+        return len(CYRILLIC.findall(text)) >= max(1, len(source.split()) // 3)
+    return len(source.split()) <= 2 or text.strip() != source.strip()
+
+
 def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     translate.last_model = None
     settings = settings or {}
@@ -365,26 +383,29 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     # Whisper loops on music and applause ("É isso aí! É isso aí! ..."); the
     # model copies the loop until the reply cap and the batch fails.
     texts = [collapse_repeats(text) for text in texts]
-    translated = []
-    # Thinking off and 10 lines per request: with reasoning on, 40 theatre
-    # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
-    def ask(batch):
-        reply = request("/chat/completions", {
+
+    def chat(messages):
+        # Thinking off and 10 lines per request: with reasoning on, 40 theatre
+        # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
+        return request("/chat/completions", {
             "model": model,
             "temperature": 0,
             "max_tokens": 3000,
             "chat_template_kwargs": {"enable_thinking": False},
-            "messages": [
-                {"role": "system", "content": (
-                    f"Translate faithfully into {target}. Keep names. "
-                    "Segments that are already in the target language must be returned unchanged. "
-                    f"The source may mix these languages: {', '.join(source_langs or [source_lang])}. "
-                    "No commentary. Input is a JSON array of strings; return only a JSON "
-                    "array of translated strings of the same length, in the same order."
-                )},
-                {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
-            ],
+            "messages": messages,
         })["choices"][0]["message"]["content"].strip()
+
+    def ask(batch):
+        reply = chat([
+            {"role": "system", "content": (
+                f"Translate faithfully into {target}. Keep names. "
+                "Segments that are already in the target language must be returned unchanged. "
+                f"The source may mix these languages: {', '.join(source_langs or [source_lang])}. "
+                "No commentary. Input is a JSON array of strings; return only a JSON "
+                "array of translated strings of the same length, in the same order."
+            )},
+            {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
+        ])
         if reply.startswith("```"):
             reply = re.sub(r"^```[^\n]*\n", "", reply)
             reply = re.sub(r"\s*```$", "", reply)
@@ -395,31 +416,54 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
             raise ValueError("Translation reply must be a JSON array of strings with the same length")
         return result
 
-    # A bad batch (broken JSON from a looping line) is retried line by line;
-    # a line that still fails is marked FAILED_TRANSLATION, never copied from
-    # the source. Only a job where nothing translates fails, so one noisy
-    # minute cannot sink a 2-hour recording.
-    failed = 0
+    def settle(text, reply):
+        """The reply when it is in the target language; else one plain retry of the line alone; None if that fails too."""
+        nonlocal last_error
+        if looks_translated(text, reply, target):
+            return reply
+        try:
+            retry = chat([
+                {"role": "system", "content": (
+                    f"Translate this line into {LANGUAGE_NAMES.get(target, target)}. "
+                    "Reply with the translation only.")},
+                {"role": "user", "content": text},
+            ])
+        except (ValueError, OSError) as error:
+            last_error = error
+            return None
+        if looks_translated(text, retry, target):
+            return retry
+        last_error = ValueError(f"Reply is not a translation into {target}")
+        return None
+
+    # A bad batch (broken JSON from a looping line) is retried line by line. A reply in
+    # the wrong language (Portuguese for ru, the source copied for en/pt) gets one plain
+    # retry. A line that still fails is marked FAILED_TRANSLATION, never copied from
+    # the source. Only a job where nothing translates fails, so one noisy minute cannot
+    # sink a 2-hour recording.
+    results = []
     for start in range(0, len(texts), 10):
         batch = texts[start:start + 10]
         try:
-            translated.extend(ask(batch))
-            continue
+            replies = ask(batch)
         except (ValueError, OSError) as error:  # bad JSON, timeout
             last_error = error
-        for text in batch:
+            replies = None
+        for index, text in enumerate(batch):
+            if replies is not None:
+                results.append(settle(text, replies[index]))
+                continue
             try:
                 if len(batch) == 1:
                     raise last_error  # nothing smaller to retry
-                translated.extend(ask([text]))
+                results.append(settle(text, ask([text])[0]))
             except (ValueError, OSError) as error:
                 last_error = error
-                failed += 1
-                translated.append(FAILED_TRANSLATION)
-    if texts and failed == len(texts):
+                results.append(None)
+    if texts and all(result is None for result in results):
         raise last_error
     translate.last_model = model
-    return translated
+    return [FAILED_TRANSLATION if result is None else result for result in results]
 
 
 def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None, reread=None):
