@@ -267,6 +267,10 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T32 P30: each [—] gap renders as two stacked '—' chips in parallel mode (~200 on the theatre note) -> one muted row per gap, consecutive gaps merged
 - [x] T33 user: language/view header takes too much space -> one compact row (parallel toggle icon, source chip marked original, translation chips, translate action); drop the 'Language: X' line
 - [x] Release v0.20.6+164 (user: go; Mac check not needed): run 41246968798 success, 8 assets, APK has libtypst_flutter.so, installed on P30. First run cancelled by GitHub's macos-14 brownout -> apple job on macos-15 (70598b6), tag moved before publish
+- [x] T34 (1761 tests) user on 0.20.6: split toggle and RU/EN/PT seem to do nothing, 'transcribe doesn't work': controls work, but Summary + 25 Scenes + References fill the screen above the transcript, so the change is off-screen. Collapse Scenes/References to one line with count (Summary already collapsed); transcript starts under the header. Split toggle misaligned (32 px filled circle vs chips) -> same chip shape/height
+- [x] T35 (602c628, 290 tests) worker: Summary/Scenes/References in every language (source + ru/en/pt targets) as '== Summary <lang>' etc.; legacy unsuffixed sections removed on re-run
+- [x] T36 (f675cfe, 1765 tests) app: sections follow the selected language chip; source chip (PT) selectable = original only + its sections; legacy unsuffixed sections as fallback
+- [ ] Release 0.20.7 with T34-T36 after P30 check (needs user go)
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
