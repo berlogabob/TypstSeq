@@ -451,8 +451,9 @@ def test_translation_job(tmp_path, existing, source_langs):
         assert source_langs == original.get("source_langs", ["en"])
         return ["Привет \\#[]$*_@", "Далее"]
 
-    expected = (prefix + "== Translation ru\n\n- 00:00 " +
-                worker.escape_markup("Привет \\#[]$*_@") + "\n- 61:40 Далее\n" + notes).encode()
+    # merge_section writes the section at the end of the note (the old one is replaced either way)
+    expected = (prefix + notes + "\n== Translation ru\n\n- 00:00 " +
+                worker.escape_markup("Привет \\#[]$*_@") + "\n- 61:40 Далее\n").encode()
     for _ in range(2):
         job_path.write_text(json.dumps(original))
         worker.run_once(tmp_path, translate=fake)
@@ -501,7 +502,7 @@ def test_transcription_before_translation(tmp_path, monkeypatch):
     worker.run_once(tmp_path, translate=fake)
     assert note.read_text() == (
         "= Note\n\n== Transcript\n\n- 01:05 Hello\n"
-        "== Translation ru\n\n- 01:05 Привет\n"
+        "\n== Translation ru\n\n- 01:05 Привет\n"
     )
 
 
@@ -1181,7 +1182,7 @@ def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypa
         providers.write_text(json.dumps({"providers": {"my-server": {"apiKey": secret}}}))
     write_ai(tmp_path, connections=[{"id": "my-server", "url": "https://server/v1"}],
              tasks={"translate": {"connection": "my-server", "model": "translator"}})
-    path = write_job(tmp_path, "translations", "audio\nru", status="queued",
+    path = write_job(tmp_path, "translations", "audio\nru", status="queued", audio="audio",
                      note="note.typ", source_lang="en", target="ru")
     (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
     calls = []
@@ -1277,7 +1278,7 @@ def test_malformed_ai_fields_are_ignored(tmp_path, tasks, connections):
 def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
     write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}],
              tasks={"translate": {"connection": "studio", "quality": "fast"}})
-    path = write_job(tmp_path, "translations", "audio\nru", status="queued",
+    path = write_job(tmp_path, "translations", "audio\nru", status="queued", audio="audio",
                      note="note.typ", source_lang="en", target="ru")
     (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
 
@@ -1369,7 +1370,62 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
     monkeypatch.setattr(worker, "urlopen", fake)
-    assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ru a", "loop", "ru b"]
+    assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ru a", "[sem tradução]", "ru b"]
+
+
+def test_gap_lines_not_sent_to_model():
+    note = "= Note\n\n== Transcript\n\n- 00:00 Hello\n- 00:05 [—]\n- 00:10 World\n"
+    sent = []
+
+    def fake(texts, source_lang, target, source_langs):
+        sent.append(list(texts))
+        return ["Привет", "Мир"]
+
+    updated, _ = worker.apply_translation(note, "en", "ru", fake)
+    assert sent == [["Hello", "World"]]
+    assert "== Translation ru\n\n- 00:00 Привет\n- 00:05 [—]\n- 00:10 Мир\n" in updated
+
+
+def test_failed_line_is_marked_not_source(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
+
+    def fake(request, timeout):
+        batch = json.loads(json.loads(request.data)["messages"][1]["content"])
+        if "loop" in batch:
+            reply = '["unterminated'
+        else:
+            reply = json.dumps(["ru " + text for text in batch])
+        return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
+
+    monkeypatch.setattr(worker, "urlopen", fake)
+    note = "= Note\n\n== Transcript\n\n- 00:00 a\n- 00:05 loop\n- 00:10 b\n"
+    updated, _ = worker.apply_translation(note, "pt", "ru", worker.translate)
+    assert "== Translation ru\n\n- 00:00 ru a\n- 00:05 \\[sem tradução\\]\n- 00:10 ru b\n" in updated
+
+
+def test_translation_line_count_equals_transcript():
+    note = ("= Note\n\n== Transcript\n\n- 00:00 Hello\n- 00:05 [—]\n"
+            "- 00:10 (?) Maybe\n- 00:20 Bye\n")
+
+    def fake(texts, source_lang, target, source_langs):
+        assert texts == ["Hello", "Maybe", "Bye"]
+        return ["Привет", "Может быть", "Пока"]
+
+    updated, _ = worker.apply_translation(note, "en", "ru", fake)
+    body = updated.split("== Translation ru\n", 1)[1].splitlines()
+    assert [line for line in body if line.startswith("- ")] == [
+        "- 00:00 Привет", "- 00:05 [—]", "- 00:10 (?) Может быть", "- 00:20 Пока"]
+
+
+def test_user_edited_translation_line_kept():
+    note = "= Note\n\n== Transcript\n\n- 00:00 Hello\n- 00:05 World\n"
+    first, state = worker.apply_translation(note, "en", "ru", lambda texts, *_: ["Привет", "Мир"])
+    edited = first.replace("- 00:05 Мир", "- 00:05 Земля")
+    second, _ = worker.apply_translation(edited, "en", "ru", lambda texts, *_: ["Здравствуй", "Свет"],
+                                         previous=state)
+    assert "- 00:05 Земля\n" in second and "Свет" not in second
+    assert "- 00:00 Здравствуй\n" in second
 
 
 def test_deadline_interrupts_a_blocking_call():

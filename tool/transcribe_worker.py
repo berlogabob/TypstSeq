@@ -24,6 +24,7 @@ LLM_DEADLINE = 900
 PROBE_DEADLINE = 30
 MAC_FALLBACK_MIN_FREE = 4 * 1024**3
 LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever the settings say
+FAILED_TRANSLATION = "[sem tradução]"  # written for a line the model could not translate
 # Ordered by size; a name not listed here counts as the largest.
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v2", "large-v3", "large")
 
@@ -395,8 +396,9 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
         return result
 
     # A bad batch (broken JSON from a looping line) is retried line by line;
-    # a line that still fails keeps its source text. Only a job where nothing
-    # translates fails, so one noisy minute cannot sink a 2-hour recording.
+    # a line that still fails is marked FAILED_TRANSLATION, never copied from
+    # the source. Only a job where nothing translates fails, so one noisy
+    # minute cannot sink a 2-hour recording.
     failed = 0
     for start in range(0, len(texts), 10):
         batch = texts[start:start + 10]
@@ -413,21 +415,31 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
             except (ValueError, OSError) as error:
                 last_error = error
                 failed += 1
-                translated.append(text)
+                translated.append(FAILED_TRANSLATION)
     if texts and failed == len(texts):
         raise last_error
     translate.last_model = model
     return translated
 
 
-def apply_translation(note_text, source_lang, target, translate, source_langs=None):
-    lines = note_text.splitlines(keepends=True)
+def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None):
+    """Writes `== Translation <target>` from the Transcript section. Returns (note_text, lines).
 
-    def section_bounds(heading):
-        for start, line in enumerate(lines):
-            if line.rstrip("\r\n") == heading:
+    One translation line per transcript line, same mm:ss. `[—]` gap lines are copied
+    and never sent to the model. `previous` is the `lines` list returned last run
+    (kept in the job sidecar); merge_section keeps a line the user edited. None means
+    the first run or a legacy section: the old section is replaced.
+    """
+    from audio_v2 import DOUBTFUL_PREFIX, GAP_TEXT, merge_section
+
+    heading = f"Translation {target}"
+    note_lines = note_text.splitlines(keepends=True)
+
+    def section_bounds(title):
+        for start, line in enumerate(note_lines):
+            if line.rstrip("\r\n") == title:
                 end = start + 1
-                while end < len(lines) and not lines[end].startswith("== "):
+                while end < len(note_lines) and not note_lines[end].startswith("== "):
                     end += 1
                 return start, end
         return None
@@ -436,23 +448,54 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
     if transcript is None:
         raise ValueError("Note has no Transcript section")
     segments = []
-    for line in lines[transcript[0] + 1:transcript[1]]:
-        match = re.fullmatch(r"- (\d{2,}:[0-5]\d) (.*)", line.rstrip("\r\n"))
-        if match:
-            segments.append((match[1], re.sub(r"\\(.)", r"\1", match[2])))
-    translated = translate([text for _, text in segments], source_lang, target,
-                           source_langs or [source_lang])
-    if len(translated) != len(segments):
+    for line in note_lines[transcript[0] + 1:transcript[1]]:
+        match = re.fullmatch(r"- (\d{2,}):([0-5]\d) (.*)", line.rstrip("\r\n"))
+        if not match:
+            continue
+        start = float(int(match[1]) * 60 + int(match[2]))
+        text = re.sub(r"\\(.)", r"\1", match[3])
+        if text == GAP_TEXT:
+            segments.append({"start": start, "kind": "gap", "text": "", "status": "ok"})
+        elif text.startswith(DOUBTFUL_PREFIX):
+            segments.append({"start": start, "kind": "speech", "text": text[len(DOUBTFUL_PREFIX):],
+                             "status": "doubtful"})
+        else:
+            segments.append({"start": start, "kind": "speech", "text": text, "status": "ok"})
+
+    speech = [segment["text"] for segment in segments if segment["kind"] == "speech"]
+    translated = translate(speech, source_lang, target, source_langs or [source_lang]) if speech else []
+    if len(translated) != len(speech):
         raise ValueError("Translation reply must have the same length as the transcript")
-    section = f"== Translation {target}\n\n" + "".join(
-        f"- {timestamp} {escape_markup(text)}\n"
-        for (timestamp, _), text in zip(segments, translated)
-    )
-    existing = section_bounds(f"== Translation {target}")
-    start, end = existing if existing else (transcript[1], transcript[1])
-    prefix = "".join(lines[:start])
-    separator = "\n" if prefix and not prefix.endswith("\n") else ""
-    return prefix + separator + section + "".join(lines[end:])
+    translated = iter(translated)
+    existing = section_bounds(f"== {heading}")
+    if existing is None:
+        previous = None  # the section was removed on purpose: regenerate, do not keep "deleted" lines
+
+    previous_by_key = {}
+    for line in previous or []:
+        previous_by_key.setdefault((int(line["start"]), line["kind"]), []).append(line)
+    built = []
+    for segment in segments:
+        text = next(translated) if segment["kind"] == "speech" else ""
+        queue = previous_by_key.get((int(segment["start"]), segment["kind"]))
+        old = queue.pop(0) if queue else None
+        if old is not None and old.get("status") in ("user", "deleted"):
+            built.append(old)
+            continue
+        built.append({"start": segment["start"], "kind": segment["kind"], "text": text,
+                      "status": segment["status"],
+                      "rendered": dict(old.get("rendered", {})) if old else {}})
+
+    # A machine line that no transcript line produces any more is removed from the
+    # note; a user-edited one stays (merge_section keeps it as a user line).
+    stale = {line["rendered"][heading] for queue in previous_by_key.values() for line in queue
+             if line.get("status") not in ("user", "deleted") and heading in line.get("rendered", {})}
+    if existing:
+        start, end = existing
+        # No state (first run or legacy section): nothing says which lines the user edited.
+        note_lines[start:end] = [] if previous is None else [
+            raw for raw in note_lines[start:end] if raw.rstrip("\r\n") not in stale]
+    return merge_section("".join(note_lines), heading, built)
 
 
 def _vault_path(vault, relative):
@@ -682,6 +725,7 @@ def _stale_claim(job, now):
 
 def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
              hostname=None, clock=None, probe=None, diarize=False):
+    import audio_v2  # imports this module; a top-level import would be circular
     vault = Path(vault).resolve()
     clock = clock or (lambda: datetime.now(timezone.utc))
     supplied_now = now
@@ -747,15 +791,22 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                             studio_failed=connection is not None)
                     updated_note = apply_transcript(note_text, segments)
                 else:
-                    updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
-                                                     job.get("source_langs", [job["source_lang"]]))
+                    segments_sidecar = audio_v2.sidecar_path(vault, job["audio"])
+                    sidecar = audio_v2.load_sidecar(segments_sidecar)
+                    translations = sidecar.setdefault("translations", {})
+                    updated_note, translations[job["target"]] = apply_translation(
+                        note_text, job["source_lang"], job["target"], translate,
+                        job.get("source_langs", [job["source_lang"]]),
+                        previous=translations.get(job["target"]))
                 with note.open("w", encoding="utf-8", newline="") as stream:
                     stream.write(updated_note)
                 if kind == "transcripts":
                     job["lang"] = language
                     job["langs"] = languages
-                elif getattr(translate, "last_model", None) is not None:
-                    job["llm"] = translate.last_model
+                else:
+                    audio_v2.save_sidecar(segments_sidecar, sidecar)
+                    if getattr(translate, "last_model", None) is not None:
+                        job["llm"] = translate.last_model
                 job["status"] = "done"
                 job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 job.pop("error", None)
