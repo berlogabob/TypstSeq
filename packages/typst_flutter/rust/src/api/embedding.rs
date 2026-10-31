@@ -54,6 +54,46 @@ struct Loaded {
 #[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
 static LOADED: std::sync::Mutex<Option<Loaded>> = std::sync::Mutex::new(None);
 
+// The model costs ~200 MB of native memory. Background indexing after a sync
+// (or one search) used to pin it until the app was killed, so a reaper thread
+// drops it once nothing has embedded for IDLE_UNLOAD; the next call reloads it
+// (a few hundred ms).
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+const IDLE_UNLOAD: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+static LAST_USE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+static REAPER: std::sync::Once = std::sync::Once::new();
+
+#[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
+fn touch_and_start_reaper() {
+    if let Ok(mut last) = LAST_USE.lock() {
+        *last = Some(std::time::Instant::now());
+    }
+    REAPER.call_once(|| {
+        std::thread::spawn(|| loop {
+            std::thread::sleep(IDLE_UNLOAD / 4);
+            let idle = LAST_USE
+                .lock()
+                .ok()
+                .and_then(|last| *last)
+                .map_or(false, |at| at.elapsed() >= IDLE_UNLOAD);
+            if !idle {
+                continue;
+            }
+            // try_lock: an embedding in progress keeps the model.
+            if let Ok(mut guard) = LOADED.try_lock() {
+                *guard = None;
+                if let Ok(mut last) = LAST_USE.lock() {
+                    *last = None;
+                }
+            }
+        });
+    });
+}
+
 #[cfg(any(all(target_os = "android", target_arch = "aarch64"), all(target_os = "macos", target_arch = "aarch64")))]
 pub fn embed(
     model_path: String,
@@ -68,6 +108,7 @@ pub fn embed(
         return Err("invalid_kind".into());
     }
     let mut guard = LOADED.lock().map_err(|_| "model_lock")?;
+    touch_and_start_reaper();
     let stale = match guard.as_ref() {
         Some(l) => l.model_path != model_path || l.tokenizer_path != tokenizer_path,
         None => true,
