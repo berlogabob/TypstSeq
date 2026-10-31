@@ -290,3 +290,38 @@ def test_sidecar_defaults_and_round_trip(tmp_path):
     v2.save_sidecar(path, data)
     assert v2.load_sidecar(path) == data
     assert not path.with_name(path.name + ".tmp").exists()
+
+
+def _chunk(start, end, asr, asr_alt=None):
+    chunk = {"start": start, "end": end, "kind": "speech", "asr": asr}
+    if asr_alt is not None:
+        chunk["asr_alt"] = asr_alt
+    return chunk
+
+
+def test_agreement_ignores_case_and_punctuation():
+    assert v2.agreement("Não, não. Vai!", "não NÃO vai") == 1.0
+    assert v2.agreement("Olá mundo", "tchau") == 0.0
+    assert v2.agreement("a b c d", "a b c x") == 0.75
+
+
+def test_low_agreement_marks_chunk_lines_doubtful():
+    chunks = [
+        _chunk(0.0, 6.0, "Olá, tudo bem com você? Vamos embora agora.", "tchau mundo"),
+        _chunk(6.0, 9.0, "Até amanhã, meu amigo.", "Até amanhã, meu amigo."),
+    ]
+    lines = v2.lines_from_chunks(chunks)
+    assert [(line["text"], line["status"]) for line in lines] == [
+        ("Olá, tudo bem com você?", "doubtful"),
+        ("Vamos embora agora.", "doubtful"),
+        ("Até amanhã, meu amigo.", "ok"),
+    ]
+    note, _ = v2.merge_section("= Note\n", "Transcript", lines)
+    assert "- 00:00 (?) Olá, tudo bem com você?\n" in note
+    assert "(?) Até" not in note
+
+
+def test_missing_alt_not_doubtful():
+    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?"),
+              _chunk(6.0, 9.0, "Até amanhã, meu amigo.", "")]  # "" is what the Mac fallback stores
+    assert [line["status"] for line in v2.lines_from_chunks(chunks)] == ["ok", "ok"]

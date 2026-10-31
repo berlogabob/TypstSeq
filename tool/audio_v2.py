@@ -7,6 +7,7 @@ worker (tool/transcribe_worker.py) owns jobs and note I/O.
 """
 
 import base64
+import difflib
 import hashlib
 import json
 import math
@@ -39,6 +40,11 @@ MIN_WORDS = 3
 GAP_TEXT = "[—]"
 DOUBTFUL_PREFIX = "(?) "
 NOTE_LINE = re.compile(r"^\s*-\s+(\d{1,3}):([0-5]\d)\s+(.+?)\s*$")
+# A speech chunk whose two engines agree on less than this (agreement()) is doubtful.
+# Set on the theatre sidecar 3efa2a81a7186a11d40eb0a34a974200b8daa505.json (2026-10-31): 151 speech
+# chunks, all with asr_alt. 0.01 flags 20 of 151 = 13.2%: 18 chunks have no word in common, and 2 long
+# chunks (300+ words) match once. 0.05 would flag 23 = 15.2%, just above the 10-15% target.
+DOUBT_THRESHOLD = 0.01
 
 
 def speech_regions(audio_path, min_silence_ms=2000):
@@ -337,8 +343,27 @@ def _gap_line(start):
     return {"start": float(start), "kind": "gap", "text": "", "status": "ok"}
 
 
+def agreement(a, b):
+    """How alike two recognitions of one chunk are, 0..1: difflib ratio on lowercased words, punctuation dropped."""
+    return difflib.SequenceMatcher(None, _tokens(a), _tokens(b)).ratio()
+
+
+def _tokens(text):
+    return re.findall(r"\w+", text.lower())
+
+
+def _doubtful(chunk, text):
+    """Engines disagree on a speech chunk. No second text (asr_alt missing or "", as the Mac fallback
+    stores it) is never doubtful."""
+    alt = (chunk.get("asr_alt") or "").strip()
+    return bool(alt) and agreement(text, alt) < DOUBT_THRESHOLD
+
+
 def lines_from_chunks(chunks):
-    """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines."""
+    """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines.
+
+    Lines of a speech chunk whose engines disagree (_doubtful) get status "doubtful".
+    """
     lines = []
     for chunk in chunks:
         start = float(chunk["start"])
@@ -346,7 +371,8 @@ def lines_from_chunks(chunks):
         if chunk["kind"] == "gap" or not text or is_hallucination(text):
             lines.append(_gap_line(start))
             continue
-        lines += [{"start": at, "kind": "speech", "text": sentence, "status": "ok"}
+        status = "doubtful" if _doubtful(chunk, text) else "ok"
+        lines += [{"start": at, "kind": "speech", "text": sentence, "status": status}
                   for at, sentence in sentence_lines(start, chunk["end"], text)]
     return lines
 
