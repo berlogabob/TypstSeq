@@ -86,7 +86,7 @@ void main() {
             'id': 9,
             'body':
                 'A sufficiently long body used as fallback title for an idea that continues past sixty characters',
-            'created_at': '2026-10-21T12:00:00Z',
+            'created_at': '2026-10-19T12:00:00Z',
           },
         ],
         'places': [
@@ -94,7 +94,8 @@ void main() {
         ],
       },
       {'olt-activity-3'},
-      '2026-10-22',
+      // The local day of activity 1 (2026-10-22 in Lisbon, 2026-10-21 on UTC CI).
+      _localDay('2026-10-21T23:30:00Z'),
     );
     expect(items.map((item) => item.id), ['olt-activity-1']);
     expect(items.single.properties['places'], 'Lab 5');
@@ -118,4 +119,10 @@ void main() {
       'A sufficiently long body used as fallback title for an idea ',
     );
   });
+}
+
+String _localDay(String utc) {
+  final local = DateTime.parse(utc).toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
 }
