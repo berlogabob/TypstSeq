@@ -233,7 +233,7 @@ Rules:
 No commentary."""
 
 
-MAX_REPLY_TOKENS = 4000  # a long day lists ~400 tokens of mentions
+MAX_REPLY_TOKENS = 8000  # normal days stop at 100-600 tokens; 2022-07-19 needed > 4000
 MAX_CHARS = 30000  # ~12k tokens of Cyrillic: fits the 64k context with room to answer
 
 
