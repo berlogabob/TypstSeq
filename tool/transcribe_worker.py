@@ -328,6 +328,8 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
             last_error = error
         for text in batch:
             try:
+                if len(batch) == 1:
+                    raise last_error  # nothing smaller to retry
                 translated.extend(ask([text]))
             except (ValueError, OSError) as error:
                 last_error = error
