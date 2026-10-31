@@ -23,6 +23,7 @@ STUDIO_DEADLINE = 600  # seconds per chunk request, wall clock
 LLM_DEADLINE = 900
 PROBE_DEADLINE = 30
 MAC_FALLBACK_MIN_FREE = 4 * 1024**3
+LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever the settings say
 # Ordered by size; a name not listed here counts as the largest.
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v2", "large-v3", "large")
 
@@ -205,6 +206,16 @@ def min_model(model, cap):
 def lower_priority():
     """Run the Mac fallback at nice 19. os.nice adds to the current value, so only once per process."""
     os.nice(19)
+
+
+def transcribe_local(audio, model, lang=None, *, diarize=False, studio_failed=False):
+    """Every local transcription on this Mac: refused under low memory, capped at small, niced."""
+    if not mac_fallback_allowed():
+        prefix = "Studio unreachable; " if studio_failed else ""
+        raise RuntimeError(prefix + "Mac fallback refused (low memory)")
+    lower_priority()
+    options = {"diarize": True} if diarize else {}
+    return transcribe(audio, model=min_model(model, LOCAL_MODEL_CAP), lang=lang, **options)
 
 
 def transcribe(audio, model="small", lang=None, *, diarize=False):
@@ -730,15 +741,10 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                         except Exception as error:
                             job["studio_error"] = str(error).replace(key, "[redacted]") if key else str(error)
                     if job["engine"] == "local":
-                        local_model = model
-                        if connection:  # Studio was tried and failed: the Mac is only the fallback
-                            if not mac_fallback_allowed():
-                                raise RuntimeError("Studio unreachable; Mac fallback refused (low memory)")
-                            lower_priority()
-                            local_model = min_model(model, "small")
-                        options = {"diarize": True} if diarize or job.get("diarize") is True else {}
-                        segments, language, languages = transcribe(
-                            audio, model=local_model, lang=job.get("lang") or None, **options)
+                        segments, language, languages = transcribe_local(
+                            audio, model, lang=job.get("lang") or None,
+                            diarize=diarize or job.get("diarize") is True,
+                            studio_failed=connection is not None)
                     updated_note = apply_transcript(note_text, segments)
                 else:
                     updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,

@@ -15,6 +15,8 @@ import pytest
 
 import transcribe_worker as worker
 
+real_free_memory_bytes = worker._free_memory_bytes
+
 
 @pytest.fixture(autouse=True)
 def isolated_state(tmp_path, monkeypatch):
@@ -25,6 +27,11 @@ def isolated_state(tmp_path, monkeypatch):
             monkeypatch.delenv(name, raising=False)
     for name in ("TYLOG_LLM_URL", "TYLOG_LLM_KEY", "TYLOG_LLM_MODEL", "TYLOG_LLM_PREFER"):
         monkeypatch.delenv(name, raising=False)
+    # Local transcription checks memory and renices: tests get a roomy Mac and no-op nice
+    # unless they say otherwise, so results do not depend on the machine running them.
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 16 * 1024**3)
+    monkeypatch.setattr(worker.os, "nice", lambda increment: None)
+    worker.lower_priority.cache_clear()
 
 
 def test_escape_markup():
@@ -160,7 +167,7 @@ def test_cli_core(tmp_path, monkeypatch):
 
     def fake_transcribe(audio, model, lang):
         assert audio == tmp_path / "audio.wav"
-        assert (model, lang) == ("large-v3", "pt")
+        assert (model, lang) == ("small", "pt")
         assert json.loads(job_path.read_text())["status"] == "processing"
         return [(65, "Fixed text")], "pt", ["pt"]
 
@@ -1057,15 +1064,16 @@ def test_run_resolves_settings_each_time(sweep_vault, monkeypatch):
     calls = []
     monkeypatch.setattr(worker, "transcribe", lambda audio, model, lang:
                         (calls.append(model) or [], "en", ["en"]))
-    for index, (task, cli, expected) in enumerate([
-        ({"quality": "fast"}, None, "small"),
-        ({"quality": "best", "model": "explicit"}, None, "explicit"),
-        ({"model": "explicit"}, "cli", "cli"),
+    # Local transcription is capped at small whatever the settings or CLI ask for.
+    for index, (task, cli) in enumerate([
+        ({"quality": "fast"}, None),
+        ({"quality": "best", "model": "explicit"}, None),
+        ({"model": "explicit"}, "cli"),
     ]):
         write_ai(sweep_vault, tasks={"transcribe": task})
         add_audio_note(sweep_vault, f"{index}.wav")
         worker.run_once(sweep_vault, model=cli, now=NOW)
-        assert calls[-1] == expected
+        assert calls[-1] == "small"
 
 
 @pytest.mark.parametrize("quality, explicit, env_model, prefer, expected, automatic", [
@@ -1406,13 +1414,13 @@ def test_vm_stat_free_memory_counts_reclaimable_pages(monkeypatch):
               "Pages free:                 100.\nPages active: 999.\n"
               "Pages inactive:             200.\nPages speculative: 50.\n")
     monkeypatch.setattr(worker.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=output))
-    assert worker._free_memory_bytes() == 350 * 16384
+    assert real_free_memory_bytes() == 350 * 16384
 
     def unavailable(*args, **kwargs):
         raise OSError("vm_stat missing")
 
     monkeypatch.setattr(worker.subprocess, "run", unavailable)
-    assert worker._free_memory_bytes() is None
+    assert real_free_memory_bytes() is None
 
 
 @pytest.mark.parametrize("model, cap, expected", [
@@ -1472,3 +1480,38 @@ def test_local_fallback_caps_model_at_small(tmp_path, monkeypatch):
     assert calls == ["small"]
     assert nice == [19]
     assert (job["status"], job["engine"]) == ("done", "local")
+
+
+def test_local_transcription_without_studio_is_capped_and_niced(tmp_path, monkeypatch):
+    write_ai(tmp_path, tasks={"transcribe": {"model": "large-v3"}})
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ")
+    (tmp_path / "note.typ").write_text("= Note\n")
+    calls, nice = [], []
+
+    def local(audio, model, lang, **options):
+        calls.append(model)
+        return [(0, "Hello")], "en", ["en"]
+
+    monkeypatch.setattr(worker, "transcribe", local)
+    monkeypatch.setattr(worker.os, "nice", nice.append)
+    worker.lower_priority.cache_clear()
+    worker.run_once(tmp_path)
+    assert calls == ["small"]
+    assert nice == [19]
+    assert json.loads(path.read_text())["status"] == "done"
+
+
+def test_local_transcription_without_studio_refused_when_memory_low(tmp_path, monkeypatch):
+    write_ai(tmp_path, tasks={"transcribe": {"model": "large-v3"}})
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ")
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 2 * 1024**3)
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: pytest.fail("Local transcription ran"))
+    worker.run_once(tmp_path)
+    job = json.loads(path.read_text())
+    assert job["status"] == "failed"
+    assert job["error"] == "Mac fallback refused (low memory)"
+    assert note.read_text() == "= Note\n"
