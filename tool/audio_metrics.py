@@ -68,7 +68,7 @@ def _is_loop(text):
 def _translation_stats(lang, lines, source):
     stats = {"lines": len(lines), "untranslated": 0, "failed": 0}
     for i, text in enumerate(lines):
-        if text == FAILED:
+        if text.removeprefix(DOUBTFUL) == FAILED:  # a (?) mark on a failed line keeps it failed
             stats["failed"] += 1
         elif _is_marker(text):
             continue

@@ -325,6 +325,15 @@ def _load(base, request, model):
     raise ValueError("not loaded after 15 minutes")
 
 
+def ensure_context(base, request, model):
+    """Reloads `model` at LLM_CONTEXT when Studio lists it at its native context, which is its default load.
+    Studio falls back to that load after idle; a long prompt then gets an empty reply."""
+    entry = next((entry for entry in request("/models")["data"] if entry.get("id") == model), None)
+    native = entry.get("native_context_length") if entry else None
+    if native is not None and entry.get("context_length") == native:
+        _load(base, request, model)
+
+
 def ensure_model(base, key, prefer, request):
     """Select Ornith or load the preferred model using the authenticated request."""
     try:
@@ -377,9 +386,13 @@ def translate_connection(settings):
 def llm_chat(settings, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE):
     """(model, chat) for the translate task's LLM: connection, model choice and request deadlines.
 
-    chat(messages) returns the reply text; thinking is off unless `thinking` is set, and each request
-    is cut after `seconds`. The caller asks for JSON in the prompt and parses it. The Stage 5 context
-    pass uses a larger max_tokens; the review pass's retranslation uses thinking and 300 s.
+    chat(messages, json_mode=False) returns the reply text; thinking is off unless `thinking` is set, and each
+    request is cut after `seconds`. json_mode asks Studio for a JSON object as well as the prompt. The caller
+    asks for JSON in the prompt and parses it. The Stage 5 context pass uses a larger max_tokens; the review
+    pass's retranslation uses thinking and 300 s.
+
+    Before the first request the model is checked for Studio's default load and reloaded at LLM_CONTEXT
+    (ensure_context), once per llm_chat call, so each LLM stage of a job starts with the long context.
     """
     task = settings.get("tasks", {}).get("translate", {})
     base, key = connection_credentials(translate_connection(settings))
@@ -402,28 +415,35 @@ def llm_chat(settings, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE)
                              ("ollama/ornith-1.5:9b" if task.get("quality") == "fast"
                               else "ollama/ornith-1.5:35b"),
                              request)
+    try:
+        ensure_context(base, request, model)
+    except Exception as error:
+        raise ValueError(f"Could not load {model} at {LLM_CONTEXT}: {error}") from error
 
-    def complete(messages):
+    def complete(messages, json_mode):
         # Thinking off and 10 lines per request: with reasoning on, 40 theatre
         # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
-        return request("/chat/completions", {
+        payload = {
             "model": model,
             "temperature": 0,
             "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": thinking},
             "messages": messages,
-        })["choices"][0]["message"]["content"] or ""
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        return request("/chat/completions", payload)["choices"][0]["message"]["content"] or ""
 
-    def chat(messages):
-        reply = complete(messages)
+    def chat(messages, json_mode=False):
+        reply = complete(messages, json_mode)
         if not reply.strip():
-            # Studio answers an empty reply once a prompt outgrows the context it loaded with, and
-            # its context fields do not show which one that is. Reload at LLM_CONTEXT, retry once.
+            # Studio answers an empty reply once a prompt outgrows the context the model loaded with.
+            # A default load is caught before the stage (ensure_context); this reloads at LLM_CONTEXT, retries once.
             try:
                 _load(base, request, model)
             except Exception as error:
                 raise ValueError(f"Could not reload {model} at {LLM_CONTEXT} after an empty reply: {error}") from error
-            reply = complete(messages)
+            reply = complete(messages, json_mode)
         if not reply.strip():
             raise ValueError(f"LLM {model} returned an empty reply{_context_note(request, model)}")
         return reply.strip()
@@ -527,25 +547,33 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None, c
         last_error = ValueError(f"Reply is not a translation into {target}")
         return None
 
-    # A window whose reply is broken is asked line by line; a line the reply leaves out is
-    # asked alone. A reply in the wrong language (Portuguese for ru, the source copied for
-    # en/pt) gets one plain retry. A line that still fails is marked FAILED_TRANSLATION, never
-    # copied from the source. Only a job where nothing translates fails, so one noisy minute
-    # cannot sink a 2-hour recording.
+    # A window whose reply fails is asked again as two halves, then each line of a failed half is
+    # asked alone; a line the reply leaves out is asked alone. A reply in the wrong language (Portuguese
+    # for ru, the source copied for en/pt) gets one plain retry. A line that still fails is marked
+    # FAILED_TRANSLATION, never copied from the source. Only a job where nothing translates fails, so
+    # one noisy minute cannot sink a 2-hour recording.
     results = [None] * len(texts)
+    last_error = None
 
     def prior_pairs(index):
         """Up to TRANSLATION_PREVIOUS settled (source, translation) pairs just before line `index`."""
         return [(texts[i], results[i]) for i in range(max(0, index - TRANSLATION_PREVIOUS), index)
                 if results[i] is not None]
 
-    for first in range(0, len(texts), TRANSLATION_WINDOW):
-        window = list(range(first, min(first + TRANSLATION_WINDOW, len(texts))))
+    def fill(window, halves):
+        """Sets the results of the lines in `window`. A failed window is split once (`halves`), then each
+        of its lines is asked alone."""
+        nonlocal last_error
         try:
-            replies = ask(window, prior_pairs(first))
+            replies = ask(window, prior_pairs(window[0]))
         except (ValueError, OSError) as error:  # bad JSON, timeout
             last_error = error
             replies = None
+        if replies is None and halves and len(window) > 1:
+            middle = len(window) // 2
+            fill(window[:middle], halves=False)
+            fill(window[middle:], halves=False)
+            return
         for index in window:
             if replies is not None and str(index) in replies:
                 results[index] = settle(texts[index], replies[str(index)])
@@ -559,6 +587,9 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None, c
                 results[index] = settle(texts[index], reply)
             except (ValueError, OSError) as error:
                 last_error = error
+
+    for first in range(0, len(texts), TRANSLATION_WINDOW):
+        fill(list(range(first, min(first + TRANSLATION_WINDOW, len(texts)))), halves=True)
     if texts and all(result is None for result in results):
         raise last_error
     translate.last_model = model
@@ -894,13 +925,18 @@ def review_translation(note, sidecar, target, source_langs, settings, context):
     scores, error = {}, None
 
     def score(items):
-        """{line index: score} for (index, source, translation) items, in one call."""
-        reply = chat([
+        """{line index: score} for (index, source, translation) items, in one call. A reply that does not
+        parse gets one more ask; a second bad reply raises."""
+        messages = [
             {"role": "system", "content": _review_system(target)},
             {"role": "user", "content": json.dumps(
                 {str(i): {"source": source, "translation": text} for i, source, text in items}, ensure_ascii=False)},
-        ])
-        result = _reply_object(reply)
+        ]
+        reply = chat(messages, json_mode=True)
+        try:
+            result = _reply_object(reply)
+        except ValueError:
+            result = _reply_object(chat(messages, json_mode=True))
         return {i: round(result[str(i)]) for i, _, _ in items if _is_score(result.get(str(i)))}
 
     def retranslate(position):

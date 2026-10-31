@@ -67,6 +67,27 @@ def test_translation_rules_per_language():
     assert m["translations"] == {"en": {"lines": 4, "untranslated": 1, "failed": 1}}
 
 
+def test_metrics_counts_marked_failed_lines():
+    note = """== Translation ru
+
+- 00:00 (?) [sem tradução]
+- 00:05 (?) \\[sem tradução\\]
+- 00:10 [sem tradução]
+- 00:15 \\[sem tradução\\]
+- 00:20 Привет, как дела у всех?
+
+== Translation en
+
+- 00:00 (?) [sem tradução]
+- 00:05 (?) \\[sem tradução\\]
+"""
+    m = audio_metrics.note_metrics(note)
+    assert m["translations"] == {
+        "ru": {"lines": 5, "untranslated": 0, "failed": 4},
+        "en": {"lines": 2, "untranslated": 0, "failed": 2},
+    }
+
+
 def test_empty_note_has_zero_counts():
     assert audio_metrics.note_metrics("= Empty\n") == {
         "lines": 0,

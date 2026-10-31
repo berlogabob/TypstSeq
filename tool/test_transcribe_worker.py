@@ -652,7 +652,8 @@ def test_translation_loads_preferred_model(monkeypatch):
     assert worker.translate.last_model == "custom-translator"
     assert calls == ["https://studio.example/v1/models", "https://studio.example/api/models/local",
                      "https://studio.example/v1/load", "https://studio.example/v1/models",
-                     "https://studio.example/v1/models", "https://studio.example/v1/chat/completions"]
+                     "https://studio.example/v1/models", "https://studio.example/v1/models",
+                     "https://studio.example/v1/chat/completions"]
     assert sleeps == [5]
 
 
@@ -730,15 +731,16 @@ def test_empty_reply_reloads_at_64k_and_retries_once(monkeypatch):
     _, chat = worker.llm_chat({})
     assert chat([{"role": "user", "content": "hi"}]) == '["Привет"]'
     assert [url for url, _ in calls] == [
+        "https://studio.example/v1/models",
         "https://studio.example/v1/chat/completions",
         "https://studio.example/api/models/local",
         "https://studio.example/v1/load",
         "https://studio.example/v1/models",
         "https://studio.example/v1/chat/completions",
     ]
-    assert calls[2][1] == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
+    assert calls[3][1] == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
                            "force_cancel_active": True}
-    assert calls[4][1] == calls[0][1]
+    assert calls[5][1] == calls[1][1]
 
 
 def test_second_empty_reply_raises(monkeypatch):
@@ -768,6 +770,64 @@ def test_empty_llm_reply_raises_clear_error(monkeypatch):
     assert str(error.value) == "LLM ollama/ornith-1.5:35b returned an empty reply"
 
 
+def studio_context(monkeypatch, context_length, native_context_length=262144):
+    """Studio stand-in whose /v1/models shows the loaded context. A /load sets it to max_seq_length, and a
+    default load shows context_length == native_context_length (the signature seen on 2026-10-31).
+    Returns the (url, payload) calls."""
+    state = {"context": context_length}
+    calls = []
+
+    def fake(request, timeout):
+        payload = json.loads(request.data) if request.data else None
+        calls.append((request.full_url, payload))
+        if request.full_url.endswith("/chat/completions"):
+            result = {"choices": [{"message": {"content": '["Привет"]'}}]}
+        elif request.full_url.endswith("/api/models/local"):
+            result = {"models": []}
+        elif request.full_url.endswith("/load"):
+            state["context"] = payload["max_seq_length"]
+            result = {"success": True}
+        else:
+            result = {"data": [{"id": "ollama/ornith-1.5:35b", "loaded": True, "max_context_length": 8192,
+                                "context_length": state["context"], "native_context_length": native_context_length}]}
+        return BytesIO(json.dumps(result).encode())
+
+    monkeypatch.setattr(worker, "urlopen", fake)
+    return calls
+
+
+def test_default_load_signature_triggers_64k_load(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "ollama/ornith-1.5:35b")
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    calls = studio_context(monkeypatch, context_length=262144)
+
+    _, chat = worker.llm_chat({})
+    assert chat([{"role": "user", "content": "hi"}]) == '["Привет"]'
+    assert [url for url, _ in calls] == [
+        "https://studio.example/v1/models",
+        "https://studio.example/api/models/local",
+        "https://studio.example/v1/load",
+        "https://studio.example/v1/models",
+        "https://studio.example/v1/chat/completions",
+    ]
+    assert calls[2][1] == {"model_path": "ollama/ornith-1.5:35b", "max_seq_length": 65536,
+                           "force_cancel_active": True}
+
+
+def test_explicit_64k_load_not_reloaded(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "ollama/ornith-1.5:35b")
+    calls = studio_context(monkeypatch, context_length=65536)
+
+    _, chat = worker.llm_chat({})
+    assert chat([{"role": "user", "content": "hi"}]) == '["Привет"]'
+    assert [url for url, _ in calls] == [
+        "https://studio.example/v1/models",
+        "https://studio.example/v1/chat/completions",
+    ]
+
+
 def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
     monkeypatch.setenv("TYLOG_LLM_MODEL", "exact/custom-model")
@@ -780,6 +840,8 @@ def test_translation_override_wins_and_job_records_llm(tmp_path, monkeypatch):
     (tmp_path / "note.typ").write_text("== Transcript\n- 00:00 Hello\n")
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
         assert request.full_url == "https://studio.example/v1/chat/completions"
         assert json.loads(request.data)["model"] == "exact/custom-model"
         return BytesIO(json.dumps({"choices": [{"message": {"content": '{"0": "Привет"}'}}]}).encode())
@@ -1231,13 +1293,15 @@ def test_translation_job_passes_context_to_translate(tmp_path):
 
 def review_llm(monkeypatch, answer):
     """LLM stand-in for the review pass. answer(messages, thinking) gives the reply text. Returns the list of
-    (thinking, messages) for every request, in order."""
+    (thinking, payload) for every chat request, in order."""
     calls = []
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(json.dumps({"data": [{"id": "translator", "loaded": True}]}).encode())
         payload = json.loads(request.data)
         thinking = payload["chat_template_kwargs"]["enable_thinking"]
-        calls.append((thinking, payload["messages"]))
+        calls.append((thinking, payload))
         reply = answer(payload["messages"], thinking)
         return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
 
@@ -1360,6 +1424,42 @@ def test_review_failure_keeps_translation(tmp_path, monkeypatch, failure):
     assert "== Translation ru\n\n- 00:00 Привет там\n- 00:05 Вторая строка\n" in (tmp_path / "note.typ").read_text()
 
 
+@pytest.mark.parametrize("bad_replies, expect_error", [(1, False), (2, True)])
+def test_review_parse_error_retried_once(tmp_path, monkeypatch, bad_replies, expect_error):
+    review_job(tmp_path)
+    scores = {"Привет там": 5, "Вторая строка": 4}
+    attempts = []
+
+    def answer(messages, thinking):
+        attempts.append(messages)
+        if len(attempts) <= bad_replies:
+            return "Извините, не могу оценить."
+        return score_by_translation(messages, scores)
+
+    calls = review_llm(monkeypatch, answer)
+    job = run_review(tmp_path)
+    assert len(calls) == 2  # the window is asked once more, never a third time
+    assert job["status"] == "done"
+    entry = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))["translations"]["ru"]
+    if expect_error:
+        assert job["review_error"]
+        assert entry["scores"] == {}
+    else:
+        assert "review_error" not in job
+        assert entry["scores"] == {"0": 5, "1": 4}
+    text = (tmp_path / "note.typ").read_text()
+    assert "== Translation ru\n\n- 00:00 Привет там\n- 00:05 Вторая строка\n" in text
+
+
+def test_review_requests_json_mode(tmp_path, monkeypatch):
+    review_job(tmp_path)
+    scores = {"Привет там": 5, "Вторая строка": 4}
+    calls = review_llm(monkeypatch, lambda messages, thinking: score_by_translation(messages, scores))
+    assert run_review(tmp_path)["status"] == "done"
+    assert calls
+    assert all(payload.get("response_format") == {"type": "json_object"} for _, payload in calls)
+
+
 def write_ai(vault, **fields):
     path = vault / "_system/settings/ai.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1438,6 +1538,8 @@ def test_translation_ai_precedence(tmp_path, monkeypatch, quality, explicit, env
         return preferred
 
     def http(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
         assert request.full_url == "https://configured/v1/chat/completions"
         assert request.get_header("Authorization") == "Bearer local-key"
         assert json.loads(request.data)["model"] == expected
@@ -1538,8 +1640,10 @@ def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypa
     heartbeat = tmp_path / "_system/workers/test-host.json"
     assert json.loads(heartbeat.read_text())["connections"]["my-server"]["reachable"] is True
     chat = "https://server/v1/chat/completions"
-    # A finished translation is also scored by the review pass (a second chat request before the heartbeat probe).
-    assert calls == ([chat] if failed else [chat, chat]) + ["https://server/v1/models"]
+    # Each llm_chat checks the model's context first (a GET /models). A finished translation is also scored by
+    # the review pass: two llm_chat calls (scoring, retranslation) and one scoring request. The heartbeat probe ends it.
+    models = "https://server/v1/models"
+    assert calls == ([models, chat, models] if failed else [models, chat, models, models, chat, models])
     written = [state_path, *(tmp_path / "_system/jobs").rglob("*.json"),
                *(tmp_path / "_system/workers").glob("*.json")]
     assert all(secret not in file.read_text() for file in written)
@@ -1620,9 +1724,13 @@ def test_run_translation_uses_ai_and_records_model(tmp_path, monkeypatch):
         assert (base, prefer) == ("https://studio/v1", "ollama/ornith-1.5:9b")
         return prefer
 
+    def http(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
+        return BytesIO('{"choices": [{"message": {"content": "{\\"0\\": \\"переведено\\"}"}}]}'.encode())
+
     monkeypatch.setattr(worker, "ensure_model", ensure)
-    monkeypatch.setattr(worker, "urlopen", lambda request, timeout:
-                        BytesIO('{"choices": [{"message": {"content": "{\\"0\\": \\"переведено\\"}"}}]}'.encode()))
+    monkeypatch.setattr(worker, "urlopen", http)
     worker.run_once(tmp_path, probe=lambda base, key: {"reachable": True, "loaded": []})
     job = json.loads(path.read_text())
     assert job["status"] == "done"
@@ -1696,6 +1804,8 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
         batch = window_of(json.loads(request.data)["messages"])
         if len(batch) > 1 or "loop" in batch.values():
             reply = '{"0": "unterminated'
@@ -1705,6 +1815,23 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
 
     monkeypatch.setattr(worker, "urlopen", fake)
     assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ру a", "[sem tradução]", "ру b"]
+
+
+def test_failed_window_retried_in_halves(monkeypatch):
+    def reply(messages):
+        window = window_of(messages)
+        if len(window) > 20:
+            return '{"0": "unterminated'  # the 40-line window fails; its halves do not
+        return json.dumps({key: f"Строка {key}" for key in window})
+
+    sent = chat_fake(monkeypatch, reply)
+    texts = [f"line {index}" for index in range(40)]
+    assert worker.translate(texts, "en", "ru") == [f"Строка {index}" for index in range(40)]
+    assert [list(window_of(messages)) for messages in sent] == [
+        [str(index) for index in range(40)],
+        [str(index) for index in range(20)],
+        [str(index) for index in range(20, 40)],
+    ]
 
 
 def test_gap_lines_not_sent_to_model():
@@ -1725,6 +1852,8 @@ def test_failed_line_is_marked_not_source(monkeypatch):
     monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
         batch = window_of(json.loads(request.data)["messages"])
         if "loop" in batch.values():
             reply = '{"0": "unterminated'
@@ -1743,6 +1872,8 @@ def chat_fake(monkeypatch, reply_for):
     sent = []
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(json.dumps({"data": [{"id": "translator", "loaded": True}]}).encode())
         messages = json.loads(request.data)["messages"]
         sent.append(messages)
         content = reply_for(messages)
@@ -2524,6 +2655,8 @@ def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, mon
     sent = []
 
     def fake(request, timeout):
+        if request.data is None:  # the context check's GET /models
+            return BytesIO(b'{"data": []}')
         sent.append((request.full_url, json.loads(request.data)))
         return BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(CONTEXT_JSON)}}]}).encode())
 
