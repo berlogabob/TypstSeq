@@ -3,6 +3,32 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.6+164
+
+### New
+
+- Audio notes, new pipeline: recordings are cut at pauses, music and applause
+  are marked instead of being transcribed as words, and each line is one
+  sentence. Two recognition engines run on the Studio PC; where they disagree,
+  a second pass picks the better text and never adds words neither engine
+  heard. Lines that stay doubtful are marked "(?)".
+- Every recording ends with its text in Russian, English and Portuguese.
+  Translation sees the summary, a glossary of names and the previous lines;
+  a review pass retranslates weak lines; failed lines are marked instead of
+  left in the source language.
+- An audio note gets a Summary, Scenes and cultural References (marked AI),
+  written in Russian; a Context section you fill in (programme, cast) improves
+  names on Re-process.
+- Audio note screen: original and translation side by side, one compact row
+  for language and view, Summary/Scenes/References that seek on tap, and a
+  Re-process action. Your edits to transcript or translation lines are kept on
+  re-runs.
+
+### Fixed
+
+- The audio note screen no longer shows "No transcript yet" while a long
+  note is still loading.
+
 ## 0.20.5+163
 
 ### New
