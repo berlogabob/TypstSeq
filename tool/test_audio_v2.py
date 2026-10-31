@@ -492,56 +492,56 @@ def test_section_text_reads_only_the_named_section():
 
 
 def test_context_sections_written_above_transcript_and_context_untouched():
-    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, {"pt": CONTEXT}, SPEECH)
     assert note == (
         "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
-        "== Summary\n\n- 00:00 Resumo.\n\n"
-        "== Scenes\n\n- 00:00 Início\n\n"
-        "== References\n\n- 00:05 Baubo -- Figura do mito. (AI)\n\n"
+        "== Summary pt\n\n- 00:00 Resumo.\n\n"
+        "== Scenes pt\n\n- 00:00 Início\n\n"
+        "== References pt\n\n- 00:05 Baubo -- Figura do mito. (AI)\n\n"
         "== Transcript\n\n- 00:00 Nasci.\n- 00:05 Baubo fazia rir.\n"
     )
-    assert sections["Summary"][0]["text"] == "Resumo."
+    assert sections["Summary pt"][0]["text"] == "Resumo."
 
 
 def test_reference_lines_marked_ai():
-    note, _ = v2.render_context(CONTEXT_NOTE, {}, dict(CONTEXT, references=[
-        {"line": 1, "term": "A", "explanation": "one"}, {"line": 2, "term": "B", "explanation": "two"}]), SPEECH)
-    references = note.split("== References\n\n")[1].split("\n\n")[0].splitlines()
+    note, _ = v2.render_context(CONTEXT_NOTE, {}, {"pt": dict(CONTEXT, references=[
+        {"line": 1, "term": "A", "explanation": "one"}, {"line": 2, "term": "B", "explanation": "two"}])}, SPEECH)
+    references = note.split("== References pt\n\n")[1].split("\n\n")[0].splitlines()
     assert references == ["- 00:00 A -- one (AI)", "- 00:05 B -- two (AI)"]
 
 
 def test_context_section_never_written_by_render():
-    note, _ = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    note, _ = v2.render_context(CONTEXT_NOTE, {}, {"pt": CONTEXT}, SPEECH)
     assert note.split("== Summary")[0] == "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
 
 
 def test_user_edit_in_generated_line_survives_rerun():
-    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, {"pt": CONTEXT}, SPEECH)
     edited = note.replace("- 00:00 Resumo.", "- 00:00 Resumo meu.")
     again = dict(CONTEXT, summary="Resumo novo.", scenes=[{"line": 1, "title": "Abertura"}])
-    note2, _ = v2.render_context(edited, sections, again, SPEECH)
+    note2, _ = v2.render_context(edited, sections, {"pt": again}, SPEECH)
     assert "- 00:00 Resumo meu.\n" in note2
     assert "Resumo novo" not in note2
     assert "- 00:00 Abertura\n" in note2 and "Início" not in note2
 
 
 def test_generated_line_the_user_deleted_stays_deleted():
-    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
-    note2, sections2 = v2.render_context(note.replace("- 00:00 Início\n", ""), sections, CONTEXT, SPEECH)
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, {"pt": CONTEXT}, SPEECH)
+    note2, sections2 = v2.render_context(note.replace("- 00:00 Início\n", ""), sections, {"pt": CONTEXT}, SPEECH)
     assert "Início" not in note2
-    assert sections2["Scenes"][0]["status"] == "deleted"
-    assert "Início" not in v2.render_context(note2, sections2, CONTEXT, SPEECH)[0]
+    assert sections2["Scenes pt"][0]["status"] == "deleted"
+    assert "Início" not in v2.render_context(note2, sections2, {"pt": CONTEXT}, SPEECH)[0]
 
 
 def test_generated_line_no_longer_produced_is_removed():
-    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
-    note2, _ = v2.render_context(note, sections, dict(CONTEXT, scenes=[]), SPEECH)
-    assert "Início" not in note2 and "== Scenes" in note2
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, {"pt": CONTEXT}, SPEECH)
+    note2, _ = v2.render_context(note, sections, {"pt": dict(CONTEXT, scenes=[])}, SPEECH)
+    assert "Início" not in note2 and "== Scenes pt" in note2
 
 
 def test_no_generated_sections_without_content():
     empty = {"summary": "", "scenes": [], "glossary": [], "references": []}
-    note, _ = v2.render_context("= Note\n\n== Transcript\n\n- 00:00 Nasci.\n", {}, empty, SPEECH)
+    note, _ = v2.render_context("= Note\n\n== Transcript\n\n- 00:00 Nasci.\n", {}, {"pt": empty}, SPEECH)
     assert note == "= Note\n\n== Transcript\n\n- 00:00 Nasci.\n"
 
 

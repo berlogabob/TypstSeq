@@ -591,8 +591,8 @@ class MacSTT:
 # Context pass (Stage 5): Summary, Scenes, References from the transcript and the user's Context
 
 CONTEXT_WINDOW = 400  # speech lines per LLM call; longer transcripts go in windows
-GENERATED = ("Summary", "Scenes", "References")
-SECTION_ORDER = ("Context", "Summary", "Scenes", "References", "Comments", "Transcript")
+GENERATED = ("Summary", "Scenes", "References")  # each one per language: `== Summary pt`, `== Scenes ru`, ...
+TRAILING_SECTIONS = ("Comments", "Transcript")  # generated sections go above these
 
 
 def section_text(note_text, heading):
@@ -759,32 +759,34 @@ def translated_context(result, translate, source_langs, target):
     }
 
 
-def _insert_section(note_text, heading):
-    """Adds an empty `== heading` above the first section that follows it in SECTION_ORDER, so generated
-    sections sit above the transcript. With none of those in the note, merge_section appends it."""
-    later = {f"== {name}" for name in SECTION_ORDER[SECTION_ORDER.index(heading) + 1:]}
+def _insert_section(note_text, heading, later):
+    """Adds an empty `== heading` above the first of the `later` sections the note has, so generated sections
+    sit in the order render_context gives them and above the transcript. With none of those, merge_section
+    appends it."""
+    marks = {f"== {name}" for name in later}
     chunks = note_text.splitlines(keepends=True)
     for index, chunk in enumerate(chunks):
-        if chunk.strip() in later:
+        if chunk.strip() in marks:
             separator = "" if index == 0 or chunks[index - 1].strip() == "" else "\n"
             return "".join(chunks[:index]) + separator + f"== {heading}\n\n" + "".join(chunks[index:])
     return note_text
 
 
-def merge_generated(note_text, heading, items, previous):
+def merge_generated(note_text, heading, items, previous, later):
     """Rewrites `== heading` from generated items [(start seconds, text)]. Returns (note_text, lines).
 
     `previous` is the line list the last run left for this heading, None when there is none (first run,
     or the section was removed). Lines keep their rendered state, so an edit the user made in the note
     survives a re-run, and a line the user deleted stays deleted (merge_section). Generated lines that no
     item produces any more are removed first, so merge_section does not read them back as user lines.
+    `later` are the headings that follow this one in the note (see _insert_section).
     """
     found = _section_range(note_text.splitlines(keepends=True), heading)
     if found is None:
         if not items:
             return note_text, []
         previous = None
-        note_text = _insert_section(note_text, heading)
+        note_text = _insert_section(note_text, heading, later)
     by_start = {}
     for line in previous or []:
         by_start.setdefault(int(line["start"]), []).append(line)
@@ -806,25 +808,32 @@ def merge_generated(note_text, heading, items, previous):
     return merge_section(note_text, heading, built)
 
 
-def render_context(note_text, previous, result, speech):
-    """Writes Summary, Scenes and References from a context result. Returns (note_text, {heading: lines}).
+def render_context(note_text, previous, results, speech):
+    """Writes Summary, Scenes and References for each language. Returns (note_text, {heading: lines}).
 
-    `speech` are the speech lines the result's line numbers count; `previous` maps each heading to the lines
-    the last run stored. The Context section is never touched.
+    `results` maps a language to its context result, the transcript's language first; the headings are
+    `Summary <lang>`, `Scenes <lang>` and `References <lang>`. The unsuffixed sections of the first version
+    are removed. `speech` are the speech lines the result's line numbers count; `previous` maps each heading
+    to the lines the last run stored. The Context section is never touched.
     """
     def at(number):
         return speech[number - 1]["start"]
 
-    summary = result["summary"].strip()
-    items = {
-        "Summary": [(0.0, summary)] if summary else [],
-        "Scenes": [(at(scene["line"]), scene["title"]) for scene in result["scenes"]],
-        "References": [(at(ref["line"]), f"{ref['term']} -- {ref['explanation']} (AI)")
-                       for ref in result["references"]],
-    }
+    items = {}
+    for lang, result in results.items():
+        summary = result["summary"].strip()
+        items[f"Summary {lang}"] = [(0.0, summary)] if summary else []
+        items[f"Scenes {lang}"] = [(at(scene["line"]), scene["title"]) for scene in result["scenes"]]
+        items[f"References {lang}"] = [(at(ref["line"]), f"{ref['term']} -- {ref['explanation']} (AI)")
+                                       for ref in result["references"]]
+    for name in GENERATED:
+        note_text = remove_section(note_text, name)
+    order = list(items)
     sections = {}
-    for heading in GENERATED:
-        note_text, sections[heading] = merge_generated(note_text, heading, items[heading], previous.get(heading))
+    for index, heading in enumerate(order):
+        later = [*order[index + 1:], *TRAILING_SECTIONS]
+        note_text, sections[heading] = merge_generated(note_text, heading, items[heading],
+                                                       previous.get(heading), later)
     return note_text, sections
 
 

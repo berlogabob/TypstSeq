@@ -2603,9 +2603,15 @@ def test_context_sections_written(tmp_path, monkeypatch):
     assert "[1] Olá tudo bem.\n[2] Baubo fazia rir." in sent[0][1]["content"]
     assert (tmp_path / "note.typ").read_text() == (
         "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
-        "== Summary\n\n- 00:00 Resumo da peça.\n\n"
-        "== Scenes\n\n- 00:00 Monólogo\n\n"
-        "== References\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
+        "== Summary pt\n\n- 00:00 Resumo da peça.\n\n"
+        "== Scenes pt\n\n- 00:00 Monólogo\n\n"
+        "== References pt\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
+        "== Summary ru\n\n- 00:00 Resumo da peça.\n\n"
+        "== Scenes ru\n\n- 00:00 Monólogo\n\n"
+        "== References ru\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
+        "== Summary en\n\n- 00:00 Resumo da peça.\n\n"
+        "== Scenes en\n\n- 00:00 Monólogo\n\n"
+        "== References en\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
         "== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:10 Baubo fazia rir.\n- 00:14 [—]\n"
     )
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
@@ -2626,7 +2632,8 @@ def test_context_section_never_written(tmp_path, monkeypatch):
     assert "Eurípides, 431 a.C." in sent[-1][1]["content"]
     text = note.read_text()
     assert audio_v2.section_text(text, "Context") == "Peça: Medeia. Eurípides, 431 a.C."
-    assert text.count("== Summary") == 1 and text.count("- 00:00 Monólogo") == 1
+    assert audio_v2.section_text(text, "Scenes pt") == "- 00:00 Monólogo"
+    assert text.count("== Summary pt") == 1 and text.count("== Summary ru") == 1
 
 
 def test_bad_json_leaves_note_unchanged(tmp_path, monkeypatch):
@@ -2671,10 +2678,9 @@ def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, mon
     assert payload["max_tokens"] == worker.CONTEXT_MAX_TOKENS
 
 
-@pytest.mark.parametrize("lang, text, target", [("pt", "Olá tudo bem.", "ru"),
-                                                ("ru", "Привет, как дела.", "en")])
-def test_context_sections_rendered_in_target_language(tmp_path, monkeypatch, lang, text, target):
-    # The first translation target other than the recording's language: ru for pt, en for ru.
+@pytest.mark.parametrize("lang, text", [("pt", "Olá tudo bem."), ("ru", "Привет, как дела.")])
+def test_context_sections_rendered_in_target_language(tmp_path, monkeypatch, lang, text):
+    # Each translation target gets its own sections, next to the recording's own (pt: ru, en; ru: en, pt).
     v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
     scripted_mac(monkeypatch, {0.0: text})
     (tmp_path / "note.typ").write_text("= Note\n")
@@ -2691,13 +2697,17 @@ def test_context_sections_rendered_in_target_language(tmp_path, monkeypatch, lan
     # The context pass answers in the transcript's language; the translation is what names the target.
     assert "in the language of the transcript" in sent[0][0]["content"]
     # One speech line here, so the reference on line 2 is dropped by the parser; its explanation is not sent.
-    assert calls == [(["Resumo da peça.", "Monólogo"], lang, target, [lang])]
+    targets = worker.translation_targets([lang], [])
+    assert calls == [(["Resumo da peça.", "Monólogo"], lang, target, [lang]) for target in targets]
     note = tmp_path / "note.typ"
-    assert audio_v2.section_text(note.read_text(), "Summary") == f"- 00:00 {target}: Resumo da peça."
-    assert audio_v2.section_text(note.read_text(), "Scenes") == f"- 00:00 {target}: Monólogo"
+    for target in targets:
+        assert audio_v2.section_text(note.read_text(), f"Summary {target}") == f"- 00:00 {target}: Resumo da peça."
+        assert audio_v2.section_text(note.read_text(), f"Scenes {target}") == f"- 00:00 {target}: Monólogo"
+    assert audio_v2.section_text(note.read_text(), f"Summary {lang}") == "- 00:00 Resumo da peça."
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
     assert sidecar["context"]["summary"] == "Resumo da peça."
-    assert sidecar["context_translated"][target]["summary"] == f"{target}: Resumo da peça."
+    assert sorted(sidecar["context_translated"]) == sorted(targets)
+    assert sidecar["context_translated"][targets[0]]["summary"] == f"{targets[0]}: Resumo da peça."
 
 
 def test_context_translation_failure_falls_back_to_original(tmp_path, monkeypatch):
@@ -2709,9 +2719,10 @@ def test_context_translation_failure_falls_back_to_original(tmp_path, monkeypatc
     worker.run_once(tmp_path, translate=failing, state_path=tmp_path / "state.json", probe=quiet_probe)
     assert read_job(tmp_path)["status"] == "done"
     note = (tmp_path / "note.typ").read_text()
-    assert audio_v2.section_text(note, "Summary") == "- 00:00 Resumo da peça."
-    assert audio_v2.section_text(note, "Scenes") == "- 00:00 Monólogo"
-    assert audio_v2.section_text(note, "References") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
+    for lang in ("pt", "ru", "en"):
+        assert audio_v2.section_text(note, f"Summary {lang}") == "- 00:00 Resumo da peça."
+        assert audio_v2.section_text(note, f"Scenes {lang}") == "- 00:00 Monólogo"
+        assert audio_v2.section_text(note, f"References {lang}") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
     assert sidecar["context"]["summary"] == "Resumo da peça."
     assert sidecar.get("context_translated", {}) == {}
@@ -2721,7 +2732,7 @@ def test_reference_suffix_kept_after_translation(tmp_path, monkeypatch):
     context_job(tmp_path, monkeypatch)
     worker.run_once(tmp_path, translate=marked_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     # The term stays as the transcript spells it; only the explanation is translated; "(AI)" stays last.
-    assert audio_v2.section_text((tmp_path / "note.typ").read_text(), "References") == (
+    assert audio_v2.section_text((tmp_path / "note.typ").read_text(), "References ru") == (
         "- 00:10 Baubo -- ru: Figura do mito de Deméter. (AI)")
 
 
@@ -2733,6 +2744,83 @@ def test_context_line_the_model_could_not_translate_keeps_its_original(tmp_path,
 
     worker.run_once(tmp_path, translate=partly, state_path=tmp_path / "state.json", probe=quiet_probe)
     text = (tmp_path / "note.typ").read_text()
-    assert audio_v2.section_text(text, "Summary") == "- 00:00 ru: Resumo da peça."
-    assert audio_v2.section_text(text, "References") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
+    assert audio_v2.section_text(text, "Summary ru") == "- 00:00 ru: Resumo da peça."
+    assert audio_v2.section_text(text, "References ru") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
     assert worker.FAILED_TRANSLATION not in text
+
+
+def test_context_sections_written_for_every_language(tmp_path, monkeypatch):
+    # A pt transcript: the context is written in pt (the original) and translated into each target, ru then en.
+    context_job(tmp_path, monkeypatch)
+    calls = []
+
+    def translate(texts, source_lang, target, source_langs):
+        calls.append(target)
+        return marked_translate(texts, source_lang, target, source_langs)
+
+    worker.run_once(tmp_path, translate=translate, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert calls == ["ru", "en"]
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+        "== Summary pt\n\n- 00:00 Resumo da peça.\n\n"
+        "== Scenes pt\n\n- 00:00 Monólogo\n\n"
+        "== References pt\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
+        "== Summary ru\n\n- 00:00 ru: Resumo da peça.\n\n"
+        "== Scenes ru\n\n- 00:00 ru: Monólogo\n\n"
+        "== References ru\n\n- 00:10 Baubo -- ru: Figura do mito de Deméter. (AI)\n\n"
+        "== Summary en\n\n- 00:00 en: Resumo da peça.\n\n"
+        "== Scenes en\n\n- 00:00 en: Monólogo\n\n"
+        "== References en\n\n- 00:10 Baubo -- en: Figura do mito de Deméter. (AI)\n\n"
+        "== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:10 Baubo fazia rir.\n- 00:14 [—]\n"
+    )
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
+    assert sidecar["context"]["summary"] == "Resumo da peça."
+    assert sorted(sidecar["context_translated"]) == ["en", "ru"]
+    assert sidecar["context_translated"]["en"]["summary"] == "en: Resumo da peça."
+
+
+def test_legacy_unsuffixed_context_sections_removed(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch)
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
+    note = tmp_path / "note.typ"
+    text = note.read_text()
+    # A note from the first version: unsuffixed sections above the transcript it already has.
+    note.write_text(
+        "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+        "== Summary\n\n- 00:00 Resumo antigo.\n\n"
+        "== Scenes\n\n- 00:00 Cena antiga\n\n"
+        "== References\n\n- 00:10 Antigo -- explicação antiga. (AI)\n\n"
+        + text[text.index("== Transcript"):])
+
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    text = note.read_text()
+    for name in ("Summary", "Scenes", "References"):
+        assert audio_v2.section_text(text, name) == ""
+    assert "Resumo antigo" not in text and "Cena antiga" not in text and "explicação antiga" not in text
+    assert audio_v2.section_text(text, "Summary pt") == "- 00:00 Resumo da peça."
+    assert text.count("== Transcript") == 1
+
+
+def test_context_translation_failure_for_one_language_falls_back(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch)
+
+    def english_fails(texts, source_lang, target, source_langs):
+        if target == "en":
+            raise ValueError("LLM returned an empty reply")
+        return marked_translate(texts, source_lang, target, source_langs)
+
+    worker.run_once(tmp_path, translate=english_fails, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    note = (tmp_path / "note.typ").read_text()
+    assert audio_v2.section_text(note, "Summary ru") == "- 00:00 ru: Resumo da peça."
+    assert audio_v2.section_text(note, "Scenes ru") == "- 00:00 ru: Monólogo"
+    # English failed outright: its sections show the transcript-language wording, as the original does.
+    assert audio_v2.section_text(note, "Summary en") == "- 00:00 Resumo da peça."
+    assert audio_v2.section_text(note, "Scenes en") == "- 00:00 Monólogo"
+    assert audio_v2.section_text(note, "References en") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
+    assert audio_v2.section_text(note, "Summary pt") == "- 00:00 Resumo da peça."
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
+    assert sorted(sidecar["context_translated"]) == ["ru"]
