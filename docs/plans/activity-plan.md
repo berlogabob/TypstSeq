@@ -243,8 +243,8 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T7c a finished transcript re-queues its translations (00f98f4, 219 tests)
 - [x] T8 translation lines follow transcript lines; failures marked (039b076, 199 tests; state in sidecar translations[target])
 - [x] T9 theatre re-run: 3 min transcript + ~2 min per translation; loops 40->0, mid-cut 51->19, ru untranslated 66->13, en 0; readable sentences; agent reloaded
-- [ ] T10 translation validation: target script check -> single-line retry -> [sem tradução] (13 ru lines came back in pt)
-- [ ] T11 doubtful lines from primary/secondary disagreement, (?) marker
+- [x] T10 translation target-script check + retry + marker (443cefa)
+- [x] T11 doubtful from disagreement (348412e, 226 tests): threshold 0.01 = 13% chunks, i.e. only zero-overlap chunks; name errors sit in agreeing chunks -> T12 arbitrates every chunk with agreement < 0.95
 - [ ] T13 context pass: == Context in, Summary/Scenes/References/glossary out
 - [ ] T12 arbitration of doubtful lines with glossary (no words absent from both hypotheses)
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
