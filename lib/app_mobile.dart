@@ -514,6 +514,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _taskClockBounds = GlobalKey();
   final _captureFocus = FocusNode();
   final _todayStorage = PageStorageBucket();
+  bool _dailyMoreExpanded = false;
   String? _timestampCapturePath;
   (Vault?, String?)? _editorNote;
   bool _plainLongEditor = false;
@@ -5601,11 +5602,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // references and mentions step aside. Placeholders keep every child's slot,
     // so the editor is not rebuilt (and the keyboard not dropped) on the switch.
     final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final dailyMore = <Widget>[];
     Widget documentContent = content;
     if (mode == 'normal' &&
         currentNote != null &&
         (isEntity || backlinks.isNotEmpty)) {
       final v = vault;
+      final references = backlinks.isEmpty || v == null
+          ? null
+          : LinkedReferences(
+              imageResolver: _readAsset,
+              backlinks: backlinks,
+              index: index,
+              targets: {
+                currentNote.id,
+                currentNote.title,
+                ...currentNote.aliases,
+              }.map((t) => t.toLowerCase()).toSet(),
+              readSource: (path) async {
+                try {
+                  return await v.storage.readText(path);
+                } catch (_) {
+                  return '';
+                }
+              },
+              onOpenPath: _openPath,
+            );
+      if (currentDaily != null && references != null) {
+        dailyMore.add(references);
+      }
       documentContent = Column(
         children: [
           if (isEntity)
@@ -5615,28 +5640,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onOpenUrl: _openUrl,
             ),
           Expanded(child: content),
-          if (backlinks.isNotEmpty && v != null)
-            if (keyboardUp)
+          if (references != null)
+            if (keyboardUp || currentDaily != null)
               const SizedBox.shrink()
             else
-              LinkedReferences(
-                imageResolver: _readAsset,
-                backlinks: backlinks,
-                index: index,
-                targets: {
-                  currentNote.id,
-                  currentNote.title,
-                  ...currentNote.aliases,
-                }.map((t) => t.toLowerCase()).toSet(),
-                readSource: (path) async {
-                  try {
-                    return await v.storage.readText(path);
-                  } catch (_) {
-                    return '';
-                  }
-                },
-                onOpenPath: _openPath,
-              ),
+              references,
         ],
       );
     }
@@ -5724,25 +5732,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               readSource: (path) => vault!.storage.readText(path),
               onOpenPath: _openPath,
             ),
-          if (keyboardUp)
-            const SizedBox.shrink()
-          else
-            ScreenshotStrip(
-              index: index,
-              day: isoDay(currentDaily),
-              onOpenPath: _openPath,
-              imageResolver: _readAsset,
-              incoming: true,
-              external: oltIncomingOnDay(
-                _oltCache,
-                _oltDecided,
-                isoDay(currentDaily),
-              ),
-              onDecide: (note, action) =>
-                  unawaited(_decideIncoming(note, action)),
-            ),
           Expanded(child: documentContent),
         ],
+      );
+    }
+    if (documentModes.contains(mode) && currentDaily != null) {
+      final day = isoDay(currentDaily);
+      final external = oltIncomingOnDay(_oltCache, _oltDecided, day);
+      final incomingCount = incomingOnDay(index, day).length + external.length;
+      final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
+      dailyMore.insert(
+        0,
+        ScreenshotStrip(
+          index: index,
+          day: day,
+          onOpenPath: _openPath,
+          imageResolver: _readAsset,
+          incoming: true,
+          external: external,
+          onDecide: (note, action) => unawaited(_decideIncoming(note, action)),
+        ),
+      );
+      final dailyEditor = documentContent;
+      documentContent = LayoutBuilder(
+        builder: (context, constraints) => Column(
+          children: [
+            Expanded(child: dailyEditor),
+            if (keyboardUp || (incomingCount == 0 && referenceCount == 0))
+              const SizedBox.shrink()
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * 0.5,
+                ),
+                child: SingleChildScrollView(
+                  child: ExpansionTile(
+                    initiallyExpanded: _dailyMoreExpanded,
+                    onExpansionChanged: (value) => _dailyMoreExpanded = value,
+                    title: Text(
+                      [
+                        'More',
+                        if (incomingCount > 0) '$incomingCount incoming',
+                        if (referenceCount > 0)
+                          '$referenceCount reference${referenceCount == 1 ? '' : 's'}',
+                      ].join(' · '),
+                      style: Theme.of(context).textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    children: dailyMore,
+                  ),
+                ),
+              ),
+          ],
+        ),
       );
     }
     final bodyContent = isTodayDocument

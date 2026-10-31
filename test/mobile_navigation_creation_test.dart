@@ -17,6 +17,7 @@ import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/idea_hub.dart';
+import 'package:tylog/widgets/linked_references.dart';
 import 'package:tylog/widgets/ds/app_sheet.dart';
 import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/widgets/audio_shelf.dart';
@@ -440,24 +441,165 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the keyboard hides the screenshot strip, not the editor', (
+  testWidgets(
+    'daily More counts incoming, reveals references and hides while typing',
+    (tester) async {
+      final home = await _mountToday(tester, const Size(360, 800));
+      final dayPath = home.workspace.note as String;
+      const day = '2026-10-14';
+      const linkedPath = 'notes/linked.typ';
+      const shotPath = 'screenshots/shot-aaaaaaaaaaaaaaaa.typ';
+      await home.workspace.vault.storage.writeText(
+        linkedPath,
+        'See #tylog.ref-note("2026-10-14")[this day]',
+      );
+      home.workspace.index = VaultIndex(
+        notesByPath: {
+          dayPath: NoteRef(
+            id: day,
+            path: dayPath,
+            title: day,
+            kind: 'daily',
+            date: day,
+            outgoingLinks: const [],
+          ),
+          linkedPath: const NoteRef(
+            id: 'linked',
+            path: linkedPath,
+            title: 'Linked note',
+            outgoingLinks: [day],
+          ),
+          shotPath: const NoteRef(
+            id: 'shot-aaaaaaaaaaaaaaaa',
+            path: shotPath,
+            title: 'Daily screenshot',
+            kind: 'screenshot',
+            date: day,
+            outgoingLinks: [],
+          ),
+          'audio/daily.typ': const NoteRef(
+            id: 'daily-audio',
+            path: 'audio/daily.typ',
+            title: 'Daily audio',
+            kind: 'audio',
+            date: day,
+            outgoingLinks: [],
+          ),
+        },
+        backlinksByTarget: {
+          dayPath: [linkedPath],
+        },
+      );
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      final more = find.text('More · 2 incoming · 1 reference');
+      expect(more, findsOneWidget);
+      expect(find.byType(ScreenshotStrip), findsNothing);
+      expect(find.byType(LinkedReferences), findsNothing);
+      expect(find.text('Daily screenshot'), findsNothing);
+      expect(find.text('Linked note'), findsNothing);
+      final editor = find.byType(TyLogRichEditor);
+      final before = tester.element(editor);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotStrip), findsOneWidget);
+      expect(find.byType(LinkedReferences), findsOneWidget);
+      expect(find.text('Incoming (2)'), findsOneWidget);
+      expect(find.text('Daily screenshot'), findsOneWidget);
+      expect(find.text('Linked note'), findsOneWidget);
+      expect(tester.element(editor), same(before));
+      final bounds = tester.getRect(editor);
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(tester.getRect(editor), bounds);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      expect(more, findsNothing);
+      expect(find.byType(ScreenshotStrip), findsNothing);
+      expect(find.byType(LinkedReferences), findsNothing);
+      expect(tester.widget<TodayPage>(find.byType(TodayPage)).typing, isTrue);
+      expect(tester.element(editor), same(before));
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(more, findsOneWidget);
+      expect(find.byType(ScreenshotStrip), findsOneWidget);
+      expect(find.byType(LinkedReferences), findsOneWidget);
+      expect(tester.element(editor), same(before));
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotStrip), findsNothing);
+      expect(find.byType(LinkedReferences), findsNothing);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pump();
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotStrip), findsNothing);
+      expect(find.byType(LinkedReferences), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('daily without incoming or backlinks has no More row', (
     tester,
   ) async {
     await _mountToday(tester, const Size(360, 800));
-    expect(find.byType(ScreenshotStrip), findsOneWidget);
-    final editor = find.byType(TyLogRichEditor);
-    final before = tester.element(editor);
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pump();
+    expect(find.textContaining('More ·'), findsNothing);
     expect(find.byType(ScreenshotStrip), findsNothing);
-    expect(tester.widget<TodayPage>(find.byType(TodayPage)).typing, isTrue);
-    expect(tester.element(editor), same(before));
-    tester.view.resetViewInsets();
-    await tester.pump();
-    expect(find.byType(ScreenshotStrip), findsOneWidget);
+    expect(find.byType(LinkedReferences), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'daily More remembers expansion across navigation for the session',
+    (tester) async {
+      final home = await _mountToday(tester, const Size(360, 800));
+      // Back from another tab opens the real today, not the fixture's day.
+      final now = DateTime.now();
+      final days = {
+        RegExp(
+          r'(\d{4}-\d{2}-\d{2})\.typ$',
+        ).firstMatch(home.workspace.note!)![1]!,
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+            '${now.day.toString().padLeft(2, '0')}',
+      };
+      home.workspace.index = VaultIndex(
+        notesByPath: {
+          for (final day in days)
+            'audio/$day.typ': NoteRef(
+              id: 'daily-audio-$day',
+              path: 'audio/$day.typ',
+              title: 'Daily audio',
+              kind: 'audio',
+              date: day,
+              outgoingLinks: const [],
+            ),
+        },
+        backlinksByTarget: const {},
+      );
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      final more = find.text('More · 1 incoming');
+      for (final expanded in [true, false]) {
+        await tester.tap(more);
+        await tester.pumpAndSettle();
+        tester
+            .widget<NavigationBar>(find.byType(NavigationBar))
+            .onDestinationSelected!(2);
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(more, findsOneWidget);
+        expect(
+          find.byType(ScreenshotStrip),
+          expanded ? findsOneWidget : findsNothing,
+        );
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('swiping the date title steps the journal a day', (tester) async {
     final home = await _mountToday(tester, const Size(360, 800));
@@ -853,7 +995,7 @@ void main() {
     expect(find.byType(NavigationRail), findsNothing);
     expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 56);
     expect(find.byType(IdeaHubStrip), findsOneWidget);
-    expect(find.byType(ScreenshotStrip), findsOneWidget);
+    expect(find.byType(ScreenshotStrip), findsNothing);
     expect(find.byKey(const PageStorageKey('today-agenda')), findsOneWidget);
     expect(find.text('All tasks →'), findsNothing);
     await tester.tap(find.text('Agenda · 0'));
