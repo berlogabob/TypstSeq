@@ -185,9 +185,10 @@ def merge_section(note_text, heading, lines):
             line.update(status="user", text=_unescape(NOTE_LINE.match(entries[j])[3]))
             line["rendered"][heading] = entries[j]
     # A note line the user owns (edited, or typed by them) pins [its start, next note line's start).
+    # With no next line it pins 20 s (max line length), else the rest of the run would be dropped.
     user_raw = {line["rendered"][heading] for line in lines
                 if line.get("status") == "user" and heading in line["rendered"]}
-    pins = [(_seconds(raw), _seconds(entries[j + 1]) if j + 1 < len(entries) else math.inf)
+    pins = [(_seconds(raw), _seconds(entries[j + 1]) if j + 1 < len(entries) else _seconds(raw) + 20)
             for j, raw in enumerate(entries) if j not in taken or raw in user_raw]
     for i, line in enumerate(lines):
         if line.get("status") == "deleted":

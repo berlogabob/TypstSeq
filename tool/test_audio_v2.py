@@ -217,6 +217,16 @@ def test_rerun_drops_new_lines_inside_user_span():
         "- 01:00 A, corrigido", "- 01:20 B2"]
 
 
+def test_last_user_line_pins_at_most_20s():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(60.0, "A")])
+    note = note.replace("- 01:00 A", "- 01:00 A, corrigido")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    lines += [_seg(65.0, "run 1"), _seg(90.0, "run 2"), _seg(120.0, "run 3")]
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert [line for line in note.splitlines() if line.startswith("- ")] == [
+        "- 01:00 A, corrigido", "- 01:30 run 2", "- 02:00 run 3"]
+
+
 def test_rerun_keeps_lines_outside_user_span():
     note, lines = v2.merge_section("= Note\n", "Transcript",
                                    [_seg(30.0, "pre"), _seg(60.0, "A"), _seg(80.0, "B")])
