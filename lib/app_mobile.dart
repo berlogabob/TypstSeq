@@ -231,6 +231,11 @@ class _TyLogAppState extends State<TyLogApp> {
   }
 }
 
+/// Phones stop the foreground poll in the background (battery; the
+/// background worker takes over); desktops keep it.
+bool stopsPollingInBackground(TargetPlatform platform) =>
+    platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -2784,7 +2789,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             })
             .whenComplete(workspace.flushSearch),
       );
-      _stopCloudPolling();
+      // Desktops keep polling with the window closed (hide-on-close): the
+      // Mac publishes revisions for the phones even when nobody looks at it.
+      if (stopsPollingInBackground(defaultTargetPlatform)) _stopCloudPolling();
       // Hand off to the background worker: one catch-up run in ~1 min, then
       // the 15-min periodic keeps the vault fresh while the app is closed.
       if (Platform.isAndroid && (cloud?.isReady ?? false)) {
