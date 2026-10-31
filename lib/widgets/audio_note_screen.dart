@@ -164,6 +164,8 @@ class AudioLanguageBar extends StatelessWidget {
     required this.onRequest,
     required this.canRequest,
     this.sourceLanguage,
+    this.parallel,
+    this.onParallelChanged,
   });
 
   final List<String> selected;
@@ -175,6 +177,8 @@ class AudioLanguageBar extends StatelessWidget {
   final ValueChanged<String> onView;
   final ValueChanged<String> onRequest;
   final bool canRequest;
+  final bool? parallel;
+  final ValueChanged<bool>? onParallelChanged;
 
   String _name(String code) => kLanguageNames[code] ?? code;
 
@@ -196,7 +200,34 @@ class AudioLanguageBar extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: [
-          for (final l in shown)
+          if (parallel != null) ...[
+            IconButton.filledTonal(
+              tooltip: 'Side by side',
+              isSelected: parallel,
+              icon: const Icon(Icons.view_column_outlined),
+              selectedIcon: const Icon(Icons.view_column),
+              style: IconButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                fixedSize: const Size(32, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: onParallelChanged == null
+                  ? null
+                  : () => onParallelChanged!(!parallel!),
+            ),
+            if (sourceLanguage != null)
+              Tooltip(
+                message: 'Original',
+                child: Chip(
+                  label: Text(sourceLanguage!.toUpperCase()),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+          ],
+          for (final l in shown.where(
+            (l) => parallel == null || l != sourceLanguage,
+          ))
             if ((original == l) || translated.contains(l))
               ChoiceChip(
                 label: Text(l.toUpperCase()),
@@ -236,6 +267,11 @@ class AudioLanguageBar extends StatelessWidget {
             PopupMenuButton<String>(
               tooltip: 'Translate into another language',
               icon: const Icon(Icons.translate),
+              style: IconButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                fixedSize: const Size(32, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onSelected: onRequest,
               itemBuilder: (_) => [
                 for (final l in offered)
@@ -275,15 +311,7 @@ class AudioTranscriptRow extends StatelessWidget {
       decoration: parsed.doubtful ? TextDecoration.underline : null,
     );
     if (parsed.nonSpeech) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        heightFactor: 1,
-        child: Chip(
-          label: Text(parsed.text, style: style),
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      );
+      return Text(parsed.text, style: style);
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,16 +333,24 @@ class AudioTranscriptRow extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    dense: true,
-    selected: active,
-    leading: Text(formatTimestamp(segment.ms)),
-    title: _text(context, segment.text),
-    subtitle: translation == null
-        ? null
-        : _text(context, translation!, muted: true),
-    onTap: onTap,
-  );
+  Widget build(BuildContext context) {
+    final gap = parseTranscriptText(segment.text).nonSpeech;
+    return ListTile(
+      dense: true,
+      selected: active,
+      leading: Text(
+        formatTimestamp(segment.ms),
+        style: gap
+            ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
+            : null,
+      ),
+      title: _text(context, segment.text),
+      subtitle: translation == null || gap
+          ? null
+          : _text(context, translation!, muted: true),
+      onTap: onTap,
+    );
+  }
 }
 
 /// Context written by the worker, with the same seek targets as transcript rows.
@@ -469,6 +505,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   List<AudioComment> _summary = const [];
   List<AudioComment> _scenes = const [];
   List<AudioComment> _references = const [];
+  bool _loadingSource = true;
   bool _parallel = true;
   bool _requestingTranscript = false;
   String? _audioPath;
@@ -553,6 +590,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Future<void> _load() async {
     try {
       final source = await widget.readSource(widget.note.path);
+      if (!mounted) return;
       // The NoteRef we were opened with may be a stub (index still building);
       // the file is the truth, and later header rewrites must not drop it.
       final fresh = scanNote(widget.note.path, source);
@@ -568,6 +606,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       if (_peaks.isEmpty) _peaks = decodePeaks(_props['peaks']);
       final path = audioPathOf(source);
       if (path == null) throw StateError('No audio file in this note');
+      setState(() {
+        _audioPath = path;
+        _applySource(source);
+      });
+      unawaited(_refreshTranscriptState());
       if (_waveformAvailable && _peaks.isEmpty) {
         _peaks = await readPeakSidecar(path, widget.readBytes);
       }
@@ -579,14 +622,8 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         _props['duration_ms'] as int?,
       );
       _temp = file;
-      _audioPath = path;
       await _player.setFilePath(file.path);
-      if (mounted) {
-        setState(() {
-          _applySource(source);
-        });
-      }
-      unawaited(_refreshTranscriptState());
+      if (mounted) setState(() {});
       if (_waveformAvailable && _peaks.isEmpty) unawaited(_backfillPeaks(file));
     } catch (error) {
       if (mounted) setState(() => _error = 'Could not load audio: $error');
@@ -644,6 +681,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
+    _loadingSource = false;
     if (_view != null &&
         !_translations.containsKey(_view) &&
         !(_monolingual &&
@@ -827,12 +865,20 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                   const Divider(height: 1),
                   _tabBar(),
                   Expanded(
-                    child: switch (_tab) {
-                      AudioTab.comments => _commentList(active),
-                      AudioTab.transcribe => _transcribeView(),
-                      AudioTab.translate => _translateView(),
-                      AudioTab.properties => _propertiesView(),
-                    },
+                    child: _loadingSource && _watching
+                        ? const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : switch (_tab) {
+                            AudioTab.comments => _commentList(active),
+                            AudioTab.transcribe => _transcribeView(),
+                            AudioTab.translate => _translateView(),
+                            AudioTab.properties => _propertiesView(),
+                          },
                   ),
                   if (_tab == AudioTab.comments) _commentInput(),
                 ],
@@ -1058,42 +1104,19 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         : _translations.keys.firstOrNull;
     return Column(
       children: [
-        if (_lang != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(kSpace16, 0, kSpace16, kSpace4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Language: ${_name(_lang!)}',
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-            ),
-          ),
-        if (_translations.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FilterChip(
-                label: const Text('Parallel'),
-                selected: _parallel,
-                onSelected: (v) => setState(() => _parallel = v),
-              ),
-            ),
-          ),
-          if (_parallel)
-            AudioLanguageBar(
-              selected: widget.selectedLanguages,
-              original: null,
-              sourceLanguage: _lang,
-              translated: _translations.keys.toSet(),
-              translating: _translating,
-              view: view,
-              onView: (l) => setState(() => _view = l),
-              onRequest: (l) => unawaited(_requestTranslation(l)),
-              canRequest: widget.requestTranslation != null && _lang != null,
-            ),
-        ],
+        AudioLanguageBar(
+          selected: widget.selectedLanguages,
+          original: null,
+          sourceLanguage: _lang,
+          translated: _translations.keys.toSet(),
+          translating: _translating,
+          view: view,
+          onView: (l) => setState(() => _view = l),
+          onRequest: (l) => unawaited(_requestTranslation(l)),
+          canRequest: widget.requestTranslation != null && _lang != null,
+          parallel: _parallel,
+          onParallelChanged: (v) => setState(() => _parallel = v),
+        ),
         Expanded(
           child: _segments(
             _transcript,
@@ -1111,33 +1134,46 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     int active, {
     List<AudioComment>? parallel,
     bool showSections = false,
-  }) => CustomScrollView(
-    slivers: [
-      if (showSections)
-        SliverToBoxAdapter(
-          child: AudioNoteSections(
-            summary: _summary,
-            scenes: _scenes,
-            references: _references,
-            onSeek: (ms) => _seek(Duration(milliseconds: ms)),
+  }) {
+    final rows = [
+      for (var i = 0; i < shown.length; i++)
+        if (i == 0 ||
+            !parseTranscriptText(shown[i].text).nonSpeech ||
+            !parseTranscriptText(shown[i - 1].text).nonSpeech)
+          i,
+    ];
+    return CustomScrollView(
+      slivers: [
+        if (showSections)
+          SliverToBoxAdapter(
+            child: AudioNoteSections(
+              summary: _summary,
+              scenes: _scenes,
+              references: _references,
+              onSeek: (ms) => _seek(Duration(milliseconds: ms)),
+            ),
           ),
+        SliverList.builder(
+          itemCount: rows.length,
+          itemBuilder: (context, row) {
+            final i = rows[row];
+            final end = row + 1 < rows.length ? rows[row + 1] : shown.length;
+            return AudioTranscriptRow(
+              segment: shown[i],
+              translation:
+                  parallel != null &&
+                      i < parallel.length &&
+                      parallel[i].ms == shown[i].ms
+                  ? parallel[i].text
+                  : null,
+              active: i <= active && active < end,
+              onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
+            );
+          },
         ),
-      SliverList.builder(
-        itemCount: shown.length,
-        itemBuilder: (context, i) => AudioTranscriptRow(
-          segment: shown[i],
-          translation:
-              parallel != null &&
-                  i < parallel.length &&
-                  parallel[i].ms == shown[i].ms
-              ? parallel[i].text
-              : null,
-          active: i == active,
-          onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
-        ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   Widget _translateView() {
     if (_transcript.isEmpty) {

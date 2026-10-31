@@ -92,7 +92,7 @@ void main() {
     expect(taps, 2);
   });
 
-  testWidgets('non-speech and missing translation markers stay seekable', (
+  testWidgets('missing translation markers stay muted and seekable', (
     tester,
   ) async {
     var taps = 0;
@@ -102,7 +102,7 @@ void main() {
         theme: theme,
         home: Scaffold(
           body: AudioTranscriptRow(
-            segment: (ms: 5000, text: '[—]'),
+            segment: (ms: 5000, text: 'Olá'),
             translation: '[sem tradução]',
             onTap: () => taps++,
           ),
@@ -110,13 +110,11 @@ void main() {
       ),
     );
 
-    expect(find.widgetWithText(Chip, '—'), findsOneWidget);
-    expect(find.text('[—]'), findsNothing);
     expect(find.text('[sem tradução]'), findsNothing);
     final text = tester.widget<Text>(find.text('no translation'));
     expect(text.style!.fontStyle, FontStyle.italic);
     expect(text.style!.color, theme.colorScheme.onSurfaceVariant);
-    await tester.tap(find.text('—'));
+    await tester.tap(find.text('Olá'));
     await tester.tap(find.text('no translation'));
     expect(taps, 2);
   });
@@ -453,7 +451,7 @@ void main() {
     expect(requested, 'en');
   });
 
-  testWidgets('parallel translation chips exclude the transcript language', (
+  testWidgets('parallel header marks the source and excludes its translation', (
     tester,
   ) async {
     String? requested;
@@ -464,6 +462,8 @@ void main() {
             selected: const ['ru', 'en', 'pt'],
             original: null,
             sourceLanguage: 'pt',
+            parallel: true,
+            onParallelChanged: (_) {},
             translated: const {'ru'},
             translating: const {},
             view: 'ru',
@@ -476,6 +476,9 @@ void main() {
     );
 
     expect(find.widgetWithText(ActionChip, 'PT'), findsNothing);
+    expect(find.widgetWithText(Chip, 'PT'), findsOneWidget);
+    expect(find.byTooltip('Original'), findsOneWidget);
+    expect(find.byTooltip('Side by side'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
     expect(find.widgetWithText(ActionChip, 'EN'), findsOneWidget);
     await tester.tap(find.widgetWithText(ActionChip, 'EN'));
