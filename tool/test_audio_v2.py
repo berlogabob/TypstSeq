@@ -4,8 +4,9 @@ import sys
 from pathlib import Path
 
 import audio_metrics
+import audio_v2 as v2
 
-LOOP = "não, " * 39 + "não!"
+LOOP ="não, " * 39 + "não!"
 
 FIXTURE = f"""= Fixture
 
@@ -86,3 +87,27 @@ def test_cli_prints_one_json_line(tmp_path):
     lines = result.stdout.splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0]) == audio_metrics.note_metrics(FIXTURE)
+
+
+def test_regions_merge_up_to_25s_and_split_at_longest_pause():
+    speech = [(0, 10), (10.5, 20), (22, 30), (30.2, 40)]
+    items = v2.plan_chunks(speech, total=40)
+    assert [(i["start"], i["end"]) for i in items if i["kind"] == "speech"] == [(0, 20), (22, 40)]
+
+
+def test_long_gap_becomes_gap_item_short_gap_does_not():
+    items = v2.plan_chunks([(0, 5), (12, 15), (16, 20)], total=20)
+    assert [i["kind"] for i in items] == ["speech", "gap", "speech"]
+
+
+def test_single_region_longer_than_max_is_split_evenly():
+    items = v2.plan_chunks([(0, 60)], total=60)
+    assert all(i["end"] - i["start"] <= 25 for i in items) and items[-1]["end"] == 60
+
+
+def test_short_recording_one_chunk():
+    assert v2.plan_chunks([(0.3, 3.9)], total=4.2) == [{"start": 0.3, "end": 3.9, "kind": "speech"}]
+
+
+def test_no_speech_is_one_gap():
+    assert v2.plan_chunks([], total=300) == [{"start": 0, "end": 300, "kind": "gap"}]
