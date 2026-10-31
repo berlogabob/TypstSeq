@@ -253,11 +253,11 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T16 (9b8e2b4) context sections in the first target language (ru), not the transcript's; glossary gives corrected spelling of misheard names (heard -> spelling), arbitration may use spelling
 - [x] T17 (e462376, 263 tests) (?) only when arbitration says doubtful AND engine agreement < 0.3 (59 doubtful chunks -> 12; now 30% of lines carry (?), most read fine)
 - [x] T18 re-run: (?) 154 -> 18 lines (3.6%), glossary corrects Deméter/elefantes/Moçambique/Yorick; ru failed 10 (2%), en 1
-- [x] T19 (bb14d15, 266 tests; theatre context re-queued 19:55) Summary/Scenes/References still Portuguese (Ornith ignores the language instruction): generate in source language, then translate the section lines into ru through the validated translate path
+- [x] T19 (bb14d15, 266 tests; verified 19:58: Summary/Scenes/References in Russian, references now right: agelast stone, Demeter/Persephone, Aristophanes) Summary/Scenes/References still Portuguese (Ornith ignores the language instruction): generate in source language, then translate the section lines into ru through the validated translate path
 - [x] T20 Phase 4 tasks written (plan: Tasks 21-22)
-- [ ] T21 translations wait for the context pass; windows of 40 lines with Summary + glossary + previous 10 pairs
-- [ ] T22 review pass: score 1-5 per line, retranslate < 3 once with thinking on, (?) if still < 3
-- [ ] T23 theatre re-run of translations, metrics (failed, mean score); then Phase 5 (app) plan
+- [x] T21 (db67edc) translations wait for the context pass; windows of 40 lines with Summary + glossary + previous 10 pairs
+- [x] T22 (a95e8e8, 280 tests) review pass: score 1-5 per line, retranslate < 3 once with thinking on, (?) if still < 3
+- [ ] T23 (ru+en queued 20:09) theatre re-run of translations, metrics (failed, mean score); then Phase 5 (app) plan
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
