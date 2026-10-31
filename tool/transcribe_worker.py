@@ -932,29 +932,36 @@ def transcribe_v2_job(vault, job, note, model, settings):
     return note_text, sidecar, lines, language
 
 
-def context_stage(vault, job, note, sidecar, lines, settings):
+def context_stage(vault, job, note, sidecar, lines, settings, translate):
     """Stage 5 of a v2 transcript: Summary, Scenes and References from the transcript and the user's Context.
 
-    The sections go into the note, the result into the sidecar. The target is the first translation
-    language. Without an LLM endpoint the stage is skipped. A failed or malformed reply raises: the job
-    fails, the note keeps its transcript, and a re-process runs the stage again.
+    The LLM writes them in the transcript's language. They are then translated into the target, the first
+    translation language, through `translate` (the translate task's validated path). The sidecar keeps the
+    transcript-language result as `context` and the translated one as `context_translated[target]`; the sections
+    render the translated one. A translation that fails outright renders the original and stores no translation.
+    Without an LLM endpoint the stage is skipped. A failed or malformed reply raises: the job fails, the note
+    keeps its transcript, and a re-process runs the stage again.
     """
     import audio_v2
 
     if not connection_credentials(translate_connection(settings))[0]:
         return
     extra = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
-    target = translation_targets(job.get("langs", []), extra.get("translate_to", []))[0]
+    source_langs = job.get("langs", [])
+    target = translation_targets(source_langs, extra.get("translate_to", []))[0]
     _, chat = llm_chat(settings, max_tokens=CONTEXT_MAX_TOKENS)
     speech = [line for line in lines if line["kind"] == "speech"]
     result = audio_v2.context_pass(speech, audio_v2.section_text(read_note(note), "Context"), target, chat)
+    translated = audio_v2.translated_context(result, translate, source_langs, target)
+    shown = result if translated is None else translated
     # Read again after the model ran: a user edit made meanwhile is part of the note now.
     previous = audio_v2.load_sidecar(sidecar).get("context_lines", {})
-    note_text, context_lines = audio_v2.render_context(read_note(note), previous, result, speech)
+    note_text, context_lines = audio_v2.render_context(read_note(note), previous, shown, speech)
     with note.open("w", encoding="utf-8", newline="") as stream:
         stream.write(note_text)
     data = audio_v2.load_sidecar(sidecar)
-    data.update(context=result, context_lines=context_lines)
+    data.update(context=result, context_lines=context_lines,
+                context_translated={} if translated is None else {target: translated})
     audio_v2.save_sidecar(sidecar, data)
 
 
@@ -1099,7 +1106,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     stream.write(updated_note)
                 if finish is not None:
                     audio_v2.finish_transcript(*finish)
-                    context_stage(vault, job, note, *finish, settings)
+                    context_stage(vault, job, note, *finish, settings, translate)
                     arbitration_stage(note, finish[0], settings)
                 if kind == "translations":
                     audio_v2.save_sidecar(segments_sidecar, sidecar)

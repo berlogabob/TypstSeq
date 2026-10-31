@@ -2228,9 +2228,19 @@ def context_job(tmp_path, monkeypatch, reply=None):
     return chat_fake(monkeypatch, lambda messages: json.dumps(CONTEXT_JSON) if reply is None else reply(messages))
 
 
+def unchanged_translate(texts, source_lang, target, source_langs):
+    """Translate stand-in that returns the texts as they are, so the sections keep the transcript's language."""
+    return list(texts)
+
+
+def marked_translate(texts, source_lang, target, source_langs):
+    """Translate stand-in: each text gets its target as a marker, so a rendered line shows it was translated."""
+    return [f"{target}: {text}" for text in texts]
+
+
 def test_context_sections_written(tmp_path, monkeypatch):
     sent = context_job(tmp_path, monkeypatch)
-    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     job = read_job(tmp_path)
     assert (job["status"], job["lang"]) == ("done", "pt")
     assert len(sent) == 1
@@ -2250,13 +2260,13 @@ def test_context_sections_written(tmp_path, monkeypatch):
 
 def test_context_section_never_written(tmp_path, monkeypatch):
     sent = context_job(tmp_path, monkeypatch)
-    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     note = tmp_path / "note.typ"
     note.write_text(note.read_text().replace("Peça: Medeia.", "Peça: Medeia. Eurípides, 431 a.C."))
 
     # Re-process: the ASR chunks are kept, the context pass runs again with the edited Context.
     v2_job(tmp_path, lang="pt")
-    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     assert read_job(tmp_path)["status"] == "done"
     assert "Eurípides, 431 a.C." in sent[-1][1]["content"]
     text = note.read_text()
@@ -2295,7 +2305,7 @@ def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, mon
 
     context_job(tmp_path, monkeypatch)
     monkeypatch.setattr(worker, "urlopen", fake)
-    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    worker.run_once(tmp_path, translate=unchanged_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     url, payload = sent[0]
     assert url == "https://studio.example/v1/chat/completions"
     assert payload["model"] == "translator"
@@ -2304,15 +2314,68 @@ def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, mon
     assert payload["max_tokens"] == worker.CONTEXT_MAX_TOKENS
 
 
-@pytest.mark.parametrize("lang, text, language", [("pt", "Olá tudo bem.", "Russian"),
-                                                  ("ru", "Привет, как дела.", "English")])
-def test_context_written_in_first_target_language(tmp_path, monkeypatch, lang, text, language):
+@pytest.mark.parametrize("lang, text, target", [("pt", "Olá tudo bem.", "ru"),
+                                                ("ru", "Привет, как дела.", "en")])
+def test_context_sections_rendered_in_target_language(tmp_path, monkeypatch, lang, text, target):
     # The first translation target other than the recording's language: ru for pt, en for ru.
     v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
     scripted_mac(monkeypatch, {0.0: text})
     (tmp_path / "note.typ").write_text("= Note\n")
     v2_job(tmp_path, lang=lang)
     sent = chat_fake(monkeypatch, lambda messages: json.dumps(CONTEXT_JSON))
-    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    calls = []
+
+    def translate(texts, source_lang, target_lang, source_langs):
+        calls.append((list(texts), source_lang, target_lang, source_langs))
+        return marked_translate(texts, source_lang, target_lang, source_langs)
+
+    worker.run_once(tmp_path, translate=translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     assert read_job(tmp_path)["status"] == "done"
-    assert f"Write summary, scene titles and explanations in {language}" in sent[0][0]["content"]
+    # The context pass answers in the transcript's language; the translation is what names the target.
+    assert "in the language of the transcript" in sent[0][0]["content"]
+    # One speech line here, so the reference on line 2 is dropped by the parser; its explanation is not sent.
+    assert calls == [(["Resumo da peça.", "Monólogo"], lang, target, [lang])]
+    note = tmp_path / "note.typ"
+    assert audio_v2.section_text(note.read_text(), "Summary") == f"- 00:00 {target}: Resumo da peça."
+    assert audio_v2.section_text(note.read_text(), "Scenes") == f"- 00:00 {target}: Monólogo"
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
+    assert sidecar["context"]["summary"] == "Resumo da peça."
+    assert sidecar["context_translated"][target]["summary"] == f"{target}: Resumo da peça."
+
+
+def test_context_translation_failure_falls_back_to_original(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch)
+
+    def failing(texts, source_lang, target, source_langs):
+        raise ValueError("LLM returned an empty reply")
+
+    worker.run_once(tmp_path, translate=failing, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    note = (tmp_path / "note.typ").read_text()
+    assert audio_v2.section_text(note, "Summary") == "- 00:00 Resumo da peça."
+    assert audio_v2.section_text(note, "Scenes") == "- 00:00 Monólogo"
+    assert audio_v2.section_text(note, "References") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
+    assert sidecar["context"]["summary"] == "Resumo da peça."
+    assert sidecar.get("context_translated", {}) == {}
+
+
+def test_reference_suffix_kept_after_translation(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch)
+    worker.run_once(tmp_path, translate=marked_translate, state_path=tmp_path / "state.json", probe=quiet_probe)
+    # The term stays as the transcript spells it; only the explanation is translated; "(AI)" stays last.
+    assert audio_v2.section_text((tmp_path / "note.typ").read_text(), "References") == (
+        "- 00:10 Baubo -- ru: Figura do mito de Deméter. (AI)")
+
+
+def test_context_line_the_model_could_not_translate_keeps_its_original(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch)
+
+    def partly(texts, source_lang, target, source_langs):
+        return [worker.FAILED_TRANSLATION if text.startswith("Figura") else f"{target}: {text}" for text in texts]
+
+    worker.run_once(tmp_path, translate=partly, state_path=tmp_path / "state.json", probe=quiet_probe)
+    text = (tmp_path / "note.typ").read_text()
+    assert audio_v2.section_text(text, "Summary") == "- 00:00 ru: Resumo da peça."
+    assert audio_v2.section_text(text, "References") == "- 00:10 Baubo -- Figura do mito de Deméter. (AI)"
+    assert worker.FAILED_TRANSLATION not in text

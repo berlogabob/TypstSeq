@@ -613,7 +613,7 @@ def context_messages(context_text, target, window):
     system = (
         "You read the transcript of one audio recording. Reply with one JSON object and nothing else: "
         f"{schema}. "
-        f"Write summary, scene titles and explanations in {language}, even when the transcript is in another language. "
+        "Write summary, scene titles and explanations in the language of the transcript. "
         "summary: 5 to 10 sentences on what the recording is and what happens in it. "
         "scenes: each place where the subject or scene changes, with the number of its first line and a short title. "
         "glossary: names and terms the transcript uses. heard is the form in the transcript; spelling is the correct "
@@ -729,6 +729,33 @@ def context_pass(speech, context_text, target, chat):
         "scenes": sorted((s for part in parts for s in part["scenes"]), key=lambda s: s["line"]),
         "glossary": glossary,
         "references": sorted((r for part in parts for r in part["references"]), key=lambda r: r["line"]),
+    }
+
+
+def context_texts(result):
+    """The strings the context pass wrote in the transcript's language, in the order translated_context sends
+    them: the summary (when there is one), the scene titles, the reference explanations."""
+    summary = [result["summary"]] if result["summary"] else []
+    return summary + [scene["title"] for scene in result["scenes"]] + [ref["explanation"] for ref in result["references"]]
+
+
+def translated_context(result, translate, source_langs, target):
+    """The context result with its summary, scene titles and reference explanations in `target`, from the validated
+    `translate(texts, source_lang, target, source_langs)`. Line numbers, terms and the glossary stay as they are.
+    A text the translation could not produce keeps its original wording. None when the translation fails outright."""
+    texts = context_texts(result)
+    if texts:
+        try:
+            replies = translate(texts, (source_langs or [""])[0], target, source_langs)
+        except (ValueError, OSError):
+            return None
+        texts = [original if reply == worker.FAILED_TRANSLATION else reply for original, reply in zip(texts, replies)]
+    values = iter(texts)  # the order context_texts gives; dict values are built left to right
+    return {
+        **result,
+        "summary": next(values) if result["summary"] else "",
+        "scenes": [{**scene, "title": next(values)} for scene in result["scenes"]],
+        "references": [{**ref, "explanation": next(values)} for ref in result["references"]],
     }
 
 
