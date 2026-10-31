@@ -25,6 +25,8 @@ their history is in the commit log and the GitHub release notes.
   shortcut now lands in today's log as a player card.
 - While you type, the Agenda row steps aside too, so the editor has the
   screen.
+- Mac: with the window closed TyLog keeps sharing note history with your
+  phones (it paused until the window was opened again).
 - Windows: the updater ends a TyLog process that does not quit within 8 s,
   retries the file swap and writes `%TEMP%\tylog-update.log`.
 

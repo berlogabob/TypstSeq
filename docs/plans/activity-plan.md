@@ -230,7 +230,7 @@ Cause of the slow run: Ornith 35b reasoned before every answer (57 s/day, 12/20 
 ## Open items audit (2026-10-31, whole file re-read)
 Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 #5), startup scan (W8 #3-4), diarization (W8 #8), smaller search index (W12 v4), WebDAV round trip (W12 rclone), fold minors (26f39d2), A24 idle memory (W13 W5: 242-246 MB), screenshot layout (0.19.4).
 - [x] 2026-10-15 adb junk-text incident: real-vault daily 2026-10-15 has no 'п' / 'р-н' lines (checked 2026-10-31).
-- [ ] Revisions Mac -> P30 device check (W7 #3, W8 #6/#15): only test-covered; needs a scratch note edited on the Mac, P30 picks it up.
+- [x] Revisions Mac -> P30 (W7 #3, W8 #6/#15): found the Mac stops the revision poll when its window is closed (hide-on-close -> lifecycle hidden -> stopCloudPolling); desktops now keep polling. Unit-tested; Mac in-app edit check skipped (user away). Revisions come only from in-app edits, not file edits.
 - [ ] Peak-after-use memory profiling (W13 W5): P30 665 MB after ~1 h use; Screenshots cause fixed (5103398), other paths not profiled.
 - [ ] Mac check of the W13 release-blocker fixes (W13: "Mac check: user").
 - [ ] Windows self-update test on Studio (0.19.3 -> 0.19.4 pending since 2026-10-21; updater hang log %TEMP%\tylog-update.log): needs the user at Studio.
