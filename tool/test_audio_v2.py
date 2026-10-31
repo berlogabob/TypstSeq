@@ -472,3 +472,58 @@ def test_no_generated_sections_without_content():
     empty = {"summary": "", "scenes": [], "glossary": [], "references": []}
     note, _ = v2.render_context("= Note\n\n== Transcript\n\n- 00:00 Nasci.\n", {}, empty, SPEECH)
     assert note == "= Note\n\n== Transcript\n\n- 00:00 Nasci.\n"
+
+
+# Task 12: arbitration of disputed chunks. The LLM is a fake chat(messages) -> reply text.
+
+def test_guard_rejects_invented_words():
+    invented = json.dumps({"text": "Nasci no seio de uma família nobre.", "status": "fixed"})
+    for reply in (invented, "Nasci no seio de uma família nobre."):  # a bad JSON reply is refused the same way
+        chunks = [_chunk(0.0, 6.0, "Nasci no seio de uma família.", "Nasci no seio de uma familia.")]
+        v2.arbitrate_chunks(chunks, [], "", [], lambda messages: reply)
+        assert chunks[0]["arbitration"] == {"text": "Nasci no seio de uma família.", "status": "doubtful"}
+    lines = v2.lines_from_chunks(chunks)
+    assert [(line["text"], line["status"]) for line in lines] == [("Nasci no seio de uma família.", "doubtful")]
+
+
+def test_glossary_spelling_allowed():
+    reply = json.dumps({"text": "A Baubo fazia rir.", "status": "fixed"})
+    without = [_chunk(0.0, 6.0, "A Bobo fazia rir.", "A Bambo fazia rir.")]
+    v2.arbitrate_chunks(without, [], "", [], lambda messages: reply)
+    assert without[0]["arbitration"] == {"text": "A Bobo fazia rir.", "status": "doubtful"}
+
+    with_glossary = [_chunk(0.0, 6.0, "A Bobo fazia rir.", "A Bambo fazia rir.")]
+    glossary = [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
+    v2.arbitrate_chunks(with_glossary, [], "", glossary, lambda messages: reply)
+    assert with_glossary[0]["arbitration"] == {"text": "A Baubo fazia rir.", "status": "fixed"}
+
+
+def test_fixed_lines_lose_marker():
+    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo")]  # no common word: doubtful
+    note, lines = v2.merge_section("= Note\n", "Transcript", v2.lines_from_chunks(chunks))
+    assert "- 00:00 (?) Olá, tudo bem com você?\n" in note
+
+    reply = json.dumps({"text": "Olá, tudo bem?", "status": "fixed"})
+    v2.arbitrate_chunks(chunks, lines, "", [], lambda messages: reply)
+    note, lines = v2.merge_transcript(note, lines, v2.lines_from_chunks(chunks))
+    assert "(?)" not in note and "- 00:00 Olá, tudo bem?\n" in note
+
+
+def test_user_edited_lines_untouched():
+    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo"),
+              _chunk(6.0, 9.0, "Nasci.", "Nasci no seio.")]
+    note, lines = v2.merge_section("= Note\n", "Transcript", v2.lines_from_chunks(chunks))
+    edited = note.replace("(?) Olá, tudo bem com você?", "Olá, tudo bem com o Baubo?")
+    note, lines = v2.merge_transcript(edited, lines, v2.lines_from_chunks(chunks))
+
+    calls = []
+
+    def chat(messages):
+        calls.append(messages)
+        return json.dumps({"text": "Nasci no seio.", "status": "fixed"})
+
+    v2.arbitrate_chunks(chunks, lines, "", [], chat)
+    assert len(calls) == 1 and "arbitration" not in chunks[0] and chunks[1]["arbitration"]["status"] == "fixed"
+    note, _ = v2.merge_transcript(note, lines, v2.lines_from_chunks(chunks))
+    assert "- 00:00 Olá, tudo bem com o Baubo?\n" in note
+    assert "- 00:06 Nasci no seio.\n" in note and "com você" not in note

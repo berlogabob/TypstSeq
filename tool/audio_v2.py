@@ -45,6 +45,12 @@ NOTE_LINE = re.compile(r"^\s*-\s+(\d{1,3}):([0-5]\d)\s+(.+?)\s*$")
 # chunks, all with asr_alt. 0.01 flags 20 of 151 = 13.2%: 18 chunks have no word in common, and 2 long
 # chunks (300+ words) match once. 0.05 would flag 23 = 15.2%, just above the 10-15% target.
 DOUBT_THRESHOLD = 0.01
+# Stage 4 candidates: speech chunks whose engines agree on less than this (doubtful chunks are a subset).
+# On the theatre sidecar 3efa2a81a7186a11d40eb0a34a974200b8daa505.json (2026-10-31) 142 of 151 speech chunks
+# are candidates at 0.95 (94%, one LLM call each); 0.5 gives 39. The engines rarely agree word for word.
+ARBITRATE_THRESHOLD = 0.95
+ARBITRATE_NEIGHBOURS = 3  # speech lines shown before and after a disputed chunk
+ARBITRATION_STATUSES = ("ok", "fixed", "doubtful")
 
 
 def speech_regions(audio_path, min_silence_ms=2000):
@@ -362,7 +368,8 @@ def _doubtful(chunk, text):
 def lines_from_chunks(chunks):
     """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines.
 
-    Lines of a speech chunk whose engines disagree (_doubtful) get status "doubtful".
+    Lines of a speech chunk whose engines disagree (_doubtful) get status "doubtful". A chunk decided by
+    arbitration (Stage 4) carries its own text and status, which replace both.
     """
     lines = []
     for chunk in chunks:
@@ -371,7 +378,10 @@ def lines_from_chunks(chunks):
         if chunk["kind"] == "gap" or not text or is_hallucination(text):
             lines.append(_gap_line(start))
             continue
-        status = "doubtful" if _doubtful(chunk, text) else "ok"
+        if chunk.get("arbitration"):
+            text, status = chunk["arbitration"]["text"], chunk["arbitration"]["status"]
+        else:
+            status = "doubtful" if _doubtful(chunk, text) else "ok"
         lines += [{"start": at, "kind": "speech", "text": sentence, "status": status}
                   for at, sentence in sentence_lines(start, chunk["end"], text)]
     return lines
@@ -436,6 +446,15 @@ def reconcile_lines(previous, fresh):
         else:
             stale.append(old)
     return lines, stale
+
+
+def merge_transcript(note_text, previous, fresh):
+    """Fresh Transcript lines into the note: reconcile_lines, drop the stale note lines, merge_section.
+    Returns (note_text, lines). `previous` are the lines the last merge left (they carry `rendered`)."""
+    merged, stale = reconcile_lines(previous, fresh)
+    note_text = remove_section_lines(note_text, "Transcript", {
+        line["rendered"]["Transcript"] for line in stale if "Transcript" in line.get("rendered", {})})
+    return merge_section(note_text, "Transcript", merged)
 
 
 def finish_transcript(sidecar, lines):
@@ -764,3 +783,95 @@ def render_context(note_text, previous, result, speech):
     for heading in GENERATED:
         note_text, sections[heading] = merge_generated(note_text, heading, items[heading], previous.get(heading))
     return note_text, sections
+
+
+# Arbitration (Stage 4): one LLM call per disputed speech chunk; the guard keeps invented words out
+
+def arbitration_candidate(chunk):
+    """A speech chunk with two non-empty hypotheses that disagree, neither a filter hit, not arbitrated yet."""
+    if chunk["kind"] != "speech" or "arbitration" in chunk:
+        return False
+    first, second = (chunk.get("asr") or "").strip(), (chunk.get("asr_alt") or "").strip()
+    if not (first and second) or is_hallucination(first) or is_hallucination(second):
+        return False
+    return agreement(first, second) < ARBITRATE_THRESHOLD
+
+
+def _neighbour_lines(chunks, index):
+    """Up to ARBITRATE_NEIGHBOURS speech lines before and after chunks[index], as they read now."""
+    before, after = [], []
+    for chunk in reversed(chunks[:index]):
+        before = [line["text"] for line in lines_from_chunks([chunk]) if line["kind"] == "speech"] + before
+        if len(before) >= ARBITRATE_NEIGHBOURS:
+            break
+    for chunk in chunks[index + 1:]:
+        after += [line["text"] for line in lines_from_chunks([chunk]) if line["kind"] == "speech"]
+        if len(after) >= ARBITRATE_NEIGHBOURS:
+            break
+    return before[-ARBITRATE_NEIGHBOURS:], after[:ARBITRATE_NEIGHBOURS]
+
+
+def arbitration_messages(context_text, glossary, before, first, second, after):
+    """Prompt for one disputed chunk: both hypotheses, the lines around them, the glossary and the user's Context."""
+    system = (
+        "Two speech recognisers transcribed the same passage of one recording and disagree. Hypothesis A and "
+        "hypothesis B are their texts; the lines around the passage show what comes before and after. "
+        'Reply with one JSON object and nothing else: {"text": string, "status": "ok" | "fixed" | "doubtful"}. '
+        "text is the passage as it was spoken, using only words of A or B or glossary spellings. A word may be "
+        "corrected only to a glossary spelling or to an obvious correct spelling in the same language. Never add "
+        "words or content that neither hypothesis nor the glossary contains. "
+        "status: ok when one hypothesis is right as it stands, fixed when you corrected it, doubtful when you cannot "
+        "tell; then text is the better hypothesis."
+    )
+    spellings = ", ".join(entry["spelling"] for entry in glossary) or "(none)"
+    before_text = "\n".join(before) or "(none)"
+    after_text = "\n".join(after) or "(none)"
+    user = (f"Context:\n{context_text or '(none)'}\n\nGlossary spellings: {spellings}\n\n"
+            f"Before:\n{before_text}\n\nHypothesis A: {first}\nHypothesis B: {second}\n\n"
+            f"After:\n{after_text}")
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def arbitration_result(reply, first, second, glossary):
+    """The guarded decision for one chunk: {"text", "status"}.
+
+    The text is kept only if the reply is a JSON object with a text and a known status, and every word of the
+    text is in hypothesis A, hypothesis B or a glossary spelling. Anything else keeps hypothesis A, doubtful.
+    """
+    keep_first = {"text": first, "status": "doubtful"}
+    try:
+        value = _json_object(reply)
+    except ValueError:
+        return keep_first
+    text, status = value.get("text"), value.get("status")
+    if not isinstance(text, str) or status not in ARBITRATION_STATUSES:
+        return keep_first
+    allowed = set(_tokens(first)) | set(_tokens(second))
+    for entry in glossary:
+        allowed |= set(_tokens(entry["spelling"]))
+    words = set(_tokens(text))
+    if not words or not words <= allowed:
+        return keep_first
+    return {"text": " ".join(text.split()), "status": status}
+
+
+def _edited(chunk, lines):
+    """A line of this chunk was edited or deleted by the user. Its text is theirs, so the chunk is left alone."""
+    return any(line.get("status") in ("user", "deleted") and chunk["start"] <= line["start"] < chunk["end"]
+               for line in lines)
+
+
+def arbitrate_chunks(chunks, lines, context_text, glossary, chat, save=lambda: None):
+    """Stage 4 over the chunks, in order: each candidate gets chunk["arbitration"] = {"text", "status"} from one
+    chat(messages) call. `save()` runs after every decided chunk, so a stopped run resumes at the next undecided one.
+    `lines` are the current Transcript lines; chunks with a user-edited or deleted line are skipped. A chat error
+    propagates; the chunks decided before it keep their decisions.
+    """
+    for index, chunk in enumerate(chunks):
+        if not arbitration_candidate(chunk) or _edited(chunk, lines):
+            continue
+        before, after = _neighbour_lines(chunks, index)
+        first, second = chunk["asr"].strip(), chunk["asr_alt"].strip()
+        reply = chat(arbitration_messages(context_text, glossary, before, first, second, after))
+        chunk["arbitration"] = arbitration_result(reply, first, second, glossary)
+        save()

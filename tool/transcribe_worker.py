@@ -897,11 +897,7 @@ def transcribe_v2_job(vault, job, note, model, settings):
         # an empty heading would keep the sweep from queueing a fresh translation.
         for heading in _translation_headings(note_text):
             note_text = audio_v2.remove_section(note_text, heading)
-    merged, stale = audio_v2.reconcile_lines(previous, result)
-    note_text = audio_v2.remove_section_lines(
-        note_text, "Transcript", {line["rendered"]["Transcript"] for line in stale
-                                  if "Transcript" in line.get("rendered", {})})
-    note_text, lines = audio_v2.merge_section(note_text, "Transcript", merged)
+    note_text, lines = audio_v2.merge_transcript(note_text, previous, result)
     return note_text, sidecar, lines, language
 
 
@@ -929,6 +925,41 @@ def context_stage(vault, job, note, sidecar, lines, settings):
     data = audio_v2.load_sidecar(sidecar)
     data.update(context=result, context_lines=context_lines)
     audio_v2.save_sidecar(sidecar, data)
+
+
+def _render_transcript(note, sidecar, data):
+    """Re-renders the Transcript from the sidecar's chunks and saves the merged lines. The note is read
+    right before the write, so a user edit made meanwhile survives (merge_section reads it as a user line)."""
+    import audio_v2
+
+    text, data["lines"] = audio_v2.merge_transcript(read_note(note), data.get("lines", []),
+                                                    audio_v2.lines_from_chunks(data["chunks"]))
+    with note.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(text)
+    audio_v2.save_sidecar(sidecar, data)
+
+
+def arbitration_stage(note, sidecar, settings):
+    """Stage 4 of a v2 transcript: LLM arbitration of the disputed speech chunks, then the Transcript is re-rendered.
+
+    Runs after the context pass, so the glossary and the Context exist. Each decision is saved to the sidecar
+    as it is made; a finished chunk is never sent again, so a failed run resumes where it stopped. Without an
+    LLM endpoint the stage is skipped and the (?) lines stay. A failed call raises and fails the job.
+    """
+    import audio_v2
+
+    data = audio_v2.load_sidecar(sidecar)
+    if data.get("stages", {}).get("arbitration") == "done":
+        return
+    if not connection_credentials(translate_connection(settings))[0]:
+        return
+    _, chat = llm_chat(settings)
+    _render_transcript(note, sidecar, data)  # user edits since the transcript was written become user lines first
+    glossary = data.get("context", {}).get("glossary", [])
+    audio_v2.arbitrate_chunks(data["chunks"], data["lines"], audio_v2.section_text(read_note(note), "Context"),
+                              glossary, chat, save=lambda: audio_v2.save_sidecar(sidecar, data))
+    data.setdefault("stages", {})["arbitration"] = "done"
+    _render_transcript(note, sidecar, data)
 
 
 STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hung
@@ -1038,6 +1069,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 if finish is not None:
                     audio_v2.finish_transcript(*finish)
                     context_stage(vault, job, note, *finish, settings)
+                    arbitration_stage(note, finish[0], settings)
                 if kind == "translations":
                     audio_v2.save_sidecar(segments_sidecar, sidecar)
                     if getattr(translate, "last_model", None) is not None:
