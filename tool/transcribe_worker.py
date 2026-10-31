@@ -422,13 +422,15 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     return translated
 
 
-def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None):
+def apply_translation(note_text, source_lang, target, translate, source_langs=None, previous=None, reread=None):
     """Writes `== Translation <target>` from the Transcript section. Returns (note_text, lines).
 
     One translation line per transcript line, same mm:ss. `[—]` gap lines are copied
     and never sent to the model. `previous` is the `lines` list returned last run
     (kept in the job sidecar); merge_section keeps a line the user edited. None means
-    the first run or a legacy section: the old section is replaced.
+    the first run or a legacy section: the old section is replaced. `reread`, when given,
+    returns the note as it is now; the lines are merged into that text, so edits made
+    while the model ran survive.
     """
     from audio_v2 import DOUBTFUL_PREFIX, GAP_TEXT, merge_section
 
@@ -466,6 +468,8 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
     translated = translate(speech, source_lang, target, source_langs or [source_lang]) if speech else []
     if len(translated) != len(speech):
         raise ValueError("Translation reply must have the same length as the transcript")
+    if reread is not None:
+        note_lines = reread().splitlines(keepends=True)
     translated = iter(translated)
     existing = section_bounds(f"== {heading}")
     if existing is None:
@@ -503,6 +507,17 @@ def _vault_path(vault, relative):
     if Path(relative).is_absolute() or not path.is_relative_to(vault):
         raise ValueError(f"Path must be inside the vault: {relative}")
     return path
+
+
+def read_note(note):
+    with note.open(encoding="utf-8", newline="") as stream:  # newline="": CRLF notes stay CRLF
+        return stream.read()
+
+
+def _translation_headings(note_text):
+    """Titles of the `== Translation <lang>` sections in the note, e.g. "Translation ru"."""
+    return sorted({line.strip()[3:] for line in note_text.splitlines()
+                   if re.fullmatch(r"== Translation \S+", line.strip())})
 
 
 def _read_json(path):
@@ -795,6 +810,10 @@ def transcribe_v2_job(vault, job, note, model, settings):
     previous = [] if legacy else state.get("lines", [])
     if legacy:
         note_text = audio_v2.clear_section(note_text, "Transcript")
+        # v1 translations describe the replaced transcript, so their sections go. Dropped, not emptied:
+        # an empty heading would keep the sweep from queueing a fresh translation.
+        for heading in _translation_headings(note_text):
+            note_text = audio_v2.remove_section(note_text, heading)
     merged, stale = audio_v2.reconcile_lines(previous, result)
     note_text = audio_v2.remove_section_lines(
         note_text, "Transcript", {line["rendered"]["Transcript"] for line in stale
@@ -902,7 +921,8 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                         updated_note, translations[job["target"]] = apply_translation(
                             note_text, job["source_lang"], job["target"], translate,
                             job.get("source_langs", [job["source_lang"]]),
-                            previous=translations.get(job["target"]))
+                            previous=translations.get(job["target"]),
+                            reread=lambda: read_note(note))
                 with note.open("w", encoding="utf-8", newline="") as stream:
                     stream.write(updated_note)
                 if finish is not None:

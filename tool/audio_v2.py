@@ -294,6 +294,16 @@ def clear_section(note_text, heading):
     return _write_section(note_text, heading, [])
 
 
+def remove_section(note_text, heading):
+    """Drops `== heading` and its lines. A note without the section is returned unchanged."""
+    chunks = note_text.splitlines(keepends=True)
+    found = _section_range(chunks, heading)
+    if found is None:
+        return note_text
+    start, end = found
+    return "".join(chunks[:start] + chunks[end:])
+
+
 def remove_section_lines(note_text, heading, raws):
     """Drops the note lines in `== heading` whose text equals one of raws exactly."""
     chunks = note_text.splitlines(keepends=True)

@@ -1475,6 +1475,23 @@ def test_user_edited_translation_line_kept():
     assert "- 00:00 Здравствуй\n" in second
 
 
+def test_translation_keeps_edit_made_during_translation(tmp_path):
+    write_job(tmp_path, "translations", "audio.wav\nru", status="queued", audio="audio.wav",
+              note="note.typ", source_lang="en", target="ru")
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n\n== Transcript\n\n- 00:00 Hello\n\n== Comments\nKeep me\n")
+
+    def editing(texts, source_lang, target, source_langs):
+        note.write_text(note.read_text().replace("Keep me\n", "Keep me\nAnd this one too\n"))  # the user, mid-call
+        return ["Привет"]
+
+    worker.run_once(tmp_path, translate=editing)
+    assert json.loads(job_path(tmp_path, "translations", "audio.wav\nru").read_text())["status"] == "done"
+    assert note.read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Hello\n\n== Comments\nKeep me\nAnd this one too\n"
+        "\n== Translation ru\n\n- 00:00 Привет\n")
+
+
 def test_deadline_interrupts_a_blocking_call():
     with pytest.raises(TimeoutError):
         with worker.deadline(0.2):
@@ -1856,6 +1873,33 @@ def test_legacy_backup_kept_when_v1_translation_already_wrote_a_sidecar(tmp_path
     sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
     assert sidecar.with_name(sidecar.stem + ".v1.typ").read_text() == legacy
     assert read_job(tmp_path)["status"] == "done"
+
+
+def test_legacy_translation_lines_cleared_after_backup(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem."})
+    legacy = ("= Note\n\n== Transcript\n\n- 00:00 Old blob\n\n"
+              "== Translation ru\n\n- 00:00 Старый блоб\n\n== Comments\nKeep me\n")
+    (tmp_path / "note.typ").write_text(legacy)
+    # v1 kept the translation's lines in the sidecar too; a later translation must not merge them back.
+    audio_v2.save_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"), {
+        "lines": [], "stages": {}, "translations": {"ru": [
+            {"start": 0.0, "kind": "speech", "text": "Старый блоб", "status": "ok",
+             "rendered": {"Translation ru": "- 00:00 Старый блоб"}}]}})
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    sidecar = audio_v2.sidecar_path(tmp_path, "audio.wav")
+    assert sidecar.with_name(sidecar.stem + ".v1.typ").read_text() == legacy
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n\n== Comments\nKeep me\n")
+
+    write_job(tmp_path, "translations", "audio.wav\nru", status="queued", audio="audio.wav",
+              note="note.typ", source_lang="pt", target="ru")
+    worker.run_once(tmp_path, translate=lambda texts, *_: ["Новый перевод."] * len(texts))
+    assert json.loads(job_path(tmp_path, "translations", "audio.wav\nru").read_text())["status"] == "done"
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n\n== Comments\nKeep me\n"
+        "\n== Translation ru\n\n- 00:00 Новый перевод.\n- 00:04 [—]\n")
 
 
 def test_studio_run_uses_passes_and_unloads_after_each(tmp_path, monkeypatch):
