@@ -232,7 +232,7 @@ Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 
 - [x] 2026-10-15 adb junk-text incident: real-vault daily 2026-10-15 has no 'п' / 'р-н' lines (checked 2026-10-31).
 - [x] Revisions Mac -> P30 (W7 #3, W8 #6/#15): found the Mac stops the revision poll when its window is closed (hide-on-close -> lifecycle hidden -> stopCloudPolling); desktops now keep polling. Unit-tested; Mac in-app edit check skipped (user away). Revisions come only from in-app edits, not file edits.
 - [x] Peak-after-use memory (W13 W5), P30 0.20.5 release, real vault, 6-10 rounds of Journal/Library scroll + Search/More/Today: cold start settles 274 MB; under use 353-388, idle+60 s 334 (targets <=350 idle / <=400 active met). Flat under use, no growth per round.
-- [ ] NEW: after a mass sync (24,099 files: enrichment backfill) the app sat at 600-720 MB PSS (392 MB swap, 202 MB Unknown) for over an hour until restart; cold start 274. Rare event; find what the sync keeps (listing/ingest buffers) before the next big backfill.
+- [x] Post-sync/post-update memory (P30 600-860 MB): cause = scanner shipped every non-note vault file (17 m4a, PDFs, 3.5k enrich JSONs) to the Typst engine whenever one note re-parsed; now compile inputs only (P30: 826 -> 342 peak, settles 277). Also: embedding model unloads after 60 s idle (Mac 790 -> 294 MB). Sync itself is fine (harness: 21.7k listed + 2.7k downloads, +47 MB).
 - [ ] Mac check of the W13 release-blocker fixes (W13: "Mac check: user").
 - [ ] Windows self-update test on Studio (0.19.3 -> 0.19.4 pending since 2026-10-21; updater hang log %TEMP%\tylog-update.log): needs the user at Studio.
 - [ ] A24 backup (W9 T10): needs the A24 on adb.

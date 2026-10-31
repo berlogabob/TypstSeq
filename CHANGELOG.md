@@ -27,6 +27,10 @@ their history is in the commit log and the GitHub release notes.
   screen.
 - Mac: with the window closed TyLog keeps sharing note history with your
   phones (it paused until the window was opened again).
+- Memory: indexing a changed note no longer loads every recording, PDF and
+  machine file into memory (phone stayed at 650-860 MB after an update or a
+  big sync; now settles under 300 MB). The semantic-search model unloads
+  after a minute idle.
 - Windows: the updater ends a TyLog process that does not quit within 8 s,
   retries the file swap and writes `%TEMP%\tylog-update.log`.
 
