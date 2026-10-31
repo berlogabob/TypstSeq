@@ -75,6 +75,39 @@ void main() {
 
   tearDown(() => root.delete(recursive: true));
 
+  test('media and machine bookkeeping are not compile inputs', () async {
+    await storage.writeText('_system/tylog.typ', '');
+    await storage.writeText('_system/packages/tylog/0.1.0/typst.toml', '');
+    await storage.writeText('_system/bibliography.yml', '');
+    await storage.writeText('_system/enrich/mentions/daily/d.json', '{}');
+    await storage.writeText('_system/jobs/j.json', '{}');
+    await storage.writeBytes('assets/audio/call.m4a', [1, 2, 3]);
+    await storage.writeBytes('assets/doc.pdf', [1, 2, 3]);
+    await storage.writeBytes('assets/audio/call.m4a.peaks', [1]);
+    final inspector = _BaseAwareInspector();
+    await scanVaultStorage(storage, inspector: inspector);
+    final keys = inspector.baseCalls.single.keys;
+    expect(
+      keys,
+      containsAll([
+        '_system/tylog.typ',
+        '_system/packages/tylog/0.1.0/typst.toml',
+        '_system/bibliography.yml',
+        'assets/pic.png',
+        'assets/data.csv',
+      ]),
+    );
+    for (final skipped in [
+      '_system/enrich/mentions/daily/d.json',
+      '_system/jobs/j.json',
+      'assets/audio/call.m4a',
+      'assets/doc.pdf',
+      'assets/audio/call.m4a.peaks',
+    ]) {
+      expect(keys, isNot(contains(skipped)), reason: skipped);
+    }
+  });
+
   test('revision envelopes are not compile inputs', () async {
     await storage.writeText('_system/revisions/note-abc.json', '{}');
     await storage.writeText('_system/tylog.typ', '');
@@ -87,56 +120,68 @@ void main() {
     );
   });
 
-  test('base-aware inspector gets the file set once, empty maps per note',
-      () async {
-    final inspector = _BaseAwareInspector();
-    final index = await scanVaultStorage(storage, inspector: inspector);
+  test(
+    'base-aware inspector gets the file set once, empty maps per note',
+    () async {
+      final inspector = _BaseAwareInspector();
+      final index = await scanVaultStorage(storage, inspector: inspector);
 
-    expect(index.notes, hasLength(2));
-    expect(inspector.baseCalls, hasLength(1),
-        reason: 'shared files must cross the boundary once per scan');
-    expect(inspector.baseCalls.single.keys, contains('assets/pic.png'));
-    // Image assets travel as tiny same-format placeholders: a metadata query
-    // needs `#image()` to resolve, not the real pixels — shipping a vault's
-    // 850 MB of images to every scan OOM-killed the app on device.
-    final pic = inspector.baseCalls.single['assets/pic.png']!;
-    expect(pic.length, lessThan(200));
-    expect(pic, isNot(orderedEquals([9, 9, 9])),
-        reason: 'real image bytes must not be read or shipped');
-    // Non-image files keep their real bytes (a note may read() them).
-    expect(
-      inspector.baseCalls.single['assets/data.csv'],
-      orderedEquals([104, 105]),
-    );
-    expect(inspector.perInspectFiles, hasLength(2));
-    for (final files in inspector.perInspectFiles) {
-      expect(files, isEmpty,
-          reason: 'per-note inputs must not re-ship the vault');
-    }
-  });
+      expect(index.notes, hasLength(2));
+      expect(
+        inspector.baseCalls,
+        hasLength(1),
+        reason: 'shared files must cross the boundary once per scan',
+      );
+      expect(inspector.baseCalls.single.keys, contains('assets/pic.png'));
+      // Image assets travel as tiny same-format placeholders: a metadata query
+      // needs `#image()` to resolve, not the real pixels — shipping a vault's
+      // 850 MB of images to every scan OOM-killed the app on device.
+      final pic = inspector.baseCalls.single['assets/pic.png']!;
+      expect(pic.length, lessThan(200));
+      expect(
+        pic,
+        isNot(orderedEquals([9, 9, 9])),
+        reason: 'real image bytes must not be read or shipped',
+      );
+      // Non-image files keep their real bytes (a note may read() them).
+      expect(
+        inspector.baseCalls.single['assets/data.csv'],
+        orderedEquals([104, 105]),
+      );
+      expect(inspector.perInspectFiles, hasLength(2));
+      for (final files in inspector.perInspectFiles) {
+        expect(
+          files,
+          isEmpty,
+          reason: 'per-note inputs must not re-ship the vault',
+        );
+      }
+    },
+  );
 
   // Repo rule: writers must compile, not parse — a placeholder with broken
   // CRCs would silently degrade every image-bearing note to the fallback
   // parser (typst validates image bytes). Compile all four formats for real.
   test('image placeholders compile under the typst CLI', () async {
-    final typst = await Process.run('typst', ['--version']).then(
-      (r) => r.exitCode == 0,
-      onError: (_) => false,
-    );
+    final typst = await Process.run('typst', [
+      '--version',
+    ]).then((r) => r.exitCode == 0, onError: (_) => false);
     if (!typst) {
       // ignore: avoid_print
       print('typst CLI not found; placeholder compile check skipped');
       return;
     }
     for (final ext in _placeholderFormats) {
-      await File('${root.path}/p.$ext').writeAsBytes(
-        imagePlaceholder('x.$ext')!,
-      );
+      await File(
+        '${root.path}/p.$ext',
+      ).writeAsBytes(imagePlaceholder('x.$ext')!);
     }
-    await File('${root.path}/t.typ').writeAsString([
-      for (final ext in _placeholderFormats)
-        if (ext != 'jpeg') '#image("p.$ext")',
-    ].join('\n'));
+    await File('${root.path}/t.typ').writeAsString(
+      [
+        for (final ext in _placeholderFormats)
+          if (ext != 'jpeg') '#image("p.$ext")',
+      ].join('\n'),
+    );
     final result = await Process.run('typst', [
       'compile',
       '--root',

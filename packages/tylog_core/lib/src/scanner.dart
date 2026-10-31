@@ -923,6 +923,51 @@ Future<List<VaultStorageEntry>> _recoverStrandedWrites(
   return restored;
 }
 
+const _mediaExtensions = {
+  'm4a',
+  'mp3',
+  'aac',
+  'wav',
+  'ogg',
+  'opus',
+  'flac',
+  'amr',
+  'mp4',
+  'mov',
+  'webm',
+  'mkv',
+  'pdf',
+  'zip',
+  'peaks',
+  'jsonl',
+};
+
+/// Under `_system/` only templates, the package and bibliography files are
+/// compile inputs; the rest (enrich, jobs, decisions, reading, workers) is
+/// machine bookkeeping that grows with the vault.
+const _systemInputExtensions = {
+  'typ',
+  'toml',
+  'bib',
+  'yml',
+  'yaml',
+  'csv',
+  'xml',
+  'txt',
+};
+
+bool _isCompileInput(String path) {
+  final name = path.split('/').last;
+  final dot = name.lastIndexOf('.');
+  final extension = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+  if (_mediaExtensions.contains(extension)) return false;
+  if (path.startsWith('_system/')) {
+    return _systemInputExtensions.contains(extension) ||
+        imagePlaceholder(path) != null;
+  }
+  return true;
+}
+
 Future<Map<String, Uint8List>> _inspectionFiles(
   VaultStorage storage, {
   List<VaultStorageEntry>? entries,
@@ -952,6 +997,12 @@ Future<Map<String, Uint8List>> _inspectionFiles(
     if (_noteRoots.any(entry.path.startsWith) && entry.path.endsWith('.typ')) {
       continue;
     }
+    // Media and machine bookkeeping are never compile inputs: `attachment()`
+    // records a path, it does not read the file. Loading them put every
+    // recording and PDF (plus thousands of enrichment JSONs) in RAM twice —
+    // Dart map + engine VFS — and the P30 sat at 650-860 MB after any scan
+    // that re-inspected a single note.
+    if (!_isCompileInput(entry.path)) continue;
     // One key, not two. The Rust side resolves via `get_without_slash()`
     // (rust/src/api/typst.rs vfs_key), so the '/'-prefixed duplicate was never
     // looked up — but flutter_rust_bridge serialises the whole map
