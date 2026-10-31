@@ -259,9 +259,11 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T22 (a95e8e8, 280 tests) review pass: score 1-5 per line, retranslate < 3 once with thinking on, (?) if still < 3
 - [x] T23 translations with context + review: ru mean 3.89, en 3.93, 15 min each; ru first window 00:27-07:59 failed (10 lines)
 - [x] T28 (63a1926, 287 tests) (a) Studio reverts Ornith to the default load after idle (context_length == native_context_length is the default-load signature, seen twice): load at 64k before each job's LLM stages when that holds, keep the empty-reply fallback; (b) a failed window splits in halves before single lines; (c) review reply: JSON mode + one retry; (d) audio_metrics counts '(?) [sem tradução]' as failed
-- [ ] T29 re-run theatre ru translation after T28 (queued 20:47); target failed < 2%, mean >= 4
+- [x] T29 ru after T28: failed 10 -> 5 (1.0%), mean score 4.06 (target met); en 0 failed, 3.93
 - [x] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process; toggle read-only (analyze clean, 1755 tests)
-- [ ] T27 GUI check of the audio note screen on Mac + P30 (Mac screen locked now; needs user or unlocked Mac)
+- [x] T27 P30 release build on real vault: parallel original/ru, Summary + Scenes in ru, RU/EN chips work
+- [ ] T30 '+ PT' add-translation chip shown for the source language (pt); hide it for the transcript language
+- [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
 - T6: pinned-span rule not implemented -> T6b; legacy lines survive merge as user lines -> T7 clears them after backup
