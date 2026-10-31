@@ -535,6 +535,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
             payload = json.loads(request.data)
             assert payload["model"] == "ollama/ornith-1.5:35b"
             assert payload["temperature"] == 0
+            assert payload["chat_template_kwargs"] == {"enable_thinking": False}
             prompt = payload["messages"][0]["content"]
             assert "Translate faithfully into ru" in prompt
             assert "Segments that are already in the target language must be returned unchanged" in prompt
@@ -550,7 +551,7 @@ def test_translation_backend_batches(tmp_path, monkeypatch, fenced, source_langs
     monkeypatch.setattr(worker, "urlopen", fake)
     texts = [f"segment {index}" for index in range(81)]
     assert worker.translate(texts, "en", "ru", source_langs) == ["ru " + text for text in texts]
-    assert [len(batch) for batch in batches] == [40, 40, 1]
+    assert [len(batch) for batch in batches] == [10] * 8 + [1]
 
 
 @pytest.mark.parametrize("reply", ['[]', '{}', '[1]', 'not JSON'])

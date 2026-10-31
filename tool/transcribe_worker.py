@@ -275,11 +275,15 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
                               else "ollama/ornith-1.5:35b"),
                              request)
     translated = []
-    for start in range(0, len(texts), 40):
-        batch = texts[start:start + 40]
+    # Thinking off and 10 lines per request: with reasoning on, 40 theatre
+    # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
+    for start in range(0, len(texts), 10):
+        batch = texts[start:start + 10]
         reply = request("/chat/completions", {
             "model": model,
             "temperature": 0,
+            "max_tokens": 8000,
+            "chat_template_kwargs": {"enable_thinking": False},
             "messages": [
                 {"role": "system", "content": (
                     f"Translate faithfully into {target}. Keep names. "
