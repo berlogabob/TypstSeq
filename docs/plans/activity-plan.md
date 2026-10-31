@@ -257,7 +257,8 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T20 Phase 4 tasks written (plan: Tasks 21-22)
 - [x] T21 (db67edc) translations wait for the context pass; windows of 40 lines with Summary + glossary + previous 10 pairs
 - [x] T22 (a95e8e8, 280 tests) review pass: score 1-5 per line, retranslate < 3 once with thinking on, (?) if still < 3
-- [ ] T23 (ru+en queued 20:09) theatre re-run of translations, metrics (failed, mean score); then Phase 5 (app) plan
+- [ ] T23 (ru running since 20:07) theatre re-run of translations, metrics (failed, mean score)
+- [ ] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process + translate toggle -> read-only
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b

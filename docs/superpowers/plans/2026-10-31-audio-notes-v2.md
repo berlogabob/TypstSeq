@@ -299,3 +299,14 @@ Candidates: every speech chunk with `agreement(asr, asr_alt) < ARBITRATE_THRESHO
 
 ### Task 22: Review pass
 After a language is translated: per window, one call returns `{id: score}` (1-5, faithfulness and readability, source and translation both given). Lines < 3 are retranslated once alone with the window as context and `enable_thinking: True` (reply cap 3000, deadline 300 s); the new score is kept only if the retranslation passes `looks_translated`. Scores live in the sidecar `translations[lang].scores`; a line still < 3 renders with `(?) ` in its translation. `tool/audio_metrics.py` reports `mean_score` per language when the sidecar has scores (optional arg: sidecar path). Tests: `test_low_score_line_retranslated_once`, `test_still_low_line_marked`, `test_scores_saved_in_sidecar`, `test_metrics_mean_score`.
+
+## Phase 5 tasks (app; executor: codex, Claude runs flutter test/analyze and commits)
+
+### Task 24: Parallel text and markers
+`lib/widgets/audio_note_screen.dart`, `lib/audio/audio_note_doc.dart`. Transcript tab gets a parallel mode when a `== Translation <lang>` exists: each transcript line, the matching translation line (same index; same `mm:ss`) under it in a muted style; tap seeks as today; the language bar picks the translation language. Markers parsed from line text: `(?) ` prefix -> text without the prefix + a small "?" badge and dimmed text; `[—]` -> a muted "—" row (no text, still seekable); `[sem tradução]` -> muted italic "no translation". Unit tests for marker parsing in `test/audio_transcript_test.dart`; a widget test for the parallel row.
+
+### Task 25: Summary, Scenes, References
+Parse `== Summary`, `== Scenes`, `== References` with the existing `_parseSection` (same `- mm:ss text` lines). The screen shows Summary (collapsed, one line, expands on tap), and Scenes / References as lists that seek on tap; References keep the "(AI)" suffix visible. Hidden when the section is absent. Tests: parsing + one widget test.
+
+### Task 26: Re-process and the translate toggle
+Audio note menu gets "Re-process": queues the transcript job (reuse `lib/audio/transcript_jobs.dart`; same JSON shape the worker reads, status `queued`) and shows a snackbar. In `lib/widgets/audio_processing_settings.dart` the translate on/off toggle is replaced by a read-only line "Translations: ru, en, pt (always)" since the worker no longer reads it. Tests in `test/transcript_jobs_test.dart` and the settings widget test that exists for this page.
