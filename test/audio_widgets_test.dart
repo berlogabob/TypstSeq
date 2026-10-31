@@ -453,6 +453,35 @@ void main() {
     expect(requested, 'en');
   });
 
+  testWidgets('parallel translation chips exclude the transcript language', (
+    tester,
+  ) async {
+    String? requested;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioLanguageBar(
+            selected: const ['ru', 'en', 'pt'],
+            original: null,
+            sourceLanguage: 'pt',
+            translated: const {'ru'},
+            translating: const {},
+            view: 'ru',
+            onView: (_) {},
+            onRequest: (l) => requested = l,
+            canRequest: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.widgetWithText(ActionChip, 'PT'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'EN'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ActionChip, 'EN'));
+    expect(requested, 'en');
+  });
+
   testWidgets('monolingual original chip allows viewing a translation', (
     tester,
   ) async {

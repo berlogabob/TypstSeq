@@ -163,10 +163,12 @@ class AudioLanguageBar extends StatelessWidget {
     required this.onView,
     required this.onRequest,
     required this.canRequest,
+    this.sourceLanguage,
   });
 
   final List<String> selected;
   final String? original;
+  final String? sourceLanguage;
   final Set<String> translated;
   final Map<String, String> translating;
   final String? view;
@@ -179,7 +181,9 @@ class AudioLanguageBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = {...selected, ...translated, ...translating.keys};
-    final offered = kLanguageNames.keys.where((l) => !shown.contains(l));
+    final offered = kLanguageNames.keys.where(
+      (l) => l != sourceLanguage && !shown.contains(l),
+    );
     final faded = Theme.of(
       context,
     ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
@@ -219,7 +223,7 @@ class AudioLanguageBar extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               )
-            else
+            else if (l != sourceLanguage)
               ActionChip(
                 avatar: Icon(Icons.add, size: 16, color: faded),
                 label: Text(l.toUpperCase()),
@@ -1081,6 +1085,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             AudioLanguageBar(
               selected: widget.selectedLanguages,
               original: null,
+              sourceLanguage: _lang,
               translated: _translations.keys.toSet(),
               translating: _translating,
               view: view,
@@ -1170,6 +1175,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         AudioLanguageBar(
           selected: widget.selectedLanguages,
           original: original,
+          sourceLanguage: _lang,
           translated: _translations.keys.toSet(),
           translating: _translating,
           view: view,
