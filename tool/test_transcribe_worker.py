@@ -1342,3 +1342,19 @@ def test_settings_path_prefers_whole_local_file(tmp_path, name):
 def test_collapse_repeats_keeps_one_copy():
     assert worker.collapse_repeats("Olá. É isso aí! É isso aí! É isso aí! É isso aí! Fim.") == "Olá. É isso aí! … Fim."
     assert worker.collapse_repeats("Sim! Sim! Não.") == "Sim! Sim! Não."
+
+
+def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
+
+    def fake(request, timeout):
+        batch = json.loads(json.loads(request.data)["messages"][1]["content"])
+        if len(batch) > 1 or batch == ["loop"]:
+            reply = '["unterminated'
+        else:
+            reply = json.dumps(["ru " + batch[0]])
+        return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
+
+    monkeypatch.setattr(worker, "urlopen", fake)
+    assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ru a", "loop", "ru b"]

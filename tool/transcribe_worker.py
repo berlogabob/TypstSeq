@@ -288,8 +288,7 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
     translated = []
     # Thinking off and 10 lines per request: with reasoning on, 40 theatre
     # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
-    for start in range(0, len(texts), 10):
-        batch = texts[start:start + 10]
+    def ask(batch):
         reply = request("/chat/completions", {
             "model": model,
             "temperature": 0,
@@ -314,7 +313,28 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
             isinstance(text, str) for text in result
         ):
             raise ValueError("Translation reply must be a JSON array of strings with the same length")
-        translated.extend(result)
+        return result
+
+    # A bad batch (broken JSON from a looping line) is retried line by line;
+    # a line that still fails keeps its source text. Only a job where nothing
+    # translates fails, so one noisy minute cannot sink a 2-hour recording.
+    failed = 0
+    for start in range(0, len(texts), 10):
+        batch = texts[start:start + 10]
+        try:
+            translated.extend(ask(batch))
+            continue
+        except (ValueError, OSError) as error:  # bad JSON, timeout
+            last_error = error
+        for text in batch:
+            try:
+                translated.extend(ask([text]))
+            except (ValueError, OSError) as error:
+                last_error = error
+                failed += 1
+                translated.append(text)
+    if texts and failed == len(texts):
+        raise last_error
     translate.last_model = model
     return translated
 
