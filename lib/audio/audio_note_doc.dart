@@ -86,9 +86,15 @@ String _commentSource(int ms, String text) {
   return (start + 1, end);
 }
 
-List<AudioComment> _parseSection(String source, String heading) {
+List<AudioComment> _parseSection(
+  String source,
+  String heading, [
+  String? lang,
+]) {
   final lines = source.split('\n');
-  final range = _section(lines, heading);
+  final range =
+      (lang == null ? null : _section(lines, '$heading $lang')) ??
+      _section(lines, heading);
   if (range == null) return const [];
   final out = <({int ms, int line, String text})>[];
   for (var i = range.$1; i < range.$2; i++) {
@@ -137,14 +143,15 @@ parseTranscriptText(String text) {
   );
 }
 
-List<AudioComment> parseSummary(String source) =>
-    _parseSection(source, 'Summary');
+/// Language-specific worker sections fall back to the legacy heading if absent.
+List<AudioComment> parseSummary(String source, [String? lang]) =>
+    _parseSection(source, 'Summary', lang);
 
-List<AudioComment> parseScenes(String source) =>
-    _parseSection(source, 'Scenes');
+List<AudioComment> parseScenes(String source, [String? lang]) =>
+    _parseSection(source, 'Scenes', lang);
 
-List<AudioComment> parseReferences(String source) =>
-    _parseSection(source, 'References');
+List<AudioComment> parseReferences(String source, [String? lang]) =>
+    _parseSection(source, 'References', lang);
 
 /// Languages that already have a `== Translation <lang>` section.
 List<String> translationLangs(String source) => [

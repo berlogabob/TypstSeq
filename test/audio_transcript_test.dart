@@ -98,6 +98,37 @@ void main() {
     expect(parseReferences(kSource), isEmpty);
   });
 
+  for (final (heading, parse) in [
+    ('Summary', parseSummary),
+    ('Scenes', parseScenes),
+    ('References', parseReferences),
+  ]) {
+    test(
+      '$heading selects its language and falls back to the legacy section',
+      () {
+        final legacy = '== $heading\n- 00:05 Legacy\n';
+        final source =
+            '$legacy'
+            '== $heading pt\n- 00:10 Depois\n- 00:05 Antes \\[x\\]\n'
+            '== $heading ru\n- 00:05 Русский\n'
+            '== $heading en\n- 00:05 English\n';
+        expect(parse(source, 'pt'), [
+          (ms: 5000, text: 'Antes [x]'),
+          (ms: 10000, text: 'Depois'),
+        ]);
+        expect(parse(source, 'ru'), [(ms: 5000, text: 'Русский')]);
+        expect(parse(source, 'en'), [(ms: 5000, text: 'English')]);
+        expect(parse(source, 'de'), [(ms: 5000, text: 'Legacy')]);
+        expect(parse(source), [(ms: 5000, text: 'Legacy')]);
+        for (final lang in ['pt', 'ru', 'en']) {
+          expect(parse(legacy, lang), [(ms: 5000, text: 'Legacy')]);
+          expect(parse('== $heading $lang\n$legacy', lang), isEmpty);
+          expect(parse(kSource, lang), isEmpty);
+        }
+      },
+    );
+  }
+
   test(
     'parseComments ignores transcript lines and parseTranscript ignores comments',
     () {

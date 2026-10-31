@@ -13,6 +13,7 @@ Future<void> _pumpNote(
   WidgetTester tester, {
   required Future<String> Function(String) readSource,
   Future<Uint8List> Function(String)? readBytes,
+  String? sourceLanguage,
 }) => tester.pumpWidget(
   MaterialApp(
     home: AudioNoteScreen(
@@ -29,12 +30,84 @@ Future<void> _pumpNote(
       writeBytes: (_, _) async {},
       mutate: (_, _) async => true,
       transcriptStatus: (_) async => null,
+      transcriptLang: (_) async => sourceLanguage,
       requestTranscript: (_, _) async {},
     ),
   ),
 );
 
 void main() {
+  testWidgets('language selection changes sections and transcript rows', (
+    tester,
+  ) async {
+    await _pumpNote(
+      tester,
+      sourceLanguage: 'pt',
+      readSource: (_) async =>
+          '$_attachment'
+          '== Summary pt\n- 00:00 Resumo\n'
+          '== Summary ru\n- 00:00 Краткое содержание\n'
+          '== Summary en\n- 00:00 English summary\n'
+          '== Scenes pt\n- 00:05 Cena\n'
+          '== Scenes en\n- 00:05 Scene\n'
+          '== References pt\n- 00:05 Referência\n'
+          '== References en\n- 00:05 Reference\n'
+          '== Transcript\n- 00:05 Olá\n'
+          '== Translation ru\n- 00:05 Привет\n'
+          '== Translation en\n- 00:05 Hello\n',
+    );
+    await tester.pump();
+
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'RU')).selected,
+      isTrue,
+    );
+    expect(find.text('Краткое содержание'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'EN'));
+    await tester.pump();
+    expect(find.text('English summary'), findsOneWidget);
+    expect(find.text('Краткое содержание'), findsNothing);
+    expect(find.text('Olá'), findsOneWidget);
+    expect(find.text('Hello'), findsOneWidget);
+    var sections = tester.widget<AudioNoteSections>(
+      find.byType(AudioNoteSections),
+    );
+    expect(sections.scenes.single.text, 'Scene');
+    expect(sections.references.single.text, 'Reference');
+    expect(find.text('Scene'), findsNothing);
+    expect(find.text('Reference'), findsNothing);
+
+    await tester.tap(find.byTooltip('Side by side'));
+    await tester.pump();
+    expect(find.text('Hello'), findsOneWidget);
+    expect(find.text('Olá'), findsNothing);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'PT'));
+    await tester.pump();
+    expect(find.text('Resumo'), findsOneWidget);
+    expect(find.text('English summary'), findsNothing);
+    expect(find.text('Olá'), findsOneWidget);
+    sections = tester.widget<AudioNoteSections>(find.byType(AudioNoteSections));
+    expect(sections.scenes.single.text, 'Cena');
+    expect(sections.references.single.text, 'Referência');
+    await tester.tap(find.byTooltip('Side by side'));
+    await tester.pump();
+    expect(find.text('Olá'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+    expect(find.text('Привет'), findsNothing);
+    expect(
+      tester
+          .widget<AudioTranscriptRow>(find.byType(AudioTranscriptRow))
+          .translation,
+      isNull,
+    );
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'PT')).selected,
+      isTrue,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'long note keeps transcript visible below aligned header chips on a phone',
     (tester) async {
@@ -76,7 +149,7 @@ void main() {
       final toggle = find.byTooltip('Side by side');
       final controls = [
         toggle,
-        find.widgetWithText(Chip, 'PT'),
+        find.widgetWithText(ChoiceChip, 'PT'),
         find.widgetWithText(ChoiceChip, 'RU'),
         find.widgetWithText(ChoiceChip, 'EN'),
         find.byTooltip('Translate into another language'),
@@ -113,8 +186,8 @@ void main() {
       );
       await tester.tap(toggle);
       await tester.pump();
-      expect(find.text('Olá'), findsOneWidget);
-      expect(find.text('Привет'), findsNothing);
+      expect(find.text('Olá'), findsNothing);
+      expect(find.text('Привет'), findsOneWidget);
       expect(find.byIcon(Icons.view_column_outlined), findsOneWidget);
       expect(header, findsOneWidget);
       await tester.tap(toggle);

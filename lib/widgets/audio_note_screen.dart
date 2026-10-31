@@ -216,8 +216,11 @@ class AudioLanguageBar extends StatelessWidget {
             if (sourceLanguage != null)
               Tooltip(
                 message: 'Original',
-                child: Chip(
+                child: ChoiceChip(
                   label: Text(sourceLanguage!.toUpperCase()),
+                  selected: view == sourceLanguage,
+                  onSelected: (_) => onView(sourceLanguage!),
+                  showCheckmark: false,
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -496,6 +499,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   List<AudioComment> _summary = const [];
   List<AudioComment> _scenes = const [];
   List<AudioComment> _references = const [];
+  String _source = '';
   bool _loadingSource = true;
   bool _parallel = true;
   bool _requestingTranscript = false;
@@ -505,7 +509,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   String? _lang;
   List<String> _langs = const [];
   bool get _monolingual => _langs.length <= 1;
-  String? _view; // selected translation's language
+  String? _view; // selected language
   late List<String> _aliases = [...widget.note.aliases];
   late final List<String> _tags = [
     ...widget.note.tags.where((t) => t != widget.note.kind),
@@ -664,22 +668,22 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   }
 
   void _applySource(String source) {
+    _source = source;
     _comments = parseComments(source);
     _transcript = parseTranscript(source);
-    _summary = parseSummary(source);
-    _scenes = parseScenes(source);
-    _references = parseReferences(source);
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
     _loadingSource = false;
-    if (_view != null &&
-        !_translations.containsKey(_view) &&
-        !(_monolingual &&
-            _view == _lang &&
-            widget.selectedLanguages.contains(_lang))) {
-      _view = null;
-    }
+    _selectView(_view);
+  }
+
+  void _selectView(String? lang) {
+    _view = lang == _lang || _translations.containsKey(lang) ? lang : null;
+    final selected = _view ?? _translations.keys.firstOrNull ?? _lang;
+    _summary = parseSummary(_source, selected);
+    _scenes = parseScenes(_source, selected);
+    _references = parseReferences(_source, selected);
   }
 
   Future<void> _refreshTranscriptState() async {
@@ -701,6 +705,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       _transcriptState = state;
       _langs = langs;
       _lang = lang ?? _lang;
+      _selectView(_view);
       _translating
         ..clear()
         ..addAll(jobs);
@@ -1089,10 +1094,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               ),
       );
     }
-    final active = activeIndex(_transcript, _position.inMilliseconds);
-    final view = _translations.containsKey(_view)
-        ? _view
-        : _translations.keys.firstOrNull;
+    final view = _view ?? _translations.keys.firstOrNull ?? _lang;
+    final translation = view == _lang ? null : _translations[view];
+    final shown = _parallel ? _transcript : translation ?? _transcript;
+    final active = activeIndex(shown, _position.inMilliseconds);
     return Column(
       children: [
         AudioLanguageBar(
@@ -1102,7 +1107,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           translated: _translations.keys.toSet(),
           translating: _translating,
           view: view,
-          onView: (l) => setState(() => _view = l),
+          onView: (l) => setState(() => _selectView(l)),
           onRequest: (l) => unawaited(_requestTranslation(l)),
           canRequest: widget.requestTranslation != null && _lang != null,
           parallel: _parallel,
@@ -1110,9 +1115,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ),
         Expanded(
           child: _segments(
-            _transcript,
+            shown,
             active,
-            parallel: _parallel ? _translations[view] : null,
+            parallel: _parallel ? translation : null,
             showSections: true,
           ),
         ),
@@ -1206,7 +1211,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           translated: _translations.keys.toSet(),
           translating: _translating,
           view: view,
-          onView: (l) => setState(() => _view = l),
+          onView: (l) => setState(() => _selectView(l)),
           onRequest: (l) => unawaited(_requestTranslation(l)),
           canRequest: widget.requestTranslation != null && _lang != null,
         ),

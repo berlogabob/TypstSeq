@@ -491,7 +491,7 @@ void main() {
     );
 
     expect(find.widgetWithText(ActionChip, 'PT'), findsNothing);
-    expect(find.widgetWithText(Chip, 'PT'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'PT'), findsOneWidget);
     expect(find.byTooltip('Original'), findsOneWidget);
     expect(find.byTooltip('Side by side'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
