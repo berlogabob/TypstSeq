@@ -2209,7 +2209,7 @@ def test_three_languages_always_enqueued():
 CONTEXT_JSON = {
     "summary": "Resumo da peça.",
     "scenes": [{"line": 1, "title": "Monólogo"}],
-    "glossary": [{"term": "Medeia", "spelling": "Medeia", "ru": "Медея"}],
+    "glossary": [{"heard": "Medeia", "spelling": "Medeia", "ru": "Медея"}],
     "references": [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."}],
 }
 
@@ -2302,3 +2302,17 @@ def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, mon
     assert payload["chat_template_kwargs"] == {"enable_thinking": False}
     assert payload["temperature"] == 0
     assert payload["max_tokens"] == worker.CONTEXT_MAX_TOKENS
+
+
+@pytest.mark.parametrize("lang, text, language", [("pt", "Olá tudo bem.", "Russian"),
+                                                  ("ru", "Привет, как дела.", "English")])
+def test_context_written_in_first_target_language(tmp_path, monkeypatch, lang, text, language):
+    # The first translation target other than the recording's language: ru for pt, en for ru.
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: text})
+    (tmp_path / "note.typ").write_text("= Note\n")
+    v2_job(tmp_path, lang=lang)
+    sent = chat_fake(monkeypatch, lambda messages: json.dumps(CONTEXT_JSON))
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert f"Write summary, scene titles and explanations in {language}" in sent[0][0]["content"]

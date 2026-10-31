@@ -330,7 +330,7 @@ def test_missing_alt_not_doubtful():
 CONTEXT_REPLY = json.dumps({
     "summary": "Uma peça sobre uma família de comediantes.",
     "scenes": [{"line": 1, "title": "Monólogo"}, {"line": 99, "title": "fora do intervalo"}],
-    "glossary": [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}],
+    "glossary": [{"heard": "Baubo", "spelling": "Baubo", "ru": "Бубо"}],
     "references": [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."},
                    {"line": "3", "term": "Eleusis", "explanation": "Santuário."}],
 })
@@ -346,7 +346,7 @@ def test_context_reply_keeps_valid_items_and_drops_bad_line_numbers():
     result = v2.parse_context_reply(CONTEXT_REPLY, {1, 2, 3}, "ru")
     assert result["summary"] == "Uma peça sobre uma família de comediantes."
     assert result["scenes"] == [{"line": 1, "title": "Monólogo"}]
-    assert result["glossary"] == [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
+    assert result["glossary"] == [{"heard": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
     assert result["references"] == [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."}]
 
 
@@ -369,6 +369,21 @@ def test_context_messages_carry_context_numbers_and_target_language():
     assert "Russian" in system and '"ru": string' in system
     assert user == "Context:\nMedeia, Eurípides.\n\nTranscript:\n[1] Olá.\n[2] Tchau."
     assert "(none)" in v2.context_messages("", "ru", [(1, "Olá.")])[1]["content"]
+
+
+def test_glossary_keeps_heard_and_spelling():
+    reply = json.dumps({"summary": "Resumo.", "glossary": [
+        {"heard": "Deméria", "spelling": "Deméter", "ru": "Деметра"},
+        {"heard": "Paulo", "spelling": "Paulo", "ru": "Паулу"},
+        {"heard": "Goçambique", "spelling": "Moçambique", "ru": "Мозамбик"}]})
+    assert v2.parse_context_reply(reply, {1}, "ru")["glossary"] == [
+        {"heard": "Deméria", "spelling": "Deméter", "ru": "Деметра"},
+        {"heard": "Paulo", "spelling": "Paulo", "ru": "Паулу"},
+        {"heard": "Goçambique", "spelling": "Moçambique", "ru": "Мозамбик"}]
+    # No spelling given: the heard form stands for it.
+    reply = json.dumps({"summary": "Resumo.", "glossary": [{"heard": "Baubo", "ru": "Бубо"}]})
+    assert v2.parse_context_reply(reply, {1}, "ru")["glossary"] == [
+        {"heard": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
 
 
 def test_context_pass_one_call_for_a_short_transcript():
@@ -396,7 +411,7 @@ def test_long_transcript_is_windowed_then_summaries_merged():
         numbers = [int(n) for n in re.findall(r"^\[(\d+)\]", messages[1]["content"], re.M)]
         return json.dumps({"summary": f"Parte {numbers[0]}.",
                            "scenes": [{"line": numbers[0], "title": "Início"}],
-                           "glossary": [{"term": "Linha", "spelling": "Linha", "ru": "Строка"}],
+                           "glossary": [{"heard": "Linha", "spelling": "Linha", "ru": "Строка"}],
                            "references": [{"line": numbers[-1], "term": f"T{numbers[0]}", "explanation": "x"}]})
 
     result = v2.context_pass(speech, "", "ru", chat)
@@ -496,6 +511,16 @@ def test_glossary_spelling_allowed():
     glossary = [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
     v2.arbitrate_chunks(with_glossary, [], "", glossary, lambda messages: reply)
     assert with_glossary[0]["arbitration"] == {"text": "A Baubo fazia rir.", "status": "fixed"}
+
+
+def test_old_glossary_items_still_load():
+    # Sidecars from before `heard` hold {"term", "spelling", "ru"} items; arbitration reads their spelling.
+    glossary = [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
+    chunks = [_chunk(0.0, 6.0, "A Bobo fazia rir.", "A Bambo fazia rir.")]
+    reply = json.dumps({"text": "A Baubo fazia rir.", "status": "fixed"})
+    v2.arbitrate_chunks(chunks, [], "", glossary, lambda messages: reply)
+    assert chunks[0]["arbitration"] == {"text": "A Baubo fazia rir.", "status": "fixed"}
+    assert "Glossary spellings: Baubo" in v2.arbitration_messages("", glossary, [], "A", "B", [])[1]["content"]
 
 
 def test_fixed_lines_lose_marker():

@@ -594,15 +594,17 @@ def context_messages(context_text, target, window):
     """Prompt for one window of numbered speech lines [(number, text)]. The reply is one JSON object (parse_context_reply)."""
     language = worker.LANGUAGE_NAMES.get(target, target)
     schema = ('{"summary": string, "scenes": [{"line": int, "title": string}], '
-              f'"glossary": [{{"term": string, "spelling": string, "{target}": string}}], '
+              f'"glossary": [{{"heard": string, "spelling": string, "{target}": string}}], '
               '"references": [{"line": int, "term": string, "explanation": string}]}')
     system = (
         "You read the transcript of one audio recording. Reply with one JSON object and nothing else: "
         f"{schema}. "
-        f"Write the summary, scene titles, glossary renderings and explanations in {language}. "
+        f"Write summary, scene titles and explanations in {language}, even when the transcript is in another language. "
         "summary: 5 to 10 sentences on what the recording is and what happens in it. "
         "scenes: each place where the subject or scene changes, with the number of its first line and a short title. "
-        "glossary: names and terms the transcript uses; spelling is the form the transcript uses. "
+        "glossary: names and terms the transcript uses. heard is the form in the transcript; spelling is the correct "
+        "form when you recognise it (a misheard name is corrected to its usual spelling), otherwise the same as heard; "
+        f"{target} is its rendering in {language}. "
         "references: allusions, quotations, places and names a listener may not know, with the number of the line "
         "where each occurs and a one or two sentence explanation. "
         "Use only line numbers from the input. Add nothing that is neither in the transcript nor in the Context. "
@@ -667,9 +669,9 @@ def parse_context_reply(reply, numbers, target):
         if number is not None and title:
             scenes.append({"line": number, "title": title})
     for item in _items(value, "glossary"):
-        term, rendering = _text(item, "term"), _text(item, target)
-        if term and rendering:
-            glossary.append({"term": term, "spelling": _text(item, "spelling") or term, target: rendering})
+        heard, rendering = _text(item, "heard"), _text(item, target)
+        if heard and rendering:
+            glossary.append({"heard": heard, "spelling": _text(item, "spelling") or heard, target: rendering})
     for item in _items(value, "references"):
         number, term = _line_number(item, numbers), _text(item, "term")
         explanation = _text(item, "explanation")
@@ -705,8 +707,8 @@ def context_pass(speech, context_text, target, chat):
     summary = parse_summary_reply(chat(summary_messages(target, [part["summary"] for part in parts])))
     glossary, seen = [], set()
     for entry in (entry for part in parts for entry in part["glossary"]):
-        if entry["term"].lower() not in seen:
-            seen.add(entry["term"].lower())
+        if entry["heard"].lower() not in seen:
+            seen.add(entry["heard"].lower())
             glossary.append(entry)
     return {
         "summary": summary,
