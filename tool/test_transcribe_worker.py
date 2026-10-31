@@ -2,8 +2,12 @@ import json
 import hashlib
 import sys
 from datetime import datetime, timedelta
+from email import policy
+from email.parser import BytesParser
 from types import SimpleNamespace
 from io import BytesIO
+from urllib.error import HTTPError
+import wave
 
 import pytest
 
@@ -299,6 +303,117 @@ def test_transcribe_forced_language_skips_detection(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Model, decode_audio=decode))
     assert worker.transcribe("audio.wav", lang="pt") == ([(1, "Olá")], "pt", ["pt"])
+
+
+@pytest.mark.parametrize("requested", [None, "pt"])
+def test_studio_chunks_timestamps_and_language(tmp_path, monkeypatch, requested):
+    audio = tmp_path / "audio.wav"
+    worker.subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                           "anullsrc=r=8000:cl=stereo", "-t", "65", str(audio)], check=True)
+    language = requested or "ru"
+    detections = []
+
+    class Model:
+        def __init__(self, name, **options):
+            assert requested is None
+            assert name == "tiny"
+            assert options == {"device": "cpu", "compute_type": "int8"}
+
+        def detect_language(self, audio):
+            assert audio == range(30 * 16000)
+            detections.append(language)
+            return language, 0.9, []
+
+    def decode(path, sampling_rate):
+        assert (path, sampling_rate) == (str(audio), 16000)
+        return range(65 * 16000)
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(
+        WhisperModel=Model, decode_audio=decode))
+    calls = []
+
+    def post(request, timeout):
+        assert (request.full_url, request.get_method(), timeout) == (
+            "https://studio/v1/audio/transcriptions", "POST", 120)
+        assert request.get_header("Authorization") == "Bearer secret"
+        message = BytesParser(policy=policy.default).parsebytes(
+            ("Content-Type: " + request.get_header("Content-type") + "\r\n\r\n").encode()
+            + request.data)
+        parts = {part.get_param("name", header="content-disposition"): part
+                 for part in message.iter_parts()}
+        assert {name: parts[name].get_content() for name in ("model", "response_format", "language")} == {
+            "model": "unsloth/whisper-large-v3-turbo", "response_format": "json", "language": language}
+        assert parts["file"].get_filename() == f"out{len(calls):05d}.wav"
+        with wave.open(BytesIO(parts["file"].get_payload(decode=True))) as wav:
+            assert (wav.getframerate(), wav.getnchannels()) == (16000, 1)
+            assert 0 < wav.getnframes() <= 31 * 16000
+        calls.append(request)
+        return BytesIO(json.dumps({"text": [" First ", " \n ", " Last "][len(calls) - 1]}).encode())
+
+    segments, detected, languages = worker.transcribe_studio(
+        audio, "https://studio/v1/", "secret", lang=requested, post=post)
+    assert (segments, detected, languages) == ([(0, "First"), (60, "Last")], language, [language])
+    assert worker.render_section(segments) == "== Transcript\n\n- 00:00 First\n- 01:00 Last\n"
+    assert len(calls) == 3
+    assert detections == ([] if requested else [language])
+
+
+@pytest.mark.parametrize("selected", [None, "studio", "other"])
+def test_studio_job_uses_selected_connection(tmp_path, monkeypatch, selected):
+    write_ai(tmp_path, connections=[{"id": name, "url": f"https://{name}/v1"}
+                                    for name in ("studio", "other")],
+             tasks={"transcribe": {"connection": selected, "model": "small"}})
+    monkeypatch.setenv("TYLOG_KEY_" + (selected or "studio").upper(), "secret")
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ", lang="pt", diarize=True, studio_error="old failure")
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+
+    def studio(audio, base, key, lang):
+        assert audio == tmp_path / "audio.wav"
+        assert (base, key, lang) == (f"https://{selected or 'studio'}/v1", "secret", "pt")
+        return [(30, "Olá")], "pt", ["pt"]
+
+    monkeypatch.setattr(worker, "transcribe_studio", studio)
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: pytest.fail("Local transcription ran"))
+    worker.run_once(tmp_path, diarize=True, probe=lambda *args: {"reachable": True, "loaded": []})
+    job = json.loads(path.read_text())
+    assert (job["status"], job["engine"], job["lang"], job["langs"]) == ("done", "studio", "pt", ["pt"])
+    assert "studio_error" not in job
+    assert "- 00:30 Olá\n" in note.read_text()
+
+
+@pytest.mark.parametrize("error", [OSError("Network failed: secret"),
+    HTTPError("https://studio/v1", 500, "Rejected secret", {}, None),
+    worker.subprocess.CalledProcessError(1, ["ffmpeg", "secret"])])
+def test_studio_failure_falls_back_to_local(tmp_path, monkeypatch, error):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}],
+             tasks={"transcribe": {"quality": "fast"}})
+    monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ", lang="pt", diarize=True)
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+    calls = []
+
+    def studio(audio, base, key, lang):
+        calls.append("studio")
+        raise error
+
+    def local(audio, model, lang, **options):
+        assert (audio, model, lang, options) == (tmp_path / "audio.wav", "small", "pt", {"diarize": True})
+        calls.append("local")
+        return [(0, "Fallback")], "pt", ["pt"]
+
+    monkeypatch.setattr(worker, "transcribe_studio", studio)
+    monkeypatch.setattr(worker, "transcribe", local)
+    worker.run_once(tmp_path, probe=lambda *args: {"reachable": False, "loaded": []})
+    job = json.loads(path.read_text())
+    assert calls == ["studio", "local"]
+    assert (job["status"], job["engine"]) == ("done", "local")
+    assert job["studio_error"] == str(error).replace("secret", "[redacted]")
+    assert "secret" not in path.read_text()
+    assert "- 00:00 Fallback\n" in note.read_text()
 
 
 @pytest.mark.parametrize("existing", [False, True])

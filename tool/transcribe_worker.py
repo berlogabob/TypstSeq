@@ -180,6 +180,44 @@ def transcribe(audio, model="small", lang=None, *, diarize=False):
     return result, info.language, languages
 
 
+def transcribe_studio(audio, base, key, lang=None, model="unsloth/whisper-large-v3-turbo",
+                      chunk_seconds=30, post=None):
+    """Chunked Studio transcription; post accepts a Request and timeout like urlopen."""
+    post = post or urlopen
+    ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run([ffmpeg, "-v", "error", "-i", str(audio), "-f", "segment",
+                        "-segment_time", str(chunk_seconds), "-ac", "1", "-ar", "16000",
+                        str(Path(tmp) / "out%05d.wav")], check=True, timeout=600)
+        chunks = sorted(Path(tmp).glob("out*.wav"))
+        if not chunks:
+            raise ValueError("Audio split into no chunks")
+        if not lang:
+            from faster_whisper import WhisperModel, decode_audio
+
+            detector = WhisperModel("tiny", device="cpu", compute_type="int8")
+            lang, _, _ = detector.detect_language(
+                audio=decode_nonempty(audio, decode_audio)[:30 * 16000])
+        boundary = os.urandom(16).hex()
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        fields = {"model": model, "response_format": "json", "language": lang}
+        segments = []
+        for index, chunk in enumerate(chunks):
+            parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode("utf-8")
+                     for name, value in fields.items()]
+            parts += [f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{chunk.name}"\r\n'
+                      'Content-Type: audio/wav\r\n\r\n'.encode("utf-8"),
+                      chunk.read_bytes(), f"\r\n--{boundary}--\r\n".encode("utf-8")]
+            with post(Request(base.rstrip("/") + "/audio/transcriptions",
+                              data=b"".join(parts), headers=headers), timeout=120) as response:
+                text = json.load(response)["text"].strip()
+            if text:
+                segments.append((index * chunk_seconds, text))
+    return segments, lang, [lang]
+
+
 def ensure_model(base, key, prefer, request):
     """Select Ornith or load the preferred model using the authenticated request."""
     try:
@@ -571,9 +609,24 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     note_text = stream.read()
                 if kind == "transcripts":
                     audio = _vault_path(vault, job["audio"])
-                    options = {"diarize": True} if diarize or job.get("diarize") is True else {}
-                    segments, language, languages = transcribe(
-                        audio, model=model, lang=job.get("lang") or None, **options)
+                    identifier = settings.get("tasks", {}).get("transcribe", {}).get("connection") or "studio"
+                    connection = next((entry for entry in settings.get("connections", [])
+                                       if entry["id"] == identifier), None)
+                    job["engine"] = "local"
+                    job.pop("studio_error", None)
+                    if connection:
+                        key = None
+                        try:
+                            base, key = connection_credentials(connection)
+                            segments, language, languages = transcribe_studio(
+                                audio, base, key, lang=job.get("lang") or None)
+                            job["engine"] = "studio"
+                        except Exception as error:
+                            job["studio_error"] = str(error).replace(key, "[redacted]") if key else str(error)
+                    if job["engine"] == "local":
+                        options = {"diarize": True} if diarize or job.get("diarize") is True else {}
+                        segments, language, languages = transcribe(
+                            audio, model=model, lang=job.get("lang") or None, **options)
                     updated_note = apply_transcript(note_text, segments)
                 else:
                     updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
