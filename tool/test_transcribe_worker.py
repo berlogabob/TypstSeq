@@ -1,6 +1,8 @@
 import json
 import hashlib
+import signal
 import sys
+import time
 from datetime import datetime, timedelta
 from email import policy
 from email.parser import BytesParser
@@ -407,6 +409,8 @@ def test_studio_failure_falls_back_to_local(tmp_path, monkeypatch, error):
 
     monkeypatch.setattr(worker, "transcribe_studio", studio)
     monkeypatch.setattr(worker, "transcribe", local)
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 16 * 1024**3)
+    monkeypatch.setattr(worker.os, "nice", lambda increment: None)
     worker.run_once(tmp_path, probe=lambda *args: {"reachable": False, "loaded": []})
     job = json.loads(path.read_text())
     assert calls == ["studio", "local"]
@@ -1358,3 +1362,113 @@ def test_translation_bad_batch_falls_back_to_lines(monkeypatch):
 
     monkeypatch.setattr(worker, "urlopen", fake)
     assert worker.translate(["a", "loop", "b"], "pt", "ru") == ["ru a", "loop", "ru b"]
+
+
+def test_deadline_interrupts_a_blocking_call():
+    with pytest.raises(TimeoutError):
+        with worker.deadline(0.2):
+            time.sleep(5)
+
+
+def test_deadline_restores_handler_and_clears_timer():
+    previous = signal.getsignal(signal.SIGALRM)
+    with worker.deadline(5):
+        pass
+    assert signal.getsignal(signal.SIGALRM) is previous
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+
+
+def test_studio_post_that_hangs_is_cut_by_deadline(tmp_path, monkeypatch):
+    audio = tmp_path / "audio.wav"
+    worker.subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                           "anullsrc=r=8000:cl=stereo", "-t", "5", str(audio)], check=True)
+    monkeypatch.setattr(worker, "STUDIO_DEADLINE", 0.3)
+
+    def hang(request, timeout):
+        time.sleep(10)
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        worker.transcribe_studio(audio, "https://studio/v1", "secret", lang="pt", post=hang)
+    assert time.monotonic() - started < 5
+
+
+def test_mac_fallback_refused_when_memory_low(monkeypatch):
+    assert worker.mac_fallback_allowed(free_bytes=2 * 1024**3) is False
+    assert worker.mac_fallback_allowed(free_bytes=4 * 1024**3) is True
+    assert worker.mac_fallback_allowed(free_bytes=6 * 1024**3) is True
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: None)
+    assert worker.mac_fallback_allowed() is False
+
+
+def test_vm_stat_free_memory_counts_reclaimable_pages(monkeypatch):
+    output = ("Mach Virtual Memory Statistics: (page size of 16384 bytes)\n"
+              "Pages free:                 100.\nPages active: 999.\n"
+              "Pages inactive:             200.\nPages speculative: 50.\n")
+    monkeypatch.setattr(worker.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=output))
+    assert worker._free_memory_bytes() == 350 * 16384
+
+    def unavailable(*args, **kwargs):
+        raise OSError("vm_stat missing")
+
+    monkeypatch.setattr(worker.subprocess, "run", unavailable)
+    assert worker._free_memory_bytes() is None
+
+
+@pytest.mark.parametrize("model, cap, expected", [
+    ("large-v3", "small", "small"), ("unsloth/whisper-large-v3-turbo", "small", "small"),
+    ("tiny", "small", "tiny"), ("small", "small", "small"), ("custom-model", "small", "small"),
+])
+def test_min_model_never_exceeds_cap(model, cap, expected):
+    assert worker.min_model(model, cap) == expected
+
+
+def test_fallback_refused_when_memory_low(tmp_path, monkeypatch):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}])
+    monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ")
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+
+    def studio(audio, base, key, lang):
+        raise OSError("Studio down")
+
+    monkeypatch.setattr(worker, "transcribe_studio", studio)
+    monkeypatch.setattr(worker, "transcribe", lambda *args, **kwargs: pytest.fail("Local transcription ran"))
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 2 * 1024**3)
+    worker.run_once(tmp_path, probe=lambda *args: {"reachable": False, "loaded": []})
+    job = json.loads(path.read_text())
+    assert job["status"] == "failed"
+    assert job["error"] == "Studio unreachable; Mac fallback refused (low memory)"
+    assert job["studio_error"] == "Studio down"
+    assert note.read_text() == "= Note\n"
+
+
+def test_local_fallback_caps_model_at_small(tmp_path, monkeypatch):
+    write_ai(tmp_path, connections=[{"id": "studio", "url": "https://studio/v1"}],
+             tasks={"transcribe": {"model": "large-v3"}})
+    monkeypatch.setenv("TYLOG_KEY_STUDIO", "secret")
+    path = write_job(tmp_path, "transcripts", "audio", status="queued", audio="audio.wav",
+                     note="note.typ")
+    note = tmp_path / "note.typ"
+    note.write_text("= Note\n")
+    calls, nice = [], []
+
+    def studio(audio, base, key, lang):
+        raise OSError("Studio down")
+
+    def local(audio, model, lang, **options):
+        calls.append(model)
+        return [(0, "Fallback")], "pt", ["pt"]
+
+    monkeypatch.setattr(worker, "transcribe_studio", studio)
+    monkeypatch.setattr(worker, "transcribe", local)
+    monkeypatch.setattr(worker, "_free_memory_bytes", lambda: 16 * 1024**3)
+    monkeypatch.setattr(worker.os, "nice", nice.append)
+    worker.lower_priority.cache_clear()
+    worker.run_once(tmp_path, probe=lambda *args: {"reachable": False, "loaded": []})
+    job = json.loads(path.read_text())
+    assert calls == ["small"]
+    assert nice == [19]
+    assert (job["status"], job["engine"]) == ("done", "local")

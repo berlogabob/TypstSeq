@@ -1,13 +1,16 @@
 """Process queued audio transcription jobs in a vault."""
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import functools
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -16,6 +19,12 @@ from urllib.request import Request, urlopen
 
 
 KEYS_PATH = Path.home() / ".tylog/keys.json"
+STUDIO_DEADLINE = 600  # seconds per chunk request, wall clock
+LLM_DEADLINE = 900
+PROBE_DEADLINE = 30
+MAC_FALLBACK_MIN_FREE = 4 * 1024**3
+# Ordered by size; a name not listed here counts as the largest.
+WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v2", "large-v3", "large")
 
 
 def escape_markup(s):
@@ -140,6 +149,64 @@ def decode_nonempty(audio, decode_audio):
     return samples
 
 
+@contextmanager
+def deadline(seconds):
+    """Raise TimeoutError after a wall-clock limit, even when a socket never times out.
+
+    Uses SIGALRM, so it only works on the main thread (the worker's CLI).
+    """
+    def expire(signum, frame):
+        raise TimeoutError(f"No answer within {seconds} s")
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def _free_memory_bytes():
+    """Free, inactive and speculative bytes from vm_stat; None if unreadable.
+
+    Inactive and speculative pages are reclaimable. "Pages free" alone would
+    refuse almost every run, since macOS keeps it near zero by design.
+    """
+    try:
+        output = subprocess.run(["vm_stat"], capture_output=True, text=True, check=True,
+                                timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    page = re.search(r"page size of (\d+) bytes", output)
+    if not page:
+        return None
+    counts = {name: int(count) for name, count in re.findall(
+        r"^(Pages (?:free|inactive|speculative)):\s+(\d+)\.", output, re.MULTILINE)}
+    return sum(counts.values()) * int(page[1])
+
+
+def mac_fallback_allowed(free_bytes=None):
+    """True only with at least 4 GiB available; unknown memory counts as not allowed."""
+    if free_bytes is None:
+        free_bytes = _free_memory_bytes()
+    return free_bytes is not None and free_bytes >= MAC_FALLBACK_MIN_FREE
+
+
+def min_model(model, cap):
+    """The smaller of two Whisper names; a name not in WHISPER_SIZES counts as the largest."""
+    def rank(name):
+        return WHISPER_SIZES.index(name) if name in WHISPER_SIZES else len(WHISPER_SIZES)
+
+    return cap if rank(model) > rank(cap) else model
+
+
+@functools.lru_cache(maxsize=None)
+def lower_priority():
+    """Run the Mac fallback at nice 19. os.nice adds to the current value, so only once per process."""
+    os.nice(19)
+
+
 def transcribe(audio, model="small", lang=None, *, diarize=False):
     from faster_whisper import WhisperModel, decode_audio
 
@@ -210,8 +277,9 @@ def transcribe_studio(audio, base, key, lang=None, model="unsloth/whisper-large-
             parts += [f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{chunk.name}"\r\n'
                       'Content-Type: audio/wav\r\n\r\n'.encode("utf-8"),
                       chunk.read_bytes(), f"\r\n--{boundary}--\r\n".encode("utf-8")]
-            with post(Request(base.rstrip("/") + "/audio/transcriptions",
-                              data=b"".join(parts), headers=headers), timeout=120) as response:
+            request = Request(base.rstrip("/") + "/audio/transcriptions",
+                              data=b"".join(parts), headers=headers)
+            with deadline(STUDIO_DEADLINE), post(request, timeout=120) as response:
                 text = json.load(response)["text"].strip()
             if text:
                 segments.append((index * chunk_seconds, text))
@@ -272,8 +340,8 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
             headers["Authorization"] = f"Bearer {key}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         url = route if route.startswith(("http://", "https://")) else base.rstrip("/") + route
-        with urlopen(Request(url, data=data, headers=headers),
-                     timeout=900 if route.endswith("/load") else 300) as response:
+        request = Request(url, data=data, headers=headers)
+        with deadline(LLM_DEADLINE), urlopen(request, timeout=900 if route.endswith("/load") else 300) as response:
             return json.load(response)
 
     model = os.environ.get("TYLOG_LLM_MODEL") or task.get("model")
@@ -447,7 +515,8 @@ def connection_credentials(connection=None):
 
 def probe_connection(base, key):
     headers = {"Authorization": f"Bearer {key}"} if key else {}
-    with urlopen(Request(base.rstrip("/") + "/models", headers=headers), timeout=15) as response:
+    request = Request(base.rstrip("/") + "/models", headers=headers)
+    with deadline(PROBE_DEADLINE), urlopen(request, timeout=15) as response:
         entries = json.load(response)["data"]
     return {"reachable": True, "loaded": [entry["id"] for entry in entries
             if isinstance(entry.get("id"), str) and entry.get("loaded", True) is True]}
@@ -661,9 +730,15 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                         except Exception as error:
                             job["studio_error"] = str(error).replace(key, "[redacted]") if key else str(error)
                     if job["engine"] == "local":
+                        local_model = model
+                        if connection:  # Studio was tried and failed: the Mac is only the fallback
+                            if not mac_fallback_allowed():
+                                raise RuntimeError("Studio unreachable; Mac fallback refused (low memory)")
+                            lower_priority()
+                            local_model = min_model(model, "small")
                         options = {"diarize": True} if diarize or job.get("diarize") is True else {}
                         segments, language, languages = transcribe(
-                            audio, model=model, lang=job.get("lang") or None, **options)
+                            audio, model=local_model, lang=job.get("lang") or None, **options)
                     updated_note = apply_transcript(note_text, segments)
                 else:
                     updated_note = apply_translation(note_text, job["source_lang"], job["target"], translate,
