@@ -3,6 +3,31 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.5+163
+
+### New
+
+- Today has an Incoming strip: new screenshots, voice notes and ideas wait
+  there until you add them to today, schedule them for a day or dismiss them.
+- The graph filters notes by source (daily, note, screenshot, audio, article,
+  event), with a count on each chip.
+- Settings pages for AI, Audio processing and Calendars have a "This device
+  only" switch: those settings then stay on this device and are not synced.
+- On a day page, incoming screenshots and linked references fold under one
+  "More" row with counts, so the day's text has the screen; link suggestions
+  stay visible.
+- OpenLabTwin (staff): sign in with an emailed code; requested bookings and
+  new ideas show up in Incoming, approved bookings on the Today agenda.
+
+### Fixed
+
+- A recording started from the power button, the Quick Settings tile or the
+  shortcut now lands in today's log as a player card.
+- While you type, the Agenda row steps aside too, so the editor has the
+  screen.
+- Windows: the updater ends a TyLog process that does not quit within 8 s,
+  retries the file swap and writes `%TEMP%\tylog-update.log`.
+
 ## 0.20.4+162
 
 ### New
