@@ -660,6 +660,28 @@ def translation_targets(source_langs, settings_targets):
     return targets
 
 
+def _job_file(vault, kind, key):
+    return vault / "_system/jobs" / kind / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".json")
+
+
+def requeue_translations(vault, transcript):
+    """A finished transcript replaces the one its translations came from: existing translation jobs for its
+    targets go back to queued, other fields kept. Sweep creates the targets that have no job yet."""
+    if not transcript.get("lang"):
+        return
+    audio = transcript["audio"]
+    settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
+    for target in translation_targets(transcript.get("langs", [transcript["lang"]]),
+                                      settings.get("translate_to", [])):
+        path = _job_file(vault, "translations", audio + "\n" + target)
+        if path.exists():
+            job = _read_json(path)
+            job.pop("error", None)
+            job.pop("finished_at", None)
+            job["status"] = "queued"
+            path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
     audio_settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
@@ -684,7 +706,7 @@ def sweep(vault, now, state, force=False):
 
     def enqueue(kind, key, job):
         nonlocal created
-        path = vault / "_system/jobs" / kind / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".json")
+        path = _job_file(vault, kind, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with path.open("x", encoding="utf-8") as stream:
@@ -869,10 +891,11 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
             state["last_process_now"] = requested_at
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        jobs = [(kind, path) for kind in ("transcripts", "translations")
+        # Read once, before any job runs: a translation requeued by a transcript in this pass waits for the next one.
+        jobs = [(kind, path, json.loads(path.read_text(encoding="utf-8")))
+                for kind in ("transcripts", "translations")
                 for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
-        for kind, job_path in jobs:
-            job = json.loads(job_path.read_text(encoding="utf-8"))
+        for kind, job_path, job in jobs:
             if job.get("status") != "queued" and not _stale_claim(job, now):
                 continue
             try:
@@ -931,6 +954,8 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     audio_v2.save_sidecar(segments_sidecar, sidecar)
                     if getattr(translate, "last_model", None) is not None:
                         job["llm"] = translate.last_model
+                if kind == "transcripts":
+                    requeue_translations(vault, job)
                 job["status"] = "done"
                 job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 job.pop("error", None)

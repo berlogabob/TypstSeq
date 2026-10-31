@@ -1075,6 +1075,27 @@ def test_scheduled_run_stays_open_until_translations_exist(sweep_vault):
     assert json.loads(state_path.read_text())["last_scheduled_date"] == "2026-10-14"
 
 
+def test_finished_transcript_requeues_done_translations(sweep_vault):
+    """A re-run of an old recording: its finished transcript invalidates the done ru translation.
+    The ru job goes back to queued with its other fields kept; the next sweep creates the missing en."""
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    audio, note = add_audio_note(vault)
+    relative = note.relative_to(vault).as_posix()
+    write_job(vault, "transcripts", audio, status="queued", audio=audio, note=relative, lang="pt")
+    translation = write_job(vault, "translations", audio + "\nru", status="done", audio=audio, note=relative,
+                            target="ru", source_lang="pt", source_langs=["pt"], error="old",
+                            finished_at="2026-10-13T10:00:00+00:00")
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json")
+    assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
+    assert json.loads(translation.read_text()) == {
+        "audio": audio, "note": relative, "target": "ru", "source_lang": "pt",
+        "source_langs": ["pt"], "status": "queued"}
+    assert not job_path(vault, "translations", audio + "\nen").exists()
+    assert worker.sweep(vault, NOW, {}) == 1  # the missing en; ru already exists
+    assert json.loads(job_path(vault, "translations", audio + "\nen").read_text())["status"] == "queued"
+
+
 def write_ai(vault, **fields):
     path = vault / "_system/settings/ai.json"
     path.parent.mkdir(parents=True, exist_ok=True)
