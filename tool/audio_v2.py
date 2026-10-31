@@ -553,3 +553,214 @@ class MacSTT:
         segments, info = self.model.transcribe(str(wav), language=self.lang)
         self.language = self.language or info.language
         return " ".join(segment.text.strip() for segment in segments)
+
+
+# Context pass (Stage 5): Summary, Scenes, References from the transcript and the user's Context
+
+CONTEXT_WINDOW = 400  # speech lines per LLM call; longer transcripts go in windows
+GENERATED = ("Summary", "Scenes", "References")
+SECTION_ORDER = ("Context", "Summary", "Scenes", "References", "Comments", "Transcript")
+
+
+def section_text(note_text, heading):
+    """Body of `== heading` (stripped), or "" when the section is missing."""
+    chunks = note_text.splitlines(keepends=True)
+    found = _section_range(chunks, heading)
+    if found is None:
+        return ""
+    return "".join(chunks[found[0] + 1:found[1]]).strip()
+
+
+def context_messages(context_text, target, window):
+    """Prompt for one window of numbered speech lines [(number, text)]. The reply is one JSON object (parse_context_reply)."""
+    language = worker.LANGUAGE_NAMES.get(target, target)
+    schema = ('{"summary": string, "scenes": [{"line": int, "title": string}], '
+              f'"glossary": [{{"term": string, "spelling": string, "{target}": string}}], '
+              '"references": [{"line": int, "term": string, "explanation": string}]}')
+    system = (
+        "You read the transcript of one audio recording. Reply with one JSON object and nothing else: "
+        f"{schema}. "
+        f"Write the summary, scene titles, glossary renderings and explanations in {language}. "
+        "summary: 5 to 10 sentences on what the recording is and what happens in it. "
+        "scenes: each place where the subject or scene changes, with the number of its first line and a short title. "
+        "glossary: names and terms the transcript uses; spelling is the form the transcript uses. "
+        "references: allusions, quotations, places and names a listener may not know, with the number of the line "
+        "where each occurs and a one or two sentence explanation. "
+        "Use only line numbers from the input. Add nothing that is neither in the transcript nor in the Context. "
+        "The Context is written by the user (programme, cast, notes); use it for names and spelling."
+    )
+    transcript = "\n".join(f"[{number}] {text}" for number, text in window)
+    user = f"Context:\n{context_text or '(none)'}\n\nTranscript:\n{transcript}"
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def summary_messages(target, summaries):
+    """Prompt that merges the window summaries of a long transcript into one."""
+    language = worker.LANGUAGE_NAMES.get(target, target)
+    system = (f"Combine the partial summaries of one recording into one summary of 5 to 10 sentences in {language}. "
+              'Reply with one JSON object and nothing else: {"summary": string}.')
+    return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(summaries)}]
+
+
+def _json_object(reply):
+    text = reply.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[^\n]*\n", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        value = json.loads(text)
+    except ValueError as error:
+        raise ValueError(f"Context reply is not JSON: {error}") from None
+    if not isinstance(value, dict):
+        raise ValueError("Context reply is not a JSON object")
+    return value
+
+
+def _items(value, key):
+    items = value.get(key, [])
+    if not isinstance(items, list):
+        raise ValueError(f"Context reply: {key} is not a list")
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _text(item, key):
+    value = item.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _line_number(item, numbers):
+    number = item.get("line")
+    return number if type(number) is int and number in numbers else None
+
+
+def parse_context_reply(reply, numbers, target):
+    """One window's reply -> {"summary", "scenes", "glossary", "references"}; `numbers` are the line numbers shown.
+
+    A malformed reply raises ValueError. An item with a bad line number or missing text is dropped; the rest is kept.
+    """
+    value = _json_object(reply)
+    summary = value.get("summary")
+    if not isinstance(summary, str):
+        raise ValueError("Context reply: summary is not a string")
+    scenes, glossary, references = [], [], []
+    for item in _items(value, "scenes"):
+        number, title = _line_number(item, numbers), _text(item, "title")
+        if number is not None and title:
+            scenes.append({"line": number, "title": title})
+    for item in _items(value, "glossary"):
+        term, rendering = _text(item, "term"), _text(item, target)
+        if term and rendering:
+            glossary.append({"term": term, "spelling": _text(item, "spelling") or term, target: rendering})
+    for item in _items(value, "references"):
+        number, term = _line_number(item, numbers), _text(item, "term")
+        explanation = _text(item, "explanation")
+        if number is not None and term and explanation:
+            references.append({"line": number, "term": term, "explanation": explanation})
+    return {"summary": summary.strip(), "scenes": scenes, "glossary": glossary, "references": references}
+
+
+def parse_summary_reply(reply):
+    summary = _json_object(reply).get("summary")
+    if not isinstance(summary, str):
+        raise ValueError("Context reply: summary is not a string")
+    return summary.strip()
+
+
+def context_pass(speech, context_text, target, chat):
+    """Stage 5 over the speech lines (dicts with `text`, numbered from 1). chat(messages) returns the reply text.
+
+    Returns {"summary", "scenes", "glossary", "references"}; scene and reference line numbers are the
+    speech line numbers. Transcripts longer than CONTEXT_WINDOW lines go in windows, and the window
+    summaries are merged by one more call. No speech lines: no call.
+    """
+    numbered = [(number, line["text"]) for number, line in enumerate(speech, start=1)]
+    if not numbered:
+        return {"summary": "", "scenes": [], "glossary": [], "references": []}
+    parts = []
+    for first in range(0, len(numbered), CONTEXT_WINDOW):
+        window = numbered[first:first + CONTEXT_WINDOW]
+        reply = chat(context_messages(context_text, target, window))
+        parts.append(parse_context_reply(reply, {number for number, _ in window}, target))
+    if len(parts) == 1:
+        return parts[0]
+    summary = parse_summary_reply(chat(summary_messages(target, [part["summary"] for part in parts])))
+    glossary, seen = [], set()
+    for entry in (entry for part in parts for entry in part["glossary"]):
+        if entry["term"].lower() not in seen:
+            seen.add(entry["term"].lower())
+            glossary.append(entry)
+    return {
+        "summary": summary,
+        "scenes": sorted((s for part in parts for s in part["scenes"]), key=lambda s: s["line"]),
+        "glossary": glossary,
+        "references": sorted((r for part in parts for r in part["references"]), key=lambda r: r["line"]),
+    }
+
+
+def _insert_section(note_text, heading):
+    """Adds an empty `== heading` above the first section that follows it in SECTION_ORDER, so generated
+    sections sit above the transcript. With none of those in the note, merge_section appends it."""
+    later = {f"== {name}" for name in SECTION_ORDER[SECTION_ORDER.index(heading) + 1:]}
+    chunks = note_text.splitlines(keepends=True)
+    for index, chunk in enumerate(chunks):
+        if chunk.strip() in later:
+            separator = "" if index == 0 or chunks[index - 1].strip() == "" else "\n"
+            return "".join(chunks[:index]) + separator + f"== {heading}\n\n" + "".join(chunks[index:])
+    return note_text
+
+
+def merge_generated(note_text, heading, items, previous):
+    """Rewrites `== heading` from generated items [(start seconds, text)]. Returns (note_text, lines).
+
+    `previous` is the line list the last run left for this heading, None when there is none (first run,
+    or the section was removed). Lines keep their rendered state, so an edit the user made in the note
+    survives a re-run, and a line the user deleted stays deleted (merge_section). Generated lines that no
+    item produces any more are removed first, so merge_section does not read them back as user lines.
+    """
+    found = _section_range(note_text.splitlines(keepends=True), heading)
+    if found is None:
+        if not items:
+            return note_text, []
+        previous = None
+        note_text = _insert_section(note_text, heading)
+    by_start = {}
+    for line in previous or []:
+        by_start.setdefault(int(line["start"]), []).append(line)
+    built = []
+    for start, text in items:
+        queue = by_start.get(int(start))
+        old = queue.pop(0) if queue else None
+        if old is not None and old.get("status") in ("user", "deleted"):
+            built.append(old)
+        else:
+            built.append({"start": float(start), "kind": "speech", "text": text, "status": "ok",
+                          "rendered": dict(old.get("rendered", {})) if old else {}})
+    if found is not None and previous is None:
+        note_text = clear_section(note_text, heading)
+    elif found is not None:
+        stale = {line["rendered"][heading] for queue in by_start.values() for line in queue
+                 if line.get("status") not in ("user", "deleted") and heading in line.get("rendered", {})}
+        note_text = remove_section_lines(note_text, heading, stale)
+    return merge_section(note_text, heading, built)
+
+
+def render_context(note_text, previous, result, speech):
+    """Writes Summary, Scenes and References from a context result. Returns (note_text, {heading: lines}).
+
+    `speech` are the speech lines the result's line numbers count; `previous` maps each heading to the lines
+    the last run stored. The Context section is never touched.
+    """
+    def at(number):
+        return speech[number - 1]["start"]
+
+    summary = result["summary"].strip()
+    items = {
+        "Summary": [(0.0, summary)] if summary else [],
+        "Scenes": [(at(scene["line"]), scene["title"]) for scene in result["scenes"]],
+        "References": [(at(ref["line"]), f"{ref['term']} -- {ref['explanation']} (AI)")
+                       for ref in result["references"]],
+    }
+    sections = {}
+    for heading in GENERATED:
+        note_text, sections[heading] = merge_generated(note_text, heading, items[heading], previous.get(heading))
+    return note_text, sections

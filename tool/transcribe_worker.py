@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 KEYS_PATH = Path.home() / ".tylog/keys.json"
 STUDIO_DEADLINE = 600  # seconds per chunk request, wall clock
 LLM_DEADLINE = 900
+CONTEXT_MAX_TOKENS = 8000  # Stage 5 reply (summary, scenes, glossary, references); translate uses 3000
 PROBE_DEADLINE = 30
 MAC_FALLBACK_MIN_FREE = 4 * 1024**3
 LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever the settings say
@@ -352,15 +353,24 @@ def looks_translated(source, text, target):
     return len(source.split()) <= 2 or text.strip() != source.strip()
 
 
-def translate(texts, source_lang, target, source_langs=None, *, settings=None):
-    translate.last_model = None
-    settings = settings or {}
+def translate_connection(settings):
+    """The translate task's connection entry, or None for the default endpoint. An unknown id raises."""
     task = settings.get("tasks", {}).get("translate", {})
     connection = next((entry for entry in settings.get("connections", [])
                        if entry["id"] == task.get("connection")), None)
     if task.get("connection") and connection is None:
         raise ValueError(f"Unknown translation connection: {task['connection']}")
-    base, key = connection_credentials(connection)
+    return connection
+
+
+def llm_chat(settings, *, max_tokens=3000):
+    """(model, chat) for the translate task's LLM: connection, model choice and request deadlines.
+
+    chat(messages) returns the reply text with thinking off. The caller asks for JSON in the
+    prompt and parses it. The Stage 5 context pass uses this endpoint with a larger max_tokens.
+    """
+    task = settings.get("tasks", {}).get("translate", {})
+    base, key = connection_credentials(translate_connection(settings))
     if not base:
         raise ValueError("Set TYLOG_LLM_URL or configure provider studio in ~/.pi/agent/models.json")
 
@@ -380,9 +390,6 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
                              ("ollama/ornith-1.5:9b" if task.get("quality") == "fast"
                               else "ollama/ornith-1.5:35b"),
                              request)
-    # Whisper loops on music and applause ("É isso aí! É isso aí! ..."); the
-    # model copies the loop until the reply cap and the batch fails.
-    texts = [collapse_repeats(text) for text in texts]
 
     def chat(messages):
         # Thinking off and 10 lines per request: with reasoning on, 40 theatre
@@ -390,10 +397,20 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None):
         return request("/chat/completions", {
             "model": model,
             "temperature": 0,
-            "max_tokens": 3000,
+            "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": messages,
         })["choices"][0]["message"]["content"].strip()
+
+    return model, chat
+
+
+def translate(texts, source_lang, target, source_langs=None, *, settings=None):
+    translate.last_model = None
+    model, chat = llm_chat(settings or {})
+    # Whisper loops on music and applause ("É isso aí! É isso aí! ..."); the
+    # model copies the loop until the reply cap and the batch fails.
+    texts = [collapse_repeats(text) for text in texts]
 
     def ask(batch):
         reply = chat([
@@ -888,6 +905,32 @@ def transcribe_v2_job(vault, job, note, model, settings):
     return note_text, sidecar, lines, language
 
 
+def context_stage(vault, job, note, sidecar, lines, settings):
+    """Stage 5 of a v2 transcript: Summary, Scenes and References from the transcript and the user's Context.
+
+    The sections go into the note, the result into the sidecar. The target is the first translation
+    language. Without an LLM endpoint the stage is skipped. A failed or malformed reply raises: the job
+    fails, the note keeps its transcript, and a re-process runs the stage again.
+    """
+    import audio_v2
+
+    if not connection_credentials(translate_connection(settings))[0]:
+        return
+    extra = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
+    target = translation_targets(job.get("langs", []), extra.get("translate_to", []))[0]
+    _, chat = llm_chat(settings, max_tokens=CONTEXT_MAX_TOKENS)
+    speech = [line for line in lines if line["kind"] == "speech"]
+    result = audio_v2.context_pass(speech, audio_v2.section_text(read_note(note), "Context"), target, chat)
+    # Read again after the model ran: a user edit made meanwhile is part of the note now.
+    previous = audio_v2.load_sidecar(sidecar).get("context_lines", {})
+    note_text, context_lines = audio_v2.render_context(read_note(note), previous, result, speech)
+    with note.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(note_text)
+    data = audio_v2.load_sidecar(sidecar)
+    data.update(context=result, context_lines=context_lines)
+    audio_v2.save_sidecar(sidecar, data)
+
+
 STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hung
 
 
@@ -994,6 +1037,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     stream.write(updated_note)
                 if finish is not None:
                     audio_v2.finish_transcript(*finish)
+                    context_stage(vault, job, note, *finish, settings)
                 if kind == "translations":
                     audio_v2.save_sidecar(segments_sidecar, sidecar)
                     if getattr(translate, "last_model", None) is not None:

@@ -2117,3 +2117,101 @@ def test_three_languages_always_enqueued():
     assert worker.translation_targets(["es"], ["de"]) == ["ru", "en", "pt", "de"]
     assert worker.translation_targets(["pt", "ru"], []) == ["ru", "en", "pt"]
     assert worker.translation_targets(["en"], ["en", "de", "de"]) == ["ru", "pt", "de"]
+
+
+CONTEXT_JSON = {
+    "summary": "Resumo da peça.",
+    "scenes": [{"line": 1, "title": "Monólogo"}],
+    "glossary": [{"term": "Medeia", "spelling": "Medeia", "ru": "Медея"}],
+    "references": [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."}],
+}
+
+
+def is_context_prompt(messages):
+    return "Transcript:\n" in messages[1]["content"]
+
+
+def context_job(tmp_path, monkeypatch, reply=None):
+    """A v2 transcript job with two speech lines, a user Context section, and an LLM that answers
+    context prompts with CONTEXT_JSON (or `reply`, a function of the messages)."""
+    v2_media(tmp_path, monkeypatch, [(0, 4), (10, 14)], seconds=20)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem.", 10.0: "Baubo fazia rir."})
+    (tmp_path / "note.typ").write_text("= Note\n\n== Context\n\nPeça: Medeia.\n")
+    v2_job(tmp_path, lang="pt")
+    return chat_fake(monkeypatch, lambda messages: json.dumps(CONTEXT_JSON) if reply is None else reply(messages))
+
+
+def test_context_sections_written(tmp_path, monkeypatch):
+    sent = context_job(tmp_path, monkeypatch)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert (job["status"], job["lang"]) == ("done", "pt")
+    assert len(sent) == 1
+    assert "Peça: Medeia." in sent[0][1]["content"]
+    assert "[1] Olá tudo bem.\n[2] Baubo fazia rir." in sent[0][1]["content"]
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+        "== Summary\n\n- 00:00 Resumo da peça.\n\n"
+        "== Scenes\n\n- 00:00 Monólogo\n\n"
+        "== References\n\n- 00:10 Baubo -- Figura do mito de Deméter. (AI)\n\n"
+        "== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:10 Baubo fazia rir.\n- 00:14 [—]\n"
+    )
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
+    assert sidecar["context"]["summary"] == "Resumo da peça."
+    assert sidecar["stages"]["transcript"] == "done"
+
+
+def test_context_section_never_written(tmp_path, monkeypatch):
+    sent = context_job(tmp_path, monkeypatch)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    note = tmp_path / "note.typ"
+    note.write_text(note.read_text().replace("Peça: Medeia.", "Peça: Medeia. Eurípides, 431 a.C."))
+
+    # Re-process: the ASR chunks are kept, the context pass runs again with the edited Context.
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert "Eurípides, 431 a.C." in sent[-1][1]["content"]
+    text = note.read_text()
+    assert audio_v2.section_text(text, "Context") == "Peça: Medeia. Eurípides, 431 a.C."
+    assert text.count("== Summary") == 1 and text.count("- 00:00 Monólogo") == 1
+
+
+def test_bad_json_leaves_note_unchanged(tmp_path, monkeypatch):
+    context_job(tmp_path, monkeypatch, reply=lambda messages: "Desculpe, não consigo.")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    job = read_job(tmp_path)
+    assert job["status"] == "failed"
+    assert "Context reply" in job["error"]
+    assert (tmp_path / "note.typ").read_text() == (
+        "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+        "== Transcript\n\n- 00:00 Olá tudo bem.\n- 00:04 [—]\n- 00:10 Baubo fazia rir.\n- 00:14 [—]\n"
+    )
+
+
+def test_no_llm_endpoint_skips_context(tmp_path, monkeypatch):
+    v2_media(tmp_path, monkeypatch, [(0, 4)], seconds=10)
+    scripted_mac(monkeypatch, {0.0: "Olá tudo bem."})
+    (tmp_path / "note.typ").write_text("= Note\n")
+    v2_job(tmp_path, lang="pt")
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    assert read_job(tmp_path)["status"] == "done"
+    assert "== Summary" not in (tmp_path / "note.typ").read_text()
+
+
+def test_context_request_uses_translate_endpoint_with_thinking_off(tmp_path, monkeypatch):
+    sent = []
+
+    def fake(request, timeout):
+        sent.append((request.full_url, json.loads(request.data)))
+        return BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(CONTEXT_JSON)}}]}).encode())
+
+    context_job(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "urlopen", fake)
+    worker.run_once(tmp_path, state_path=tmp_path / "state.json", probe=quiet_probe)
+    url, payload = sent[0]
+    assert url == "https://studio.example/v1/chat/completions"
+    assert payload["model"] == "translator"
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["temperature"] == 0
+    assert payload["max_tokens"] == worker.CONTEXT_MAX_TOKENS

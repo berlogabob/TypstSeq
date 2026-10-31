@@ -325,3 +325,150 @@ def test_missing_alt_not_doubtful():
     chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?"),
               _chunk(6.0, 9.0, "Até amanhã, meu amigo.", "")]  # "" is what the Mac fallback stores
     assert [line["status"] for line in v2.lines_from_chunks(chunks)] == ["ok", "ok"]
+
+
+CONTEXT_REPLY = json.dumps({
+    "summary": "Uma peça sobre uma família de comediantes.",
+    "scenes": [{"line": 1, "title": "Monólogo"}, {"line": 99, "title": "fora do intervalo"}],
+    "glossary": [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}],
+    "references": [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."},
+                   {"line": "3", "term": "Eleusis", "explanation": "Santuário."}],
+})
+SPEECH = [{"start": 0.0, "kind": "speech", "text": "Nasci no seio de uma família."},
+          {"start": 5.0, "kind": "speech", "text": "Baubo fazia rir."},
+          {"start": 9.0, "kind": "speech", "text": "Vamos embora."}]
+CONTEXT_NOTE = "= Note\n\n== Context\n\nPeça: Medeia.\n\n== Transcript\n\n- 00:00 Nasci.\n- 00:05 Baubo fazia rir.\n"
+CONTEXT = {"summary": "Resumo.", "scenes": [{"line": 1, "title": "Início"}],
+           "glossary": [], "references": [{"line": 2, "term": "Baubo", "explanation": "Figura do mito."}]}
+
+
+def test_context_reply_keeps_valid_items_and_drops_bad_line_numbers():
+    result = v2.parse_context_reply(CONTEXT_REPLY, {1, 2, 3}, "ru")
+    assert result["summary"] == "Uma peça sobre uma família de comediantes."
+    assert result["scenes"] == [{"line": 1, "title": "Monólogo"}]
+    assert result["glossary"] == [{"term": "Baubo", "spelling": "Baubo", "ru": "Бубо"}]
+    assert result["references"] == [{"line": 2, "term": "Baubo", "explanation": "Figura do mito de Deméter."}]
+
+
+def test_fenced_context_reply_is_accepted():
+    assert v2.parse_context_reply("```json\n" + CONTEXT_REPLY + "\n```", {1, 2, 3}, "ru")["scenes"]
+
+
+@pytest.mark.parametrize("reply", [
+    "Desculpe, não consigo.", "[]", json.dumps({"summary": 3}),
+    json.dumps({"summary": "ok", "scenes": "Monólogo"}),
+])
+def test_malformed_context_reply_is_an_error(reply):
+    with pytest.raises(ValueError, match="Context reply"):
+        v2.parse_context_reply(reply, {1}, "ru")
+
+
+def test_context_messages_carry_context_numbers_and_target_language():
+    messages = v2.context_messages("Medeia, Eurípides.", "ru", [(1, "Olá."), (2, "Tchau.")])
+    system, user = messages[0]["content"], messages[1]["content"]
+    assert "Russian" in system and '"ru": string' in system
+    assert user == "Context:\nMedeia, Eurípides.\n\nTranscript:\n[1] Olá.\n[2] Tchau."
+    assert "(none)" in v2.context_messages("", "ru", [(1, "Olá.")])[1]["content"]
+
+
+def test_context_pass_one_call_for_a_short_transcript():
+    calls = []
+
+    def chat(messages):
+        calls.append(messages)
+        return CONTEXT_REPLY
+
+    result = v2.context_pass(SPEECH, "", "ru", chat)
+    assert len(calls) == 1
+    assert result["summary"] == "Uma peça sobre uma família de comediantes."
+    assert [scene["line"] for scene in result["scenes"]] == [1]
+
+
+def test_long_transcript_is_windowed_then_summaries_merged():
+    speech = [{"start": float(i), "kind": "speech", "text": f"Linha {i}."}
+              for i in range(v2.CONTEXT_WINDOW + 5)]
+    calls = []
+
+    def chat(messages):
+        calls.append(messages)
+        if messages[0]["content"].startswith("Combine the partial summaries"):
+            return json.dumps({"summary": "Resumo final."})
+        numbers = [int(n) for n in re.findall(r"^\[(\d+)\]", messages[1]["content"], re.M)]
+        return json.dumps({"summary": f"Parte {numbers[0]}.",
+                           "scenes": [{"line": numbers[0], "title": "Início"}],
+                           "glossary": [{"term": "Linha", "spelling": "Linha", "ru": "Строка"}],
+                           "references": [{"line": numbers[-1], "term": f"T{numbers[0]}", "explanation": "x"}]})
+
+    result = v2.context_pass(speech, "", "ru", chat)
+    assert len(calls) == 3  # two windows, then one call to merge their summaries
+    assert result["summary"] == "Resumo final."
+    assert [scene["line"] for scene in result["scenes"]] == [1, v2.CONTEXT_WINDOW + 1]
+    assert [ref["line"] for ref in result["references"]] == [v2.CONTEXT_WINDOW, v2.CONTEXT_WINDOW + 5]
+    assert len(result["glossary"]) == 1  # the same term from both windows is kept once
+
+
+def test_no_speech_means_no_llm_call():
+    def chat(messages):
+        raise AssertionError("no LLM call without speech")
+
+    assert v2.context_pass([], "Contexto", "ru", chat) == {
+        "summary": "", "scenes": [], "glossary": [], "references": []}
+
+
+def test_section_text_reads_only_the_named_section():
+    assert v2.section_text(CONTEXT_NOTE, "Context") == "Peça: Medeia."
+    assert v2.section_text(CONTEXT_NOTE, "Summary") == ""
+
+
+def test_context_sections_written_above_transcript_and_context_untouched():
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    assert note == (
+        "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+        "== Summary\n\n- 00:00 Resumo.\n\n"
+        "== Scenes\n\n- 00:00 Início\n\n"
+        "== References\n\n- 00:05 Baubo -- Figura do mito. (AI)\n\n"
+        "== Transcript\n\n- 00:00 Nasci.\n- 00:05 Baubo fazia rir.\n"
+    )
+    assert sections["Summary"][0]["text"] == "Resumo."
+
+
+def test_reference_lines_marked_ai():
+    note, _ = v2.render_context(CONTEXT_NOTE, {}, dict(CONTEXT, references=[
+        {"line": 1, "term": "A", "explanation": "one"}, {"line": 2, "term": "B", "explanation": "two"}]), SPEECH)
+    references = note.split("== References\n\n")[1].split("\n\n")[0].splitlines()
+    assert references == ["- 00:00 A -- one (AI)", "- 00:05 B -- two (AI)"]
+
+
+def test_context_section_never_written_by_render():
+    note, _ = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    assert note.split("== Summary")[0] == "= Note\n\n== Context\n\nPeça: Medeia.\n\n"
+
+
+def test_user_edit_in_generated_line_survives_rerun():
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    edited = note.replace("- 00:00 Resumo.", "- 00:00 Resumo meu.")
+    again = dict(CONTEXT, summary="Resumo novo.", scenes=[{"line": 1, "title": "Abertura"}])
+    note2, _ = v2.render_context(edited, sections, again, SPEECH)
+    assert "- 00:00 Resumo meu.\n" in note2
+    assert "Resumo novo" not in note2
+    assert "- 00:00 Abertura\n" in note2 and "Início" not in note2
+
+
+def test_generated_line_the_user_deleted_stays_deleted():
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    note2, sections2 = v2.render_context(note.replace("- 00:00 Início\n", ""), sections, CONTEXT, SPEECH)
+    assert "Início" not in note2
+    assert sections2["Scenes"][0]["status"] == "deleted"
+    assert "Início" not in v2.render_context(note2, sections2, CONTEXT, SPEECH)[0]
+
+
+def test_generated_line_no_longer_produced_is_removed():
+    note, sections = v2.render_context(CONTEXT_NOTE, {}, CONTEXT, SPEECH)
+    note2, _ = v2.render_context(note, sections, dict(CONTEXT, scenes=[]), SPEECH)
+    assert "Início" not in note2 and "== Scenes" in note2
+
+
+def test_no_generated_sections_without_content():
+    empty = {"summary": "", "scenes": [], "glossary": [], "references": []}
+    note, _ = v2.render_context("= Note\n\n== Transcript\n\n- 00:00 Nasci.\n", {}, empty, SPEECH)
+    assert note == "= Note\n\n== Transcript\n\n- 00:00 Nasci.\n"
