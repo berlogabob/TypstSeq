@@ -36,7 +36,7 @@ Future<void> _pumpNote(
 
 void main() {
   testWidgets(
-    'transcribe header stays in one compact scrolling row on a phone',
+    'long note keeps transcript visible below aligned header chips on a phone',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(360, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -52,7 +52,11 @@ void main() {
             ),
             initialTab: AudioTab.transcribe,
             readSource: (_) async =>
-                '$_attachment== Transcript\n- 00:05 Olá\n'
+                '$_attachment== Summary\n- 00:00 A long theatre note.\n'
+                '== Scenes\n${List.generate(25, (i) => '- 00:05 Scene $i\n').join()}'
+                '== References\n${List.generate(11, (i) => '- 00:05 Reference $i\n').join()}'
+                '== Transcript\n- 00:05 Olá\n'
+                '${List.generate(494, (i) => '- 00:10 Line $i\n').join()}'
                 '== Translation ru\n- 00:05 Привет\n'
                 '== Translation en\n- 00:05 Hello\n',
             readBytes: (_) => Completer<Uint8List>().future,
@@ -80,6 +84,11 @@ void main() {
       expect(find.textContaining('Language:'), findsNothing);
       expect(find.byTooltip('Original'), findsOneWidget);
       expect(toggle, findsOneWidget);
+      expect(find.text('Scenes · 25'), findsOneWidget);
+      expect(find.text('References · 11'), findsOneWidget);
+      expect(find.text('Scene 0'), findsNothing);
+      expect(find.text('Reference 0'), findsNothing);
+      expect(find.text('Olá').hitTestable(), findsOneWidget);
       expect(tester.getSize(header).height, closeTo(40, 2));
       for (final control in controls) {
         expect(
@@ -95,13 +104,12 @@ void main() {
       );
       expect(scroll.scrollDirection, Axis.horizontal);
       expect(scroll.child, isA<Row>());
+      final chip = find.widgetWithIcon(FilterChip, Icons.view_column);
+      expect(tester.widget<FilterChip>(chip).selected, isTrue);
+      expect(tester.widget<FilterChip>(chip).showCheckmark, isFalse);
       expect(
-        tester
-            .widget<IconButton>(
-              find.widgetWithIcon(IconButton, Icons.view_column),
-            )
-            .isSelected,
-        isTrue,
+        tester.getSize(chip).height,
+        tester.getSize(find.widgetWithText(ChoiceChip, 'RU')).height,
       );
       await tester.tap(toggle);
       await tester.pump();
@@ -112,6 +120,10 @@ void main() {
       await tester.tap(toggle);
       await tester.pump();
       expect(find.text('Привет'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ChoiceChip, 'EN'));
+      await tester.pump();
+      expect(find.text('Hello').hitTestable(), findsOneWidget);
+      expect(find.text('Привет'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

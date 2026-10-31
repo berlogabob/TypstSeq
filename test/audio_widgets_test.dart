@@ -119,42 +119,57 @@ void main() {
     expect(taps, 2);
   });
 
-  testWidgets('summary expands and scenes and AI references seek', (
-    tester,
-  ) async {
-    const source =
-        '== Summary\n- 00:00 A play about memory.\n'
-        '- 00:00 A second summary line.\n'
-        '== Scenes\n- 00:10 Opening scene\n'
-        '== References\n- 00:30 Pessoa: Portuguese poet (AI)\n';
-    final seeks = <int>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: tyLogTheme(Brightness.light),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: AudioNoteSections(
-              summary: parseSummary(source),
-              scenes: parseScenes(source),
-              references: parseReferences(source),
-              onSeek: seeks.add,
+  testWidgets(
+    'sections start collapsed and expand in place with seek targets',
+    (tester) async {
+      const source =
+          '== Summary\n- 00:00 A play about memory.\n'
+          '- 00:00 A second summary line.\n'
+          '== Scenes\n- 00:10 Opening scene\n'
+          '== References\n- 00:30 Pessoa: Portuguese poet (AI)\n';
+      final seeks = <int>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: tyLogTheme(Brightness.light),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AudioNoteSections(
+                summary: parseSummary(source),
+                scenes: parseScenes(source),
+                references: parseReferences(source),
+                onSeek: seeks.add,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    const summary = 'A play about memory.\nA second summary line.';
-    expect(tester.widget<Text>(find.text(summary)).maxLines, 1);
-    await tester.tap(find.text('Summary'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.text(summary)).maxLines, isNull);
-    expect(find.text('Scenes'), findsOneWidget);
-    expect(find.text('References'), findsOneWidget);
-    await tester.tap(find.text('Opening scene'));
-    await tester.tap(find.text('Pessoa: Portuguese poet (AI)'));
-    expect(seeks, [10000, 30000]);
-  });
+      const summary = 'A play about memory.\nA second summary line.';
+      expect(tester.widget<Text>(find.text(summary)).maxLines, 1);
+      expect(find.text('Scenes · 1'), findsOneWidget);
+      expect(find.text('References · 1'), findsOneWidget);
+      expect(find.text('Opening scene'), findsNothing);
+      expect(find.text('Pessoa: Portuguese poet (AI)'), findsNothing);
+      await tester.tap(find.text('Summary'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.text(summary)).maxLines, isNull);
+      await tester.tap(find.text('Scenes · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Opening scene'), findsOneWidget);
+      expect(find.text('Pessoa: Portuguese poet (AI)'), findsNothing);
+      await tester.tap(find.text('Opening scene'));
+      await tester.tap(find.text('Scenes · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Opening scene'), findsNothing);
+      await tester.tap(find.text('References · 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pessoa: Portuguese poet (AI)'));
+      expect(seeks, [10000, 30000]);
+      await tester.tap(find.text('References · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pessoa: Portuguese poet (AI)'), findsNothing);
+    },
+  );
 
   testWidgets('absent summary, scenes and references stay hidden', (
     tester,

@@ -201,19 +201,17 @@ class AudioLanguageBar extends StatelessWidget {
         spacing: 8,
         children: [
           if (parallel != null) ...[
-            IconButton.filledTonal(
+            FilterChip(
               tooltip: 'Side by side',
-              isSelected: parallel,
-              icon: const Icon(Icons.view_column_outlined),
-              selectedIcon: const Icon(Icons.view_column),
-              style: IconButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                fixedSize: const Size(32, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              selected: parallel!,
+              label: Icon(
+                parallel! ? Icons.view_column : Icons.view_column_outlined,
+                size: kIconSmall,
               ),
-              onPressed: onParallelChanged == null
-                  ? null
-                  : () => onParallelChanged!(!parallel!),
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onSelected: onParallelChanged,
             ),
             if (sourceLanguage != null)
               Tooltip(
@@ -401,27 +399,20 @@ class _AudioNoteSectionsState extends State<AudioNoteSections> {
           ('Scenes', widget.scenes),
           ('References', widget.references),
         ])
-          if (section.$2.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                kSpace16,
-                kSpace8,
-                kSpace16,
-                kSpace4,
-              ),
-              child: Text(
-                section.$1,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+          if (section.$2.isNotEmpty)
+            ExpansionTile(
+              dense: true,
+              title: Text('${section.$1} · ${section.$2.length}'),
+              children: [
+                for (final entry in section.$2)
+                  ListTile(
+                    dense: true,
+                    leading: Text(formatTimestamp(entry.ms)),
+                    title: Text(entry.text),
+                    onTap: () => widget.onSeek(entry.ms),
+                  ),
+              ],
             ),
-            for (final entry in section.$2)
-              ListTile(
-                dense: true,
-                leading: Text(formatTimestamp(entry.ms)),
-                title: Text(entry.text),
-                onTap: () => widget.onSeek(entry.ms),
-              ),
-          ],
       ],
     );
   }
