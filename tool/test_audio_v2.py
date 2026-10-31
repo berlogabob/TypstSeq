@@ -1,4 +1,6 @@
+import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -148,3 +150,110 @@ def test_text_without_punctuation_is_one_line():
 
 def test_short_last_sentence_joins_previous():
     assert v2.sentence_lines(0.0, 10.0, "A casa é grande. Sim.") == [(0.0, "A casa é grande. Sim.")]
+
+
+def _seg(start, text, status="ok", kind="speech"):
+    return {"start": start, "kind": kind, "text": text, "status": status}
+
+
+def test_untouched_lines_are_rewritten():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(5.0, "old text")])
+    lines[0]["text"] = "new text"
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert "- 00:05 new text\n" in note and "old text" not in note
+    assert lines[0]["rendered"]["Transcript"] == "- 00:05 new text"
+
+
+def test_edited_line_is_kept_and_marked_user():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(5.0, "old text")])
+    note = note.replace("- 00:05 old text", "- 00:05 old text, fixed by me")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert "- 00:05 old text, fixed by me" in note
+    assert lines[0]["status"] == "user" and lines[0]["text"] == "old text, fixed by me"
+    lines[0]["text"] = "asr says something else"  # the worker re-runs
+    again, lines = v2.merge_section(note, "Transcript", lines)
+    assert "- 00:05 old text, fixed by me" in again and "asr says" not in again
+
+
+def test_deleted_line_stays_deleted():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(5.0, "gone soon"), _seg(10.0, "stays")])
+    note = note.replace("- 00:05 gone soon\n", "")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert "gone soon" not in note and "stays" in note
+    assert [line["status"] for line in lines] == ["deleted", "ok"]
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert "gone soon" not in note
+
+
+def test_user_added_line_is_kept_in_time_order():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(0.0, "first"), _seg(10.0, "third")])
+    note = note.replace("- 00:10 third", "- 00:05 my line\n- 00:10 third")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    body = [line for line in note.splitlines() if line.startswith("- ")]
+    assert body == ["- 00:00 first", "- 00:05 my line", "- 00:10 third"]
+    assert any(line["status"] == "user" and line["text"] == "my line" and line["start"] == 5.0
+               for line in lines)
+
+
+def test_two_lines_same_second_keep_order():
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(5.0, "first"), _seg(5.0, "second")])
+    note = note.replace("- 00:05 first", "- 00:05 first, edited")
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert [line for line in note.splitlines() if line.startswith("- 00:05")] == [
+        "- 00:05 first, edited", "- 00:05 second"]
+    note, lines = v2.merge_section(note, "Transcript", lines)
+    assert [line for line in note.splitlines() if line.startswith("- 00:05")] == [
+        "- 00:05 first, edited", "- 00:05 second"]
+
+
+def test_special_chars_escaped_and_parse_back():
+    text = "#tag [x] $5 *a* _b_ @c"
+    note, lines = v2.merge_section("= Note\n", "Transcript", [_seg(3.0, text)])
+    body = next(line for line in note.splitlines() if line.startswith("- 00:03 "))[len("- 00:03 "):]
+    assert body == r"\#tag \[x\] \$5 \*a\* \_b\_ \@c"
+    assert re.sub(r"\\(.)", r"\1", body) == text
+    again, _ = v2.merge_section(note, "Transcript", lines)
+    assert again.count("- 00:03 ") == 1
+
+
+def test_gap_and_doubtful_markers_and_section_placement():
+    note = "= Note\n\n== Comments\n\n- 00:10 keep me\n"
+    lines = [_seg(40.0, "", kind="gap"), _seg(60.0, "Acho que a ponte", status="doubtful")]
+    note, _ = v2.merge_section(note, "Transcript", lines)
+    assert note == ("= Note\n\n== Comments\n\n- 00:10 keep me\n\n"
+                    "== Transcript\n\n- 00:40 [—]\n- 01:00 (?) Acho que a ponte\n")
+
+
+def test_existing_section_is_replaced_before_next_heading():
+    note, lines = v2.merge_section("== Transcript\n", "Transcript", [_seg(1.0, "old")])
+    note += "\n== Translation ru\n\n- 00:01 Привет\n"
+    lines[0]["text"] = "new"
+    note, _ = v2.merge_section(note, "Transcript", lines)
+    assert note == "== Transcript\n\n- 00:01 new\n\n== Translation ru\n\n- 00:01 Привет\n"
+
+
+def test_backup_legacy_writes_v1_once(tmp_path):
+    audio = "assets/audio/take.m4a"
+    legacy = "== Transcript\n\n- 00:01 old\n"
+    path = v2.backup_legacy(tmp_path, audio, legacy)
+    expected = tmp_path / "_system/jobs/segments" / (hashlib.sha1(audio.encode("utf-8")).hexdigest() + ".v1.typ")
+    assert path == expected and path.read_text(encoding="utf-8") == legacy
+    assert v2.backup_legacy(tmp_path, audio, "changed") is None
+    assert path.read_text(encoding="utf-8") == legacy
+
+
+def test_backup_legacy_is_noop_once_sidecar_exists(tmp_path):
+    audio = "assets/audio/take.m4a"
+    v2.save_sidecar(v2.sidecar_path(tmp_path, audio), {"lines": [], "stages": {}})
+    assert v2.backup_legacy(tmp_path, audio, "legacy") is None
+    assert not list((tmp_path / "_system/jobs/segments").glob("*.v1.typ"))
+
+
+def test_sidecar_defaults_and_round_trip(tmp_path):
+    path = v2.sidecar_path(tmp_path, "assets/audio/take.m4a")
+    assert path.parent == tmp_path / "_system/jobs/segments" and path.suffix == ".json"
+    assert v2.load_sidecar(path) == {"lines": [], "stages": {}}
+    data = {"lines": [_seg(1.0, "olá")], "stages": {"transcript": "done"}}
+    v2.save_sidecar(path, data)
+    assert v2.load_sidecar(path) == data
+    assert not path.with_name(path.name + ".tmp").exists()

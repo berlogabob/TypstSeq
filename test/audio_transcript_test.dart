@@ -80,4 +80,17 @@ void main() {
       expect(parseComments(src).single.text, 'c');
     },
   );
+
+  test('same-second segments keep file order', () {
+    // A long run of equal timestamps: an unstable sort reorders it.
+    final same = [
+      for (var i = 0; i < 60; i++)
+        '- 00:05 part ${i.toString().padLeft(2, '0')}',
+    ];
+    final src = '= T\n\n== Transcript\n\n${same.join('\n')}\n- 00:01 early\n';
+    expect(parseTranscript(src).map((c) => c.text), [
+      'early',
+      for (var i = 0; i < 60; i++) 'part ${i.toString().padLeft(2, '0')}',
+    ]);
+  });
 }

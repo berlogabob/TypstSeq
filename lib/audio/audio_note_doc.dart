@@ -90,17 +90,21 @@ List<AudioComment> _parseSection(String source, String heading) {
   final lines = source.split('\n');
   final range = _section(lines, heading);
   if (range == null) return const [];
-  final out = <AudioComment>[];
-  for (final line in lines.sublist(range.$1, range.$2)) {
-    final m = _commentLine.firstMatch(line);
+  final out = <({int ms, int line, String text})>[];
+  for (var i = range.$1; i < range.$2; i++) {
+    final m = _commentLine.firstMatch(lines[i]);
     if (m == null) continue;
     out.add((
       ms: (int.parse(m[1]!) * 60 + int.parse(m[2]!)) * 1000,
+      line: i,
       text: _unescape(m[3]!),
     ));
   }
-  out.sort((a, b) => a.ms.compareTo(b.ms));
-  return out;
+  // List.sort is not stable: same-second lines tie-break on file order.
+  out.sort(
+    (a, b) => a.ms != b.ms ? a.ms.compareTo(b.ms) : a.line.compareTo(b.line),
+  );
+  return [for (final c in out) (ms: c.ms, text: c.text)];
 }
 
 List<AudioComment> parseComments(String source) =>
