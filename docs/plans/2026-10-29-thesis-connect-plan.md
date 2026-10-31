@@ -16,12 +16,12 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 ## Queue
 ### P0 Housekeeping
 - [x] Record from power button lands in today's log (bbb7782, checked on Nothing Phone 3)
-- [ ] Push branch; release 0.20.5+163 (Windows updater helper 20f0679 + record-to-day-log): CHANGELOG, version, full test
+- [ ] Push branch; release 0.20.5+163: CHANGELOG + version done (2026-10-31, uncommitted until full test); full test, P30 release install, user go, tag
 - [ ] Power-button long-press and lock screen on the Nothing Phone 3
 - [x] Keyboard up: Agenda row hides too (verified on P30: Agenda, Screenshots, Linked refs gone, editor has the screen). 
-- [ ] Screenshots and Linked references collapsed under More
+- [x] Screenshots and Linked references collapsed under More (codex + review: link suggestions kept outside, row hidden when empty; P30 release build: 'More · 16 incoming · 1 reference' on 28 Oct expands to Incoming + Linked references)
 - [x] Add `docs/audio-transcription.md` to bundled RAG doc lists (pubspec + semantic_search_controller)
-- [ ] `graphify update .`
+- [x] `graphify update .` (2026-10-31)
 
 ### P1 Conceptual data model (supervisor's ask) -> `docs/thesis/conceptual-model.md`
 - [x] Entities: Item, Mention, Entity, Link, Source; attributes `source` and `derivation` (docs/thesis/conceptual-model.md)
@@ -34,9 +34,9 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - [x] Tests (core + widget, 23 + 430 green); device check done on P30 (switch visible on Calendars, left off)
 
 ### P3 Extraction coverage
-- [x] Audio transcripts enriched (23 voice notes in the real vault); [ ] screenshots: user decision, stay excluded until then
+- [x] Audio transcripts enriched (23 voice notes in the real vault); [x] screenshots enriched (e58b3f2; 2519/2519 done 2026-10-31)
 - [x] Enrichment runs on `kind: audio` notes, transcript only (translations skipped); tags/aliases from transcript: later
-- [ ] Re-queue backlog without a PROMPT_VERSION bump (2 h of Studio compute)
+- [x] Re-queue backlog without a PROMPT_VERSION bump: done 2026-10-31 in ~3 h after thinking off (a591c17, 33bbca8); 995/995 days, 2519/2519 screenshots
 
 ### P4 Settings sharing
 - [x] `*.local.json` never syncs (`isSyncableVaultPath`, tylog_core `sync_paths.dart`); whole-file override, local wins (no merge); Python workers read it too
@@ -109,3 +109,5 @@ Loop: every 5 min, three lines: STATUS (done / running / blocked), PLAN+ (new it
 - 02:15 T20: STATUS running / DONE metrics script / NEXT OLT approved bookings on the agenda + CalendarItem.source (codex) / BLOCKED OLT sign-in on P30
 - 02:35 T21: OLT approved bookings on the agenda, CalendarItem.source (codex + review: showSnack, rrule shortcut noted); full suite 1741 green. Device check waits on OLT sign-in.
 - 02:45 T22: STATUS blocked / DONE P12 steps 1-4 + OLT read side / NEXT device check of OLT slices, Microsoft 365 / BLOCKED OLT sign-in on P30; Azure app registration for Microsoft. Cron paused to save tokens.
+- 2026-10-31 T23: STATUS running / DONE enrich backfill (thinking off), P3 closed / NEXT codex: Screenshots+Linked refs under More; 0.20.5 prep (CHANGELOG, version), full suite, P30 release install / BLOCKED OLT sign-in (P5-P7 device check), Azure (P11), gold labels (P9), contacts export (P8), Nothing Phone 3 power-button check (not on adb)
+- 2026-10-31 T24: More row done and verified on P30 (0.20.5 release build); full suite 1743 + core 457 + python 163 green. Release waits for user go.

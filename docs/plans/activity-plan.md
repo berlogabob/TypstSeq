@@ -208,3 +208,32 @@ Wave 13 results (2026-10-22):
 - W6: not reproducible (30/30 alone, 10/10 with the workspace tests); codex's speculative sync change reverted. Watch the full-suite runs.
 - W5: A24 idle 242-246 MB, P30 250-324 MB over 30 min (both under 350). The 665 MB P30 reading came after ~1 h of use plus an install; a post-install launch scans in ~35 s CPU and settles at ~300 MB. Peak-after-use profiling stays open.
 - Release blockers (2026-10-22 afternoon): the 665 MB P30 reading reproduced as Library > Screenshots: each group was a SliverGrid, which builds its first card even off-screen, so ~370 thumbnails decoded on opening (P30 290 -> 646 MB; scrolling to 895). Fix 5103398: one lazy row list + image cache 32 MB. P30: open 279 MB, 40 swipes 329 MB; A24: 295-311 MB. Per-action P30 numbers: search +40 MB, screenshot open/close x5 flat, journal 90 swipes ~340, graph modes <=337, articles ~+60 then flat. Timeline titles + Settings subtitle fixed (c5afa9d). A24 checked by eye (entity dialog, Screenshots tab). Mac check: user.
+
+## Parked: pt-pt pack audio on Studio (2026-10-30, resume after the weekend TyLog run)
+State: all 98 clips exist in `tylog-pack-pt-pt/assets/audio` (25 from torch Chatterbox on the Mac, 73 from Studio). Scored on Studio STT (large-v3-turbo): 80 pass 0.9, 18 fail (worst 0002-dialogue 0.68, 0028-audio2 0.75, 0058-dialogue 0.83, 0040-audio2 0.83, 0046-audio1 0.84). Round-1 backup: session scratchpad `audio-round1`.
+Why it stalled: the TyLog ornith worker reloads ornith and evicts Chatterbox from Studio (16 GB); the earlier "GPU crash" was this eviction. Studio setting "Keep multiple models loaded" is now "When they fit". Never run audio generation on the Mac (rule: berloga-tts-on-studio-not-mac).
+Resume:
+1. Wait until the TyLog run is idle (or lower ornith context), then `POST /v1/load` Chatterbox-GGUF.
+2. `python3 tools/tts_studio.py --clips=<failing ids>`; rescore with `STUDIO_URL=http://desktop-vdsrh2e:8888 python3 tools/check_audio.py`; keep the better take per clip; repeat for clips still < 0.9.
+3. Rebuild pack (`tools/build.sh`), `pack-validate`; then P30 install test. No release until the user says.
+Tools (uncommitted in tylog-pack-pt-pt): `tools/tts_studio.py` (Studio API, auto-reload, `--clips=`), `tools/check_audio.py` (`STUDIO_URL` = Studio STT). Studio engines vLLM/SGLang: skipped by the user (WSL VM cannot start, HCS_E_SERVICE_NOT_AVAILABLE).
+
+## Enrich backfill fast (2026-10-30, user: "go", status every 5 min)
+Cause of the slow run: Ornith 35b reasoned before every answer (57 s/day, 12/20 days blew a 4000-token cap; uncapped = 185-900 s and timeouts). Fix a591c17: thinking off + JSON-constrained + max_tokens 4000 -> 3.2 s/day on the 20-day bench, 0 failures, 16/20 vs 18/20 earlier mentions kept on days both finished. PROMPT_VERSION kept at 4.
+- [x] Bench 20 days thinking on/off (scratchpad bench.py)
+- [x] Commit + merge a591c17, worker re-enabled (launchd), run-request.json written (process now)
+- [x] Backfill days: 994/995 (2026-10-31 00:23)
+- [x] Backfill screenshots: 2519/2519 (2026-10-31 02:56; one rerun after a clean early exit at 1672)
+- [x] Error check: 9 log errors; 7 old-code screenshot errors and shot-09ddd22b succeeded on reruns, 2022-07-19 hit the 4000 cap -> rerun at 12000 (33 mentions); cap now 8000 (33bbca8), date-flaky test fixed (3a75387). All 995 days + 2519 screenshots have results.
+- [ ] Optional later: thinking-on second pass only for days where the fast run finds nothing
+
+## Open items audit (2026-10-31, whole file re-read)
+Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 #5), startup scan (W8 #3-4), diarization (W8 #8), smaller search index (W12 v4), WebDAV round trip (W12 rclone), fold minors (26f39d2), A24 idle memory (W13 W5: 242-246 MB), screenshot layout (0.19.4).
+- [x] 2026-10-15 adb junk-text incident: real-vault daily 2026-10-15 has no 'п' / 'р-н' lines (checked 2026-10-31).
+- [ ] Revisions Mac -> P30 device check (W7 #3, W8 #6/#15): only test-covered; needs a scratch note edited on the Mac, P30 picks it up.
+- [ ] Peak-after-use memory profiling (W13 W5): P30 665 MB after ~1 h use; Screenshots cause fixed (5103398), other paths not profiled.
+- [ ] Mac check of the W13 release-blocker fixes (W13: "Mac check: user").
+- [ ] Windows self-update test on Studio (0.19.3 -> 0.19.4 pending since 2026-10-21; updater hang log %TEMP%\tylog-update.log): needs the user at Studio.
+- [ ] A24 backup (W9 T10): needs the A24 on adb.
+- [ ] P2P LAN timing: in-app iroh harness (moved to its own session).
+- Parked by user: Portuguese pack audio (W8 #9-11, #17; 18 clips < 0.9), pack repo IADE/licence review.
