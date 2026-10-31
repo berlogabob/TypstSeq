@@ -1229,6 +1229,137 @@ def test_translation_job_passes_context_to_translate(tmp_path):
     assert calls == [{"summary": "Resumo da peça.", "glossary": CONTEXT_JSON["glossary"]}]
 
 
+def review_llm(monkeypatch, answer):
+    """LLM stand-in for the review pass. answer(messages, thinking) gives the reply text. Returns the list of
+    (thinking, messages) for every request, in order."""
+    calls = []
+
+    def fake(request, timeout):
+        payload = json.loads(request.data)
+        thinking = payload["chat_template_kwargs"]["enable_thinking"]
+        calls.append((thinking, payload["messages"]))
+        reply = answer(payload["messages"], thinking)
+        return BytesIO(json.dumps({"choices": [{"message": {"content": reply}}]}).encode())
+
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    monkeypatch.setenv("TYLOG_LLM_MODEL", "translator")
+    monkeypatch.setattr(worker, "urlopen", fake)
+    return calls
+
+
+def review_job(tmp_path):
+    """A translation job of two English lines. The translate stand-in answers "Привет там" and "Вторая строка"."""
+    write_job(tmp_path, "translations", "audio\nru", status="queued", audio="audio", note="note.typ",
+              source_lang="en", target="ru")
+    (tmp_path / "note.typ").write_text("== Transcript\n\n- 00:00 Hello there\n- 00:05 Second line\n")
+
+
+def run_review(tmp_path):
+    worker.run_once(tmp_path, translate=lambda texts, *_: ["Привет там", "Вторая строка"],
+                    state_path=tmp_path / "state.json", probe=quiet_probe)
+    return json.loads(job_path(tmp_path, "translations", "audio\nru").read_text())
+
+
+def score_by_translation(messages, scores):
+    """A scoring reply: the score of each line's translation, from the {translation: score} table."""
+    items = json.loads(messages[1]["content"])
+    return json.dumps({key: scores[item["translation"]] for key, item in items.items()})
+
+
+def test_low_score_line_retranslated_once(tmp_path, monkeypatch):
+    review_job(tmp_path)
+    scores = {"Привет там": 2, "Здравствуйте, вот так": 4, "Вторая строка": 5}
+
+    def answer(messages, thinking):
+        if thinking:  # the retranslation: line 0 alone, line 1 only as context
+            assert list(window_of(messages)) == ["0"]
+            return json.dumps({"0": "Здравствуйте, вот так"})
+        return score_by_translation(messages, scores)
+
+    calls = review_llm(monkeypatch, answer)
+    assert run_review(tmp_path)["status"] == "done"
+    assert [thinking for thinking, _ in calls].count(True) == 1
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))
+    assert sidecar["translations"]["ru"]["scores"] == {"0": 4, "1": 5}
+    text = (tmp_path / "note.typ").read_text()
+    assert "== Translation ru\n\n- 00:00 Здравствуйте, вот так\n- 00:05 Вторая строка\n" in text
+
+
+def test_still_low_line_marked(tmp_path, monkeypatch):
+    review_job(tmp_path)
+    scores = {"Привет там": 2, "Здравствуйте": 2, "Вторая строка": 5}
+
+    def answer(messages, thinking):
+        if thinking:
+            return json.dumps({"0": "Здравствуйте"})
+        return score_by_translation(messages, scores)
+
+    calls = review_llm(monkeypatch, answer)
+    run_review(tmp_path)
+    assert [thinking for thinking, _ in calls].count(True) == 1
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))
+    assert sidecar["translations"]["ru"]["scores"] == {"0": 2, "1": 5}
+    assert "== Translation ru\n\n- 00:00 (?) Здравствуйте\n- 00:05 Вторая строка\n" in (tmp_path / "note.typ").read_text()
+
+
+def test_scores_saved_in_sidecar(tmp_path, monkeypatch):
+    review_job(tmp_path)
+    sources = {"Hello there": 5, "Second line": 4}
+    calls = review_llm(monkeypatch, lambda messages, thinking: json.dumps({
+        key: sources[item["source"]] for key, item in json.loads(messages[1]["content"]).items()}))
+    run_review(tmp_path)
+    assert all(thinking is False for thinking, _ in calls)
+    entry = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))["translations"]["ru"]
+    assert entry["scores"] == {"0": 5, "1": 4}
+    assert [line["text"] for line in entry["lines"]] == ["Привет там", "Вторая строка"]
+
+
+def test_retranslation_in_wrong_language_is_discarded(tmp_path, monkeypatch):
+    review_job(tmp_path)
+    scores = {"Привет там": 2, "Вторая строка": 5}
+
+    def answer(messages, thinking):
+        if thinking:
+            return json.dumps({"0": "Bom dia, tudo bem"})  # Portuguese for a ru target: not kept
+        return score_by_translation(messages, scores)
+
+    calls = review_llm(monkeypatch, answer)
+    run_review(tmp_path)
+    assert [thinking for thinking, _ in calls].count(True) == 1
+    assert [thinking for thinking, _ in calls].count(False) == 1  # no rescoring of a discarded retranslation
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))
+    assert sidecar["translations"]["ru"]["scores"] == {"0": 2, "1": 5}
+    assert "== Translation ru\n\n- 00:00 (?) Привет там\n" in (tmp_path / "note.typ").read_text()
+
+
+def test_review_skipped_without_llm_endpoint(tmp_path, monkeypatch):
+    review_job(tmp_path)
+
+    def unexpected(request, timeout):
+        pytest.fail("the review must not call an LLM without an endpoint")
+
+    monkeypatch.setattr(worker, "urlopen", unexpected)
+    assert run_review(tmp_path)["status"] == "done"
+    entry = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio"))["translations"]["ru"]
+    assert entry["scores"] == {}
+
+
+@pytest.mark.parametrize("failure", ["not JSON", "endpoint down"])
+def test_review_failure_keeps_translation(tmp_path, monkeypatch, failure):
+    review_job(tmp_path)
+
+    def answer(messages, thinking):
+        if failure == "endpoint down":
+            raise OSError("endpoint down")
+        return "Извините, не могу оценить."
+
+    review_llm(monkeypatch, answer)
+    job = run_review(tmp_path)
+    assert job["status"] == "done"
+    assert job["review_error"]
+    assert "== Translation ru\n\n- 00:00 Привет там\n- 00:05 Вторая строка\n" in (tmp_path / "note.typ").read_text()
+
+
 def write_ai(vault, **fields):
     path = vault / "_system/settings/ai.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1406,7 +1537,9 @@ def test_translation_and_heartbeat_use_key_without_writing_it(tmp_path, monkeypa
         assert job["error"] == "Backend rejected key [redacted]"
     heartbeat = tmp_path / "_system/workers/test-host.json"
     assert json.loads(heartbeat.read_text())["connections"]["my-server"]["reachable"] is True
-    assert calls == ["https://server/v1/chat/completions", "https://server/v1/models"]
+    chat = "https://server/v1/chat/completions"
+    # A finished translation is also scored by the review pass (a second chat request before the heartbeat probe).
+    assert calls == ([chat] if failed else [chat, chat]) + ["https://server/v1/models"]
     written = [state_path, *(tmp_path / "_system/jobs").rglob("*.json"),
                *(tmp_path / "_system/workers").glob("*.json")]
     assert all(secret not in file.read_text() for file in written)

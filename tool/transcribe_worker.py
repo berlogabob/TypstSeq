@@ -28,6 +28,8 @@ LOCAL_MODEL_CAP = "small"  # the largest Whisper model this Mac runs, whatever t
 FAILED_TRANSLATION = "[sem tradução]"  # written for a line the model could not translate
 TRANSLATION_WINDOW = 40  # lines per translation call; each call also carries the summary and glossary
 TRANSLATION_PREVIOUS = 10  # source/translation pairs before a window, shown as context only
+REVIEW_LOW = 3  # a line scored below this is retranslated once; still below, it renders with (?)
+REVIEW_RETRY_SECONDS = 300  # deadline of the one retranslation request, which thinks
 LANGUAGE_NAMES = {"ru": "Russian", "en": "English", "pt": "Portuguese"}
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 # Ordered by size; a name not listed here counts as the largest.
@@ -372,11 +374,12 @@ def translate_connection(settings):
     return connection
 
 
-def llm_chat(settings, *, max_tokens=3000):
+def llm_chat(settings, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE):
     """(model, chat) for the translate task's LLM: connection, model choice and request deadlines.
 
-    chat(messages) returns the reply text with thinking off. The caller asks for JSON in the
-    prompt and parses it. The Stage 5 context pass uses this endpoint with a larger max_tokens.
+    chat(messages) returns the reply text; thinking is off unless `thinking` is set, and each request
+    is cut after `seconds`. The caller asks for JSON in the prompt and parses it. The Stage 5 context
+    pass uses a larger max_tokens; the review pass's retranslation uses thinking and 300 s.
     """
     task = settings.get("tasks", {}).get("translate", {})
     base, key = connection_credentials(translate_connection(settings))
@@ -390,7 +393,7 @@ def llm_chat(settings, *, max_tokens=3000):
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         url = route if route.startswith(("http://", "https://")) else base.rstrip("/") + route
         request = Request(url, data=data, headers=headers)
-        with deadline(LLM_DEADLINE), urlopen(request, timeout=900 if route.endswith("/load") else 300) as response:
+        with deadline(seconds), urlopen(request, timeout=900 if route.endswith("/load") else 300) as response:
             return json.load(response)
 
     model = os.environ.get("TYLOG_LLM_MODEL") or task.get("model")
@@ -407,7 +410,7 @@ def llm_chat(settings, *, max_tokens=3000):
             "model": model,
             "temperature": 0,
             "max_tokens": max_tokens,
-            "chat_template_kwargs": {"enable_thinking": False},
+            "chat_template_kwargs": {"enable_thinking": thinking},
             "messages": messages,
         })["choices"][0]["message"]["content"] or ""
 
@@ -467,11 +470,23 @@ def _translation_system(target, source_langs, context):
 
 
 def _window_user(texts, indices, pairs):
-    """The previous source/translation pairs (context only), then the window as JSON {id: text} on the last line."""
+    """The context (source/translation pairs, not to translate), then the lines to translate as JSON {id: text}
+    on the last line."""
     before = json.dumps([{"source": source, "translation": text} for source, text in pairs], ensure_ascii=False)
     window = json.dumps({str(index): texts[index] for index in indices}, ensure_ascii=False)
-    return (f"Previous lines, for context only; do not translate or repeat them:\n{before if pairs else '(none)'}\n\n"
+    return (f"Context lines, for reference only; do not translate or repeat them:\n{before if pairs else '(none)'}\n\n"
             f"Lines to translate, JSON {{id: text}}:\n{window}")
+
+
+def _reply_object(reply):
+    """A model reply parsed as a JSON object; a fenced block is unwrapped. Anything else raises ValueError."""
+    if reply.startswith("```"):
+        reply = re.sub(r"^```[^\n]*\n", "", reply)
+        reply = re.sub(r"\s*```$", "", reply)
+    result = json.loads(reply)
+    if not isinstance(result, dict):
+        raise ValueError("Translation reply must be a JSON object keyed by line id")
+    return result
 
 
 def translate(texts, source_lang, target, source_langs=None, *, settings=None, context=None):
@@ -490,13 +505,7 @@ def translate(texts, source_lang, target, source_langs=None, *, settings=None, c
             {"role": "system", "content": _translation_system(target, source_langs or [source_lang], context)},
             {"role": "user", "content": _window_user(texts, indices, pairs)},
         ])
-        if reply.startswith("```"):
-            reply = re.sub(r"^```[^\n]*\n", "", reply)
-            reply = re.sub(r"\s*```$", "", reply)
-        result = json.loads(reply)
-        if not isinstance(result, dict):
-            raise ValueError("Translation reply must be a JSON object keyed by line id")
-        return {key: value for key, value in result.items() if isinstance(value, str)}
+        return {key: value for key, value in _reply_object(reply).items() if isinstance(value, str)}
 
     def settle(text, reply):
         """The reply when it is in the target language; else one plain retry of the line alone; None if that fails too."""
@@ -623,7 +632,7 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
         if old is not None and old.get("status") in ("user", "deleted"):
             built.append(old)
             continue
-        built.append({"start": segment["start"], "kind": segment["kind"], "text": text,
+        built.append({"start": segment["start"], "kind": segment["kind"], "text": text, "source": segment["text"],
                       "status": segment["status"], "doubt_mark": segment.get("doubt_mark", False),
                       "rendered": dict(old.get("rendered", {})) if old else {}})
 
@@ -842,6 +851,95 @@ def translation_context(sidecar):
     if not isinstance(context, dict):
         return None
     return {"summary": context.get("summary") or "", "glossary": context.get("glossary") or []}
+
+
+def translation_lines(entry):
+    """The lines of a sidecar translation entry, {"lines", "scores"}; a bare list is an older sidecar. None when absent."""
+    return entry.get("lines") if isinstance(entry, dict) else entry
+
+
+def _review_system(target):
+    language = LANGUAGE_NAMES.get(target, target)
+    return (
+        f"You grade translations of one recording's transcript into {language}. Each item has the source line and "
+        f"its translation. Score each translation from 1 to 5 for faithfulness to the source and for readability in "
+        f"{language}: 5 faithful and natural, 3 understandable with a flaw, 1 wrong, unrelated or left in the source "
+        "language. Reply with one JSON object and nothing else: {id: score}, one integer from 1 to 5 for each id."
+    )
+
+
+def _is_score(value):
+    return type(value) in (int, float) and 1 <= value <= 5
+
+
+def review_translation(note, sidecar, target, source_langs, settings, context):
+    """Stage 6 of a translation: the LLM scores each machine speech line 1-5, one call per TRANSLATION_WINDOW lines.
+
+    A line scored below REVIEW_LOW is retranslated once, alone, with its window as context (thinking on, 300 s).
+    The retranslation is kept only if it passes looks_translated; then it is scored again and that score is kept.
+    The result goes to sidecar translations[target] = {"lines", "scores"}; scores are keyed by the line's index in
+    "lines". A line still below REVIEW_LOW renders with the (?) mark. No LLM endpoint: nothing is scored.
+
+    The translation stands whatever the review does. An LLM failure stops the review; the lines and scores
+    done so far are written and the (redacted) message is returned, None when the review finished.
+    """
+    import audio_v2
+
+    if not connection_credentials(translate_connection(settings))[0]:
+        return None
+    lines = translation_lines(sidecar["translations"][target])
+    texts = [line.get("source", "") for line in lines]
+    candidates = [i for i, line in enumerate(lines)
+                  if line["kind"] == "speech" and line.get("status") in ("ok", "doubtful") and texts[i].strip()]
+    scores, error = {}, None
+
+    def score(items):
+        """{line index: score} for (index, source, translation) items, in one call."""
+        reply = chat([
+            {"role": "system", "content": _review_system(target)},
+            {"role": "user", "content": json.dumps(
+                {str(i): {"source": source, "translation": text} for i, source, text in items}, ensure_ascii=False)},
+        ])
+        result = _reply_object(reply)
+        return {i: round(result[str(i)]) for i, _, _ in items if _is_score(result.get(str(i)))}
+
+    def retranslate(position):
+        """A new translation of candidates[position] from its window as context; None when the reply has none."""
+        i = candidates[position]
+        start = position // TRANSLATION_WINDOW * TRANSLATION_WINDOW
+        pairs = [(texts[j], lines[j]["text"]) for j in candidates[start:start + TRANSLATION_WINDOW] if j != i]
+        reply = retry([
+            {"role": "system", "content": _translation_system(target, source_langs, context)},
+            {"role": "user", "content": _window_user(texts, [i], pairs)},
+        ])
+        text = _reply_object(reply).get(str(i))
+        return text.strip() if isinstance(text, str) and text.strip() else None
+
+    try:
+        _, chat = llm_chat(settings)
+        _, retry = llm_chat(settings, thinking=True, seconds=REVIEW_RETRY_SECONDS)
+        items = [(i, texts[i], lines[i]["text"]) for i in candidates]
+        for first in range(0, len(items), TRANSLATION_WINDOW):
+            scores.update(score(items[first:first + TRANSLATION_WINDOW]))
+        for position, i in enumerate(candidates):
+            if i not in scores or scores[i] >= REVIEW_LOW:
+                continue
+            text = retranslate(position)
+            if text is None or not looks_translated(texts[i], text, target):
+                continue
+            fresh = score([(i, texts[i], text)]).get(i)
+            if fresh is not None:
+                lines[i]["text"], scores[i] = text, fresh
+    except (ValueError, OSError) as failure:
+        _, key = connection_credentials(translate_connection(settings))
+        error = str(failure).replace(key, "[redacted]") if key else str(failure)
+    for i in scores:
+        lines[i]["doubt_mark"] = lines[i]["doubt_mark"] or scores[i] < REVIEW_LOW  # the transcript's (?) stays
+    note_text, lines = audio_v2.merge_section(read_note(note), f"Translation {target}", lines)
+    with note.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(note_text)
+    sidecar["translations"][target] = {"lines": lines, "scores": {str(i): value for i, value in scores.items()}}
+    return error
 
 
 def sweep(vault, now, state, force=False):
@@ -1167,15 +1265,18 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                         job["lang"] = language
                         job["langs"] = languages
                     else:
+                        job.pop("review_error", None)
                         segments_sidecar = audio_v2.sidecar_path(vault, job["audio"])
                         sidecar = audio_v2.load_sidecar(segments_sidecar)
                         translations = sidecar.setdefault("translations", {})
-                        updated_note, translations[job["target"]] = apply_translation(
-                            note_text, job["source_lang"], job["target"], translate,
-                            job.get("source_langs", [job["source_lang"]]),
-                            previous=translations.get(job["target"]),
+                        source_langs = job.get("source_langs", [job["source_lang"]])
+                        context = translation_context(sidecar)
+                        updated_note, lines = apply_translation(
+                            note_text, job["source_lang"], job["target"], translate, source_langs,
+                            previous=translation_lines(translations.get(job["target"])),
                             reread=lambda: read_note(note),
-                            context=translation_context(sidecar))
+                            context=context)
+                        translations[job["target"]] = {"lines": lines, "scores": {}}
                 with note.open("w", encoding="utf-8", newline="") as stream:
                     stream.write(updated_note)
                 if finish is not None:
@@ -1183,6 +1284,9 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     context_stage(vault, job, note, *finish, settings, translate)
                     arbitration_stage(note, finish[0], settings)
                 if kind == "translations":
+                    review_error = review_translation(note, sidecar, job["target"], source_langs, settings, context)
+                    if review_error:
+                        job["review_error"] = review_error
                     audio_v2.save_sidecar(segments_sidecar, sidecar)
                     if getattr(translate, "last_model", None) is not None:
                         job["llm"] = translate.last_model

@@ -93,6 +93,23 @@ def test_cli_prints_one_json_line(tmp_path):
     assert json.loads(lines[0]) == audio_metrics.note_metrics(FIXTURE)
 
 
+def test_metrics_mean_score(tmp_path):
+    sidecar = {"translations": {"ru": {"lines": [], "scores": {"0": 5, "1": 2, "2": 4}}}}
+    assert audio_metrics.note_metrics(FIXTURE, sidecar)["translations"]["ru"]["mean_score"] == 3.67
+    assert "mean_score" not in audio_metrics.note_metrics(FIXTURE)["translations"]["ru"]
+    assert "mean_score" not in audio_metrics.note_metrics(FIXTURE, {"translations": {"ru": []}})["translations"]["ru"]
+    note = tmp_path / "note.typ"
+    note.write_text(FIXTURE, encoding="utf-8")
+    sidecar_file = tmp_path / "sidecar.json"
+    sidecar_file.write_text(json.dumps(sidecar), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(Path(audio_metrics.__file__)), str(note), str(sidecar_file)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["translations"]["ru"]["mean_score"] == 3.67
+
+
 def test_regions_merge_up_to_25s_and_split_at_longest_pause():
     speech = [(0, 10), (10.5, 20), (22, 30), (30.2, 40)]
     items = v2.plan_chunks(speech, total=40)

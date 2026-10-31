@@ -4,7 +4,8 @@ Reads the format written by lib/audio/audio_note_doc.dart: `== Transcript` and
 `== Translation <lang>` sections of `- mm:ss text` lines, aligned by position.
 Parsing mirrors `_parseSection` there (sorted by timestamp, `\\x` unescaped).
 
-Usage: uv run --no-project python tool/audio_metrics.py <note.typ>
+Usage: uv run --no-project python tool/audio_metrics.py <note.typ> [sidecar.json]
+The sidecar adds mean_score per language when it holds review scores.
 """
 
 import json
@@ -79,7 +80,15 @@ def _translation_stats(lang, lines, source):
     return stats
 
 
-def note_metrics(note_text):
+def _mean_score(sidecar, lang):
+    """Mean of the review scores the sidecar holds for `lang`, rounded to 2 places; None without scores."""
+    entry = (sidecar or {}).get("translations", {}).get(lang)
+    scores = entry.get("scores") if isinstance(entry, dict) else None
+    values = list(scores.values()) if isinstance(scores, dict) else []
+    return round(sum(values) / len(values), 2) if values else None
+
+
+def note_metrics(note_text, sidecar=None):
     source = _entries(note_text, "Transcript")
     loops = mid_cut = nonspeech = doubtful = 0
     for text in source:
@@ -96,6 +105,10 @@ def note_metrics(note_text):
         lang: _translation_stats(lang, _entries(note_text, f"Translation {lang}"), source)
         for lang in langs
     }
+    for lang, stats in translations.items():
+        mean = _mean_score(sidecar, lang)
+        if mean is not None:
+            stats["mean_score"] = mean
     return {
         "lines": len(source),
         "loops": loops,
@@ -107,11 +120,12 @@ def note_metrics(note_text):
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: audio_metrics.py <note.typ>", file=sys.stderr)
+    if len(argv) not in (2, 3):
+        print("usage: audio_metrics.py <note.typ> [sidecar.json]", file=sys.stderr)
         return 2
     text = Path(argv[1]).read_text(encoding="utf-8")
-    print(json.dumps(note_metrics(text)))
+    sidecar = json.loads(Path(argv[2]).read_text(encoding="utf-8")) if len(argv) == 3 else None
+    print(json.dumps(note_metrics(text, sidecar)))
     return 0
 
 
