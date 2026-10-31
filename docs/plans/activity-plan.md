@@ -266,7 +266,7 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T31 P30: audio note screen shows 'No transcript yet' + 'Request transcription' for 5-15 s while the note loads (risk: needless re-transcription) -> loading state; transcript load must not wait for audio
 - [x] T32 P30: each [—] gap renders as two stacked '—' chips in parallel mode (~200 on the theatre note) -> one muted row per gap, consecutive gaps merged
 - [x] T33 user: language/view header takes too much space -> one compact row (parallel toggle icon, source chip marked original, translation chips, translate action); drop the 'Language: X' line
-- [ ] Release 0.20.6 after T31-T33 pass on the P30 (user: Mac check not needed)
+- [x] Release v0.20.6+164 (user: go; Mac check not needed): run 41246968798 success, 8 assets, APK has libtypst_flutter.so, installed on P30. First run cancelled by GitHub's macos-14 brownout -> apple job on macos-15 (70598b6), tag moved before publish
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
