@@ -263,6 +263,10 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process; toggle read-only (analyze clean, 1755 tests)
 - [x] T27 P30 release build on real vault: parallel original/ru, Summary + Scenes in ru, RU/EN chips work
 - [x] T30 no add-translation chip for the source language (1756 tests)
+- [x] T31 P30: audio note screen shows 'No transcript yet' + 'Request transcription' for 5-15 s while the note loads (risk: needless re-transcription) -> loading state; transcript load must not wait for audio
+- [x] T32 P30: each [—] gap renders as two stacked '—' chips in parallel mode (~200 on the theatre note) -> one muted row per gap, consecutive gaps merged
+- [x] T33 user: language/view header takes too much space -> one compact row (parallel toggle icon, source chip marked original, translation chips, translate action); drop the 'Language: X' line
+- [ ] Release 0.20.6 after T31-T33 pass on the P30 (user: Mac check not needed)
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
