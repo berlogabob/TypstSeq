@@ -258,7 +258,8 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T21 (db67edc) translations wait for the context pass; windows of 40 lines with Summary + glossary + previous 10 pairs
 - [x] T22 (a95e8e8, 280 tests) review pass: score 1-5 per line, retranslate < 3 once with thinking on, (?) if still < 3
 - [x] T23 translations with context + review: ru mean 3.89, en 3.93, 15 min each; ru first window 00:27-07:59 failed (10 lines)
-- [ ] T28 (a) Studio reverts Ornith to the default load after idle (context_length == native_context_length is the default-load signature, seen twice): load at 64k before each job's LLM stages when that holds, keep the empty-reply fallback; (b) a failed window splits in halves before single lines; (c) review reply: JSON mode + one retry; (d) audio_metrics counts '(?) [sem tradução]' as failed
+- [x] T28 (63a1926, 287 tests) (a) Studio reverts Ornith to the default load after idle (context_length == native_context_length is the default-load signature, seen twice): load at 64k before each job's LLM stages when that holds, keep the empty-reply fallback; (b) a failed window splits in halves before single lines; (c) review reply: JSON mode + one retry; (d) audio_metrics counts '(?) [sem tradução]' as failed
+- [ ] T29 re-run theatre ru translation after T28 (queued 20:47); target failed < 2%, mean >= 4
 - [x] T24-26 Phase 5 app (codex): parallel text + markers; Summary/Scenes/References; Re-process; toggle read-only (analyze clean, 1755 tests)
 - [ ] T27 GUI check of the audio note screen on Mac + P30 (Mac screen locked now; needs user or unlocked Mac)
 - [ ] Phase 4 rest (windowed translation with context + review pass) and Phase 5 app: after T12
