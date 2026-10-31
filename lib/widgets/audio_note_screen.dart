@@ -244,6 +244,149 @@ class AudioLanguageBar extends StatelessWidget {
   }
 }
 
+/// One seek target shared by the original line and its optional translation.
+class AudioTranscriptRow extends StatelessWidget {
+  const AudioTranscriptRow({
+    super.key,
+    required this.segment,
+    required this.onTap,
+    this.translation,
+    this.active = false,
+  });
+
+  final AudioComment segment;
+  final String? translation;
+  final bool active;
+  final VoidCallback onTap;
+
+  Widget _text(BuildContext context, String source, {bool muted = false}) {
+    final parsed = parseTranscriptText(source);
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    final style = theme.textTheme.bodyMedium?.copyWith(
+      color: muted || parsed.doubtful || parsed.nonSpeech || parsed.untranslated
+          ? color
+          : null,
+      fontStyle: parsed.untranslated ? FontStyle.italic : null,
+      decoration: parsed.doubtful ? TextDecoration.underline : null,
+    );
+    if (parsed.nonSpeech) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        heightFactor: 1,
+        child: Chip(
+          label: Text(parsed.text, style: style),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (parsed.doubtful) ...[
+          Tooltip(
+            message: 'Doubtful text',
+            child: Badge(
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              textColor: color,
+              label: const Text('?'),
+            ),
+          ),
+          const SizedBox(width: kSpace8),
+        ],
+        Expanded(child: Text(parsed.text, style: style)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    dense: true,
+    selected: active,
+    leading: Text(formatTimestamp(segment.ms)),
+    title: _text(context, segment.text),
+    subtitle: translation == null
+        ? null
+        : _text(context, translation!, muted: true),
+    onTap: onTap,
+  );
+}
+
+/// Context written by the worker, with the same seek targets as transcript rows.
+class AudioNoteSections extends StatefulWidget {
+  const AudioNoteSections({
+    super.key,
+    required this.summary,
+    required this.scenes,
+    required this.references,
+    required this.onSeek,
+  });
+
+  final List<AudioComment> summary;
+  final List<AudioComment> scenes;
+  final List<AudioComment> references;
+  final ValueChanged<int> onSeek;
+
+  @override
+  State<AudioNoteSections> createState() => _AudioNoteSectionsState();
+}
+
+class _AudioNoteSectionsState extends State<AudioNoteSections> {
+  bool _summaryExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = widget.summary.map((c) => c.text).join('\n');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.summary.isNotEmpty)
+          ExpansionTile(
+            title: const Text('Summary'),
+            subtitle: _summaryExpanded
+                ? null
+                : Text(summary, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onExpansionChanged: (v) => setState(() => _summaryExpanded = v),
+            childrenPadding: const EdgeInsets.fromLTRB(
+              kSpace16,
+              0,
+              kSpace16,
+              kSpace8,
+            ),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            children: [Text(summary)],
+          ),
+        for (final section in [
+          ('Scenes', widget.scenes),
+          ('References', widget.references),
+        ])
+          if (section.$2.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                kSpace16,
+                kSpace8,
+                kSpace16,
+                kSpace4,
+              ),
+              child: Text(
+                section.$1,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            for (final entry in section.$2)
+              ListTile(
+                dense: true,
+                leading: Text(formatTimestamp(entry.ms)),
+                title: Text(entry.text),
+                onTap: () => widget.onSeek(entry.ms),
+              ),
+          ],
+      ],
+    );
+  }
+}
+
 /// Player + timestamped comments for one `kind: audio` note.
 class AudioNoteScreen extends StatefulWidget {
   const AudioNoteScreen({
@@ -284,6 +427,7 @@ class AudioNoteScreen extends StatefulWidget {
   final Future<String?> Function(String audioPath) transcriptStatus;
 
   /// Queues a transcription job for a worker; see docs/audio-transcription.md.
+  /// Also used by Re-process, so a completed job must be allowed to queue again.
   final Future<void> Function(String audioPath, String notePath)
   requestTranscript;
 
@@ -318,6 +462,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   bool get _watching =>
       _tab == AudioTab.transcribe || _tab == AudioTab.translate;
   List<AudioComment> _transcript = const [];
+  List<AudioComment> _summary = const [];
+  List<AudioComment> _scenes = const [];
+  List<AudioComment> _references = const [];
+  bool _parallel = true;
+  bool _requestingTranscript = false;
   String? _audioPath;
   String? _transcriptState;
   late AudioTab _tab = widget.initialTab;
@@ -485,6 +634,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   void _applySource(String source) {
     _comments = parseComments(source);
     _transcript = parseTranscript(source);
+    _summary = parseSummary(source);
+    _scenes = parseScenes(source);
+    _references = parseReferences(source);
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
@@ -543,12 +695,26 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     if (mounted) showSnack(context, 'Translation requested');
   }
 
-  Future<void> _requestTranscript() async {
+  Future<void> _requestTranscript({bool reprocess = false}) async {
     final path = _audioPath;
-    if (path == null) return;
-    await widget.requestTranscript(path, widget.note.path);
-    await _refreshTranscriptState();
-    if (mounted) showSnack(context, 'Transcription requested');
+    if (path == null || _requestingTranscript) return;
+    setState(() => _requestingTranscript = true);
+    try {
+      await widget.requestTranscript(path, widget.note.path);
+      await _refreshTranscriptState();
+      if (mounted) {
+        showSnack(
+          context,
+          reprocess ? 'Re-processing requested' : 'Transcription requested',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        showSnack(context, 'Could not request transcription: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _requestingTranscript = false);
+    }
   }
 
   Future<void> _addComment() async {
@@ -601,6 +767,23 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_aliases.isEmpty ? widget.note.title : _aliases.first),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Audio note menu',
+            onSelected: (_) => unawaited(_requestTranscript(reprocess: true)),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'reprocess',
+                enabled:
+                    _audioPath != null &&
+                    !_requestingTranscript &&
+                    _transcriptState != 'queued' &&
+                    _transcriptState != 'processing',
+                child: const Text('Re-process'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: SafeArea(
         child: _error != null
@@ -866,6 +1049,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       );
     }
     final active = activeIndex(_transcript, _position.inMilliseconds);
+    final view = _translations.containsKey(_view)
+        ? _view
+        : _translations.keys.firstOrNull;
     return Column(
       children: [
         if (_lang != null)
@@ -879,20 +1065,73 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               ),
             ),
           ),
-        Expanded(child: _segments(_transcript, active)),
+        if (_translations.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                label: const Text('Parallel'),
+                selected: _parallel,
+                onSelected: (v) => setState(() => _parallel = v),
+              ),
+            ),
+          ),
+          if (_parallel)
+            AudioLanguageBar(
+              selected: widget.selectedLanguages,
+              original: null,
+              translated: _translations.keys.toSet(),
+              translating: _translating,
+              view: view,
+              onView: (l) => setState(() => _view = l),
+              onRequest: (l) => unawaited(_requestTranslation(l)),
+              canRequest: widget.requestTranslation != null && _lang != null,
+            ),
+        ],
+        Expanded(
+          child: _segments(
+            _transcript,
+            active,
+            parallel: _parallel ? _translations[view] : null,
+            showSections: true,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _segments(List<AudioComment> shown, int active) => ListView.builder(
-    itemCount: shown.length,
-    itemBuilder: (context, i) => ListTile(
-      dense: true,
-      selected: i == active,
-      leading: Text(formatTimestamp(shown[i].ms)),
-      title: Text(shown[i].text),
-      onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
-    ),
+  Widget _segments(
+    List<AudioComment> shown,
+    int active, {
+    List<AudioComment>? parallel,
+    bool showSections = false,
+  }) => CustomScrollView(
+    slivers: [
+      if (showSections)
+        SliverToBoxAdapter(
+          child: AudioNoteSections(
+            summary: _summary,
+            scenes: _scenes,
+            references: _references,
+            onSeek: (ms) => _seek(Duration(milliseconds: ms)),
+          ),
+        ),
+      SliverList.builder(
+        itemCount: shown.length,
+        itemBuilder: (context, i) => AudioTranscriptRow(
+          segment: shown[i],
+          translation:
+              parallel != null &&
+                  i < parallel.length &&
+                  parallel[i].ms == shown[i].ms
+              ? parallel[i].text
+              : null,
+          active: i == active,
+          onTap: () => _seek(Duration(milliseconds: shown[i].ms)),
+        ),
+      ),
+    ],
   );
 
   Widget _translateView() {

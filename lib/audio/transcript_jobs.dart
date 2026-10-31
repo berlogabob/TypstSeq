@@ -89,8 +89,9 @@ Future<void> enqueueTranslation(
 }
 
 /// Re-requesting never resets a claimed or finished job; only a failed one is
-/// queued again. [retryDone] also re-queues a finished job, for a transcript
-/// that came back empty.
+/// queued again. [retryDone] also re-queues a finished job for Re-process or a
+/// transcript that came back empty. Only the job is written; note edits and
+/// worker sidecars stay intact.
 Future<void> enqueueTranscript(
   VaultStorage storage, {
   required String audioPath,

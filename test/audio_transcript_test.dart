@@ -14,6 +14,90 @@ const kSource =
     '- 01:11 the bridge\n';
 
 void main() {
+  test('transcript markers are parsed without changing ordinary text', () {
+    expect(parseTranscriptText('hello (?) world'), (
+      text: 'hello (?) world',
+      doubtful: false,
+      nonSpeech: false,
+      untranslated: false,
+    ));
+    expect(parseTranscriptText('(?) talvez'), (
+      text: 'talvez',
+      doubtful: true,
+      nonSpeech: false,
+      untranslated: false,
+    ));
+    expect(parseTranscriptText('[—]'), (
+      text: '—',
+      doubtful: false,
+      nonSpeech: true,
+      untranslated: false,
+    ));
+    expect(parseTranscriptText('[sem tradução]'), (
+      text: 'no translation',
+      doubtful: false,
+      nonSpeech: false,
+      untranslated: true,
+    ));
+    expect(parseTranscriptText('(?) [sem tradução]'), (
+      text: 'no translation',
+      doubtful: true,
+      nonSpeech: false,
+      untranslated: true,
+    ));
+  });
+
+  test('markers are recognized after timestamped text is unescaped', () {
+    const source = r'''
+== Transcript
+- 00:01 (?) Talvez
+- 00:02 \[—\]
+== Translation ru
+- 00:01 (?) Может быть
+- 00:02 \[sem tradução\]
+''';
+    final transcript = parseTranscript(source);
+    final translated = parseTranslation(source, 'ru');
+    expect(parseTranscriptText(transcript.first.text).doubtful, isTrue);
+    expect(parseTranscriptText(transcript.last.text).nonSpeech, isTrue);
+    expect(parseTranscriptText(translated.first.text).text, 'Может быть');
+    expect(parseTranscriptText(translated.last.text).untranslated, isTrue);
+    expect(transcript.map((c) => c.ms), translated.map((c) => c.ms));
+  });
+
+  test('context sections parse separately and keep reference AI labels', () {
+    const source = r'''
+== Summary
+- 00:00 A play about \[memory\].
+== Scenes
+- 01:20 Second scene
+- 00:10 First scene
+- 00:10 Same-second scene
+== References
+- 00:30 Pessoa: Portuguese poet (AI)
+== Context
+- 00:05 User programme
+== Transcript
+- 00:10 The play begins
+''';
+    expect(parseSummary(source), [(ms: 0, text: 'A play about [memory].')]);
+    expect(parseScenes(source), [
+      (ms: 10000, text: 'First scene'),
+      (ms: 10000, text: 'Same-second scene'),
+      (ms: 80000, text: 'Second scene'),
+    ]);
+    expect(parseReferences(source), [
+      (ms: 30000, text: 'Pessoa: Portuguese poet (AI)'),
+    ]);
+    expect(parseTranscript(source).single.text, 'The play begins');
+  });
+
+  test('absent context sections parse as empty lists', () {
+    expect(parseSummary(kSource), isEmpty);
+    expect(parseScenes(kSource), isEmpty);
+    expect(parseReferences(kSource), isEmpty);
+  });
+
   test(
     'parseComments ignores transcript lines and parseTranscript ignores comments',
     () {

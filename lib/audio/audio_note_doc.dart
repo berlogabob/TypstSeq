@@ -118,6 +118,34 @@ List<AudioComment> parseTranscript(String source) =>
 List<AudioComment> parseTranslation(String source, String lang) =>
     _parseSection(source, 'Translation $lang');
 
+/// Worker markers are presentation only; the note keeps its original text.
+({String text, bool doubtful, bool nonSpeech, bool untranslated})
+parseTranscriptText(String text) {
+  final doubtful = text.startsWith('(?) ');
+  if (doubtful) text = text.substring(4);
+  final nonSpeech = text == '[—]';
+  final untranslated = text == '[sem tradução]';
+  return (
+    text: nonSpeech
+        ? '—'
+        : untranslated
+        ? 'no translation'
+        : text,
+    doubtful: doubtful,
+    nonSpeech: nonSpeech,
+    untranslated: untranslated,
+  );
+}
+
+List<AudioComment> parseSummary(String source) =>
+    _parseSection(source, 'Summary');
+
+List<AudioComment> parseScenes(String source) =>
+    _parseSection(source, 'Scenes');
+
+List<AudioComment> parseReferences(String source) =>
+    _parseSection(source, 'References');
+
 /// Languages that already have a `== Translation <lang>` section.
 List<String> translationLangs(String source) => [
   for (final m in RegExp(

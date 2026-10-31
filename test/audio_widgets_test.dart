@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/ai/ai_settings.dart';
+import 'package:tylog/audio/audio_note_doc.dart';
 import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/audio_inline_card.dart';
@@ -8,6 +9,7 @@ import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/audio_processing_settings.dart';
 import 'package:tylog/widgets/audio_shelf.dart';
 import 'package:tylog/widgets/ai_connections_settings.dart';
+import 'package:tylog/widgets/constants.dart';
 
 NoteRef note(String id, String kind, {Map<String, Object?> p = const {}}) =>
     NoteRef(
@@ -53,6 +55,130 @@ const _sectionSettings = AiSettings(
 );
 
 void main() {
+  testWidgets('parallel row shows muted translation and both lines seek', (
+    tester,
+  ) async {
+    var taps = 0;
+    final theme = tyLogTheme(Brightness.light);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: AudioTranscriptRow(
+            segment: (ms: 42000, text: '(?) Olá'),
+            translation: 'Привет',
+            active: true,
+            onTap: () => taps++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('00:42'), findsOneWidget);
+    expect(find.text('(?) Olá'), findsNothing);
+    expect(find.text('?'), findsOneWidget);
+    final original = tester.widget<Text>(find.text('Olá'));
+    final translated = tester.widget<Text>(find.text('Привет'));
+    expect(original.style!.color, theme.colorScheme.onSurfaceVariant);
+    expect(original.style!.decoration, TextDecoration.underline);
+    expect(translated.style!.color, theme.colorScheme.onSurfaceVariant);
+    expect(
+      tester.getTopLeft(find.text('Привет')).dy,
+      greaterThan(tester.getTopLeft(find.text('Olá')).dy),
+    );
+    expect(tester.widget<ListTile>(find.byType(ListTile)).selected, isTrue);
+    await tester.tap(find.text('Olá'));
+    await tester.tap(find.text('Привет'));
+    expect(taps, 2);
+  });
+
+  testWidgets('non-speech and missing translation markers stay seekable', (
+    tester,
+  ) async {
+    var taps = 0;
+    final theme = tyLogTheme(Brightness.dark);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: AudioTranscriptRow(
+            segment: (ms: 5000, text: '[—]'),
+            translation: '[sem tradução]',
+            onTap: () => taps++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.widgetWithText(Chip, '—'), findsOneWidget);
+    expect(find.text('[—]'), findsNothing);
+    expect(find.text('[sem tradução]'), findsNothing);
+    final text = tester.widget<Text>(find.text('no translation'));
+    expect(text.style!.fontStyle, FontStyle.italic);
+    expect(text.style!.color, theme.colorScheme.onSurfaceVariant);
+    await tester.tap(find.text('—'));
+    await tester.tap(find.text('no translation'));
+    expect(taps, 2);
+  });
+
+  testWidgets('summary expands and scenes and AI references seek', (
+    tester,
+  ) async {
+    const source =
+        '== Summary\n- 00:00 A play about memory.\n'
+        '- 00:00 A second summary line.\n'
+        '== Scenes\n- 00:10 Opening scene\n'
+        '== References\n- 00:30 Pessoa: Portuguese poet (AI)\n';
+    final seeks = <int>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: tyLogTheme(Brightness.light),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AudioNoteSections(
+              summary: parseSummary(source),
+              scenes: parseScenes(source),
+              references: parseReferences(source),
+              onSeek: seeks.add,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const summary = 'A play about memory.\nA second summary line.';
+    expect(tester.widget<Text>(find.text(summary)).maxLines, 1);
+    await tester.tap(find.text('Summary'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.text(summary)).maxLines, isNull);
+    expect(find.text('Scenes'), findsOneWidget);
+    expect(find.text('References'), findsOneWidget);
+    await tester.tap(find.text('Opening scene'));
+    await tester.tap(find.text('Pessoa: Portuguese poet (AI)'));
+    expect(seeks, [10000, 30000]);
+  });
+
+  testWidgets('absent summary, scenes and references stay hidden', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioNoteSections(
+            summary: const [],
+            scenes: const [],
+            references: const [],
+            onSeek: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Summary'), findsNothing);
+    expect(find.text('Scenes'), findsNothing);
+    expect(find.text('References'), findsNothing);
+    expect(find.byType(ListTile), findsNothing);
+  });
+
   testWidgets('servers section shows connections but not audio quality', (
     tester,
   ) async {
@@ -79,6 +205,8 @@ void main() {
 
     expect(find.text('Transcription quality'), findsOneWidget);
     expect(find.text('Transcribe automatically'), findsOneWidget);
+    expect(find.text('Translations: ru, en, pt (always)'), findsOneWidget);
+    expect(find.text('Translate automatically'), findsNothing);
     expect(find.text('Full text in each of these languages'), findsOneWidget);
     expect(find.text('Articles'), findsNothing);
   });
@@ -359,7 +487,7 @@ void main() {
   });
 
   testWidgets(
-    'language settings stay editable with both automation switches off',
+    'language settings stay editable and translations are always enabled',
     (tester) async {
       AudioPolicy? saved;
       await tester.pumpWidget(
@@ -376,6 +504,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Translations: ru, en, pt (always)'), findsOneWidget);
+      expect(find.text('Translate automatically'), findsNothing);
+      expect(find.byType(CheckboxListTile), findsOneWidget);
       expect(find.byType(FilterChip), findsNothing);
       expect(find.text('Full text in each of these languages'), findsOneWidget);
       expect(
@@ -397,9 +528,8 @@ void main() {
       chip.onDeleted!();
       await tester.pumpAndSettle();
       expect(saved!.translateTo, ['pt', 'en']);
-      await tester.tap(find.text('Translate automatically'));
-      await tester.pumpAndSettle();
-      expect(saved!.translate, isTrue);
+      expect(find.text('Translations: ru, en, pt (always)'), findsOneWidget);
+      expect(saved!.translate, isFalse);
       expect(saved!.transcribe, isFalse);
     },
   );

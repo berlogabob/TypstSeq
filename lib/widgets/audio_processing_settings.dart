@@ -676,10 +676,8 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
             title: const Text('Transcribe automatically'),
             onChanged: _busy ? null : (v) => _save(p.copyWith(transcribe: v)),
           ),
-          CheckboxListTile(
-            value: p.translate,
-            title: const Text('Translate automatically'),
-            onChanged: _busy ? null : (v) => _save(p.copyWith(translate: v)),
+          const ListTile(
+            title: Text('Translations: ru, en, pt (always)'),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: kSpace16),

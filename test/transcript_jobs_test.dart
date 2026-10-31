@@ -101,6 +101,70 @@ void main() {
     expect(await transcriptJobStatus(storage, audio), 'queued');
   });
 
+  test('re-process keeps note edits and the worker sidecar intact', () async {
+    const audio = 'assets/clips/voice.mp3';
+    const note = 'notes/voice.typ';
+    const source =
+        '== Transcript\n- 00:01 My correction\n'
+        '== Translation ru\n- 00:01 Моя правка\n'
+        '== Comments\n- 00:02 My comment\n'
+        '== Context\nMy programme\n';
+    final path = transcriptJobPath(audio);
+    final sidecar = path.replaceFirst('/transcripts/', '/segments/');
+    const sidecarText = '{"lines":[{"text":"My correction","status":"user"}]}';
+    await storage.writeText(note, source);
+    await storage.writeText(sidecar, sidecarText);
+    await storage.writeText(
+      path,
+      jsonEncode({
+        'audio': audio,
+        'note': note,
+        'status': 'done',
+        'lang': 'pt',
+      }),
+    );
+    final before = await storage.readBytes(note);
+    final now = DateTime.utc(2026, 10, 31, 12);
+
+    await enqueueTranscript(
+      storage,
+      audioPath: audio,
+      notePath: note,
+      now: now,
+      retryDone: true,
+    );
+
+    expect(jsonDecode(await storage.readText(path)), {
+      'audio': audio,
+      'note': note,
+      'requested_at': now.toIso8601String(),
+      'status': 'queued',
+    });
+    expect(await storage.readBytes(note), before);
+    expect(await storage.readText(sidecar), sidecarText);
+  });
+
+  test('re-process does not reset a queued or claimed job', () async {
+    const audio = 'assets/clips/voice.mp3';
+    final path = transcriptJobPath(audio);
+    for (final status in ['queued', 'processing']) {
+      final job = jsonEncode({
+        'audio': audio,
+        'note': 'notes/voice.typ',
+        'status': status,
+        'claimed_by': 'worker',
+      });
+      await storage.writeText(path, job);
+      await enqueueTranscript(
+        storage,
+        audioPath: audio,
+        notePath: 'notes/voice.typ',
+        retryDone: true,
+      );
+      expect(await storage.readText(path), job);
+    }
+  });
+
   test(
     'transcriptJobStatus is null when no job exists and transcriptJobPath is stable',
     () async {
