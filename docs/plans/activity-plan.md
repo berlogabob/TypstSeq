@@ -231,7 +231,8 @@ Cause of the slow run: Ornith 35b reasoned before every answer (57 s/day, 12/20 
 Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 #5), startup scan (W8 #3-4), diarization (W8 #8), smaller search index (W12 v4), WebDAV round trip (W12 rclone), fold minors (26f39d2), A24 idle memory (W13 W5: 242-246 MB), screenshot layout (0.19.4).
 - [x] 2026-10-15 adb junk-text incident: real-vault daily 2026-10-15 has no 'п' / 'р-н' lines (checked 2026-10-31).
 - [x] Revisions Mac -> P30 (W7 #3, W8 #6/#15): found the Mac stops the revision poll when its window is closed (hide-on-close -> lifecycle hidden -> stopCloudPolling); desktops now keep polling. Unit-tested; Mac in-app edit check skipped (user away). Revisions come only from in-app edits, not file edits.
-- [ ] Peak-after-use memory profiling (W13 W5): P30 665 MB after ~1 h use; Screenshots cause fixed (5103398), other paths not profiled.
+- [x] Peak-after-use memory (W13 W5), P30 0.20.5 release, real vault, 6-10 rounds of Journal/Library scroll + Search/More/Today: cold start settles 274 MB; under use 353-388, idle+60 s 334 (targets <=350 idle / <=400 active met). Flat under use, no growth per round.
+- [ ] NEW: after a mass sync (24,099 files: enrichment backfill) the app sat at 600-720 MB PSS (392 MB swap, 202 MB Unknown) for over an hour until restart; cold start 274. Rare event; find what the sync keeps (listing/ingest buffers) before the next big backfill.
 - [ ] Mac check of the W13 release-blocker fixes (W13: "Mac check: user").
 - [ ] Windows self-update test on Studio (0.19.3 -> 0.19.4 pending since 2026-10-21; updater hang log %TEMP%\tylog-update.log): needs the user at Studio.
 - [ ] A24 backup (W9 T10): needs the A24 on adb.
