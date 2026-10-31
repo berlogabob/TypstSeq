@@ -6,8 +6,17 @@ except speech_regions, which is only called on the Studio side.
 """
 
 import math
+import re
+import zlib
+
+from transcribe_worker import collapse_repeats
 
 SAMPLE_RATE = 16000
+MAX_COMPRESSION = 2.4  # zlib ratio above this is looping text
+MIN_CHARS_FOR_RATIO = 40
+BLOCKLIST = re.compile(r"^(legendas?\b|subtitles? by|amara\.org|obrigad[oa]\.?$)", re.IGNORECASE)
+SENTENCE_END = re.compile(r"[.!?…]+\s+")
+MIN_WORDS = 3
 
 
 def speech_regions(audio_path, min_silence_ms=2000):
@@ -53,3 +62,41 @@ def plan_chunks(speech, total, max_len=25.0, mark_gap=5.0):
     if total - prev_end >= mark_gap:
         items.append({"start": prev_end, "end": total, "kind": "gap"})
     return items
+
+
+def is_hallucination(text):
+    """Whisper garbage: looping text, subtitle credits, a bare "Obrigado."."""
+    text = text.strip()
+    if len(text) > MIN_CHARS_FOR_RATIO:
+        raw = text.encode("utf-8")
+        if len(raw) / len(zlib.compress(raw)) > MAX_COMPRESSION:
+            return True
+    if BLOCKLIST.match(text):
+        return True
+    return len(collapse_repeats(text)) < 0.5 * len(text)
+
+
+def sentence_lines(start, end, text):
+    """One recognised chunk -> [(time, sentence line)], times proportional to character offset.
+
+    A sentence under MIN_WORDS words joins the next one; a short last sentence joins the previous.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    begins = [0] + [m.end() for m in SENTENCE_END.finditer(text)]
+    groups = []
+    for begin, stop in zip(begins, begins[1:] + [len(text)]):
+        if groups and _words(text, groups[-1]) < MIN_WORDS:
+            groups[-1][1] = stop
+        else:
+            groups.append([begin, stop])
+    if len(groups) > 1 and _words(text, groups[-1]) < MIN_WORDS:
+        last = groups.pop()
+        groups[-1][1] = last[1]
+    return [(start + (end - start) * begin / len(text), text[begin:stop].strip())
+            for begin, stop in groups]
+
+
+def _words(text, group):
+    return len(text[group[0]:group[1]].split())

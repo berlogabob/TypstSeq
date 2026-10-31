@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import audio_metrics
 import audio_v2 as v2
 
@@ -111,3 +113,38 @@ def test_short_recording_one_chunk():
 
 def test_no_speech_is_one_gap():
     assert v2.plan_chunks([], total=300) == [{"start": 0, "end": 300, "kind": "gap"}]
+
+
+@pytest.mark.parametrize("text", [
+    "É isso aí! " * 40,
+    "Não, " * 80,
+    "A CIDADE NO BRASIL " * 30,
+    "." * 300,
+    "Legenda por Sônia Ruberti",
+    "Legendas pela comunidade Amara.org",
+    "Obrigado.",
+])
+def test_garbage_is_flagged(text):
+    assert v2.is_hallucination(text)
+
+
+@pytest.mark.parametrize("text", [
+    "Nasci no seio de uma família muito respeitada.",
+    "Não, não. O que quer dizer? Vai com calma.",
+])
+def test_speech_is_kept(text):
+    assert not v2.is_hallucination(text)
+
+
+def test_sentences_get_proportional_times_and_short_ones_join():
+    lines = v2.sentence_lines(100.0, 120.0, "Toda. Menos. Eu. A minha família comunica muito através do humor.")
+    assert lines[0] == (100.0, "Toda. Menos. Eu.")
+    assert lines[1][0] > 100.0 and lines[1][1].startswith("A minha")
+
+
+def test_text_without_punctuation_is_one_line():
+    assert v2.sentence_lines(5.0, 9.0, "olá a todos") == [(5.0, "olá a todos")]
+
+
+def test_short_last_sentence_joins_previous():
+    assert v2.sentence_lines(0.0, 10.0, "A casa é grande. Sim.") == [(0.0, "A casa é grande. Sim.")]
