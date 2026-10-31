@@ -251,7 +251,7 @@ def test_special_chars_escaped_and_parse_back():
 
 def test_gap_and_doubtful_markers_and_section_placement():
     note = "= Note\n\n== Comments\n\n- 00:10 keep me\n"
-    lines = [_seg(40.0, "", kind="gap"), _seg(60.0, "Acho que a ponte", status="doubtful")]
+    lines = [_seg(40.0, "", kind="gap"), dict(_seg(60.0, "Acho que a ponte", status="doubtful"), doubt_mark=True)]
     note, _ = v2.merge_section(note, "Transcript", lines)
     assert note == ("= Note\n\n== Comments\n\n- 00:10 keep me\n\n"
                     "== Transcript\n\n- 00:40 [—]\n- 01:00 (?) Acho que a ponte\n")
@@ -305,7 +305,7 @@ def test_agreement_ignores_case_and_punctuation():
     assert v2.agreement("a b c d", "a b c x") == 0.75
 
 
-def test_low_agreement_marks_chunk_lines_doubtful():
+def test_low_agreement_makes_chunk_lines_doubtful():
     chunks = [
         _chunk(0.0, 6.0, "Olá, tudo bem com você? Vamos embora agora.", "tchau mundo"),
         _chunk(6.0, 9.0, "Até amanhã, meu amigo.", "Até amanhã, meu amigo."),
@@ -317,8 +317,26 @@ def test_low_agreement_marks_chunk_lines_doubtful():
         ("Até amanhã, meu amigo.", "ok"),
     ]
     note, _ = v2.merge_section("= Note\n", "Transcript", lines)
+    assert "(?)" not in note  # no arbitration verdict: status doubtful, no mark (see the doubt_mark tests)
+
+
+def test_doubtful_with_high_agreement_has_no_marker():
+    # Arbitration doubts this chunk, but the engines agree (0.77): the line keeps status doubtful, no (?).
+    chunks = [_chunk(0.0, 6.0, "Nasci no seio de uma família.", "Nasci no seio de uma familia, sim.")]
+    reply = json.dumps({"text": "Nasci no seio de uma família.", "status": "doubtful"})
+    v2.arbitrate_chunks(chunks, [], "", [], lambda messages: reply)
+    lines = v2.lines_from_chunks(chunks)
+    assert [(line["text"], line["status"]) for line in lines] == [("Nasci no seio de uma família.", "doubtful")]
+    note, _ = v2.merge_section("= Note\n", "Transcript", lines)
+    assert "- 00:00 Nasci no seio de uma família.\n" in note and "(?)" not in note
+
+
+def test_doubtful_with_low_agreement_has_marker():
+    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo")]
+    reply = json.dumps({"text": "Olá, tudo bem com você?", "status": "doubtful"})
+    v2.arbitrate_chunks(chunks, [], "", [], lambda messages: reply)
+    note, _ = v2.merge_section("= Note\n", "Transcript", v2.lines_from_chunks(chunks))
     assert "- 00:00 (?) Olá, tudo bem com você?\n" in note
-    assert "(?) Até" not in note
 
 
 def test_missing_alt_not_doubtful():
@@ -524,12 +542,14 @@ def test_old_glossary_items_still_load():
 
 
 def test_fixed_lines_lose_marker():
-    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo")]  # no common word: doubtful
+    chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo")]  # no common word
+    doubtful = json.dumps({"text": "Olá, tudo bem com você?", "status": "doubtful"})
+    v2.arbitrate_chunks(chunks, [], "", [], lambda messages: doubtful)
     note, lines = v2.merge_section("= Note\n", "Transcript", v2.lines_from_chunks(chunks))
     assert "- 00:00 (?) Olá, tudo bem com você?\n" in note
 
-    reply = json.dumps({"text": "Olá, tudo bem?", "status": "fixed"})
-    v2.arbitrate_chunks(chunks, lines, "", [], lambda messages: reply)
+    # The next run's arbitration says fixed: the rewritten note line loses its mark.
+    chunks[0]["arbitration"] = {"text": "Olá, tudo bem?", "status": "fixed"}
     note, lines = v2.merge_transcript(note, lines, v2.lines_from_chunks(chunks))
     assert "(?)" not in note and "- 00:00 Olá, tudo bem?\n" in note
 
@@ -538,7 +558,7 @@ def test_user_edited_lines_untouched():
     chunks = [_chunk(0.0, 6.0, "Olá, tudo bem com você?", "tchau mundo"),
               _chunk(6.0, 9.0, "Nasci.", "Nasci no seio.")]
     note, lines = v2.merge_section("= Note\n", "Transcript", v2.lines_from_chunks(chunks))
-    edited = note.replace("(?) Olá, tudo bem com você?", "Olá, tudo bem com o Baubo?")
+    edited = note.replace("Olá, tudo bem com você?", "Olá, tudo bem com o Baubo?")
     note, lines = v2.merge_transcript(edited, lines, v2.lines_from_chunks(chunks))
 
     calls = []

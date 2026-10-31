@@ -45,6 +45,10 @@ NOTE_LINE = re.compile(r"^\s*-\s+(\d{1,3}):([0-5]\d)\s+(.+?)\s*$")
 # chunks, all with asr_alt. 0.01 flags 20 of 151 = 13.2%: 18 chunks have no word in common, and 2 long
 # chunks (300+ words) match once. 0.05 would flag 23 = 15.2%, just above the 10-15% target.
 DOUBT_THRESHOLD = 0.01
+# The (?) mark (_doubt_mark) needs arbitration to doubt the chunk and the engines to disagree this much.
+# Measured on the theatre sidecar 3efa2a81a7186a11d40eb0a34a974200b8daa505.json (2026-10-31): 59 of 151 speech
+# chunks end arbitration-doubtful; 12 of them have agreement < 0.3 (seven at 0.0), the other 47 are at 0.35 to 0.94.
+DOUBT_MARK_THRESHOLD = 0.3
 # Stage 4 candidates: speech chunks whose engines agree on less than this (doubtful chunks are a subset).
 # On the theatre sidecar 3efa2a81a7186a11d40eb0a34a974200b8daa505.json (2026-10-31) 142 of 151 speech chunks
 # are candidates at 0.95 (94%, one LLM call each); 0.5 gives 39. The engines rarely agree word for word.
@@ -253,7 +257,7 @@ def _render(line):
         body = GAP_TEXT
     else:
         body = escape_markup(" ".join(line["text"].split()))
-        if line.get("status") == "doubtful":
+        if line.get("doubt_mark"):
             body = DOUBTFUL_PREFIX + body
     return f"- {format_ts(line['start'])} {body}"
 
@@ -365,6 +369,15 @@ def _doubtful(chunk, text):
     return bool(alt) and agreement(text, alt) < DOUBT_THRESHOLD
 
 
+def _doubt_mark(chunk):
+    """The (?) mark: arbitration doubts the chunk and the two engines disagree (agreement < DOUBT_MARK_THRESHOLD).
+    Status "doubtful" alone (engines disagree, no arbitration yet) is not marked."""
+    arbitration = chunk.get("arbitration")
+    if not arbitration or arbitration["status"] != "doubtful":
+        return False
+    return agreement(chunk.get("asr") or "", chunk.get("asr_alt") or "") < DOUBT_MARK_THRESHOLD
+
+
 def lines_from_chunks(chunks):
     """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines.
 
@@ -382,7 +395,8 @@ def lines_from_chunks(chunks):
             text, status = chunk["arbitration"]["text"], chunk["arbitration"]["status"]
         else:
             status = "doubtful" if _doubtful(chunk, text) else "ok"
-        lines += [{"start": at, "kind": "speech", "text": sentence, "status": status}
+        mark = _doubt_mark(chunk)
+        lines += [{"start": at, "kind": "speech", "text": sentence, "status": status, "doubt_mark": mark}
                   for at, sentence in sentence_lines(start, chunk["end"], text)]
     return lines
 
@@ -436,7 +450,7 @@ def reconcile_lines(previous, fresh):
             lines.append(dict(old, rendered=dict(old.get("rendered", {}))))
         else:
             lines.append(dict(old, text=new["text"], status=new["status"],
-                              rendered=dict(old.get("rendered", {}))))
+                              doubt_mark=new.get("doubt_mark", False), rendered=dict(old.get("rendered", {}))))
     stale = []
     for index, old in enumerate(previous):
         if index in claimed:

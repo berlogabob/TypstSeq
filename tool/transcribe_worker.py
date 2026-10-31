@@ -552,9 +552,9 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
             segments.append({"start": start, "kind": "gap", "text": "", "status": "ok"})
         elif text.startswith(DOUBTFUL_PREFIX):
             segments.append({"start": start, "kind": "speech", "text": text[len(DOUBTFUL_PREFIX):],
-                             "status": "doubtful"})
+                             "status": "doubtful", "doubt_mark": True})
         else:
-            segments.append({"start": start, "kind": "speech", "text": text, "status": "ok"})
+            segments.append({"start": start, "kind": "speech", "text": text, "status": "ok", "doubt_mark": False})
 
     speech = [segment["text"] for segment in segments if segment["kind"] == "speech"]
     translated = translate(speech, source_lang, target, source_langs or [source_lang]) if speech else []
@@ -579,7 +579,7 @@ def apply_translation(note_text, source_lang, target, translate, source_langs=No
             built.append(old)
             continue
         built.append({"start": segment["start"], "kind": segment["kind"], "text": text,
-                      "status": segment["status"],
+                      "status": segment["status"], "doubt_mark": segment.get("doubt_mark", False),
                       "rendered": dict(old.get("rendered", {})) if old else {}})
 
     # A machine line that no transcript line produces any more is removed from the
