@@ -301,11 +301,20 @@ def transcribe_studio(audio, base, key, lang=None, model="unsloth/whisper-large-
     return segments, lang, [lang]
 
 
+LLM_CONTEXT = 65536  # the long prompts (context pass, translation batches) overflow Studio's 8k default
+
+
+def _usable(entry):
+    """A loaded model below LLM_CONTEXT is reloaded: Studio returns empty replies past its loaded context. No field = usable."""
+    context = entry.get("max_context_length")
+    return context is None or context >= LLM_CONTEXT
+
+
 def ensure_model(base, key, prefer, request):
     """Select Ornith or load the preferred model using the authenticated request."""
     try:
         loaded = [entry["id"] for entry in request("/models")["data"]
-                  if entry.get("loaded") is True]
+                  if entry.get("loaded") is True and _usable(entry)]
         if prefer in loaded:
             return prefer
         ornith = next((model for model in loaded if "ornith" in model.lower()), None)
@@ -315,12 +324,12 @@ def ensure_model(base, key, prefer, request):
         local = request(root + "/api/models/local")["models"]
         reference = next((entry["id"] for entry in local
                           if entry.get("model_id") == prefer), prefer)
-        result = request(base.rstrip("/") + "/load", {"model_path": reference, "max_seq_length": 65536})
+        result = request(base.rstrip("/") + "/load", {"model_path": reference, "max_seq_length": LLM_CONTEXT})
         if result.get("error") or result.get("success") is False:
             raise ValueError(f"Studio rejected load: {result}")
         deadline = time.monotonic() + 15 * 60
         while time.monotonic() < deadline:
-            if any(entry["id"] == prefer and entry.get("loaded") is True
+            if any(entry["id"] == prefer and entry.get("loaded") is True and _usable(entry)
                    for entry in request("/models")["data"]):
                 return prefer
             time.sleep(min(5, max(0, deadline - time.monotonic())))
@@ -394,15 +403,28 @@ def llm_chat(settings, *, max_tokens=3000):
     def chat(messages):
         # Thinking off and 10 lines per request: with reasoning on, 40 theatre
         # lines ran past the 120 s timeout (2026-10-31), same as the enrich worker.
-        return request("/chat/completions", {
+        reply = request("/chat/completions", {
             "model": model,
             "temperature": 0,
             "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": messages,
-        })["choices"][0]["message"]["content"].strip()
+        })["choices"][0]["message"]["content"] or ""
+        if not reply.strip():
+            raise ValueError(f"LLM {model} returned an empty reply{_context_note(request, model)}")
+        return reply.strip()
 
     return model, chat
+
+
+def _context_note(request, model):
+    """' (max_context_length N)' when Studio lists the model with one, else ''. Only runs on an empty reply."""
+    try:
+        context = next((entry.get("max_context_length") for entry in request("/models")["data"]
+                        if entry.get("id") == model), None)
+    except Exception:  # the note is diagnostics; never mask the empty-reply error
+        return ""
+    return f" (max_context_length {context})" if context is not None else ""
 
 
 def translate(texts, source_lang, target, source_langs=None, *, settings=None):
