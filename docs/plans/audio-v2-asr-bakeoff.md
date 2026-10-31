@@ -23,11 +23,11 @@ Auth: `Authorization: Bearer <key>`, key from `~/.pi/agent/models.json` `provide
 
 Garbage = loop (over 20 words, unique/total < 0.25), credit line, or failed call. Empty output is not garbage. Agreement = mean `SequenceMatcher` ratio on lowercased words, over the 4 speech clips and the other engines.
 
-## Decision (plan rule)
+## Decision (Claude, overrides the plan rule)
 
-- Primary: parakeet-tdt-0.6b-v3 (0/3 music garbage, the only engine with word timings). Its speech agreement is the lowest (0.485).
-- Secondary: whisper-large-v3-turbo (2/3 garbage, agreement 0.629), the best Whisper-family engine.
-- The turbo primary / qwen3 secondary decision only follows if empty music output counts as garbage (parakeet 3/3). That contradicts Review Focus 1 (music-only gives `[—]` lines), so it is not adopted here. Needs a call before Task 7.
+- Primary: whisper-large-v3-turbo; secondary: qwen3-asr-1.7b (used by Task 7).
+- Why not parakeet: read by eye its speech text is unusable (06:00 "Desci o sério ... três cadas", 23:00 "Demeta ... o vídeo que Sete"); the music-clip rule rewarded its silence, but music is handled by VAD + the hallucination filter. Parakeet stays the Phase 2 music-gate option.
+- The plan rule's result (parakeet primary) is recorded for reference only.
 
 ## Reviewer notes (read by eye)
 
