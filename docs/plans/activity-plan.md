@@ -274,6 +274,7 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [ ] T37 songs (2026-11-01: Amy Winehouse 'Back to Black' en; Flor Damico 'cosas claras', 'delincuente' es; MP3 320k 44.1 kHz + cover art, files valid): not transcribed. Causes: Studio offline (no ping) -> Mac fallback small model; VAD cut the singing -> 'you' / [—]; job then failed on the LLM stage (Studio). Need a music mode: no VAD gate, 30 s windows, chorus repeats not treated as loops, language per song (en/es), lyrics-friendly engine on Studio
 - [ ] T38 song playback at wrong speed/pitch (user report): files are clean; suspect two players at once (daily audio card + note screen) or speed state; reproduce on the device the user used
 - [ ] T39 user: Translate tab redundant now that Transcribe shows translations side by side -> rethink the tab/menu line (design with user first)
+- [ ] T40 user: screenshots must get the same ru/en/pt translations as audio notes (OCR text -> Translation sections, same worker path + review); design after T39
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
