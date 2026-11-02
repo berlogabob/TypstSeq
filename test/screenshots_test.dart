@@ -519,6 +519,10 @@ void main() {
     );
     await tester.tap(find.text('Screenshots'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screenshots-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Group by source app'));
+    await tester.pumpAndSettle();
     expect(find.text('All · 2'), findsOneWidget);
     expect(find.text('Browser · 1'), findsOneWidget);
     expect(find.text('Editor · 1'), findsOneWidget);

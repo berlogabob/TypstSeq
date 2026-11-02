@@ -61,6 +61,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Grouping is off by default; opt into source groups to exercise many headers.
+    await tester.tap(find.byKey(const Key('screenshots-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Group by source app').last);
+    await tester.pumpAndSettle();
     expect(find.text('App 0 · 2'), findsOneWidget);
     expect(reads, inInclusiveRange(1, 60));
   });

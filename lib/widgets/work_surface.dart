@@ -819,7 +819,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
     statusFilter = p['status'];
     relevanceFilter = p['relevance'];
     sort = p['sort'] ?? 'recent';
-    groupBy = p['group'] ?? (screenshots ? 'source' : 'none');
+    groupBy = p['group'] ?? 'none';
   }
 
   /// Persist the current filter/sort/group so they survive an app restart.
