@@ -1551,6 +1551,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return false;
     }
     if (!mounted || request != _openGeneration || vault != v) return false;
+    final openedNote = scanNote(path, snapshot.source);
+    if (openedNote.kind == 'audio') {
+      await _openAudioNote(openedNote, generation: request);
+      return mounted && request == _openGeneration && vault == v;
+    }
     final noteChanged = path != note;
     final fromToday =
         mode == 'normal' &&
@@ -1961,7 +1966,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var savedSearches = <SavedSearch>[];
     final ready = ValueNotifier<bool>(false);
     final navigator = Navigator.of(context);
-    final route = MaterialPageRoute<void>(
+    late final MaterialPageRoute<void> route;
+    route = MaterialPageRoute<void>(
       builder: (_) => ValueListenableBuilder<bool>(
         valueListenable: ready,
         builder: (_, loaded, _) => loaded
@@ -1999,7 +2005,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       }
                       return;
                     }
-                    navigator.pop();
+                    // An audio note pushes its own route above Search.
+                    if (route.isActive) navigator.removeRoute(route);
                     // Search is a route; recreate it when leaving its editor.
                     _rememberView(knowledge: initialView, searchQuery: query);
                     setState(() {});

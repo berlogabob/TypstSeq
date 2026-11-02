@@ -163,6 +163,7 @@ String labelForKind(String kind) => switch (kind) {
   'note' => 'Note',
   'daily' => 'Journal',
   'article' => 'Article',
+  'audio' => 'Audio',
   'task' => 'Task',
   'file' => 'File',
   'project' => 'Project',

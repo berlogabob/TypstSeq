@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:tylog/widgets/app_icons.dart';
+import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -182,6 +183,126 @@ Future<void> _tapTaskTimer(
 }
 
 void main() {
+  for (final (kind, label) in [
+    ('audio', 'Audio'),
+    ('screenshot', 'Screenshot'),
+  ]) {
+    testWidgets('Search labels $kind from its note header', (tester) async {
+      final storage = _FailingStorage();
+      const path = 'notes/Audio 20261101-143844.typ';
+      final source =
+          '#show: tylog.note.with(id: "song", '
+          'title: "Flor Damico — delincuente", kind: "$kind")\n';
+      await storage.writeText(path, source);
+      final index = VaultIndex(
+        notesByPath: {path: scanNote(path, source)},
+        backlinksByTarget: const {},
+      );
+      final search = await PkmsSearchIndex.buildStorage(storage, index);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: _knowledgeScreen(
+              search: (_, _, _) async => search.search('delincuente'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final row = find.ancestor(
+        of: find.text('Flor Damico — delincuente'),
+        matching: find.byType(ListTile),
+      );
+      expect(
+        find.descendant(of: row, matching: find.text(label)),
+        findsOneWidget,
+      );
+      expect(find.text('Entity'), findsNothing);
+    });
+  }
+
+  for (final fromSearch in [true, false]) {
+    testWidgets('audio opens its screen; fromSearch=$fromSearch', (
+      tester,
+    ) async {
+      final storage = _AudioNavigationStorage();
+      const path = 'notes/Audio 20261101-143844.typ';
+      const title = 'Flor Damico — delincuente';
+      const source =
+          '#show: tylog.note.with(id: "song", title: "$title", kind: "audio")\n'
+          '#tylog.attachment("/assets/song.m4a", kind: "audio")[Song]\n'
+          '== Summary en\n- 00:00 Summary\n'
+          '== Scenes en\n- 00:01 Scene\n'
+          '== References en\n- 00:02 Reference\n'
+          '== Transcript\n- 00:03 delincuente\n';
+      const current = '#tylog.ref-note("song")[$title]\n';
+      await storage.writeText(path, source);
+      await storage.writeText('notes/current.typ', current);
+      // Links must route by the loaded header even when the index is stale.
+      final index = VaultIndex(
+        notesByPath: {
+          path: scanNote(
+            path,
+            fromSearch
+                ? source
+                : source.replaceFirst('kind: "audio"', 'kind: "note"'),
+          ),
+          'notes/current.typ': scanNote('notes/current.typ', current),
+        },
+        backlinksByTarget: const {},
+      );
+      await tester.pumpWidget(
+        const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+      );
+      await tester.pumpAndSettle();
+      final dynamic home = tester.state(find.byType(HomeScreen));
+      home.workspace.vault = Vault.withStorage(storage);
+      home.workspace.index = index;
+      home.workspace.linkResolver = LinkResolver(index.notes);
+      home.workspace.searchIndex = await PkmsSearchIndex.buildStorage(
+        storage,
+        index,
+      );
+      home.workspace.searchReady = true;
+      home.workspace.replaceNote('notes/current.typ', current);
+      home.sourceController.text = current;
+      home.richController.loadSource(current);
+      home.mode = 'normal';
+      home.primaryDestination = 0;
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      if (fromSearch) {
+        await tester.tap(find.text('Search').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(
+            TextField,
+            'Search notes, tasks, and attachments',
+          ),
+          'delincuente',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text(title).last);
+      await tester.pumpAndSettle();
+      expect(find.byType(AudioNoteScreen), findsOneWidget);
+      expect(find.text('Comments'), findsOneWidget);
+      expect(find.text('Text'), findsOneWidget);
+      expect(find.text('Properties'), findsOneWidget);
+      expect(find.byType(KnowledgeScreen), findsNothing);
+      await tester.tap(find.text('Text'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AudioNoteScreen), findsOneWidget);
+      expect(home.workspace.note, 'notes/current.typ');
+      Navigator.of(tester.element(find.byType(AudioNoteScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AudioNoteScreen), findsNothing);
+      expect(find.byType(KnowledgeScreen), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('note chip long press opens Rename dialog', (tester) async {
     final storage = _FailingStorage();
     final vault = Vault.withStorage(storage);
@@ -3816,6 +3937,13 @@ class _FailingStorage extends VaultStorage {
           ),
     ];
   }
+}
+
+class _AudioNavigationStorage extends _FailingStorage {
+  @override
+  Future<Uint8List> readBytesNow(String path) => path.startsWith('assets/')
+      ? Completer<Uint8List>().future
+      : super.readBytesNow(path);
 }
 
 class _DelayedStorage extends _FailingStorage {

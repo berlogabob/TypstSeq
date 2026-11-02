@@ -237,6 +237,7 @@ extension _AudioFlow on _HomeScreenState {
   Future<void> _openAudioNote(
     NoteRef note, {
     AudioTab tab = AudioTab.comments,
+    int? generation,
   }) async {
     final v = vault;
     if (v == null) return;
@@ -244,8 +245,12 @@ extension _AudioFlow on _HomeScreenState {
     try {
       selectedLanguages = (await readAudioPolicy(v.storage)).translateTo;
     } catch (_) {}
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
+    if (!mounted ||
+        vault != v ||
+        (generation != null && generation != _openGeneration)) {
+      return;
+    }
+    final closed = Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (audioContext) => AudioNoteScreen(
           onOpenProcessing: () => unawaited(_showProcessing()),
@@ -322,6 +327,7 @@ extension _AudioFlow on _HomeScreenState {
         ),
       ),
     );
+    unawaited(closed);
   }
 
   /// Opens the comment/waveform screen for any audio file in the vault, e.g.
