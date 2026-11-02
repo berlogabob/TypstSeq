@@ -75,6 +75,10 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 1500));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final finishedAt = DateTime.now()
+        .subtract(const Duration(hours: 2))
+        .toUtc()
+        .toIso8601String();
     final storage = _Storage()
       ..job('articles', 'a', {
         'title': 'Shared article',
@@ -93,7 +97,7 @@ void main() {
         'note': 'notes/audio.typ',
         'target': 'en',
         'status': 'done',
-        'finished_at': '2026-11-01T12:00:00Z',
+        'finished_at': finishedAt,
       })
       ..job('screenshots', 'd', {
         'title': 'Screenshot',
@@ -128,10 +132,7 @@ void main() {
       find.text('Started: ${shortStamp('2026-11-01T11:01:00Z')}'),
       findsOneWidget,
     );
-    expect(
-      find.text('Finished: ${shortStamp('2026-11-01T12:00:00Z')}'),
-      findsOneWidget,
-    );
+    expect(find.text('Finished: ${shortStamp(finishedAt)}'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -210,6 +211,99 @@ void main() {
     expect(storage.files, before);
     expect(find.text('Transcription · Processing'), findsOneWidget);
     expect(find.text('Queued — see Processing'), findsNothing);
+  });
+
+  test('orders processing, queued, then finished newest first', () async {
+    String iso(Duration ago) =>
+        DateTime.now().subtract(ago).toUtc().toIso8601String();
+    final storage = _Storage()
+      ..job('articles', 'done_old', {
+        'title': 'done old',
+        'status': 'done',
+        'finished_at': iso(const Duration(days: 9)),
+      })
+      ..job('articles', 'failed_new', {
+        'title': 'failed new',
+        'status': 'failed',
+        'finished_at': iso(const Duration(hours: 1)),
+      })
+      ..job('articles', 'queued_old', {
+        'title': 'queued old',
+        'status': 'queued',
+        'shared_at': iso(const Duration(hours: 5)),
+      })
+      ..job('articles', 'queued_new', {
+        'title': 'queued new',
+        'status': 'queued',
+        'shared_at': iso(const Duration(minutes: 5)),
+      })
+      ..job('articles', 'running', {
+        'title': 'running',
+        'status': 'processing',
+        'processing_at': iso(const Duration(days: 30)),
+      })
+      ..job('articles', 'done_new', {
+        'title': 'done new',
+        'status': 'done',
+        'finished_at': iso(const Duration(hours: 3)),
+      });
+    final jobs = ProcessingJobs();
+    addTearDown(jobs.dispose);
+    await jobs.refresh(storage);
+    expect(jobs.jobs.map((job) => job.title).toList(), [
+      'running',
+      'queued new',
+      'queued old',
+      'failed new',
+      'done new',
+      'done old',
+    ]);
+  });
+
+  testWidgets('finished jobs older than 3 days fold under Older (N)', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    String iso(Duration ago) =>
+        DateTime.now().subtract(ago).toUtc().toIso8601String();
+    final storage = _Storage()
+      ..job('articles', 'live', {
+        'title': 'Live queued',
+        'status': 'queued',
+        'shared_at': iso(const Duration(minutes: 1)),
+      })
+      ..job('articles', 'recent', {
+        'title': 'Recent done',
+        'status': 'done',
+        'finished_at': iso(const Duration(days: 1)),
+      })
+      ..job('articles', 'stale_failed', {
+        'title': 'Stale failed',
+        'status': 'failed',
+        'error': 'Old worker error',
+        'finished_at': iso(const Duration(days: 5)),
+      })
+      ..job('articles', 'stale_done', {
+        'title': 'Stale done',
+        'status': 'done',
+        'finished_at': iso(const Duration(days: 10)),
+      });
+    final jobs = ProcessingJobs();
+    addTearDown(jobs.dispose);
+    await jobs.refresh(storage);
+    await tester.pumpWidget(_screen(jobs));
+    expect(find.text('Live queued'), findsOneWidget);
+    expect(find.text('Recent done'), findsOneWidget);
+    expect(find.text('Older (2)'), findsOneWidget);
+    expect(find.text('Stale failed'), findsNothing);
+    expect(find.text('Stale done'), findsNothing);
+    await tester.tap(find.text('Older (2)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stale failed'), findsOneWidget);
+    expect(find.text('Stale done'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('empty state, read failure and refresh recovery', (tester) async {

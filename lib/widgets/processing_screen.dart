@@ -52,8 +52,11 @@ class ProcessingScreen extends StatefulWidget {
   State<ProcessingScreen> createState() => _ProcessingScreenState();
 }
 
+const _oldAge = Duration(days: 3);
+
 class _ProcessingScreenState extends State<ProcessingScreen> {
   final _retrying = <String>{};
+  bool _olderOpen = false;
 
   Future<void> _retry(ProcessingJob job) async {
     setState(() => _retrying.add(job.path));
@@ -99,13 +102,36 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           if (jobs.jobs.isEmpty) {
             return const Center(child: Text('No processing jobs'));
           }
+          final cutoff = DateTime.now().subtract(_oldAge);
+          final recent = <ProcessingJob>[];
+          final older = <ProcessingJob>[];
+          for (final job in jobs.jobs) {
+            final at = job.activityAt;
+            final finished = job.status == 'done' || job.status == 'failed';
+            (finished && at != null && at.isBefore(cutoff) ? older : recent)
+                .add(job);
+          }
           return RefreshIndicator(
             onRefresh: () => jobs.refresh(jobs.storage),
-            child: ListView.builder(
+            child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(kSpace12),
-              itemCount: jobs.jobs.length,
-              itemBuilder: (context, index) => _job(jobs.jobs[index]),
+              children: [
+                for (final job in recent) _job(job),
+                if (older.isNotEmpty)
+                  Card(
+                    child: ListTile(
+                      key: const ValueKey('older-jobs'),
+                      title: Text('Older (${older.length})'),
+                      trailing: Icon(
+                        _olderOpen ? Icons.expand_less : Icons.expand_more,
+                      ),
+                      onTap: () => setState(() => _olderOpen = !_olderOpen),
+                    ),
+                  ),
+                if (_olderOpen)
+                  for (final job in older) _job(job),
+              ],
             ),
           );
         },

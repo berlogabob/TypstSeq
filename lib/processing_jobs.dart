@@ -18,6 +18,9 @@ class ProcessingJob {
       text('title') ?? notePath ?? text('url') ?? text('audio') ?? path;
   DateTime? get requestedAt =>
       DateTime.tryParse(text('requested_at') ?? text('shared_at') ?? '');
+  DateTime? get activityAt =>
+      DateTime.tryParse(text('finished_at') ?? text('processing_at') ?? '') ??
+      requestedAt;
 }
 
 /// Discover kinds instead of hard-coding pipelines, using SAF-safe storage calls.
@@ -47,13 +50,16 @@ Future<List<ProcessingJob>> loadProcessingJobs(VaultStorage storage) async {
       }
     }
   }
-  int rank(ProcessingJob job) =>
-      job.active ? 0 : (job.status == 'failed' ? 1 : 2);
+  int rank(ProcessingJob job) => switch (job.status) {
+    'processing' => 0,
+    'queued' => 1,
+    _ => 2,
+  };
   jobs.sort((a, b) {
     final status = rank(a).compareTo(rank(b));
     if (status != 0) return status;
-    final time = (b.requestedAt ?? DateTime(0)).compareTo(
-      a.requestedAt ?? DateTime(0),
+    final time = (b.activityAt ?? DateTime(0)).compareTo(
+      a.activityAt ?? DateTime(0),
     );
     return time == 0 ? a.path.compareTo(b.path) : time;
   });
