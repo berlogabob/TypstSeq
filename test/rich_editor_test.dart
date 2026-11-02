@@ -2568,6 +2568,8 @@ void main() {
         'Highlight (long-press for colors)',
         'Bulleted list',
         'Numbered list',
+        'Indent',
+        'Outdent',
         'Clear formatting',
       ]),
     );

@@ -646,6 +646,57 @@ class TyLogEditingController extends TextEditingController {
 
   void setNumberedList() => _setListStyle(TyLogBlockStyle.numberedList);
 
+  void indentLine() => _changeLineIndent(outdent: false);
+
+  void outdentLine() => _changeLineIndent(outdent: true);
+
+  void _changeLineIndent({required bool outdent}) {
+    _clearComposition();
+    _unfoldSelection();
+    final offset = selection.isValid ? selection.start : text.length;
+    final hit = document._blockAt(offset, preferPrevious: true);
+    final block = hit == null ? null : document.blocks[hit.index];
+    if (block != null &&
+        block.style != TyLogBlockStyle.paragraph &&
+        block.style != TyLogBlockStyle.bulletList &&
+        block.style != TyLogBlockStyle.numberedList) {
+      return;
+    }
+    final visible = block?.visibleText ?? '';
+    final local = (offset - (hit?.start ?? 0)).clamp(0, visible.length);
+    final lineStart = local == 0 ? 0 : visible.lastIndexOf('\n', local - 1) + 1;
+    final indent = RegExp(r'[ \t]*').matchAsPrefix(visible, lineStart)!;
+    final start = (hit?.start ?? 0) + lineStart;
+    var end = start;
+    var replacement = '  ';
+    if (outdent) {
+      if (indent.end == lineStart) return;
+      end += visible.startsWith('  ', lineStart) ? 2 : 1;
+      replacement = '';
+    } else if (block?.style == TyLogBlockStyle.bulletList ||
+        block?.style == TyLogBlockStyle.numberedList) {
+      final glyph = RegExp(
+        r'(?:•|\d+\.)[ \t]*',
+      ).matchAsPrefix(visible, indent.end);
+      if (glyph == null) {
+        // A continuation has no marker to preserve. A nested bullet also
+        // leaves the numbering of surrounding ordered items intact.
+        end = (hit?.start ?? 0) + indent.end;
+        replacement = '  ${indent[0]}• ';
+      }
+    }
+    final caret = math.max(start, offset + replacement.length - (end - start));
+    _format(
+      () => document.replace(
+        start,
+        end,
+        replacement,
+        insertionStyle: const TyLogInlineStyle(),
+      ),
+      selectionOffset: () => caret,
+    );
+  }
+
   void _setListStyle(TyLogBlockStyle style) {
     final sel = selection;
     if (sel.isValid && !sel.isCollapsed) {

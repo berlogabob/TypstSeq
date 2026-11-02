@@ -299,7 +299,19 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     );
   }
 
-  KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    final keyboard = HardwareKeyboard.instance;
+    if (node == focusNode &&
+        event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.tab &&
+        !keyboard.isControlPressed &&
+        !keyboard.isMetaPressed &&
+        !keyboard.isAltPressed) {
+      keyboard.isShiftPressed
+          ? widget.controller.outdentLine()
+          : widget.controller.indentLine();
+      return KeyEventResult.handled;
+    }
     if (event is KeyDownEvent &&
         (event.logicalKey == LogicalKeyboardKey.enter ||
             event.logicalKey == LogicalKeyboardKey.numpadEnter) &&
@@ -334,7 +346,6 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.keyZ) {
       return KeyEventResult.ignored;
     }
-    final keyboard = HardwareKeyboard.instance;
     if (!keyboard.isControlPressed && !keyboard.isMetaPressed) {
       return KeyEventResult.ignored;
     }
@@ -1699,6 +1710,16 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                                           Icons.format_list_numbered,
                                         ),
                                         (
+                                          'Indent',
+                                          widget.controller.indentLine,
+                                          Icons.format_indent_increase,
+                                        ),
+                                        (
+                                          'Outdent',
+                                          widget.controller.outdentLine,
+                                          Icons.format_indent_decrease,
+                                        ),
+                                        (
                                           'Clear formatting',
                                           widget.controller.clearFormatting,
                                           Icons.format_clear,
@@ -2297,7 +2318,9 @@ TyLogBlock _parseBlock(ControlledBlock block, String separator, int index) {
   }
 
   var style = TyLogBlockStyle.paragraph;
-  var body = trimmed;
+  // Leading paragraph whitespace is editable indentation and must survive
+  // validation just like the indentation before list glyphs.
+  var body = source;
   var headingLevel = 1;
   if (block.kind == ControlledBlockKind.heading) {
     style = TyLogBlockStyle.heading;
