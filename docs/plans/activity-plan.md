@@ -299,7 +299,7 @@ Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 
 
 ## Wave 14 (2026-11-02): extraction UX + fixit backlog (plan ~/.claude/plans/fancy-swinging-steele.md)
 Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at gates; Studio = app models only.
-- [ ] D1 search result opens today's page instead of the hit (fixit 10-20): not reproduced in tests; only path = openFromSearch pops Search before _openNote, and a silent false from _openNote leaves Today. Fix: open first, pop after success, snackbar with reason on failure; repro on P30
+- [x] D1 Search opens the result before closing; failure says so (bcbf623, 1784 tests); confirm on P30
 - [x] A1 Processing screen with retry, More > Views + badge (1f6bbf2)
 - [x] A2 every add action shows "Queued -> see Processing"
 - [ ] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
