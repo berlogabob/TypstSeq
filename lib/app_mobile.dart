@@ -1975,22 +1975,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     String? query,
                   ) async {
                     final selection = ++_destinationGeneration;
-                    navigator.pop();
+                    final searchDestination = primaryDestination;
                     setState(() => primaryDestination = previousDestination);
                     await workspace.materializeEvent(path);
-                    if (!mounted || selection != _destinationGeneration) {
-                      return;
-                    }
-                    if (await _openNote(
+                    // Search stays open until the note is actually shown.
+                    final opened =
+                        mounted &&
+                        selection == _destinationGeneration &&
+                        await _openNote(
                           path,
                           rememberView: false,
                           searchQuery: query,
-                        ) &&
-                        mounted) {
-                      // Search is a route; recreate it when leaving its editor.
-                      _rememberView(knowledge: initialView, searchQuery: query);
-                      setState(() {});
+                        );
+                    if (!mounted) return;
+                    if (!opened) {
+                      if (selection == _destinationGeneration) {
+                        setState(() => primaryDestination = searchDestination);
+                        showSnack(
+                          context,
+                          "Couldn't open ${ix.notesByPath[path]?.title ?? path}: the note could not be loaded",
+                        );
+                      }
+                      return;
                     }
+                    navigator.pop();
+                    // Search is a route; recreate it when leaving its editor.
+                    _rememberView(knowledge: initialView, searchQuery: query);
+                    setState(() {});
                   }
 
                   return KnowledgeScreen(

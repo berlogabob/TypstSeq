@@ -390,6 +390,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a Search result that cannot open keeps Search and says why', (
+    tester,
+  ) async {
+    final home = await _mountToday(tester, const Size(400, 800));
+    tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .onDestinationSelected!(3);
+    await tester.pumpAndSettle();
+    final storage = home.workspace.vault.storage as _GatedStorage;
+    storage.failWrites = true;
+    _dirty(home);
+    tester
+        .widget<KnowledgeScreen>(find.byType(KnowledgeScreen))
+        .onOpenNote('notes/current.typ');
+    await tester.pumpAndSettle();
+    expect(find.byType(KnowledgeScreen), findsOneWidget);
+    expect(home.primaryDestination, 3);
+    expect(home.workspace.note, 'daily/2026/10/2026-10-14.typ');
+    expect(
+      find.text(
+        "Couldn't open notes/current.typ: the note could not be loaded",
+      ),
+      findsOneWidget,
+    );
+    storage.failWrites = false;
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('tapping a Search result keeps the mobile shell route alive', (
     tester,
   ) async {
