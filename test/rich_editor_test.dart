@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
@@ -53,6 +54,32 @@ void main() {
     expect(controller.text, contains('Keep task'));
     expect(controller.text, endsWith('after'));
     expect(controller.document.toSource(), contains('#strong[Bold]'));
+  });
+
+  test('indenting a list item persists as a nested Typst list', () async {
+    final errors = <Object>[];
+    final sources = <String>[];
+    final controller = TyLogEditingController(
+      source: '- a\n- b',
+      onSourceChanged: sources.add, onError: errors.add, onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    // Two spaces typed after the `•` glyph of "b" (visible `• b` -> `•   b`).
+    final caret = controller.text.indexOf('b');
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(caret, caret, '  '),
+      selection: TextSelection.collapsed(offset: caret + 2),
+    );
+    expect(errors, isEmpty);
+    expect(controller.text, '• a\n  • b');
+    expect(sources.last, '- a\n  - b');
+    final dir = await Directory.systemTemp.createTemp('indent_nested_');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/nested.typ')..writeAsStringSync(sources.last);
+    final compiled = Process.runSync('typst', [
+      'compile', file.path, '${dir.path}/nested.pdf',
+    ]);
+    expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
   });
 
   test('standard import is hidden and round-trips exactly', () {

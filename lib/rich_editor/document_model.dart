@@ -1381,6 +1381,38 @@ class TyLogDocument {
     return source;
   }
 
+  /// Spaces typed after a list glyph (`•   b`) are indentation, but Typst trims
+  /// whitespace after a marker, so that text cannot be serialized and the edit
+  /// silently reverts. Indentation lives in front of the glyph: returns the
+  /// line start the insertion belongs at, or null when it stays where it is.
+  int? indentLineStart(int start, int end, String replacement) {
+    if (start != end || replacement.isEmpty || replacement.trim().isNotEmpty) {
+      return null;
+    }
+    final hit = _blockAt(start, preferPrevious: true);
+    if (hit == null) return null;
+    final block = blocks[hit.index];
+    if (block.isProtected ||
+        (block.style != TyLogBlockStyle.bulletList &&
+            block.style != TyLogBlockStyle.numberedList)) {
+      return null;
+    }
+    final text = block.visibleText;
+    final local = start - hit.start;
+    final lineStart = local == 0 ? 0 : text.lastIndexOf('\n', local - 1) + 1;
+    // No `^`: matchAsPrefix anchors at lineStart, and `^` would pin to 0.
+    final marker = RegExp(r'([ \t]*)(•|\d+\.)[ \t]*').matchAsPrefix(
+      text,
+      lineStart,
+    );
+    if (marker == null ||
+        local < lineStart + marker[1]!.length + marker[2]!.length ||
+        local > marker.end) {
+      return null;
+    }
+    return hit.start + lineStart;
+  }
+
   _BlockRange? _blockAt(int offset, {required bool preferPrevious}) {
     final all = _ranges;
     for (final range in all) {

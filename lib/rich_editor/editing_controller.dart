@@ -376,6 +376,36 @@ class TyLogEditingController extends TextEditingController {
           }
         }
       }
+      final indentAt = document.indentLineStart(
+        change.start,
+        change.oldEnd,
+        change.replacement,
+      );
+      if (indentAt != null && !composing) {
+        // Indentation typed after a list glyph: insert it before the glyph
+        // instead, so the nested item persists rather than reverting.
+        snapshotBefore();
+        document.replace(
+          indentAt,
+          indentAt,
+          change.replacement,
+          insertionStyle: _typingStyle,
+        );
+        _updating = true;
+        value = TextEditingValue(
+          text: document.visibleText,
+          selection: TextSelection.collapsed(
+            offset: change.start + change.replacement.length,
+          ),
+        );
+        _lastValue = value;
+        _updating = false;
+        final source = document.toSource();
+        _addUndo(before!);
+        _redo.clear();
+        onSourceChanged(source);
+        return;
+      }
       snapshotBefore();
       document.replace(
         change.start,
