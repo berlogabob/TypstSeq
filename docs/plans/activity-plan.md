@@ -304,7 +304,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] A2 every add action shows "Queued -> see Processing"
 - [x] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
 - [ ] B2 screenshots: worker translates OCR to ru/en/pt (9afc241); app Text view for screenshots still to do
-- [ ] B2b worker paused 12:25: first sweep queued 207 screenshot jobs (2500 in vault) -> auto only last 7 days, audio first, prune queued backlog; then reload org.tylog.transcribe
+- [x] B2b (c488c56, 315 tests; worker reloaded) worker paused 12:25: first sweep queued 207 screenshot jobs (2500 in vault) -> auto only last 7 days, audio first, prune queued backlog; then reload org.tylog.transcribe
 - [x] Songs (T37) re-run done: lyrics recognised (Back to Black, cosas claras), Summary/Scenes/References in ru/en/pt; song translations queued behind the pause
 - [ ] B3 song playback speed/pitch (T38)
 - [x] C1 copy line / copy all (original, RU, EN, PT, side by side)
