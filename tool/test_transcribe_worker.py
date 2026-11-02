@@ -3181,3 +3181,57 @@ def test_run_once_prunes_queued_auto_old_screenshot_jobs_first(sweep_vault, shot
     worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=shot_fake_translate(""))
     assert not job.exists()
     assert not shot_llm
+
+
+def is_detection_prompt(messages):
+    return messages[0]["content"].startswith("Reply with the ISO 639-1 code")
+
+
+class NoLanguageMac(FakeMac):
+    """Mac STT that reports no language, as the song path gets when no language is forced."""
+
+    def __init__(self, model, lang, *, studio_failed=False):
+        self.language = None
+
+
+def song_without_language(vault, ffprobe, monkeypatch, answer):
+    """A tagged song whose STT gives no language; the fake LLM answers the detection and the context prompts."""
+    ffprobe.set_tags({"artist": "Flor Damico", "title": "delincuente"})
+    monkeypatch.setattr(audio_v2, "MacSTT", NoLanguageMac)
+    sent = chat_fake(monkeypatch, answer)
+    set_audio_settings(vault, on_the_fly=True)
+    audio, note = add_audio_note(vault)
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=unchanged_translate,
+                    probe=quiet_probe)
+    return audio, note, sent
+
+
+def test_song_without_stt_language_is_detected_and_translated(sweep_vault, ffprobe, monkeypatch):
+    vault = sweep_vault
+    audio, note, sent = song_without_language(
+        vault, ffprobe, monkeypatch,
+        lambda messages: "ru" if is_detection_prompt(messages) else json.dumps(CONTEXT_JSON))
+    job = json.loads(job_path(vault, "transcripts", audio).read_text())
+    assert (job["status"], job["lang"], job["langs"]) == ("done", "ru", ["ru"])
+    assert "lang_error" not in job
+    assert len([messages for messages in sent if is_detection_prompt(messages)]) == 1
+    assert audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))["langs"] == ["ru"]
+    text = note.read_text()
+    assert "== Summary ru" in text and "== Summary en" in text and "== Summary pt" in text
+    assert worker.sweep(vault, NOW, {}) == 2
+    assert job_path(vault, "translations", audio + "\nen").exists()
+    assert job_path(vault, "translations", audio + "\npt").exists()
+    assert not job_path(vault, "translations", audio + "\nru").exists()
+
+
+@pytest.mark.parametrize("answer", ["Sorry, no", "por"])
+def test_song_language_detection_failure_keeps_job_done(sweep_vault, ffprobe, monkeypatch, answer):
+    vault = sweep_vault
+    audio, _, _ = song_without_language(
+        vault, ffprobe, monkeypatch,
+        lambda messages: answer if is_detection_prompt(messages) else json.dumps(CONTEXT_JSON))
+    job = json.loads(job_path(vault, "transcripts", audio).read_text())
+    assert job["status"] == "done"
+    assert job["lang"] is None and job["langs"] == []
+    assert job["lang_error"].startswith("Language not detected")
+    assert worker.sweep(vault, NOW, {}) == 0

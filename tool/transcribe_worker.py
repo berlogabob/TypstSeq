@@ -1017,6 +1017,30 @@ def detect_language(text, settings):
     return code
 
 
+def detect_transcript_language(job, sidecar, lines, settings):
+    """Sets the job's lang and langs when the STT gave none (song mode): the language of the transcript's
+    speech, from detect_language, stored in the job and the sidecar. A failure is recorded as job["lang_error"]
+    and the job stays done without a language."""
+    import audio_v2
+
+    job.pop("lang_error", None)
+    text = "\n".join(line["text"] for line in lines if line["kind"] == "speech" and line.get("text", "").strip())
+    try:
+        if not text.strip():
+            raise ValueError("no speech text")
+        code = detect_language(text, settings)
+        if not re.fullmatch(r"[a-z]{2}", code):
+            raise ValueError(f"not a 2-letter code: {code!r}")
+    except Exception as error:
+        job["lang_error"] = f"Language not detected: {error}"
+        return
+    job["lang"] = code
+    job["langs"] = [code]
+    data = audio_v2.load_sidecar(sidecar)
+    data.update(lang=code, langs=[code])
+    audio_v2.save_sidecar(sidecar, data)
+
+
 def _drop_section_lines(note_text, heading, raws=None):
     """Removes the lines of `== heading` that are in `raws` (all of its lines when None)."""
     match = re.search(r"(^== " + re.escape(heading) + r"\r?\n)(.*?)(?=^== |\Z)", note_text, re.MULTILINE | re.DOTALL)
@@ -1438,6 +1462,8 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     finish = (sidecar_path, lines)
                     job["lang"] = language
                     job["langs"] = [language] if language else []
+                    if language is None:
+                        detect_transcript_language(job, sidecar_path, lines, settings)
                 else:
                     with note.open(encoding="utf-8", newline="") as stream:
                         note_text = stream.read()
