@@ -238,7 +238,7 @@ class AudioNoteScreen extends StatefulWidget {
     this.selectedLanguages = const [],
     this.translationStatus,
     this.requestTranslation,
-    this.initialTab = AudioTab.comments,
+    this.initialTab,
     this.onChanged,
     this.waveformAvailable,
     this.onOpenProcessing,
@@ -246,7 +246,9 @@ class AudioNoteScreen extends StatefulWidget {
     this.onOpenAsPage,
   });
 
-  final AudioTab initialTab;
+  /// Null means the caller did not pick a tab: Text when a transcript exists,
+  /// otherwise Comments.
+  final AudioTab? initialTab;
   final List<String> selectedLanguages;
   final Future<List<String>> Function(String audioPath)? transcriptLangs;
 
@@ -318,7 +320,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   bool _sharing = false;
   String? _audioPath;
   String? _transcriptState;
-  late AudioTab _tab = widget.initialTab;
+  late AudioTab _tab = widget.initialTab ?? AudioTab.comments;
   String? _lang;
   List<String> _langs = const [];
   String? _view; // selected language
@@ -494,6 +496,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
+    if (_loadingSource &&
+        widget.initialTab == null &&
+        _transcript.isNotEmpty) {
+      _tab = AudioTab.transcribe;
+    }
     _loadingSource = false;
     _selectView(_view);
   }

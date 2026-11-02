@@ -236,7 +236,7 @@ extension _AudioFlow on _HomeScreenState {
 
   Future<void> _openAudioNote(
     NoteRef note, {
-    AudioTab tab = AudioTab.comments,
+    AudioTab? tab,
     int? generation,
   }) async {
     final v = vault;
@@ -336,7 +336,7 @@ extension _AudioFlow on _HomeScreenState {
   /// on one note) and a link back to the note whose chip was tapped.
   Future<void> _openAudioAsset(
     String assetPath, {
-    AudioTab tab = AudioTab.comments,
+    AudioTab? tab,
   }) async {
     final v = vault;
     if (v == null) return;

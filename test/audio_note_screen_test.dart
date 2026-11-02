@@ -23,6 +23,7 @@ Future<void> _pumpNote(
   VoidCallback? onOpenProcessing,
   Future<void> Function(String, String, AudioExportFormat)? onExport,
   Future<void> Function(String, List<String>)? onOpenAsPage,
+  AudioTab? initialTab = AudioTab.transcribe,
 }) => tester.pumpWidget(
   MaterialApp(
     home: AudioNoteScreen(
@@ -33,7 +34,7 @@ Future<void> _pumpNote(
         kind: 'audio',
         outgoingLinks: [],
       ),
-      initialTab: AudioTab.transcribe,
+      initialTab: initialTab,
       readSource: readSource,
       readBytes: readBytes ?? (_) => Completer<Uint8List>().future,
       writeBytes: (_, _) async {},
@@ -65,6 +66,32 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
+  });
+
+  testWidgets('no requested tab opens on Text when a transcript exists', (
+    tester,
+  ) async {
+    await _pumpNote(
+      tester,
+      initialTab: null,
+      readSource: (_) async => '$_attachment== Transcript\n- 00:05 Olá\n',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AudioTranscriptRow), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('no requested tab opens on Comments without a transcript', (
+    tester,
+  ) async {
+    await _pumpNote(
+      tester,
+      initialTab: null,
+      readSource: (_) async => _attachment,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AudioTranscriptRow), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   for (final format in AudioExportFormat.values) {
