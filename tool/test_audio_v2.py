@@ -176,6 +176,17 @@ def test_speech_is_kept(text):
     assert not v2.is_hallucination(text)
 
 
+@pytest.mark.parametrize("text", ["É isso aí! " * 40, "Legendas pela comunidade Amara.org", "Obrigado."])
+def test_song_filter_drops_runaway_loops_and_credits(text):
+    assert v2.is_hallucination(text, song=True)
+
+
+def test_song_filter_keeps_repeated_chorus_lines():
+    chorus = "Back to black. Back to black. Back to black. Back to black."
+    assert not v2.is_hallucination(chorus, song=True)
+    assert v2.is_hallucination(chorus)
+
+
 def test_sentences_get_proportional_times_and_short_ones_join():
     lines = v2.sentence_lines(100.0, 120.0, "Toda. Menos. Eu. A minha família comunica muito através do humor.")
     assert lines[0] == (100.0, "Toda. Menos. Eu.")

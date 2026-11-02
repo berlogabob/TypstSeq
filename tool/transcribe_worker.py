@@ -1077,6 +1077,9 @@ def transcribe_v2_job(vault, job, note, model, settings):
     remaining chunks. The secondary pass runs on Studio only and its failure is not fatal. Every chunk
     is saved to the sidecar as it finishes, so a failed run resumes from there.
 
+    A recording with both artist and title tags, or a job with "mode": "song", is a song: no VAD gate, the
+    song hallucination filter, and the language is detected per song (the job's lang, when set, still wins).
+
     Returns (note text, sidecar path, lines, language). The caller writes the note, then calls
     audio_v2.finish_transcript with the sidecar path and lines.
     """
@@ -1087,6 +1090,11 @@ def transcribe_v2_job(vault, job, note, model, settings):
     state = audio_v2.load_sidecar(sidecar)
     legacy = state.get("stages", {}).get("transcript") != "done"
     job.pop("studio_error", None)
+    tags = audio_v2.audio_tags(audio)
+    song = None
+    if job.get("mode") == "song" or ("artist" in tags and "title" in tags):
+        song = {"artist": tags.get("artist", ""), "title": tags.get("title", "")}
+        job["mode"] = "song"
     with note.open(encoding="utf-8", newline="") as stream:
         note_text = stream.read()
     if legacy and audio_v2.section_has_lines(note_text, "Transcript"):
@@ -1103,7 +1111,7 @@ def transcribe_v2_job(vault, job, note, model, settings):
     primary_failed = False
     if studio is not None:
         try:
-            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.PRIMARY,))
+            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.PRIMARY,), song=song)
             job["engine"] = "studio"
         except Exception as error:
             job["studio_error"] = _redacted(error, key)
@@ -1112,10 +1120,10 @@ def transcribe_v2_job(vault, job, note, model, settings):
     mac = None
     if studio is None or primary_failed:
         mac = audio_v2.MacSTT(model, lang, studio_failed=primary_failed)
-        result = audio_v2.transcribe_v2(audio, sidecar, mac, engines=(audio_v2.PRIMARY,))
+        result = audio_v2.transcribe_v2(audio, sidecar, mac, engines=(audio_v2.PRIMARY,), song=song)
     if job["engine"] == "studio":
         try:
-            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.SECONDARY,))
+            result = audio_v2.transcribe_v2(audio, sidecar, studio, engines=(audio_v2.SECONDARY,), song=song)
         except Exception as error:
             job["studio_error"] = _redacted(error, key)
         _release(studio)
@@ -1158,7 +1166,10 @@ def context_stage(vault, job, note, sidecar, lines, settings, translate):
     targets = translation_targets(source_langs, extra.get("translate_to", []))
     _, chat = llm_chat(settings, max_tokens=CONTEXT_MAX_TOKENS)
     speech = [line for line in lines if line["kind"] == "speech"]
-    result = audio_v2.context_pass(speech, audio_v2.section_text(read_note(note), "Context"), targets[0], chat)
+    planned = audio_v2.load_sidecar(sidecar)
+    song = planned.get("song") if audio_v2.is_song(planned) else None
+    result = audio_v2.context_pass(speech, audio_v2.section_text(read_note(note), "Context"), targets[0], chat,
+                                   song=song)
     translated = {}
     for target in targets:
         done = audio_v2.translated_context(result, translate, source_langs, target)
@@ -1181,8 +1192,9 @@ def _render_transcript(note, sidecar, data):
     right before the write, so a user edit made meanwhile survives (merge_section reads it as a user line)."""
     import audio_v2
 
-    text, data["lines"] = audio_v2.merge_transcript(read_note(note), data.get("lines", []),
-                                                    audio_v2.lines_from_chunks(data["chunks"]))
+    text, data["lines"] = audio_v2.merge_transcript(
+        read_note(note), data.get("lines", []),
+        audio_v2.lines_from_chunks(data["chunks"], song=audio_v2.is_song(data)))
     with note.open("w", encoding="utf-8", newline="") as stream:
         stream.write(text)
     audio_v2.save_sidecar(sidecar, data)
@@ -1206,7 +1218,8 @@ def arbitration_stage(note, sidecar, settings):
     _render_transcript(note, sidecar, data)  # user edits since the transcript was written become user lines first
     glossary = data.get("context", {}).get("glossary", [])
     audio_v2.arbitrate_chunks(data["chunks"], data["lines"], audio_v2.section_text(read_note(note), "Context"),
-                              glossary, chat, save=lambda: audio_v2.save_sidecar(sidecar, data))
+                              glossary, chat, save=lambda: audio_v2.save_sidecar(sidecar, data),
+                              song=audio_v2.is_song(data))
     data.setdefault("stages", {})["arbitration"] = "done"
     _render_transcript(note, sidecar, data)
 

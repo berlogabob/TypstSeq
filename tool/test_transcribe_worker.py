@@ -1,6 +1,7 @@
 import base64
 import json
 import hashlib
+import os
 import signal
 import sys
 import time
@@ -872,8 +873,42 @@ def fake_v2_audio(monkeypatch, mac=FakeMac):
     monkeypatch.setattr(audio_v2, "MacSTT", mac)
 
 
+class FakeFFprobe:
+    """The fake ffprobe on PATH. format_tags calls answer `set_tags`; other calls answer a 4 s duration.
+    Every call's arguments are logged to `calls`."""
+
+    def __init__(self, directory):
+        self.log = directory / "calls.log"
+        self.tags_file = directory / "tags.json"
+        self.set_tags({})
+
+    def set_tags(self, tags):
+        self.tags_file.write_text(json.dumps({"format": {"tags": tags}}))
+
+    @property
+    def calls(self):
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+
 @pytest.fixture
-def sweep_vault(tmp_path, monkeypatch):
+def ffprobe(tmp_path_factory, monkeypatch):
+    directory = tmp_path_factory.mktemp("ffprobe")
+    fake = FakeFFprobe(directory)
+    script = directory / "ffprobe"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{fake.log}"\n'
+        'case "$*" in\n'
+        f'  *format_tags*) cat "{fake.tags_file}" ;;\n'
+        '  *) echo 4.0 ;;\n'
+        'esac\n')
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ['PATH']}")
+    return fake
+
+
+@pytest.fixture
+def sweep_vault(tmp_path, monkeypatch, ffprobe):
     settings_path = tmp_path / "_system/settings/processing.json"
     settings_path.parent.mkdir(parents=True)
     (tmp_path / "notes").mkdir()
@@ -2824,3 +2859,93 @@ def test_context_translation_failure_for_one_language_falls_back(tmp_path, monke
     assert audio_v2.section_text(note, "Summary pt") == "- 00:00 Resumo da peça."
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(tmp_path, "audio.wav"))
     assert sorted(sidecar["context_translated"]) == ["ru"]
+
+
+# Song mode (T37): tagged music. No VAD gate, repeated lines kept, the context pass names the song.
+
+@pytest.mark.parametrize("tags, job_mode, expected", [
+    ({"artist": "Amy Winehouse", "title": "Back to Black"}, None, "song"),
+    ({"artist": "Flor Damico"}, None, None),
+    ({"title": "cosas claras"}, None, None),
+    ({}, "song", "song"),
+])
+def test_tags_artist_title_switch_on_song_mode(sweep_vault, ffprobe, tags, job_mode, expected):
+    vault = sweep_vault
+    ffprobe.set_tags(tags)
+    set_audio_settings(vault, on_the_fly=True)
+    audio, note = add_audio_note(vault, "song.mp3")
+    if job_mode:
+        write_job(vault, "transcripts", audio, status="queued", audio=audio,
+                  note=note.relative_to(vault).as_posix(), mode=job_mode)
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate)
+    job = json.loads(job_path(vault, "transcripts", audio).read_text())
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))
+    assert job["status"] == "done"
+    assert job.get("mode") == expected
+    assert sidecar.get("mode") == expected
+    assert any("-show_entries format_tags=artist,title -of json" in call for call in ffprobe.calls)
+
+
+def test_song_mode_skips_vad(sweep_vault, ffprobe, monkeypatch):
+    vault = sweep_vault
+    ffprobe.set_tags({"artist": "Amy Winehouse", "title": "Back to Black"})
+    vad_calls = []
+
+    def vad(audio):
+        vad_calls.append(audio)
+        return [(0.0, 4.0)]
+
+    monkeypatch.setattr(audio_v2, "speech_regions", vad)
+    monkeypatch.setattr(audio_v2, "audio_seconds", lambda audio: 100.0)
+    set_audio_settings(vault, on_the_fly=True)
+    audio, _ = add_audio_note(vault, "song.mp3")
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate)
+    assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
+    assert vad_calls == []
+    chunks = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))["chunks"]
+    assert [chunk["kind"] for chunk in chunks] == ["speech"] * 4
+    assert chunks[0]["start"] == 0.0 and chunks[-1]["end"] == 100.0
+    assert all(chunk["end"] - chunk["start"] <= 25.0 for chunk in chunks)
+
+
+def test_song_mode_keeps_repeated_chorus(sweep_vault, ffprobe, monkeypatch):
+    vault = sweep_vault
+    ffprobe.set_tags({"artist": "Flor Damico", "title": "delincuente"})
+    monkeypatch.setattr(audio_v2, "audio_seconds", lambda audio: 50.0)  # two 25 s chunks
+    texts = {"chunk00000.wav": "Back to black. Back to black. Back to black. Back to black.",
+             "chunk00001.wav": "Legendas pela comunidade Amara.org"}
+
+    class Lyrics(FakeMac):
+        def __call__(self, wav, engine):
+            return texts[wav.name] if engine == audio_v2.PRIMARY else None
+
+    monkeypatch.setattr(audio_v2, "MacSTT", Lyrics)
+    set_audio_settings(vault, on_the_fly=True)
+    audio, note = add_audio_note(vault, "song.mp3")
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate)
+    assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
+    transcript = audio_v2.section_text(note.read_text(), "Transcript")
+    assert transcript.count("Back to black.") == 4  # the chorus repeats are kept
+    assert "Legendas" not in transcript  # the credit blocklist still applies
+    assert "[—]" in transcript
+
+
+def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
+    vault = sweep_vault
+    monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
+    ffprobe.set_tags({"artist": "Amy Winehouse", "title": "Back to Black"})
+    set_audio_settings(vault, on_the_fly=True)
+    audio, _ = add_audio_note(vault, "song.mp3")
+    reply = json.dumps({"summary": "Uma canção sobre um amor que termina.", "scenes": [],
+                        "glossary": [], "references": []})
+    calls = []
+    monkeypatch.setattr(worker, "urlopen", studio_stub(iter([reply]), calls))
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate, probe=quiet_probe)
+    assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
+    chat = [payload for url, payload in calls if url.endswith("/chat/completions")]
+    assert len(chat) == 1
+    system = chat[0]["messages"][0]["content"]
+    assert "a song by Amy Winehouse, titled Back to Black" in system
+    assert "what the song is about" in system
+    sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))
+    assert sidecar["song"] == {"artist": "Amy Winehouse", "title": "Back to Black"}

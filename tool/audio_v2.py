@@ -33,6 +33,7 @@ STUDIO_MODELS = {PRIMARY: ("transformers", "large-v3-turbo"), SECONDARY: ("mtmd"
 STUDIO_DEVICE = "gpu"
 LOAD_CAP_S = 600
 MAX_COMPRESSION = 2.4  # zlib ratio above this is looping text
+SONG_MAX_COMPRESSION = 3.5  # song mode: a chorus repeats on purpose; only a runaway loop is looping text
 MIN_CHARS_FOR_RATIO = 40
 BLOCKLIST = re.compile(r"^(legendas?\b|subtitles? by|amara\.org|obrigad[oa]\.?$)", re.IGNORECASE)
 SENTENCE_END = re.compile(r"[.!?…]+\s+")
@@ -102,16 +103,22 @@ def plan_chunks(speech, total, max_len=25.0, mark_gap=5.0):
     return items
 
 
-def is_hallucination(text):
-    """Whisper garbage: looping text, subtitle credits, a bare "Obrigado."."""
+def is_hallucination(text, song=False):
+    """Whisper garbage: looping text, subtitle credits, a bare "Obrigado.". In song mode only a runaway loop
+    (SONG_MAX_COMPRESSION) and the credits count, so a repeated chorus is kept."""
     text = text.strip()
     if len(text) > MIN_CHARS_FOR_RATIO:
         raw = text.encode("utf-8")
-        if len(raw) / len(zlib.compress(raw)) > MAX_COMPRESSION:
+        if len(raw) / len(zlib.compress(raw)) > (SONG_MAX_COMPRESSION if song else MAX_COMPRESSION):
             return True
     if BLOCKLIST.match(text):
         return True
-    return len(collapse_repeats(text)) < 0.5 * len(text)
+    return not song and len(collapse_repeats(text)) < 0.5 * len(text)
+
+
+def is_song(data):
+    """Whether a sidecar was planned in song mode (transcribe_v2)."""
+    return data.get("mode") == "song"
 
 
 def sentence_lines(start, end, text):
@@ -341,6 +348,27 @@ def audio_seconds(audio):
     return float(out.strip())
 
 
+def audio_tags(audio):
+    """The artist and title tags of a recording, {"artist": ..., "title": ...} with the ones it has; {} when ffprobe
+    cannot read them. Tags are optional, so a failed read is not a failed job."""
+    ffprobe = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"  # launchd PATH is minimal
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format_tags=artist,title", "-of", "json",
+                              str(audio)], capture_output=True, text=True, check=True,
+                             stdin=subprocess.DEVNULL, timeout=60).stdout
+        tags = {key.lower(): str(value).strip() for key, value in json.loads(out)["format"]["tags"].items()}
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, AttributeError):
+        return {}
+    return {name: tags[name] for name in ("artist", "title") if tags.get(name)}
+
+
+def song_sentence(song):
+    """"This recording is a song by <artist>, titled <title>." with the parts the song has."""
+    by = f" by {song['artist']}" if song.get("artist") else ""
+    titled = f", titled {song['title']}" if song.get("title") else ""
+    return f"This recording is a song{by}{titled}."
+
+
 def cut_chunk(audio, start, end, out):
     """Writes audio[start:end] (seconds) to out as 16 kHz mono WAV."""
     ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
@@ -378,17 +406,17 @@ def _doubt_mark(chunk):
     return agreement(chunk.get("asr") or "", chunk.get("asr_alt") or "") < DOUBT_MARK_THRESHOLD
 
 
-def lines_from_chunks(chunks):
+def lines_from_chunks(chunks, song=False):
     """Chunks with their primary text -> Transcript lines. Gap items, empty text and hallucinations are gap lines.
 
     Lines of a speech chunk whose engines disagree (_doubtful) get status "doubtful". A chunk decided by
-    arbitration (Stage 4) carries its own text and status, which replace both.
+    arbitration (Stage 4) carries its own text and status, which replace both. `song` selects the song filter.
     """
     lines = []
     for chunk in chunks:
         start = float(chunk["start"])
         text = (chunk.get("asr") or "").strip()
-        if chunk["kind"] == "gap" or not text or is_hallucination(text):
+        if chunk["kind"] == "gap" or not text or is_hallucination(text, song):
             lines.append(_gap_line(start))
             continue
         if chunk.get("arbitration"):
@@ -401,17 +429,22 @@ def lines_from_chunks(chunks):
     return lines
 
 
-def transcribe_v2(audio, sidecar, stt, *, engines=(PRIMARY, SECONDARY)):
+def transcribe_v2(audio, sidecar, stt, *, engines=(PRIMARY, SECONDARY), song=None):
     """Runs the speech chunks through each engine as one pass; returns the Transcript lines.
 
-    The speech map is planned once and stored in the sidecar. A pass calls
-    stt(wav_path, engine) for each speech chunk that has no text for that engine yet
+    The speech map is planned once and stored in the sidecar: from the VAD regions, or in song mode (`song` is
+    {"artist", "title"}, either possibly empty) as one region for the whole duration, with no VAD gate. A pass
+    calls stt(wav_path, engine) for each speech chunk that has no text for that engine yet
     (`asr` for PRIMARY, `asr_alt` for SECONDARY), saving the sidecar after every chunk.
     A stopped run resumes at the first chunk without text.
     """
     data = load_sidecar(sidecar)
     if "chunks" not in data:
-        data["chunks"] = plan_chunks(speech_regions(audio), audio_seconds(audio))
+        total = audio_seconds(audio)
+        if song is None:
+            data["chunks"] = plan_chunks(speech_regions(audio), total)
+        else:
+            data.update(mode="song", song=song, chunks=plan_chunks([(0.0, total)], total))
         save_sidecar(sidecar, data)
     with tempfile.TemporaryDirectory() as tmp:
         for engine in engines:
@@ -423,7 +456,7 @@ def transcribe_v2(audio, sidecar, stt, *, engines=(PRIMARY, SECONDARY)):
                 cut_chunk(audio, chunk["start"], chunk["end"], wav)
                 chunk[field] = stt(wav, engine) or ""
                 save_sidecar(sidecar, data)
-    return lines_from_chunks(data["chunks"])
+    return lines_from_chunks(data["chunks"], song=is_song(data))
 
 
 def reconcile_lines(previous, fresh):
@@ -604,17 +637,23 @@ def section_text(note_text, heading):
     return "".join(chunks[found[0] + 1:found[1]]).strip()
 
 
-def context_messages(context_text, target, window):
-    """Prompt for one window of numbered speech lines [(number, text)]. The reply is one JSON object (parse_context_reply)."""
+def context_messages(context_text, target, window, song=None):
+    """Prompt for one window of numbered speech lines [(number, text)]. The reply is one JSON object (parse_context_reply).
+    `song` ({"artist", "title"}) names the recording as a song and asks the summary for what the song is about."""
     language = worker.LANGUAGE_NAMES.get(target, target)
     schema = ('{"summary": string, "scenes": [{"line": int, "title": string}], '
               f'"glossary": [{{"heard": string, "spelling": string, "{target}": string}}], '
               '"references": [{"line": int, "term": string, "explanation": string}]}')
+    intro = "You read the transcript of one audio recording. "
+    summary = "summary: 5 to 10 sentences on what the recording is and what happens in it. "
+    if song is not None:
+        intro += song_sentence(song) + " "
+        summary = "summary: 5 to 10 sentences explaining what the song is about. "
     system = (
-        "You read the transcript of one audio recording. Reply with one JSON object and nothing else: "
+        f"{intro}Reply with one JSON object and nothing else: "
         f"{schema}. "
         "Write summary, scene titles and explanations in the language of the transcript. "
-        "summary: 5 to 10 sentences on what the recording is and what happens in it. "
+        f"{summary}"
         "scenes: each place where the subject or scene changes, with the number of its first line and a short title. "
         "glossary: names and terms the transcript uses. heard is the form in the transcript; spelling is the correct "
         "form when you recognise it (a misheard name is corrected to its usual spelling), otherwise the same as heard; "
@@ -701,12 +740,12 @@ def parse_summary_reply(reply):
     return summary.strip()
 
 
-def context_pass(speech, context_text, target, chat):
+def context_pass(speech, context_text, target, chat, song=None):
     """Stage 5 over the speech lines (dicts with `text`, numbered from 1). chat(messages) returns the reply text.
 
     Returns {"summary", "scenes", "glossary", "references"}; scene and reference line numbers are the
     speech line numbers. Transcripts longer than CONTEXT_WINDOW lines go in windows, and the window
-    summaries are merged by one more call. No speech lines: no call.
+    summaries are merged by one more call. No speech lines: no call. `song` as in context_messages.
     """
     numbered = [(number, line["text"]) for number, line in enumerate(speech, start=1)]
     if not numbered:
@@ -714,7 +753,7 @@ def context_pass(speech, context_text, target, chat):
     parts = []
     for first in range(0, len(numbered), CONTEXT_WINDOW):
         window = numbered[first:first + CONTEXT_WINDOW]
-        reply = chat(context_messages(context_text, target, window))
+        reply = chat(context_messages(context_text, target, window, song))
         parts.append(parse_context_reply(reply, {number for number, _ in window}, target))
     if len(parts) == 1:
         return parts[0]
@@ -839,25 +878,25 @@ def render_context(note_text, previous, results, speech):
 
 # Arbitration (Stage 4): one LLM call per disputed speech chunk; the guard keeps invented words out
 
-def arbitration_candidate(chunk):
+def arbitration_candidate(chunk, song=False):
     """A speech chunk with two non-empty hypotheses that disagree, neither a filter hit, not arbitrated yet."""
     if chunk["kind"] != "speech" or "arbitration" in chunk:
         return False
     first, second = (chunk.get("asr") or "").strip(), (chunk.get("asr_alt") or "").strip()
-    if not (first and second) or is_hallucination(first) or is_hallucination(second):
+    if not (first and second) or is_hallucination(first, song) or is_hallucination(second, song):
         return False
     return agreement(first, second) < ARBITRATE_THRESHOLD
 
 
-def _neighbour_lines(chunks, index):
+def _neighbour_lines(chunks, index, song=False):
     """Up to ARBITRATE_NEIGHBOURS speech lines before and after chunks[index], as they read now."""
     before, after = [], []
     for chunk in reversed(chunks[:index]):
-        before = [line["text"] for line in lines_from_chunks([chunk]) if line["kind"] == "speech"] + before
+        before = [line["text"] for line in lines_from_chunks([chunk], song) if line["kind"] == "speech"] + before
         if len(before) >= ARBITRATE_NEIGHBOURS:
             break
     for chunk in chunks[index + 1:]:
-        after += [line["text"] for line in lines_from_chunks([chunk]) if line["kind"] == "speech"]
+        after += [line["text"] for line in lines_from_chunks([chunk], song) if line["kind"] == "speech"]
         if len(after) >= ARBITRATE_NEIGHBOURS:
             break
     return before[-ARBITRATE_NEIGHBOURS:], after[:ARBITRATE_NEIGHBOURS]
@@ -913,16 +952,16 @@ def _edited(chunk, lines):
                for line in lines)
 
 
-def arbitrate_chunks(chunks, lines, context_text, glossary, chat, save=lambda: None):
+def arbitrate_chunks(chunks, lines, context_text, glossary, chat, save=lambda: None, song=False):
     """Stage 4 over the chunks, in order: each candidate gets chunk["arbitration"] = {"text", "status"} from one
     chat(messages) call. `save()` runs after every decided chunk, so a stopped run resumes at the next undecided one.
     `lines` are the current Transcript lines; chunks with a user-edited or deleted line are skipped. A chat error
-    propagates; the chunks decided before it keep their decisions.
+    propagates; the chunks decided before it keep their decisions. `song` selects the song filter.
     """
     for index, chunk in enumerate(chunks):
-        if not arbitration_candidate(chunk) or _edited(chunk, lines):
+        if not arbitration_candidate(chunk, song) or _edited(chunk, lines):
             continue
-        before, after = _neighbour_lines(chunks, index)
+        before, after = _neighbour_lines(chunks, index, song)
         first, second = chunk["asr"].strip(), chunk["asr_alt"].strip()
         reply = chat(arbitration_messages(context_text, glossary, before, first, second, after))
         chunk["arbitration"] = arbitration_result(reply, first, second, glossary)
