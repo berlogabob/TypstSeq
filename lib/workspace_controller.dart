@@ -1684,9 +1684,18 @@ class WorkspaceController extends ChangeNotifier {
         ? await databaseForVault!(activeEntry)
         : await database;
     if (db == null || !_owns(opened, generation)) return;
+    // Stored content hash per node: a node whose file changed since its row
+    // was written is projected again (projectNodes rewrites projection-only
+    // rows), so text added later stays searchable.
     final have = {
-      for (final row in await db.customSelect('SELECT id FROM nodes').get())
-        row.read<String>('id'),
+      for (final row
+          in await db
+              .customSelect(
+                "SELECT id, json_extract(attributes_json, '\$.contentHash') AS hash "
+                'FROM nodes',
+              )
+              .get())
+        row.read<String>('id'): row.read<String?>('hash'),
     };
     // An imported file keeps its mapped node id (as persistNoteSource does),
     // so a header id never duplicates the imported node.
@@ -1701,13 +1710,17 @@ class WorkspaceController extends ChangeNotifier {
     await db.dropProjectedNodes([
       for (final note in built.notes)
         if (mapped[note.path] case final id?
-            when id != note.id && have.contains(note.id))
+            when id != note.id && have.containsKey(note.id))
           note.id,
     ]);
     final notes = [
       for (final note in built.notes)
         if ((mapped[note.path] ?? note.id) case final id
-            when id.isNotEmpty && !have.contains(id))
+            when id.isNotEmpty &&
+                (!have.containsKey(id) ||
+                    (have[id] != null &&
+                        note.contentHash != null &&
+                        have[id] != note.contentHash)))
           (id, note),
     ];
     // ponytail: 200-note chunks bound memory; an interrupted run is finished

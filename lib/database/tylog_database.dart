@@ -869,8 +869,11 @@ class TyLogDatabase extends _$TyLogDatabase {
     }
   }
 
-  /// Inserts nodes that are not in the table yet (search rows included);
-  /// existing nodes are left untouched.
+  /// Inserts nodes that are not in the table yet (search rows included).
+  /// An existing node is left alone unless it is projection-only (no
+  /// revisions) and its content changed on disk: then its row and search row
+  /// are rewritten, so text added to a note later (a screenshot's OCR section)
+  /// becomes searchable. App-authored nodes always win.
   Future<void> projectNodes(Iterable<NodeData> projected) async {
     await transaction(() async {
       await _ensureNodeSearch();
@@ -878,7 +881,25 @@ class TyLogDatabase extends _$TyLogDatabase {
         final existing = await (select(
           nodes,
         )..where((t) => t.id.equals(node.id))).getSingleOrNull();
-        if (existing != null) continue;
+        if (existing != null) {
+          if (existing.content == node.content) continue;
+          final revised = await customSelect(
+            "SELECT 1 FROM revisions WHERE entity_kind = 'node' "
+            'AND entity_id = ? LIMIT 1',
+            variables: [Variable.withString(node.id)],
+          ).getSingleOrNull();
+          if (revised != null) continue;
+          await (update(nodes)..where((t) => t.id.equals(node.id))).write(
+            NodesCompanion(
+              title: Value(node.title),
+              content: Value(node.content),
+              attributesJson: Value(node.attributesJson),
+              updatedAtMs: Value(node.updatedAtMs),
+            ),
+          );
+          await _upsertNodeSearch(node);
+          continue;
+        }
         await into(nodes).insert(node);
         // New node: no FTS row to delete. The delete in _upsertNodeSearch
         // scans the whole FTS table (node_id is UNINDEXED), which made a
