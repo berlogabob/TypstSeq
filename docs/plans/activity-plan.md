@@ -296,3 +296,21 @@ Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 
 - [ ] A24 backup (W9 T10): needs the A24 on adb.
 - [ ] P2P LAN timing: in-app iroh harness (moved to its own session).
 - Parked by user: Portuguese pack audio (W8 #9-11, #17; 18 clips < 0.9), pack repo IADE/licence review.
+
+## Wave 14 (2026-11-02): extraction UX + fixit backlog (plan ~/.claude/plans/fancy-swinging-steele.md)
+Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at gates; Studio = app models only.
+- [ ] D1 search result opens today's page instead of the hit (fixit 10-20)
+- [ ] A1 Processing screen: queued/running/failed jobs from _system/jobs/*, retry (fixit 10-27)
+- [ ] A2 every add action shows "Queued -> see Processing"
+- [ ] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
+- [ ] B2 screenshots: same Text view, OCR + ru/en/pt (T40)
+- [ ] B3 song playback speed/pitch (T38)
+- [ ] C1 copy line / copy all (original, RU, EN, PT, side by side)
+- [ ] C2 export Markdown / PDF via share sheet
+- [ ] C3 "Open as page": translation as an editable linked note
+- [ ] D2 pasted OCR text finds nothing in search (fixit 10-05)
+- [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
+- [ ] D4 indent / nested list (10-26)
+- [ ] D5 screenshot/link zones collapsed by default on phone (10-27)
+- [ ] D6 entry lost offline (10-07): sync_trace first
+- Deferred: image wrap/crop/anchors (10-07) - separate design
