@@ -6,6 +6,7 @@ import '../ai/ai_settings.dart';
 import '../audio/processing_policy.dart';
 import 'ai_connections_settings.dart';
 import 'processing_policy_editor.dart';
+import 'processing_screen.dart';
 import 'snack.dart';
 import 'constants.dart';
 
@@ -20,6 +21,7 @@ class AudioProcessingSettings extends StatefulWidget {
     required this.read,
     required this.write,
     required this.processNow,
+    this.onOpenProcessing,
     this.section = AiSettingsSection.all,
     this.readAi,
     this.writeAi,
@@ -29,6 +31,7 @@ class AudioProcessingSettings extends StatefulWidget {
   final Future<AudioPolicy> Function() read;
   final Future<void> Function(AudioPolicy) write;
   final Future<void> Function() processNow;
+  final VoidCallback? onOpenProcessing;
   final AiSettingsSection section;
   final Future<AiSettings> Function()? readAi;
   final Future<void> Function(AiSettings)? writeAi;
@@ -381,7 +384,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
   Future<void> _processNow() async {
     try {
       await widget.processNow();
-      if (mounted) showSnack(context, 'Requested');
+      if (mounted) showProcessingQueued(context, widget.onOpenProcessing);
     } catch (error) {
       if (mounted) showSnack(context, '$error');
     }
@@ -676,9 +679,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
             title: const Text('Transcribe automatically'),
             onChanged: _busy ? null : (v) => _save(p.copyWith(transcribe: v)),
           ),
-          const ListTile(
-            title: Text('Translations: ru, en, pt (always)'),
-          ),
+          const ListTile(title: Text('Translations: ru, en, pt (always)')),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: kSpace16),
             child: Column(

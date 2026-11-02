@@ -44,6 +44,8 @@ import 'nextcloud_sync.dart';
 import 'nextcloud_sync/conflict_choice.dart';
 import 'package:tylog_core/validation.dart';
 import 'platform_file_actions.dart';
+import 'processing_jobs.dart';
+import 'widgets/processing_screen.dart';
 import 'pdf/pdf_reader_screen.dart';
 import 'report.dart';
 import 'retrieval/graph_svg.dart';
@@ -528,12 +530,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _shareChannel = MethodChannel('org.tylog.tylog/share');
   bool _handlingShare = false;
   List<ArticleJob> _articleJobs = const [];
+  final _processingJobs = ProcessingJobs();
   int _articleJobsGeneration = 0;
   (Vault?, bool, int)? _jobsRevision;
 
   Future<void> _refreshArticleJobs() async {
     final generation = ++_articleJobsGeneration;
     final currentVault = vault;
+    unawaited(_processingJobs.refresh(currentVault?.storage));
     if (currentVault == null) {
       _articleJobs = const [];
       return;
@@ -549,6 +553,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) showSnack(context, 'Could not read article jobs: $error');
     }
   }
+
+  void _processingJobWritten(Vault currentVault, String path) {
+    if (!mounted || !identical(vault, currentVault)) return;
+    currentVault.restoreWriteMarkers(path, stale: false, pendingSync: true);
+    workspace.queueCloudSync();
+    unawaited(_refreshArticleJobs());
+  }
+
+  Future<void> _showProcessing() async {
+    if (vault == null) return;
+    unawaited(_processingJobs.refresh(vault!.storage));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ProcessingScreen(
+          jobs: _processingJobs,
+          titleForPath: (path) => index?.notesByPath[path]?.title,
+          onQueued: (path) {
+            if (vault case final currentVault?) {
+              _processingJobWritten(currentVault, path);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showProcessingQueued() =>
+      showProcessingQueued(context, () => unawaited(_showProcessing()));
 
   Future<void> _handlePendingShares() async {
     if (_handlingShare || vault == null || !mounted) return;
@@ -636,14 +668,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (!mounted || !identical(vault, targetVault)) continue;
         if (choice == 'article' && article != null) {
           await article.enqueue(targetVault.storage);
-          targetVault.restoreWriteMarkers(
-            article.path,
-            stale: false,
-            pendingSync: true,
-          );
-          workspace.queueCloudSync();
-          await _refreshArticleJobs();
-          if (mounted) showSnack(context, 'Article queued');
+          _processingJobWritten(targetVault, article.path);
+          if (mounted) _showProcessingQueued();
         } else if (choice == 'audio' && path != null) {
           await _saveSharedAudio(File(path));
         } else if (choice == 'attach' && path != null) {
@@ -790,6 +816,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _previewDebounceTimer?.cancel();
     _semanticRefreshTimer?.cancel();
     _semantic?.dispose();
+    _processingJobs.dispose();
     WidgetsBinding.instance.removeObserver(this);
     workspace
       ..removeListener(_workspaceChanged)
@@ -2982,6 +3009,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         conflicts: syncConflicts.length,
                       );
                 return SettingsSheet(
+                  onOpenProcessing: () => unawaited(_showProcessing()),
                   storage: vault?.storage,
                   calendarSettings: workspace.calendarSettings,
                   onConfigureCalendars: workspace.configureCalendars,
@@ -3014,7 +3042,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onProcessAudio: vault == null
                       ? null
                       : () async {
-                          await requestProcessNow(vault!.storage);
+                          final currentVault = vault!;
+                          await requestProcessNow(currentVault.storage);
+                          _processingJobWritten(currentVault, processNowPath);
                           unawaited(_syncNow());
                         },
                   screenshotsMode: registry?.screenshotsMode ?? 'off',
@@ -4984,7 +5014,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             AppSection(
               title: 'Views',
-              children: [tile(_ShellAction.graph, AppIcons.graph, 'Graph')],
+              children: [
+                tile(_ShellAction.graph, AppIcons.graph, 'Graph'),
+                if (vault != null)
+                  tile(
+                    _ShellAction.processing,
+                    Icons.hourglass_top,
+                    'Processing',
+                  ),
+              ],
             ),
           ],
         );
@@ -5085,6 +5123,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _sharePdf();
       case _ShellAction.settings:
         _showSettings();
+      case _ShellAction.processing:
+        await _showProcessing();
     }
   }
 
@@ -6062,6 +6102,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
           actions: [
+            ProcessingBadge(
+              jobs: _processingJobs,
+              onOpen: () => unawaited(_showProcessing()),
+            ),
             IconButton(
               tooltip: 'Timestamped capture',
               icon: const Icon(Icons.more_time),
@@ -6317,6 +6361,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 enum _ShellAction {
+  processing,
   vaults,
   newPage,
   newEntity,

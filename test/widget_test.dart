@@ -440,7 +440,7 @@ void main() {
       ['Switch', 'Create', 'This note', 'Views']);
     expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
       ['Vaults', 'Settings', 'New page', 'New entity',
-       'Context', 'Share as PDF', 'Graph']);
+       'Context', 'Share as PDF', 'Graph', 'Processing']);
     for (final label in ['Audio', 'Maintenance', 'Problems', 'Rebuild index',
       'Relink vault', 'Semantic search', 'Typst help', 'Split', 'Split editor']) {
       expect(

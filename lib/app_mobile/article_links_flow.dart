@@ -31,18 +31,21 @@ extension _ArticleLinksFlow on _HomeScreenState {
       final job = SharedArticle(url, origin: path);
       if (await v.storage.exists(job.path)) continue;
       await job.enqueue(v.storage);
+      v.restoreWriteMarkers(job.path, stale: false, pendingSync: true);
       queued++;
     }
     if (!mounted) return;
+    if (queued > 0) {
+      workspace.queueCloudSync();
+      unawaited(_refreshArticleJobs());
+      _showProcessingQueued();
+      return;
+    }
     showSnack(
       context,
-      queued == 0 && relinked == 0
+      relinked == 0
           ? 'No new links to save'
-          : [
-              if (queued > 0)
-                '$queued ${queued == 1 ? 'link' : 'links'} queued as articles',
-              if (relinked > 0) 'links to ready articles updated',
-            ].join('; '),
+          : 'links to ready articles updated',
     );
   }
 

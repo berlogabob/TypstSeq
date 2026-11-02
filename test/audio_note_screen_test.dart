@@ -14,6 +14,10 @@ Future<void> _pumpNote(
   required Future<String> Function(String) readSource,
   Future<Uint8List> Function(String)? readBytes,
   String? sourceLanguage,
+  Future<void> Function(String, String)? requestTranscript,
+  Future<void> Function(String, String, String, String, List<String>)?
+  requestTranslation,
+  VoidCallback? onOpenProcessing,
 }) => tester.pumpWidget(
   MaterialApp(
     home: AudioNoteScreen(
@@ -31,12 +35,74 @@ Future<void> _pumpNote(
       mutate: (_, _) async => true,
       transcriptStatus: (_) async => null,
       transcriptLang: (_) async => sourceLanguage,
-      requestTranscript: (_, _) async {},
+      requestTranscript: requestTranscript ?? (_, _) async {},
+      requestTranslation: requestTranslation,
+      onOpenProcessing: onOpenProcessing,
     ),
   ),
 );
 
 void main() {
+  for (final reprocess in [false, true]) {
+    testWidgets(
+      '${reprocess ? 'Re-process' : 'Transcription'} links to Processing',
+      (tester) async {
+        var requested = 0;
+        var opened = 0;
+        await _pumpNote(
+          tester,
+          readSource: (_) async => _attachment,
+          requestTranscript: (audio, note) async {
+            expect(audio, 'assets/theatre.m4a');
+            expect(note, 'notes/theatre.typ');
+            requested++;
+          },
+          onOpenProcessing: () => opened++,
+        );
+        await tester.pump();
+        if (reprocess) {
+          await tester.tap(find.byTooltip('Audio note menu'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Re-process'));
+        } else {
+          await tester.tap(find.text('Request transcription'));
+        }
+        await tester.pumpAndSettle();
+        expect(requested, 1);
+        expect(find.text('Queued — see Processing'), findsOneWidget);
+        await tester.tap(find.widgetWithText(SnackBarAction, 'Processing'));
+        expect(opened, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets('Translation links to Processing', (tester) async {
+    var requested = 0;
+    var opened = 0;
+    await _pumpNote(
+      tester,
+      sourceLanguage: 'pt',
+      readSource: (_) async => '$_attachment== Transcript\n- 00:05 Olá\n',
+      requestTranslation: (audio, note, target, source, sourceLangs) async {
+        expect(target, 'en');
+        expect(source, 'pt');
+        requested++;
+      },
+      onOpenProcessing: () => opened++,
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('Translate into another language'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(requested, 1);
+    expect(find.text('Queued — see Processing'), findsOneWidget);
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Processing'));
+    expect(opened, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('language selection changes sections and transcript rows', (
     tester,
   ) async {

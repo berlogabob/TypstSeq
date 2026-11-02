@@ -248,6 +248,7 @@ extension _AudioFlow on _HomeScreenState {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => AudioNoteScreen(
+          onOpenProcessing: () => unawaited(_showProcessing()),
           note: note,
           initialTab: tab,
           selectedLanguages: selectedLanguages,
@@ -260,24 +261,29 @@ extension _AudioFlow on _HomeScreenState {
           writeBytes: v.storage.writeBytes,
           mutate: workspace.mutateNote,
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
-          requestTranscript: (audio, note) => enqueueTranscript(
-            v.storage,
-            audioPath: audio,
-            notePath: note,
-            retryDone: true,
-          ),
+          requestTranscript: (audio, note) async {
+            await enqueueTranscript(
+              v.storage,
+              audioPath: audio,
+              notePath: note,
+              retryDone: true,
+            );
+            _processingJobWritten(v, transcriptJobPath(audio));
+          },
           transcriptLang: (audio) => transcriptJobLang(v.storage, audio),
           translationStatus: (audio, target) =>
               translationJobStatus(v.storage, audio, target),
-          requestTranslation: (audio, note, target, source, sourceLangs) =>
-              enqueueTranslation(
-                v.storage,
-                audioPath: audio,
-                notePath: note,
-                target: target,
-                sourceLang: source,
-                sourceLangs: sourceLangs,
-              ),
+          requestTranslation: (audio, note, target, source, sourceLangs) async {
+            await enqueueTranslation(
+              v.storage,
+              audioPath: audio,
+              notePath: note,
+              target: target,
+              sourceLang: source,
+              sourceLangs: sourceLangs,
+            );
+            _processingJobWritten(v, translationJobPath(audio, target));
+          },
         ),
       ),
     );

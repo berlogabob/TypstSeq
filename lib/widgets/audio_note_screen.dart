@@ -18,6 +18,7 @@ import '../audio/processing_policy.dart';
 import '../models.dart';
 import 'audio_sheets.dart';
 import 'snack.dart';
+import 'processing_screen.dart';
 import 'constants.dart';
 
 /// Sections of the expanded audio screen.
@@ -440,6 +441,7 @@ class AudioNoteScreen extends StatefulWidget {
     this.initialTab = AudioTab.comments,
     this.onChanged,
     this.waveformAvailable,
+    this.onOpenProcessing,
   });
 
   final AudioTab initialTab;
@@ -448,6 +450,7 @@ class AudioNoteScreen extends StatefulWidget {
 
   /// Called after alias/tags are saved so the index and chips can refresh.
   final VoidCallback? onChanged;
+  final VoidCallback? onOpenProcessing;
   final bool? waveformAvailable;
 
   final NoteRef note;
@@ -730,10 +733,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     if (!mounted) return;
     setState(() => _translating[target] = 'queued');
     await _refreshTranscriptState();
-    if (mounted) showSnack(context, 'Translation requested');
+    if (mounted) showProcessingQueued(context, widget.onOpenProcessing);
   }
 
-  Future<void> _requestTranscript({bool reprocess = false}) async {
+  Future<void> _requestTranscript() async {
     final path = _audioPath;
     if (path == null || _requestingTranscript) return;
     setState(() => _requestingTranscript = true);
@@ -741,10 +744,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       await widget.requestTranscript(path, widget.note.path);
       await _refreshTranscriptState();
       if (mounted) {
-        showSnack(
-          context,
-          reprocess ? 'Re-processing requested' : 'Transcription requested',
-        );
+        showProcessingQueued(context, widget.onOpenProcessing);
       }
     } catch (error) {
       if (mounted) {
@@ -808,7 +808,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         actions: [
           PopupMenuButton<String>(
             tooltip: 'Audio note menu',
-            onSelected: (_) => unawaited(_requestTranscript(reprocess: true)),
+            onSelected: (_) => unawaited(_requestTranscript()),
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'reprocess',

@@ -86,7 +86,10 @@ void main() {
       await storage.exists(_job('https://www.google.com/search?q=x')),
       isFalse,
     );
-    expect(find.textContaining('2 links queued as articles'), findsOneWidget);
+    expect(find.text('Queued — see Processing'), findsOneWidget);
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Processing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Article · Queued'), findsNWidgets(2));
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 

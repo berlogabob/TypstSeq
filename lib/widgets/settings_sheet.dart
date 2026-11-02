@@ -44,6 +44,7 @@ class SettingsSheet extends StatefulWidget {
     this.audioPolicyRead,
     this.audioPolicyWrite,
     this.onProcessAudio,
+    this.onOpenProcessing,
     this.readAi,
     this.writeAi,
     this.readWorkers,
@@ -64,6 +65,7 @@ class SettingsSheet extends StatefulWidget {
   final Future<AudioPolicy> Function()? audioPolicyRead;
   final Future<void> Function(AudioPolicy)? audioPolicyWrite;
   final Future<void> Function()? onProcessAudio;
+  final VoidCallback? onOpenProcessing;
   final Future<AiSettings> Function()? readAi;
   final Future<void> Function(AiSettings)? writeAi;
   final Future<List<WorkerStatus>> Function()? readWorkers;
