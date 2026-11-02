@@ -312,5 +312,6 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [ ] D4 indent / nested list (10-26)
 - [ ] D5 screenshot/link zones collapsed by default on phone (10-27)
+- [ ] D7 screenshots library: default sort = newest added first, no grouping (user 11-02)
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
