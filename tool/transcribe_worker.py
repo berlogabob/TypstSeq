@@ -978,6 +978,88 @@ def review_translation(note, sidecar, target, source_langs, settings, context):
     return error
 
 
+def _section_body(text, heading):
+    """The body of `== heading` in a note, or None when the note has no such section."""
+    match = re.search(r"^" + re.escape(heading) + r"\r?$(.*?)(?=^== |\Z)", text, re.MULTILINE | re.DOTALL)
+    return match.group(1) if match else None
+
+
+def screenshot_text_lines(note_text):
+    """The OCR lines of a screenshot note's == Text section, unescaped; blank lines are skipped."""
+    body = _section_body(note_text, "== Text") or ""
+    return [re.sub(r"\\(.)", r"\1", line.strip()) for line in body.splitlines() if line.strip()]
+
+
+def detect_language(text, settings):
+    """ISO 639-1 code of `text`, asked once from the translate LLM. ValueError when the reply is not a code."""
+    _, chat = llm_chat(settings, max_tokens=16)
+    reply = chat([
+        {"role": "system", "content": "Reply with the ISO 639-1 code of the language of the user's text, "
+                                      "lowercase, and nothing else."},
+        {"role": "user", "content": text[:500]},
+    ])
+    code = reply.strip().strip(".'\"` ").lower()
+    if not re.fullmatch(r"[a-z]{2,3}", code):
+        raise ValueError(f"Language reply is not a code: {reply[:40]!r}")
+    return code
+
+
+def _drop_section_lines(note_text, heading, raws=None):
+    """Removes the lines of `== heading` that are in `raws` (all of its lines when None)."""
+    match = re.search(r"(^== " + re.escape(heading) + r"\r?\n)(.*?)(?=^== |\Z)", note_text, re.MULTILINE | re.DOTALL)
+    if match is None:
+        return note_text
+    kept = "".join(line for line in match.group(2).splitlines(keepends=True)
+                   if raws is not None and line.rstrip("\r\n") not in raws)
+    return note_text[:match.start(2)] + kept + note_text[match.end(2):]
+
+
+def screenshot_translation(note, job, translate, settings):
+    """Screenshot translation job: the note's OCR lines become `== Translation <target>`, one `- 00:00` line each.
+
+    The section is merged like an audio translation (merge_section), so a line the user edited keeps its text
+    on a re-run. job["lines"] keeps the section's lines between runs; then the review scores them. The note is
+    written; the job gets lines, scores, llm and review_error."""
+    import audio_v2
+
+    target, lang = job["target"], job["lang"]
+    heading = f"Translation {target}"
+    note_text = read_note(note)
+    source = screenshot_text_lines(note_text)
+    translated = iter(translate(source, lang, target, [lang]) if source else [])
+    previous = job.get("lines")
+    if _section_body(note_text, f"== {heading}") is None:
+        previous = None  # the section was removed on purpose: regenerate, do not keep "deleted" lines
+    if previous is None:
+        note_text = _drop_section_lines(note_text, heading)  # merge_section would keep them as user lines
+    queue = list(previous or [])
+    built = []
+    for text in source:
+        text = next(translated)
+        old = queue.pop(0) if queue else None
+        if old is not None and old.get("status") in ("user", "deleted"):
+            built.append(old)
+            continue
+        built.append({"start": 0.0, "kind": "speech", "text": text, "source": text, "status": "ok",
+                      "doubt_mark": False, "rendered": dict(old.get("rendered", {})) if old else {}})
+    # Machine lines of the last run that no source line produces any more leave the section.
+    stale = {old["rendered"][heading] for old in queue
+             if old.get("status") not in ("user", "deleted") and heading in old.get("rendered", {})}
+    if stale:
+        note_text = _drop_section_lines(note_text, heading, stale)
+    note_text, lines = audio_v2.merge_section(note_text, heading, built)
+    with note.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(note_text)
+    sidecar = {"translations": {target: {"lines": lines, "scores": {}}}}
+    job["review_error"] = review_translation(note, sidecar, target, [lang], settings, None)
+    if job["review_error"] is None:
+        job.pop("review_error")
+    job["lines"] = sidecar["translations"][target]["lines"]
+    job["scores"] = sidecar["translations"][target]["scores"]
+    if getattr(translate, "last_model", None) is not None:
+        job["llm"] = translate.last_model
+
+
 def sweep(vault, now, state, force=False):
     vault = Path(vault).resolve()
     audio_settings = _read_json(_settings_path_for(vault / "_system/settings/processing.json")).get("audio", {})
@@ -1046,6 +1128,25 @@ def sweep(vault, now, state, force=False):
                     enqueue("translations", audio + "\n" + target,
                             {**job, "target": target, "source_lang": source_lang,
                              "source_langs": source_langs})
+    # Screenshots: the language of the OCR text is asked once (no job or section yet); a language's
+    # own translation is skipped. A note with any target's section or job is not looked at again.
+    if llm:
+        for note in sorted((vault / "screenshots").rglob("shot-*.typ")):
+            text = note.read_text(encoding="utf-8")
+            rel = note.relative_to(vault).as_posix()
+            if not screenshot_text_lines(text):
+                continue
+            candidates = translation_targets([], targets)
+            if any(section(text, f"== Translation {t}") is not None
+                   or _job_file(vault, "translations", rel + "\n" + t).exists() for t in candidates):
+                continue
+            try:
+                lang = detect_language("\n".join(screenshot_text_lines(text)), load_ai_settings(vault))
+            except (ValueError, OSError):
+                continue  # asked again on a later sweep
+            for target in translation_targets([lang], targets):
+                enqueue("translations", rel + "\n" + target,
+                        {"note": rel, "target": target, "lang": lang, "screenshot": True})
     # The scheduled run stays open until a sweep finds nothing new and nothing
     # queued or running: translations only appear after their transcripts
     # finish, so closing after the first sweep would push them to tomorrow.
@@ -1285,7 +1386,10 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 note = _vault_path(vault, job["note"])
                 finish = None
-                if kind == "transcripts" and job.get("engine") != "v1":
+                if kind == "translations" and job.get("screenshot"):
+                    screenshot_translation(note, job, translate, settings)
+                    updated_note = read_note(note)
+                elif kind == "transcripts" and job.get("engine") != "v1":
                     updated_note, sidecar_path, lines, language = transcribe_v2_job(
                         vault, job, note, model, settings)
                     finish = (sidecar_path, lines)
@@ -1337,7 +1441,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     audio_v2.finish_transcript(*finish)
                     context_stage(vault, job, note, *finish, settings, translate)
                     arbitration_stage(note, finish[0], settings)
-                if kind == "translations":
+                if kind == "translations" and not job.get("screenshot"):
                     review_error = review_translation(note, sidecar, job["target"], source_langs, settings, context)
                     if review_error:
                         job["review_error"] = review_error

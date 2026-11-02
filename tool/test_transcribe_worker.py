@@ -2949,3 +2949,123 @@ def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
     assert "what the song is about" in system
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))
     assert sidecar["song"] == {"artist": "Amy Winehouse", "title": "Back to Black"}
+
+
+SHOT = "screenshots/2026/10/shot-0123456789abcdef.typ"
+
+
+def add_screenshot_note(vault, text="Café Dias\nRua Nova"):
+    note = vault / SHOT
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text('#show: tylog.note.with(\n  kind: "screenshot",\n)\n\n'
+                    '#image("/assets/s.webp", width: 100%)\n\n== Description\n\nA map.\n\n'
+                    f'== Text\n\n{text}\n')
+    return note
+
+
+@pytest.fixture
+def shot_llm(monkeypatch):
+    """A fake LLM: every call answers `en` (the language of the OCR text)."""
+    calls = []
+
+    def chat(messages, json_mode=False):
+        calls.append(messages)
+        return "en"
+
+    monkeypatch.setattr(worker, "llm_chat", lambda settings, **kwargs: ("fake", chat))
+    monkeypatch.setattr(worker, "_llm_configured", lambda settings: True)
+    return calls
+
+
+def shot_job(vault, target):
+    return json.loads(job_path(vault, "translations", SHOT + "\n" + target).read_text())
+
+
+@pytest.mark.parametrize("on_the_fly, llm", [(False, True), (True, False)])
+def test_screenshot_translation_gated(sweep_vault, shot_llm, monkeypatch, on_the_fly, llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=on_the_fly, translate_to=["de"])
+    add_screenshot_note(vault)
+    if not llm:
+        monkeypatch.setattr(worker, "_llm_configured", lambda settings: False)
+    assert worker.sweep(vault, NOW, {}) == 0
+    assert not shot_llm
+    assert not list((vault / "_system/jobs").rglob("*.json"))
+
+
+def test_screenshot_jobs_for_other_languages(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True, translate_to=["de"])
+    add_screenshot_note(vault)
+    assert worker.sweep(vault, NOW, {}) == 3
+    assert len(shot_llm) == 1  # one detection call per screenshot
+    assert sorted(path.name for path in (vault / "_system/jobs/translations").glob("*.json")) == sorted(
+        job_path(vault, "translations", SHOT + "\n" + target).name for target in ("ru", "pt", "de"))
+    for target in ("ru", "pt", "de"):
+        job = shot_job(vault, target)
+        assert job["status"] == "queued"
+        assert job["note"] == SHOT
+        assert job["lang"] == "en"
+        assert job["target"] == target
+        assert job["screenshot"] is True
+    assert worker.sweep(vault, NOW, {}) == 0
+    assert len(shot_llm) == 1
+
+
+def test_screenshot_without_language_answer_gets_no_jobs(sweep_vault, shot_llm, monkeypatch):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    add_screenshot_note(vault)
+    monkeypatch.setattr(worker, "llm_chat", lambda settings, **kwargs: ("fake", lambda messages, json_mode=False: "Sorry, no"))
+    assert worker.sweep(vault, NOW, {}) == 0
+
+
+def test_screenshot_without_text_gets_no_jobs(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    add_screenshot_note(vault, text="")
+    assert worker.sweep(vault, NOW, {}) == 0
+    assert not shot_llm
+
+
+def shot_fake_translate(prefix):
+    def translate(texts, source_lang, target, source_langs):
+        return [f"{prefix}{target}: {text}" for text in texts]
+    return translate
+
+
+def test_screenshot_translation_section_written(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    note = add_screenshot_note(vault)
+    state_path = vault / "state.json"
+    worker.sweep(vault, NOW, {})
+    worker.run_once(vault, now=NOW, state_path=state_path, translate=shot_fake_translate(""))
+    text = note.read_text(encoding="utf-8")
+    assert "== Translation ru\n\n- 00:00 ru: Café Dias\n- 00:00 ru: Rua Nova\n" in text
+    assert "== Translation pt\n\n- 00:00 pt: Café Dias\n- 00:00 pt: Rua Nova\n" in text
+    assert "== Translation en" not in text
+    assert "== Text\n\nCafé Dias\nRua Nova\n" in text  # the OCR text itself is untouched
+    assert shot_job(vault, "ru")["status"] == "done"
+    assert shot_job(vault, "pt")["status"] == "done"
+
+
+def test_screenshot_user_edit_kept_on_rerun(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    note = add_screenshot_note(vault)
+    state_path = vault / "state.json"
+    worker.sweep(vault, NOW, {})
+    worker.run_once(vault, now=NOW, state_path=state_path, translate=shot_fake_translate(""))
+    edited = note.read_text(encoding="utf-8").replace("- 00:00 ru: Café Dias", "- 00:00 Мой перевод")
+    note.write_text(edited, encoding="utf-8")
+    job_file = job_path(vault, "translations", SHOT + "\nru")
+    job = json.loads(job_file.read_text())
+    job["status"] = "queued"
+    job_file.write_text(json.dumps(job))
+    worker.run_once(vault, now=NOW, state_path=state_path, translate=shot_fake_translate("v2 "))
+    text = note.read_text(encoding="utf-8")
+    assert text.count("== Translation ru") == 1
+    assert "- 00:00 Мой перевод\n- 00:00 v2 ru: Rua Nova\n" in text
+    assert "v2 ru: Café Dias" not in text
+    assert shot_job(vault, "ru")["status"] == "done"
