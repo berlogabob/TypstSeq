@@ -2,6 +2,7 @@ import base64
 import json
 import hashlib
 import os
+import re
 import signal
 import sys
 import time
@@ -2949,6 +2950,27 @@ def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
     assert "what the song is about" in system
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))
     assert sidecar["song"] == {"artist": "Amy Winehouse", "title": "Back to Black"}
+
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("Audio song", "Amy Winehouse — Back to Black"),
+    ("My favourite take", "My favourite take"),
+])
+def test_song_note_title_from_tags_unless_user_renamed(sweep_vault, ffprobe, title, expected):
+    vault = sweep_vault
+    ffprobe.set_tags({"artist": "Amy Winehouse", "title": "Back to Black"})
+    set_audio_settings(vault, on_the_fly=True)
+    audio, note = add_audio_note(vault, "song.mp3")
+    note.write_text('#show: tylog.note.with(\n  id: "audio-song",\n  title: "' + title + '",\n  kind: "audio",\n)\n\n'
+                    '= ' + title + '\n#tylog.attachment("' + audio + '", kind: "audio")\n')
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate)
+    assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
+    text = note.read_text()
+    assert re.search(r'\btitle:\s*"' + re.escape(expected) + '"', text)
+    assert "\n= " + expected + "\n" in text
+    assert note.name == "Audio song.mp3.typ"
+    assert "== Transcript" in text
 
 
 SHOT = "screenshots/2026/10/shot-0123456789abcdef.typ"

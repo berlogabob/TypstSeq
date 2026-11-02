@@ -1257,6 +1257,7 @@ def transcribe_v2_job(vault, job, note, model, settings):
         for heading in _translation_headings(note_text):
             note_text = audio_v2.remove_section(note_text, heading)
     note_text, lines = audio_v2.merge_transcript(note_text, previous, result)
+    note_text = audio_v2.name_song_note(note_text, job["audio"], song)
     return note_text, sidecar, lines, language
 
 

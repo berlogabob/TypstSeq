@@ -621,3 +621,50 @@ def test_user_edited_lines_untouched():
     note, _ = v2.merge_transcript(note, lines, v2.lines_from_chunks(chunks))
     assert "- 00:00 Olá, tudo bem com o Baubo?\n" in note
     assert "- 00:06 Nasci no seio.\n" in note and "com você" not in note
+
+
+# Song notes take "<artist> — <title>" as their title while it is still the default "Audio <file stem>".
+
+HEADER_TITLE = re.compile(r'\btitle:\s*"((?:\\.|[^"\\])*)"')
+
+
+def header_title(text):
+    return re.sub(r'\\(.)', r'\1', HEADER_TITLE.search(text).group(1))
+
+
+def heading_line(text):
+    return next(line for line in text.splitlines() if line.startswith("= "))
+
+
+def song_note(title, heading=None):
+    return ('#show: tylog.note.with(\n  id: "audio-song",\n  title: ' + title + ',\n  kind: "audio",\n  tags: (),\n)\n\n'
+            '= ' + (heading or title.strip('"')) + '\n#tylog.attachment("assets/audio/song.mp3", kind: "audio")\n\n'
+            '== Transcript\n\n- 00:00 Hello\n')
+
+
+def test_song_note_default_title_becomes_artist_and_title():
+    text = v2.name_song_note(song_note('"Audio song"'), "assets/audio/song.mp3",
+                             {"artist": "Amy Winehouse", "title": "Back to Black"})
+    assert header_title(text) == "Amy Winehouse — Back to Black"
+    assert heading_line(text) == "= Amy Winehouse — Back to Black"
+    assert text.endswith("== Transcript\n\n- 00:00 Hello\n")
+
+
+def test_song_note_user_title_untouched():
+    note = song_note('"My favourite take"')
+    assert v2.name_song_note(note, "assets/audio/song.mp3", {"artist": "Amy Winehouse", "title": "Back to Black"}) == note
+
+
+def test_song_note_needs_both_tags_and_default_title():
+    note = song_note('"Audio song"')
+    assert v2.name_song_note(note, "assets/audio/song.mp3", {"artist": "Amy Winehouse", "title": ""}) == note
+    assert v2.name_song_note(note, "assets/audio/song.mp3", None) == note
+
+
+def test_song_note_title_escapes_quotes_and_markup():
+    song = {"artist": 'Guns "N" \\ Roses', "title": "*Sweet* #1 [live]"}
+    text = v2.name_song_note(song_note('"Audio song"'), "assets/audio/song.mp3", song)
+    plain = 'Guns "N" \\ Roses — *Sweet* #1 [live]'
+    assert header_title(text) == plain
+    assert heading_line(text) == '= Guns "N" \\\\ Roses — \\*Sweet\\* \\#1 \\[live\\]'
+    assert text.count("#show: tylog.note.with(") == 1 and text.count("\n)\n") == 1

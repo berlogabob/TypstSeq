@@ -369,6 +369,41 @@ def song_sentence(song):
     return f"This recording is a song{by}{titled}."
 
 
+_SONG_HEADER = re.compile(r'#show:\s*tylog\.note\.with\(((?:"(?:\\.|[^"\\])*"|[^")])*)\)')
+_HEADER_TITLE = re.compile(r'(\btitle:\s*)"((?:\\.|[^"\\])*)"')
+_HEADING = re.compile(r"^= (.*)$", re.M)
+
+
+def _typst_string(text):
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _unescape(text):
+    return re.sub(r"\\(.)", r"\1", text)
+
+
+def name_song_note(note_text, audio, song):
+    """A song note is titled "<artist> — <title>" (header title and first `= ` heading), but only while its title is
+    still the default "Audio <file stem>"; a title the user changed is left alone. The file name is not touched."""
+    if not song or not song.get("artist") or not song.get("title"):
+        return note_text
+    default = "Audio " + Path(audio).stem
+    title = f"{song['artist']} — {song['title']}"
+    header = _SONG_HEADER.search(note_text)
+    heading = _HEADING.search(note_text)
+    header_title = _HEADER_TITLE.search(header.group(1)) if header else None
+    current = _unescape(header_title.group(2)) if header_title else (_unescape(heading.group(1)) if heading else None)
+    if current != default:
+        return note_text
+    if header_title:
+        start, end = header.start(1) + header_title.start(), header.start(1) + header_title.end()
+        note_text = note_text[:start] + header_title.group(1) + _typst_string(title) + note_text[end:]
+    if heading:
+        heading = _HEADING.search(note_text)  # positions moved with the header edit
+        note_text = note_text[:heading.start(1)] + escape_markup(title) + note_text[heading.end(1):]
+    return note_text
+
+
 def cut_chunk(audio, start, end, out):
     """Writes audio[start:end] (seconds) to out as 16 kHz mono WAV."""
     ffmpeg = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
