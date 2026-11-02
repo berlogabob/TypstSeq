@@ -322,6 +322,6 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] B5 P30: a song opened from Search shows as 'Entity' in results and opens the generic page view (sections as raw lines) instead of the audio screen with the Text tab
 - [x] B6 (5f19a00; songs re-queued 13:21) song jobs end with lang None/langs [] (song mode never sets language) -> no translation jobs, no source-language Summary, no source chip in the app. Detect language from the transcript text (llm_chat, like screenshots), store lang/langs
 - [x] B7 (00b8e1b) audio screen opens on Comments; open on Text when a transcript exists
-- [ ] P30 check of the wave (done 12:59: Processing + badge, search opens the tapped result (D1 ok); rest pending) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
-- [ ] D6 entry lost offline (10-07): sync_trace first
+- [x] P30 check 13:41: Processing + badge, search opens tapped result, song opens on Text with ES/RU/EN/PT, PT summary, side by side, ⋮ Copy all / Export / Open as page / Re-process. Not driven: @ autocomplete, indent, screenshot Text (covered by tests) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
+- [x] D6 closed as unknown: no offline loss path in sync code (path_sync, conflicts, deleteLocal guards); 10-07 revisions intact; no sync trace for that window; reopen if it recurs - entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
