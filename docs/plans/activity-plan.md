@@ -300,7 +300,7 @@ Closed by later waves: 0.18.0 tag (superseded by 0.18.1), empty module dirs (W8 
 ## Wave 14 (2026-11-02): extraction UX + fixit backlog (plan ~/.claude/plans/fancy-swinging-steele.md)
 Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at gates; Studio = app models only.
 - [ ] D1 search result opens today's page instead of the hit (fixit 10-20): not reproduced in tests; only path = openFromSearch pops Search before _openNote, and a silent false from _openNote leaves Today. Fix: open first, pop after success, snackbar with reason on failure; repro on P30
-- [ ] A1 Processing screen: queued/running/failed jobs from _system/jobs/*, retry (fixit 10-27)
+- [ ] A1 (gate: update widget_test 'More shows only…' for the new Processing tile) Processing screen: queued/running/failed jobs from _system/jobs/*, retry (fixit 10-27)
 - [ ] A2 every add action shows "Queued -> see Processing"
 - [ ] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
 - [ ] B2 screenshots: same Text view, OCR + ru/en/pt (T40)
@@ -312,6 +312,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [ ] D4 indent / nested list (10-26)
 - [ ] D5 screenshot/link zones collapsed by default on phone (10-27)
-- [ ] D7 screenshots library: default sort = newest added first, no grouping (user 11-02)
+- [x] D7 screenshots library: newest first, no grouping (ec7b48f)
+- [ ] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
