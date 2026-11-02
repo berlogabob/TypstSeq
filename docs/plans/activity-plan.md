@@ -318,6 +318,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] D7 screenshots library: newest first, no grouping (ec7b48f)
 - [x] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
 - [x] A3 (8b94f9b) P30: Processing lists old October failures first; order running > queued > newest, failures older than 3 days folded under 'Older failures (N)'
-- [ ] P30 check of the wave (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
+- [ ] B4 P30: song notes keep 'Audio 20261101-143642' titles, so searching 'Back to Black' finds nothing; worker sets title 'Artist — Title' from tags when the title is still the default stamp
+- [ ] P30 check of the wave (done 12:59: Processing + badge, search opens the tapped result (D1 ok); rest pending) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
