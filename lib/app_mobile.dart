@@ -5308,8 +5308,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onSetRelevance: _setRelevance,
         noteToCluster: communities?.noteToCluster ?? const {},
         shelfPrefs: vaultRegistry?.shelfPrefs ?? const {},
-        onShelfPrefsChanged: (prefs) =>
-            unawaited(vaultRegistry?.updateShelfPrefs(prefs) ?? Future.value()),
+        onShelfPrefsChanged: (prefs) {
+          final registry = vaultRegistry;
+          if (registry == null) return;
+          // Merge against the live map: a shelf sends only its own keys.
+          unawaited(
+            registry.updateShelfPrefs({...registry.shelfPrefs, ...prefs}),
+          );
+        },
         audioShelf: _audioShelf,
         onCreateNote: (kind) => unawaited(_newPage(kind: kind)),
         onCreateEntity: () => unawaited(_createEntity()),

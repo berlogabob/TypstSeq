@@ -604,8 +604,8 @@ class LibraryView extends StatelessWidget {
                     onDeleteArticle: onDeleteArticle,
                     onImportMarkdownArticles: onImportMarkdownArticles,
                     noteToCluster: noteToCluster,
-                    shelfPrefs: const {},
-                    onShelfPrefsChanged: null,
+                    shelfPrefs: shelfPrefs,
+                    onShelfPrefsChanged: onShelfPrefsChanged,
                   ),
                   _PrimaryTasksView(
                     tasks: index?.tasks ?? const <TaskRef>[],
@@ -815,19 +815,28 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   @override
   void initState() {
     super.initState();
-    final p = widget.shelfPrefs; // hydrate persisted choices
-    statusFilter = p['status'];
-    relevanceFilter = p['relevance'];
-    sort = p['sort'] ?? 'recent';
-    groupBy = p['group'] ?? 'none';
+    // Hydrate persisted choices. Screenshot keys are namespaced because the
+    // vault's shelf prefs map is shared with the articles shelf.
+    statusFilter = _pref('status');
+    relevanceFilter = _pref('relevance');
+    sort = _pref('sort') ?? 'recent';
+    groupBy = _pref('group') ?? 'none';
+  }
+
+  String get _prefix => screenshots ? 'screenshots.' : '';
+
+  String? _pref(String key) {
+    final value = widget.shelfPrefs['$_prefix$key'];
+    return value == null || value.isEmpty ? null : value;
   }
 
   /// Persist the current filter/sort/group so they survive an app restart.
+  /// Sends only this shelf's keys; the owner merges them into the vault map.
   void _persist() => widget.onShelfPrefsChanged?.call({
-    'status': ?statusFilter,
-    'relevance': ?relevanceFilter,
-    'sort': sort,
-    'group': groupBy,
+    '${_prefix}status': statusFilter ?? '',
+    '${_prefix}relevance': relevanceFilter ?? '',
+    '${_prefix}sort': sort,
+    '${_prefix}group': groupBy,
   });
 
   static const _sortLabels = {
